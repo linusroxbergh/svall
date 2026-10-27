@@ -1343,7 +1343,7 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'home')).toEqual({ name: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
   });
 
-  it('reports a release the controller cannot hand over to as a failure', async () => {
+  it('reports a release other than the controller\'s as a failure', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '0.9.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['svall-space'], { stdout: DF });

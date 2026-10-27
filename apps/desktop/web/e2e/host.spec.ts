@@ -101,7 +101,6 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0, protocol 4');
   await expect(page.getByTestId('host-outcome')).toContainText('studio is ready. Robots you move there keep working while this Mac sleeps.');
-  await expect(panel.getByTestId('machine-enable')).toHaveCount(0);
 
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });

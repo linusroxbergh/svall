@@ -66,7 +66,6 @@ test('a run ends in one line, with Done once nothing is left and Check again whi
     store.getState().hostDone('upgrade', 0);
   });
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. Robots you move there keep working while this Mac sleeps.Done');
-  expect(screen.queryByTestId('machine-enable')).toBeNull();
   expect(screen.queryByTestId('host-check-again')).toBeNull();
   fireEvent.click(screen.getByTestId('host-done'));
   expect(store.getState().hostOpen).toBe(false);

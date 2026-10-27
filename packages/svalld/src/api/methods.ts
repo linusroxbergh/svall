@@ -245,7 +245,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   }
 }
 
-// what a worker sends on from a CLI in one of its panes: never a record, the fleets beside this one or the phone link
+// what a worker sends on from a CLI in one of its panes: never the machines, the fleets beside this one or the phone link
 const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe']);
 
 /** The result of a call a worker sends on, or its error thrown as the client would read it. */

@@ -42,12 +42,6 @@ describe('sessions', () => {
 describe('carried session files', () => {
   const FILE = { type: 'file', path: 'README.md', mode: 0o644, size: 2000, mtimeMs: 1_700_000_000_000, sha256: 'a'.repeat(64) } as const;
 
-  it('holds a Git index by its staged entries as well as its bytes', () => {
-    const index = { ...FILE, path: '.git/index', gitIndex: 'a'.repeat(64) };
-    expect(TransferFile.parse(index)).toEqual(index);
-    expect(() => TransferFile.parse({ ...index, gitIndex: 'x' })).toThrow();
-  });
-
   it('holds a file by its hash and a link by its text', () => {
     expect(() => TransferFile.parse({ ...FILE, sha256: 'x' })).toThrow();
     expect(() => TransferFile.parse({ ...FILE, size: -1 })).toThrow();

@@ -307,7 +307,7 @@ describe('restTerminals', () => {
     expect(result).toBeUndefined();
     expect(world.log).toEqual([]);
 
-    // the Stop hook lands while the fleet is frozen; no clock moves before the rest follows it
+    // the Stop hook lands while the rest waits; no clock moves before the rest follows it
     store.update((d) => { d.robots.c_ada.agent!.status = 'done'; });
     await world.settle();
     await run;

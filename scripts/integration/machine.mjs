@@ -229,7 +229,7 @@ async function snap(o) {
   const info = await settled(() => rpc('system.info'));
   const state = await settled(() => rpc('state.get'));
   const listed = run(TMUX, ['-S', path.join(FLEET, 'tmux.sock'), 'list-windows', '-a', '-F', '#{window_name}|#{pane_pid}|#{pane_current_command}']);
-  // a machine where the fleet has no window open runs no tmux server for it at all
+  // a fleet whose tmux was never started, or was killed, has no server to list
   const windows = (/^ERROR \d+: no server running/.test(listed) ? '' : listed)
     .split('\n').filter(Boolean).map((l) => { const [name, pid, command] = l.split('|'); return { name, pid: Number(pid), command }; });
   const fleet = JSON.parse(fs.readFileSync(path.join(FLEET, 'fleet.json'), 'utf8'));

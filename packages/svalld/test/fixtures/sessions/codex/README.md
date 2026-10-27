@@ -7,14 +7,13 @@ created under one `CODEX_HOME` resumed from a second `CODEX_HOME` at a different
 prefix, with only `sessions/<yyyy>/<mm>/<dd>/rollout-<timestamp>-<id>.jsonl` copied across: the
 session remembered its pre-move marker, ran `pwd` in the destination workspace and appended the new
 turn to the destination rollout (24 lines before, 49 after; the source rollout stayed at 24). The
-same held for the probe's path-remapped copy. The non-interactive form was used throughout:
-`codex exec resume <id> <prompt>`. Interactive `codex resume <id>` was not exercised.
+non-interactive form was used throughout: `codex exec resume <id> <prompt>`. Interactive `codex resume <id>` was not exercised.
 
 Credentials are not portable content. Each disposable home got `auth.json` copied in by hand; with
 the rollout present but no `auth.json`, the thread still resolves and the first model call fails
 with `401 Unauthorized`, so a missing login does not look like a missing session. No auth, config,
 history or real conversation text was copied into this repository. The 0.142 rollout shape (a
-`session_meta` carrying only `id`) is accepted by the probe but was not resumed live.
+`session_meta` carrying only `id`) was not resumed live.
 
 ## Reproducible observations
 
@@ -29,7 +28,7 @@ history or real conversation text was copied into this repository. The 0.142 rol
   copied wholesale.
 - Id lookup is a scan, not an index. A rollout dropped straight into `<home>/sessions/` with no
   `yyyy/mm/dd` directories resumed fine; an id with no rollout fails with
-  `no rollout found for thread id <id>`. The probe keeps the dated layout regardless.
+  `no rollout found for thread id <id>`.
 - Path-bearing live metadata, from this session and six real 0.155.1 rollouts: `session_meta.cwd`,
   `session_meta.runtime_workspace_roots[]`, `turn_context.cwd`, `turn_context.workspace_roots[]`,
   `turn_context.permission_profile.file_system.entries[].path.path`,
@@ -45,7 +44,7 @@ history or real conversation text was copied into this repository. The 0.142 rol
 - Codex writes a fresh `turn_context` and a delta `world_state` with the live cwd, workspace roots
   and filesystem XML on the first resumed turn, so the agent is told its new paths without any
   context from Svall. The stale `session_meta.cwd` at the head of the file is what a session
-  list and the rebuilt thread index would otherwise show, which is why the probe remaps it.
+  list and the rebuilt thread index show.
 - Resume appends to the moved rollout in place under the same session id; no second file is created
   and the source rollout is untouched.
 

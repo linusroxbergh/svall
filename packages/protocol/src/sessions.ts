@@ -35,10 +35,6 @@ export const TransferFile = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('file'), path: z.string(),
     mode: z.number().int().nonnegative(), size: z.number().int().nonnegative(), mtimeMs: z.number().int(), sha256: Sha256,
-    // a Git index by its staged entries, a loose ref by its value, a packed-refs file by each ref it packs; no move writes them
-    gitIndex: Sha256.optional(),
-    ref: z.string().optional(),
-    refs: z.record(z.string(), z.string()).optional(),
   }),
   z.object({ type: z.literal('symlink'), path: z.string(), target: z.string() }),
 ]);

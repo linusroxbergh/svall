@@ -25,7 +25,6 @@ function withoutIds(text: string, names: MachineNames): string {
     .replace(ids(' \\(UUID\\)'), '')
     .replace(ids('\\banswered with fleetId UUID, not UUID'), 'answered for another fleet')
     .replace(ids('\\banswered with machineId (UUID), not UUID'), (_, id: string) => `answered as ${machine(id)}`)
-    .replace(ids('\\b(?:the )?fleet UUID'), 'the fleet')
     .replace(ids('\\bmachine (UUID)'), (_, id: string) => machine(id))
     // an id said anywhere else is a known machine's name, or nothing
     .replace(ids('\\s?(UUID)'), (all: string, id: string) => (names[id] ? all.replace(id, names[id]) : ''));

@@ -60,12 +60,10 @@ describe('host run', () => {
   it('names a machine this Mac knows by its name, and leaves out the ids of fleets', () => {
     const [studio, other, fleet, theirs] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
     const names = { [studio]: 'studio' };
-    const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
+    const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('identity', 'fail', { detail }), names).steps[0].detail;
     expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
     expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
-    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`))
-      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`);
   });
 
   it('drops an id it does not know from a step line', () => {

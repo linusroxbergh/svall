@@ -274,7 +274,6 @@ test('Machines lists every machine with its ssh, its release and last check, eac
   expect(trift.textContent).toContain('release 0.13.0');
   expect(trift.textContent).toContain('2 warnings');
   expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
-  expect(screen.queryByTestId('machine-enable')).toBeNull();
   // a rollback is offered only by the upgrade whose own rollback failed
   expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
 

@@ -25,8 +25,7 @@ not copy credentials, user settings, plugins or real conversations into this rep
   `<project>/<uuid>/subagents/agent-*.jsonl` and a matching `agent-*.meta.json`. Those were copied.
   No `sessions-index.json` or file-history content was created by this disposable session, although
   both forms exist in other observed Claude projects.
-- A `session-env/<uuid>` directory existed but was empty. The probe deliberately excludes
-  `session-env` because it could contain secrets; the real resume succeeded without it.
+- A `session-env/<uuid>` directory existed but was empty.
 - The project transcript's `cwd` metadata changed to the destination path. Historical user text,
   tool arguments and Bash output still mention the source path; those are evidence and must not be
   blanket-rewritten.
