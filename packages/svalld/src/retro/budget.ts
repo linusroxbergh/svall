@@ -5,11 +5,11 @@ import { priceOf, type Price } from './prices.js';
 /** Characters per token by model family; batches are counted at the lowest, so a family with more reads fewer tokens. */
 export const RATIO: Record<'claude' | 'openai' | 'other', number> = { claude: 3.5, openai: 4, other: 3.5 };
 /** The input each CLI adds to a call of its own, and whether it is billed as cache reads. */
-export const OVERHEAD: Record<AgentKind, { min: number; max: number; cached: boolean }> = {
+const OVERHEAD: Record<AgentKind, { min: number; max: number; cached: boolean }> = {
   claude: { min: 1_000, max: 1_000, cached: false }, codex: { min: 30_000, max: 40_000, cached: true }, opencode: { min: 15_000, max: 15_000, cached: false },
 };
 // a read answers at most 2k tokens of notes; the judge reads at most 100k of notes and 40k of targets
-export const READ_OUT = 2_000, READ_REASONING = 4_000, JUDGE_OUT = 12_000, JUDGE_REASONING = 16_000, JUDGE_IN_MAX = 140_000;
+const READ_OUT = 2_000, READ_REASONING = 4_000, JUDGE_OUT = 12_000, JUDGE_REASONING = 16_000, JUDGE_IN_MAX = 140_000;
 
 const PACKED = Math.min(...Object.values(RATIO));
 export const FAMILY: Record<AgentKind, keyof typeof RATIO> = { claude: 'claude', codex: 'openai', opencode: 'other' };

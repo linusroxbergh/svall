@@ -12,7 +12,7 @@ const HAIKU: Price = { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.2
 const FABLE: Price = { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 20 };
 
 /** List prices by the model ids and aliases the CLIs take; OpenAI's are for prompts up to 272k tokens and charge no cache write. */
-export const PRICES: Record<string, Price> = {
+const PRICES: Record<string, Price> = {
   opus: OPUS, 'claude-opus-5-5': OPUS,
   sonnet: SONNET, 'claude-sonnet-5-5': SONNET,
   haiku: HAIKU, 'claude-haiku-5-5': HAIKU,

@@ -75,7 +75,7 @@ function formatFinding(f: Finding, n: number): string {
 }
 
 /** A run's findings as printed, numbered for the user's answer: the last run's fixes and how they measured since come first. */
-export function formatFindings(r: RetroReport): string {
+function formatFindings(r: RetroReport): string {
   const out: string[] = [];
   if (r.previous.length) {
     out.push('Fixed since the last retro:', ...r.previous.map((f) => `  ${f.measure.name}: ${rate(f.measure.before)} → ${rate(f.measure.after)}`), '');
