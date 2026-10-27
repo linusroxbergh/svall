@@ -94,4 +94,6 @@ robot's agent gets at SessionStart; `svall robot show <name>` prints it.
   stop; do not do its work by hand or run it again.
 - Never close a robot that is `working` or `blocked`.
 - Never move or rename the home island.
+- To the user, name a robot or island as a link to its id, which selects it
+  on click: `[bob](svall://robot/c_abc123)`, `[review](svall://island/i_abc123)`.
 - When you finish, say what you changed, one line per change.

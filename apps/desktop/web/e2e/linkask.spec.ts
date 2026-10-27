@@ -89,3 +89,23 @@ test('a link followed in a terminal asks over the terminal, with the keys, and h
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].browser?.tabs.map((t) => t.url))
     .toContain('https://example.com/d');
 });
+
+test('a svall link followed in a terminal selects the robot or island it names', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('lnk') });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'reader' });
+  const b = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'writer' });
+  const { receive } = await svall.nativeShell();
+  await svall.open('map');
+  const token = page.getByTestId(`token-${a.id}`);
+  await token.click();
+  await token.click();
+  const card = page.getByTestId('terminal-card');
+  await expect(card).toHaveAttribute('data-robot', a.id);
+  const follow = (url: string) => receive({ type: 'term.openUrl', id: a.id, url, x: 0, y: 0 });
+
+  await follow(`svall://robot/${b.id}`);
+  await expect(card).toHaveAttribute('data-robot', b.id);
+  await follow(`svall://island/${island.id}`);
+  await expect(page.getByTestId(`sb-island-${island.id}`)).toHaveAttribute('data-selected', 'true');
+  await expect(page.getByTestId('link-ask')).toHaveCount(0);
+});
