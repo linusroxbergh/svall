@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MutationId } from '@svall/protocol';
-import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent, setGateway } from '../src/config.js';
+import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent } from '../src/config.js';
 import { newId, newMutationId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -175,15 +175,6 @@ describe('patchFleetConfig', () => {
     expect(loadConfig(p).name).toBe('home');
     fs.writeFileSync(real, JSON.stringify({ id, name: 'Home Base' }));
     expect(() => loadConfig(p)).toThrow(/name: /);
-  });
-
-  it('is how the daemon names a gateway, in the file and in the running config', () => {
-    const { p, real, id } = linked();
-    const config = loadConfig(p);
-    setGateway(p, config, GATEWAY as never);
-    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
-    expect(config.gatewayMachineId).toBe(GATEWAY);
-    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
   });
 });
 

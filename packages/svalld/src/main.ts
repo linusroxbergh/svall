@@ -8,7 +8,7 @@ import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, peekConfig, saveConfig } from './config.js';
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
@@ -295,12 +295,8 @@ async function start(opts: Options): Promise<Daemon> {
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers);
   }
-  // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
-  const gatewayNow = (): MachineId | undefined => {
-    try { return namedGateway(paths); } catch { return config.gatewayMachineId; }
-  };
   const placement = links && new Placement({
-    store, fleet, links, me, paths, git: handoverGit, agents, gateway: gatewayNow, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+    store, fleet, links, me, paths, git: handoverGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
   });
   const info = () => systemInfo({
     machineId: me, agents, ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),

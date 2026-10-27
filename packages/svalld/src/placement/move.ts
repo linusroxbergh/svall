@@ -424,7 +424,6 @@ export type PlacementDeps = {
   paths: Pick<Paths, 'moves'>;
   git: GitRunner;
   agents: AgentProber;
-  gateway: CheckDeps['gateway'];
   release: string;
   homedir: string;
   tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes'>;
@@ -597,8 +596,8 @@ export class Placement {
   }
 
   private checkDeps(): CheckDeps {
-    const { store, me, links, git, agents, gateway, release, homedir, cli } = this.d;
-    return { store, me, links, git, agents, gateway, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
+    const { store, me, links, git, agents, release, homedir, cli } = this.d;
+    return { store, me, links, git, agents, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
   }
 
   private terminals(): Promise<Classified[]> {

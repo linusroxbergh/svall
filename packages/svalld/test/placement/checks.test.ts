@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -6,6 +7,7 @@ import { AGENTS } from '../../src/agents.js';
 import type { AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
 import { handoverGit } from '../../src/links/git.js';
+import { resolvePaths } from '../../src/paths.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
@@ -56,7 +58,7 @@ function machines() {
 type Machines = ReturnType<typeof machines>;
 
 type Opts = {
-  gateway?: boolean; reachable?: boolean; mismatch?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
+  reachable?: boolean; mismatch?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
   probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>; cli?: CliRun;
 };
 
@@ -81,7 +83,6 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     git: handoverGit,
     release: o.mine ?? '0.17.0',
     homedir: t.mac,
-    gateway: () => (o.gateway ? W : undefined),
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
     terminals: async () => o.terminals ?? [],
     ...(o.cli && { cli: o.cli }),
@@ -187,12 +188,11 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const root = t.repo('code/svall');
     t.g(root, 'checkout', '-q', '--detach');
     const c = on(root, { branch: 'HEAD', islandId: 'i_home', agent: claude('working'), tmux: { windowId: '@1', paneId: '%1' } });
-    const d = depsOf(t, [c], { gateway: true, reachable: false, terminals: [{ robotId: 'c_1', class: 'agent-working' }] });
+    const d = depsOf(t, [c], { reachable: false, terminals: [{ robotId: 'c_1', class: 'agent-working' }] });
     expect(await refusal(d)).toEqual({
-      reason: 'this fleet has a gateway',
-      action: "svall host upgrade linus-vault makes it this fleet's worker",
+      reason: 'mission control stays on this Mac',
+      action: 'move a robot from another island',
       details: [
-        'mission control stays on this Mac; move a robot from another island',
         'linus-vault is not reachable; try again when it is awake',
         'kanban is on a detached HEAD; check out a branch first',
         'kanban is working; interrupt after this turn',
@@ -215,20 +215,12 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(chosen.plan.interruptAfterMs).toBe(5000);
   });
 
-  it('refuses while fleet.json names a gateway, and not without one', async () => {
+  it('moves a robot of a fleet whose fleet.json still names a gateway', async () => {
     const t = machines();
-    expect(await refusal(depsOf(t, [shellIn(t)], { gateway: true })))
-      .toEqual({ reason: 'this fleet has a gateway', action: "svall host upgrade linus-vault makes it this fleet's worker", details: [] });
-    await sheet(depsOf(t, [shellIn(t)]));
-  });
-
-  it('refuses once fleet.json names a gateway, though none was named when the daemon started', async () => {
-    const t = machines();
-    let named: MachineId | undefined;
-    const d = { ...depsOf(t, [shellIn(t)]), gateway: () => named };
-    await sheet(d);
-    named = W;
-    expect(await refusal(d)).toEqual({ reason: 'this fleet has a gateway', action: "svall host upgrade linus-vault makes it this fleet's worker", details: [] });
+    const p = resolvePaths(path.join(t.mac, '.svall'));
+    fs.mkdirSync(p.home, { recursive: true });
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: crypto.randomUUID(), gatewayMachineId: W }));
+    expect((await sheet(depsOf(t, [shellIn(t)]))).ok).toBe(true);
   });
 
   it('refuses mission control, and not a robot on an island', async () => {

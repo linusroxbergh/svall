@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED, type MachineId } from '@svall/protocol';
+import { AgentKind, FleetConfig, FleetId, NodeConfig, RESERVED } from '@svall/protocol';
 import { createDurable, writeDurable } from './durable.js';
 import { resolvePaths, type Paths } from './paths.js';
 import { HOME_CWD, PRIVATE, profileHome, profileHomeCwd, profileOf, variantOf } from './profile.js';
@@ -252,16 +252,4 @@ export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: strin
 /** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */
 export function readFleetConfig(paths: Pick<Paths, 'fleetConfig'>): FleetConfig {
   return read(paths.fleetConfig, FleetConfig);
-}
-
-/** The gateway fleet.json names now: `svall host enable` names one, and `svall host remove` drops it, while the daemon runs. */
-export function namedGateway(paths: Paths): MachineId | undefined {
-  return readFleetConfig(paths).gatewayMachineId;
-}
-
-/** Names `id` this fleet's gateway, or with none no gateway, in fleet.json and in the running config, which others hold by reference. */
-export function setGateway(paths: Paths, config: Config, id: MachineId | undefined): void {
-  if (config.gatewayMachineId === id) return;
-  patchFleetConfig(paths.fleetConfig, { gatewayMachineId: id });
-  config.gatewayMachineId = id;
 }

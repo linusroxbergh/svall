@@ -54,8 +54,6 @@ export type CheckDeps = {
   links: { for(machine: MachineId): Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined; call: HomeLinks['call'] };
   git: GitRunner;
   agents: AgentProber;
-  /** The gateway fleet.json names now, which `svall host upgrade` can change while the daemon runs. */
-  gateway: () => MachineId | undefined;
   release: string;
   homedir: string;
   /** This Mac's terminals that still hold a process, as rest reads them. */
@@ -249,8 +247,6 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  const gateway = d.gateway();
-  if (gateway) fail({ reason: 'this fleet has a gateway', action: `svall host upgrade ${named(gateway)} makes it this fleet's worker` });
   if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
 
