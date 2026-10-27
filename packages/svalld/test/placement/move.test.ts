@@ -1,12 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
+import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
 import { handoverGit } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
-import { Store } from '../../src/store.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes } from '../helpers.js';
 import { Crash, OSID, SID, listed, moveWorld, state, until, type MoveWorld } from './move-world.js';
@@ -120,7 +119,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
     const id = file.slice(0, -'.json'.length);
 
-    expect(Store.readSnapshot(w.homePaths.state).robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'commit' } });
+    expect(FleetState.parse(JSON.parse(fs.readFileSync(w.homePaths.state, 'utf8'))).robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'commit' } });
     const again = await w.bootHome();
     await again.placement.recoverMoves();
 

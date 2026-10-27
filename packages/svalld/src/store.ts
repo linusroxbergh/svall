@@ -116,11 +116,6 @@ export class Store {
     }
   }
 
-  /** Validates a prepared snapshot without making it the active state. */
-  static readSnapshot(file: string): FleetState {
-    return FleetState.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
-  }
-
   subscribe(fn: Listener): () => void {
     this.listeners.add(fn);
     return () => { this.listeners.delete(fn); };

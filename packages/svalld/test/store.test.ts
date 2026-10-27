@@ -303,25 +303,6 @@ describe('Store.update', () => {
   });
 });
 
-describe('prepared state', () => {
-  it('reads a prepared snapshot without making it active', () => {
-    const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
-    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
-    fs.mkdirSync(path.dirname(prepared), { recursive: true });
-    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_1: island('i_1') } }));
-    expect(Object.keys(Store.readSnapshot(prepared).islands)).toEqual(['i_1']);
-    expect(s.state.islands).toEqual({});
-  });
-
-  it('refuses a prepared file that is not a valid snapshot', () => {
-    const home = makeHome();
-    const prepared = path.join(home, 'prepared-tx-1.json');
-    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
-    expect(() => Store.readSnapshot(prepared)).toThrow();
-  });
-});
-
 describe('Store.load', () => {
   it('collects a stale write temp that a finished write left behind', () => {
     const home = makeHome();

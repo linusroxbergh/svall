@@ -257,16 +257,9 @@ describe('protocol version', () => {
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-const MACHINES = {
-  source: { home: '/Users/linus' },
-  destination: {
-    info: {
-      machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9,
-      platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
-    },
-    home: '/Users/linus',
-    fleetHome: '/Users/linus/.svall',
-  },
+const INFO = {
+  machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9,
+  platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
 };
 
 // every event name the union carries; the compiler refuses a missing or a stray one
@@ -286,9 +279,9 @@ describe('system.info and requests in parts', () => {
   });
 
   it('says which git a machine runs, when it has one', () => {
-    const info = { ...MACHINES.destination.info, git: '2.43.0' };
+    const info = { ...INFO, git: '2.43.0' };
     expect(methods['system.info'].result.parse(info).git).toBe('2.43.0');
-    expect(methods['system.info'].result.parse(MACHINES.destination.info).git).toBeUndefined();
+    expect(methods['system.info'].result.parse(INFO).git).toBeUndefined();
   });
 
   it('sends a request too large for one socket message as parts of it, in order', () => {

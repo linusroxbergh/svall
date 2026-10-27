@@ -9,7 +9,6 @@ import { cookieOf, identityOf, originAllowed, startApi, stripKey } from '../src/
 import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
-
 import type { Mobile } from '../src/mobile.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
