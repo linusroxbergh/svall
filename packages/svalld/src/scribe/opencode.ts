@@ -12,9 +12,10 @@ type Line = { type?: string; sessionID?: string; part?: { text?: string }; error
 type Spent = { type?: string; cost?: number; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } };
 
 // no tool may run on what a transcript says: this agent's ask comes after any rule the user's config sets, and `opencode
-// run` turns every ask down. Tools denied outright would leave the request, which Zen's free models refuse. A pass holds
-// other robots' transcripts, so it is never shared, whatever the user's config says. A retro call also stops after 3 steps
-const ASK = { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }] };
+// run` turns every ask down. Tools denied outright would leave the request, which Zen's free models refuse, so only
+// `execute` is: Code Mode runs it without asking, and its fetch and worktree tools with it. A pass holds other robots'
+// transcripts, so it is never shared, whatever the user's config says. A retro call also stops after 3 steps
+const ASK = { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }, { action: 'execute', resource: '*', effect: 'deny' }] };
 const config = (retro: boolean): string => JSON.stringify({
   share: 'disabled',
   agents: retro ? { 'svall-retro': { ...ASK, steps: 3 } } : { 'svall-scribe': ASK },
@@ -52,7 +53,8 @@ export function opencodeRunner(o: { cwd: string; bin?: string; retro?: true }): 
     const bin = o.bin ?? 'opencode';
     const agent = o.retro ? 'svall-retro' : 'svall-scribe';
     const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...rest } = process.env;
-    const env = { ...rest, OPENCODE_CONFIG_CONTENT: config(!!o.retro) };
+    // OpenCode takes its folder from PWD over the cwd it is spawned in
+    const env = { ...rest, PWD: o.cwd, OPENCODE_CONFIG_CONTENT: config(!!o.retro) };
     let session = o.retro ? `ses_${crypto.randomBytes(13).toString('hex')}` : undefined;
     try {
       const { code, out, err } = await runChild(

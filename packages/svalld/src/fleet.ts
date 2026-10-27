@@ -147,7 +147,7 @@ export class Fleet extends EventEmitter<Events> {
     for (const c of Object.values(this.deps.store.state.robots)) if (c.tmux) this.seen.set(c.id, now);
     const opening = this.ensureHome();
     this.syncAgents();
-    this.agentEvents.recordCurrent();
+    this.agentEvents.recordCurrent((c) => this.runsHere(c));
     // the shell is for the Mac app's tour, so a new fleet on Linux starts with no robot
     if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
       await this.createRobot({ islandId: opening, cwd: this.deps.config.defaultCwd })
@@ -397,7 +397,8 @@ export class Fleet extends EventEmitter<Events> {
     // a worker passes its robots for its home, on the home's model
     const model = this.deps.remote?.onWorker ? store.state.scribeModel : this.model('scribe', agent);
     const runner = agent === 'claude' ? claudeRunner({ cwd, envFile: paths.env }) : agent === 'codex' ? codexRunner({ cwd }) : opencodeRunner({ cwd });
-    return scribeOf(runner, { model });
+    // codex's own default effort is more than a pass needs
+    return scribeOf(runner, { model, ...(agent === 'codex' && { effort: 'low' as const }) });
   }
 
   // fleet.json's model for `agent`'s CLI, else the CLI's default

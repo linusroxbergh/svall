@@ -7,10 +7,11 @@ import { AGENTS } from '../packages/svalld/src/agents.js';
 import { NO_USAGE, type Call, type Runner } from '../packages/svalld/src/scribe/run.js';
 
 // a stand-in model that does what the prompt asks with whatever access `can` gives it
-const model = (can: { run?: boolean; read?: boolean }): Runner => async (_system, prompt) => {
+const model = (can: { run?: boolean; read?: boolean; fetch?: boolean }): Runner => async (_system, prompt) => {
   const listing = /`ls (\S+)`/.exec(prompt)![1];
   const secret = /contents of (\S+)\./.exec(prompt)![1];
-  const said = [can.run ? fs.readdirSync(listing).join('\n') : '', can.read ? fs.readFileSync(secret, 'utf8') : ''].filter(Boolean);
+  const url = /fetch (\S+) and/.exec(prompt)![1];
+  const said = [can.run ? fs.readdirSync(listing).join('\n') : '', can.read ? fs.readFileSync(secret, 'utf8') : '', can.fetch ? await (await fetch(url)).text() : ''].filter(Boolean);
   return { text: said.length ? said.join('\n') : 'NO TOOLS', usage: NO_USAGE };
 };
 
@@ -22,7 +23,11 @@ test('reports a file that was read', async () => {
   expect(await toolsOff('codex', { run: model({ read: true }) })).toEqual(['read a file with tools off']);
 });
 
-test('passes when the model could do neither, and leaves nothing behind', async () => {
+test('reports a URL that was fetched', async () => {
+  expect(await toolsOff('opencode', { run: model({ fetch: true }) })).toEqual(['fetched a URL with tools off']);
+});
+
+test('passes when the model could do none, and leaves nothing behind', async () => {
   let dir = '';
   const run: Runner = async (system, prompt, call, signal) => { dir = path.dirname(/contents of (\S+)\./.exec(prompt)![1]); return model({})(system, prompt, call, signal); };
   expect(await toolsOff('opencode', { run })).toEqual([]);

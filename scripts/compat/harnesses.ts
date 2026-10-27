@@ -304,7 +304,7 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
   ],
   opencode: [
     [['--help'], ['--standalone', '-s', '--prompt']],
-    [['run', '--help'], ['--standalone', '--format', '--agent', '-m']],
+    [['run', '--help'], ['--standalone', '--format', '--agent', '--session', '-m']],
     [['session', 'export', '--help'], ['--standalone']],
     [['session', 'import', '--help'], ['--standalone', '--directory']],
     [['session', 'delete', '--help'], ['--standalone']],

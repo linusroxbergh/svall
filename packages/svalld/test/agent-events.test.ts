@@ -114,18 +114,20 @@ describe('AgentEvents and the retro\'s record of sessions', () => {
     ]);
   });
 
-  it('records each session held now that the record doesn\'t name, in either terminal', async () => {
+  it('records each session a robot here holds now that the record doesn\'t name, in either terminal', async () => {
     const { store, ev, sessions, paths } = events([]);
-    const [named, second] = ['3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', '5a6b7c8d-1e2f-4a3b-8c4d-9e0f1a2b3c4d'];
+    const [named, second, far] = ['3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', '5a6b7c8d-1e2f-4a3b-8c4d-9e0f1a2b3c4d', '7c8d9e0f-2a3b-4c5d-8e6f-1a2b3c4d5e6f'];
     appendSessions(paths.retroSessions, [{ at: 1, session: named, robot: 'c_b' }]);
     store.update((d) => {
       d.robots.c_a.agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 1 };
       d.robots.c_a.second = { cwd: '/elsewhere', unread: false, agent: { kind: 'codex', sessionId: second, status: 'idle', lastActivityAt: 1 } };
       d.robots.c_b = { ...d.robots.c_a, id: 'c_b', agent: { kind: 'claude', sessionId: named, status: 'idle', lastActivityAt: 1 } };
       delete d.robots.c_b.second;
+      d.robots.c_w = { ...d.robots.c_b, id: 'c_w', cwd: '/home/w/proj', agent: { kind: 'claude', sessionId: far, status: 'idle', lastActivityAt: 1 } };
     });
-    ev.recordCurrent();
-    ev.recordCurrent();
+    const here = (c: { id: string }) => c.id !== 'c_w';
+    ev.recordCurrent(here);
+    ev.recordCurrent(here);
     expect(sessions().slice(1)).toEqual([
       expect.objectContaining({ session: SID, robot: 'c_a', cwd: '/tmp', agent: 'claude' }),
       expect.objectContaining({ session: second, robot: 'c_a', cwd: '/elsewhere', agent: 'codex' }),

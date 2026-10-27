@@ -15,8 +15,8 @@ const fakeCodex = (dir: string, body: string): string => {
   return bin;
 };
 const writeAnswer = `while [ "$1" != "-o" ]; do shift; done; printf '{"note":"ok"}' > "$2"`;
-// the scribe's passes: its model and deadline, nothing else
-const codexRunner = (o: { cwd: string; bin: string } & Call) => scribeOf(runner({ cwd: o.cwd, bin: o.bin }), { model: o.model, timeoutMs: o.timeoutMs });
+// the scribe's passes: its model and deadline at low effort, nothing else
+const codexRunner = (o: { cwd: string; bin: string } & Call) => scribeOf(runner({ cwd: o.cwd, bin: o.bin }), { model: o.model, effort: 'low', timeoutMs: o.timeoutMs });
 
 describe('codexRunner', () => {
   it('reads the answer out of the last-message file, the system prompt leading the one prompt exec takes', async () => {
@@ -66,6 +66,12 @@ describe('codexRunner', () => {
     const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
     expect(args).toContain('-c model_reasoning_effort="low"');
     expect(args).not.toContain('-m ');
+  });
+
+  it('leaves the effort to codex when the call names none, as the retro judge\'s does', async () => {
+    const dir = makeHome();
+    await runner({ cwd: dir, bin: fakeCodex(dir, writeAnswer), retro: true })('s', 'p', {});
+    expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).not.toContain('model_reasoning_effort');
   });
 });
 

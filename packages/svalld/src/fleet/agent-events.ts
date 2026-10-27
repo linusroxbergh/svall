@@ -96,10 +96,11 @@ export class AgentEvents {
     return reply;
   }
 
-  /** Records each session a robot holds now that the record doesn't name yet, such as one held before the record was kept. */
-  recordCurrent(): void {
+  /** Records each session a robot running `here` holds now that the record doesn't name yet, such as one held before the
+   *  record was kept. A robot on another machine is recorded when it comes here, with the paths it has then. */
+  recordCurrent(here: (c: Robot) => boolean): void {
     if (!this.deps.sessions) return;
-    this.record(currentLines(Object.values(this.deps.store.state.robots), Date.now()).filter((l) => !this.recorded().has(l.session)));
+    this.record(currentLines(Object.values(this.deps.store.state.robots).filter(here), Date.now()).filter((l) => !this.recorded().has(l.session)));
   }
 
   // the sessions the record names, read off it once

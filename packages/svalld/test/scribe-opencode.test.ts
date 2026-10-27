@@ -12,10 +12,11 @@ afterEach(cleanHomes);
 const fakeOpencode = (dir: string, body: string, exported = '{}'): string => {
   const bin = path.join(dir, 'opencode');
   const out = `if [ -p /dev/stdout ]; then echo '${exported}' | head -c 20; else echo '${exported}'; fi`;
-  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_CONFIG_CONTENT" > "${dir}/config"; ${body}; fi\nif [ "$2" = export ]; then ${out}; fi\n`, { mode: 0o755 });
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_CONFIG_CONTENT" > "${dir}/config"; echo "$PWD" > "${dir}/pwd"; ${body}; fi\nif [ "$2" = export ]; then ${out}; fi\n`, { mode: 0o755 });
   return bin;
 };
 const argsOf = (dir: string) => fs.readFileSync(path.join(dir, 'args'), 'utf8');
+const ASK = [{ action: '*', resource: '*', effect: 'ask' }, { action: 'execute', resource: '*', effect: 'deny' }];
 // the scribe's passes: its model, nothing else
 const opencodeRunner = (o: { cwd: string; bin: string } & Call) => scribeOf(runner({ cwd: o.cwd, bin: o.bin }), { model: o.model });
 const line = (o: unknown) => `echo '${JSON.stringify(o)}'`;
@@ -29,9 +30,10 @@ describe('opencodeRunner', () => {
     expect(fs.readFileSync(path.join(dir, 'stdin'), 'utf8')).toBe('be brief\n\n---\n\nname this');
     expect(fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n')[0]).toBe('run --standalone --format json --agent svall-scribe');
     // the transcript a pass reads is untrusted text, so its agent asks before every tool, which `opencode run` turns down,
-    // and other robots' work never leaves the machine through a share
+    // has no Code Mode `execute`, and other robots' work never leaves the machine through a share
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')))
-      .toEqual({ share: 'disabled', agents: { 'svall-scribe': { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }] } } });
+      .toEqual({ share: 'disabled', agents: { 'svall-scribe': { mode: 'primary', permissions: ASK } } });
+    expect(fs.readFileSync(path.join(dir, 'pwd'), 'utf8').trim()).toBe(path.join(dir, 'scribe'));
   });
 
   it('passes a model only when one is configured', async () => {
@@ -59,7 +61,7 @@ describe('opencodeRunner', () => {
     const session = /^run --standalone --format json --agent svall-retro --session (ses_[0-9a-f]{26})$/.exec(args[0])![1];
     expect(args[1]).toBe(`session export --standalone ${session}`);
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')).agents)
-      .toEqual({ 'svall-retro': { mode: 'primary', steps: 3, permissions: [{ action: '*', resource: '*', effect: 'ask' }] } });
+      .toEqual({ 'svall-retro': { mode: 'primary', steps: 3, permissions: ASK } });
     await waitFor(() => argsOf(dir).includes(`session delete --standalone ${session}`));
   });
 
