@@ -383,7 +383,7 @@ describe('doctor', () => {
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
   });
 
-  it('checks Claude Code against no move\'s floor where no robot moves', async () => {
+  it('checks Claude Code against the plain floor where no robot moves', async () => {
     const c = byName(await doctor(priv, fake({ moves: false, commands: { 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
     expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
   });
