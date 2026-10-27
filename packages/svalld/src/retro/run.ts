@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { z } from 'zod';
-import { FOCUS_OF, JudgeReply, NoteReply, type AgentKind, type Finding, type Note, type Preset, type RetroPlan, type RetroReport, type RetroStatus } from '@svall/protocol';
+import { z } from 'zod';
+import { FOCUS_OF, JudgeFinding, JudgeReply, Note, NoteReply, type AgentKind, type Finding, type Preset, type RetroPlan, type RetroReport, type RetroStatus, type Source } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { NO_USAGE, type Call, type Runner } from '../scribe/run.js';
 import { Budget, FAMILY, judgeTokens, RATIO, readTokens } from './budget.js';
@@ -24,21 +24,29 @@ export type RunInput = {
   // the inventory as it is at run time
   targets: Target[];
   measure: { outlines: Outline[]; span: Span; prOf: Map<string, string>; comments: Map<string, PrComment[]> };
-  // every run of each skill before select's cap
-  runs: Record<string, number>;
+  // every run of each skill before select's cap, and the skills no transcript has run
+  runs: Record<string, number>; unused: string[];
   mechanical: string[]; thin: string[];
   // the last finished run's findings the ledger now marks fixed
   previous: Finding[];
   onStatus: (s: RetroStatus) => void; signal: AbortSignal; now?: () => number;
 };
 
-const READS = 3, NOTE_TOKENS = 100_000, TARGET_TOKENS = 40_000, FINDINGS = 7, QUOTE = 300, CLAIM = 600;
+const READS = 3, REPLY_TOKENS = 2_000, NOTE_TOKENS = 100_000, TARGET_TOKENS = 40_000, FINDINGS = 7, QUOTE = 300, CLAIM = 600;
 const NOTE_SCHEMA = wireSchema(NoteReply), JUDGE_SCHEMA = wireSchema(JudgeReply);
+// a reply of the right shape keeps each note or finding that fits, and drops the rest
+const fitting = <T>(item: z.ZodType<T>, xs: unknown[]): T[] => xs.flatMap((x) => {
+  const r = item.safeParse(x);
+  return r.success ? [r.data] : [];
+});
+const NOTES = z.object({ notes: z.array(z.unknown()) }).transform((r) => fitting(Note, r.notes));
+const FINDINGS_OF = z.object({ findings: z.array(z.unknown()) }).transform((r) => fitting(JudgeFinding, r.findings));
 
 type Read = { excerpts: Excerpt[]; notes: Note[] } | { failed: string };
 
 const said = (e: unknown): string => clip(String(e instanceof Error ? e.message : e).replace(/\s+/g, ' '), 300);
 const sessionKey = (s: { agent: AgentKind; session: string }): string => `${s.agent}\n${s.session}`;
+const sourceKey = (s: Source): string => ('pr' in s ? s.pr : sessionKey(s));
 
 // one call whose answer must fit `reply`, retried once; OpenCode has no schema flag, so its prompt carries the schema,
 // and its answer may wrap the JSON in prose or a fence
@@ -72,10 +80,11 @@ function cut(notes: Note[], chars: number): Note[] {
   return kept;
 }
 
-// the inventory's target by its id, the path a draft would go to, or none
-function targetOf(id: string | null, inventory: Map<string, Target>): Finding['target'] {
+// the inventory's target by its id, with the hash of the bytes the judge read and none when it read none, the path a
+// draft would go to, or none
+function targetOf(id: string | null, inventory: Map<string, Target>, read: Map<string, string>): Finding['target'] {
   const t = id === null ? undefined : inventory.get(id);
-  if (t) return { id: t.id, path: t.path, realPath: t.realPath, class: t.class, hash: t.hash };
+  if (t) return { id: t.id, path: t.path, realPath: t.realPath, class: t.class, hash: read.get(t.id) ?? null };
   if (!id || !/^~?\//.test(id)) return null;
   const p = id.startsWith('~/') ? path.join(os.homedir(), id.slice(2)) : id;
   return { path: p, realPath: p, class: 'local', hash: null };
@@ -109,9 +118,9 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
         if (!budget.reserve(hold)) { stop = true; return; }
         try {
           const excerpts = JSON.parse(fs.readFileSync(path.join(o.dir, 'batches', `${b.id}.json`), 'utf8')) as Excerpt[];
-          reads[i] = await ask(reader, preset.read.agent, system, readInput({ excerpts }), call, NoteReply, budget, signal).then(
+          reads[i] = await ask(reader, preset.read.agent, system, readInput({ excerpts }), call, NOTES, budget, signal).then(
             (r) => {
-              const notes = keep(r.notes, excerpts, inventory);
+              const notes = cut(keep(r, excerpts, inventory), REPLY_TOKENS * RATIO[FAMILY[preset.read.agent]]);
               writeDurable(path.join(o.dir, 'notes', `${b.id}.json`), notes);
               return { excerpts, notes };
             },
@@ -137,28 +146,40 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
     if (notes.length) {
       status('judging');
       const named = notes.flatMap((n) => inventory.get(n.target ?? '') ?? []);
-      const targets = fitTargets(named, TARGET_TOKENS, ratio).map((t) => ({ id: t.id, path: t.path, text: targetText(t) }));
+      const hashes = new Map<string, string>();
+      const targets = fitTargets(named, TARGET_TOKENS, ratio).map((t) => {
+        const { text, hash } = targetText(t);
+        hashes.set(t.id, hash);
+        return { id: t.id, path: t.path, text };
+      });
       const reply = await ask(
         o.runner(preset.judge.agent), preset.judge.agent, judgePrompt({ focus }),
         judgeInput({ notes, targets, dismissed: dismissedCategories(ledger), previous: o.previous }),
-        { model: preset.judge.model, schema: JUDGE_SCHEMA, timeoutMs: 600_000 }, JudgeReply, budget, signal,
+        { model: preset.judge.model, schema: JUDGE_SCHEMA, timeoutMs: 600_000 }, FINDINGS_OF, budget, signal,
       );
       const dismissed = new Set(Object.values(ledger).filter((e) => e.status === 'dismissed').map((e) => e.id));
-      findings = reply.findings.flatMap((j): Finding[] => {
-        const target = targetOf(j.target, inventory);
+      const noted = new Set(notes.map((n) => sourceKey(n.source)));
+      const unused = new Set(o.unused);
+      findings = reply.flatMap((j): Finding[] => {
+        const target = targetOf(j.target, inventory, hashes);
         const id = findingId(j.focus, j.category, target?.realPath ?? '', j.subject);
-        const sessions = new Set(j.evidence.flatMap((e) => ('pr' in e.source ? [] : [sessionKey(e.source)]))).size;
-        const prs = new Set(j.evidence.flatMap((e) => ('pr' in e.source ? [e.source.pr] : []))).size;
-        // an unused skill is a fact of the inventory, which no session shows
-        if ((sessions < 3 && prs < 2 && j.category !== 'unused-skill') || dismissed.has(id)) return [];
+        // only what a note the judge was given stands on counts as evidence
+        const evidence = j.evidence.filter((e) => noted.has(sourceKey(e.source)));
+        const sessions = new Set(evidence.flatMap((e) => ('pr' in e.source ? [] : [sessionKey(e.source)]))).size;
+        const prs = new Set(evidence.flatMap((e) => ('pr' in e.source ? [e.source.pr] : []))).size;
+        // a skill no transcript has run is a fact code read, which no session shows, and is never changed by a diff
+        const unusedSkill = j.category === 'unused-skill' && unused.has(j.subject) && j.change.kind !== 'diff';
+        if ((sessions < 3 && prs < 2 && !unusedSkill) || dismissed.has(id)) return [];
         return [{
           id, focus: j.focus, category: j.category, title: redact(j.title), claim: clip(redact(j.claim), CLAIM),
-          evidence: j.evidence.map((e) => ({ source: e.source, quote: clip(redact(e.quote), QUOTE) })), sessions, prs,
+          evidence: evidence.map((e) => ({ source: e.source, quote: clip(redact(e.quote), QUOTE) })), sessions, prs,
           change: { kind: j.change.kind, summary: redact(j.change.summary), text: redact(j.change.text) }, target,
           measure: { kind: j.measure.kind, subject: j.measure.subject, name: redact(j.measure.name), before: measure(j.measure, o.measure), after: null },
           rank: j.rank,
         }];
-      }).sort((a, b) => a.rank - b.rank).slice(0, FINDINGS);
+      }).sort((a, b) => a.rank - b.rank)
+        // two findings on one issue share an id, and the better ranked stands for both
+        .filter((f, i, all) => all.findIndex((x) => x.id === f.id) === i).slice(0, FINDINGS);
     }
     budget.settle(judgeHold, NO_USAGE);
 

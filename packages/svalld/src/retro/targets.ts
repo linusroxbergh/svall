@@ -107,9 +107,10 @@ export function inventory(o: {
   });
 }
 
-/** The target's file as the judge reads it, its secrets masked. */
-export function targetText(t: Target): string {
-  return redact(fs.readFileSync(t.realPath, 'utf8'));
+/** The target's file as the judge reads it, its secrets masked, and the hash of the bytes read. */
+export function targetText(t: Target): { text: string; hash: string } {
+  const bytes = fs.readFileSync(t.realPath);
+  return { text: redact(bytes.toString('utf8')), hash: sha256(bytes) };
 }
 
 /** The targets that fit in `maxTokens` at `ratio` characters a token, the most named first; `ts` holds a target once for each note naming it. */
@@ -118,7 +119,7 @@ export function fitTargets(ts: Target[], maxTokens = 40_000, ratio: number): Tar
   for (const t of ts) { const e = named.get(t.id); if (e) e.n++; else named.set(t.id, { t, n: 1 }); }
   let left = maxTokens;
   return [...named.values()].sort((a, b) => b.n - a.n).flatMap(({ t }) => {
-    const tokens = Math.ceil(targetText(t).length / ratio);
+    const tokens = Math.ceil(targetText(t).text.length / ratio);
     if (tokens > left) return [];
     left -= tokens;
     return [t];

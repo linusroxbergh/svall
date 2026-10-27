@@ -158,6 +158,7 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
         if (x.outcome === 'robot') return `${x.id}: robot ${x.robot} opens a PR for ${short(x.path ?? '')}`;
         if (x.outcome === 'apply') return `${x.id}: show the user this diff for ${short(x.path ?? '')}; on their OK, svall retro apply ${x.id}\n${indent(x.diff ?? '', '   ')}`;
         if (x.outcome === 'proposal') return `${x.id}: a proposal; make the change by hand${x.path ? ` in ${short(x.path)}` : ''}\n${indent(x.diff ?? '', '   ')}`;
+        if (x.outcome === 'fixed') return `${x.id}: a robot already took this fix for ${short(x.path ?? '')}`;
         return `${x.id}: ${x.outcome}`;
       }).join('\n'));
     });

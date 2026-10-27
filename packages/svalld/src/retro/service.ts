@@ -148,34 +148,43 @@ export class Retro {
       const { finding, run } = this.finding(m.id);
       const at = this.now();
       if (!ledger[finding.id]) ledger = recordFindings(ledger, [finding], at);
-      if (m.action === 'dismiss') {
-        ledger = markLedger(ledger, finding.id, 'dismissed', { at, reason: m.reason });
-        results.push({ id: finding.id, outcome: 'dismissed' });
-        continue;
-      }
-      if (m.action === 'later') {
-        ledger = markLedger(ledger, finding.id, 'later', { at });
-        results.push({ id: finding.id, outcome: 'later' });
-        continue;
-      }
-      const target = finding.target;
-      // a target the judge read has its hash; a path it named outside the inventory has none
-      const diff = finding.change.kind === 'diff' && !!target?.hash && !masked(finding);
-      if (target?.class === 'local' && diff) {
-        results.push({ id: finding.id, outcome: 'apply', path: target.path, diff: finding.change.text });
-        continue;
-      }
-      if (target?.class === 'repo' && diff && fits(target, finding.change.text)) {
-        const robot = await this.fixRobot(run, finding.id, target.path, target.realPath, finding.change.text, finding.evidence);
+      // each mark is kept as it is made, so one that fails after it leaves it be
+      try {
+        if (m.action === 'dismiss') {
+          ledger = markLedger(ledger, finding.id, 'dismissed', { at, reason: m.reason });
+          results.push({ id: finding.id, outcome: 'dismissed' });
+          continue;
+        }
+        if (m.action === 'later') {
+          ledger = markLedger(ledger, finding.id, 'later', { at });
+          results.push({ id: finding.id, outcome: 'later' });
+          continue;
+        }
+        const target = finding.target;
+        // a target the judge read has its hash; a path it named outside the inventory has none
+        const diff = finding.change.kind === 'diff' && !!target?.hash && !masked(finding);
+        if (target?.class === 'local' && diff) {
+          results.push({ id: finding.id, outcome: 'apply', path: target.path, diff: finding.change.text });
+          continue;
+        }
+        if (target?.class === 'repo' && diff && fits(target, finding.change.text)) {
+          // a robot already took it, and a second would open a second PR
+          if (ledger[finding.id].status === 'fixed') {
+            results.push({ id: finding.id, outcome: 'fixed', path: target.path });
+            continue;
+          }
+          const robot = await this.fixRobot(run, finding.id, target.path, target.realPath, finding.change.text, finding.evidence);
+          ledger = markLedger(ledger, finding.id, 'fixed', { at });
+          results.push({ id: finding.id, outcome: 'robot', robot: robot.id, path: target.path });
+          continue;
+        }
+        // settings, synced and plugin skills, Svall's own files, drafts, and diffs masked or not fitting their file are the user's to place
         ledger = markLedger(ledger, finding.id, 'fixed', { at });
-        results.push({ id: finding.id, outcome: 'robot', robot: robot.id, path: target.path });
-        continue;
+        results.push({ id: finding.id, outcome: 'proposal', ...(target && { path: target.path }), diff: finding.change.text });
+      } finally {
+        writeLedger(this.ledgerFile, ledger);
       }
-      // settings, synced and plugin skills, Svall's own files, drafts, and diffs masked or not fitting their file are the user's to place
-      ledger = markLedger(ledger, finding.id, 'fixed', { at });
-      results.push({ id: finding.id, outcome: 'proposal', ...(target && { path: target.path }), diff: finding.change.text });
     }
-    writeLedger(this.ledgerFile, ledger);
     return { results };
   }
 
@@ -259,7 +268,7 @@ export class Retro {
     const dir = this.runDir(id);
     fs.mkdirSync(path.join(dir, 'batches'), { recursive: true });
     for (const b of batches) writeDurable(path.join(dir, 'batches', `${b.id}.json`), Buffer.from(JSON.stringify(b.excerpts)), { mode: 0o600 });
-    writeDurable(path.join(dir, 'select.json'), Buffer.from(JSON.stringify({ runs: picked.runs, mechanical: picked.mechanical, thin: picked.thin })), { mode: 0o600 });
+    writeDurable(path.join(dir, 'select.json'), Buffer.from(JSON.stringify({ runs: picked.runs, unused: picked.unused, mechanical: picked.mechanical, thin: picked.thin })), { mode: 0o600 });
     writeDurable(path.join(dir, 'plan.json'), Buffer.from(JSON.stringify(plan, null, 2)), { mode: 0o600 });
     this.gathered = { plan: id, repos: g.repos, outlines: g.outlines, prOf: g.prOf, comments: g.comments };
     return plan;
@@ -300,13 +309,14 @@ export class Retro {
       fs.writeFileSync(path.join(dir, 'started'), JSON.stringify({ preset: preset.name, budget, robot: p.robot }));
       // after a restart the plan's index is gone, and the measures read its span again
       const gathered = this.gathered?.plan === plan.id ? this.gathered : await this.gather(plan.span, plan.focus, { ...retro, ...plan.scope });
-      const picked = this.readJson<{ runs: Record<string, number>; mechanical: string[]; thin: string[] }>(path.join(dir, 'select.json')) ?? { runs: {}, mechanical: [], thin: [] };
+      const picked = this.readJson<{ runs: Record<string, number>; unused?: string[]; mechanical: string[]; thin: string[] }>(path.join(dir, 'select.json')) ?? { runs: {}, mechanical: [], thin: [] };
       const report = await runPlan({
         plan, preset, budget, runner: this.d.runner ?? ((agent) => this.runner(agent)), dir, ledgerFile: this.ledgerFile,
         targets: this.inventory(gathered.repos, retro),
         measure: { outlines: gathered.outlines, span: plan.span, prOf: gathered.prOf, comments: gathered.comments },
         // runs are counted for the skill focuses alone; another plan read none of them
-        runs: FOCUS_OF[plan.focus].some((f) => f === 'skill-tweaks' || f === 'review-tweaks') ? picked.runs : {}, mechanical: picked.mechanical, thin: picked.thin, previous: this.previousFixes(plan.id),
+        runs: FOCUS_OF[plan.focus].some((f) => f === 'skill-tweaks' || f === 'review-tweaks') ? picked.runs : {}, unused: picked.unused ?? [],
+        mechanical: picked.mechanical, thin: picked.thin, previous: this.previousFixes(plan.id),
         onStatus: (s) => set(s), signal, now: this.now,
       });
       writeDurable(path.join(dir, 'report.json'), Buffer.from(JSON.stringify(report, null, 2)), { mode: 0o600 });

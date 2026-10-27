@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,6 +67,9 @@ function fake(answer: (side: 'read' | 'judge', prompt: string, n: number) => str
 
 const notes = (...ns: Note[]): string => JSON.stringify({ notes: ns });
 const findings = (...fs: Judged[]): string => JSON.stringify({ findings: fs });
+// one batch whose read notes s1, s2 and s3, as a finding needs three sessions of evidence
+const THREE = [[excerpt('s1'), excerpt('s2'), excerpt('s3')]];
+const threeNotes = (side: 'read' | 'judge', judge: string): string => (side === 'read' ? notes(note('s1'), note('s2'), note('s3')) : judge);
 
 // a run folder holding `batches` as plan time wrote them, and a skill target on disk
 function setup(batches: Excerpt[][], answer: Parameters<typeof fake>[0], more: Partial<RunInput> = {}) {
@@ -93,7 +97,7 @@ function setup(batches: Excerpt[][], answer: Parameters<typeof fake>[0], more: P
   const input: RunInput = {
     plan, preset: PRESET, budget: 10_000_000, runner: () => runner, dir, ledgerFile: path.join(home, 'ledger.json'), targets: [target],
     measure: { outlines: [], span: plan.span, prOf: new Map(), comments: new Map() },
-    runs: {}, mechanical: [], thin: [], previous: [], onStatus: (s) => statuses.push(s), signal, now: () => T0 + DAY, ...more,
+    runs: {}, unused: [], mechanical: [], thin: [], previous: [], onStatus: (s) => statuses.push(s), signal, now: () => T0 + DAY, ...more,
   };
   return { input, dir, seen, statuses, target, signal };
 }
@@ -165,7 +169,7 @@ describe('runPlan', () => {
         if (n === 1) throw new Error('claude -p exited 1');
         return 'not json';
       }
-      return n === 1 ? JSON.stringify({ notes: [{ source: { pr: PR } }] }) : notes(note('s2'));
+      return n === 1 ? JSON.stringify({ notes: 'none' }) : notes(note('s2'));
     }, { runs: { publish: 2 } });
     const report = await runPlan(input);
 
@@ -210,37 +214,78 @@ describe('runPlan', () => {
     expect(judge.prompt).toContain('2. tag');
   });
 
-  it('drops a finding seen in only two sessions', async () => {
-    const { input } = setup([[excerpt('s1')]], (side) => side === 'read' ? notes(note('s1')) : findings(
-      judged(['s1', 's2', 's3'], { rank: 2 }),
-      judged(['s1', 's2', 's1'], { subject: 'two', rank: 1 }),
-      judged([], { subject: 'prs', focus: 'review-tweaks', category: 'missed-defect', rank: 3, evidence: [{ source: { pr: PR }, quote: 'a' }, { source: { pr: `${PR}0` }, quote: 'b' }] }),
-      judged([], { subject: 'one-pr', focus: 'review-tweaks', category: 'missed-defect', rank: 4, evidence: [{ source: { pr: PR }, quote: 'a' }, { source: { pr: PR }, quote: 'b' }] }),
-      judged([], { focus: 'skill-triggers', category: 'unused-skill', subject: 'old', rank: 5 }),
-    ));
+  it('drops a finding seen in fewer than three sessions or two PRs the notes it was given stand on', async () => {
+    const review = { focus: 'review-tweaks', category: 'test-gap' } as const;
+    const batch = [excerpt('s1'), excerpt('s2', { pr: PR }), excerpt('s3', { pr: `${PR}0` })];
+    const unusedSkill = (subject: string, rank: number, kind: 'proposal' | 'diff' = 'proposal') =>
+      judged([], { focus: 'skill-triggers', category: 'unused-skill', subject, rank, change: { kind, summary: 'retire it', text: 'remove it' } });
+    const { input, target } = setup([batch], (side) => side === 'read'
+      ? notes(note('s1'), note('s2'), note('s3'), note('s2', { source: { pr: PR }, ...review }), note('s3', { source: { pr: `${PR}0` }, ...review }))
+      : findings(
+        judged(['s1', 's2', 's3'], { rank: 2 }),
+        judged(['s1', 's2', 's1'], { subject: 'two', rank: 1 }),
+        // sessions no note stands on are no evidence, however many the judge names
+        judged(['s1', 's8', 's9'], { subject: 'invented', rank: 1 }),
+        judged([], { subject: 'prs', focus: 'review-tweaks', category: 'missed-defect', rank: 3, evidence: [{ source: { pr: PR }, quote: 'a' }, { source: { pr: `${PR}0` }, quote: 'b' }] }),
+        judged([], { subject: 'one-pr', focus: 'review-tweaks', category: 'missed-defect', rank: 4, evidence: [{ source: { pr: PR }, quote: 'a' }, { source: { pr: PR }, quote: 'b' }] }),
+        unusedSkill('old', 5), unusedSkill('old-diff', 6, 'diff'), unusedSkill('used', 7),
+      ), { unused: ['old', 'old-diff'] });
     const report = await runPlan(input);
 
-    expect(report.findings.map((f) => [f.category, f.sessions, f.prs])).toEqual([
-      ['skipped-step', 3, 0], ['missed-defect', 0, 2], ['unused-skill', 0, 0],
-    ]);
+    expect(report.findings.map((f) => [f.category, f.sessions, f.prs])).toEqual([['skipped-step', 3, 0], ['missed-defect', 0, 2], ['unused-skill', 0, 0]]);
+    expect(report.findings[2].id).toBe(findingId('skill-triggers', 'unused-skill', target.realPath, 'old'));
+    expect(report.findings[0].evidence.map((e) => ('pr' in e.source ? e.source.pr : e.source.session))).toEqual(['s1', 's2', 's3']);
+  });
+
+  it('keeps the notes and findings of a reply that fit, and drops those that do not', async () => {
+    const offFocus = note('s2', { category: 'missed-trigger' });
+    const { input, dir } = setup(THREE, (side) => side === 'read'
+      ? notes(note('s1'), offFocus, note('s2'), note('s3'))
+      : JSON.stringify({ findings: [judged(['s1', 's2', 's3']), { ...judged(['s1', 's2', 's3'], { subject: 'bad' }), category: 'missed-trigger' }, { title: 'no shape' }] }));
+    const report = await runPlan(input);
+
+    expect(read(dir, 'notes/b01.json')).toEqual([note('s1'), note('s2'), note('s3')]);
+    expect(report.findings.map((f) => f.title)).toEqual(['publish skips the changelog']);
+  });
+
+  it("cuts a read's notes to 2k tokens", async () => {
+    const many = Array.from({ length: 40 }, () => note('s1', { claim: 'c'.repeat(600) }));
+    const { input, dir } = setup([[excerpt('s1')]], (side) => (side === 'read' ? notes(...many) : findings()));
+    await runPlan(input);
+
+    const kept = read(dir, 'notes/b01.json') as Note[];
+    expect(kept.length).toBeGreaterThan(0);
+    expect(kept.length).toBeLessThan(many.length);
+    expect(kept.reduce((n, x) => n + JSON.stringify(x).length + 1, 0)).toBeLessThanOrEqual(2_000 * 3.5);
+  });
+
+  it('keeps one finding per id, the better ranked', async () => {
+    const { input } = setup(THREE, (side) => threeNotes(side, findings(
+      judged(['s1', 's2', 's3'], { title: 'second', rank: 2 }),
+      judged(['s1', 's2', 's3'], { title: 'first', rank: 1 }),
+    )));
+    const report = await runPlan(input);
+
+    expect(report.findings.map((f) => [f.title, f.rank])).toEqual([['first', 1]]);
   });
 
   it('keeps the seven top-ranked findings with their targets, ids and measures', async () => {
     const draft = '~/.claude/skills/changelog/SKILL.md';
     const outlines = [session('s1', T0 - DAY, 'interrupt'), session('s2', T0 - DAY), session('s3', T0 - DAY, 'reply')];
-    const { input, target } = setup([[excerpt('s1')]], (side) => side === 'read' ? notes(note('s1')) : findings(
+    const { input, target } = setup(THREE, (side) => threeNotes(side, findings(
       ...Array.from({ length: 8 }, (_, i) => judged(['s1', 's2', 's3'], { subject: `skill-${i}`, rank: 12 - i })),
       judged(['s1', 's2', 's3'], { rank: 1, change: { kind: 'diff', summary: 's', text: '+export KEY_TOKEN=hunter2secret' } }),
       judged(['s1', 's2', 's3'], { rank: 2, target: draft, change: { kind: 'draft', summary: 'a changelog skill', text: '# changelog' } }),
       judged(['s1', 's2', 's3'], { rank: 3, target: null, subject: 'none' }),
       judged(['s1', 's2', 's3'], { rank: 4, target: 'skill:gone', subject: 'gone' }),
-    ), { measure: { outlines, span: { from: T0 - 14 * DAY, to: T0 }, prOf: new Map(), comments: new Map() } });
+    )), { measure: { outlines, span: { from: T0 - 14 * DAY, to: T0 }, prOf: new Map(), comments: new Map() } });
     const report = await runPlan(input);
 
     expect(report.findings.map((f) => f.rank)).toEqual([1, 2, 3, 4, 5, 6, 7]);
     const [top, drafted, none, gone] = report.findings;
     expect(top.id).toBe(findingId('skill-tweaks', 'skipped-step', target.realPath, 'publish'));
-    expect(top.target).toEqual({ id: 'skill:publish', path: target.path, realPath: target.realPath, class: 'local', hash: 'abc' });
+    // the hash of the file as the judge read it, not the inventory's
+    expect(top.target).toEqual({ id: 'skill:publish', path: target.path, realPath: target.realPath, class: 'local', hash: crypto.createHash('sha256').update(fs.readFileSync(target.path)).digest('hex') });
     expect(top.change.text).toBe('+export KEY_TOKEN=[redacted]');
     expect(top.measure).toEqual({ kind: 'followups-after-skill', subject: 'publish', name: 'follow-ups after /publish', before: { count: 2, of: 3 }, after: null });
     const home = path.join(os.homedir(), '.claude/skills/changelog/SKILL.md');
@@ -252,10 +297,10 @@ describe('runPlan', () => {
   });
 
   it('never re-proposes a dismissed id', async () => {
-    const { input, seen, target } = setup([[excerpt('s1')]], (side) => side === 'read' ? notes(note('s1')) : findings(
+    const { input, seen, target } = setup(THREE, (side) => threeNotes(side, findings(
       judged(['s1', 's2', 's3']),
       judged(['s1', 's2', 's3'], { category: 'redone', rank: 2 }),
-    ));
+    )));
     const id = findingId('skill-tweaks', 'skipped-step', target.realPath, 'publish');
     writeLedger(input.ledgerFile, mark(recordFindings({}, [finding(id)], T0 - DAY), id, 'dismissed', { at: T0 - DAY, reason: 'wrong' }));
     const report = await runPlan(input);

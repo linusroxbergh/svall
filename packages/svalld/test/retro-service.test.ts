@@ -186,11 +186,11 @@ describe('the retro service', () => {
       finished(w, file, cls, more);
       return (await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0].outcome;
     };
+    expect(await proposed(diff('--- a/.claude/skills/publish/SKILL.md\n+++ b/.claude/skills/publish/SKILL.md\n@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.'))).toBe('robot');
     expect(await proposed(diff('--- a/.claude/skills/publish/SKILL.md\n+++ b/.claude/skills/publish/SKILL.md\n@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-x\n+y'))).toBe('proposal');
     expect(await proposed(diff('@@ -1,2 +1,3 @@\n # Release\n+Step.\n 1. Tag.'))).toBe('proposal');
     expect(await proposed({ target: { path: file, realPath: file, class: 'local', hash: null } }, 'local')).toBe('proposal');
-    expect(robots).toEqual([]);
-    expect(await proposed(diff('--- a/.claude/skills/publish/SKILL.md\n+++ b/.claude/skills/publish/SKILL.md\n@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.'))).toBe('robot');
+    expect(robots).toHaveLength(1);
   });
 
   it('applies only to a local file, never to a repo, plugin or claude.ai one', () => {
@@ -201,5 +201,17 @@ describe('the retro service', () => {
       expect(() => w.retro.apply('f1')).toThrow('has no diff for a file outside git');
       expect(fs.readFileSync(file, 'utf8')).toBe('# Publish\n1. Tag.\n');
     }
+  });
+
+  it('keeps each mark as it is made, and starts no second robot for a finding one took', async () => {
+    const robots: unknown[] = [];
+    const w = world({ robots });
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    const f = finished(w, skill(path.join(repo, '.claude', 'skills', 'publish')), 'repo');
+    await expect(w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }, { id: 'nope', action: 'fix' }] })).rejects.toThrow('no retro finding nope');
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'fixed' });
+    expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results).toEqual([{ id: 'f1', outcome: 'fixed', path: f.target!.path }]);
+    expect(robots).toHaveLength(1);
   });
 });

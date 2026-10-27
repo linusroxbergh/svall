@@ -66,13 +66,13 @@ function mechanical(outlines: Outline[]): string[] {
 
 /**
  * The excerpts each focus reads, cut from the outlines; `runs` counts every run of each skill before the cap,
- * `mechanical` what code finds alone and `thin` the focuses with too little evidence.
+ * `mechanical` what code finds alone, `unused` the skills no transcript has run, and `thin` the focuses with too little evidence.
  */
 export function select(o: {
   outlines: Outline[]; focus: Focus[]; targets: Target[]; skillsSeen: Set<string>;
   // whether gh is installed and signed in; `prOf` links a session to its PR and `prs` holds each PR's thread
   gh: boolean; prs: Map<string, PrComment[]>; prOf: Map<string, string>;
-}): { excerpts: Excerpt[]; runs: Record<string, number>; mechanical: string[]; thin: string[] } {
+}): { excerpts: Excerpt[]; runs: Record<string, number>; mechanical: string[]; unused: string[]; thin: string[] } {
   const want = new Set(o.focus);
   const drafts = new Map<string, Draft>();
   const seen = new Map(o.focus.map((f) => [f, new Set<string>()]));
@@ -156,5 +156,5 @@ export function select(o: {
   });
 
   const never = unused.length ? [`skills no transcript on disk has run, to keep or retire: ${unused.join(', ')}`] : [];
-  return { excerpts, runs: Object.fromEntries([...bySkill].map(([k, rs]) => [k, rs.length])), mechanical: [...mechanical(o.outlines), ...never], thin };
+  return { excerpts, runs: Object.fromEntries([...bySkill].map(([k, rs]) => [k, rs.length])), mechanical: [...mechanical(o.outlines), ...never], unused, thin };
 }

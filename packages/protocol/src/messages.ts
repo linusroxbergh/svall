@@ -310,7 +310,8 @@ export const methods = {
     }),
     result: z.object({
       results: z.array(z.object({
-        id: z.string(), outcome: z.enum(['robot', 'apply', 'proposal', 'dismissed', 'later']),
+        // fixed: a robot took the finding before, so none is started again
+        id: z.string(), outcome: z.enum(['robot', 'apply', 'proposal', 'dismissed', 'later', 'fixed']),
         robot: z.string().optional(), path: z.string().optional(), diff: z.string().optional(),
       })),
     }),
