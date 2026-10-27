@@ -1,7 +1,7 @@
 import type { MenuState, ToShell } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { dispatchKey, openFleetPicker, type KeyDeps } from './keyboard.js';
-import { ACTIONS, actionIds, chordFor, chordsOf, type ActionId, type Bindings } from './keys.js';
+import { ACTIONS, actionIds, chordFor, resolve, type ActionId, type Bindings } from './keys.js';
 import { panesOf } from './selectors.js';
 import type { AppState } from './store/index.js';
 
@@ -9,7 +9,7 @@ import type { AppState } from './store/index.js';
 export function menuChords(b: Bindings): Record<string, string> {
   const out: Record<string, string> = {};
   for (const id of actionIds()) {
-    const chord = id === 'zoomIn' && chordsOf(id, b).includes('cmd++') ? 'cmd++' : chordFor(id, b);
+    const chord = id === 'zoomIn' && resolve(b)['cmd++'] === ACTIONS.zoomIn.action ? 'cmd++' : chordFor(id, b);
     if (chord) out[id] = chord;
   }
   return out;

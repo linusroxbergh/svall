@@ -32,6 +32,7 @@ describe('menuChords', () => {
     const chosen = menuChords({ zoomIn: 'cmd+shift+z', toggleView: null });
     expect(chosen.zoomIn).toBe('cmd+shift+z');
     expect(chosen).not.toHaveProperty('toggleView');
+    expect(menuChords({ toggleView: 'cmd++' })).toMatchObject({ zoomIn: 'cmd+=', toggleView: 'cmd++' });
   });
 });
 
@@ -45,6 +46,11 @@ describe('followMenu', () => {
     c.store.getState().setView('board');
     c.store.getState().setSettings({ bindings: { toggleView: 'cmd+shift+b' } });
     expect(c.states().at(-1)).toMatchObject({ state: { view: 'board' }, chords: { toggleView: 'cmd+shift+b' } });
+    // the side card alone is what Hide Sidebars would hide
+    c.store.getState().toggleSidebar(false);
+    expect(c.states().at(-1)).toMatchObject({ state: { sides: false } });
+    c.store.getState().toggleSideCard(true);
+    expect(c.states().at(-1)).toMatchObject({ state: { sides: true, sideCard: true } });
   });
 
   it('runs a clicked command as its key would, and Settings… opens the window without closing an open one', () => {
@@ -62,6 +68,9 @@ describe('followMenu', () => {
   it('a click stops a shortcut row waiting for a chord, and New Fleet… asks only for a name', () => {
     const c = ctx();
     c.store.getState().toggleSettings(true);
+    c.store.getState().setCapturingKey('zoomIn');
+    c.bridge.emit({ type: 'menu.run', action: 'zoomOut' });
+    expect(c.store.getState().capturingKey).toBeUndefined();
     c.store.getState().setCapturingKey('zoomIn');
     c.bridge.emit({ type: 'menu.run', action: 'newFleet' });
     expect(c.store.getState()).toMatchObject({ capturingKey: undefined, fleetPicker: 'new' });

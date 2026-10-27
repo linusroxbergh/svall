@@ -22,6 +22,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         for e in runtime.configErrors { NSLog("ghostty config: %@", e) }
 
+        // a fleet has one window, so View carries none of AppKit's tab items
+        NSWindow.allowsAutomaticWindowTabbing = false
         let menu = AppMenu()
         let quitItem = buildMenu(menu)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),

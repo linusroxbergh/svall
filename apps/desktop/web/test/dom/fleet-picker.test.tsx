@@ -127,6 +127,21 @@ test('File\'s New Fleet… asks only for a name, still checked against the fleet
   expect(store.getState().fleetPicker).toBeUndefined();
 });
 
+test('a fleet New Fleet… made but slow to answer is then a row to start from', async () => {
+  const lab = { home: '/u/.svall-lab', name: 'lab', current: false, windowOpen: false };
+  call.mockImplementationOnce(async () => ({ fleets: FLEETS }))
+    .mockImplementationOnce(async () => { throw new Error('svalld did not start'); })
+    .mockImplementationOnce(async () => ({ fleets: [...FLEETS, lab] }));
+  store.getState().setFleetPicker('new');
+  render(<FleetPicker />);
+  const input = screen.getByTestId('fleet-new-name');
+  await waitFor(() => expect(call).toHaveBeenCalledWith('fleets.list', {}));
+  fireEvent.change(input, { target: { value: 'lab' } });
+  fireEvent.keyDown(input, { key: 'Enter' });
+  fireEvent.click(await screen.findByTestId('fleet-row-lab'));
+  await waitFor(() => expect(sent).toContainEqual({ type: 'openFleet', home: '/u/.svall-lab', quit: false }));
+});
+
 // with no row or field to hold it, the dialog itself takes the keys
 const escapeCloses = () => {
   expect(screen.getByTestId('fleet-picker').contains(document.activeElement)).toBe(true);

@@ -77,7 +77,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
         {away && <div className="modal-note" data-testid="fleet-picker-away">This fleet runs on {away}; open other fleets from a window of a fleet on this Mac.</div>}
         {listError && <div className="fleet-error">{listError}</div>}
-        {mode !== 'new' && <div className="fleet-rows">
+        {(mode !== 'new' || errors.new) && <div className="fleet-rows">
           {!away && fleets?.map((f) => (
             <div key={f.home}>
               {/* a reflex Enter keeps this window's fleet */}

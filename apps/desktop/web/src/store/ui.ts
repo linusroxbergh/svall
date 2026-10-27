@@ -43,7 +43,7 @@ export type UiState = {
   deletingIsland?: string;
   // a board column with robots in it, whose delete waits on where they go
   deletingColumn?: string;
-  // the picker of fleets: on a bare launch another fleet takes this window's place, from the menu it opens beside it;
+  // the picker of fleets: on a bare launch another fleet takes this window's place, from the keys it opens beside it;
   // new only makes one
   fleetPicker?: 'bare' | 'menu' | 'new';
   card?: string;
