@@ -67,7 +67,11 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
     const at = where(s);
     if (!at) continue;
     if (s.known && s.secretFields.length) {
-      secrets.push({ item: s.key, ...at, place: s.place, bare: s.bare, fields: s.secretFields.map((field) => ({ field, leaf: fieldPlace(s.agent, s.entry, field) })) });
+      const fields = s.secretFields.flatMap((field) => {
+        const leaf = fieldPlace(s.agent, s.entry, field);
+        return leaf ? [{ field, leaf }] : [];
+      });
+      secrets.push({ item: s.key, ...at, place: s.place, bare: s.bare, fields });
     } else if (!s.known && Object.keys(s.entry).length) {
       // an unknown server's preview names its fields
       whole.push({ item: s.key, ...at, place: s.place, fields: s.preview });
