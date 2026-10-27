@@ -1,6 +1,6 @@
 import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, type MoveSheet, type Refusal, type Robot } from '@svall/protocol';
+import { ApiError, WORKTREE_ACTION, type MoveSheet, type Refusal, type Robot } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { agentFor, robotCommands, termOf } from '../src/commands/robot.js';
 import { statusCommand } from '../src/commands/status.js';
@@ -298,6 +298,10 @@ describe('robot move to a machine', () => {
     const { out } = await run(d, ['c_1', '--machine', 'linus-vault', '--own-worktree']);
     expect(out.split('\n')[0]).toBe("branch kanban · svall on linus-vault: cloned already · it leaves svall's main checkout for a new branch kanban; the checkout keeps its 2 changed files");
     expect(d.calls).toEqual([['robot.moveCheck', { id: 'c_1', machine: VAULT, ownWorktree: true }], ['robot.moveTo', { id: 'c_1', machine: VAULT, ownWorktree: true }]]);
+
+    const shared = daemon({ check: { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } } });
+    expect((await run(shared, ['c_1', '--machine', 'linus-vault'])).err).toBe("refused: two robots share svall's main checkout\n  → give it its own worktree (--own-worktree)\n");
+    expect(process.exitCode).toBe(2);
   });
 
   it('svall robot move c_1 --machine local brings it back to this Mac by the home\'s id', async () => {

@@ -331,12 +331,50 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const { sheet: s, plan } = await sheet(depsOf(t, robots), { ownWorktree: true });
     const wt = `${t.far}/code/svall/.claude/worktrees/kanban`;
     expect(s).toEqual({
-      sessionBytes: 0, branch: 'kanban', commits: 1, changedFiles: 0, untrackedFiles: 0, clone: 'clone', credentialFiles: [], stays: [],
+      sessionBytes: 0, branch: 'kanban', commits: 1, changedFiles: 0, untrackedFiles: 0, clone: 'clone', credentialFiles: [], stays: [".env.local stays in svall's main checkout"],
       interrupts: false, question: false, converts: { main: root, branch: 'kanban', changed: 5, keep: true }, notInRepo: false,
     });
     expect(plan.convert).toEqual({ main: root, slug: 'kanban', head: t.g(root, 'rev-parse', 'HEAD') });
     expect(plan.paths).toEqual({ root: wt, cwd: `${wt}/src`, repo: { root: wt, mainRoot: `${t.far}/code/svall`, branch: 'kanban', isWorktree: true } });
     expect(plan.carry).toEqual([]);
+  });
+
+  it('check 3: a robot alone on main given its own worktree leaves main its changes too, and is refused a credential an unpushed commit carries', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    put(root, 'a.txt', 'one\nedited\n');
+    const { sheet: s, plan } = await sheet(depsOf(t, [on(root)]), { ownWorktree: true });
+    expect(s).toMatchObject({ changedFiles: 0, converts: { main: root, branch: 'kanban', changed: 1, keep: true } });
+    expect(plan.convert).toEqual({ main: root, slug: 'kanban', head: t.g(root, 'rev-parse', 'HEAD') });
+
+    put(root, '.env', 'KEY=1\n');
+    t.g(root, 'add', '-f', '.env');
+    t.g(root, 'commit', '-qm', 'env');
+    expect(await refusal(depsOf(t, [on(root)]), { ownWorktree: true }))
+      .toEqual({ reason: '.env is tracked and would travel with the branch', action: 'commit or revert .env first', details: [] });
+  });
+
+  it('check 6: its own worktree changes nothing for a robot in a worktree: its changes travel, and a changed tracked .env refuses', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    const wt = `${root}/.claude/worktrees/kb`;
+    t.g(root, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    // on origin, so only the change to it would travel
+    put(wt, '.env', 'KEY=1\n');
+    t.g(wt, 'add', '-f', '.env');
+    t.g(wt, 'commit', '-qm', 'env');
+    t.g(wt, 'push', '-q', 'origin', 'kb');
+    put(wt, '.env', 'KEY=2\n');
+    put(wt, 'a.txt', 'one\nedited\n');
+    const c = on(wt, { main: root, branch: 'kb' });
+    expect(await refusal(depsOf(t, [c]), { ownWorktree: true }))
+      .toEqual({ reason: '.env is tracked and would travel with the branch', action: 'commit or revert .env first', details: [] });
+
+    t.g(wt, 'checkout', '-q', '--', '.env');
+    const { sheet: s, plan } = await sheet(depsOf(t, [c]), { ownWorktree: true });
+    expect(s).toMatchObject({ branch: 'kb', changedFiles: 1 });
+    expect(s.converts).toBeUndefined();
+    expect(plan.convert).toBeUndefined();
   });
 
   it('check 3: its own worktree is refused while another robot moves out of that main checkout, and for a folder its last commit lacks', async () => {

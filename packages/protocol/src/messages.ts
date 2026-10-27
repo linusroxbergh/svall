@@ -132,7 +132,7 @@ export const ChangedFile = z.object({ path: z.string(), status: z.enum(['A', 'M'
 export type ChangedFile = z.infer<typeof ChangedFile>;
 const RootPath = z.object({ id: z.string(), path: z.string() });
 // carry names the credential files ticked to travel; interruptAfterMs, how long a working agent has before it is interrupted;
-// ownWorktree, that a robot on a main checkout leaves it at HEAD for a worktree of its own, and the checkout keeps its changes
+// ownWorktree, that a robot on a main checkout moves into a new worktree of its own at HEAD, and the checkout keeps its changes
 const MoveParams = z.object({ id: z.string(), machine: MachineId, carry: z.array(z.string()).optional(), interruptAfterMs: z.number().int().nonnegative().optional(), ownWorktree: z.boolean().optional() });
 export const ResourceKind = z.enum(['docs', 'agentProfiles', 'instructions', 'skills', 'agents', 'commands', 'plugins', 'mcp', 'hooks', 'settings', 'autoMemory']);
 export type ResourceKind = z.infer<typeof ResourceKind>;

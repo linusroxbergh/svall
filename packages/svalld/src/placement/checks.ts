@@ -13,7 +13,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello, WorkerLink } from '../link/home.js';
 import { must, remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
-import { branchAhead, BundleTooLarge, buildBundle, holdsWhole, trackedCredentials, untrackedFiles, type BundleManifest } from './bundle.js';
+import { branchAhead, BundleTooLarge, buildBundle, credentialsIn, holdsWhole, trackedCredentials, untrackedFiles, type BundleManifest } from './bundle.js';
 import { refuseUncarried, WORKTREES, worktreeSlug } from './convert.js';
 import { destinationPaths, sessionLanding, type Homes } from './paths.js';
 
@@ -276,15 +276,16 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   let have: string[] = [];
   let convert: MovePlan['convert'];
   let bundle: { manifest: BundleManifest; changed: number } | undefined;
-  // the files a main checkout left at HEAD keeps
+  // how many changed files stay in the main checkout, and a phrase for each credential file there
   let kept = 0;
+  let stayMain: string[] = [];
   if (repo) {
     const repoName = path.posix.basename(clean(repo.mainRoot));
     const detached = repo.branch === 'HEAD';
     const onMain = !repo.isWorktree;
     const keep = onMain && !!o.ownWorktree;
 
-    // 3: a worktree on a branch, or a main checkout of this robot's alone that converts, or one it leaves at HEAD
+    // 3: a worktree on a branch, or a main checkout that converts: of this robot's alone, or with a new worktree at HEAD
     if (onMain && !keep) {
       const sharing = Object.values(s.robots).some((r) => r.id !== c.id && (r.machine ?? d.me) === d.me && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
       if (sharing) fail({ reason: `two robots share ${repoName}'s main checkout`, action: WORKTREE_ACTION });
@@ -359,7 +360,11 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
           fail({ reason: `${list} ${tracked.length > 1 ? 'are' : 'is'} tracked and would travel with the branch`, action: `commit or revert ${list} first` });
         }
         const changed = await changedFiles(repo.root, d.git);
-        if (keep) kept = changed + (await untrackedFiles(repo.root, d.git)).length;
+        if (keep) {
+          const listed = await untrackedFiles(repo.root, d.git);
+          kept = changed + listed.length;
+          stayMain = (await credentialsIn(repo.root, d.git, listed)).map((f) => `${f} stays in ${repoName}'s main checkout`);
+        }
         bundle = { manifest, changed: keep ? 0 : changed };
       } catch (e) {
         fail(bundleFailure(e));
@@ -379,6 +384,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const credentialFiles = bundle?.manifest.credentialFiles ?? [];
   const carry = credentialFiles.filter((f) => o.carry?.includes(f));
   const stays = [
+    ...stayMain,
     ...credentialFiles.filter((f) => !carry.includes(f)).map((f) => `${f} stays here`),
     ...(repo && fs.existsSync(path.join(repo.root, 'node_modules')) ? ['node_modules is not carried'] : []),
   ];

@@ -78,7 +78,8 @@ behind **details**.
    to at most 100 MB. An untracked file in the worktree named like a credential (`.env*`, `*.pem`, `id_rsa*`,
    `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick it in the sheet (`--carry`), and the sheet names it: ".env
    stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
-   first".
+   first". A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
+   holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
 7. **The agent is idle, or you choose Interrupt after this turn.** "kanban is working; interrupt after this turn". "a
    command is running; move anyway and it ends". A robot waiting on a question moves too: it resumes idle, and asks
    again when prompted.

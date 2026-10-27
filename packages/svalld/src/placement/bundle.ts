@@ -75,7 +75,7 @@ export async function untrackedFiles(root: string, git: GitRunner): Promise<stri
 }
 
 // untracked files named like credentials, ignored ones too, but none inside a folder git ignores whole
-async function credentialsIn(root: string, git: GitRunner, listed: readonly string[]): Promise<string[]> {
+export async function credentialsIn(root: string, git: GitRunner, listed: readonly string[]): Promise<string[]> {
   const ignored = (await must(git, ['ls-files', '--others', '--ignored', '--exclude-standard', '--directory', '-z'], root)).split('\0');
   return [...listed, ...ignored].filter((p) => p && !p.endsWith('/') && isCredential(p)).sort(byCodeUnit);
 }

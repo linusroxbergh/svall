@@ -46,10 +46,11 @@ export function moveSummary(s: MoveSheet, repo: string | undefined, machine: str
 /** What becomes of a main checkout the move converts into a worktree. */
 export function convertLine(c: NonNullable<MoveSheet['converts']>): string {
   const main = base(c.main);
-  if (c.keep) return `it leaves ${main}'s main checkout for a new branch ${c.branch}${c.changed ? `; the checkout keeps its ${count(c.changed, 'changed file')}` : ''}`;
-  return c.changed
-    ? `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`
-    : `it leaves ${main}'s main checkout for a new branch ${c.branch}`;
+  const leaves = `it leaves ${main}'s main checkout for a new branch ${c.branch}`;
+  if (!c.changed) return leaves;
+  return c.keep
+    ? `${leaves}; the checkout keeps its ${count(c.changed, 'changed file')}`
+    : `your ${count(c.changed, 'changed file')} in ${main}'s main checkout ${c.changed === 1 ? 'moves' : 'move'} to a new branch ${c.branch}`;
 }
 
 export const Placement = z.object({ generation: z.number().int().nonnegative() });
