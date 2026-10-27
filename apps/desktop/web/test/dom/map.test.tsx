@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { fitWithHome } from '../../src/map/home.js';
 import { crewOf } from '../../src/map/layout.js';
 import { mapIslands } from '../../src/selectors.js';
 import { theme } from '../../src/theme.js';
-import { fleet, isl } from '../fixtures.js';
+import { chr, fleet, isl } from '../fixtures.js';
 import { call, freshStore, store } from './harness.js';
 
 // reduced motion: a refit lands at once, so nothing waits on animation frames
@@ -104,6 +105,31 @@ test('a card fills its top edge with the context used, and leaves it empty witho
   const fill = (id: string) => screen.getByTestId(`token-${id}`).querySelector<HTMLElement>('.edge i');
   expect(fill('c0')?.style.width).toBe('70%');
   expect(fill('c1')).toBeNull();
+});
+
+test('the crew card shows the retro stage', () => {
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, m0: chr('m0', 'home', { x: 1, y: 1 }) },
+    retro: { run: 'r_1', stage: 'reading', done: 7, total: 18, robot: 'm0' } });
+  render(<Map />);
+  const retro = (id: string) => screen.queryByTestId(`token-retro-${id}`)?.textContent;
+  expect(retro('m0')).toBe('retro reading 7/18');
+  expect(screen.getByTestId('token-retro-m0').getAttribute('title')).toBe('retro reading 7/18');
+  expect(retro('c0')).toBeUndefined();
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/retro/stage', value: 'judging' }]));
+  expect(retro('m0')).toBe('retro judging');
+  act(() => store.getState().applyPatch([{ op: 'remove', path: '/retro' }]));
+  expect(retro('m0')).toBeUndefined();
+});
+
+test('a card naming the worker its robot runs on keeps that name over the retro stage', () => {
+  const f = fleet();
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  store.getState().setFleet({ ...f, machines: { [vault]: { name: 'linus-vault', reachable: true, since: 0 } },
+    robots: { ...f.robots, c0: { ...f.robots.c0, machine: vault } }, retro: { run: 'r_1', stage: 'judging', done: 0, total: 1, robot: 'c0' } });
+  render(<Map />);
+  expect(screen.getByTestId('token-machine-c0').textContent).toBe('on linus-vault');
+  expect(screen.queryByTestId('token-retro-c0')).toBeNull();
 });
 
 test('a double click on open water makes an island there', async () => {

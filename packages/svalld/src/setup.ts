@@ -47,9 +47,10 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
 
 // every daemon start refreshes Svall's instructions and the skills the mission control buttons call in the crew's cwd;
 // the CLAUDE.md and the settings are the user's, seeded once, and only `svall setup` replaces edited settings, keeping a copy
-export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
+export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; addRetro?: boolean }): string[] {
   const done: string[] = [];
   const template = assetDir('home');
+  const skills = assetDir('skills');
   const dir = expandHome(cwd);
   fs.mkdirSync(dir, { recursive: true });
   const claudeMd = path.join(dir, 'CLAUDE.md');
@@ -61,7 +62,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   fs.mkdirSync(dotClaude, { recursive: true });
   fs.cpSync(path.join(template, '.claude/rules'), path.join(dotClaude, 'rules'), { recursive: true, force: true });
   done.push(`home rules -> ${dotClaude}/rules`);
-  fs.cpSync(path.join(template, '.claude/skills'), path.join(dotClaude, 'skills'), { recursive: true, force: true });
+  fs.cpSync(skills, path.join(dotClaude, 'skills'), { recursive: true, force: true });
   done.push(`home skills -> ${dotClaude}/skills`);
   // codex reads AGENTS.md, .agents/skills and .codex/rules instead; each start writes them from the same template
   const agentsMd = path.join(dir, 'AGENTS.md');
@@ -79,7 +80,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
     writeDurable(agentsMd, Buffer.from(`${agentsHeader}\n\n${rules}\n${fs.readFileSync(claudeMd, 'utf8')}`), { mode: 0o644 });
     done.push(`home AGENTS.md -> ${agentsMd}`);
   }
-  fs.cpSync(path.join(template, '.claude/skills'), path.join(dir, '.agents/skills'), { recursive: true, force: true });
+  fs.cpSync(skills, path.join(dir, '.agents/skills'), { recursive: true, force: true });
   done.push(`home codex skills -> ${dir}/.agents/skills`);
   fs.cpSync(path.join(template, '.codex/rules'), path.join(dir, '.codex/rules'), { recursive: true, force: true });
   done.push(`home codex rules -> ${dir}/.codex/rules`);
@@ -87,7 +88,8 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
   // an older svalld allowed only `svall char`, which the rules now call `svall robot`
-  const current = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
+  const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
+  const current = robot && o.addRetro ? withRetro(robot, shipped) : robot;
   if (current !== read) {
     writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);
@@ -102,6 +104,18 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   writeDurable(settings, Buffer.from(shipped), { mode: 0o644 });
   done.push(`home settings -> ${settings}`);
   return done;
+}
+
+// the shipped `svall retro` rules, after the scribe's in the allow list of settings that allow no `svall retro` yet
+function withRetro(text: string, shipped: string): string {
+  let json: { permissions?: { allow?: unknown } } | null;
+  try { json = JSON.parse(text); } catch { throw new Error('.claude/settings.json is not JSON, so the svall retro rules could not be added'); }
+  const allow = json?.permissions?.allow;
+  if (!Array.isArray(allow) || allow.some((r) => String(r).startsWith('Bash(svall retro'))) return text;
+  const retro = (JSON.parse(shipped).permissions.allow as string[]).filter((r) => r.startsWith('Bash(svall retro '));
+  const scribe = allow.indexOf('Bash(svall scribe sweep:*)');
+  allow.splice(scribe < 0 ? allow.length : scribe + 1, 0, ...retro);
+  return `${JSON.stringify(json, null, 2)}\n`;
 }
 
 export type FleetHome = { home: string; port?: number };

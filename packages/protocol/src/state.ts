@@ -138,6 +138,7 @@ export const Home = z.object({
   actions: z.array(HomeAction).default([
     { label: 'update info', prompt: '/svall-update-info' },
     { label: 'status', prompt: '/svall-status' },
+    { label: 'retro', prompt: '/svall-retro' },
   ]),
 });
 export type Home = z.infer<typeof Home>;
@@ -210,6 +211,10 @@ export const defaultColumns = (): Column[] => [
   { id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'In review' }, { id: 'done', name: 'Done' },
 ];
 
+// a retro run's stage; kept here rather than in retro.ts, which imports from this module
+export const RetroStage = z.enum(['planned', 'reading', 'judging', 'done', 'failed', 'interrupted']);
+export type RetroStage = z.infer<typeof RetroStage>;
+
 /** The state.json schema this release reads and writes, which a worker's link has to share with its home. */
 export const STATE_SCHEMA_VERSION = 12;
 
@@ -247,6 +252,8 @@ export const FleetState = z.object({
   scribeAgent: AgentKind.optional(),
   // the model the scribe runs; absent, the CLI picks its own
   scribeModel: z.string().optional(),
+  // the retro svalld is running or just ran, and the robot whose card shows its stage
+  retro: z.object({ run: z.string(), stage: RetroStage, done: z.number().int(), total: z.number().int(), robot: z.string().optional() }).optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
 

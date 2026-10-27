@@ -253,7 +253,7 @@ The first build takes several minutes and about 1.5 GB of disk.
   between half and full size. Drag cards between islands, onto another card to
   swap them, or onto water to make a new island. Drag an island's label to move
   it and its corner to resize it. On mission control, `arrange` packs the fleet
-  into the window, and `update info` and `status` start a helper agent.
+  into the window, and `update info`, `status` and `retro` start a helper agent.
 - **Board** (Cmd+M, or the Map/Board switch at the top left): every robot as a
   card in a column: To do, In progress, In review and Done until you rename,
   reorder, add or delete them. Drag a card, or right-click → Move to, to place
@@ -386,7 +386,7 @@ belongs to this machine alone:
 | `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall robot new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
 | `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
 | `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
-| `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a new profile fleet in `~/.svall-<name>` gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model opus`, `codex` or `opencode`), `model`, a model for each CLI, as `{ "claude": "sonnet" }` (default `opus` for Claude, Codex's own; OpenCode's TUI takes none; set in Settings), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. |
+| `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a new profile fleet in `~/.svall-<name>` gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model opus`, `codex` or `opencode`), `model`, a model for each CLI, as `{ "claude": "sonnet" }` (default `opus` for Claude, Codex's own; OpenCode's TUI takes none; set in Settings), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. `offered` names the buttons Svall has added once, with their rules in the crew's settings, so one you delete stays deleted. |
 | `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model for each CLI as in `home`, or one model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode; set in Settings, OpenCode's only here). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |

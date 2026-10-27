@@ -49,7 +49,7 @@ describe('config and paths', () => {
     expect(loadConfig(resolvePaths('/nonexistent')).home).toEqual({
       cwd: '~/.svall/home',
       actions: [
-        { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' },
+        { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' }, { label: 'retro', prompt: '/svall-retro' },
       ],
     });
     const home = makeHome();

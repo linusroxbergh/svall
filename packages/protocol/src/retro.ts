@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AgentKind } from './state.js';
+import { AgentKind, RetroStage } from './state.js';
 
 /** What a retro looks for: where a skill falls short or fails to fire, what reviews miss, what is still done by hand, which rules are missed. */
 export const Focus = z.enum(['skill-tweaks', 'skill-triggers', 'review-tweaks', 'new-skills', 'instructions']);
@@ -132,8 +132,6 @@ export const RetroPlan = z.object({
 });
 export type RetroPlan = z.infer<typeof RetroPlan>;
 
-export const RetroStage = z.enum(['planned', 'reading', 'judging', 'done', 'failed', 'interrupted']);
-export type RetroStage = z.infer<typeof RetroStage>;
 export const RetroStatus = z.object({ run: z.string(), stage: RetroStage, done: z.number().int(), total: z.number().int(), error: z.string().optional() });
 export type RetroStatus = z.infer<typeof RetroStatus>;
 

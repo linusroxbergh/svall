@@ -13,7 +13,7 @@ import { NAMESPACE, signManifest, sshVerify, SUMS } from './release-manifest.mjs
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const PINS = JSON.parse(fs.readFileSync(path.join(REPO, 'scripts/release/pins.json'), 'utf8'));
 export const VENDOR = path.join(REPO, 'vendor');
-const DIRS = ['bin', 'lib', 'node', 'hooks', 'home', 'systemd', 'agent-profiles', 'web-mobile', 'licenses', 'release'];
+const DIRS = ['bin', 'lib', 'node', 'hooks', 'home', 'skills', 'systemd', 'agent-profiles', 'web-mobile', 'licenses', 'release'];
 
 const ENTRIES = [
   { name: 'svall', entry: 'packages/cli/src/main.ts' },
@@ -216,9 +216,10 @@ function stageShims(stage, platform) {
 }
 
 /** The assets the daemon reads at runtime, and the signers an upgrade is checked against. */
-function stageAssets(stage) {
+export function stageAssets(stage) {
   fs.cpSync(path.join(REPO, 'packages/svalld/hooks'), path.join(stage, 'hooks'), { recursive: true });
   fs.cpSync(path.join(REPO, 'packages/svalld/home'), path.join(stage, 'home'), { recursive: true });
+  fs.cpSync(path.join(REPO, 'packages/svalld/skills'), path.join(stage, 'skills'), { recursive: true });
   fs.cpSync(path.join(REPO, 'packages/svalld/systemd'), path.join(stage, 'systemd'), { recursive: true });
   fs.cpSync(path.join(REPO, 'packages/svalld/agent-profiles'), path.join(stage, 'agent-profiles'), { recursive: true });
   fs.copyFileSync(path.join(REPO, 'scripts/release/allowed_signers'), path.join(stage, 'release', 'allowed_signers'));

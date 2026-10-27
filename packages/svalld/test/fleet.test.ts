@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { SPACING, crewGrid, defaultHome, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState, type HomeAction } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
@@ -33,15 +33,17 @@ runIf('Fleet', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; scribe?: { agent?: AgentKind; model?: string }; state?: FleetState; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
-    const { homeCwd, homeCommand, mainAgent, name, scribe, state, opening, ...deps } = extra;
+  async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; scribe?: { agent?: AgentKind; model?: string }; state?: FleetState; fleetHome?: { actions?: HomeAction[]; offered?: string[] }; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
+    const { homeCwd, homeCommand, mainAgent, name, scribe, state, fleetHome, opening, ...deps } = extra;
     // what ps shows the dormancy sweep
     const procs: Proc[] = [];
     const home = makeHome();
     const paths = resolvePaths(home);
     // the fleet an earlier run left on disk
     if (state) fs.writeFileSync(paths.state, JSON.stringify(state));
-    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}) }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
+    const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}), ...fleetHome }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
+    // the home block fleet.json holds
+    if (fleetHome) fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: config.id, home: fleetHome }));
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
@@ -2369,6 +2371,60 @@ runIf('Fleet', () => {
     expect(updated.size).toEqual(home.size);
     await fleet.reconcileNow();
     expect(Object.values(store.state.islands).filter((i) => i.kind === 'home')).toHaveLength(1);
+  });
+
+  it('a fleet.json with its own actions gets retro once; deleting it keeps it deleted', async () => {
+    const own = [{ label: 'deploy', prompt: '/deploy' }];
+    const retro = { label: 'retro', prompt: '/svall-retro' };
+    const first = await boot({ fleetHome: { actions: own } });
+    expect(first.store.state.home.actions).toEqual([...own, retro]);
+    const fleetJson = (home: string) => JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home;
+    expect(fleetJson(first.home)).toEqual({ actions: [...own, retro], offered: ['retro'] });
+    // the user took the button out again
+    const second = await boot({ fleetHome: { actions: own, offered: ['retro'] } });
+    expect(second.store.state.home.actions).toEqual(own);
+    expect(fleetJson(second.home)).toEqual({ actions: own, offered: ['retro'] });
+  });
+
+  it('a fleet with default actions shows retro, and its crew settings gain the retro rules once', async () => {
+    const mc = path.join(makeHome(), 'mc');
+    const shipped = fs.readFileSync(path.join(import.meta.dirname, '../home/.claude/settings.json'), 'utf8');
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    const older = `${JSON.stringify({ permissions: { allow: allow.filter((r) => !r.startsWith('Bash(svall retro ')) } }, null, 2)}\n`;
+    const settings = path.join(mc, '.claude/settings.json');
+    fs.mkdirSync(path.dirname(settings), { recursive: true });
+    fs.writeFileSync(settings, older);
+    const { store, home } = await boot({ homeCwd: mc, fleetHome: {} });
+    expect(store.state.home.actions.at(-1)).toEqual({ label: 'retro', prompt: '/svall-retro' });
+    expect(store.state.home).not.toHaveProperty('offered');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({ offered: ['retro'] });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
+    // the user took them out again
+    fs.writeFileSync(settings, older);
+    await boot({ homeCwd: mc, fleetHome: { offered: ['retro'] } });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(older);
+  });
+
+  it('offers retro again on the next start when the crew settings could not take its rules', async () => {
+    const mc = path.join(makeHome(), 'mc');
+    const settings = path.join(mc, '.claude/settings.json');
+    fs.mkdirSync(path.dirname(settings), { recursive: true });
+    fs.writeFileSync(settings, '{ not json');
+    const errors: string[] = [];
+    const first = await boot({ homeCwd: mc, fleetHome: {}, log: { ...silentLogger, error: (m: string) => errors.push(m) } });
+    expect(errors.join('\n')).toContain('svall retro rules could not be added');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(first.home).fleetConfig, 'utf8')).home).toEqual({});
+    fs.writeFileSync(settings, '{ "permissions": { "allow": [] } }');
+    const second = await boot({ homeCwd: mc, fleetHome: {} });
+    expect(JSON.parse(fs.readFileSync(resolvePaths(second.home).fleetConfig, 'utf8')).home).toEqual({ offered: ['retro'] });
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall retro plan:*)');
+  });
+
+  it('a fleet.json that lists the retro button already gets no second one', async () => {
+    const { actions } = defaultHome();
+    const { store, home } = await boot({ fleetHome: { actions } });
+    expect(store.state.home.actions).toEqual(actions);
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({ actions, offered: ['retro'] });
   });
 
   it('opens a new fleet on a Mac with one island holding a shell, and does not make them again once deleted', async () => {

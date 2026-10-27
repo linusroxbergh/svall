@@ -36,6 +36,9 @@ const STALE_MS = DAY;
 // how long a run's notes and files are kept
 const KEEP_MS = 90 * DAY;
 const SPAN_DAYS: Record<Exclude<RetroSpan, 'last'>, number> = { '7d': 7, '30d': 30 };
+// how long a crew member's card keeps showing a run that has ended
+const SHOWN_MS = 10 * 60_000;
+const ENDED = new Set<RetroStatus['stage']>(['done', 'failed', 'interrupted']);
 const FIRST_DAYS = 14;
 
 type Deps = {
@@ -91,6 +94,8 @@ export class Retro {
 
   /** Clears what a restart left: the batches of a run it interrupted, which is reported and never resumed, and runs past 90 days. */
   start(): void {
+    // no run outlives the daemon that ran it
+    if (this.d.store.state.retro) this.d.store.update((d) => { delete d.retro; });
     for (const id of this.runIds()) {
       const dir = this.runDir(id);
       const plan = this.readPlan(id);
@@ -318,7 +323,8 @@ export class Retro {
 
   private async execute(first: RetroPlan, chosen: Preset, budget: number, robot: string | undefined, status: RetroStatus, signal: AbortSignal): Promise<void> {
     let plan = first;
-    const set = (s: Partial<RetroStatus>) => Object.assign(status, s);
+    const set = (s: Partial<RetroStatus>) => this.show(Object.assign(status, s), robot);
+    set({});
     try {
       // a plan older than a day, or whose exclusions or picks changed since, is planned again as the same run, under the same budget
       const retro = this.d.config().retro;
@@ -355,6 +361,13 @@ export class Retro {
       fs.rmSync(path.join(this.runDir(plan.id), 'batches'), { recursive: true, force: true });
       if (this.gathered?.plan === plan.id) this.gathered = undefined;
     }
+  }
+
+  // the card of the crew member who started the run shows its stage, until a while after it ends
+  private show(s: RetroStatus, robot?: string): void {
+    this.d.store.update((d) => { d.retro = { run: s.run, stage: s.stage, done: s.done, total: s.total, ...(robot && { robot }) }; });
+    if (!ENDED.has(s.stage)) return;
+    setTimeout(() => this.d.store.update((d) => { if (d.retro?.run === s.run && ENDED.has(d.retro.stage)) delete d.retro; }), SHOWN_MS).unref();
   }
 
   // the findings of the last finished run the user has fixed since, whose measures this run takes again

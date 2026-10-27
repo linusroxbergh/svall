@@ -1,4 +1,4 @@
-import type { Robot, ContextItem } from '@svall/protocol';
+import type { Robot, ContextItem, FleetState } from '@svall/protocol';
 import type { DisplayStatus } from '../selectors.js';
 
 // a github PR or issue reads as `repo #number`, so the pill says which repository it belongs to
@@ -29,6 +29,12 @@ export const hintText = (c: Robot): string | undefined =>
   : c.hint === 'codex-silent' ? 'No updates from Codex. Run svall doctor and check /hooks in Codex.' : undefined;
 
 export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : '/hooks');
+
+// the stage of a retro, for the card of the robot that runs it
+export function retroText(retro: FleetState['retro'], id: string): string | undefined {
+  if (retro?.robot !== id) return undefined;
+  return retro.stage === 'reading' ? `retro reading ${retro.done}/${retro.total}` : `retro ${retro.stage}`;
+}
 
 // idle and a bare shell read from the ring; every other status is spelled out
 export function statusWord(status: DisplayStatus): string | undefined {
