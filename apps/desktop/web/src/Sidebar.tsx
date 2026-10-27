@@ -5,8 +5,8 @@ import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
-import { EyeGlyph, MachineGlyph, PrGlyph, reviewText } from './indicators.js';
-import { isPlaced, machineName } from './placement.js';
+import { EyeGlyph, MachineLine, PrGlyph, reviewText } from './indicators.js';
+import { machineOf } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
@@ -141,13 +141,12 @@ function Marks({ c }: { c: Robot }) {
 }
 
 // a robot on a worker names the machine on a line under its name
-function RobotName({ c, title }: { c: Robot; title?: string }) {
-  const on = useApp((s) => (isPlaced(c) ? machineName(s.fleet, c.machine) : undefined));
+function RobotName({ c, machine, title }: { c: Robot; machine?: string; title?: string }) {
   const name = <span className="sb-name" title={title}>{c.name}</span>;
-  return on ? <span className="sb-names">{name}<span className="sb-on" data-testid={`sb-machine-${c.id}`}><MachineGlyph /><span>on {on}</span></span></span> : name;
+  return machine ? <span className="sb-names">{name}<MachineLine name={machine} short className="sb-on" testid={`sb-machine-${c.id}`} /></span> : name;
 }
 
-const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; editing: boolean; setEditing(id?: string): void }) {
+const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c: Robot; machine?: string; editing: boolean; setEditing(id?: string): void }) {
   const selected = useApp((s) => s.selectedId === c.id);
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
@@ -175,7 +174,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
         }} />
       ) : (
         <>
-          <RobotName c={c} />
+          <RobotName c={c} machine={machine} />
           {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} title={failed}>resume failed</span>}
         </>
       )}
@@ -188,7 +187,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
 // a row in Starred drops before or after its midpoint; the header, or a folded section, takes it first
 type StarHover = { id?: string; after: boolean };
 
-function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
+function StarredRow({ c, machine, hover, zone }: { c: Robot; machine?: string; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
   const selected = useApp((s) => s.selectedId === c.id);
   const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
   // a Finder file over this robot; a reorder over its tree row carries `after` and leaves this row be
@@ -205,7 +204,7 @@ function StarredRow({ c, hover, zone }: { c: Robot; hover?: StarHover; zone: Ret
       onDragEnd={() => setDragging(false)}
       onClick={() => pick(c.id, true)} onContextMenu={(e) => robotMenu(e, c.id)}>
       <i className="sdot" data-status={status} />
-      <RobotName c={c} title={c.name} />
+      <RobotName c={c} machine={machine} title={c.name} />
       <span className="sb-where"><span>{island}</span></span>
       <Marks c={c} />
       <StarButton c={c} testid={`sb-star-toggle-${c.id}`} />
@@ -258,7 +257,7 @@ function Starred() {
         <span className="sb-ct tnum">{robots.length}</span>
         <i className="sb-star-mark"><StarIcon on /></i>
       </div>
-      {!shut && <div className="sb-kids">{robots.map((c) => <StarredRow key={c.id} c={c} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
+      {!shut && <div className="sb-kids">{robots.map((c) => <StarredRow key={c.id} c={c} machine={machineOf(fleet, c)} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
     </div>
   );
 }
@@ -326,7 +325,7 @@ export function Sidebar() {
               {!i.collapsed && robots.length === 0 && <div className="sb-kids"><button className="sb-row sb-robot-empty" data-testid={`sb-island-new-${i.id}`}
                 aria-label={`New robot on ${i.name}`} onClick={() => void newRobotOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
               {!i.collapsed && robots.length > 0 && (
-                <div className="sb-kids">{robots.map((c) => <RobotRow key={c.id} c={c} editing={editing === c.id} setEditing={setEditing} />)}</div>
+                <div className="sb-kids">{robots.map((c) => <RobotRow key={c.id} c={c} machine={machineOf(fleet, c)} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}
             </div>
           );

@@ -45,6 +45,15 @@ export function HandGlyph() {
   );
 }
 
+/** The machine a robot on a worker runs on, after its glyph: "Runs on NAME", or "on NAME" with the full words in its title. */
+export function MachineLine({ name, short, className, testid }: { name: string; short?: boolean; className: string; testid: string }) {
+  return (
+    <span className={`mline ${className}`} data-testid={testid} title={short ? `Runs on ${name}` : undefined}>
+      <MachineGlyph /><span>{short ? 'on' : 'Runs on'} <b>{name}</b></span>
+    </span>
+  );
+}
+
 export function MachineGlyph() {
   return (
     <svg className="ind-glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">

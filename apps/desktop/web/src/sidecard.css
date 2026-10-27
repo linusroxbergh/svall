@@ -40,10 +40,8 @@
 .side-branch .badge { flex: none; }
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
 /* a robot on a worker: the machine it runs on, close under its name */
-.side-on { display: flex; align-items: center; gap: var(--sp-sm); min-width: 0; margin-top: calc(-1 * var(--sp-md)); color: var(--away); font-size: var(--text-md); font-weight: var(--w-medium); }
-.side-on span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-on { gap: var(--sp-sm); margin-top: calc(-1 * var(--sp-md)); font-size: var(--text-md); }
 .side-on b { font-weight: var(--w-semibold); }
-.side-on .ind-glyph { flex: none; width: 12px; height: 12px; }
 .side-portrait { position: relative; flex: none; }
 .side-portrait .side-figure { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
   object-fit: contain; object-position: center bottom; }
@@ -114,10 +112,11 @@
 .side-doc-del:hover { background: var(--fill-3); color: var(--ink); }
 .side .acts { display: flex; gap: var(--sp-md); margin-top: auto; padding-top: var(--sp-2xl); }
 .side .acts .btn { flex: 1; }
-/* a card's own buttons: two even columns, where a button alone, or a move alone on its row, takes both */
-.side > .acts { display: grid; grid-template-columns: 1fr 1fr; }
+/* a card's own buttons: two even columns, where a button alone takes both; the moves start rows of their own, a move alone on its row taking both */
+.side > .acts, .side > .acts > .moves { display: grid; grid-template-columns: 1fr 1fr; }
+.side > .acts > .moves { grid-column: 1 / -1; gap: var(--sp-md); }
 .side > .acts .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.side > .acts > :only-child, .side > .acts > .move:nth-last-child(1 of .move):nth-child(odd of .move) { grid-column: 1 / -1; }
+.side > .acts > :only-child, .side > .acts > .moves > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }

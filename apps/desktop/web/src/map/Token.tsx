@@ -1,6 +1,6 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { BotGlyph, EyeGlyph, MachineGlyph, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { BotGlyph, EyeGlyph, MachineLine, PrGlyph, reviewText, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
@@ -81,7 +81,7 @@ export const Token = memoByValue(function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        {machine && <span className="mach" data-testid={`token-machine-${c.id}`} title={`Runs on ${machine}`}><MachineGlyph /><span>on {machine}</span></span>}
+        {machine && <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />

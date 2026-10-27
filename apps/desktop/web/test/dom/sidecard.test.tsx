@@ -410,7 +410,7 @@ const withVault = (reachable: boolean, c0: Partial<Robot> = {}) => {
 };
 const moves = () => [...document.querySelectorAll('[data-testid^="side-move"]')].map((b) => b.textContent);
 // the card's buttons, in the one block at its foot
-const foot = () => [...document.querySelectorAll('.side > .acts > button')].map((b) => b.textContent);
+const foot = () => [...document.querySelectorAll('.side > .acts button')].map((b) => b.textContent);
 
 test('a robot here offers a move to each worker within reach, which opens the move sheet', () => {
   const f = fleet();
@@ -429,6 +429,8 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
   await act(async () => { render(<Side />); });
   expect(screen.getByTestId('side-machine').textContent).toBe('Runs on linus-vault');
+  expect(screen.getByTestId('side-machine').querySelector('b')?.textContent).toBe('linus-vault');
+  expect(screen.getByTestId('side-machine').title).toBe('');
   expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
   expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);

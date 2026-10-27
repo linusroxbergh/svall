@@ -11,6 +11,9 @@ export const destinationName = (f: Machines, to: MachineId): string => f.machine
 // the home never names itself, so a robot that names a machine runs on a worker
 export const isPlaced = (c: Pick<Robot, 'machine'>): c is { machine: MachineId } => c.machine !== undefined;
 
+/** The worker a robot runs on, by name; none for one on this Mac. */
+export const machineOf = (f: Machines, c: Pick<Robot, 'machine'>): string | undefined => (isPlaced(c) ? machineName(f, c.machine) : undefined);
+
 /** The worker a workspace id's files are on, by name: a placed robot's, or a worker clone's on the shelf. */
 export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string): string | undefined => {
   const at = farRootOf(id)?.machine ?? (Object.hasOwn(f.robots, id) ? f.robots[id].machine : undefined);

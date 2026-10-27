@@ -5,7 +5,7 @@ import { app, deps } from '../boot.js';
 import { followLink } from '../LinkAsk.js';
 import { useApp } from '../hooks.js';
 import { robotMenu, islandMenu } from '../menus.js';
-import { machineName } from '../placement.js';
+import { machineOf } from '../placement.js';
 import { ResourcesLayer } from '../resources/Shelf.js';
 import { robotsOf, homeIsland, mapIslandsSorted, resumeErrorOf, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
@@ -125,7 +125,7 @@ export function Map() {
           return (
             <Token key={c.id} c={c} status={statusOf(c, fleet)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf(c)}
-              machine={c.machine && machineName(fleet, c.machine)}
+              machine={machineOf(fleet, c)}
               hover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
