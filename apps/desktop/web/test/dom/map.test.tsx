@@ -128,7 +128,7 @@ test('a card naming the worker its robot runs on keeps that name over the retro 
   store.getState().setFleet({ ...f, machines: { [vault]: { name: 'linus-vault', reachable: true, since: 0 } },
     robots: { ...f.robots, c0: { ...f.robots.c0, machine: vault } }, retro: { run: 'r_1', stage: 'judging', done: 0, total: 1, robot: 'c0' } });
   render(<Map />);
-  expect(screen.getByTestId('token-machine-c0').textContent).toBe('linus-vault');
+  expect(screen.getByTestId('token-machine-c0').textContent).toBe('on linus-vault');
   expect(screen.queryByTestId('token-retro-c0')).toBeNull();
 });
 
