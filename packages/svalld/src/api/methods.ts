@@ -17,6 +17,7 @@ import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
+import type { Retro } from '../retro/service.js';
 import { agentAdapters, type AgentProber } from '../sessions/registry.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
@@ -27,7 +28,7 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
@@ -40,6 +41,12 @@ type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<R
 const placementOf = ({ placement }: Ctx): Placement => {
   if (!placement) throw new ApiError('not_on_worker', 'not on a worker');
   return placement;
+};
+
+// the retro reads the agents' stores where the fleet runs
+const retroOf = ({ retro }: Ctx): Retro => {
+  if (!retro) throw new ApiError('not_on_worker', 'the retro runs on the fleet\'s home');
+  return retro;
 };
 
 // the agent configuration a worker takes is its home's
@@ -136,6 +143,12 @@ const handlers: Handlers = {
   'column.delete': (p, { fleet }) => fleet.deleteColumn(p.id, p.moveTo),
   'scribe.sweep': async (p, { fleet }) => ({ lines: await fleet.sweep(p) }),
   'scribe.set': (p, { fleet }) => { fleet.setScribe(p.enabled); return {}; },
+  'retro.plan': (p, ctx) => retroOf(ctx).plan(p),
+  'retro.run': (p, ctx) => retroOf(ctx).run(p),
+  'retro.status': (p, ctx) => retroOf(ctx).status(p.run),
+  'retro.findings': (p, ctx) => retroOf(ctx).findings(p.run),
+  'retro.mark': (p, ctx) => retroOf(ctx).mark(p),
+  'retro.apply': (p, ctx) => retroOf(ctx).apply(p.id),
   'placing.set': (p, { fleet }) => { fleet.setPlacing(p.enabled); return {}; },
   'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },

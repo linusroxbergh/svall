@@ -8,7 +8,7 @@ import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { configRelinked, fleetMainAgent, keptPorts, loadConfig, saveConfig } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig, saveConfig } from './config.js';
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
@@ -37,6 +37,7 @@ import { Replay } from './placement/replay.js';
 import { Router, fileCalls, forgetRobot, workerCalls } from './placement/router.js';
 import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { releaseVersion } from './release.js';
+import { Retro } from './retro/service.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
 import { PushStore } from './push/store.js';
@@ -321,9 +322,17 @@ async function start(opts: Options): Promise<Daemon> {
   const teardown: (() => unknown)[] = [() => load.stop(), () => fleet.stop(), store.subscribe(() => workspace.retarget()), () => workspace.close()];
   // a second stop, as a second signal sends, waits for the first to have the fleet on disk
   let stopping: Promise<void> | undefined;
+  // the retro reads this machine's agent stores for the fleet it owns; fleet.json is read at each call
+  const retro = worker ? undefined : new Retro({
+    paths, store, log, claudeDir: claude.dir, codexDir: codexPaths().dir, homedir: os.homedir(),
+    config: () => { try { return readFleetConfig(paths); } catch { return config; } },
+    createRobot: (p) => fleet.createRobot(p),
+  });
+  if (retro) teardown.push(() => retro.stop());
   const stop = () => (stopping ??= (async () => { for (const fn of teardown.splice(0).reverse()) await fn(); })());
   try {
     await fleet.start();
+    retro?.start();
     if (!off.has('push')) teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
     // a running server keeps its old options if the new conf has a line this tmux rejects
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
@@ -333,7 +342,7 @@ async function start(opts: Options): Promise<Daemon> {
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }),
+      ...(mutations && { mutations }), ...(retro && { retro }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

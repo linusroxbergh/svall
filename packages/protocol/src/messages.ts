@@ -2,6 +2,7 @@ import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { MachineId, SystemInfo } from './machines.js';
 import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
+import { DismissReason, FocusPick, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
@@ -81,6 +82,9 @@ const MOBILE_SET_TIMEOUT_MS = 3 * 60_000;
 // how long a sweep of the whole fleet may take before the caller gives up on it
 const SWEEP_TIMEOUT_MS = 15 * 60_000;
 
+// how long a retro plan may take to index a month of transcripts and fetch the PR threads its reviews join
+const RETRO_PLAN_TIMEOUT_MS = 10 * 60_000;
+
 // how long starting another fleet may take: its daemon gets 15 s to answer, after its home is set up
 const FLEET_START_TIMEOUT_MS = 20_000;
 
@@ -105,6 +109,7 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
+  if (method === 'retro.plan') return RETRO_PLAN_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
   if (method === 'fleets.create' || method === 'fleets.start') return FLEET_START_TIMEOUT_MS;
   if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
@@ -284,6 +289,33 @@ export const methods = {
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   // the model the scribe or mission control's crew runs on `agent`'s CLI; with none, that CLI's default
   'model.set': { params: z.object({ of: z.enum(['scribe', 'home']), agent: AgentKind, model: z.string().min(1).optional() }), result: z.object({}) },
+  // a retro over what the agents here did: plan reads the stores and sends nothing to a model; given exclusions or picks
+  // are saved to fleet.json. run starts the plan's batches under the approved budget; mark and apply act on findings
+  'retro.plan': {
+    params: z.object({
+      span: RetroSpan.default('last'), focus: FocusPick.default('skills-reviews'),
+      exclude: z.object({ repos: z.array(z.string()).optional(), islands: z.array(z.string()).optional() }).optional(),
+      unrecorded: z.array(z.string()).optional(),
+    }),
+    result: RetroPlan,
+  },
+  // budget is the tokens the user approved, the preset's upper estimate when none is given; robot is the crew member whose card shows the run
+  'retro.run': { params: z.object({ plan: z.string(), preset: z.string(), budget: z.number().int().positive().optional(), robot: z.string().optional() }), result: z.object({ run: z.string() }) },
+  'retro.status': { params: z.object({ run: z.string().optional() }), result: RetroStatus },
+  'retro.findings': { params: z.object({ run: z.string().optional() }), result: RetroReport },
+  'retro.mark': {
+    params: z.object({
+      marks: z.array(z.object({ id: z.string(), action: z.enum(['fix', 'dismiss', 'later']), reason: DismissReason.optional() })
+        .refine((m) => m.action !== 'dismiss' || m.reason, { message: 'a dismissal says whether it was wrong or not worth it', path: ['reason'] })).min(1),
+    }),
+    result: z.object({
+      results: z.array(z.object({
+        id: z.string(), outcome: z.enum(['robot', 'apply', 'proposal', 'dismissed', 'later']),
+        robot: z.string().optional(), path: z.string().optional(), diff: z.string().optional(),
+      })),
+    }),
+  },
+  'retro.apply': { params: z.object({ id: z.string() }), result: z.object({ path: z.string(), backup: z.string() }) },
   // the fleets beside this one; a phone is refused them
   'fleets.list': { params: z.object({}), result: z.object({ fleets: z.array(FleetEntry) }) },
   'fleets.create': { params: z.object({ name: z.string() }), result: z.object({ home: z.string() }) },
