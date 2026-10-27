@@ -197,7 +197,7 @@ const put = (file: string, data: string): void => {
  * agent configuration, and with `pollMs` the worker's fleet polls its windows that often.
  */
 export function moveWorld(o: {
-  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean; agentRunsThere?: boolean;
+  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean;
   busy?: boolean; pollMs?: number;
 } = {}) {
   const base = fs.realpathSync(makeHome());

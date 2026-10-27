@@ -174,6 +174,34 @@ test('a Retry shows the step running again, and one that fails again shows its n
   expect(screen.getByTestId('move-action').textContent).toBe('Retry');
 });
 
+test('a Retry refused for a reason the robot\'s mark does not hold says that reason, Retry still offered', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell' });
+  await move.settle({ moveId: MOVE });
+  call.mockImplementation((method: string) => (method === 'robot.moveRetry' ? Promise.reject(new Error('svalld connection closed')) : Promise.resolve({})));
+  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(lines().at(-1)).toBe('failed Start failed: svalld connection closed.');
+  expect(screen.getByTestId('move-action').textContent).toBe('Retry');
+  // a mark that says more since is what stands
+  await mark({ id: MOVE, to: VAULT, phase: 'activate', error: 'claude exited back to its shell again' });
+  expect(lines().at(-1)).toBe('failed Start failed: claude exited back to its shell again.');
+});
+
+test('a move whose answer is lost before any mark of it came goes on at its check until a mark or the robot\'s arrival says how it went', async () => {
+  const move = heldMove();
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  await move.settle(new Error('svalld connection closed'));
+  expect(lines()[0]).toBe('doing Checking…');
+  expect(screen.queryByTestId('move-action')).toBeNull();
+
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  expect(call.mock.calls.filter(([m]) => m === 'robot.moveTo')).toHaveLength(1);
+});
+
 test('a move whose answer is lost with the link to svalld goes on by the robot\'s mark, and is through once the mark goes with the robot there', async () => {
   const move = heldMove();
   await open(VAULT);

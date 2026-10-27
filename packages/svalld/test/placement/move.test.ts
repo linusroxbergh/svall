@@ -710,9 +710,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.windows.size).toBe(1);
   });
 
-  it('a move whose link to the worker drops before its prepare waits for the link to come back, and goes on once the agent configuration has gone again', async () => {
-    let pushing = 0;
-    const w = open({ mirror: { push: async () => { pushing++; await new Promise((r) => setTimeout(r, 500)); pushing--; return { sent: 0 }; } } });
+  it('a move whose link to the worker drops before its prepare waits for the link to come back and the agent configuration it sends then, and goes on', async () => {
+    let [pushes, pushing] = [0, 0];
+    let last: Promise<unknown> = Promise.resolve();
+    const push = async () => { pushes++; pushing++; await new Promise((r) => setTimeout(r, 500)); pushing--; return { sent: 0 }; };
+    const w = open({ mirror: { push: () => (last = push()), settled: () => last } });
     const home = await w.start();
     let [closed, atPrepare] = [false, -1];
     disarm = armFailpoints((n, e) => {
@@ -722,13 +724,14 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     });
     await home.placement.start('c_1', W);
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(atPrepare).toBe(0);
+    // the link's push, the move's before its bundle, and the link's again once it is back
+    expect([atPrepare, pushes]).toEqual([0, 3]);
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
   });
 
   it('a move sends the worker the home\'s agent configuration before its bundle, and goes on when that fails', async () => {
     let pushes = 0;
-    const w = open({ mirror: { push: async () => { pushes++; throw new Error('no space left on device'); } } });
+    const w = open({ mirror: { push: async () => { pushes++; throw new Error('no space left on device'); }, settled: async () => {} } });
     const home = await w.start();
     await until(() => { expect(pushes).toBe(1); });
     let atBundle = 0;

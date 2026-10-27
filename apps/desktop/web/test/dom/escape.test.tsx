@@ -27,10 +27,11 @@ test('Esc in the new-robot dialog closes the dialog and leaves the map card open
   expect(store.getState().card).toBe('c0');
 });
 
-test('Esc reaching the page while the move sheet is open leaves the map card behind it open', () => {
+test('Esc reaching the page while the move sheet is open closes the sheet and leaves the map card behind it open', () => {
   store.getState().focus('c0');
   store.getState().setMoveSheet({ id: 'c0' });
   fireEvent.keyDown(document.body, { key: 'Escape' });
+  expect(store.getState().moveSheet).toBeUndefined();
   expect(store.getState().card).toBe('c0');
 });
 

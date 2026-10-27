@@ -56,11 +56,16 @@ const nap = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((re
 /**
  * Trusts the clone's main checkout, and so every worktree in it, in the agent's own file: written read-modify-write while
  * holding the agent files of the user at `homedir`, as a mirror's apply does, and only while no agent of that kind runs,
- * which would write the file over again. OpenCode never asks.
+ * which would write the file over again. Rejects once a mirror has held those files `waitMs`. OpenCode never asks.
  */
-export async function seedTrust(kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean> }): Promise<'seeded' | 'skipped'> {
+export async function seedTrust(
+  kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean>; waitMs: number },
+): Promise<'seeded' | 'skipped'> {
   if (kind === 'opencode') return 'seeded';
-  const unlock = await lockAgentFiles(o.homedir);
+  const signal = AbortSignal.timeout(o.waitMs);
+  const unlock = await lockAgentFiles(o.homedir, signal).catch((e: unknown) => {
+    throw signal.aborted ? new Error(`a mirror held the agent files in ${o.homedir} for ${o.waitMs / 1000}s`) : e;
+  });
   try {
     if (await o.agentRunning()) return 'skipped';
     const key = realPath(clone);

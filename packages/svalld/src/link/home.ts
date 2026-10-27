@@ -63,7 +63,7 @@ type Options = {
   onLost?(machine: MachineId): void;
   snapshot: () => Snapshot;
   /** The home's agent configuration, which a worker takes once linked and before a move. */
-  mirror?: Pick<Mirror, 'push'>;
+  mirror?: Pick<Mirror, 'push' | 'settled'>;
   /** The fleet's docs, which a worker takes once linked and after they change. */
   docs?: Pick<HomeDocs, 'push' | 'watch'>;
 };
@@ -492,6 +492,11 @@ export class HomeLinks {
   /** Sends `machine` the home's agent configuration, as before a move; resolves whether or not it went. */
   pushMirror(machine: MachineId): Promise<void> {
     return this.links.get(machine)?.pushMirror() ?? Promise.resolve();
+  }
+
+  /** Resolves once every push of the agent configuration to `machine` begun so far has ended, applied or not. */
+  mirrorSettled(machine: MachineId): Promise<unknown> {
+    return this.o.mirror?.settled(machine) ?? Promise.resolve();
   }
 
   call<T>(machine: MachineId, method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {

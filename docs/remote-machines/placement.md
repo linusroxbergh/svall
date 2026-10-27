@@ -214,7 +214,7 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   reopens where it was, with its window, and the destination removes what it prepared, but for an OpenCode session it
   read in, which the next move there replaces. A main checkout the move converted stays converted, and the robot
   reopens in its new worktree. A link to the worker that drops before the carry is waited for up to a minute, and the
-  move goes on once it is back and has taken the agent configuration again.
+  move goes on once it is back and the agent configuration the link sends then has gone or failed.
 - **After it is**, a crash on either machine resumes the move from its journal; the robot never reopens on the machine
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.

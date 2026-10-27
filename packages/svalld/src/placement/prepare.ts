@@ -24,6 +24,8 @@ import {
 import { seedTrust } from './trust.js';
 
 const WATCH_MS = 60_000;
+// the home waits for an activate a minute past the agent's watch; trust a mirror holds up longer is left to the dialog
+const TRUST_MS = 30_000;
 
 export type PrepareDeps = {
   store: Store;
@@ -280,7 +282,7 @@ export class PrepareService {
         const agentHome = probes.find((p) => p.kind === kind)?.home;
         if (!agentHome) continue;
         const agentRunning = () => (this.d.agentRunning ?? running)(kind);
-        const r = await boundary('worker.activate.trust', () => seedTrust(kind, j.plan.clone, { agentHome, homedir: this.d.homedir, agentRunning }))
+        const r = await boundary('worker.activate.trust', () => seedTrust(kind, j.plan.clone, { agentHome, homedir: this.d.homedir, agentRunning, waitMs: TRUST_MS }))
           .catch((e: Error) => this.d.log.error(`move ${id}: trust for ${j.plan.clone} was not seeded: ${e.message}`));
         if (r === 'seeded') seeded.add(kind);
       }

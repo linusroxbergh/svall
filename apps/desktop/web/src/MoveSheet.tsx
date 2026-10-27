@@ -44,16 +44,23 @@ const said = (robot: string, where: string, what: string): Record<Step, Said> =>
 // a move started from the sheet: on its way, through, undone before its commit with the step it failed at, or its answer
 // lost with the link to svalld, when the robot's mark tells how it ends
 type Run = { at: 'going' } | { at: 'moved' } | { at: 'failed'; step: Step; error: string; moveId?: string; refused: boolean } | { at: 'lost'; error: string };
+// a retry of a stalled move: on its way, or failed with `error`, which the mark's error `over` it retried still stands for
+type Retry = { at: 'running' } | { at: 'failed'; error: string; over: string };
 // where a run stands, the robot's moving mark first: a move stalled after its commit is retried from its step. `reached`
-// is the last step the mark showed, which stands until the move's answer comes; `arrived` is whether the robot is there
+// is the last step a mark showed, none before one came, which stands until the move's answer comes; `arrived` is whether
+// the robot is there
 type Stand = { step: Step; done?: true; failed?: { error: string; moveId?: string; landed: boolean; refused?: boolean } };
 
-function stand(run: Run, moving: Moving | undefined, retrying: boolean, reached: Step, steps: Steps, arrived: boolean): Stand {
-  if (moving?.error && !retrying) return { step: steps[moving.phase], failed: { error: moving.error, moveId: moving.id, landed: true } };
+function stand(run: Run, moving: Moving | undefined, retry: Retry | undefined, reached: Step | undefined, steps: Steps, arrived: boolean): Stand {
+  if (moving?.error && retry?.at !== 'running') {
+    const error = retry?.at === 'failed' && retry.over === moving.error ? retry.error : moving.error;
+    return { step: steps[moving.phase], failed: { error, moveId: moving.id, landed: true } };
+  }
   if (moving) return { step: steps[moving.phase] };
   if (run.at === 'failed') return { step: run.step, failed: { error: run.error, moveId: run.moveId, landed: false, refused: run.refused } };
-  if (run.at === 'lost' && !arrived) return { step: reached, failed: { error: run.error, landed: false } };
-  return run.at === 'going' ? { step: reached } : { step: 'start', done: true };
+  // a lost answer with no mark yet goes on until one comes, or the robot arrives
+  if (run.at === 'lost' && !arrived) return reached ? { step: reached, failed: { error: run.error, landed: false } } : { step: 'check' };
+  return run.at === 'going' ? { step: reached ?? 'check' } : { step: 'start', done: true };
 }
 
 /** What a move of one robot carries, or the first check that stops it, and the one button that starts it. */
@@ -73,12 +80,12 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [asked, setAsked] = useState(0);
   const [answer, setAnswer] = useState<Answer>();
   const [run, setRun] = useState<Run>();
-  const [retrying, setRetrying] = useState(false);
+  const [retried, setRetried] = useState<Retry>();
   const [setup, setSetup] = useState<string>();
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? machineName(s.fleet, m) : 'this Mac'; });
   // a move that fails once the sheet is closed says so in a toast
   const shown = useRef(true);
-  const reached = useRef<Step>('check');
+  const reached = useRef<Step>(undefined);
   const shut = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
   const steps = to ? OUT : BACK;
@@ -120,7 +127,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   // a refusal that comes after the sheet closed offers to open it again, where the refusal shows with its button
   const go = () => {
     if (!params) return;
-    reached.current = 'check';
+    reached.current = undefined;
     setRun({ at: 'going' });
     app.api().call('robot.moveTo', params).then(() => { if (shown.current) setRun({ at: 'moved' }); }, (e: Error) => {
       const refused = e instanceof ApiError && e.code === 'refused';
@@ -132,10 +139,11 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
       else setRun({ at: 'lost', error: e.message });
     });
   };
-  // a retry that fails shows on the robot's mark
+  // a retry that fails says why, until the robot's mark says more
   const retry = (moveId: string) => {
-    setRetrying(true);
-    app.api().call('robot.moveRetry', { moveId }).then(() => { setRetrying(false); setRun({ at: 'moved' }); }, () => setRetrying(false));
+    const over = c.moving?.error ?? '';
+    setRetried({ at: 'running' });
+    app.api().call('robot.moveRetry', { moveId }).then(() => { setRetried(undefined); setRun({ at: 'moved' }); }, (e: Error) => setRetried({ at: 'failed', error: e.message, over }));
   };
   const answerable = refusal && interruptOf(refusal.action);
   const pick = (f: string) => setCarry((was) => (was.includes(f) ? was.filter((x) => x !== f) : [...was, f]));
@@ -150,7 +158,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         }}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
-          <Progress stand={stand(run, c.moving, retrying, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
+          <Progress stand={stand(run, c.moving, retried, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
             robot={c.name} where={where} here={here} setup={setup} close={close}
             again={(s) => {
               if (s.failed?.landed && s.failed.moveId) return retry(s.failed.moveId);

@@ -1078,6 +1078,11 @@ export class Mirror {
     return run;
   }
 
+  /** Resolves once every push to `machine` begun so far has ended, applied or not. */
+  settled(machine: MachineId): Promise<unknown> {
+    return this.chains.get(machine) ?? Promise.resolve();
+  }
+
   /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it. */
   consent(machine: MachineId, item: string, fields: string[], on: boolean): void {
     setConsent(this.o.consent, machine, item, fields, on);
@@ -1346,7 +1351,8 @@ export function mirrorCalls(o: MirrorHomes & {
       } finally {
         clearTimeout(late);
         blobs.delete(id);
-        await fsp.rm(b.dir, { recursive: true, force: true });
+        // the next start removes it; the apply's answer stands
+        await fsp.rm(b.dir, { recursive: true, force: true }).catch((e: Error) => o.log.error(`mirror: ${b.dir} was not removed: ${e.message}`));
       }
     },
   };

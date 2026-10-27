@@ -791,6 +791,29 @@ describe('the agent configuration mirror', () => {
     expect(read(path.join(worker.claudeDir, 'rules/style.md'))).toBe('new\n');
   });
 
+  it('an applied blob that cannot be removed is logged, and the apply still answers with what it wrote', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const stage = path.join(scratch, 'cache');
+    const file = path.join(scratch, 'm.tar');
+    await packMirror(mirrorPlan(mac), file);
+    const connection = { receiveBlob: async (_id: string, into: string) => { fs.copyFileSync(file, into); return { sha256: await fileSha(into) }; } };
+    const errors: string[] = [];
+    const log = { ...silentLogger, error: (msg: string) => { errors.push(msg); } };
+    const m = mirrorCalls({ ...worker, stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log });
+    const rm = fsp.rm;
+    const busy = vi.spyOn(fsp, 'rm').mockImplementation(async (p, o) => {
+      if (path.basename(String(p)).startsWith('mirror-')) throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+      return rm(p, o);
+    });
+    stops.push(() => busy.mockRestore());
+    await m.calls['config.blob']({ id: 'one', sha256: await fileSha(file) });
+    const done = await m.calls['config.apply']({ id: 'one', seq: 1 }) as { written: string[] };
+    expect(done.written).toContain(path.join(worker.claudeDir, 'rules/style.md'));
+    expect(errors).toEqual([expect.stringMatching(/^mirror: .*mirror-.* was not removed: EBUSY/)]);
+  });
+
   it('trust a move seeds while an apply holds the agent files is written after it, so the apply does not write over it', async () => {
     const mac = macHome();
     const worker = farHome();
@@ -808,7 +831,7 @@ describe('the agent configuration mirror', () => {
     let seeding: Promise<unknown> | undefined;
     const spy = vi.spyOn(DurableBatch.prototype, 'settle').mockImplementation(async function (this: DurableBatch) {
       if (!seeding) {
-        seeding = seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false });
+        seeding = seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false, waitMs: 5000 });
         await new Promise((r) => setTimeout(r, 300));
       }
       return settle.call(this);
@@ -932,7 +955,7 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     expect(fs.existsSync(path.join(worker.homedir, '.claude.json'))).toBe(false);
     const app = path.join(worker.homedir, 'code/app');
     fs.mkdirSync(app, { recursive: true });
-    expect(await seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false })).toBe('seeded');
+    expect(await seedTrust('claude', app, { agentHome: worker.claudeDir, homedir: worker.homedir, agentRunning: async () => false, waitMs: 5000 })).toBe('seeded');
     editJson(mac.claudeJson, (j) => { j.mcpServers.extra = { command: 'npx', args: ['extra-mcp'] }; }); await push();
     expect(claudeAdapter.trusts!(worker.claudeDir, { cwd: app })).toBe(true);
     expect(workerJson().mcpServers.extra).toEqual({ command: 'npx', args: ['extra-mcp'] });
