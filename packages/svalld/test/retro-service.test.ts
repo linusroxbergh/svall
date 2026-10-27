@@ -308,7 +308,8 @@ describe('the retro service', () => {
     execFileSync('git', ['init', '-q', repo]);
     finished(w, skill(path.join(repo, '.claude', 'skills', 'publish')), 'repo');
     const fixes = [w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] }), w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })];
-    await vi.waitFor(() => expect(robots).toHaveLength(1));
+    // one fix waits on its robot's start, and the other finds the fix taken
+    expect((await Promise.race(fixes)).results[0].outcome).toBe('fixed');
     await w.retro.mark({ marks: [{ id: 'f1', action: 'dismiss', reason: 'wrong' }] });
     start();
     expect((await Promise.all(fixes)).map((r) => r.results[0].outcome).sort()).toEqual(['fixed', 'robot']);

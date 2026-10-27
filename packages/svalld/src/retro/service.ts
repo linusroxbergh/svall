@@ -186,7 +186,7 @@ export class Retro {
       }
       const repo = target?.class === 'repo' && diff ? await resolveRepo(path.dirname(target.realPath)) : undefined;
       if (target && repo && fits(target, finding.change.text, repo.root)) {
-        // the fix is claimed before the robot starts, as a second would open a second PR
+        // the fix is claimed as the ledger is checked, before the robot starts, as a second would open a second PR
         const was = set('fixed');
         if (was.status === 'fixed') {
           results.push({ id: finding.id, outcome: 'fixed', path: target.path });
