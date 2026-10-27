@@ -1021,6 +1021,15 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
+  it('records in the retro\'s file each session a hook brings, and each one a robot holds as the fleet starts', async () => {
+    const sessions = (home: string) => fs.readFileSync(resolvePaths(home).retroSessions, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as object);
+    const b = await boot();
+    const { c } = await withAgent(b);
+    expect(sessions(b.home)).toEqual([expect.objectContaining({ session: SID, robot: c.id, agent: 'claude' })]);
+    const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+    expect(sessions(again.home)).toEqual([expect.objectContaining({ session: SID, robot: c.id, agent: 'claude' })]);
+  });
+
   it('tells an interrupted agent whose recorded folder is not on this machine where it works now', async () => {
     const b = await boot();
     const { c, transcriptPath } = await withAgent(b);

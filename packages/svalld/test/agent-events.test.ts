@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Robot } from '@svall/protocol';
 import { Config } from '../src/config.js';
@@ -5,6 +7,7 @@ import type { Proc } from '../src/dormancy.js';
 import { AgentEvents } from '../src/fleet/agent-events.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
 import { resolvePaths } from '../src/paths.js';
+import { appendSessions } from '../src/retro/sessions.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -16,7 +19,8 @@ const SERVER = 900_001;
 
 // the events of a fleet that is never started land in the store alone, with ps as the test lists it at the time
 function events(procs: Proc[], delayMs = 20, failures = 0) {
-  const store = Store.load(resolvePaths(makeHome()).state, () => {});
+  const paths = resolvePaths(makeHome());
+  const store = Store.load(paths.state, () => {});
   const c: Robot = {
     id: 'c_a', islandId: 'home', cell: { x: 1, y: 1 }, name: 'a', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [],
     shell: { lastOutputAt: 0 }, unread: false,
@@ -34,9 +38,11 @@ function events(procs: Proc[], delayMs = 20, failures = 0) {
   };
   const ev = new AgentEvents({
     store, config: Config.parse({}), log, render: () => '', processes, refreshLinks: async () => {}, track: () => {},
+    sessions: paths.retroSessions,
   });
   const hook = (name: HookEvent['name'], pid: number, o: Partial<HookEvent> = {}) => ev.apply({ hook: { robotId: 'c_a', backend: 'codex', name, sessionId: SID, pid, ...o } });
-  return { store, hook, said, reads: () => reads };
+  const sessions = () => (fs.existsSync(paths.retroSessions) ? fs.readFileSync(paths.retroSessions, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as object) : []);
+  return { store, hook, said, reads: () => reads, ev, sessions, paths };
 }
 
 describe('AgentEvents and the shared codex server', () => {
@@ -92,5 +98,52 @@ describe('AgentEvents and the shared codex server', () => {
     await hook('Stop', 0);
     expect(reads()).toBe(1);
     expect(store.state.robots.c_a.agent?.status).toBe('done');
+  });
+});
+
+describe('AgentEvents and the retro\'s record of sessions', () => {
+  it('appends a line when a session takes the slot, and an end when it goes', async () => {
+    const { store, hook, sessions } = events([]);
+    store.update((d) => { d.robots.c_a.tmux = { windowId: '@1', paneId: '%1' }; });
+    await hook('SessionStart', 0, { model: 'gpt-6-luna' });
+    await hook('UserPromptSubmit', 0);
+    await hook('SessionEnd', 0);
+    expect(sessions()).toEqual([
+      { at: expect.any(Number), session: SID, robot: 'c_a', island: 'home', cwd: '/tmp', agent: 'codex', model: 'gpt-6-luna' },
+      { at: expect.any(Number), session: SID, end: expect.any(Number) },
+    ]);
+  });
+
+  it('records each session a robot here holds now that the record doesn\'t name, in either terminal', async () => {
+    const { store, ev, sessions, paths } = events([]);
+    const [named, second, far] = ['3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', '5a6b7c8d-1e2f-4a3b-8c4d-9e0f1a2b3c4d', '7c8d9e0f-2a3b-4c5d-8e6f-1a2b3c4d5e6f'];
+    appendSessions(paths.retroSessions, [{ at: 1, session: named, robot: 'c_b' }]);
+    store.update((d) => {
+      d.robots.c_a.agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 1 };
+      d.robots.c_a.second = { cwd: '/elsewhere', unread: false, agent: { kind: 'codex', sessionId: second, status: 'idle', lastActivityAt: 1 } };
+      d.robots.c_b = { ...d.robots.c_a, id: 'c_b', agent: { kind: 'claude', sessionId: named, status: 'idle', lastActivityAt: 1 } };
+      delete d.robots.c_b.second;
+      d.robots.c_w = { ...d.robots.c_b, id: 'c_w', cwd: '/home/w/proj', agent: { kind: 'claude', sessionId: far, status: 'idle', lastActivityAt: 1 } };
+    });
+    const here = (c: { id: string }) => c.id !== 'c_w';
+    ev.recordCurrent(here);
+    ev.recordCurrent(here);
+    expect(sessions().slice(1)).toEqual([
+      expect.objectContaining({ session: SID, robot: 'c_a', cwd: '/tmp', agent: 'claude' }),
+      expect.objectContaining({ session: second, robot: 'c_a', cwd: '/elsewhere', agent: 'codex' }),
+    ]);
+    expect(path.dirname(paths.retroSessions)).toBe(paths.retro);
+  });
+
+  it('writes a session a move brought in full on its first hook, though the hook changes nothing the slot shows', async () => {
+    const { store, hook, sessions, paths } = events([]);
+    appendSessions(paths.retroSessions, [{ at: 1, session: 'elsewhere', robot: 'c_b' }]);
+    store.update((d) => {
+      d.robots.c_a.tmux = { windowId: '@1', paneId: '%1' };
+      d.robots.c_a.agent = { kind: 'codex', sessionId: SID, status: 'idle', lastActivityAt: 1 };
+    });
+    await hook('SessionStart', 0);
+    await hook('UserPromptSubmit', 0);
+    expect(sessions().slice(1)).toEqual([{ at: expect.any(Number), session: SID, robot: 'c_a', island: 'home', cwd: '/tmp', agent: 'codex' }]);
   });
 });

@@ -86,6 +86,9 @@ export function resolvePaths(home: string = svallHome()) {
     linkSock: path.join(home, 'link.sock'),
     // each robot move's journal, on either side of it
     moves: path.join(home, 'journal', 'moves'),
+    // the retro's runs, its ledger, and the record of which robot, island and repo each session ran in
+    retro: path.join(home, 'retro'),
+    retroSessions: path.join(home, 'retro', 'sessions.ndjson'),
     // the home's: the token it issued each worker of this fleet
     workersFile: path.join(home, 'workers.json'),
   };
