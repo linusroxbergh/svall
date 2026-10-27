@@ -315,16 +315,23 @@ export function runtimesOf(s: McpServer): string[] {
   return Object.hasOwn(RUNTIME, base) ? RUNTIME[base] : [base];
 }
 
-/** The command that logs `s` in on the worker, and the port mcp-remote's callback listens on there when its args name one. */
+// Claude Code's MCP sign-in waits on a random port unless MCP_OAUTH_CALLBACK_PORT names one; this is its own fallback
+const CLAUDE_OAUTH_PORT = 3118;
+
+/** The command that logs `s` in on the worker, and the port its callback listens on there when Svall knows it. */
 export function oauthLogin(s: McpServer): { run: string; forward?: number } {
   const argv = [s.command ?? '', ...s.args];
   const remote = argv.findIndex((a) => MCP_REMOTE.test(a));
   const url = remote < 0 ? -1 : argv.findIndex((a, i) => i > remote && /^https?:\/\//.test(a));
   const port = url < 0 ? undefined : argv[url + 1];
   const name = /^[\w.-]+$/.test(s.name) ? s.name : shq(s.name);
+  // a server's own callbackPort wins over the variable in Claude Code
+  const own = s.agent === 'claude' && isDoc(s.raw.oauth) && Number.isInteger(s.raw.oauth.callbackPort) ? s.raw.oauth.callbackPort as number : undefined;
   // mcp-remote logs in once the agent starts it; Codex's and OpenCode's own logins take remote servers only
-  const run = s.agent === 'claude' || remote >= 0 ? s.agent : s.agent === 'codex' ? `codex mcp login ${name}` : `opencode mcp auth ${name}`;
-  return { run, ...(port !== undefined && /^\d+$/.test(port) && { forward: Number(port) }) };
+  const run = remote >= 0 ? s.agent : s.agent === 'codex' ? `codex mcp login ${name}` : s.agent === 'opencode' ? `opencode mcp auth ${name}`
+    : own !== undefined ? 'claude' : `MCP_OAUTH_CALLBACK_PORT=${CLAUDE_OAUTH_PORT} claude`;
+  const forward = remote >= 0 ? (port !== undefined && /^\d+$/.test(port) ? Number(port) : undefined) : own;
+  return { run, ...(forward !== undefined && { forward }) };
 }
 
 /**

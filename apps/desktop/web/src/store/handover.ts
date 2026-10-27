@@ -2,7 +2,7 @@ import type { HandoverChoices } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyEvent, endFollow, followRun, goOn, needsUser, readable, type HandoverEvent, type HandoverRun } from '../handover.js';
-import { applyStep, beginRun, endRun, withoutTokens, type HostRun } from '../host.js';
+import { applyStep, beginRun, endRun, replaceRows, withoutTokens, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
 export type HostConfirm = { name: string; forget: boolean };
@@ -18,8 +18,8 @@ export type HandoverState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
-  // the terminal the panel shows on its machine, and the command typed in it
-  hostTerminal?: { run?: string };
+  // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there
+  hostTerminal?: { run?: string; forward?: number };
   // the registry as the shell last read it, and why it could not
   machines?: MachineRow[];
   machinesError?: string;
@@ -31,11 +31,13 @@ export type HandoverState = {
 export type HandoverActions = {
   setConnectionState(connection: ConnectionState): void;
   toggleHost(open?: boolean, machine?: string): void;
-  openHostTerminal(machine: string, run?: string): void;
+  openHostTerminal(machine: string, run?: string, forward?: number): void;
   closeHostTerminal(): void;
   hostStarted(op: HostOp, args: HostArgs): void;
   hostStep(op: HostOp, event: HostStep): void;
   hostDone(op: HostOp, code: number): void;
+  // the mirror's rows as a tick left them, in place of the run's own
+  hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
   setMachines(machines: MachineRow[], error?: string): void;
   toggleHandover(open?: boolean): void;
@@ -68,13 +70,16 @@ export const createHandoverSlice: StateCreator<App, [], [], HandoverState & Hand
   // the fleet the page already holds stands while its machine is away: only the report changes
   setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
   toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined }; }),
-  openHostTerminal: (machine, run) => set({ hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run } : {} }),
+  openHostTerminal: (machine, run, forward) => set({
+    hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run, ...(forward !== undefined && { forward }) } : {},
+  }),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
   hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, Object.fromEntries((s.machines ?? []).map((m) => [m.id, m.name]))) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
+  hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),
   toggleHandover: (open) => set((s) => ({ handoverOpen: open ?? !s.handoverOpen })),

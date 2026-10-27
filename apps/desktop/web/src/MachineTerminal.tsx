@@ -3,17 +3,17 @@ import { app } from './boot.js';
 import { loginForward } from './host.js';
 
 /**
- * A terminal on the machine, over an ssh of its own, with `run` typed at its prompt for the user to run or change.
- * `onEnd` once the user is done with it or its shell exits.
+ * A terminal on the machine, over an ssh of its own, with `run` typed at its prompt for the user to run or change, and
+ * `forward` the port its login waits on there. `onEnd` once the user is done with it or its shell exits.
  */
-export function MachineTerminal({ name, ssh, run, onEnd }: { name: string; ssh: string; run?: string; onEnd: () => void }) {
+export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name: string; ssh: string; run?: string; forward?: number; onEnd: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
   const end = useRef(onEnd);
   end.current = onEnd;
   const id = `machine:${name}`;
-  const forward = run ? loginForward(run) : undefined;
+  const forward = run ? loginForward(run, port) : undefined;
 
   useEffect(() => {
     const el = ref.current;
@@ -25,7 +25,7 @@ export function MachineTerminal({ name, ssh, run, onEnd }: { name: string; ssh: 
     const ro = new ResizeObserver(move);
     ro.observe(el);
     // the panel scrolls, and is centred in a window that can change size
-    const panel = el.closest('.modal');
+    const panel = el.closest('.host-body');
     panel?.addEventListener('scroll', move);
     window.addEventListener('resize', move);
     // the shell lets go of a surface whose ssh ended

@@ -1,3 +1,4 @@
+import type { SetupRow } from '@svall/protocol';
 import type { ConnectionState, HostArgs, HostOp, HostStep } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
@@ -38,39 +39,39 @@ function withoutIds(text: string, names: MachineNames): string {
 
 const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
 
-/** The phases the checklist shows, and the steps `svall host …` emits inside each. */
+/** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */
 const PHASES = [
-  { phase: 'connect', label: 'Reaching the machine', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'What the machine needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger'] },
-  // the tmux the units start, which the release installed carries
-  { phase: 'companion', label: 'Svall on the machine', steps: ['release', 'upload', 'install', 'tmux', 'uninstall'] },
-  // an upgrade makes a gateway this fleet's worker once its probe passes
-  { phase: 'service', label: 'Running Svall there', steps: ['service', 'identity', 'enrol', 'gateway', 'fleet', 'replicas'] },
-  { phase: 'agents', label: 'Agent CLIs', steps: ['claude', 'codex', 'opencode', 'versions'] },
-  // an upgrade puts the release before back when its probe fails
-  { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback'] },
-  // an add writes the registry after its final probe, and a removal after its uninstall
-  { phase: 'registry', label: "This Mac's list of machines", steps: ['registry'] },
+  { phase: 'connect', label: 'Reaching it', steps: ['name', 'machine', 'ssh', 'master'] },
+  { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger', 'git'] },
+  {
+    phase: 'svall', label: 'Svall there', steps: [
+      'release', 'upload', 'install', 'tmux', 'uninstall', 'service', 'identity', 'enrol', 'gateway', 'fleet', 'replicas', 'systemd', 'worker',
+      'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
+      'config', 'machine id', 'doctor', 'svall',
+    ],
+  },
+  { phase: 'agents', label: 'Agents there', steps: ['claude', 'codex', 'opencode', 'gh', 'versions', 'agents'] },
+  // the mirror's report, each row a `mirror:<key>` step
+  { phase: 'mirror', label: 'Your agent setup', steps: [] },
+  // an upgrade puts the release before back when its probe fails; an add writes the registry after its final probe
+  { phase: 'probe', label: 'Trying it out', steps: ['probe', 'rollback', 'registry'] },
 ] as const;
 
 export type Phase = (typeof PHASES)[number]['phase'] | 'other';
 export type PhaseRows = { phase: Phase; label: string; rows: HostStep[] };
 
-// the checks a machine's own doctor adds
+// the checks a machine's own doctor adds that no phase names
 const OTHER = { phase: 'other' as const, label: 'Checks' };
 
-const phaseOf = (step: string) => PHASES.find((p) => (p.steps as readonly string[]).includes(step)) ?? OTHER;
+const MIRROR = 'mirror:';
+const phaseOf = (step: string): Phase => (step.startsWith(MIRROR) ? 'mirror' : PHASES.find((p) => (p.steps as readonly string[]).includes(step))?.phase ?? 'other');
 
-/** The steps as they arrived, cut into runs of one phase, so a step is never shown out of order. */
+/** Each phase once, in the page's order with the unknown checks last, its steps in the order they arrived. */
 export function groupSteps(steps: HostStep[]): PhaseRows[] {
-  const groups: PhaseRows[] = [];
-  for (const row of steps) {
-    const { phase, label } = phaseOf(row.step);
-    const last = groups.at(-1);
-    if (last?.phase === phase) last.rows.push(row);
-    else groups.push({ phase, label, rows: [row] });
-  }
-  return groups;
+  return [...PHASES, OTHER].flatMap(({ phase, label }) => {
+    const rows = steps.filter((s) => phaseOf(s.step) === phase);
+    return rows.length ? [{ phase, label, rows }] : [];
+  });
 }
 
 /** One `svall host <op>` the page is watching: its steps so far, and the code it ended with. */
@@ -85,6 +86,8 @@ export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {
     ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
     ...(event.action ? { action: plainStep(event.action, names) } : {}),
     ...(event.run ? { run: event.run } : {}),
+    ...(event.forward ? { forward: event.forward } : {}),
+    ...(event.tick ? { tick: event.tick } : {}),
   };
   if (event.status === 'start' && run.steps.some((s) => s.step === event.step)) return run;
   const at = run.steps.findIndex((s) => s.step === event.step && s.status === 'start');
@@ -93,6 +96,16 @@ export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {
 }
 
 export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, running: false, code });
+
+/** A row of the mirror's report as the step `svall host` names it. */
+export const rowToStep = ({ key, ...row }: SetupRow): HostStep => ({ step: `${MIRROR}${key}`, ...row });
+
+/** The run with its mirror rows swapped for `rows` where they stood, or added at its end when it had none. */
+export function replaceRows(run: HostRun, rows: HostStep[]): HostRun {
+  const at = run.steps.findIndex((s) => s.step.startsWith(MIRROR));
+  const rest = run.steps.filter((s) => !s.step.startsWith(MIRROR));
+  return { ...run, steps: at < 0 ? [...rest, ...rows] : [...rest.slice(0, at), ...rows, ...rest.slice(at)] };
+}
 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
@@ -106,8 +119,31 @@ const STEP_LABEL: Record<string, string> = {
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
 };
 
+const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
+// a mirror row's key: a server, by agent or plugin, with the project it belongs to after an @; its login; a variable,
+// command or file by itself; an agent's own config
+const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
+  [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `plugin ${plugin} MCP ${name}`],
+  [/^(\w+):mcp:(.+?)(?:@\/.*)?$/, (agent, name) => `${AGENT_LABEL[agent] ?? agent} MCP ${name}`],
+  [/^oauth:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} login`],
+  [/^(?:var|runtime|unreadable):(.+)$/, (name) => name],
+  [/^maconly:\w+:(.+)$/, (name) => name],
+  [/^claude:plugin:(.+)$/, (plugin) => `plugin ${plugin}`],
+];
+const MIRROR_NAME: Record<string, string> = {
+  'claude:settings': 'settings.json', 'codex:config': 'Codex config.toml', 'opencode:config': 'OpenCode opencode.json', unchecked: 'Not checked',
+};
+
+function mirrorLabel(key: string): string {
+  for (const [pattern, label] of MIRROR_LABEL) {
+    const m = pattern.exec(key);
+    if (m) return label(...m.slice(1));
+  }
+  return MIRROR_NAME[key] ?? key;
+}
+
 /** What a step is called in the panel; one it does not know, as a check the machine's doctor added, by its own name. */
-export const stepLabel = (step: string): string => STEP_LABEL[step] ?? step;
+export const stepLabel = (step: string): string => (step.startsWith(MIRROR) ? mirrorLabel(step.slice(MIRROR.length)) : STEP_LABEL[step] ?? step);
 
 /** What a step said, without the machine the panel already names when the sentence starts with it. */
 export const stepSaid = (row: HostStep, machine: string): string | undefined =>
@@ -122,8 +158,8 @@ export type RunOutcome = { text: string; done?: true; next?: 'rollback' };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-// each step's action, and each failed step that names none
-const thingsLeft = (run: HostRun): number => runActions(run).length + run.steps.filter((s) => s.status === 'fail' && !s.action).length;
+// each distinct action, and each failed step that names none, as the CLI's verdict counts them
+const thingsLeft = (run: HostRun): number => new Set(run.steps.filter((s) => s.action || s.status === 'fail').map((s) => s.action || s.step)).size;
 
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
@@ -205,5 +241,10 @@ export function connectionBanner(c: ConnectionState | undefined, o: { handoverEn
   }
 }
 
-/** The port a login there waits for the browser on: Codex's, on localhost:1455, which a forward from this Mac reaches. */
-export const loginForward = (run: string): number | undefined => (/^codex login\s*$/.test(run) ? 1455 : undefined);
+/** The port Claude Code's MCP sign-in waits on there, which `oauthLogin`'s run names in MCP_OAUTH_CALLBACK_PORT. */
+export const CLAUDE_OAUTH_FORWARD = 3118;
+const CLAUDE_LOGIN = `MCP_OAUTH_CALLBACK_PORT=${CLAUDE_OAUTH_FORWARD} claude`;
+
+/** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, Codex's 1455, or Claude's. */
+export const loginForward = (run: string, forward?: number): number | undefined =>
+  forward ?? (/^codex login\s*$/.test(run) ? 1455 : run === CLAUDE_LOGIN ? CLAUDE_OAUTH_FORWARD : undefined);

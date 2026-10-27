@@ -1,9 +1,10 @@
+import type { MachineId, SetupRow } from '@svall/protocol';
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
-import { groupSteps, machineName, OP_TITLE, outcomeOf, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
+import { groupSteps, machineName, OP_TITLE, outcomeOf, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun } from './host.js';
 import { useApp } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
 
@@ -36,15 +37,24 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
-// the footer: the run's one line, then Done, or Check again on a machine in the registry while something is left
+// the footer: the run's one line, then Stop while it runs, and Done, or Check again on a machine in the registry while something is left
 function Outcome({ run }: { run: HostRun }) {
   const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
-  if (run.running) return <div className="host-note" data-testid="host-running">{OP_TITLE[run.op]}: running…</div>;
+  if (run.running) {
+    return (
+      <div className="host-foot" data-testid="host-running">
+        <span className="host-verdict">{OP_TITLE[run.op]}: running…</span>
+        <div className="acts">
+          <button className="btn" data-testid="host-cancel" onClick={() => app.bridge.send({ type: 'host.cancel' })}>Stop</button>
+        </div>
+      </div>
+    );
+  }
   const o = outcomeOf(run);
   const name = run.args.name;
   return (
-    <div className="host-note" data-testid="host-outcome">
-      {o.text}
+    <div className="host-foot" data-testid="host-outcome">
+      <span className="host-verdict">{o.text}</span>
       <div className="acts">
         {o.next === 'rollback' && (
           <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
@@ -58,35 +68,65 @@ function Outcome({ run }: { run: HostRun }) {
   );
 }
 
+type Terminal = (command: string, forward?: number) => void;
+
+/** One line: what the step is, one sentence, and the one thing to do about it; the recipe behind details. */
+function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
+  const name = run.args.name;
+  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
+  // the tick asked for while svalld pushes it
+  const [asked, setAsked] = useState<boolean>();
+  const [failed, setFailed] = useState<string>();
+  const said = stepSaid(row, name);
+  const idle = !run.running;
+  // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them
+  const tick = (machine: MachineId, on: boolean) => {
+    const show = ({ rows }: { rows: SetupRow[] }) => {
+      const now = app.store.getState().host;
+      if (now?.args.name === name && !now.running) app.store.getState().hostRows(rows.map(rowToStep));
+    };
+    setAsked(on);
+    setFailed(undefined);
+    app.api().call('machines.consent', { machine, item: row.tick!.item, fields: row.tick!.fields, on })
+      .catch((e: Error) => { setFailed(e.message); return app.api().call('machines.setup', { machine }); })
+      .then(show, () => {})
+      .finally(() => setAsked(undefined));
+  };
+  return (
+    <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
+      <span className="host-mark">{MARK[row.status]}</span>
+      <span className="host-name" title={stepLabel(row.step)}>{stepLabel(row.step)}</span>
+      <span className="host-said">
+        {row.action ? <em data-testid={`host-action-${row.step}`}>{row.action}</em> : said}
+        {row.action && said && <details className="ho-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
+        {failed && <span className="host-failed" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
+      </span>
+      {row.tick ? (
+        <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} checked={asked ?? row.tick.on}
+          disabled={!id || asked !== undefined || !idle} title={id ? undefined : 'listed once the machine is added'}
+          onChange={(e) => { if (id) tick(id as MachineId, e.target.checked); }} />
+      ) : row.run && terminal && idle ? (
+        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} title={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+      ) : !row.action && row.status === 'fail' && idle ? (
+        <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>
+          {run.op === 'doctor' ? 'Check again' : 'Try again'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 // terminal: opens a terminal on the machine with a step's command typed, where the panel knows how to reach it
-function Checklist({ run, terminal }: { run: HostRun; terminal?: (command: string) => void }) {
+function Checklist({ run, terminal }: { run: HostRun; terminal?: Terminal }) {
   return (
     <div className="host-steps" data-testid="host-steps">
-      {groupSteps(run.steps).map((group, i) => (
-        <div key={`${group.phase}-${i}`} className="host-phase">
+      {groupSteps(run.steps).map((group) => (
+        <div key={group.phase} className="host-phase">
           <div className="kicker" data-testid="host-phase">{group.label}</div>
-          {group.rows.map((row, at) => (
-            <div key={`${row.step}-${at}`} className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
-              <span className="host-mark">{MARK[row.status]}</span>
-              <span className="host-name">{stepLabel(row.step)}</span>
-              <span className="host-said">
-                {stepSaid(row, run.args.name)}
-                {row.action && <em data-testid={`host-action-${row.step}`}>{row.action}</em>}
-                {row.run && terminal && !run.running && (
-                  <button className="btn set-open" data-testid={`host-terminal-${row.step}`} title={`Opens a terminal on ${run.args.name} with ${row.run} typed, for you to run`}
-                    onClick={() => terminal(row.run!)}>Open terminal</button>
-                )}
-                {!row.action && row.status === 'fail' && !run.running && (
-                  <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>
-                    {run.op === 'doctor' ? 'Check again' : 'Try again'}
-                  </button>
-                )}
-              </span>
-            </div>
-          ))}
+          {group.rows.map((row, at) => <Row key={`${row.step}-${at}`} row={row} run={run} terminal={terminal} />)}
         </div>
       ))}
-      <Outcome run={run} />
     </div>
   );
 }
@@ -170,33 +210,31 @@ export function HostSetup() {
           {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
-        {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} onEnd={ended} /> : (
-          <>
-            {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
-            {confirm && (
-              <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
-                <span>
-                  {confirm.forget ? `Forget drops the route to ${confirm.name} and leaves the machine as it is.` : `Remove uninstalls Svall on ${confirm.name} and drops its route.`}
-                  <span className="ho-sub">{confirm.forget ? 'Svall stays installed there, and a fleet it owns stays where it is.' : 'Its fleets and their files stay on that machine.'}</span>
-                </span>
-                <div className="acts">
-                  <button className="btn dan" data-testid="host-confirm-yes"
-                    onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
-                    {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
-                  </button>
-                  <button className="btn" data-testid="host-confirm-no"
-                    onClick={() => app.store.getState().confirmHost(undefined)}>Cancel</button>
+        <div className="host-body">
+          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} onEnd={ended} /> : (
+            <>
+              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
+              {confirm && (
+                <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
+                  <span>
+                    {confirm.forget ? `Forget drops the route to ${confirm.name} and leaves the machine as it is.` : `Remove uninstalls Svall on ${confirm.name} and drops its route.`}
+                    <span className="ho-sub">{confirm.forget ? 'Svall stays installed there, and a fleet it owns stays where it is.' : 'Its fleets and their files stay on that machine.'}</span>
+                  </span>
+                  <div className="acts">
+                    <button className="btn dan" data-testid="host-confirm-yes"
+                      onClick={() => startHost('remove', confirm.forget ? { name: confirm.name, forget: true } : { name: confirm.name })}>
+                      {confirm.forget ? 'Forget' : 'Remove'} {confirm.name}
+                    </button>
+                    <button className="btn" data-testid="host-confirm-no"
+                      onClick={() => app.store.getState().confirmHost(undefined)}>Cancel</button>
+                  </div>
                 </div>
-              </div>
-            )}
-            {shown && <Checklist run={shown} terminal={machine && ssh ? (run) => app.store.getState().openHostTerminal(machine, run) : undefined} />}
-            {running && (
-              <div className="acts">
-                <button className="btn" data-testid="host-cancel" onClick={() => app.bridge.send({ type: 'host.cancel' })}>Stop</button>
-              </div>
-            )}
-          </>
-        )}
+              )}
+              {shown && <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined} />}
+            </>
+          )}
+        </div>
+        {!term && shown && <Outcome run={shown} />}
       </div>
     </div>
   );

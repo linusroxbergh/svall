@@ -1,5 +1,5 @@
 import { expect, nativeShell, receive, sent, test } from './fixtures.js';
-import type { ToShell } from '../src/bridge.js';
+import type { HostStep, ToShell } from '../src/bridge.js';
 
 // what `svall host add --json` prints, one object per line, with a token in the line a failure carries
 const ADD_STEPS = [
@@ -49,7 +49,7 @@ test('the machines panel stands without the fleet asking for handover, and repor
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
 
-  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching the machine', 'Svall on the machine', 'Agent CLIs', 'Trying it out']);
+  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Trying it out']);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth login');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
@@ -192,7 +192,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await panel.getByTestId('host-terminal-done').click();
   await expect.poll(async () => (await sent(page)).slice(-2)).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
   await expect(panel.getByTestId('host-terminal')).toHaveCount(0);
-  await expect(panel.getByTestId('host-steps')).toBeVisible();
+  await expect(panel.getByTestId('host-running')).toBeVisible();
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
   // a plain terminal types nothing, and closing the panel closes it and checks the machine again
@@ -203,6 +203,136 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await page.getByTestId('host-close').click();
   await expect.poll(async () => (await sent(page)).filter((m) => m.type === 'host.start' || m.type === 'term.close').slice(-2))
     .toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }, { type: 'term.close', id: 'machine:studio' }]);
+});
+
+const MACHINE = '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] };
+const tick = (item: string, field: string, on: boolean) => ({ item, fields: [field], on, preview: [`${field} lin…90`] });
+const unticked = (server: string, agent: string, field: string): HostStep => ({
+  step: `mirror:${agent}:mcp:${server}`, status: 'warn', action: `copy ${server}'s keys to studio`, tick: tick(`${agent}:mcp:${server}`, field, false),
+  detail: `mirrored without ${field} lin…90; or set them in ~/.svall/mirror-overrides on studio`,
+});
+// what a check of studio says before its report: every step there passed
+const PASSED: HostStep[] = [
+  { step: 'ssh', status: 'ok', detail: 'linus@studio accepted an interactive login' },
+  { step: 'release', status: 'ok', detail: '0.5.0, protocol 33' },
+  { step: 'claude', status: 'ok', detail: '2.1.310 (Claude Code), logged in' },
+  { step: 'probe', status: 'ok', detail: 'studio answers' },
+];
+
+/** The Machines pane, with studio in the registry and its check under way. */
+async function checking(page: import('@playwright/test').Page, svall: { port: number; token: string; open: () => Promise<void> }) {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
+  await receive(page, { type: 'host.machines', machines: [STUDIO] });
+  await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
+  return page.getByTestId('host-setup');
+}
+
+const doctor = async (page: import('@playwright/test').Page, events: HostStep[], code = 0) => {
+  for (const event of events) await receive(page, { type: 'host.step', op: 'doctor', event });
+  await receive(page, { type: 'host.done', op: 'doctor', code });
+};
+
+test('the setup page ends in one of three lines: ready, needs N things (a warn with an action counts), or an operation stopped at a step (remove)', async ({ page, svall }) => {
+  const panel = await checking(page, svall);
+  await doctor(page, [...PASSED, unticked('linear', 'claude', 'env.LINEAR_API_KEY'), unticked('github', 'codex', 'env.GITHUB_TOKEN')]);
+  await expect(panel.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
+  // two servers whose keys are not copied are two things, each with its own sentence and tick
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 2 things before robots can move there.Check again');
+  await expect(panel.getByTestId('host-action-mirror:claude:mcp:linear')).toHaveText("copy linear's keys to studio");
+  await expect(panel.getByTestId('host-action-mirror:codex:mcp:github')).toHaveText("copy github's keys to studio");
+  for (const step of ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github']) await expect(panel.getByTestId(`host-tick-${step}`)).not.toBeChecked();
+
+  // a report long enough to scroll keeps the title and the outcome in sight
+  await panel.getByTestId('host-check-again').click();
+  const vars = Array.from({ length: 40 }, (_, i): HostStep => ({ step: `mirror:var:VAR_${i}`, status: 'ok', detail: `VAR_${i} is set on studio` }));
+  await doctor(page, [...PASSED, ...vars]);
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. Robots you move there keep working while this Mac sleeps.Done');
+  await panel.getByTestId('host-step-mirror:var:VAR_39').scrollIntoViewIfNeeded();
+  await expect(panel.getByTestId('host-step-mirror:var:VAR_39')).toBeInViewport();
+  await expect(panel.getByTestId('host-machine')).toBeInViewport();
+  await expect(panel.getByTestId('host-outcome')).toBeInViewport();
+  await expect(panel.getByTestId('host-step-ssh')).not.toBeInViewport();
+
+  await panel.getByTestId('machine-remove').click();
+  await page.getByTestId('host-confirm-yes').click();
+  await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'svall uninstall exited 1' } });
+  await receive(page, { type: 'host.done', op: 'remove', code: 1 });
+  await expect(panel.getByTestId('host-outcome')).toHaveText('Remove stopped at Uninstall: svall uninstall exited 1Check again');
+});
+
+test('a mirror row shows one sentence, a checkbox and details; ticking calls machines.consent with item and fields and the rows come back in place', async ({ page, svall }) => {
+  // svalld behind the page, but for machines.consent, which answers as studio took the keys
+  const asked: unknown[] = [];
+  await page.routeWebSocket((url) => url.port === String(svall.port), (ws) => {
+    const server = ws.connectToServer();
+    ws.onMessage((raw) => {
+      const m = JSON.parse(String(raw)) as { id?: number; method?: string; params?: unknown };
+      if (m.method !== 'machines.consent') { server.send(raw); return; }
+      asked.push(m.params);
+      ws.send(JSON.stringify({ id: m.id, result: { rows: [
+        { key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to studio: env.LINEAR_API_KEY lin…90', tick: tick('claude:mcp:linear', 'env.LINEAR_API_KEY', true) },
+        { key: 'var:X', status: 'ok', detail: 'X is set on studio' },
+      ] } }));
+    });
+  });
+  const panel = await checking(page, svall);
+  await doctor(page, [...PASSED, unticked('linear', 'claude', 'env.LINEAR_API_KEY'), { step: 'mirror:var:X', status: 'ok', detail: 'X is set on studio' }]);
+
+  const row = panel.getByTestId('host-step-mirror:claude:mcp:linear');
+  await expect(row).toHaveAttribute('data-status', 'warn');
+  await expect(row.locator('.host-name')).toHaveText('Claude MCP linear');
+  await expect(panel.getByTestId('host-action-mirror:claude:mcp:linear')).toHaveText("copy linear's keys to studio");
+  // the recipe is folded away behind details
+  const details = panel.getByTestId('host-details-mirror:claude:mcp:linear');
+  await expect(details).toHaveJSProperty('open', false);
+  await details.locator('summary').click();
+  await expect(details).toHaveJSProperty('open', true);
+  await expect(details).toHaveText('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on studio');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 1 thing before robots can move there.Check again');
+
+  await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
+  await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);
+  await expect(row).toHaveAttribute('data-status', 'ok');
+  await expect(row).toContainText('keys copied to studio: env.LINEAR_API_KEY lin…90');
+  await expect(panel.getByTestId('host-tick-mirror:claude:mcp:linear')).toBeChecked();
+  // in place: under Your agent setup, before the variable, and the steps around it untouched
+  expect(await panel.locator('[data-testid^="host-step-"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid'))))
+    .toEqual(['host-step-ssh', 'host-step-release', 'host-step-claude', 'host-step-mirror:claude:mcp:linear', 'host-step-mirror:var:X', 'host-step-probe']);
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. Robots you move there keep working while this Mac sleeps.Done');
+  // nothing ran on the machine for it
+  expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
+});
+
+test('a row with a run opens the terminal with its forward', async ({ page, svall }) => {
+  const logins: HostStep[] = [
+    { step: 'mirror:oauth:claude:mcp:linear', status: 'warn', action: 'log in once on studio', run: 'claude', forward: 3334, detail: 'then /mcp and sign in to linear' },
+    { step: 'mirror:oauth:claude:mcp:notion', status: 'warn', action: 'log in once on studio', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', detail: 'then /mcp and sign in to notion' },
+  ];
+  const panel = await checking(page, svall);
+  await doctor(page, [...PASSED, ...logins]);
+  // one claude logs in to both, as the CLI counts it
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 1 thing before robots can move there.Check again');
+  await expect(panel.getByTestId('host-step-mirror:oauth:claude:mcp:linear').locator('.host-name')).toHaveText('linear login');
+
+  // mcp-remote's sign-in comes back on the port its args name
+  await panel.getByTestId('host-terminal-mirror:oauth:claude:mcp:linear').click();
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('On studio, claude is typed for you');
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 3334 on this Mac');
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio', type: 'claude', forward: 3334 } });
+  await receive(page, { type: 'term.exited', id: 'machine:studio' });
+  expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
+  await doctor(page, [...PASSED, ...logins]);
+
+  // Claude Code's own sign-in, on the port its run fixes
+  await panel.getByTestId('host-terminal-mirror:oauth:claude:mcp:notion').click();
+  await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 3118 on this Mac');
+  expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1))
+    .toMatchObject({ machine: { ssh: 'linus@studio', type: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118 } });
 });
 
 test('a machine is only removed or forgotten once the page has asked', async ({ page, svall }) => {

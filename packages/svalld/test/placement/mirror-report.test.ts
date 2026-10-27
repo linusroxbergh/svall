@@ -53,13 +53,13 @@ describe('the setup rows of the mirror', () => {
     expect(rows(report({ vars: { REMOTE_TOKEN: true } })).find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'REMOTE_TOKEN is set on w1' });
   });
 
-  it('a missing npx is "install npx on w1"; a Mac-only server is skipped and listed; a known-host remote is a login row running claude; config.toml is one row for its key fields', () => {
+  it('a missing npx is "install npx on w1"; a Mac-only server is skipped and listed; a known-host remote is a login row running claude on its fixed sign-in port; config.toml is one row for its key fields', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.notion = { type: 'http', url: 'https://mcp.notion.com/mcp' }; });
     const all = rows(report({ commands: { node: true, npx: false } }));
     expect(all.find(byKey('runtime:npx'))).toMatchObject({ status: 'warn', action: 'install npx on w1', run: 'sudo apt install nodejs npm', detail: 'linear, empty, github need it' });
     expect(all.find(byKey('runtime:node'))).toBeUndefined();
     expect(all.find(byKey('maconly:claude:chrome'))).toMatchObject({ status: 'skip', detail: 'chrome only runs on a Mac; not mirrored' });
-    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'claude', detail: 'then /mcp and sign in to notion' });
+    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', detail: 'then /mcp and sign in to notion' });
     expect(rows(report({ oauth: { 'claude:mcp:notion': true } })).find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'ok', detail: 'logged in on w1' });
     expect(all.filter(byKey('codex:config'))).toMatchObject([{ status: 'warn', action: "copy config.toml's keys to w1", tick: { item: 'codex:config', on: false } }]);
   });
@@ -108,7 +108,7 @@ describe('the setup rows of the mirror', () => {
     const all = rows(undefined, linear);
     expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
     expect(all.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
-    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'claude' });
+    expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude' });
     expect(all.find(byKey('codex:mcp:github'))).toMatchObject({ status: 'warn', action: "copy github's keys to w1" });
     expect(all.filter((r) => r.key.startsWith('runtime:'))).toEqual([]);
     const odd = rows(undefined, linear, { ...O, unchecked: 'not checked: w1 runs another release; upgrade it' });
