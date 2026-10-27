@@ -330,8 +330,8 @@ final class ShellRouter {
         case .retitle:
             webView.window?.title = RemoteConnection.windowTitle(base: SvallHome.displayName, owner: remote.state?.owner ?? "local")
             awake.apply()
-        case .awake(let reason, let battery):
-            awake.hold(reason, battery: battery ?? false)
+        case .awake(let reason):
+            awake.hold(reason)
         case .connectionRetry:
             // a helper that gave up waits to be stopped; one still retrying starts over from the first wait
             guard let helper = Self.connect() else { return }
