@@ -7,7 +7,7 @@ import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.j
 import { hooklessGit } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { hasGit } from '../git-fixture.js';
-import { cleanHomes } from '../helpers.js';
+import { cleanHomes, waitForPolls } from '../helpers.js';
 import { Crash, OSID, SID, listed, moveWorld, state, until, type MoveWorld } from './move-world.js';
 import { H, W } from './world.js';
 
@@ -273,6 +273,35 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     expect(w.vault.opened).toEqual(['c_1']);
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
+  });
+
+  it('a resume that exits back to its shell on the worker stalls the move with its error, the session kept, and Retry resumes it there', async () => {
+    const w = open({ pollMs: 50 });
+    const home = await w.start();
+    // the agent the worker resumes runs a moment and exits before it reports its session, as a Claude without its login does
+    const report = w.vault.started;
+    w.vault.started = () => {};
+    const moved = home.placement.start('c_1', W);
+    await until(() => { expect(w.vault.lines.some((l) => l.text.startsWith('claude --resume'))).toBe(true); });
+    await waitForPolls(w.worker.fleet, 2);
+    for (const win of w.vault.windows.values()) if (win.name === 'c_1') delete win.job;
+    const id = await moved;
+
+    const error = `kanban's terminal resumed claude session ${SID}, but claude exited back to its shell before that session started, so it is dormant again with that session; revive it to see`;
+    const there = w.worker.store.state.robots.c_1;
+    expect(there).toMatchObject({ resumeError: error, agent: { sessionId: SID }, revive: { command: expect.stringContaining(`--resume ${SID}`) } });
+    expect(there.tmux).toBeUndefined();
+    expect(home.placement.status(id)).toMatchObject({ phase: 'activate', error });
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W, moving: { id, phase: 'activate', error } });
+    await until(() => { expect(home.store.state.robots.c_1.resumeError).toBe(error); });
+
+    w.vault.started = report;
+    await home.placement.retry(id);
+
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.moving).toBeUndefined();
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
+    expect(w.worker.store.state.robots.c_1.resumeError).toBeUndefined();
   });
 
   it('a worker that could not seed trust answers the agent\'s trust question as it shows', async () => {

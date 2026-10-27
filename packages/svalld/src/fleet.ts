@@ -890,12 +890,12 @@ export class Fleet extends EventEmitter<Events> {
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
-    const p = this.doRevive(id, prompt, fresh).finally(() => this.reviving.delete(id));
+    const p = this.doRevive(id, prompt, fresh, move !== undefined).finally(() => this.reviving.delete(id));
     this.reviving.set(id, p);
     return p;
   }
 
-  private async doRevive(id: string, prompt: string | undefined, fresh?: string): Promise<Revived> {
+  private async doRevive(id: string, prompt: string | undefined, fresh: string | undefined, byMove: boolean): Promise<Revived> {
     // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     const c = this.robot(id);
@@ -921,7 +921,7 @@ export class Fleet extends EventEmitter<Events> {
     const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
     const moved = gone ? { from: gone, to: cwd } : undefined;
     if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
-    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], id) : undefined;
+    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], byMove, id) : undefined;
     try {
       const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
@@ -1008,12 +1008,12 @@ export class Fleet extends EventEmitter<Events> {
     if (far) return far;
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
-    const p = this.doOpenSecond(id, fresh).finally(() => this.openingSecond.delete(id));
+    const p = this.doOpenSecond(id, fresh, move !== undefined).finally(() => this.openingSecond.delete(id));
     this.openingSecond.set(id, p);
     return p;
   }
 
-  private async doOpenSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Robot> {
+  private async doOpenSecond(id: string, fresh: { command: string; prompt: string } | undefined, byMove: boolean): Promise<Robot> {
     // a second window still closing is not one to open beside
     await this.ending.get(secondName(id));
     const c = this.robot(id);
@@ -1030,7 +1030,7 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);
     }
-    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.robots[id].second, id, 2);
+    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.robots[id].second, byMove, id, 2);
     this.deps.store.update((d) => {
       const cur = d.robots[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };

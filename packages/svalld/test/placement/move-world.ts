@@ -194,11 +194,11 @@ const put = (file: string, data: string): void => {
  * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
  * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
  * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
- * agent configuration.
+ * agent configuration, and with `pollMs` the worker's fleet polls its windows that often.
  */
 export function moveWorld(o: {
   agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push'>; opencode?: boolean; agentRunsThere?: boolean;
-  busy?: boolean;
+  busy?: boolean; pollMs?: number;
 } = {}) {
   const base = fs.realpathSync(makeHome());
   fs.writeFileSync(path.join(base, 'gitconfig'), '');
@@ -294,7 +294,8 @@ export function moveWorld(o: {
     store.update((d) => { Object.assign(d, { ...emptyState(), islands: { i_1: island }, ...structuredClone(state) }); });
   };
   seed(homePaths, { robots });
-  seed(workerPaths, {});
+  // a worker's scribe is off, as main.ts has it
+  seed(workerPaths, { scribeOff: true });
 
   // the worker's Claude has been logged in, so its config file is there
   fs.mkdirSync(farClaude, { recursive: true });
@@ -338,7 +339,7 @@ export function moveWorld(o: {
     });
     const router = new Router({ store, me: W, log: silentLogger, home: { id: H, connection } });
     const fleet = new Fleet({
-      store, tmux, paths: workerPaths, config, log: silentLogger, remote: router,
+      store, tmux, paths: workerPaths, config, log: silentLogger, remote: router, pollMs: o.pollMs,
       report: (r) => connection.report(r), created: (c, p) => mutations.created(c, p), readProcs: async () => [], processes: async () => [],
     });
     const mutations = new WorkerMutations({
@@ -357,6 +358,10 @@ export function moveWorld(o: {
       'system.info': async () => ({ agentAdapters: [farAdapter] }),
     });
     await fleet.reconcileNow();
+    if (o.pollMs) {
+      fleet['poll'].start();
+      stops.push(() => fleet['poll'].stop());
+    }
     await connection.start();
     stops.push(() => connection.stop());
     const daemon = { store, fleet, connection, prepare, handlers, outbox, mutations, life };

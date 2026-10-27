@@ -24,11 +24,11 @@ const RESUME_MS = 60_000;
 /** A resume typed into a revived terminal: the session it resumes and the command that resumes it again. */
 export type Resume = { robotId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
 
-// the resume a revive types, when it brings back the session of a terminal that could not resume it; any other resume
-// that fails leaves its terminal at the shell
-export function resumeOf(slot: TerminalSlot | undefined, robotId: string, term?: 2): Resume | undefined {
+// the resume a revive types, when it brings back the session of a terminal a move carries or that could not resume it;
+// any other resume that fails leaves its terminal at the shell
+export function resumeOf(slot: TerminalSlot | undefined, moved: boolean, robotId: string, term?: 2): Resume | undefined {
   const { agent, revive } = slot ?? {};
-  if (!agent || !revive?.command.includes(agent.sessionId) || slot?.resumeError === undefined) return undefined;
+  if (!agent || !revive?.command.includes(agent.sessionId) || (!moved && slot?.resumeError === undefined)) return undefined;
   return { robotId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
