@@ -86,6 +86,10 @@ final class GhosttyRuntime {
             let ms = action.action.child_exited.timetime_ms
             DispatchQueue.main.async { view?.onChildExited?(ms) }
             return true
+        // Ghostty's own ⌃⌘F, which a focused terminal takes before View's Enter Full Screen sees it
+        case GHOSTTY_ACTION_TOGGLE_FULLSCREEN:
+            DispatchQueue.main.async { view?.window?.toggleFullScreen(nil) }
+            return true
         case GHOSTTY_ACTION_OPEN_URL:
             let raw = action.action.open_url
             let text = String(decoding: UnsafeRawBufferPointer(start: raw.url, count: Int(raw.len)), as: UTF8.self)

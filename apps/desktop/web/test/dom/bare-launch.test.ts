@@ -101,14 +101,20 @@ test('a bare launch with one fleet offers nothing, and a launch that named one n
   expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
 });
 
-test('Open Fleet… opens the picker before svalld ever answers, and a fleet the shell could not open closes it and says why', async () => {
+test('the menu bar offers its commands once the keys work, and a fleet the shell could not open closes the picker and says why', async () => {
   port = 0;
+  const handler = window.webkit!.messageHandlers!.svall!;
+  const post = handler.postMessage;
+  const types: string[] = [];
+  handler.postMessage = (json) => { types.push((JSON.parse(json) as { type: string }).type); post(json); };
   const { initApp } = await import('../../src/boot.js');
   const { store } = initApp();
   await vi.advanceTimersByTimeAsync(1);
-  store.getState().setMissionPrompt(true);
-  fromShell({ type: 'fleets' });
-  expect(store.getState()).toMatchObject({ fleetPicker: 'menu', missionPrompt: false });
+  expect(types).not.toContain('menu.state');
+  port = 47001;
+  await vi.advanceTimersByTimeAsync(250);
+  expect(types).toContain('menu.state');
+  store.getState().setFleetPicker('menu');
   fromShell({ type: 'openFleet.failed', home: '/u/.svall-work', reason: 'The application could not be found.' });
   expect(store.getState().toast?.text).toBe('Could not open /u/.svall-work: The application could not be found.');
   expect(store.getState().fleetPicker).toBeUndefined();

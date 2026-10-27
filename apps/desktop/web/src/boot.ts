@@ -7,7 +7,8 @@ import { installDropHandlers } from './drop.js';
 import { setAppStore } from './hooks.js';
 import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
-import { installKeyHandlers, openFleetPicker } from './keyboard.js';
+import { installKeyHandlers } from './keyboard.js';
+import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
 import { followResources } from './resources/load.js';
@@ -73,6 +74,7 @@ function createApp(): AppContext {
     // the phone tab in the corner reads the mobile status, and `svall mobile` can change it while the page is offline
     a.onOpen = () => { fleet.load(); loadMobileStatus({ api: a, store }); repoWatch?.resend(); if (offerFleets) offer(); };
     installKeyHandlers({ store, api: a, bridge, browser });
+    if (bridge.present) followMenu({ store, api: a, bridge, browser });
     a.start();
   }
 
@@ -94,8 +96,6 @@ function createApp(): AppContext {
         return;
       }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
-      // the menu's Open Fleet…, which works whatever chord the action is on and before svalld first answers
-      if (m.type === 'fleets') { openFleetPicker(store); return; }
       // the toast sits below a dialog, and this window is where the user stays
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
       if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }

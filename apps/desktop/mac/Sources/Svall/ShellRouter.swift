@@ -29,15 +29,17 @@ final class ShellRouter {
     private var awaySince: Date?
     // the menu's Quit, which shows the chord the page quits with
     private let quitItem: NSMenuItem
+    private let menu: AppMenu
     private lazy var quitFlow = QuitFlow(send: { [weak self] in self?.bridge.send($0) }, isListening: { [weak self] in self?.listening ?? false },
                                          hideWindow: { [weak self] in self?.webView.window?.orderOut(nil) })
 
-    init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem) {
+    init(runtime: GhosttyRuntime, bridge: Bridge, container: NSView, webView: DropWebView, quitItem: NSMenuItem, menu: AppMenu) {
         self.runtime = runtime
         self.bridge = bridge
         self.container = container
         self.webView = webView
         self.quitItem = quitItem
+        self.menu = menu
         surfaces = SurfaceManager(runtime: runtime, container: container, webView: webView)
         browsers = BrowserManager(container: container, webView: webView, storeFile: SvallHome.path + "/browser-store")
 
@@ -65,6 +67,7 @@ final class ShellRouter {
         Updates.shared.onQuit = { [weak self] in self?.quit(quietly: true) }
 
         bridge.onMessage = { [weak self] msg in self?.handle(msg) }
+        menu.send = { [weak self] in self?.bridge.send($0) }
         keys.onChord = { [weak self] chord in
             guard let self else { return }
             // quitting is the shell's own, so it works on a wedged page, except while a settings row waits for that very chord
@@ -122,6 +125,7 @@ final class ShellRouter {
         keys.registered = []
         keys.capturing = false
         setQuit(KeyMonitor.defaultQuit)
+        menu.reset()
         // the page that posted the banners is gone, and the one loading has no record of them
         notifier.clearAll()
         // the page that asked for the hold is gone, and the one loading asks again
@@ -206,6 +210,10 @@ final class ShellRouter {
             keys.capturing = on
         case .keysQuit(let chord):
             setQuit(chord)
+        case .menuState(let chords, let state):
+            menu.show(chords: chords, state: state)
+        case .menuFleets(let fleets, let note):
+            menu.show(fleets: fleets, note: note)
         case .quitAnswer(let unsaved, let working, let placed):
             quitFlow.answered(unsaved: unsaved, working: working, placed: placed)
         case .quitStopped(let ok):
@@ -306,11 +314,6 @@ final class ShellRouter {
         case .awake(let reason):
             awake.hold(reason)
         }
-    }
-
-    /// The menu's Open Fleet…, which the page answers with its picker.
-    func showFleets() {
-        bridge.send(.fleets)
     }
 
     // a fleet whose window is open is brought up; any other opens in a new instance of this app

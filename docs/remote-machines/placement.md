@@ -92,7 +92,9 @@ Mission control's robots stay on this Mac and have no move button.
   `rules/`, `agents/`, `commands/`, `keybindings.json`, plugins and the MCP servers in `~/.claude.json`; Codex's
   `config.toml`, `AGENTS.md` and `~/.agents/skills`; OpenCode's config, commands, skills, agents, plugins and
   `AGENTS.md`; and the fleet's agent profiles. A key in them, such as an MCP server's `env` value, travels only once
-  you tick it for that worker; until then the rest travels without it. Logins never travel. Nor do Svall's own hooks
+  you tick it for that worker; until then the rest travels without it. A file whose keys Svall cannot leave out, such
+  as a plugin's LSP config with a key in its `env` or a subagent defining an MCP server with one, stays on this Mac
+  until you tick it whole. Logins never travel. Nor do Svall's own hooks
   and statusline there, the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
   `awsAuthRefresh`, `otelHeadersHelper`), or a git login in a plugin marketplace's URL. Nor does a credential file in
   those folders or behind a link from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`,

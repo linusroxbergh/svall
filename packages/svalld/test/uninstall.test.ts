@@ -8,6 +8,7 @@ import {
   claudeHooksCurrent, codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
+import { sha256Hex } from '../src/handover/hash.js';
 import { installOpencodePlugin, opencodePaths } from '../src/opencode/install.js';
 import { realDeps } from '../src/mobile.js';
 import type { Run } from '../src/linux/service.js';
@@ -95,6 +96,22 @@ describe('fleetHomes', () => {
 });
 
 describe('runUninstall', () => {
+  it('takes back a key a fleet\'s mirror copied into the agent files its daemons write, by that fleet\'s record', async () => {
+    const f = installed();
+    const claudeDir = path.join(f.root, 'agent/.claude');
+    vi.stubEnv('CLAUDE_CONFIG_DIR', claudeDir);
+    const claudeJson = path.join(claudeDir, '.claude.json');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(claudeJson, JSON.stringify({ mcpServers: { linear: { command: 'npx', env: { LINEAR_API_KEY: 'lin_fake_1234567890' } } } }));
+    const record = JSON.stringify(['.claude.json', 'mcpServers', 'linear', 'env', 'LINEAR_API_KEY']);
+    fs.mkdirSync(path.join(f.home, 'cache'));
+    fs.writeFileSync(path.join(f.home, 'cache/mirror-state.json'), JSON.stringify({
+      files: {}, docs: {}, servers: {}, secrets: { [record]: sha256Hex('lin_fake_1234567890') }, bare: { [record]: { value: '${LINEAR_API_KEY}' } },
+    }));
+    expect(await runUninstall(f.o)).toContain(`took 1 key the mirror copied out of ${claudeJson}`);
+    expect(JSON.parse(fs.readFileSync(claudeJson, 'utf8')).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+  });
+
   it('removes the OpenCode plugin', async () => {
     const { o } = installed();
     installOpencodePlugin(o.opencode);

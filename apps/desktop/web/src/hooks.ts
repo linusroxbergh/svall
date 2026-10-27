@@ -11,6 +11,12 @@ export function useApp<T>(selector: (s: AppState & AppActions) => T): T {
   return useStore(current, selector);
 }
 
+// a side panel's width, as the style of an element that reads it (base.css)
+export function usePanelWidth(side: 'sidebar' | 'card'): React.CSSProperties {
+  const w = useApp((s) => s.sideWidths[side]);
+  return { [side === 'sidebar' ? '--sb-w' : '--side-w']: `${w}px` } as React.CSSProperties;
+}
+
 // while `on`, calls `measure` now and again whenever anything scrolls or the window resizes
 export function useMeasure(on: boolean, measure: () => void): void {
   useLayoutEffect(() => {

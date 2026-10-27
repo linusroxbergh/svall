@@ -73,8 +73,7 @@ export function Map() {
     return p.offset ?? { x: (p.position.x - i.position.x) * theme.cell, y: (p.position.y - i.position.y) * theme.cell };
   };
   return (
-    <div ref={host} className="map" data-testid="map" data-dragging={Boolean(drag) || panning} data-paused={!active || covered} onWheel={camera.onWheel} onDoubleClick={onSeaDoubleClick} {...hostPointer}
-      style={{ '--map-w': `${hostSize.w}px`, '--home-row-top': `${(hi?.collapsed ? theme.home.bar : theme.home.visible * place.homeScale + theme.home.rowGap) + rowH + 24}px` } as React.CSSProperties}>
+    <div ref={host} className="map" data-testid="map" data-dragging={Boolean(drag) || panning} data-paused={!active || covered} onWheel={camera.onWheel} onDoubleClick={onSeaDoubleClick} {...hostPointer}>
       <div className="map-grain" />
       {/* the camera's values sit on the one element that reads them: set on the map, every frame of a zoom would restyle all of it */}
       <div className="map-grid" style={{ '--cell': `${cs}px`, '--gx': `${layout.ox % cs}px`, '--gy': `${layout.oy % cs}px` } as React.CSSProperties} />
@@ -147,7 +146,7 @@ export function Map() {
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
             selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={(c) => statusOf(c, fleet)} links={links}
             failed={resumeErrorOf}
-            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeShift}
+            shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeShift} mapW={hostSize.w}
             scale={place.homeScale} cards={k} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}
             onToggle={() => toggleIsland(deps(), HOME_ISLAND)}
             onArrange={() => arrange()}
@@ -166,7 +165,7 @@ export function Map() {
         {hovered && fleet.islands[hovered.islandId] && <HoverLayer c={hovered} island={fleet.islands[hovered.islandId]} layout={layout} place={place} host={hostSize} />}
         {card && fleet.robots[card] && <TerminalCard key={card} id={card} host={hostSize} />}
         <Toast corner={toastCorner(cardBox, hostSize)} />
-        <ResourcesLayer tip={place.cx - ISLET.margin} />
+        <ResourcesLayer tip={place.cx - ISLET.margin} rowTop={(hi?.collapsed ? theme.home.bar : theme.home.visible * place.homeScale + theme.home.rowGap) + rowH + 24} />
       </div>
     </div>
   );

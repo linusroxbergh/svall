@@ -48,7 +48,7 @@ const PHASES = [
   { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
   {
     phase: 'svall', label: 'Svall there', steps: [
-      'release', 'upload', 'install', 'tmux', 'uninstall', 'service', 'identity', 'enrol', 'systemd', 'worker',
+      'release', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
       'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
       'config', 'machine id', 'doctor', 'svall',
     ],
@@ -113,12 +113,12 @@ const STEP_LABEL: Record<string, string> = {
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
   systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
-  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall',
+  'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
 };
 
 const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
 // a mirror row's key: a server, by agent or plugin, with the project it belongs to after an @; its login; a variable,
-// command or file by itself; an agent's own config
+// command or file by itself; a subagent's file or a marketplace's list; an agent's own config
 const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `plugin ${plugin} MCP ${name}`],
   [/^(\w+):mcp:(.+?)(?:@\/.*)?$/, (agent, name) => `${AGENT_LABEL[agent] ?? agent} MCP ${name}`],
@@ -126,6 +126,8 @@ const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^(?:var|runtime|unreadable):(.+)$/, (name) => name],
   [/^maconly:\w+:(.+)$/, (name) => name],
   [/^claude:plugin:(.+)$/, (plugin) => `plugin ${plugin}`],
+  [/^claude:agent:(.+)$/, (file) => `subagent ${file}`],
+  [/^claude:marketplace:(.+)$/, (market) => `marketplace ${market}`],
 ];
 const MIRROR_NAME: Record<string, string> = {
   'claude:settings': 'settings.json', 'codex:config': 'Codex config.toml', 'opencode:config': 'OpenCode opencode.json', unchecked: 'Not checked',

@@ -23,7 +23,7 @@ beforeEach(() => {
 
 // the shelf lives on the map, which pans on a wheel and calls preventDefault on every press
 function OnMap({ onWheel }: { onWheel?: () => void }) {
-  return <div data-testid="map" onWheel={onWheel}><div className="map-sea" /><ResourcesLayer tip={0} /></div>;
+  return <div data-testid="map" onWheel={onWheel}><div className="map-sea" /><ResourcesLayer tip={0} rowTop={0} /></div>;
 }
 
 test('a press on the map closes the shelf', async () => {

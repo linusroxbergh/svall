@@ -46,7 +46,6 @@ function Screen() {
   const selectedId = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
   const toast = useApp((s) => s.toast);
-  const sideWidths = useApp((s) => s.sideWidths);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace
   const [waiting, setWaiting] = useState(true);
@@ -86,7 +85,7 @@ function Screen() {
           <button data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
         </div>
       )}
-      <div className="main" style={{ '--sb-w': `${sideWidths.sidebar}px`, '--side-w': `${sideWidths.card}px` } as React.CSSProperties}>
+      <div className="main">
         {sidebarOpen && <Sidebar />}
         {sidebarOpen && <SideGrip side="sidebar" />}
         {!sidebarOpen && (

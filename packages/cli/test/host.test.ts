@@ -2161,6 +2161,34 @@ describe('host remove', () => {
     expect(step('uninstall').at(-1)).toMatchObject({ status: 'ok', detail: `on trift.test: kept ${HOME}/.svall; rm -rf '${HOME}/.svall' deletes them` });
   });
 
+  it('shows what the far uninstall did with the keys the mirror copied there, and ends with what is left to do where it could not take one back or one changed there since', async () => {
+    const claudeJson = `${HOME}/.claude.json`;
+    const mcp = `${HOME}/.claude/plugins/cache/mp/acme/1.0.0/.mcp.json`;
+    ssh.reply(['uninstall'], { stdout: [
+      `took 1 key the mirror copied out of ${HOME}/.claude/settings.json`,
+      `could not take the mirror's keys back from ${claudeJson}: ${claudeJson} cannot be parsed`,
+      `left ${mcp}, which holds keys the mirror copied and changed there since`,
+      `removed ${BASE}/current`,
+    ].join('\n') });
+    const registry = registered('trift.test');
+    const out = await removeHost('trift', {}, deps({ registry }));
+    expect(events.filter((e) => e.status !== 'start').at(-1)).toMatchObject({
+      step: 'keys', status: 'warn', action: 'ssh trift.test, then take the keys the mirror copied out of the files named here, or delete those files',
+    });
+    expect(step('keys').at(-1)!.detail!.split('; ')).toEqual([
+      `took 1 key the mirror copied out of ${HOME}/.claude/settings.json`, `could not take the mirror's keys back from ${claudeJson}: ${claudeJson} cannot be parsed`,
+      `left ${mcp}, which holds keys the mirror copied and changed there since`,
+    ]);
+    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then take the keys the mirror copied out of the files named here, or delete those files'] });
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('shows the keys the far uninstall took back as done', async () => {
+    ssh.reply(['uninstall'], { stdout: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${BASE}/current\n` });
+    expect(await removeHost('trift', {}, deps({ registry: registered('trift.test') }))).toEqual({ result: 'ready', actions: [] });
+    expect(step('keys').at(-1)).toMatchObject({ status: 'ok', detail: `took 1 key the mirror copied out of ${HOME}/.claude.json` });
+  });
+
   it('uninstalls nothing on a machine that answers as another than the registry names, as an alias that now leads elsewhere', async () => {
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
     ssh.reply(['uninstall'], { stdout: 'removed\n' });

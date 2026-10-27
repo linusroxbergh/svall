@@ -9,7 +9,7 @@ import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
 
 // the keys also open a robot's link, in the browser that comes up with the socket
-type KeyDeps = Deps & { browser?: BrowserManager };
+export type KeyDeps = Deps & { browser?: BrowserManager };
 
 // keyboard focus goes back to a surface whenever something closes over it: the browser when it is the
 // left pane, otherwise whichever terminal is up
@@ -68,10 +68,10 @@ function closeAllModals(store: AppStore): void {
 // the machines panel holds Esc and the focus, so no other dialog opens while it is up
 export const covered = (s: AppState): boolean => s.hostOpen;
 
-export function openFleetPicker(store: AppStore): void {
+export function openFleetPicker(store: AppStore, mode: 'menu' | 'new' = 'menu'): void {
   if (covered(store.getState())) return;
   closeAllModals(store);
-  store.getState().setFleetPicker('menu');
+  store.getState().setFleetPicker(mode);
 }
 
 export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void> {

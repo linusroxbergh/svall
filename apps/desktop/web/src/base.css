@@ -4,6 +4,10 @@ body { background: var(--surface-1); color: var(--ink); font: var(--text-lg)/var
 textarea { overflow-x: hidden; }
 .app { display: flex; flex-direction: column; height: 100%; }
 .main { position: relative; display: flex; flex: 1; min-height: 0; }
+/* a grip drag changes a panel's width every frame; set on each element that reads it and not inherited, it restyles only
+   those (WebKit never refreshes an explicit inherit of it). untyped: WebKit applies the page zoom to a typed length twice */
+@property --sb-w { syntax: '*'; inherits: false; }
+@property --side-w { syntax: '*'; inherits: false; }
 .connect { display: grid; place-items: center; height: 100%; color: var(--ink-3); text-align: center; }
 /* shown after a beat, so a quick start never flashes it; with motion reduced the contours rest in rings */
 .starting { display: grid; justify-items: center; gap: var(--sp-md); animation: starting-in var(--dur-slow) var(--dur-slow) both; }
@@ -111,6 +115,7 @@ textarea.fld { padding-block: var(--sp-md); }
   outline: 2px solid var(--sand); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-/* the map under a full card, and the map and sidebar while the app is in the background, hold their loops still */
-[data-paused="true"] *, [data-paused="true"] *::before, [data-paused="true"] *::after { animation-play-state: paused !important; }
+/* the map under a full card, and the map and sidebar while the app is in the background, hold their loops still.
+   An svg's own parts are left alone: restyling them all costs a frame, and motion.ts stills the robots */
+[data-paused="true"] :not(svg *), [data-paused="true"] :not(svg *)::before, [data-paused="true"] :not(svg *)::after { animation-play-state: paused !important; }
 .board { flex: 1; min-width: 0; display: flex; flex-direction: column; }
