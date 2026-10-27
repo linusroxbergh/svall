@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { robotOfKey, secondKey } from '@svall/protocol';
+import { FleetEntry, robotOfKey, secondKey } from '@svall/protocol';
+import { actionIds } from '../src/keys.js';
 
 // the shell decodes and encodes each message by hand, so a name changed on one side alone only shows up here
 const ts = fs.readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
@@ -63,6 +64,25 @@ describe('bridge between the page and the shell', () => {
     const keys = swift.match(/enum Keys: String, CodingKey \{ case ([^}]*) \}/)![1]!.split(', ');
     const fields = Object.values(tsUnion('ToShell')).flat().map((f) => f.replace('?', ''));
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
+  });
+});
+
+describe('the menu bar between the page and the shell', () => {
+  const menu = fs.readFileSync(new URL('../../mac/Sources/Svall/AppMenu.swift', import.meta.url), 'utf8');
+  const delegate = fs.readFileSync(new URL('../../mac/Sources/Svall/AppDelegate.swift', import.meta.url), 'utf8');
+  const struct = (name: string) => menu.match(new RegExp(`struct ${name}: Decodable \\{([^}]*)\\}`))![1]!
+    .match(/let [^:]+/g)!.flatMap((l) => l.slice('let '.length).split(/,\s*/)).sort();
+
+  it('the shell decodes the menu\'s state and fleets with the fields the page sends', () => {
+    const state = ts.match(/export type MenuState = \{([^}]*)\}/)![1]!;
+    expect(struct('MenuState')).toEqual([...state.matchAll(/(\w+):/g)].map(([, f]) => f!).sort());
+    expect(struct('MenuFleet')).toEqual(Object.keys(FleetEntry.shape).sort());
+  });
+
+  it('each menu command is an action in keys.ts, or Keyboard Shortcuts', () => {
+    const ids = [...menu.matchAll(/\("[^"]+", "(\w+)"\)/g), ...delegate.matchAll(/commands\.command\("[^"]+", "(\w+)"\)/g)].map(([, id]) => id!);
+    expect(ids).toEqual(expect.arrayContaining(['newRobot', 'toggleView', 'paneChanges', 'toggleSettings']));
+    expect(ids.filter((id) => id !== 'shortcuts' && !(actionIds() as string[]).includes(id))).toEqual([]);
   });
 });
 

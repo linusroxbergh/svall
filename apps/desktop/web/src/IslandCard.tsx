@@ -3,7 +3,7 @@ import { newRobotOn, saveIsland, saveIslandContext } from './actions.js';
 import { app, deps } from './boot.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
-import { useApp } from './hooks.js';
+import { useApp, usePanelWidth } from './hooks.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
@@ -24,12 +24,13 @@ export function IslandCard({ id }: { id: string }) {
   const i = useApp((s) => s.fleet.islands[id]);
   const fleet = useApp((s) => s.fleet);
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === id);
+  const width = usePanelWidth('card');
   if (!i) return null;
   const robots = robotsOf(fleet, id);
   const save = (patch: Omit<Params<'island.update'>, 'id'>) => saveIsland(deps(), id, patch);
   const saveContext = (context: ContextItem[], removed?: string) => saveIslandContext(deps(), id, context, removed);
   return (
-    <aside className="side" data-testid="side-island-card" data-drop={`island:${id}`} data-drop-hover={hover}>
+    <aside className="side" style={width} data-testid="side-island-card" data-drop={`island:${id}`} data-drop-hover={hover}>
       <div className="kicker">Island</div>
       <div className="side-island-head">
         <FollowLine className="h2" aria-label="Island name" key={`name-${id}`} value={i.name} data-testid="side-island-name"

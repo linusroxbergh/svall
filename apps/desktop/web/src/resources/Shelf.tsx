@@ -19,7 +19,7 @@ function refresh(): void {
   for (const id of Object.keys(app.store.getState().ide)) if (id.startsWith('r:')) void checkDisk(deps(), id);
 }
 
-function Shelf({ tip }: { tip: number }) {
+function Shelf({ tip, rowTop }: { tip: number; rowTop: number }) {
   const box = useRef<HTMLDivElement>(null);
   const cols = useApp((s) => s.resourceCols);
   const size = useApp((s) => s.resourceSize);
@@ -44,7 +44,7 @@ function Shelf({ tip }: { tip: number }) {
     return () => window.removeEventListener('pointerdown', away, true);
   }, []);
   return (
-    <div className="res-room">
+    <div className="res-room" style={{ '--home-row-top': `${rowTop}px` } as React.CSSProperties}>
       <div className="res-shelf panel" ref={box} data-testid="resources-shelf" role="dialog" aria-label="Resources" tabIndex={-1}
         data-full={full} data-resizing={resizing}
         style={{ left: `${(1 - w) * 50}%`, top: `${(1 - h) * 50}%`, width: `${w * 100}%`, height: `${h * 100}%`,
@@ -70,7 +70,7 @@ function Shelf({ tip }: { tip: number }) {
 }
 
 /** Mounted with the map, so a close is answered even though the shelf is gone: the surfaces then take the keyboard as they always do. */
-export function ResourcesLayer({ tip }: { tip: number }) {
+export function ResourcesLayer({ tip, rowTop }: { tip: number; rowTop: number }) {
   const open = useApp((s) => s.resourcesOpen);
   useEffect(() => { if (!open) app.store.getState().pageFocusSettled(); }, [open]);
   // a doc waiting to be saved is written before the window goes out of sight
@@ -79,5 +79,5 @@ export function ResourcesLayer({ tip }: { tip: number }) {
     document.addEventListener('visibilitychange', hide);
     return () => document.removeEventListener('visibilitychange', hide);
   }, []);
-  return open ? <Shelf tip={tip} /> : null;
+  return open ? <Shelf tip={tip} rowTop={rowTop} /> : null;
 }

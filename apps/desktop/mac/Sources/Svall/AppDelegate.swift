@@ -22,7 +22,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         }
         for e in runtime.configErrors { NSLog("ghostty config: %@", e) }
 
-        let quitItem = buildMenu()
+        // a fleet has one window, so View carries none of AppKit's tab items
+        NSWindow.allowsAutomaticWindowTabbing = false
+        let menu = AppMenu()
+        let quitItem = buildMenu(menu)
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1280, height: 820),
                           styleMask: [.titled, .closable, .resizable, .miniaturizable], backing: .buffered, defer: false)
         window.delegate = self
@@ -62,7 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         webView.navigationDelegate = self
         content.addSubview(webView)
 
-        router = ShellRouter(runtime: runtime, bridge: bridge, container: content, webView: webView, quitItem: quitItem)
+        router = ShellRouter(runtime: runtime, bridge: bridge, container: content, webView: webView, quitItem: quitItem, menu: menu)
 
         var missingBundle = false
         if let url = Self.devURL {
@@ -130,12 +133,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
 
     // Edit menu key equivalents are what make copy/paste work in the webview's text fields.
     // Quit carries the chord the page quits with, which the router keeps current.
-    private func buildMenu() -> NSMenuItem {
+    private func buildMenu(_ commands: AppMenu) -> NSMenuItem {
         let main = NSMenu()
         let appItem = NSMenuItem(); main.addItem(appItem)
         let appMenu = NSMenu()
         appMenu.addItem(withTitle: "About Svall", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         if let item = Updates.shared.menuItem { appMenu.addItem(item) }
+        appMenu.addItem(.separator())
+        appMenu.addItem(commands.command("Settings…", "toggleSettings"))
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Hide Svall", action: #selector(NSApplication.hide(_:)), keyEquivalent: "h")
         let others = appMenu.addItem(withTitle: "Hide Others", action: #selector(NSApplication.hideOtherApplications(_:)), keyEquivalent: "h")
@@ -150,12 +155,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         quit.target = self
         appItem.submenu = appMenu
 
-        let fileItem = NSMenuItem(); main.addItem(fileItem)
-        let file = NSMenu(title: "File")
-        let openFleet = file.addItem(withTitle: "Open Fleet…", action: #selector(openFleets(_:)), keyEquivalent: "o")
-        openFleet.keyEquivalentModifierMask = [.command, .shift]
-        openFleet.target = self
-        fileItem.submenu = file
+        main.addItem(commands.fileItem)
 
         let editItem = NSMenuItem(); main.addItem(editItem)
         let edit = NSMenu(title: "Edit")
@@ -168,6 +168,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
         edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = edit
+        main.addItem(commands.viewItem)
+        main.addItem(commands.goItem)
 
         // no ⌘M: the page toggles map and board with it
         let windowItem = NSMenuItem(); main.addItem(windowItem)
@@ -178,13 +180,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         windows.addItem(withTitle: "Bring All to Front", action: #selector(NSApplication.arrangeInFront(_:)), keyEquivalent: "")
         windowItem.submenu = windows
         NSApp.windowsMenu = windows
+        main.addItem(commands.helpItem)
 
         NSApp.mainMenu = main
         return quit
-    }
-
-    @objc private func openFleets(_ sender: Any?) {
-        router?.showFleets()
     }
 
     @objc private func uninstall(_ sender: Any?) {

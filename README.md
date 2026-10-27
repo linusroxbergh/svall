@@ -229,8 +229,9 @@ The first build takes several minutes and about 1.5 GB of disk.
 
 - **Fleet**: one daemon, one tmux server, one window. `svall` opens the
   private fleet, and `svall work` opens a separate fleet named `work`, offering
-  to create it the first time. File → Open Fleet… (Cmd+Shift+O) does the same
-  from the app, and Settings renames a fleet.
+  to create it the first time. In the app, the File menu lists this Mac's
+  fleets and makes new ones, Cmd+Shift+O picks one from the keyboard, and
+  Settings renames a fleet.
 - **Island**: a group of robots. Mission control is the fixed one at the
   bottom.
 - **Robot**: one terminal. Type `claude`, `codex` or `opencode` in it and

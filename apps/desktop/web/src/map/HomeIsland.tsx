@@ -16,7 +16,7 @@ const PAD_CELLS = theme.pad / theme.cell;
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land
 // shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them
 export function Home({
-  island, crew, config, collapsed, selected, selectedId, drag, status, failed, links, shift, rowShift, scale, cards = scale, extra,
+  island, crew, config, collapsed, selected, selectedId, drag, status, failed, links, shift, rowShift, mapW, scale, cards = scale, extra,
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,
 }: {
   island: Island;
@@ -32,6 +32,8 @@ export function Home({
   shift: number;
   // the shift the window's width alone gives home: the row wraps by it, so its height never follows the map's zoom
   rowShift: number;
+  // the map's width, which the row wraps within
+  mapW: number;
   scale: number;
   cards?: number;
   extra?: React.ReactNode;
@@ -62,7 +64,7 @@ export function Home({
   const over = drag?.kind === 'figure' && drag.over?.islandId === island.id ? drag.over : undefined;
   const count = crew.filter((c) => !(drag?.kind === 'figure' && drag.id === c.id)).length;
   return (
-    <div className="home" data-testid="home" data-collapsed={collapsed} data-selected={selected} style={{ width: bw, left: `calc(50% + ${shift}px)`, '--home-shift': `${rowShift}px` } as React.CSSProperties}>
+    <div className="home" data-testid="home" data-collapsed={collapsed} data-selected={selected} style={{ width: bw, left: `calc(50% + ${shift}px)` }}>
       {!collapsed && (
         <div className="island" data-drop={`island:${island.id}`} data-drop-hover={dropHover?.kind === 'island' && dropHover.id === island.id}
           style={{ left: 0, bottom: -(bh - pad - theme.home.visible), width: bw, height: bh,
@@ -74,7 +76,7 @@ export function Home({
                 <stop offset="1" stopColor="var(--home-sand-deep)" />
               </linearGradient>
             </defs>
-            <Seabed id="home" sand={sand} cx={cx} cy={cy} bank="var(--home-bank)" />
+            <Seabed sand={sand} cx={cx} cy={cy} bank="var(--home-bank)" />
             <g {...label} style={{ pointerEvents: 'visiblePainted' }}>
               <path className="land" d={sand} fill="url(#s-home)" stroke="rgba(120,104,68,.28)" strokeWidth="1" />
               <path className="land grass" d={dune} fill="rgba(255,250,236,.33)" />
@@ -98,7 +100,8 @@ export function Home({
           })}
         </div>
       )}
-      <div className="hrow" data-testid="home-row" style={{ bottom: collapsed ? theme.home.bar : theme.home.visible * scale + theme.home.rowGap }}>
+      <div className="hrow" data-testid="home-row"
+        style={{ bottom: collapsed ? theme.home.bar : theme.home.visible * scale + theme.home.rowGap, '--map-w': `${mapW}px`, '--home-shift': `${rowShift}px` } as React.CSSProperties}>
         <button className="htog" data-testid="home-toggle" title={collapsed ? 'Show island' : 'Hide island'}
           aria-label={collapsed ? 'Show island' : 'Hide island'} aria-expanded={!collapsed} onPointerDown={stop} onClick={onToggle}>
           <Chevron up={collapsed} />
