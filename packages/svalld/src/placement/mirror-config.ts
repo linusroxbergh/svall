@@ -852,9 +852,10 @@ function agentBlock(source: string): { value: unknown; from: number; count: numb
   // the next key at the top ends the block
   const stop = after.findIndex((l) => /^[^\s#-]|^-\S/.test(l));
   const count = at < 0 ? 0 : 1 + (stop < 0 ? after.length : stop);
-  // a key with an escape in it, or an explicit `?` one, may read as mcpServers too
-  const names = (l: string): boolean => l.includes('mcpServers') || /^\?(\s|$)/.test(l) || /^"[^"]*\\/.test(YAML_KEY.exec(l)?.[1] ?? '');
-  if (lines.some((l, i) => (i < at || i >= at + count) && names(l))) return undefined;
+  // a key with an escape in it, or an explicit `?` one, at any indent may read as mcpServers too, as may a flow mapping
+  const names = (l: string): boolean => l.includes('mcpServers') || /^\?(\s|$)/.test(l.trimStart()) || /^"[^"]*\\/.test(YAML_KEY.exec(l.trimStart())?.[1] ?? '');
+  const first = lines.find((l) => !/^\s*(#|$)/.test(l));
+  if (first?.trimStart().startsWith('{') || lines.some((l, i) => (i < at || i >= at + count) && names(l))) return undefined;
   if (at < 0) return null;
   const head = lines[at].slice(lines[at].indexOf(':') + 1).trim();
   const body: YamlLine[] = [];

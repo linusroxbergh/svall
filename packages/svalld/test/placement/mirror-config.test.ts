@@ -446,6 +446,11 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(agentKeys(md('"mcp\\u0053ervers":', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: esc_fake_3'))).toEqual(['mcpServers']);
     for (const key of ['"mcp\\x53ervers":', '"mcp\\U00000053ervers":']) expect(agentKeys(md(key, '  pg:', '    command: npx', '    env:', '      P: esc_fake_4'))).toEqual(['mcpServers']);
     for (const key of ['? "mcpServers"', '? "mcp\\u0053ervers"']) expect(agentKeys(md(key, ':', '  pg:', '    command: npx', '    env:', '      P: esc_fake_5'))).toEqual(['mcpServers']);
+    const srv = (ind: string) => [`${ind}  pg:`, `${ind}    command: npx`, `${ind}    env:`, `${ind}      P: esc_fake_6`];
+    expect(agentKeys(md(' name: db', ' "mcp\\u0053ervers":', ...srv(' ')))).toEqual(['mcpServers']);
+    expect(agentKeys(md(' name: db', ' ? "mcp\\u0053ervers"', ' :', ...srv(' ')))).toEqual(['mcpServers']);
+    expect(agentKeys(md('{"name": "db", "mcp\\u0053ervers": {"pg": {"command": "npx", "env": {"P": "esc_fake_7"}}}}'))).toEqual(['mcpServers']);
+    expect(agentKeys(md('name: db', 'description: "say \\"hi\\""'))).toEqual([]);
   });
 });
 
