@@ -18,10 +18,10 @@ const failAfter = (stage: keyof DurableStages): Partial<DurableStages> => ({
 
 describe('writeDurable', () => {
   it('creates the directory and writes json at mode 0600 with no temp left behind', () => {
-    const dir = path.join(makeHome(), 'handover');
+    const dir = path.join(makeHome(), 'moves');
     const file = path.join(dir, 'journal.json');
-    writeDurable(file, { phase: 'freeze' });
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ phase: 'freeze' });
+    writeDurable(file, { phase: 'rest' });
+    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ phase: 'rest' });
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
     expect(temps(dir)).toEqual([]);
   });
@@ -111,7 +111,7 @@ describe('writeDurable', () => {
 
 describe('createDurable', () => {
   it('creates a whole file at mode 0600, and refuses a name already taken without touching it', () => {
-    const dir = path.join(makeHome(), 'replicas');
+    const dir = path.join(makeHome(), 'records');
     const file = path.join(dir, 'r.json');
     createDurable(file, { v: 'first' });
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).v).toBe('first');

@@ -36,8 +36,8 @@ function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', 
   });
 }
 
-/** git for a handover, whose repositories may carry another machine's config: it runs no fsmonitor or hook that config names. */
-export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
+/** git that runs no fsmonitor or hook a repository's config names, as that config may be another machine's. */
+export const hooklessGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
 
 /** git asking a remote with this machine's own credentials: it never prompts for one, and answers within 20 s. */
 export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
@@ -55,7 +55,7 @@ export async function must(git: GitRunner, args: readonly string[], cwd: string,
 }
 
 /** `git --version`'s number, or nothing where git cannot run. */
-export async function gitVersion(git: GitRunner = handoverGit): Promise<string | undefined> {
+export async function gitVersion(git: GitRunner = hooklessGit): Promise<string | undefined> {
   const r = await git(['--version'], '/');
   return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;
 }

@@ -24,16 +24,16 @@ not copy credentials, user settings, plugins or real conversations into this rep
 - A completed `Agent` call produced
   `<project>/<uuid>/subagents/agent-*.jsonl` and a matching `agent-*.meta.json`. Those were copied.
   No `sessions-index.json` or file-history content was created by this disposable session, although
-  both forms exist in other observed Claude projects. The test fixture covers a scoped index.
+  both forms exist in other observed Claude projects.
 - A `session-env/<uuid>` directory existed but was empty. The probe deliberately excludes
   `session-env` because it could contain secrets; the real resume succeeded without it.
 - The project transcript's `cwd` metadata changed to the destination path. Historical user text,
   tool arguments and Bash output still mention the source path; those are evidence and must not be
-  blanket-rewritten. The handover's SessionStart context should tell the agent about new paths.
+  blanket-rewritten.
 - Interactive resume prompted to trust the new project folder, then rendered prior turns and
   accepted a new prompt. Published setup must not treat that trust prompt as an auth failure.
 
-## Commands and fixtures
+## Commands
 
 Check the supported binary and login separately on each machine:
 
@@ -51,28 +51,8 @@ installed `SessionStart` hook should be checked for the same fields, then the ac
 `transcriptPath` passed to the adapter. Hook registration lives in `packages/svalld/src/setup.ts`
 and normalization in `packages/svalld/src/hooks/receiver.ts`.
 
-`scripts/spikes/probe-claude-handover.mjs <transcript> <source-cwd> <destination-cwd>
-<destination-config-dir>` copies only the selected UUID transcript, its project-local sidecars,
-an optional per-session index entry and optional file-history directory. It rejects existing
-destination transcripts and session symlinks. It does not copy auth/config files or `session-env`.
-This is a probe, not the production adapter. The adapter (`packages/svalld/src/handover/sessions/`)
-copies the transcript and the session's own folder byte for byte to the same path, and carries every
-Claude Code release from its minimum on.
-
-The checked-in JSONL, index and sidecar fixtures are synthetic. They preserve observed structural
-fields but contain no real prompt, tool result or credential. Run:
-
-```bash
-pnpm vitest run --project svalld test/handover/claude-portability.test.ts
-pnpm typecheck
-```
-
-## Remaining gate for full release confidence
-
-Run the same copied session under a separately authenticated Linux Claude Code installation at a
-different user/home path and version-match the CLI. The current test demonstrates an actual moved
-project path and interactive resume, but not a distinct account/config or OS. Treat those as
-release integration checks, not as already proven by this fixture.
+The adapter (`packages/svalld/src/sessions/`) copies the transcript and the session's own folder byte
+for byte to the same path, and carries every Claude Code release from its minimum on.
 
 ## Versioned session fixtures
 
@@ -84,4 +64,4 @@ Ubuntu 24.04. They were sanitized by replacing the home and probe paths with `/U
 `/home/source`, emails with `user@example.invalid`, the account's organization id with a zero UUID,
 thinking signatures with a placeholder, and any string over 600 characters with its first 200. Record
 structure is unchanged.
-`test/handover/sessions.test.ts` checks the session adapter against each of them.
+`test/sessions/adapters.test.ts` checks the session adapter against each of them.

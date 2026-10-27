@@ -31,7 +31,7 @@ export class Store {
   private writing?: NodeJS.Timeout;
   // a change not yet on disk
   private dirty = false;
-  private batching: () => boolean = () => false;
+  private batching = false;
   // the `withheld` calls under way, the flushes waiting for them to end, and the hold the running code is inside
   private holds = 0;
   private waiting: (() => void)[] = [];
@@ -88,7 +88,7 @@ export class Store {
       const bad = next.robots[id] && Robot.safeParse(next.robots[id]).error;
       if (bad) throw new Error(`robot ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
     }
-    if (!this.batching() && !this.holds) {
+    if (!this.batching && !this.holds) {
       this.commit(next, ops);
       return ops;
     }
@@ -99,12 +99,12 @@ export class Store {
     return ops;
   }
 
-  /** Batches the writes while `when` holds, as for a fleet no handover is moving; otherwise each change is on disk before it is taken. */
-  batchWritesWhile(when: () => boolean): void {
-    this.batching = when;
+  /** Batches the writes from now on; until then each change is on disk before it is taken. */
+  batchWrites(): void {
+    this.batching = true;
   }
 
-  /** Writes nothing while `fn` runs, whatever `batchWritesWhile` says, so what it changes reaches the disk in one write at the next flush. */
+  /** Writes nothing while `fn` runs, batching or not, so what it changes reaches the disk in one write at the next flush. */
   async withheld<T>(fn: () => Promise<T>): Promise<T> {
     const hold = { running: true };
     this.holds++;

@@ -13,7 +13,7 @@ import type { AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
 import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
-import { handoverGit, type GitRunner } from '../../src/links/git.js';
+import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { realPath } from '../../src/path-tools.js';
@@ -349,7 +349,7 @@ export function moveWorld(o: {
     const box = mortal(vault, life);
     const prepare = new PrepareService({
       store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, homeName: 'mac', paths: workerPaths,
-      git: mortalGit(handoverGit, life), cloneGit: mortalGit(handoverGit, life), agents: async () => [{ ...macProbe, home: farHome }], processes: box.processes, kill: box.kill, clock,
+      git: mortalGit(hooklessGit, life), cloneGit: mortalGit(hooklessGit, life), agents: async () => [{ ...macProbe, home: farHome }], processes: box.processes, kill: box.kill, clock,
       agentRunning: async () => !!o.agentRunsThere, log: silentLogger, moves: mortal(new MoveFiles(workerPaths.moves), life), watchMs: 5000, cli: opencode.far.run,
     });
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
@@ -397,7 +397,7 @@ export function moveWorld(o: {
     mac1.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const placement = new Placement({
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, paths: homePaths,
-      git: mortalGit(handoverGit, life), agents: async () => [macProbe], release: RELEASE, homedir: mac,
+      git: mortalGit(hooklessGit, life), agents: async () => [macProbe], release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, kill: mortal(mac1, life).kill, clock, log: silentLogger,
       moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,
     });

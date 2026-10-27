@@ -33,7 +33,7 @@ export function parsePs(stdout: string): Proc[] {
 
 const AGENTS = new Set<string>(['claude', 'codex', 'opencode']);
 const PRIVATE_SERVER = /\sserve\s+--stdio(\s|$)/;
-// the user's one background OpenCode, which serves every session they open and is never a handover's to wait on or end
+// the user's one background OpenCode, which serves every session they open and is never a move's to wait on or end
 const SHARED_SERVICE = /\sserve\s+--service(\s|$)/;
 // the daemon a private server runs its session's terminal panes under
 const PTY_DAEMON = /(^|\/)opencode-pty(\.exe)?(\s|$)/;

@@ -429,17 +429,17 @@ describe('runUninstall', () => {
     expect(fs.existsSync(path.join(f.shimDir, 'svall'))).toBe(false);
   });
 
-  it('on a Mac removes the releases it installed too, and keeps the gateway records', async () => {
+  it('on a Mac removes the releases it installed too, and keeps anything else under the prefix', async () => {
     const f = installed();
     await runSetup(f.o);
     const prefix = path.join(f.root, '.local', 'share', 'svall');
     fs.mkdirSync(path.join(prefix, 'releases', '1.0.0'), { recursive: true });
     fs.mkdirSync(path.join(prefix, 'companions'), { recursive: true });
-    fs.mkdirSync(path.join(prefix, 'gateway', 'fleets'), { recursive: true });
+    fs.mkdirSync(path.join(prefix, 'notes'), { recursive: true });
     fs.symlinkSync(path.join(prefix, 'releases', '1.0.0'), path.join(prefix, 'current'));
 
     await runUninstall({ ...f.o, platform: 'darwin', unitDir: path.join(f.root, 'units'), prefix });
-    expect(fs.readdirSync(prefix)).toEqual(['gateway']);
+    expect(fs.readdirSync(prefix)).toEqual(['notes']);
   });
 
   it('writes nothing on a machine where setup never ran', async () => {

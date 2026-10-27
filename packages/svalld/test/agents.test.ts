@@ -36,7 +36,7 @@ describe('versions', () => {
     expect(compareVersions('2.45', '2.45.0')).toBe(0);
     expect(compareVersions('2.29', '2.31.0')).toBe(-1);
   });
-  it('holds codex to 0.156, and claude to 2.1.251, the oldest release whose sessions a handover carries', () => {
+  it('holds codex to 0.156, and claude to 2.1.251, the oldest release whose sessions a move carries', () => {
     expect(versionOk(AGENTS.codex, 'codex-cli 0.156.0')).toBe(true);
     expect(versionOk(AGENTS.codex, 'codex-cli 0.155.2')).toBe(false);
     expect(versionOk(AGENTS.codex, 'codex-cli 0.142.0-alpha.6')).toBe(false);

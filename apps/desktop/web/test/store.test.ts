@@ -741,7 +741,7 @@ describe('resource groups', () => {
   });
 });
 
-describe('the machine that owns the fleet', () => {
+describe('the machines robots run on', () => {
   it('follows one host operation from its first step to its exit code', () => {
     const store = createAppStore();
     store.getState().hostStarted('add', { name: 'box', ssh: 'u@h' });

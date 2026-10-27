@@ -1,4 +1,4 @@
-// Mocked Claude Code for the integration run: answers the CLI probes a handover makes, and in a terminal runs as an
+// Mocked Claude Code for the integration run: answers the CLI probes a move makes, and in a terminal runs as an
 // agent that posts Svall's hook events (with its own pid) and, after each turn, the context reading its statusLine
 // would send (the transcript's record count as a percentage) to $SVALL_HOME/hooks.sock, and keeps a transcript where
 // Claude Code 2.1.x keeps one (<config>/projects/<slug of the real cwd>/<session>.jsonl). `--resume <id>` finds that

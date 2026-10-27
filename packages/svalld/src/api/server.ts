@@ -28,7 +28,7 @@ type Opts = {
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations;
   remoteWatches?: RemoteWatches; mirror?: Mirror; fleetFlag?: string;
-  // read on every request: activating a handover replaces them in the config they come from
+  // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
 
@@ -240,7 +240,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     let unsub: (() => void) | undefined;
     let left: (() => void) | undefined;
     const aborter = new AbortController();
-    // a phone's login answers to the fleet's list for as long as its socket lasts, and activating a handover can change the list
+    // a phone's login answers to the fleet's list for as long as its socket lasts
     const revoked = (): boolean => {
       if (!login || logins().includes(login)) return false;
       if (ws.readyState === ws.OPEN) ws.close(4401, 'unauthorized');

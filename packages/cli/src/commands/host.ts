@@ -66,7 +66,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
   };
 }
 
-/** A step as a run prints it; a detail of several lines, as the replicas step's, lists them under the step. */
+/** A step as a run prints it; a detail of several lines, as a command there can print, lists them under the step. */
 export const stepLine = (e: StepEvent): string =>
   `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${tickMark(e.tick)}${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
 

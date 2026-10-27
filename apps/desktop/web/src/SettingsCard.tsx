@@ -161,7 +161,7 @@ const checked = (c: NonNullable<MachineRow['check']>): string => {
   return `checked ${when}: ${found}`;
 };
 
-/** Every machine this Mac can hand a fleet to, each with what can be done to it, and a new one last. */
+/** Every machine this Mac runs robots on, each with what can be done to it, and a new one last. */
 function Machines() {
   const machines = useApp((s) => s.machines);
   const error = useApp((s) => s.machinesError);

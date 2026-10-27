@@ -20,7 +20,7 @@ import { SessionError, type CliRun, type SessionAdapter } from './types.js';
 /** Every session adapter, each for one agent kind from its minimum release on. */
 export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter, opencodeAdapter];
 
-/** The agent kinds a handover carries sessions of; it refuses a fleet that runs any other. */
+/** The agent kinds whose sessions a move carries. */
 export const HANDOVER_KINDS: readonly AgentKind[] = [...new Set(SESSION_ADAPTERS.map((a) => a.kind))];
 
 /** The adapter that carries sessions of this CLI release: one whose minimum it has reached. */

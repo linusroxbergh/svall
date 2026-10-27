@@ -3,7 +3,7 @@ import XCTest
 @testable import Svall
 
 final class SurfaceManagerTests: XCTestCase {
-    /// A robot on another machine whose master is gone is not the window route's to wait on: the page asks again at once.
+    /// A robot on another machine whose master is gone: the page asks again at once.
     func testAnAttachOverARobotsOwnRouteWhoseMasterIsGoneExitsAtOnce() {
         var ran: [String] = []
         let container = NSView(), webView = NSView()

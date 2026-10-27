@@ -14,7 +14,7 @@ describe('test isolation', () => {
     expect(process.env.SVALL_TERM).toBeUndefined();
   });
 
-  it("finds a double for every CLI a test could reach the owner's machine through, before the real one", () => {
+  it("finds a double for every CLI a test could reach this machine's own setup through, before the real one", () => {
     const doubles = [process.env.SVALL_TEST_BIN, path.join(import.meta.dirname, 'fixtures/bin')];
     for (const bin of ['claude', 'codex', 'tailscale', 'gh', 'launchctl']) expect(doubles, bin).toContain(onPath(bin, process.env.PATH!));
   });

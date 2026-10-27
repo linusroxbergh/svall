@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
-import { handoverGit } from '../../src/links/git.js';
+import { hooklessGit } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes } from '../helpers.js';
@@ -35,7 +35,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const w = open();
     const home = await w.start();
     const before = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     // a terminal, a second one, a revive, a prompt and a close, asked for while the robot is on its way
     const refused: unknown[] = [];
     let closed: Promise<unknown> | undefined;
@@ -57,7 +57,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     // the worker: the branch with its commit, staged against unstaged, the untracked file, no .env, the session
     expect(state(w, w.farWt)).toEqual(before);
     expect(fs.existsSync(path.join(w.farWt, '.env'))).toBe(false);
-    expect(await fingerprintOf(w.farWt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.farWt, hooklessGit)).toBe(fingerprint);
     const farTranscript = path.join(w.farClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`);
     expect(fs.readFileSync(farTranscript, 'utf8')).toBe(fs.readFileSync(path.join(w.macClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`), 'utf8'));
     const there = w.worker.store.state.robots.c_1;
@@ -69,7 +69,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects[fs.realpathSync(w.clone)]).toEqual({ hasTrustDialogAccepted: true });
     // the Mac: as it was, locked, and the robot placed there with what it left
     expect(state(w, w.wt)).toEqual(before);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(fs.readFileSync(path.join(w.wt, '.env'), 'utf8')).toBe('TOKEN=secret\n');
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
     const here = home.store.state.robots.c_1;
@@ -84,7 +84,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
   it('a failure in prepare reopens the robot at home with its window and the worker has nothing left', async () => {
     const w = open();
     const home = await w.start();
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
 
     await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
@@ -96,7 +96,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.opened).toEqual(['c_1']);
     expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^claude --resume ${SID}`));
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     const [j] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
     expect(home.placement.status(j.slice(0, -'.json'.length))).toMatchObject({ phase: 'aborted', error: 'the disk is full' });
     // the worker: no worktree, no branch, no session, no robot of its own
@@ -160,7 +160,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const farTranscript = path.join(w.farClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`);
     fs.appendFileSync(farTranscript, `${JSON.stringify({ type: 'assistant', sessionId: SID })}\n`);
     const there = state(w, w.farWt);
-    const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+    const fingerprint = await fingerprintOf(w.farWt, hooklessGit);
     // the sheet counts what comes back as the worker holds it
     const check = await home.placement.check('c_1', H);
     if (!check.ok) throw new Error(check.refusal.reason);
@@ -170,7 +170,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const back = await home.placement.start('c_1', H);
 
     expect(state(w, w.wt)).toEqual(there);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(fs.readFileSync(path.join(w.wt, '.env'), 'utf8')).toBe('TOKEN=secret\n');
     expect(listed(w, w.main, w.wt)).toEqual({});
     expect(fs.readFileSync(path.join(w.macClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`), 'utf8')).toBe(fs.readFileSync(farTranscript, 'utf8'));
@@ -341,7 +341,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const home = await w.start();
     const out = await home.placement.start('c_1', W);
     const before = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     w.opencode.mac.sessions.get(OSID)!.messages.push({ id: 'msg_here' });
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
       code: 'refused', message: `OpenCode went on with session ${OSID} on this Mac since the move; save it with opencode session export, then delete it`,
@@ -350,7 +350,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.machine).toBe(W);
     // the Mac worktree keeps the changes it held, locked as the robot left it
     expect(state(w, w.wt)).toEqual(before);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${out}` });
     expect(home.store.state.robots.c_1.left?.fingerprint).toBe(fingerprint);
   });
@@ -455,7 +455,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     fs.appendFileSync(path.join(w.wt, 'b.txt'), 'and on the Mac\n');
     fs.writeFileSync(path.join(w.wt, 'again.md'), 'again\n');
     const now = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     // a prepare that fails there leaves that worktree as the robot left it, locked again, for the next move to take
     at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
     await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
@@ -466,7 +466,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const id = await home.placement.start('c_1', W);
 
     expect(state(w, w.farWt)).toEqual(now);
-    expect(await fingerprintOf(w.farWt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.farWt, hooklessGit)).toBe(fingerprint);
     expect(listed(w, w.clone, w.farWt)).toEqual({});
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
     expect(home.store.state.robots.c_1).toMatchObject({ machine: W, left: { moveId: id, machine: H, path: w.wt, branchSha: now.head } });
@@ -488,7 +488,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     disarm();
     disarm = undefined;
     first.links.stop();
-    const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+    const fingerprint = await fingerprintOf(w.farWt, hooklessGit);
 
     const again = await w.bootHome();
     await again.placement.recoverMoves();

@@ -276,7 +276,7 @@ export function HostSetup() {
                 <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
                   <span>
                     {confirm.forget ? `Forget drops the route to ${confirm.name} and leaves the machine as it is.` : `Remove uninstalls Svall on ${confirm.name} and drops its route.`}
-                    <span className="ho-sub">{confirm.forget ? 'Svall stays installed there, and a fleet it owns stays where it is.' : 'Its fleets and their files stay on that machine.'}</span>
+                    <span className="ho-sub">{confirm.forget ? 'Svall and its fleets stay on that machine.' : 'Its fleets and their files stay on that machine.'}</span>
                   </span>
                   <div className="acts">
                     <button className="btn dan" data-testid="host-confirm-yes"

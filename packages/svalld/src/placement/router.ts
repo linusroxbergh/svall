@@ -5,7 +5,7 @@ import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
-import { handoverGit } from '../links/git.js';
+import { hooklessGit } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { FarPass, type Only } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
@@ -171,7 +171,7 @@ export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId
   if (!Object.hasOwn(o.store.state.robots, id) || c.machine !== o.me) return;
   await o.fleet.closeRobot(id);
   if (c.repo?.isWorktree) {
-    const r = await handoverGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
+    const r = await hooklessGit(['worktree', 'lock', '--reason', `closed robot ${id}`, c.repo.root], c.repo.mainRoot);
     if (r.code !== 0) o.log.error(`${id}: ${c.repo.root} was not locked: ${r.stderr.trim()}`);
   }
 }
@@ -243,7 +243,7 @@ export function workerCalls(o: {
     'repo.probe': async (raw) => {
       const p = RepoProbeParams.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
-      return probeRepo(p.data, handoverGit);
+      return probeRepo(p.data, hooklessGit);
     },
   };
 }

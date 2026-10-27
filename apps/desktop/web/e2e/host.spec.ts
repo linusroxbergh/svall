@@ -11,7 +11,7 @@ const ADD_STEPS = [
   { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth login', run: 'claude auth login' },
   { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
   {
-    step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac: a handover there and back needs the same release on both',
+    step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac: a move there and back needs the same release on both',
     action: 'ssh linus@studio, then claude update', run: 'claude update',
   },
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
@@ -20,7 +20,7 @@ const ADD_STEPS = [
 const fakeShell = (page: import('@playwright/test').Page, port: number, token: string) =>
   nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
 
-test('the machines panel stands without the fleet asking for handover, and reports every step', async ({ page, svall }) => {
+test('the machines panel reads the list as it opens, and reports every step', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
@@ -374,7 +374,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await row.getByTestId('machine-more').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
-  await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
+  await expect(page.getByTestId('host-confirm')).toContainText('Svall and its fleets stay on that machine.');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio', forget: true } });

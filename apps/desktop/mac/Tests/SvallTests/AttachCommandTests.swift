@@ -37,7 +37,7 @@ final class AttachCommandTests: XCTestCase {
         XCTAssertTrue(cmd!.hasPrefix("env TERM=xterm-256color ssh -S '/tmp/svall-501/123-abc'")); XCTAssertTrue(cmd!.contains("'/home/ada lovelace/.svall/tmux.sock'"))
     }
 
-    /// With the helper's master gone, ssh would dial the destination itself, where no check covers which machine answers.
+    /// With the master gone, ssh would dial the destination itself, where no check covers which machine answers.
     func testNoCommandIsBuiltWhileTheMasterDoesNotAnswer() {
         let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
         var asked: [String] = []

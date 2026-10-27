@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { handoverGit } from '../../src/links/git.js';
+import { hooklessGit } from '../../src/links/git.js';
 import { convertMainCheckout, worktreeSlug } from '../../src/placement/convert.js';
 import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -39,7 +39,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(before).toMatch(/ On main: older$/);
     const head = g(main, 'rev-parse', 'HEAD');
 
-    const r = await convertMainCheckout(main, { git: handoverGit, slug: 'kanban-board' });
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban-board' });
     expect(r).toEqual({ root: path.join(main, '.claude/worktrees/kanban-board'), branch: 'kanban-board' });
     expect(stashes(g, main)).toBe(before);
     expect(stashes(g, r.root)).toBe(before);
@@ -66,7 +66,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(staged).toContain('+staged new');
     expect(unstaged).toContain('+unstaged');
 
-    const r = await convertMainCheckout(main, { git: handoverGit, slug: 'kanban' });
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban' });
     expect(g(r.root, 'diff', '--cached')).toBe(staged);
     expect(g(r.root, 'diff')).toBe(unstaged);
     expect(fs.readFileSync(path.join(r.root, 'notes/todo.md'), 'utf8')).toBe('todo\n');
@@ -91,8 +91,8 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     put(main, 'notes.md', 'untracked\n');
     const before = [g(main, 'diff', '--cached'), g(main, 'diff'), g(main, 'status', '--porcelain')];
     // a patch that will not apply there, as under an LFS or eol filter
-    const failing: typeof handoverGit = async (args, cwd) => (args[0] === 'apply' && args.includes('--index')
-      ? { code: 1, stdout: '', stderr: 'error: patch failed: a.txt:1' } : handoverGit(args, cwd));
+    const failing: typeof hooklessGit = async (args, cwd) => (args[0] === 'apply' && args.includes('--index')
+      ? { code: 1, stdout: '', stderr: 'error: patch failed: a.txt:1' } : hooklessGit(args, cwd));
 
     await expect(convertMainCheckout(main, { git: failing, slug: 'kanban' })).rejects.toThrow('patch failed');
 
@@ -116,7 +116,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     put(main, 'a.txt', 'one\nstaged\n');
     g(main, 'add', 'a.txt');
 
-    const r = await convertMainCheckout(main, { git: handoverGit, slug: 'kanban' });
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug: 'kanban' });
     expect(fs.readFileSync(path.join(main, 'lib/f.txt'), 'utf8')).toBe('DIRTY\n');
     expect(g(r.root, 'diff', '--cached', '--name-only')).toBe('a.txt');
     expect(fs.readFileSync(path.join(main, 'a.txt'), 'utf8')).toBe('one\n');
@@ -126,7 +126,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     const hidden = mainCheckout();
     hidden.g(hidden.main, 'update-index', '--assume-unchanged', 'a.txt');
     put(hidden.main, 'a.txt', 'LOCAL\n');
-    await expect(convertMainCheckout(hidden.main, { git: handoverGit, slug: 'kanban' })).rejects.toThrow(/a\.txt.*assume-unchanged/);
+    await expect(convertMainCheckout(hidden.main, { git: hooklessGit, slug: 'kanban' })).rejects.toThrow(/a\.txt.*assume-unchanged/);
     expect(fs.readFileSync(path.join(hidden.main, 'a.txt'), 'utf8')).toBe('LOCAL\n');
     expect(fs.existsSync(path.join(hidden.main, '.claude'))).toBe(false);
     expect(hidden.g(hidden.main, 'branch', '--list', 'kanban')).toBe('');
@@ -138,7 +138,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     merging.g(merging.main, 'commit', '-qm', 'other');
     merging.g(merging.main, 'checkout', '-q', 'main');
     merging.g(merging.main, 'merge', '-q', '--no-ff', '--no-commit', 'other');
-    await expect(convertMainCheckout(merging.main, { git: handoverGit, slug: 'kanban' })).rejects.toThrow(/merge/);
+    await expect(convertMainCheckout(merging.main, { git: hooklessGit, slug: 'kanban' })).rejects.toThrow(/merge/);
     expect(fs.existsSync(path.join(merging.main, '.git/MERGE_HEAD'))).toBe(true);
     expect(fs.existsSync(path.join(merging.main, '.claude'))).toBe(false);
   });
@@ -146,7 +146,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
   it('feat/kanban on robot "Kanban Board" slugs to kanban-board and avoids a taken name', async () => {
     const { main, g } = mainCheckout();
     g(main, 'checkout', '-q', '-b', 'feat/kanban');
-    const o = { main, git: handoverGit };
+    const o = { main, git: hooklessGit };
     expect(await worktreeSlug('Kanban Board', 'feat/kanban', o)).toBe('kanban-board');
     g(main, 'branch', 'kanban-board');
     expect(await worktreeSlug('Kanban Board', 'feat/kanban', o)).toBe('kanban-board-2');
@@ -156,7 +156,7 @@ describe.skipIf(!hasGit)('convertMainCheckout', () => {
     expect(await worktreeSlug('ロボット', 'feat/kanban', o)).toBe('feat-kanban');
     expect(await worktreeSlug(`${'Very Long Robot Name '.repeat(4)}`, 'feat/kanban', o)).toBe('very-long-robot-name-very-long-robot-nam');
 
-    const r = await convertMainCheckout(main, { git: handoverGit, slug });
+    const r = await convertMainCheckout(main, { git: hooklessGit, slug });
     expect(r).toEqual({ root: path.join(main, '.claude/worktrees/kanban-board-3'), branch: 'kanban-board-3' });
     expect(g(main, 'symbolic-ref', '--short', 'HEAD')).toBe('feat/kanban');
   });

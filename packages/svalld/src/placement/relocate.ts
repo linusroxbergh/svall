@@ -2,7 +2,7 @@ import path from 'node:path';
 import { clean, holds } from '../path-tools.js';
 
 /**
- * A handover between two homes: a path under `from` lands at the same place under `to`, and any other keeps its absolute
+ * A move between two homes: a path under `from` lands at the same place under `to`, and any other keeps its absolute
  * path. Homes and paths are read as the inventory reads them, with no `..`, `//` or trailing slash.
  */
 export type Relocation = { from: string; to: string };

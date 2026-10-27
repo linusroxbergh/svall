@@ -106,8 +106,7 @@ export async function removeUnits(o: { unitDir: string; systemctl: boolean; run:
   return done;
 }
 
-// the releases setup installed, the companions a controller fetched and the units' logs; the gateway's
-// ownership records under the same prefix stay, as fleet data does
+// the releases setup installed, the companions a controller fetched and the units' logs; anything else under the prefix stays
 function removeReleases(prefix: string): string[] {
   const done: string[] = [];
   for (const name of ['releases', 'current', 'companions', 'log']) {
@@ -201,7 +200,7 @@ export async function runUninstall(o: {
     );
   }
   // the keys a home's mirror copied into the agent files its daemons wrote, now that nothing runs to write them back; the
-  // mirror is loaded here, as it leads through the move back to the handover modules that load this one
+  // mirror is loaded here, as it leads through docs-sync to the fleet, which loads this one
   const { takeBackCopies } = await import('./placement/mirror.js');
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };

@@ -18,7 +18,7 @@ describe('machine records', () => {
     name: 'trift', ssh: 'trift', platform: 'linux', arch: 'arm64',
     home: '/home/linus', svallBase: '/home/linus/.local/share/svall',
   };
-  it('reads the registry shape from the spec', () => {
+  it('reads a machine record as the registry writes it', () => {
     expect(MachineRecord.parse(record)).toEqual(record);
   });
   it('reads a record an earlier build wrote with named path roots, and leaves them out', () => {

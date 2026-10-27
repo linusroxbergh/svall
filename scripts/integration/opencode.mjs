@@ -1,5 +1,5 @@
 // Mocked OpenCode 2.0.22 for the integration run, run as `opencode` (argv[0]) so ps reads it as the native binary.
-// It answers the CLI calls a handover makes, with `session export|import|delete --standalone` behaving as 2.0.22's do
+// It answers the CLI calls a move makes, with `session export|import|delete --standalone` behaving as 2.0.22's do
 // (an import of an id already there says so on stderr and exits 0). In a terminal, `opencode --standalone [-s <id>]`
 // runs its private `serve --stdio` server in a group of its own, as the real TUI does, and posts the hook lines
 // Svall's plugin would; `-s` on an id it does not hold starts an empty session with that id, as the real one does.

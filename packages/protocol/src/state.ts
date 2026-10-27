@@ -143,7 +143,7 @@ export const Home = z.object({
 export type Home = z.infer<typeof Home>;
 export const defaultHome = (): Home => Home.parse({});
 
-// why a handover could not resume a terminal, kept while it lies dormant and cleared once it next comes up
+// why a resume could not bring a terminal back, kept while it lies dormant and cleared once it next comes up
 const ResumeError = z.string().optional();
 
 // one terminal of a robot: its directory, its live tmux ids while it has a window, and the
@@ -210,7 +210,7 @@ export const defaultColumns = (): Column[] => [
   { id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'In review' }, { id: 'done', name: 'Done' },
 ];
 
-/** The state.json schema this release reads and writes, which both machines of a handover have to share. */
+/** The state.json schema this release reads and writes, which a worker's link has to share with its home. */
 export const STATE_SCHEMA_VERSION = 12;
 
 export const FleetState = z.object({

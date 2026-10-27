@@ -48,7 +48,7 @@ describe('preflight of an agent CLI below its version floor', () => {
 });
 
 describe('preflight of OpenCode', () => {
-  it("says it is signed in only when auth list names a model provider's login, as the handover's checks read it", async () => {
+  it("says it is signed in only when auth list names a model provider's login, as a move's checks read it", async () => {
     const opencode = async (listed: object[]) => (await preflight(deps({
       'opencode --version': 'opencode v2.0.27\n', 'opencode auth list --standalone --format json': `${JSON.stringify(listed)}\n`,
     }))).find((c) => c.name === 'opencode');

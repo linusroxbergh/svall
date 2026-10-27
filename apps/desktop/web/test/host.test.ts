@@ -49,11 +49,11 @@ describe('host run', () => {
     const [other, mine, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
     let run = beginRun('add', { name: 'trift', ssh: 'trift.test' });
     run = applyStep(run, step('master', 'fail', { detail: `trift.test now reaches machine ${other}, not trift (${far})`, action: `point trift.test back at trift (${far})` }));
-    run = applyStep(run, step('machine', 'fail', { detail: `/Users/ada/.svall/owner.json names ${other}, not this machine (${mine}): its daemon runs as that machine` }));
+    run = applyStep(run, step('enrol', 'fail', { detail: `/home/ada/.svall/worker.json names ${other} as its home, not this Mac (${mine})` }));
     run = applyStep(run, step('claude', 'warn', { detail: `/Users/ada/.claude/projects/-app/${other}.jsonl is not there` }));
     expect(run.steps.map((s) => s.detail)).toEqual([
       'trift.test now reaches another machine, not trift',
-      '/Users/ada/.svall/owner.json names another machine, not this machine: its daemon runs as that machine',
+      '/home/ada/.svall/worker.json names another machine as its home, not this Mac',
       `/Users/ada/.claude/projects/-app/${other}.jsonl is not there`,
     ]);
     expect(run.steps[0].action).toBe('point trift.test back at trift');
@@ -66,8 +66,8 @@ describe('host run', () => {
     expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
     expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
-    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`))
-      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`);
+    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`))
+      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`);
     expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4`))
       .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it");
     expect(said(`trift cannot take a copy of this fleet: this fleet belongs to ${other} at generation 5`))
@@ -75,8 +75,8 @@ describe('host run', () => {
     expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
   });
 
-  it('drops an unknown id from a step line without naming a handover', () => {
-    expect(plainStep('stuck in handover 3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', {})).toBe('stuck in handover');
+  it('drops an id it does not know from a step line', () => {
+    expect(plainStep('stuck in move 3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', {})).toBe('stuck in move');
   });
 
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {
@@ -198,7 +198,7 @@ describe('the attended checklist', () => {
 
   it('calls no phase by the name of a step in it', () => {
     const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'service', 'identity', 'authority', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
+      'tmux', 'uninstall', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 

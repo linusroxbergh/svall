@@ -70,12 +70,12 @@ runIf('svalld --worker', () => {
     expect(fs.readFileSync(path.join(config, 'machine.json'), 'utf8')).toBe('{');
   });
 
-  it('a home with worker.json starts with scribe off, no mobile and no gateway, and still answers state.get', async () => {
+  it('a home with worker.json starts with scribe off and no mobile, and still answers state.get', async () => {
     const home = makeHome();
     homes.push(home);
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    // a gateway named in fleet.json is not asked, and leaves the fleet this daemon's to write
+    // fleet.json as an older release left it on a machine it made a gateway
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', gatewayMachineId: crypto.randomUUID() }));
     const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
     const api = await client(d.port, d.token);

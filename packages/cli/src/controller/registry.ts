@@ -9,7 +9,7 @@ import { svallHome } from '@svall/svalld/paths';
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
-/** The alias for the machine the command runs on; ownership is written with ids, so it is never stored. */
+/** The alias for the machine the command runs on; records name a machine by its id, so it is never stored. */
 export const LOCAL = 'local';
 
 /** Why `name` can never be a machine's: it is `local`. */

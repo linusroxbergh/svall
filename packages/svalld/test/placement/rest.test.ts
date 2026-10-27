@@ -224,7 +224,7 @@ describe('restTerminals', () => {
     expect(world.timers()).toBe(0);
   });
 
-  it('lays a terminal to rest with its agent when the fleet took its exit hook and its window close first, as an unfrozen fleet does', async () => {
+  it('lays a terminal to rest with its agent when the fleet took its exit hook and its window close first, as the live fleet does', async () => {
     const { store, world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'idle') })]);
     world.pane(1, { job: [`claude --resume ${SID}`] });
     world.onKill = () => store.update((d) => { delete d.robots.c_ada.agent; markDormant(d.robots.c_ada); });
@@ -1094,7 +1094,7 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [{ robotId: 'c_ada' }] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1']);
-    // the handover did not stop the second, so an abort has nothing of it to bring back, nor a destination to open
+    // the rest did not stop the second, so an abort has nothing of it to bring back, nor a destination to open
     expect(deps.journal.read().stoppedTerminals).toEqual([{ robotId: 'c_ada' }]);
     expect(store.state.robots.c_ada.second).toEqual({
       cwd: '/s', unread: false, agent: agent('claude', 'idle', SID2), revive: { command: `claude --resume ${SID2}` },

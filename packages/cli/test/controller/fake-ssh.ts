@@ -21,11 +21,8 @@ export type FakeSsh = {
   clearReplies: () => void;
   /** takes down the master on a socket, as a network drop or a sleeping laptop would */
   dropMaster: (socket: string) => void;
-  /**
-   * runs every far command on this machine instead, with `path` as its login shell's PATH; a cut takes the link
-   * down once that many bytes have crossed one command, and `undefined` lets it through again
-   */
-  execute: (o: { cutAfterBytes?: number; path?: string }) => void;
+  /** runs every far command on this machine instead, with `path` as its login shell's PATH */
+  execute: (o: { path?: string }) => void;
   clean: () => void;
 };
 
@@ -47,7 +44,7 @@ export function installFakeSsh(): FakeSsh {
     SVALL_FAKE_SSH_LOG: process.env.SVALL_FAKE_SSH_LOG, SVALL_FAKE_SSH_REMOTE_LOG: process.env.SVALL_FAKE_SSH_REMOTE_LOG,
     SVALL_FAKE_SSH_STATE: process.env.SVALL_FAKE_SSH_STATE, SVALL_FAKE_SSH_INFO: process.env.SVALL_FAKE_SSH_INFO,
     SVALL_FAKE_SSH_REPLIES: process.env.SVALL_FAKE_SSH_REPLIES,
-    SVALL_FAKE_SSH_EXEC: process.env.SVALL_FAKE_SSH_EXEC, SVALL_FAKE_SSH_CUT_AFTER: process.env.SVALL_FAKE_SSH_CUT_AFTER,
+    SVALL_FAKE_SSH_EXEC: process.env.SVALL_FAKE_SSH_EXEC,
     SVALL_FAKE_SSH_FAR_PATH: process.env.SVALL_FAKE_SSH_FAR_PATH,
   };
   process.env.PATH = `${bin}:${process.env.PATH ?? ''}`;
@@ -80,8 +77,6 @@ export function installFakeSsh(): FakeSsh {
     },
     execute: (o) => {
       process.env.SVALL_FAKE_SSH_EXEC = '1';
-      if (o.cutAfterBytes) process.env.SVALL_FAKE_SSH_CUT_AFTER = String(o.cutAfterBytes);
-      else delete process.env.SVALL_FAKE_SSH_CUT_AFTER;
       if (o.path) process.env.SVALL_FAKE_SSH_FAR_PATH = o.path;
       else delete process.env.SVALL_FAKE_SSH_FAR_PATH;
     },

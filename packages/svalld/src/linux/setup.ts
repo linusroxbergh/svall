@@ -24,7 +24,7 @@ export const unitDirOf = (homedir: string): string => path.join(homedir, '.confi
 
 const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^svall-svalld@[a-z][a-z0-9-]*\.service$/.test(f);
 
-/** The units setup and provision wrote to `unitDir`: one daemon per fleet, then the gateway. */
+/** The units setup wrote to `unitDir`: one daemon per fleet, then the gateway unit an older release left. */
 export function ourUnits(unitDir: string): string[] {
   const units = fs.existsSync(unitDir) ? fs.readdirSync(unitDir).filter(isOurUnit).sort() : [];
   return [...units.filter((u) => u !== GATEWAY_UNIT), ...units.filter((u) => u === GATEWAY_UNIT)];
@@ -180,7 +180,7 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings === true }));
   done.push(...(opencodeWanted ? installOpencodePlugin(opencode) : removeOpencodePlugin(opencode)));
-  // each fleet's unit `fleet provision` wrote here takes the same template, PATH and env as this fleet's
+  // each other fleet's unit here takes the same template, PATH and env as this fleet's
   const named = ourUnits(o.unitDir).map(fleetOf).filter((f): f is string => f !== undefined && f !== o.fleet);
   const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName)];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));

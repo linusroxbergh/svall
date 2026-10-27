@@ -22,7 +22,7 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
 }
 
 /**
- * The command that resumes a session whose transcript last records a folder this machine lacks (`gone`), as a handover
+ * The command that resumes a session whose transcript last records a folder this machine lacks (`gone`), as a move
  * between homes leaves it: Codex then takes the folder its window opens in, which it records, so the next revive needs
  * nothing more. Any other is `revive` as it is.
  */

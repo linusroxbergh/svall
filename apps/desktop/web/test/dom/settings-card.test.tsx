@@ -274,7 +274,6 @@ test('Machines lists every machine with its ssh, its release and last check, eac
   expect(trift.textContent).toContain('release 0.13.0');
   expect(trift.textContent).toContain('2 warnings');
   expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
-  // no machine is offered as a gateway to make
   expect(screen.queryByTestId('machine-enable')).toBeNull();
   // a rollback is offered only by the upgrade whose own rollback failed
   expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
@@ -309,11 +308,9 @@ test('Machines says when the list could not be read, and offers to read it again
   expect(sent).toEqual([{ type: 'host.list' }]);
 });
 
-test('Machines stands whether or not fleet.json asks for handover, and the fleet pane has no switch for it', () => {
+test('Machines reads the list as it opens', () => {
   store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
   render(<SettingsCard />);
-  show('fleet');
-  expect(screen.queryByTestId('set-handover')).toBeNull();
   show('machines');
   expect(screen.getByTestId('machines')).toBeTruthy();
   expect(sent).toContainEqual({ type: 'host.list' });

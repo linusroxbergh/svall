@@ -6,7 +6,7 @@ export type FoundSession = { home: string; transcript: string; files: string[] }
 
 type Entry = { isFile(): boolean; isDirectory(): boolean; isSymbolicLink(): boolean };
 
-/** The reads discovery makes, so a manifest scan can pass its own. */
+/** The reads discovery makes, so a test can pass its own. */
 export type SessionFs = {
   lstat(p: string): Promise<Entry>;
   readdir(p: string): Promise<Buffer[]>;
@@ -23,7 +23,7 @@ export type ResumeFolder = { cwd: string; repo?: string; root?: string };
 
 export type SessionIssueCode = 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing';
 
-/** Why a session cannot move as it is, with the blocker code a handover reports it under. */
+/** Why a session cannot move as it is; a move reads `code` to tell a diverged destination from the rest. */
 export class SessionError extends Error {
   constructor(readonly code: SessionIssueCode, message: string) {
     super(message);
@@ -57,7 +57,7 @@ export interface SessionAdapter {
   /** Whether the CLI, keeping its files in `home`, starts in bypass mode in `folder` without first warning about it. */
   acceptsBypass?(home: string, folder: ResumeFolder): boolean;
   /**
-   * For a CLI that keeps its sessions in a database of its own: the file under the agent home a handover writes the
+   * For a CLI that keeps its sessions in a database of its own: the file under the agent home a move writes the
    * session out to, which travels with its files and is read back in on the destination rather than placed.
    */
   exportFile?(sessionId: string): string;

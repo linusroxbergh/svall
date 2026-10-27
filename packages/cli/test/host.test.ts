@@ -330,7 +330,7 @@ describe('host add', () => {
       stdout: [
         'release 1.2.3 installed', 'systemctl --user restart svall-svalld@private.service',
         `the private fleet's daemon did not answer: current -> ${BASE}/releases/1.2.2`,
-        'systemctl --user restart svall-svalld@private.service', 'systemctl --user restart svall-gateway.service',
+        'systemctl --user restart svall-svalld@private.service',
       ].join('\n') + '\n',
     });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
@@ -404,7 +404,7 @@ describe('host add', () => {
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
   });
 
-  it("names an OpenCode whose auth list names no model provider as not logged in, as doctor and the handover's checks do", async () => {
+  it("names an OpenCode whose auth list names no model provider as not logged in, as doctor and a move's checks do", async () => {
     healthy({ agents: false });
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[]\n' });
@@ -444,7 +444,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([...mac]) }));
     await d.close();
-    // each machine alone is fine; only a handover between them stops
+    // each machine alone is fine; only a move between them stops
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.280 (Claude Code), logged in' });
     const action = 'ssh trift.test, then claude update, then codex update; on this Mac, run opencode upgrade';
     expect(step('versions').at(-1)).toEqual({
@@ -1830,7 +1830,7 @@ esac
     expect(fs.existsSync(systemctl)).toBe(false);
   });
 
-  it('enrols nothing over a fleet home there that serves another Mac as a worker, and keeps the gateway', async () => {
+  it('enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {
     for (const [worker, detail, action] of [
       [{ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
     ] as const) {
@@ -2356,8 +2356,8 @@ describe('the last line a run prints', () => {
 
   it('lists a detail of several lines under its step', async () => {
     const { stepLine } = await import('../src/commands/host.js');
-    expect(stepLine({ step: 'replicas', status: 'warn', detail: '3.0 MB … in /a; delete it\n1.2 GB … in /b; delete it' }))
-      .toBe('! replicas  3.0 MB … in /a; delete it\n    1.2 GB … in /b; delete it');
+    expect(stepLine({ step: 'install', status: 'fail', detail: 'svall setup exited 1: one line\nanother line' }))
+      .toBe('✗ install  svall setup exited 1: one line\n    another line');
   });
 
   it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {

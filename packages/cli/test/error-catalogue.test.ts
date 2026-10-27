@@ -55,7 +55,7 @@ const sorted = (xs: readonly string[]): string[] => [...new Set(xs)].sort();
 const CODES: Record<string, () => string[]> = {
   '## Connection errors': () => union(SSH, 'export type SshErrorKind ='),
   '### Step statuses': () => union(HOST, 'export type StepStatus ='),
-  // an agent's step and check are named by its kind; Add Machine checks only the agents a handover carries
+  // an agent's step and check are named by its kind; Add Machine checks only the agents a move carries
   '### Steps': () => [...named.steps(HOST), ...HANDOVER_KINDS],
   '### Doctor checks': () => [...named.checks(DOCTOR), ...named.checks(PREFLIGHT), ...named.checks(HOST), ...AGENT_KINDS],
 };

@@ -113,7 +113,7 @@ export const opencodeAdapter: SessionAdapter = {
     try { await heldCopy(sessionId, file, path.join(dir, 'held.json'), cwd, run); } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
 
-  // a copy an earlier handover left here goes, unless it went on past the incoming session
+  // a copy an earlier move left here goes, unless it went on past the incoming session
   async dropSession(sessionId, file, cwd, run, keep) {
     const here = `${file}.here`;
     try {

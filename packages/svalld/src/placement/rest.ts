@@ -83,7 +83,7 @@ export type RestOptions = {
   only?: (t: TerminalRef) => boolean;
 };
 
-// inside the freeze call's budget, with room for the settling that follows an interrupt; a later interrupt extends both
+// inside robot.moveTo's budget, with room for the settling that follows an interrupt; a later interrupt extends both
 const WAIT_MS = 3 * 60_000;
 const SETTLE_MS = 10_000;
 const POLL_MS = 500;
@@ -222,8 +222,8 @@ function recordJournal(journal: RestDeps['journal'], change: (j: RestJournal) =>
 }
 
 /**
- * Brings every live terminal of a frozen fleet to rest and closes its window, leaving both slots of
- * every robot dormant. It rechecks each terminal before touching any, and returns blockers
+ * Brings every live terminal `only` picks to rest and closes its window, leaving both slots of
+ * each robot it picks dormant. It rechecks each terminal before touching any, and returns blockers
  * without closing a window when one is not at rest and the choices do not cover it.
  */
 export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<SettleResult> {
@@ -256,7 +256,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     const { table } = seen;
     x.alive = (group) => table.alive(group);
     const current = new Map(classifyTerminals(x.state, seen.live, seen.table).filter((c) => o.only?.(c) ?? true).map((c) => [keyOf(c), c]));
-    // a frozen fleet opens no window, so the terminals live at the recheck are all there are
+    // a moving robot opens no terminal, so the terminals live at the recheck are all there are
     tracks ??= [...current.entries()].map(([key, c]) => ({ ...refOf(c), key }));
     const steps = tracks.map((t) => ({ t, c: current.get(t.key), s: step(t, current.get(t.key), x) }));
     const blockers = steps.flatMap(({ s }) => (typeof s === 'object' ? [s.blocker] : []));
@@ -303,7 +303,7 @@ const tableOf = (deps: Pick<RestDeps, 'processes'>): NonNullable<RestDeps['proce
 type Owned<P> = { t: TerminalRef; p: P };
 
 /**
- * Waits for the journaled private OpenCode server of each terminal this handover stopped that `closed` picks to exit, as the
+ * Waits for the journaled private OpenCode server of each terminal the rest stopped that `closed` picks to exit, as the
  * export reads the database it writes. One that outlasts the settle time is killed with all it runs, journaled first, as is
  * what an earlier kill journaled that still runs; it throws if any of that still runs a settle time after its SIGKILL.
  */
@@ -354,7 +354,7 @@ export async function serversGone(
 const windows = (deps: RestDeps) => (signal: AbortSignal): Promise<LiveWindow[]> =>
   deps.tmux.listWindows(signal).catch((e: unknown) => { if (noServer(e)) return []; throw e; });
 
-// a hung ps or tmux must fail the rest rather than hold the freeze open, and is told to go
+// a hung ps or tmux must fail the rest rather than hold the move open, and is told to go
 function boundBy(clock: Clock, ms: number): Bounded {
   return async (what, work) => {
     const call = new AbortController();
@@ -387,7 +387,7 @@ async function layToRest(
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
-  // before any window closes, so an abort knows which terminals the handover stopped and which servers to wait for
+  // before any window closes, so an abort knows which terminals the rest stopped and which servers to wait for
   const boot = (deps.bootId ?? bootId)();
   boundary('move.rest.stopped', () => recordJournal(deps.journal, (j) => {
     const live = new Map(open.map(({ t, c }) => [t.key, c.processes.agent?.server]));
@@ -407,9 +407,9 @@ async function layToRest(
   const { stoppedTerminals, terminated } = deps.journal.read();
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
   const ended = new Set(terminated.map(keyOf));
-  // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
+  // the agent each terminal carried before the rest stopped it: its exit hook may have taken it since; one whose
   // window a rest that died closed has no track, and keeps the launch flags that rest recorded. One whose window this rest
-  // has just closed is laid even when an unfrozen fleet saw the close first and marked it dormant without its agent
+  // has just closed is laid even when the live fleet saw the close first and marked it dormant without its agent
   const lay = (d: FleetState, t: TerminalRef, closing = false) => {
     const c = d.robots[t.robotId];
     const slot = c && (t.term === 2 ? c.second : c);
@@ -444,7 +444,7 @@ async function layToRest(
       lay(d, t, true);
     });
   }
-  // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
+  // and the terminals whose window had already gone, among them any whose window a rest that died closed for this move
   deps.store.update((d) => {
     for (const id of Object.keys(d.robots)) {
       for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) if (o.only?.(t) ?? true) lay(d, t);

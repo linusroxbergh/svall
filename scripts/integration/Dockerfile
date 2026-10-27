@@ -1,8 +1,8 @@
 # One disposable Ubuntu 24.04 machine for the integration runs: systemd as PID 1 (the companion runs as systemd user
-# units), polkit, which lets an account turn lingering on as Ubuntu Server's does, sshd, and the tools a handover
+# units), polkit, which lets an account turn lingering on as Ubuntu Server's does, sshd, and the tools a move
 # drives. No Node and no checkout: the release brings its own. The `machine`
 # stage has no account yet, as a fresh install needs one at the controller's home path; the last stage adds the
-# handover run's.
+# placement run's.
 FROM ubuntu:24.04 AS machine
 
 ENV DEBIAN_FRONTEND=noninteractive

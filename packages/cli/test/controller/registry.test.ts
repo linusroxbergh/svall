@@ -108,13 +108,13 @@ describe('machine registry', () => {
     expect(registry.list().map((m) => m.record.name).sort()).toEqual(['kolvik', 'trift']);
     expect(registry.get('nowhere')).toBeUndefined();
 
-    registry.rename('trift', 'gateway-box');
+    registry.rename('trift', 'build-box');
     registry.save();
-    expect(read(dir).machines[added.id].name).toBe('gateway-box');
+    expect(read(dir).machines[added.id].name).toBe('build-box');
 
     const reloaded = MachineRegistry.load(dir, { hostname: 'kolvik' });
-    expect(reloaded.get('gateway-box')?.id).toBe(added.id);
-    reloaded.remove('gateway-box');
+    expect(reloaded.get('build-box')?.id).toBe(added.id);
+    reloaded.remove('build-box');
     reloaded.save();
     expect(Object.keys(read(dir).machines)).toEqual([reloaded.localId]);
   });

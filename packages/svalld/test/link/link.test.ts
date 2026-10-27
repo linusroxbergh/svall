@@ -186,7 +186,7 @@ describe('the link', () => {
     w.outbox.ack(1);
     w.store.subscribe(() => { w.seen.push(`snapshot taken: ${w.store.state.robots.r_1.name}`); });
     // the home batches its writes, as the daemon's store does; each ack finds its event's change, or a later one's, on disk
-    w.home.batchWritesWhile(() => true);
+    w.home.batchWrites();
     const onDisk: string[] = [];
     const ack = w.outbox.ack.bind(w.outbox);
     w.outbox.ack = (seq) => { onDisk.push(`${seq} ${Store.load(path.join(w.homePaths.home, 'state.json'), () => {}).state.robots.r_1.cwd}`); ack(seq); };
@@ -393,7 +393,7 @@ describe('the link', () => {
     const logged: string[] = [];
     const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
     // the home batches its writes, as the daemon's store does
-    w.home.batchWritesWhile(() => true);
+    w.home.batchWrites();
     await w.worker.start();
     const links = w.links();
     links.start();
@@ -552,7 +552,7 @@ describe('the link', () => {
 
   it('the worker acks no snapshot it could not write, and closes the link instead', async () => {
     const w = world();
-    w.store.batchWritesWhile(() => true);
+    w.store.batchWrites();
     await w.worker.start();
     const links = w.links();
     links.start();

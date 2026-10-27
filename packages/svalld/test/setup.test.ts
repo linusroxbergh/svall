@@ -716,7 +716,7 @@ esac
   it('seeds the home folder whatever fleet.json, ~/.config/svall and owner.json name', async () => {
     const home = makeHome();
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ home: { cwd: path.join(home, 'mc') }, gatewayMachineId: '99999999-2222-3333-4444-555555555555' }));
-    // the id a daemon ran as while it could not read ~/.config/svall
+    // an owner.json an older release left
     fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: '11111111-2222-3333-4444-555555555555', generation: 0, ownerMachineId: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
     const config = path.join(makeHome(), '.config');
     fs.mkdirSync(config, { mode: 0o555 });

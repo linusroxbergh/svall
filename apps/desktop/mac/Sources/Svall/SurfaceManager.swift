@@ -29,7 +29,7 @@ enum ConnectionRoute: Equatable {
     case remote(RemoteRoute)
 }
 
-/// The shell command a surface runs to attach to a robot's tmux session, here or on the owner's machine.
+/// The shell command a surface runs to attach to a robot's tmux session, here or on the machine it runs on.
 enum AttachCommand {
     static func quote(_ s: String) -> String {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -72,7 +72,7 @@ enum MachineCommand {
             guard (1024...65535).contains(port) else { return nil }
             forward = " -o ExitOnForwardFailure=yes -L 127.0.0.1:\(port):localhost:\(port)"
         }
-        // Linux ships no xterm-ghostty terminfo, as for an attach on the owner's machine
+        // Linux ships no xterm-ghostty terminfo, as for an attach to a robot there
         return "env TERM=xterm-256color ssh -t -o BatchMode=yes -o ForwardAgent=no -o ControlPath=none -o ConnectTimeout=10\(forward) -- \(AttachCommand.quote(machine.ssh))"
     }
 

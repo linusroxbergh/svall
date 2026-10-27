@@ -368,7 +368,7 @@ export const RequestPart = z.object({
 });
 export type RequestPart = z.infer<typeof RequestPart>;
 
-// data carries the structured half of an error: the blockers of a refused handover, the generations of a mismatch
+// data carries the structured half of an error: a refused move's refusal, the end of what a failed child printed
 export const ErrorFrame = z.object({ code: z.string(), message: z.string(), data: z.record(z.string(), z.unknown()).optional() });
 export type ErrorFrame = z.infer<typeof ErrorFrame>;
 

@@ -5,7 +5,7 @@ const NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex'
 
 /**
  * A brief to start a fresh agent with when a session cannot be resumed. It is a new conversation that
- * reads a summary of the old one: nothing here resumes, copies or renames the old session, and a handover
+ * reads a summary of the old one: nothing here resumes, copies or renames the old session, and a move
  * never calls it on its own.
  */
 export function repairBrief(kind: AgentKind, transcript: string, o: { sessionId: string }): string {

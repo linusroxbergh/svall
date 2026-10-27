@@ -16,7 +16,7 @@ final class ControllerProcessTests: XCTestCase {
         XCTAssertNil(ControllerProcess.locate(environment: ["SVALL_HELPER": "/nonexistent/svall"], resourcePath: nil))
     }
 
-    func testTheProfileIsPassedOnlyWhenTheAppRunsOne() {
+    func testAFleetHomeIsNamedByItsProfile() {
         XCTAssertNil(SvallHome.profileName(of: "/Users/x/.svall", in: "/Users/x"))
         XCTAssertEqual(SvallHome.profileName(of: "/Users/x/.svall-work", in: "/Users/x"), "work")
         XCTAssertNil(SvallHome.profileName(of: "/tmp/somewhere", in: "/Users/x"))

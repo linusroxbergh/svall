@@ -154,9 +154,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 34, with no ownership or handover method, and system.info without transferSchema and heapLimit', () => {
+  it('is 34, and system.info without transferSchema and heapLimit', () => {
     expect(PROTOCOL_VERSION).toBe(34);
-    expect(Object.keys(methods).filter((m) => /^(handover|ownership)\./.test(m))).toEqual([]);
     expect(Object.keys(SystemInfo.shape).filter((k) => k === 'transferSchema' || k === 'heapLimit')).toEqual([]);
   });
 
@@ -315,7 +314,7 @@ describe('events', () => {
 describe('handshake', () => {
   it("reads a hello reply as the daemon's protocol version", () => {
     expect(HelloResult.parse({ ok: true, protocol: PROTOCOL_VERSION })).toEqual({ ok: true, protocol: PROTOCOL_VERSION });
-    expect(HelloResult.parse({ ok: true, protocol: PROTOCOL_VERSION, capabilities: ['handover'] })).toEqual({ ok: true, protocol: PROTOCOL_VERSION });
+    expect(HelloResult.parse({ ok: true, protocol: PROTOCOL_VERSION, capabilities: ['links'] })).toEqual({ ok: true, protocol: PROTOCOL_VERSION });
     expect(() => HelloResult.parse({ ok: false, protocol: PROTOCOL_VERSION })).toThrow();
     expect(() => HelloResult.parse({ ok: true, protocol: '10' })).toThrow();
   });

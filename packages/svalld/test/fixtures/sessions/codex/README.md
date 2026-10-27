@@ -44,14 +44,14 @@ history or real conversation text was copied into this repository. The 0.142 rol
   entry naming a source path simply stops matching after the move, which fails closed.
 - Codex writes a fresh `turn_context` and a delta `world_state` with the live cwd, workspace roots
   and filesystem XML on the first resumed turn, so the agent is told its new paths without any
-  handover-supplied context. The stale `session_meta.cwd` at the head of the file is what a session
+  context from Svall. The stale `session_meta.cwd` at the head of the file is what a session
   list and the rebuilt thread index would otherwise show, which is why the probe remaps it.
 - Resume appends to the moved rollout in place under the same session id; no second file is created
   and the source rollout is untouched.
 
-## Commands and fixtures
+## Commands
 
-Check the supported binary and login separately on each machine, before any handover:
+Check the supported binary and login separately on each machine, before any move:
 
 ```bash
 codex --version                      # codex-cli 0.155.1
@@ -71,31 +71,8 @@ home has no persisted hook trust, so the run needed
 `codex exec --dangerously-bypass-hook-trust --skip-git-repo-check`. That hook probe records only
 hook name, session id and transcript path.
 
-`scripts/spikes/probe-codex-handover.mjs <rollout> <source-cwd> <destination-cwd> <destination-codex-home>`
-copies one rollout to the same dated path under another home, remapping only path-typed fields, and
-copies this session's `session_index.jsonl` entry when the source home keeps one. It refuses a
-rollout that is not UUID-named under `sessions/<yyyy>/<mm>/<dd>`, a symlink, a rollout whose
-`session_meta` disagrees with its filename, and an existing destination rollout. It copies no
-`auth.json`, `config.toml`, `history.jsonl` or sqlite index. This is a probe, not the production
-adapter. The adapter (`packages/svalld/src/handover/sessions/`) copies the rollout byte for byte to
-the same path, and carries every Codex release from its minimum on.
-
-The checked-in rollout and session-index fixtures are synthetic. They preserve observed structural
-fields but contain no real prompt, tool result or credential. Run:
-
-```bash
-pnpm vitest run --project svalld test/handover/codex-portability.test.ts
-pnpm typecheck
-```
-
-## Remaining gate for full release confidence
-
-Run the same moved session under a Linux Codex installation at a different user/home path, logged
-in on its own, and version-match the CLI. The Linux target has no Codex installed today, so
-cross-machine and cross-OS resume is out of scope here: this fixture proves a different home and a
-different path prefix on macOS, on one CLI version, with one account's `auth.json` copied by hand.
-Treat a separate login, a second OS and the interactive `codex resume <id>` as release integration
-checks, not as already proven.
+The adapter (`packages/svalld/src/sessions/`) copies the rollout byte for byte to the same path, and
+carries every Codex release from its minimum on.
 
 ## Versioned rollout fixtures
 
@@ -109,4 +86,4 @@ and the same record kinds, except that 0.162.1's model returned no reasoning ite
 sanitized by replacing the home and probe paths with `/Users/source` or `/home/source`, any
 approved command prefixes with two synthetic ones, 0.162.1's `creator_user_id` and `creator_account_id` with
 synthetic ones, encrypted reasoning with a placeholder, and any
-string over 600 characters with its first 200. `test/handover/sessions.test.ts` checks the session adapter against each.
+string over 600 characters with its first 200. `test/sessions/adapters.test.ts` checks the session adapter against each.

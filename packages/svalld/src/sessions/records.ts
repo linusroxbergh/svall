@@ -38,7 +38,7 @@ export async function filesUnder(fs: SessionFs, home: string, dir: string): Prom
   for (const raw of names) {
     const name = raw.toString('utf8');
     if (!Buffer.from(name, 'utf8').equals(raw) || /[\x00-\x1f\x7f]/.test(name)) {
-      throw new SessionError('path_unsupported', `${full} holds a file name a handover cannot carry`);
+      throw new SessionError('path_unsupported', `${full} holds a file name a move cannot carry`);
     }
     out.push(...await filesUnder(fs, home, path.posix.join(dir, name)));
   }

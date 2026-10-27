@@ -31,7 +31,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
-// the fleets beside this one are a Mac's: a gateway's daemon has no launchd to start them with
+// the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
 type Handlers = { [M in MethodName]: (p: ParsedParams<M>, ctx: Ctx) => Promise<Result<M>> | Result<M> };
@@ -65,7 +65,7 @@ function refuseRemote({ router, store }: Pick<Ctx, 'router' | 'store'>, id: stri
   if (at) throw new ApiError('read_only', `${rel} is on ${store.state.machines?.[at]?.name ?? at}; edit it in the robot's terminal`);
 }
 
-// svalld runs on the two platforms a handover can compare; nothing else gets this far
+// svalld runs on macOS and Linux alone; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
 
 export const handlers: Handlers = {
@@ -245,7 +245,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   }
 }
 
-// what a worker sends on from a CLI in one of its panes: never a handover, a record, the fleets beside this one or the phone link
+// what a worker sends on from a CLI in one of its panes: never a record, the fleets beside this one or the phone link
 const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe']);
 
 /** The result of a call a worker sends on, or its error thrown as the client would read it. */

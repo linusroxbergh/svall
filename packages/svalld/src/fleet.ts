@@ -975,7 +975,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // the folder a dormant terminal's transcript last records its session working in, when this machine lacks it, as a
-  // handover between homes leaves it
+  // move between homes leaves it
   private goneFolder(t: TerminalSlot): string | undefined {
     const recorded = t.agent?.transcriptPath && t.revive?.command ? recordedCwd(t.agent.kind, t.agent.transcriptPath) : undefined;
     return recorded && !fs.existsSync(recorded) ? recorded : undefined;

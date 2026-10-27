@@ -65,10 +65,6 @@ describe('bridge between the page and the shell', () => {
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
 
-  it('carries no handover message either way', () => {
-    expect([...Object.keys(tsUnion('ToShell')), ...Object.keys(tsUnion('FromShell'))].filter((t) => t.startsWith('handover.'))).toEqual([]);
-  });
-
   it('carries no connection report and asks for no other route', () => {
     const to = tsUnion('ToShell');
     const from = tsUnion('FromShell');

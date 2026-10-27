@@ -1077,13 +1077,13 @@ runIf('Fleet', () => {
   it("starts a dormant terminal whose resume failed afresh in its folder, told what its old session held, and leaves that session's files", async () => {
     const b = await boot();
     const { c, transcriptPath } = await withAgent(b);
-    const fixture = path.join(import.meta.dirname, 'fixtures/handover/claude/2.1.280/projects/-Users-source-work-demo/bf480ea6-5572-4554-8016-2dc5590f5bba.jsonl');
+    const fixture = path.join(import.meta.dirname, 'fixtures/sessions/claude/2.1.280/projects/-Users-source-work-demo/bf480ea6-5572-4554-8016-2dc5590f5bba.jsonl');
     fs.copyFileSync(fixture, transcriptPath);
     await b.tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => b.store.state.robots[c.id].tmux === undefined);
     b.store.update((d) => {
       d.robots[c.id].revive = { command: `claude --effort 'high' --resume ${SID}`, interrupted: true };
-      d.robots[c.id].resumeError = 'the handover could not resume it';
+      d.robots[c.id].resumeError = 'the resume did not come up';
     });
     const typed: string[] = [];
     vi.spyOn(b.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
@@ -2302,9 +2302,9 @@ runIf('Fleet', () => {
     await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
     await tmux.killWindow(c.tmux!.windowId);
     await waitFor(() => store.state.robots[c.id].tmux === undefined);
-    // a Retry of a terminal a handover could not resume, whose resume runs a moment and exits, as a Claude without its login does
+    // a Retry of a terminal whose resume failed, which runs a moment and exits again, as a Claude without its login does
     const revive = { command: `sleep 1; : --resume ${SID}` };
-    store.update((d) => { d.robots[c.id].revive = revive; d.robots[c.id].resumeError = 'the handover could not resume it'; });
+    store.update((d) => { d.robots[c.id].revive = revive; d.robots[c.id].resumeError = 'the resume did not come up'; });
 
     await fleet.reviveRobot(c.id);
     await waitFor(() => store.state.robots[c.id].tmux === undefined, 5000);

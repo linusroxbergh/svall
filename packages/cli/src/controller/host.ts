@@ -43,9 +43,9 @@ export type HostDeps = {
   interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string; signed: boolean };
-  /** this Mac's agent CLIs, as its own fleet's daemon finds them for a handover; rejects when it cannot be asked */
+  /** this Mac's agent CLIs, as its own fleet's daemon finds them; rejects when it cannot be asked */
   localAgents(): Promise<{ kind: AgentKind; version?: string }[]>;
-  /** this Mac's own id: the owner a fleet's first authority record names */
+  /** this Mac's own id, which a worker it enrols names as its home machine */
   machineId(): MachineId;
   homedir: string;
   /** checks a release's signature against the signers this controller ships */
@@ -189,7 +189,7 @@ function spaceProbe(df: string): Outcome<number> {
   if (!Number.isFinite(free)) throw new StepError(`df did not report the free space on the remote home: ${df.trim().slice(0, 120)}`);
   const gib = (free / (1024 * 1024)).toFixed(1);
   return free < FREE_FLOOR_KB
-    ? { value: free, status: 'warn', detail: `${gib} GiB free on the remote home; a release and its replicas want more room` }
+    ? { value: free, status: 'warn', detail: `${gib} GiB free on the remote home; a release and the robots moved there want more room` }
     : { value: free, detail: `${gib} GiB free on the remote home` };
 }
 
@@ -525,7 +525,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const { home, user } = await run.step('home', async () => {
         const remote = await homeProbe(master);
         if (!MachineRecord.shape.home.safeParse(remote.home).success) throw new StepError(`the remote $HOME is not an absolute path: ${JSON.stringify(remote.home)}`);
-        // a handover swaps the home on whole path components, which a home spelled another way never matches on the way back
+        // a move swaps the home on whole path components, which a home spelled another way never matches on the way back
         const plain = path.posix.normalize(remote.home).replace(/(.)\/$/, '$1');
         if (remote.home !== plain) {
           throw new StepError(`${remote.home} is ${remote.user}'s home there, which names ${plain} another way`, `make ${plain} the account's home on ${o.ssh}, then add the machine again`);

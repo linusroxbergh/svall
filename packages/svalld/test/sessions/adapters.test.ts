@@ -19,7 +19,7 @@ import { PRIVATE, profileHome } from '../../src/profile.js';
 import { shq } from '../../src/text.js';
 import { fakeEnv, hold, type Exported } from './fake-opencode.js';
 
-const FIXTURES = path.resolve(import.meta.dirname, '../fixtures/handover');
+const FIXTURES = path.resolve(import.meta.dirname, '../fixtures/sessions');
 const made: string[] = [];
 const tmp = (): string => { const d = fs.realpathSync(fs.mkdtempSync('/tmp/svall-s-')); made.push(d); return d; };
 afterEach(() => { for (const d of made.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -399,7 +399,7 @@ describe('OpenCode sessions', () => {
     return { env, run: cliRunner(env), logs };
   }
 
-  it("finds a session by the log Svall's plugin keeps of it, with the export a handover writes beside it", async () => {
+  it("finds a session by the log Svall's plugin keeps of it, with the export a move writes beside it", async () => {
     const logs = path.join(tmp(), '.svall/transcripts/opencode');
     fs.mkdirSync(logs, { recursive: true });
     const log = path.join(logs, `${ID}.jsonl`);

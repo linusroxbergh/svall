@@ -19,7 +19,7 @@ import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
 import { tryLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
-import { handoverGit } from './links/git.js';
+import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
@@ -188,7 +188,7 @@ async function start(opts: Options): Promise<Daemon> {
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
   const me = worker ? workerMachineId(opts.hardware) : ownMachineId(log, opts.hardware);
-  store.batchWritesWhile(() => true);
+  store.batchWrites();
   // the home's links to its workers, or a worker's to its home, for the fleet to route through; each starts once the
   // fleet it carries is served, the API that answers what a worker sends on included, and stops before any of it
   let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
@@ -271,16 +271,16 @@ async function start(opts: Options): Promise<Daemon> {
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
   const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
-  // what each machine's agent CLIs are: a handover and a move read them
+  // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
   if (connection && worker && workerDocs && farViewers && workerMirror) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
+      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers);
   }
   const placement = links && new Placement({
-    store, fleet, links, me, paths, git: handoverGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+    store, fleet, links, me, paths, git: hooklessGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
   });
   const info = () => systemInfo({
     machineId: me, agents, ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),

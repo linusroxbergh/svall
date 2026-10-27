@@ -14,7 +14,7 @@ export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
-// the machines a fleet can be handed to: what the shell may run `svall host …` for, and with what
+// the machines robots run on: what the shell may run `svall host …` for, and with what
 export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove';
 export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';

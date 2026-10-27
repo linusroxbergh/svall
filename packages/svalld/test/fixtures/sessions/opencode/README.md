@@ -10,6 +10,6 @@ the deleted id printed `Session not found: <id>` and exited 1; `session import -
 
 It was sanitized by replacing the home and probe paths with `/Users/source`, emails with
 `user@example.invalid`, encrypted reasoning with a placeholder, and any string over 600 characters
-with its first 200. Keys and structure are as OpenCode wrote them. `test/handover/sessions.test.ts`
+with its first 200. Keys and structure are as OpenCode wrote them. `test/sessions/adapters.test.ts`
 runs the session adapter's reads of an export against it: the message ids, `info.revert` and
 `info.location.directory`.

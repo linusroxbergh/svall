@@ -143,7 +143,7 @@ describe('SshMaster', () => {
   });
 
   it('keeps its master out of a Ctrl-C the process that opened it answers itself, and ends it when that process exits', async () => {
-    // a process that takes SIGINT itself, as a foreground handover does, and exits on a line of input
+    // a process that takes SIGINT itself and exits on a line of input
     const script = path.join(ssh.dir, 'hold-master.mts');
     fs.writeFileSync(script, [
       `import { SshMaster } from ${JSON.stringify(path.join(import.meta.dirname, '../../src/controller/ssh.ts'))};`,

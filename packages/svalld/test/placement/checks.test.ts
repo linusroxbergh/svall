@@ -5,7 +5,7 @@ import { ApiError, emptyState, type AgentAdapter, type FleetState, type MachineI
 import { AGENTS } from '../../src/agents.js';
 import type { AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
-import { handoverGit } from '../../src/links/git.js';
+import { hooklessGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
@@ -78,7 +78,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     asked,
     store: { state },
     me: H,
-    git: handoverGit,
+    git: hooklessGit,
     release: o.mine ?? '0.17.0',
     homedir: t.mac,
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
@@ -92,7 +92,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
       call: async <T>(_m: MachineId, method: string, params: unknown): Promise<T> => {
         asked.push({ method, params });
         if (method === 'system.info') return { agentAdapters: far } as T;
-        if (method === 'repo.probe') return (await (o.probe ?? ((p) => probeRepo(p, handoverGit)))(params as { path: string })) as T;
+        if (method === 'repo.probe') return (await (o.probe ?? ((p) => probeRepo(p, hooklessGit)))(params as { path: string })) as T;
         throw new Error(`${method} is not faked`);
       },
     },
@@ -498,20 +498,20 @@ describe.skipIf(!hasGit)('repo.probe', () => {
     const root = t.repo('code/svall');
     const clone = `${t.far}/code/svall`;
     const head = t.g(root, 'rev-parse', 'HEAD');
-    expect(await probeRepo({ path: clone, remote: t.origin('svall') }, handoverGit)).toEqual({ state: 'none', refs: [head], reachable: true });
-    expect(await probeRepo({ path: clone, remote: `${t.base}/origins/gone.git` }, handoverGit)).toEqual({ state: 'none', refs: [], reachable: false });
-    expect(await probeRepo({ path: clone }, handoverGit)).toEqual({ state: 'none', refs: [] });
+    expect(await probeRepo({ path: clone, remote: t.origin('svall') }, hooklessGit)).toEqual({ state: 'none', refs: [head], reachable: true });
+    expect(await probeRepo({ path: clone, remote: `${t.base}/origins/gone.git` }, hooklessGit)).toEqual({ state: 'none', refs: [], reachable: false });
+    expect(await probeRepo({ path: clone }, hooklessGit)).toEqual({ state: 'none', refs: [] });
 
     put(clone, 'notes.txt', 'mine\n');
-    expect(await probeRepo({ path: clone }, handoverGit)).toEqual({ state: 'other', refs: [] });
-    expect(await probeRepo({ path: `${clone}/notes.txt` }, handoverGit)).toEqual({ state: 'other', refs: [] });
+    expect(await probeRepo({ path: clone }, hooklessGit)).toEqual({ state: 'other', refs: [] });
+    expect(await probeRepo({ path: `${clone}/notes.txt` }, hooklessGit)).toEqual({ state: 'other', refs: [] });
     fs.rmSync(clone, { recursive: true });
 
     t.g(t.base, 'clone', '-q', t.origin('svall'), clone);
-    expect(await probeRepo({ path: clone }, handoverGit)).toEqual({ state: 'clone', remote: t.origin('svall'), rootCommit: head, refs: [head] });
+    expect(await probeRepo({ path: clone }, hooklessGit)).toEqual({ state: 'clone', remote: t.origin('svall'), rootCommit: head, refs: [head] });
     // a folder inside a clone is not one
     fs.mkdirSync(`${clone}/src`);
-    expect((await probeRepo({ path: `${clone}/src` }, handoverGit)).state).toBe('other');
+    expect((await probeRepo({ path: `${clone}/src` }, hooklessGit)).state).toBe('other');
   });
 
   it('the worker answers repo.probe over the link, and refuses params it cannot read', async () => {
