@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { test as base, expect, type Page } from '@playwright/test';
 import { defaultColumns, type Cell } from '@svall/protocol';
@@ -26,6 +27,39 @@ export type Svall = DaemonInfo & {
   // a stand-in for the native shell, installed before the page opens: it records what the page sends and answers the connection request
   nativeShell(): Promise<NativeShell>;
 };
+
+export const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a';
+
+// the state the daemon restarts on, edited by hand
+export async function rewrite(svall: Svall, edit: (state: { machines?: unknown; robots: Record<string, Record<string, unknown>> }) => void): Promise<void> {
+  await svall.stopDaemon();
+  const file = path.join(svall.home, 'state.json');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  edit(state);
+  fs.writeFileSync(file, JSON.stringify(state));
+  await svall.startDaemon();
+}
+
+/** ada on an island of her own, with linus-vault as the home last saw it; `ada` edits her record. */
+export async function seed(svall: Svall, reachable: boolean, ada?: (c: Record<string, unknown>) => void): Promise<string> {
+  const island = await svall.api.call('island.create', { name: svall.uniq('vault') });
+  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
+  await rewrite(svall, (state) => {
+    state.machines = { [VAULT]: { name: 'linus-vault', reachable, since: Date.now() } };
+    ada?.(state.robots[a.id]);
+  });
+  return a.id;
+}
+
+// a robot placed on a machine that is gone cannot be closed, so the next spec's fixture finds every robot back home
+export async function unplace(svall: Svall): Promise<void> {
+  const state = await svall.api.call('state.get', {});
+  if (!state.machines) return;
+  await rewrite(svall, (s) => {
+    delete s.machines;
+    for (const c of Object.values(s.robots)) { delete c.machine; delete c.moving; }
+  });
+}
 
 export const test = base.extend<{ svall: Svall }>({
   svall: async ({ page }, use) => {

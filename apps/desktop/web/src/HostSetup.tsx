@@ -23,18 +23,41 @@ export function MachineActions({ name }: { name: string }) {
   const running = useApp((s) => !!s.host?.running);
   // a terminal needs the destination the registry has for it, which the page may not have read yet
   const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
+  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
+  const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
+  const up = useApp((s) => !!id && s.fleet.machines?.[id as MachineId]?.reachable === true);
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
   const store = () => app.store.getState();
   const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name }); };
   const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
+  const item = (fn: () => void) => () => { setOpen(false); fn(); };
   return (
-    <span className="machine-acts">
+    <span className="machine-acts" ref={box}>
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs before robots can move there, checked now" onClick={() => run('doctor')}>Check</button>
-      <button className="btn set-open" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={() => run('upgrade')}>Upgrade</button>
-      <button className="btn set-open" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
-        onClick={() => store().openHostTerminal(name)}>Terminal</button>
-      <button className="btn set-open dan" data-testid="machine-remove" disabled={running} title="Uninstall Svall on this machine and drop its route" onClick={() => ask(false)}>Remove</button>
-      <button className="btn set-open dan" data-testid="machine-forget" disabled={running}
-        title="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={() => ask(true)}>Forget</button>
+      <button className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
+      {open && (
+        <div className="machine-menu popover" role="menu">
+          <button role="menuitem" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
+          <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
+            onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
+          <button role="menuitem" className="dan" data-testid="machine-remove" disabled={running || placed > 0}
+            title={placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
+            onClick={item(() => ask(false))}>Remove</button>
+          {!up && (
+            <button role="menuitem" className="dan" data-testid="machine-forget" disabled={running}
+              title="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={item(() => ask(true))}>Forget</button>
+          )}
+        </div>
+      )}
     </span>
   );
 }

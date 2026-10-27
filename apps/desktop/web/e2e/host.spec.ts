@@ -1,5 +1,7 @@
-import { expect, nativeShell, receive, sent, test } from './fixtures.js';
+import { expect, nativeShell, receive, rewrite, seed, sent, test, unplace, VAULT } from './fixtures.js';
 import type { HostStep, ToShell } from '../src/bridge.js';
+
+test.afterEach(async ({ svall }) => { await unplace(svall); });
 
 // what `svall host add --json` prints, one object per line, with a token in the line a failure carries
 const ADD_STEPS = [
@@ -112,6 +114,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'ok', detail: 'studio answers on release 0.5.0' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 0 });
@@ -119,6 +122,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // an upgrade stopped in install leaves no rollback to offer
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'install', status: 'fail', detail: 'svall setup exited 1' } });
   await receive(page, { type: 'host.done', op: 'upgrade', code: 1 });
@@ -126,6 +130,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await expect(page.getByTestId('host-rollback')).toHaveCount(0);
 
   // one whose own rollback failed too offers the rollback the CLI names
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-upgrade').click();
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'probe', status: 'warn', detail: 'studio did not answer' } });
   await receive(page, { type: 'host.step', op: 'upgrade', event: { step: 'rollback', status: 'fail', detail: 'svall setup --rollback exited 1' } });
@@ -197,6 +202,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
   // a plain terminal types nothing, and closing the panel closes it and checks the machine again
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-terminal').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio' } });
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).not.toHaveProperty('machine.type');
@@ -259,6 +265,7 @@ test('the setup page ends in one of three lines: ready, needs N things (a warn w
   await expect(panel.getByTestId('host-outcome')).toBeInViewport();
   await expect(panel.getByTestId('host-step-ssh')).not.toBeInViewport();
 
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-remove').click();
   await page.getByTestId('host-confirm-yes').click();
   await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'svall uninstall exited 1' } });
@@ -347,6 +354,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   const row = page.getByTestId('machine-studio');
   const panel = page.getByTestId('host-setup');
 
+  await row.getByTestId('machine-more').click();
   await row.getByTestId('machine-remove').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'remove');
   await expect(page.getByTestId('host-confirm')).toContainText('uninstalls Svall on studio');
@@ -355,6 +363,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await expect(page.getByTestId('host-confirm')).toHaveCount(0);
   expect(await starts()).toEqual([]);
 
+  await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-remove').click();
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio' } });
@@ -365,6 +374,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await expect(panel.getByTestId('machine-forget')).toHaveCount(0);
 
   await page.getByTestId('host-close').click();
+  await row.getByTestId('machine-more').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
   await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
@@ -458,4 +468,49 @@ test('a fleet on this Mac keeps its one offline banner until it asks for handove
   await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
   await expect(page.getByTestId('connection-banner')).toHaveCount(0);
   await expect(page.getByTestId('offline-banner')).toBeHidden({ timeout: 15_000 });
+});
+
+test('an empty Machines tab explains what a machine is; a machine has Check and a ⋯ menu; Forget is offered for one that is not reachable; Remove waits for its robots', async ({ page, svall }) => {
+  await fakeShell(page, svall.port, svall.token);
+  await svall.open();
+  await page.getByTestId('settings-open').click();
+  await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
+  await receive(page, { type: 'host.machines', machines: [] });
+  await expect(page.getByTestId('machines-empty')).toHaveText("A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.");
+
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: ['x'] }] });
+  const row = page.getByTestId('machine-linus-vault');
+  await expect(page.getByTestId('machines-empty')).toHaveCount(0);
+  await expect(row).not.toContainText('gateway for');
+  await expect(row.getByTestId('machine-doctor')).toBeVisible();
+  await expect(row.getByTestId('machine-upgrade')).toHaveCount(0);
+  await row.getByTestId('machine-more').click();
+  await expect(row.getByTestId('machine-upgrade')).toHaveText("Upgrade to this Mac's release");
+  await expect(row.getByTestId('machine-terminal')).toHaveText('Open a terminal there');
+  await expect(row.getByTestId('machine-remove')).toBeEnabled();
+  await expect(row.getByTestId('machine-forget')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(row.getByTestId('machine-upgrade')).toHaveCount(0);
+
+  // a robot placed there holds Remove back; one only moving there does too
+  const id = await seed(svall, true, (c) => { c.machine = VAULT; });
+  await page.reload();
+  await page.getByTestId('settings-open').click();
+  await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await row.getByTestId('machine-more').click();
+  await expect(row.getByTestId('machine-forget')).toHaveCount(0);
+  await expect(row.getByTestId('machine-remove')).toBeDisabled();
+  await expect(row.getByTestId('machine-remove')).toHaveAttribute('title', '1 robot is placed there; move it back first');
+
+  await rewrite(svall, (s) => { delete s.robots[id].machine; s.robots[id].moving = { id: 'mv_0123456789', to: VAULT, phase: 'prepare' }; });
+  await page.reload();
+  await page.getByTestId('settings-open').click();
+  await handoverOn(page);
+  await page.getByTestId('settings-tab-machines').click();
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await row.getByTestId('machine-more').click();
+  await expect(row.getByTestId('machine-remove')).toHaveAttribute('title', '1 robot is placed there; move it back first');
 });

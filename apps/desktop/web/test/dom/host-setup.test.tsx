@@ -34,6 +34,7 @@ test('opened on a machine, the panel names it once and acts on it without asking
   expect(screen.queryByTestId('host-name')).toBeNull();
   expect(screen.queryByTestId('host-ssh')).toBeNull();
   expect(screen.getByTestId('host-machine').textContent).toBe('trift');
+  fireEvent.click(screen.getByTestId('machine-more'));
   fireEvent.click(screen.getByTestId('machine-upgrade'));
   expect(sent).toContainEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
   // one run at a time
