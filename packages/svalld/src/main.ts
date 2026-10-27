@@ -1,6 +1,5 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { MachineId, OwnerRecord, type ParsedParams, type Robot } from '@svall/protocol';
@@ -23,6 +22,7 @@ import type { Authority } from './handover/source.js';
 import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
+import { tryLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { handoverGit } from './links/git.js';
@@ -81,41 +81,14 @@ export function readOrCreateToken(file: string): string {
   return token;
 }
 
-// macOS's O_EXLOCK, which node names no constant for
-const O_EXLOCK = 0x20;
-
 export class AlreadyRunning extends Error {}
 const alreadyRunning = (home: string): Error => new AlreadyRunning(`svalld is already running for ${home}`);
 
-// a kernel lock: it holds until it is let go or the daemon dies, however it dies
-function lockHome(home: string): Promise<() => void> {
-  return process.platform === 'linux' ? lockSocket(home) : Promise.resolve(lockFile(home));
-}
-
-function lockFile(home: string): () => void {
-  const { O_RDWR, O_CREAT, O_NONBLOCK } = fs.constants;
-  try {
-    let fd = fs.openSync(path.join(home, 'daemon.lock'), O_RDWR | O_CREAT | O_NONBLOCK | O_EXLOCK, 0o600);
-    // once only: by a second close the number may name another open file
-    return () => { if (fd >= 0) fs.closeSync(fd); fd = -1; };
-  } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'EAGAIN') throw alreadyRunning(home);
-    throw e;
-  }
-}
-
-// Linux ignores O_EXLOCK; there the lock is an abstract unix socket named after the home's real path, whose name the
-// kernel keeps only while the socket is open
-function lockSocket(home: string): Promise<() => void> {
-  const name = `\0svall-svalld-${crypto.createHash('sha256').update(fs.realpathSync(home)).digest('hex')}`;
-  const server = net.createServer((s) => s.destroy());
-  return new Promise((resolve, reject) => {
-    server.once('error', (e: NodeJS.ErrnoException) => reject(e.code === 'EADDRINUSE' ? alreadyRunning(home) : e));
-    server.listen(name, () => {
-      server.unref();
-      resolve(() => { if (server.listening) server.close(); });
-    });
-  });
+// a kernel lock, on Linux named after the home's real path
+async function lockHome(home: string): Promise<() => void> {
+  const unlock = await tryLock(path.join(home, 'daemon.lock'), `svall-svalld-${crypto.createHash('sha256').update(fs.realpathSync(home)).digest('hex')}`);
+  if (!unlock) throw alreadyRunning(home);
+  return unlock;
 }
 
 /**
@@ -254,6 +227,8 @@ async function start(opts: Options): Promise<Daemon> {
   const homeMirror = worker ? undefined : new Mirror({
     claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
     consent: paths.mirrorConsent, log,
+    // a worker runs the release, whose fleet homes are ~/.svall and ~/.svall-<name>
+    overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
   });
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
@@ -290,10 +265,19 @@ async function start(opts: Options): Promise<Daemon> {
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
-    // the home's viewers watch and hold terminals here only while it is linked
-    onLink: (live) => { if (!live) for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); } },
+    // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
+    onLink: (live) => {
+      if (live) return;
+      for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); }
+      workerMirror?.linkLost();
+    },
   });
   const farViewers = connection && new FarViewers({ connection });
+  const workerMirror = connection && mirrorCalls({
+    claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
+    agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
+    stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
+  });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
@@ -315,16 +299,11 @@ async function start(opts: Options): Promise<Daemon> {
   const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
   // what each machine's agent CLIs are: a handover and a move read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (connection && worker && workerDocs && farViewers) {
+  if (connection && worker && workerDocs && farViewers && workerMirror) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
-    const mirror = mirrorCalls({
-      claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
-      agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
-      stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
-    });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, mirror, workerDocs.handlers);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers);
   }
   // the gateway is the one fleet.json names at each call: `svall host enable` or a recovery can name another while the daemon runs
   const gatewayNow = (): MachineId | undefined => {

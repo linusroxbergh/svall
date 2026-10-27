@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
+import { VAR_NAME } from '../claude.js';
 import { holds } from '../handover/portable-path.js';
 import { shq } from '../text.js';
 import { relocated, type MirrorHomes } from './mirror.js';
@@ -18,7 +19,11 @@ export type McpServer = {
   agent: AgentKind; name: string; scope: Scope; command?: string; args: string[]; cwd?: string; env: Record<string, string>;
   url?: string; headers: Record<string, string>; raw: Record<string, unknown>; known: boolean; file?: string; place?: string[];
 };
-export type PluginInstall = { name: string; installPath: string };
+/**
+ * An installed plugin; `named` the server files its marketplace entry names by path, under the plugin, and `unreadMarket`
+ * its marketplace.json when that cannot be read, so its entry is not known.
+ */
+export type PluginInstall = { name: string; installPath: string; named?: string[]; unreadMarket?: string };
 /**
  * A value found by its field: `env.<KEY>`, `headers.<Name>`, `url.<param>`, `url.userinfo`, `args[<i>]`, `args[<i>].<param>`,
  * `args[<i>].userinfo`, `oauth.<key>`; a field that holds several is listed once for each.
@@ -53,10 +58,13 @@ export const CODEX_NEED_PATHS: readonly string[] = ['model_providers.*.env_http_
 export const OPENCODE_SECRET_PATHS: readonly string[] = ['provider.*.options.apiKey', 'provider.*.options.headers.*', 'lsp.*.env.*', 'formatter.*.environment.*'];
 
 const SECRET_FLAG = /(?:^|-)(api[-_]?key|token|secret|password|passwd|auth(?:orization)?|key|credential)s?$/i;
+// an OpenCode provider option that is a key by its name, beside those SECRET_FLAG names
+const PROVIDER_KEY = /^(private[-_]?key|accessKeyId|secretAccessKey|sessionToken)$/i;
 const HEADER_FLAG = /^(--header|-H)$/;
 const ENV_ARG = /^[A-Z][A-Z0-9_]*=.+/;
-const USERINFO = /([a-z][a-z0-9+.-]*:\/\/)([^\s/?#@:]+)(?::([^\s/?#@]*))?@/gi;
-const URL_START = /^[a-z][a-z0-9+.-]*:\/\//i;
+// the scheme's length is bounded, so a long run of letters is scanned once
+const USERINFO = /([a-z][a-z0-9+.-]{0,31}:\/\/)([^\s/?#@:]+)(?::([^\s/?#@]*))?@/gi;
+const URL_IN = /[a-z][a-z0-9+.-]{0,31}:\/\//i;
 const MCP_REMOTE = /(^|\/)mcp-remote(@[^/\s]*)?$/;
 // Codex's and OpenCode 2's client_secret, OpenCode 1's clientSecret
 const OAUTH_SECRETS = ['client_secret', 'clientSecret'];
@@ -78,7 +86,7 @@ const text = (v: unknown): string | undefined => (typeof v === 'string' ? v : un
 export function readMirrorVars(file: string): string[] {
   try {
     const names: unknown = JSON.parse(fs.readFileSync(file, 'utf8'));
-    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string' && /^[A-Z_][A-Z0-9_]*$/.test(n)) : [];
+    return Array.isArray(names) ? names.filter((n): n is string => typeof n === 'string' && VAR_NAME.test(n)) : [];
   } catch { return []; }
 }
 
@@ -126,32 +134,51 @@ function toServer(agent: AgentKind, scope: Scope, { name, raw, file, place }: En
   };
 }
 
-// a plugin's server entries: .mcp.json's, then plugin.json's mcpServers, inline or in a file under the plugin it names; a
-// file whose servers have another shape is named in `unreadable`
-function pluginServers(installPath: string, unreadable: string[]): Entry[] {
-  const from = (file: string): Entry[] => {
-    const doc = readDoc(file, JSON.parse, unreadable);
-    if (!doc) return [];
-    if (!Object.hasOwn(doc, 'mcpServers')) return entries(file, [], doc);
-    if (isDoc(doc.mcpServers)) return entries(file, ['mcpServers'], doc.mcpServers);
-    unreadable.push(file);
-    return [];
-  };
+// the server entries of a plugin's server file, wrapped in mcpServers or flat; one whose servers have another shape is
+// named in `unreadable`
+function fileEntries(file: string, unreadable: string[]): Entry[] {
+  const doc = readDoc(file, JSON.parse, unreadable);
+  if (!doc) return [];
+  if (!Object.hasOwn(doc, 'mcpServers')) return entries(file, [], doc);
+  if (isDoc(doc.mcpServers)) return entries(file, ['mcpServers'], doc.mcpServers);
+  unreadable.push(file);
+  return [];
+}
+
+// whether `file` lies under `dir` once links are followed; a file that is not there does not
+function within(dir: string, file: string): boolean {
+  try { return holds(fs.realpathSync(dir), fs.realpathSync(file)); } catch { return false; }
+}
+
+// a plugin's server entries: .mcp.json's, then plugin.json's mcpServers, inline or in a file under the plugin it names,
+// then each file under it its marketplace entry names; a file named outside it, or not there, is named in `unreadable`
+function pluginServers(installPath: string, unreadable: string[], marketNamed: string[] = []): Entry[] {
   const manifest = path.join(installPath, '.claude-plugin/plugin.json');
   const named = readDoc(manifest, JSON.parse, unreadable)?.mcpServers;
   const file = typeof named === 'string' ? path.resolve(installPath, named) : undefined;
-  const inside = file !== undefined && holds(path.resolve(installPath), file);
+  const inside = file !== undefined && within(installPath, file);
   if (named !== undefined && !isDoc(named) && !inside) unreadable.push(manifest);
-  return [...from(path.join(installPath, '.mcp.json')), ...entries(manifest, ['mcpServers'], named), ...(inside ? from(file) : [])];
+  const market = marketNamed.map((n) => path.resolve(installPath, n)).filter((f) => {
+    if (!within(installPath, f)) unreadable.push(f);
+    return within(installPath, f);
+  });
+  return [
+    ...fileEntries(path.join(installPath, '.mcp.json'), unreadable), ...entries(manifest, ['mcpServers'], named), ...(inside ? fileEntries(file, unreadable) : []),
+    ...market.flatMap((f) => fileEntries(f, unreadable)),
+  ];
 }
 
 /** The Claude servers of plugin `plugin` in `v`, which lies at `place` in `file`. */
 export const pluginServersAt = (plugin: string, file: string, place: string[], v: unknown): McpServer[] =>
   entries(file, place, v).map((e) => toServer('claude', { plugin }, e));
 
+/** The Claude servers of plugin `plugin` in its server file `file`; a file it cannot read is named in `unreadable`. */
+export const fileServers = (plugin: string, file: string, unreadable: string[]): McpServer[] =>
+  fileEntries(file, unreadable).map((e) => toServer('claude', { plugin }, e));
+
 /** The servers of the plugin installed at `p`, each from its file; a file it cannot read is named in `unreadable`. */
 export const readPluginServers = (p: PluginInstall, unreadable: string[]): McpServer[] =>
-  pluginServers(p.installPath, unreadable).map((e) => toServer('claude', { plugin: p.name }, e));
+  pluginServers(p.installPath, unreadable, p.named).map((e) => toServer('claude', { plugin: p.name }, e));
 
 /**
  * Every agent's MCP servers: Claude's user servers, those of its projects under the home and each plugin's, once per plugin
@@ -198,10 +225,40 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
     unreadable.push(file);
     return [];
   }
+  const { named, broken } = marketNamed(claudeDir);
   return Object.entries(plugins as Record<string, Doc[]>).flatMap(([name, all]) => {
     const paths = [...all.filter((i) => i.scope === 'user'), ...all.filter((i) => i.scope !== 'user')].map((i) => i.installPath as string);
-    return [...new Set(paths)].map((installPath) => ({ name, installPath }));
+    // an install is named `<plugin>@<marketplace>`
+    const files = named.get(name) ?? [...named].find(([k]) => !name.includes('@') && k.startsWith(`${name}@`))?.[1];
+    const market = name.includes('@') ? broken.get(name.slice(name.indexOf('@') + 1)) : undefined;
+    if (market) unreadable.push(market);
+    return [...new Set(paths)].map((installPath) => ({ name, installPath, ...(files && { named: files }), ...(market && { unreadMarket: market }) }));
   });
+}
+
+/** The paths an `mcpServers` value names: one, or each of a list. */
+export const namedPaths = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((n): n is string => typeof n === 'string');
+
+// the server files each marketplace's plugin entries name by path, as `strict: false` entries do, by `<plugin>@<marketplace>`;
+// and each marketplace whose marketplace.json cannot be read, by its folder's name
+function marketNamed(claudeDir: string): { named: Map<string, string[]>; broken: Map<string, string> } {
+  const named = new Map<string, string[]>();
+  const broken = new Map<string, string>();
+  const dir = path.join(claudeDir, 'plugins/marketplaces');
+  let names: string[];
+  try { names = fs.readdirSync(dir); } catch { return { named, broken }; }
+  for (const m of names) {
+    const file = path.join(dir, m, '.claude-plugin/marketplace.json');
+    const unread: string[] = [];
+    const doc = readDoc(file, JSON.parse, unread);
+    if (unread.length) broken.set(m, file);
+    const list: unknown = doc?.plugins;
+    for (const e of Array.isArray(list) ? list : []) {
+      if (!isDoc(e) || typeof e.name !== 'string' || !namedPaths(e.mcpServers).length) continue;
+      for (const market of new Set([m, typeof doc?.name === 'string' ? doc.name : m])) named.set(`${e.name}@${market}`, namedPaths(e.mcpServers));
+    }
+  }
+  return { named, broken };
 }
 
 export const isReferenceOnly = (v: string): boolean => v.replace(VAR_REF, '').replace(/^(Bearer|Token|Basic)\s*$/i, '').trim() === '';
@@ -212,12 +269,14 @@ function credential(scheme: string, user: string, password: string | undefined):
   if (password !== undefined) return isReferenceOnly(password) ? undefined : `${user}:${password}`;
   return /https?:\/\/$/i.test(scheme) && !isReferenceOnly(user) ? user : undefined;
 }
+// whether `source` holds a URL; one without :// is not scanned further
+const hasUrl = (source: string): boolean => source.includes('://') && URL_IN.test(source);
 // the credential of each URL in `source`
 const credentials = (source: string): string[] =>
-  [...source.matchAll(USERINFO)].flatMap((m) => [credential(m[1], m[2], m[3])].filter((c): c is string => c !== undefined));
+  (hasUrl(source) ? [...source.matchAll(USERINFO)] : []).flatMap((m) => [credential(m[1], m[2], m[3])].filter((c): c is string => c !== undefined));
 /** `source` without the credential of each URL in it. */
-export const withoutCredentials = (source: string): string =>
-  source.replace(USERINFO, (all, scheme: string, user: string, password?: string) => (credential(scheme, user, password) === undefined ? all : scheme));
+export const withoutCredentials = (source: string): string => (!hasUrl(source) ? source
+  : source.replace(USERINFO, (all, scheme: string, user: string, password?: string) => (credential(scheme, user, password) === undefined ? all : scheme)));
 
 // the query parameters of `url` before any fragment
 function params(url: string): { name: string; value: string }[] {
@@ -244,24 +303,30 @@ function urlWithout(source: string, field: string, drop: ReadonlySet<string>): s
 // a flag whose last word, in kebab-, snake- or camelCase, names a secret
 const secretFlag = (flag: string): boolean => SECRET_FLAG.test(flag.replace(/([a-z0-9])([A-Z])/g, '$1-$2').replaceAll('_', '-'));
 
+// a header `Name: value` after `keep`, as the part that stays and its value
+const header = (keep: string, h: string): [keep: string, value: string] => [`${keep}${h.slice(0, h.indexOf(':') + 1)}`, h.slice(h.indexOf(':') + 1).trim()];
+
 // arg `i` as the part that stays and the value a secret there would be: after a secret flag or --header, or in
-// --flag=value with a secret flag, or KEY=value
+// --flag=value with a secret flag, --header=Name: value, or KEY=value bare or after --flag=
 function argValue(args: string[], i: number): [keep: string, value: string] | undefined {
   const a = args[i];
   const flag = /^--?([^=]+)$/.exec(args[i - 1] ?? '')?.[1];
   if (flag !== undefined && secretFlag(flag)) return ['', a];
-  if (HEADER_FLAG.test(args[i - 1] ?? '') && a.includes(':')) return [a.slice(0, a.indexOf(':') + 1), a.slice(a.indexOf(':') + 1).trim()];
+  if (HEADER_FLAG.test(args[i - 1] ?? '') && a.includes(':')) return header('', a);
   const assigned = /^--?([^=]+)=/.exec(a);
-  if (assigned && secretFlag(assigned[1])) return [assigned[0], a.slice(assigned[0].length)];
-  if (ENV_ARG.test(a)) return [a.slice(0, a.indexOf('=') + 1), a.slice(a.indexOf('=') + 1)];
+  const keep = assigned?.[0] ?? '';
+  const rest = a.slice(keep.length);
+  if (assigned && secretFlag(assigned[1])) return [keep, rest];
+  if (HEADER_FLAG.test(keep.slice(0, -1)) && rest.includes(':')) return header(keep, rest);
+  if (ENV_ARG.test(rest)) return [`${keep}${rest.slice(0, rest.indexOf('=') + 1)}`, rest.slice(rest.indexOf('=') + 1)];
   return undefined;
 }
 
-// the secrets in arg `i`: its value whole, or else the query and credentials of a URL in it
+// the secrets in arg `i`: its value whole, or else the query and credentials of a URL anywhere in it
 function argSecrets(args: string[], i: number): Secret[] {
   const kv = argValue(args, i);
   if (kv && !isReferenceOnly(kv[1])) return [{ field: `args[${i}]`, value: kv[1] }];
-  return urlSecrets(args[i], `args[${i}]`, URL_START.test(args[i]));
+  return urlSecrets(args[i], `args[${i}]`, hasUrl(args[i]));
 }
 
 // arg `i` with the secrets `drop` names emptied
@@ -279,7 +344,10 @@ export function secretsOf(s: McpServer): Secret[] {
   return [...fields('env'), ...fields('headers'), ...url, ...args, ...oauth];
 }
 
-/** The variables `s` names, which the worker's daemon must hold: references, empty env values and Codex's env-named fields. */
+/**
+ * The variables `s` names, which the worker's daemon must hold: references, empty env values and Codex's env-named fields,
+ * each a variable's name.
+ */
 export function needsOf(s: McpServer): string[] {
   const named = [...Object.values(s.env), ...Object.values(s.headers), s.url ?? '', ...s.args, ...Object.values(texts(s.raw.oauth))]
     .flatMap((v) => [...v.matchAll(VAR_REF)].map((m) => m[1] ?? m[2]));
@@ -287,7 +355,7 @@ export function needsOf(s: McpServer): string[] {
   const envVars = Array.isArray(s.raw.env_vars) ? s.raw.env_vars.map((e) => (isDoc(e) ? e.name : e)) : [];
   const codex = s.agent === 'codex' ? [s.raw.bearer_token_env_var, ...envVars, ...Object.values(texts(s.raw.env_http_headers))] : [];
   const plugin = typeof s.scope === 'object' && 'plugin' in s.scope;
-  return [...new Set([...named, ...empty, ...codex])].filter((n): n is string => typeof n === 'string' && n !== '' && !(plugin && PLUGIN_VARS.test(n))).sort();
+  return [...new Set([...named, ...empty, ...codex])].filter((n): n is string => typeof n === 'string' && VAR_NAME.test(n) && !(plugin && PLUGIN_VARS.test(n))).sort();
 }
 
 const hostOf = (url: string | undefined): string => {
@@ -394,12 +462,24 @@ function at(doc: unknown, pattern: string[], field: string[] = []): Leaf[] {
 const strings = (leaves: Leaf[]): Secret[] => leaves.filter((l): l is Secret => typeof l.value === 'string');
 const SECRET_PATHS: Record<AgentKind, readonly string[]> = { claude: [], codex: CODEX_SECRET_PATHS, opencode: OPENCODE_SECRET_PATHS };
 
+// OpenCode's provider options, a model's too: each string named as a key, and the query values of their baseURL
+function providerSecrets(doc: Record<string, unknown>): Secret[] {
+  const options = ['provider.*.options.**', 'provider.*.models.*.options.**'].flatMap((p) => strings(at(doc, p.split('.'))));
+  const named = options.filter((l) => {
+    const key = l.field.slice(l.field.lastIndexOf('.') + 1);
+    return secretFlag(key) || PROVIDER_KEY.test(key);
+  });
+  const queries = options.filter((l) => l.field.endsWith('.options.baseURL')).flatMap((l) => urlSecrets(l.value, l.field, true).filter((s) => !s.field.endsWith('.userinfo')));
+  return [...named, ...queries];
+}
+
 /**
  * The secrets in an agent's config file `doc` by their concrete path: its key fields, and the userinfo of a URL in any
  * string; Claude's marketplace urls lose theirs on the way, so they are none.
  */
 export function configSecrets(agent: AgentKind, doc: Record<string, unknown>): Secret[] {
-  const keys = SECRET_PATHS[agent].flatMap((p) => strings(at(doc, p.split('.')))).filter((l) => !isReferenceOnly(l.value));
+  const found = [...SECRET_PATHS[agent].flatMap((p) => strings(at(doc, p.split('.')))), ...(agent === 'opencode' ? providerSecrets(doc) : [])];
+  const keys = found.filter((l, i) => !isReferenceOnly(l.value) && found.findIndex((o) => o.field === l.field) === i);
   const skip = new Set([...keys.map((l) => l.field), ...(agent === 'claude' ? at(doc, MARKETPLACE_URL.split('.')).map((l) => l.field) : [])]);
   const userinfos = strings(at(doc, ['**'])).filter((l) => !skip.has(l.field)).flatMap((l) => credentials(l.value).map((value) => ({ field: `${l.field}.userinfo`, value })));
   return [...keys, ...userinfos];
@@ -446,15 +526,21 @@ function placeIn(v: unknown, field: string): string[] | undefined {
   return undefined;
 }
 
-/** Where config field `field` of `doc`, as configSecrets names it, lies: its string, the URL one for a `.userinfo`. */
-export const configPlace = (doc: unknown, field: string): string[] | undefined => placeIn(doc, field.replace(/\.userinfo$/, ''));
+/**
+ * Where config field `field` of `doc`, as configSecrets names it, lies: its string, or the URL one that holds it for a
+ * `.userinfo` or a query value.
+ */
+export const configPlace = (doc: unknown, field: string): string[] | undefined =>
+  placeIn(doc, field.replace(/\.userinfo$/, '')) ?? (field.includes('.') ? placeIn(doc, field.slice(0, field.lastIndexOf('.'))) : undefined);
 
-/** `doc` with each of `fields` emptied: a key field's string, or the credentials of the URLs in it for a `.userinfo`. */
+/** `doc` with each of `fields` emptied: a key field's string, or in a URL the credentials for a `.userinfo` or the query value. */
 export function configRedacted(doc: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out = structuredClone(doc);
   for (const f of fields) {
     const place = configPlace(out, f);
-    if (place) setAt(out, place, f.endsWith('.userinfo') ? withoutCredentials(getAt(out, place) as string) : '');
+    if (!place) continue;
+    const v = getAt(out, place) as string;
+    setAt(out, place, f.endsWith('.userinfo') ? withoutCredentials(v) : place.join('.') === f ? '' : urlWithout(v, place.join('.'), new Set([f])));
   }
   return out;
 }
@@ -462,14 +548,18 @@ export function configRedacted(doc: Record<string, unknown>, fields: readonly st
 /** Claude's settings.json env, which stays off the worker. */
 export const readSettingsEnv = (claudeDir: string): Record<string, string> => texts(readDoc(path.join(claudeDir, 'settings.json'), JSON.parse, [])?.env);
 
-/** Each plugin's settings.json that holds more than permissions, hooks, a model and env references, with its top-level keys. */
-export function readPluginConfigs(plugins: PluginInstall[]): { name: string; file: string; fields: string[] }[] {
+/**
+ * Each plugin's settings.json that holds more than permissions, hooks, a model and env references, with its top-level keys;
+ * one that cannot be read is named in `unreadable`.
+ */
+export function readPluginConfigs(plugins: PluginInstall[], unreadable: string[]): { name: string; file: string; fields: string[] }[] {
   return plugins.flatMap(({ name, installPath }) => {
     const file = path.join(installPath, 'settings.json');
     if (!fs.existsSync(file)) return [];
-    const doc = readDoc(file, JSON.parse, []);
-    const plain = doc && Object.entries(doc).every(([k, v]) =>
+    const doc = readDoc(file, JSON.parse, unreadable);
+    if (!doc) return [];
+    const plain = Object.entries(doc).every(([k, v]) =>
       PLUGIN_SETTINGS.includes(k) || (k === 'env' && isDoc(v) && Object.values(v).every((x) => typeof x === 'string' && isReferenceOnly(x))));
-    return plain ? [] : [{ name, file, fields: Object.keys(doc ?? {}) }];
+    return plain ? [] : [{ name, file, fields: Object.keys(doc) }];
   });
 }

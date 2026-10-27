@@ -265,6 +265,35 @@ describe('machines.setup and machines.consent', () => {
     expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
   });
 
+  it('machines.consent answers not_mirrored while this Mac cannot read the item\'s file, the untick saved, and the next readable push empties the copy', async () => {
+    const mac = macHome();
+    worker = farHome();
+    w = world({ mirror: { home: mac, worker } });
+    await w.link();
+    await w.home.links.pushMirror(W);
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    const good = fs.readFileSync(mac.claudeJson, 'utf8');
+    fs.writeFileSync(mac.claudeJson, '{ "mcpServers": ');
+    const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
+    expect(res).toEqual({ id: 1, error: { code: 'not_mirrored', message: `${mac.claudeJson} on this Mac cannot be read; the copy stays on w1 until it can` } });
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    fs.writeFileSync(mac.claudeJson, good);
+    await w.home.mirror!.push(w.home.links.for(W)!);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+  });
+
+  it('machines.consent with the link down saves the change, and the key rows say it takes effect when the machine links', async () => {
+    worker = farHome();
+    w = world({
+      mirror: { home: macHome(), worker }, connect: async () => { throw new Error('connection refused'); },
+      home: { machines: { [W]: { name: 'w1', reachable: false, since: 0 } } },
+    });
+    const { rows } = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 is not reachable; saved, and takes effect when w1 links', tick: { on: true } });
+    expect(rows.find(byKey('codex:mcp:github'))?.detail).toMatch(/^not checked: w1 is not reachable; saved, and takes effect when w1 links: mirrored without env\.GITHUB_TOKEN/);
+  });
+
   it('machines.consent refuses a machine not in the fleet before it saves anything', async () => {
     await linked();
     const other = MachineId.parse(crypto.randomUUID());

@@ -3,7 +3,7 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  configNeeds, configSecrets, FIELD_PATHS, isMacOnly, isOAuth, needsOf, oauthLogin, readMirrorVars, readPluginConfigs, readPlugins, readServers, redacted,
+  configNeeds, configRedacted, configSecrets, FIELD_PATHS, isMacOnly, isOAuth, needsOf, oauthLogin, readMirrorVars, readPluginConfigs, readPlugins, readServers, redacted,
   relocatedServer, runtimesOf, secretsOf, type McpServer,
 } from '../../src/placement/mirror-config.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -149,12 +149,12 @@ describe('reading agent configs and finding secrets by field', () => {
 
   it('a server with a field the mirror does not know is not known; a plugin settings.json with env or an unknown key is listed whole; an opencode.jsonc with comments parses, a broken one is unreadable', () => {
     expect(readServers(withJsonc('{ "mcp": { "odd": { "type": "local", "command": ["x"], "sandbox": true } } }'), []).servers[0].known).toBe(false);
-    expect(readPluginConfigs([{ name: 'acme', installPath: acmeWithEnv }])).toEqual([{ name: 'acme', file: path.join(acmeWithEnv, 'settings.json'), fields: ['env', 'model'] }]);
+    expect(readPluginConfigs([{ name: 'acme', installPath: acmeWithEnv }], [])).toEqual([{ name: 'acme', file: path.join(acmeWithEnv, 'settings.json'), fields: ['env', 'model'] }]);
     expect(readServers(withJsonc('{ // c\n "mcp": {} }'), []).unreadable).toEqual([]);
     expect(readServers(withJsonc('{ "mcp": '), []).unreadable).toEqual([path.join(oc, 'opencode.jsonc')]);
     const plain = path.join(bare, 'plain');
     put(path.join(plain, 'settings.json'), JSON.stringify({ hooks: {}, model: 'opus', env: { K: '${K}' } }));
-    expect(readPluginConfigs([{ name: 'plain', installPath: plain }])).toEqual([]);
+    expect(readPluginConfigs([{ name: 'plain', installPath: plain }], [])).toEqual([]);
   });
 
   it('as the pinned agents keep them: an OAuth client secret and an mcp-remote --header value are secrets, header auth is no OAuth, Codex env_vars by name, a plugin\'s own variables no needs, and a login by the agent\'s own subcommand', () => {
@@ -247,6 +247,66 @@ describe('reading agent configs and finding secrets by field', () => {
     const { servers, unreadable } = readServers(withJsonc('{ "mcp": { "servers": { "t": { "type": "local", "command": ["x", "a,}",], }, }, }, }'), []);
     expect([unreadable, servers.map((s) => [s.command, s.args])]).toEqual([[], [['x', ['a,}']]]]);
   });
+
+  it('--header=Name: value, -H=Name: value, --env=KEY=value and -e=KEY=value carry keys as their two-arg forms do, and are emptied', () => {
+    const s = server('claude', { args: ['--header=Authorization: Bearer sk-1', '-H=X-Key: k2', '--env=GITHUB_TOKEN=ghp_1', '-e=API_KEY=k3', '--env=REF=${REF}', '--port=3334'] });
+    expect(secretsOf(s)).toEqual([
+      { field: 'args[0]', value: 'Bearer sk-1' }, { field: 'args[1]', value: 'k2' }, { field: 'args[2]', value: 'ghp_1' }, { field: 'args[3]', value: 'k3' },
+    ]);
+    expect(redacted(s, new Set()).args).toEqual(['--header=Authorization:', '-H=X-Key:', '--env=GITHUB_TOKEN=', '-e=API_KEY=', '--env=REF=${REF}', '--port=3334']);
+  });
+
+  it('a URL inside an arg gives up its query values wherever it starts in the arg', () => {
+    const s = server('claude', { args: ['--endpoint=https://x.test/mcp?api_key=sk-live-1&debug'] });
+    expect(secretsOf(s)).toEqual([{ field: 'args[0].api_key', value: 'sk-live-1' }]);
+    expect(redacted(s, new Set()).args).toEqual(['--endpoint=https://x.test/mcp?api_key=&debug']);
+  });
+
+  it('a 5 MB arg of one token, and a long one after a ://, are scanned in well under a second', () => {
+    const big = 'a'.repeat(5 * 2 ** 20);
+    const s = server('claude', { args: [big, `://${'a'.repeat(2 ** 19)}`] });
+    const t = Date.now();
+    secretsOf(s); redacted(s, new Set()); configSecrets('codex', { big });
+    expect(Date.now() - t).toBeLessThan(1000);
+  });
+
+  it('OpenCode provider options: any key named as a key, an AWS credential, a private key and a baseURL\'s query value are secrets, a model\'s options too, and are emptied', () => {
+    const doc = { provider: {
+      bedrock: { options: { region: 'us-east-1', accessKeyId: 'AKIA123', secretAccessKey: 'sak-1', sessionToken: 'st-1', baseURL: 'https://u:p@x.test/v1?api_key=q1&v=2' } },
+      vertex: { models: { m: { options: { privateKey: 'pk-1', private_key: 'pk-2', clientSecret: 'cs-1', apiKey: 'mk-1', project: 'p-1' } } } },
+      openai: { options: { apiKey: 'sk-oc-1', headers: { 'X-Org': 'org-1' } } },
+    } };
+    expect(configSecrets('opencode', doc).map((f) => f.field).sort()).toEqual([
+      'provider.bedrock.options.accessKeyId', 'provider.bedrock.options.baseURL.api_key', 'provider.bedrock.options.baseURL.userinfo', 'provider.bedrock.options.baseURL.v',
+      'provider.bedrock.options.secretAccessKey',
+      'provider.bedrock.options.sessionToken', 'provider.openai.options.apiKey', 'provider.openai.options.headers.X-Org', 'provider.vertex.models.m.options.apiKey',
+      'provider.vertex.models.m.options.clientSecret', 'provider.vertex.models.m.options.privateKey', 'provider.vertex.models.m.options.private_key',
+    ]);
+    const out = configRedacted(doc, configSecrets('opencode', doc).map((f) => f.field)) as typeof doc;
+    expect(out.provider.bedrock.options).toEqual({ region: 'us-east-1', accessKeyId: '', secretAccessKey: '', sessionToken: '', baseURL: 'https://x.test/v1?api_key=&v=' });
+    expect(out.provider.vertex.models.m.options).toEqual({ privateKey: '', private_key: '', clientSecret: '', apiKey: '', project: 'p-1' });
+  });
+
+  it('a plugin manifest naming a server file through a link that leads outside the plugin is unreadable and yields none', () => {
+    const acme = path.join(mac.claudeDir, 'plugins/cache/mp/link/1.0.0');
+    const outside = path.join(makeHome(), 'keys.json');
+    put(outside, JSON.stringify({ s: { command: 'x', env: { K: 'sk-outside-1234567890' } } }));
+    put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'link', mcpServers: './servers.json' }));
+    fs.symlinkSync(outside, path.join(acme, 'servers.json'));
+    expect(readServers(bareHomes(), [{ name: 'link', installPath: acme }])).toEqual({ servers: [], unreadable: [path.join(acme, '.claude-plugin/plugin.json')] });
+  });
+
+  it('a plugin settings.json that cannot be parsed is unreadable, not a config to copy whole', () => {
+    put(path.join(acmeWithEnv, 'settings.json'), '{ "env": ');
+    const unreadable: string[] = [];
+    expect(readPluginConfigs([{ name: 'acme', installPath: acmeWithEnv }], unreadable)).toEqual([]);
+    expect(unreadable).toEqual([path.join(acmeWithEnv, 'settings.json')]);
+  });
+
+  it('a variable is named by letters, digits and underscores, of any case: needs outside that rule are none', () => {
+    expect(needsOf(server('claude', { env: { api_key: '', 'A-B': '', ok_1: '' }, raw: {} }))).toEqual(['api_key', 'ok_1']);
+    expect(needsOf(server('codex', { raw: { bearer_token_env_var: 'not a var', env_vars: ['GOOD'] } }))).toEqual(['GOOD']);
+  });
 });
 
 describe('readMirrorVars', () => {
@@ -255,7 +315,7 @@ describe('readMirrorVars', () => {
     expect(readMirrorVars(path.join(dir, 'none.json'))).toEqual([]);
     fs.writeFileSync(path.join(dir, 'bad.json'), '{oops');
     expect(readMirrorVars(path.join(dir, 'bad.json'))).toEqual([]);
-    fs.writeFileSync(path.join(dir, 'ok.json'), JSON.stringify(['GAMMA_TOKEN', 'lower', 'A B', 7, '_X1']));
-    expect(readMirrorVars(path.join(dir, 'ok.json'))).toEqual(['GAMMA_TOKEN', '_X1']);
+    fs.writeFileSync(path.join(dir, 'ok.json'), JSON.stringify(['GAMMA_TOKEN', 'lower', 'A B', 7, '_X1', '1X']));
+    expect(readMirrorVars(path.join(dir, 'ok.json'))).toEqual(['GAMMA_TOKEN', 'lower', '_X1']);
   });
 });

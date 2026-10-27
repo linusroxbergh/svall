@@ -17,7 +17,8 @@ afterEach(async () => {
   cleanHomes();
 });
 
-const O = { machine: 'w1', fleetFlag: '', unchecked: 'not checked: w1 is not reachable' };
+const O = { machine: 'w1', fleetFlag: '', unchecked: 'not checked: w1 is not reachable', overrides: '~/.svall/mirror-overrides' };
+const SAVED = 'not checked: w1 is not reachable; saved, and takes effect when w1 links';
 const byKey = (key: string) => (r: SetupRow) => r.key === key;
 const report = (o: Partial<ConfigReport> = {}): ConfigReport => ({ commands: {}, vars: {}, secrets: {}, whole: {}, oauth: {}, ...o });
 const executable = (file: string) => { put(file, '#!/bin/sh\n'); fs.chmodSync(file, 0o755); };
@@ -37,8 +38,20 @@ describe('the setup rows of the mirror', () => {
     expect(row('claude:mcp:linear', { ticked: true, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'copied' } }))
       .toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90', tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true } });
     expect(row('claude:mcp:linear', { ticked: false, secrets: {} }))
-      .toMatchObject({ status: 'warn', action: "copy linear's keys to w1", detail: 'mirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on w1' });
+      .toMatchObject({
+        status: 'warn', action: "copy linear's keys to w1",
+        detail: 'mirrored without env.LINEAR_API_KEY lin…90; run svall worker env LINEAR_API_KEY there, or set them in ~/.svall/mirror-overrides on w1',
+      });
     expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
+  });
+
+  it('an unticked server env key is the worker\'s own once its daemon has the variable, with no row of its own for the variable; a header key is not, and names the fleet\'s overrides folder', () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.hdr = { type: 'http', url: 'https://hdr.test/mcp', headers: { 'X-Key': 'hdr_key_1234567890' } }; });
+    const all = rows(report({ vars: { LINEAR_API_KEY: true } }), new Set(), { ...O, fleetFlag: '-p work ', overrides: '~/.svall-work/mirror-overrides' });
+    expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
+    expect(all.find(byKey('var:LINEAR_API_KEY'))).toBeUndefined();
+    expect(all.find(byKey('claude:mcp:hdr'))).toMatchObject({ status: 'warn', detail: 'mirrored without headers.X-Key hdr…90; or set them in ~/.svall-work/mirror-overrides on w1' });
+    expect(rows(report({ vars: { LINEAR_API_KEY: false } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
   });
 
   it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
@@ -89,14 +102,14 @@ describe('the setup rows of the mirror', () => {
     }]);
     expect(row('claude:mcp:odd', { ticked: true, whole: { 'claude:mcp:odd': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1', tick: { on: true } });
     expect(row('claude:mcp:odd', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1', tick: { on: true } });
-    expect(row('claude:mcp:odd', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+    expect(row('claude:mcp:odd', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.find(byKey('claude:plugin:acme'))).toEqual({
       key: 'claude:plugin:acme', status: 'warn', action: "copy acme's config whole to w1", detail: "acme's config has fields Svall does not know; it is not mirrored until you tick it",
       tick: { item: 'claude:plugin:acme', fields: ['env'], on: false, preview: ['env'] },
     });
     expect(row('claude:plugin:acme', { ticked: true, whole: { 'claude:plugin:acme': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
     expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
-    expect(row('claude:plugin:acme', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+    expect(row('claude:plugin:acme', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.filter((r) => r.key.startsWith('unreadable:')))
       .toEqual([{ key: `unreadable:${toml}`, status: 'warn', detail: `${toml} cannot be read as JSON or TOML; set it up on w1 by hand` }]);
     expect(all.find(byKey('codex:mcp:github'))).toBeUndefined();
@@ -106,13 +119,17 @@ describe('the setup rows of the mirror', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.notion = { type: 'http', url: 'https://mcp.notion.com/mcp' }; });
     const linear = new Set([fieldKey('claude:mcp:linear', 'env.LINEAR_API_KEY')]);
     const all = rows(undefined, linear);
-    expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+    expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
     expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude' });
-    expect(all.find(byKey('codex:mcp:github'))).toMatchObject({ status: 'warn', action: "copy github's keys to w1" });
+    expect(all.find(byKey('codex:mcp:github'))).toMatchObject({
+      status: 'warn', action: "copy github's keys to w1",
+      detail: `${SAVED}: mirrored without env.GITHUB_TOKEN ghp…ef; run svall worker env GITHUB_TOKEN there, or set them in ~/.svall/mirror-overrides on w1`,
+    });
     expect(all.filter((r) => r.key.startsWith('runtime:'))).toEqual([]);
     const odd = rows(undefined, linear, { ...O, unchecked: 'not checked: w1 runs another release; upgrade it' });
-    for (const key of ['claude:mcp:linear', 'var:REMOTE_TOKEN']) expect(odd.find(byKey(key))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
+    expect(odd.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it; saved, and takes effect when w1 links' });
+    expect(odd.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
   });
 
   it('Mirror.report reads no link as not reachable and one in mismatch as another release; a worker that does not answer is asked once, logged, and the rows come unchecked', async () => {

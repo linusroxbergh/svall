@@ -8,7 +8,7 @@ import { sha256Hex } from '../handover/hash.js';
 import { configNeeds, configPlace, configRedacted, fieldPlace, getAt, relocatedServer } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
 import {
-  DOC_NAMES, docWithOverride, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
+  DOC_NAMES, docWithOverride, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
 } from './mirror.js';
 
 // how a Linux worker gets the runtime a server's command names
@@ -139,7 +139,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     for (const { field, leaf } of k.fields) {
       const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
       if (typeof value !== 'string' || value === '' || value === getAt(bare, leaf)) continue;
-      const copied = k.doc ? state.secrets[recordKey(k.doc, [...k.place, ...leaf])] === sha256Hex(value) : file?.copied === true;
+      const copied = k.doc ? isCopy(state.secrets[recordKey(k.doc, [...k.place, ...leaf])], value) : file?.copied === true;
       secrets[fieldKey(k.item, field)] = copied ? 'copied' : 'own';
     }
   }
@@ -164,22 +164,28 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
  * The setup rows of the mirror to machine `o.machine` by `plan` and what the worker reported, in this order: each server
  * with keys or fields Svall does not know, each variable, login and missing runtime its servers need, the Mac-only
  * servers, each config file with keys, each plugin config and each file that cannot be read. Without a report a row that
- * hangs on one says `o.unchecked`.
+ * hangs on one says `o.unchecked`, and a key row that its change is saved for when the machine links. `o.overrides`
+ * names the fleet's overrides folder there.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
+  const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
   // a ticked item the worker does not hold yet, or was not asked about
   const notYet = (tick: NonNullable<SetupRow['tick']>): SetupRow =>
-    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : o.unchecked, tick });
-  // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own
-  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[]): SetupRow => {
+    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : saved, tick });
+  // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
+  // a server's env key its own once the worker's daemon has that variable
+  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server = false): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
+    const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && report?.vars[f.slice('env.'.length)] === true);
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
-    if (fields.every((f) => (tick.on ? held(f) : held(f) === 'own'))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
+    if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
     if (tick.on) return notYet(tick);
-    return { key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: `mirrored without ${preview.join(', ')}; or set them in ~/.svall/mirror-overrides on ${m}`, tick };
+    const env = server ? fields.filter((f) => f.startsWith('env.')).map((f) => `svall ${o.fleetFlag}worker env ${f.slice('env.'.length)}`) : [];
+    const without = `mirrored without ${preview.join(', ')}; ${env.length ? `run ${env.join(', ')} there, ` : ''}or set them in ${o.overrides} on ${m}`;
+    return { key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: report ? without : `${saved}: ${without}`, tick };
   };
   // a server or plugin config whose fields Svall does not know, which travels whole once each is ticked
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
@@ -190,7 +196,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // an unknown server's preview names its fields
   for (const s of plan.servers) {
     if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
-    else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview));
+    else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, true));
   }
 
   const servers = carried(plan);

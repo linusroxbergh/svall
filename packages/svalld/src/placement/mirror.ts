@@ -5,10 +5,12 @@ import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
 import { AgentKind, ApiError, REPORT_MS, Sha256, type MachineId, type SetupRow } from '@svall/protocol';
+import { VAR_NAME } from '../claude.js';
 import { writeDurable } from '../handover/durable.js';
 import { sha256Hex } from '../handover/hash.js';
 import { clean, holds } from '../handover/portable-path.js';
 import { relocate } from '../handover/relocate.js';
+import { tryLock } from '../kernel-lock.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
@@ -18,8 +20,8 @@ import { CREDENTIAL_PATTERNS, packTar, ustarFits } from './bundle.js';
 import { filesIn } from './docs-sync.js';
 import {
   configNeeds, configPlace, configRedacted, configSecrets, fieldPlace, getAt, isMacOnly, isOAuth, isReferenceOnly, needsOf, oauthLogin, parseJsonc,
-  pluginServersAt, readPluginConfigs, readPluginServers, readPlugins, readServers, readSettingsEnv, redacted, relocatedServer, runtimesOf, secretsOf, setAt,
-  withoutCredentials, type McpServer, type Place, type Scope, type Secret,
+  fileServers, namedPaths, pluginServersAt, readPluginConfigs, readPluginServers, readPlugins, readServers, readSettingsEnv, redacted, relocatedServer, runtimesOf,
+  secretsOf, setAt, withoutCredentials, type McpServer, type Place, type Scope, type Secret,
 } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, pluginKey, preview, readConsent, setConsent, tickedFields } from './mirror-consent.js';
 import { ConfigReport, configReport, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
@@ -75,10 +77,32 @@ export type MirrorPlan = {
 const Shas = z.record(z.string(), Sha256);
 /**
  * What the mirror last wrote on a worker, by sha256: each file by its `to`, each doc's keys, each server and each copied
- * value by the JSON of its doc and the keys that lead to it there.
+ * value by the JSON of its doc and the keys that lead to it there; a value an apply cut short may have left as either of two.
  */
-export const WorkerState = z.object({ files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Shas });
+export const WorkerState = z.object({ files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: z.record(z.string(), z.union([Sha256, z.array(Sha256)])) });
 export type WorkerState = z.infer<typeof WorkerState>;
+type Copied = WorkerState['secrets'][string];
+
+/** Whether `v` is a value the record holds as copied. */
+export const isCopy = (recorded: Copied | undefined, v: unknown): boolean =>
+  typeof v === 'string' && recorded !== undefined && [recorded].flat().includes(sha256Hex(v));
+
+// matches no file and no value, so a push writes again what an apply cut short may have left half done
+const UNSURE = '0'.repeat(64);
+
+// the record while an apply writes: every key either record holds, a changed one as unsure, a copied value as either
+function provisional(state: WorkerState, next: WorkerState): WorkerState {
+  const keys = (a: Record<string, unknown>, b: Record<string, unknown>) => [...new Set([...Object.keys(a), ...Object.keys(b)])];
+  const shas = (a: Record<string, string>, b: Record<string, string>) => Object.fromEntries(keys(a, b).map((k) => [k, b[k] === undefined || a[k] === b[k] ? a[k] : UNSURE]));
+  return {
+    files: shas(state.files, next.files), servers: shas(state.servers, next.servers),
+    docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
+    secrets: Object.fromEntries(keys(state.secrets, next.secrets).map((k) => {
+      const both = [...new Set([state.secrets[k], next.secrets[k]].flat().filter((h): h is string => h !== undefined))];
+      return [k, both.length === 1 ? both[0] : both];
+    })),
+  };
+}
 /** The Mac's home and its project folders, which the worker answers for. */
 export const StateAsk = z.object({ homedir: z.string(), projects: z.array(z.string()) });
 export const WorkerFacts = z.object({ state: WorkerState, projects: z.record(z.string(), z.boolean()) });
@@ -253,7 +277,8 @@ const readJson = (file: string): unknown => {
 
 /**
  * Of a marketplace's files: the plugin server files, settings and marketplace lists that hold a key or a server the
- * mirror does not know; those that cannot be read; and, silently, every file of a plugin whose manifest cannot be read.
+ * mirror does not know; those that cannot be read; and, silently, every file of a plugin whose manifest cannot be read, and
+ * of a marketplace whose list cannot be read.
  */
 function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; hidden: string[] } {
   const broken: string[] = [];
@@ -273,10 +298,23 @@ function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; 
       if (!isDoc(doc)) broken.push(f);
       else if (Object.values(isDoc(doc.env) ? doc.env : {}).some((v) => typeof v === 'string' && !isReferenceOnly(v)) || configSecrets('claude', doc).length) keyed.push(f);
     } else if (base(f, 'marketplace.json') && base(path.dirname(f), '.claude-plugin')) {
-      // a plugin a marketplace defines in place may hold its servers there too
+      // a plugin a marketplace defines in place may hold its servers there too, or in a file under it the entry names
       const doc = readJson(f);
-      if (!isDoc(doc) || (doc.plugins !== undefined && !Array.isArray(doc.plugins))) broken.push(f);
-      else if ((doc.plugins as unknown[] ?? []).some((p, i) => isDoc(p) && !pluginServersAt('', f, ['plugins', String(i), 'mcpServers'], p.mcpServers).every(plain))) keyed.push(f);
+      if (!isDoc(doc) || (doc.plugins !== undefined && !Array.isArray(doc.plugins))) {
+        // its entries may name a server file anywhere in it, so nothing of the marketplace travels
+        broken.push(f);
+        hidden.push(...found.filter((x) => holds(path.dirname(path.dirname(f)), x)));
+      } else {
+        const list = doc.plugins as unknown[] ?? [];
+        if (list.some((p, i) => isDoc(p) && !pluginServersAt('', f, ['plugins', String(i), 'mcpServers'], p.mcpServers).every(plain))) keyed.push(f);
+        for (const p of list) {
+          if (!isDoc(p) || typeof p.source !== 'string') continue;
+          for (const n of namedPaths(p.mcpServers)) {
+            const named = path.resolve(path.dirname(path.dirname(f)), p.source, n);
+            if (found.includes(named) && !fileServers('', named, broken).every(plain)) keyed.push(named);
+          }
+        }
+      }
     }
   }
   return { keyed: [...new Set(keyed)], broken: [...new Set(broken)], hidden };
@@ -330,6 +368,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   });
   const ocOff = unticked(CONFIG_ITEMS.opencode, 'opencode', ocDocs.filter((d) => d.secrets.length).map((d) => d.file).join(' and '), ocDocs.flatMap((d) => d.secrets));
 
+  const pluginConfigs = readPluginConfigs(plugins, unreadable);
   // what never travels as a file, links to it included: logins, the agents' config files, plugin server files, which
   // travel redacted, files that cannot be read, Svall's own OpenCode plugin, and a plugin's settings not ticked
   const withheld = new Set<string>();
@@ -344,7 +383,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   for (const f of byFile.keys()) hold(f);
   for (const f of plugins.flatMap((p) => namedServerFiles(p.installPath))) hold(f);
   const pluginRows: MirrorPlan['plugins'] = [];
-  for (const c of readPluginConfigs(plugins)) {
+  for (const c of pluginConfigs) {
     const key = pluginKey(c.name);
     const ticked = c.fields.length > 0 && tickedFields(consent, key, c.fields).length === c.fields.length;
     if (!ticked) hold(c.file);
@@ -377,10 +416,10 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   // a marketplace's plugin server file or settings that holds a key stays here, as one that cannot be read does
   const pluginsDir = path.join(o.claudeDir, 'plugins');
   const installs = plugins.map((p) => clean(p.installPath));
-  // a file the mirror writes itself, as the Mac's `from` would land
-  const made = (from: string, data: string): void => {
+  // a file the mirror writes itself, as the Mac's `from` would land; one holding a ticked key for its owner alone
+  const made = (from: string, data: string, keyed = false): void => {
     if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
-    else files.push({ from, to: path.posix.join('claude', path.posix.relative(o.claudeDir, from)), mode: (statOf(from)?.mode ?? 0o644) & 0o777, data });
+    else files.push({ from, to: path.posix.join('claude', path.posix.relative(o.claudeDir, from)), mode: keyed ? 0o600 : (statOf(from)?.mode ?? 0o644) & 0o777, data });
   };
   // one that cannot be read now stays as the worker has it
   const unread = (file: string): void => {
@@ -398,9 +437,9 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
       skipped.push(`${p.installPath} lies outside ${pluginsDir}`);
       continue;
     }
-    // a manifest that cannot be read may name a server file, so nothing of its plugin travels
-    if (unreadable.includes(manifestOf(p.installPath))) {
-      skipped.push(`${manifestOf(p.installPath)} cannot be read`);
+    // a manifest that cannot be read, or the marketplace list its entry is in, may name a server file, so nothing of its plugin travels
+    if (unreadable.includes(manifestOf(p.installPath)) || p.unreadMarket) {
+      skipped.push(`${p.unreadMarket ?? manifestOf(p.installPath)} cannot be read`);
       continue;
     }
     tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath));
@@ -408,9 +447,12 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
       if (!holds(p.installPath, file) || unreadable.includes(file)) continue;
       const data = pluginFile(file, ss, consent);
       if (data === undefined) unread(file);
-      else made(file, data);
+      else made(file, data, ss.some((s) => !isMacOnly(s) && mirrored(s, consent).ticked.length > 0));
     }
   }
+  // a plugin's settings ticked whole hold its keys
+  const tickedSettings = new Set(pluginRows.filter((r) => r.ticked).flatMap((r) => r.files));
+  for (const f of files) if (tickedSettings.has(f.from)) f.mode = 0o600;
   for (const name of PLUGIN_LISTS) {
     const from = path.join(o.claudeDir, 'plugins', name);
     if (unreadable.includes(from) || !fs.existsSync(from)) continue;
@@ -432,7 +474,10 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     skipped.push(`${f.from} has a path too long for the mirror to carry`);
     return false;
   });
-  const vars = [...servers.flatMap((s) => s.needs), ...(codexDoc ? configNeeds('codex', codexDoc) : []), ...ocDocs.flatMap((d) => configNeeds('opencode', d.doc))];
+  // a server's env key not ticked is the worker's own variable, as the agent's reference left in its place reads it
+  const envKeys = servers.flatMap((s) => s.secretFields.filter((f) => f.startsWith('env.') && !s.ticked.includes(f)).map((f) => f.slice('env.'.length)));
+  const vars = [...servers.flatMap((s) => s.needs), ...envKeys, ...(codexDoc ? configNeeds('codex', codexDoc) : []), ...ocDocs.flatMap((d) => configNeeds('opencode', d.doc))]
+    .filter((v) => VAR_NAME.test(v));
   return {
     files: carried, servers, macOnly, configs,
     settingsEnv: Object.fromEntries(Object.entries(env).filter(([k]) => !settingsOff.includes(`env.${k}`))),
@@ -600,9 +645,9 @@ function setLeaf(doc: Doc, l: Leaf, v: string | undefined): void {
 
 // one secret value, `was` the doc before this apply: a ticked one is the Mac's unless it would go over the worker's own
 // and may not; a copied one is emptied once unticked; the worker's own goes back where the merge wrote over it
-function settle(doc: Doc, was: Doc, l: Leaf, recorded: string | undefined, secrets: Record<string, string>): void {
+function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, secrets: WorkerState['secrets']): void {
   const pre = getAt(was, l.place);
-  const copied = typeof pre === 'string' && recorded === sha256Hex(pre);
+  const copied = isCopy(recorded, pre);
   const own = typeof pre === 'string' && pre !== '' && pre !== l.bare && !copied && (l.named || !l.remerged);
   const now = getAt(doc, l.place);
   if (l.want !== undefined && (l.overOwn || !own)) {
@@ -630,7 +675,8 @@ function leavesOf(fields: string[], placeOf: (field: string) => Place | undefine
 /**
  * Puts the mirror unpacked at `blobDir` into this machine's homes, reading and writing each file of theirs at once:
  * each config file merged by key, its servers in place and its secrets as ticked, then each file the record says changed,
- * each the home no longer carries removed, and the overrides last. The record is written after every file.
+ * each the home no longer carries removed, and the overrides last. A record of everything this apply may write goes
+ * first, so an apply cut short still knows each copy it left; the record of what it wrote goes last.
  */
 export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string }): { written: string[]; removed: string[] } {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
@@ -641,26 +687,27 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
   const move = mover(m.homes, o);
   // read before anything is written: a config file or override that cannot be parsed stops the mirror rather than be replaced
   const current = DOCS.map((d) => ({ doc: readDocFile(d.at(o), d.parse), override: readDocFile(path.join(o.overrides, d.override), d.parse) }));
-  DOCS.forEach((d, i) => {
-    const doc = applyDoc(d, current[i].doc, current[i].override, { m, state, next, move });
-    if (doc && put(d.at(o), Buffer.from(d.format(doc)), (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
-  });
-
-  for (const root of Object.keys(ROOTS) as Root[]) {
+  const docs = DOCS.map((d, i) => applyDoc(d, current[i].doc, current[i].override, { m, state, next, move }));
+  const carried = (Object.keys(ROOTS) as Root[]).flatMap((root) => {
     const home = o[ROOTS[root]];
-    if (!home) continue;
-    for (const rel of filesIn(path.join(blobDir, root))) {
-      const to = path.posix.join(root, rel);
-      const from = path.join(blobDir, root, rel);
-      const data = fs.readFileSync(from);
-      next.files[to] = sha256Hex(data);
-      if (state.files[to] === next.files[to]) continue;
-      const override = path.join(o.overrides, root, rel);
-      const list = root === 'claude' && PLUGIN_LISTS.some((n) => rel === path.join('plugins', n));
-      const bytes = fs.existsSync(override) ? fs.readFileSync(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
-      const file = path.join(home, rel);
-      if (put(file, bytes, fs.statSync(from).mode & 0o777)) written.push(file);
-    }
+    return home ? filesIn(path.join(blobDir, root)).map((rel) => ({ root, home, rel, to: path.posix.join(root, rel), from: path.join(blobDir, root, rel) })) : [];
+  });
+  for (const f of carried) next.files[f.to] = sha256Hex(fs.readFileSync(f.from));
+  put(o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
+
+  // a config file holding a ticked key is its owner's alone
+  DOCS.forEach((d, i) => {
+    const out = docs[i];
+    if (out && put(d.at(o), Buffer.from(d.format(out.doc)), out.keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
+  });
+  for (const { root, home, rel, to, from } of carried) {
+    if (state.files[to] === next.files[to]) continue;
+    const data = fs.readFileSync(from);
+    const override = path.join(o.overrides, root, rel);
+    const list = root === 'claude' && PLUGIN_LISTS.some((n) => rel === path.join('plugins', n));
+    const bytes = fs.existsSync(override) ? fs.readFileSync(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
+    const file = path.join(home, rel);
+    if (put(file, bytes, fs.statSync(from).mode & 0o777)) written.push(file);
   }
   const keep = new Set(m.keep);
   const pluginList = path.join(m.homes.claudeDir, 'plugins/installed_plugins.json');
@@ -704,14 +751,15 @@ export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: strin
 
 type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string };
 
-// one config file as the mirror leaves it, or undefined when that is as it was: its keys merged, its servers put in place,
-// its secrets settled and its override over them; one the Mac could not read keeps the record of it
-function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): Doc | undefined {
+// one config file as the mirror leaves it, and whether it holds a ticked value, or undefined when that is as it was: its
+// keys merged, its servers put in place, its secrets settled and its override over them; one the Mac could not read keeps
+// the record of it
+function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): { doc: Doc; keyed: boolean } | undefined {
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
   const was = JSON.parse(before) as Doc;
   const leave = m.unreadable.includes(d.at(m.homes));
-  const records = (of: Record<string, string>): [string, string][] => Object.entries(of).filter(([k]) => JSON.parse(k)[0] === d.name);
+  const records = <T>(of: Record<string, T>): [string, T][] => Object.entries(of).filter(([k]) => JSON.parse(k)[0] === d.name);
   const leaves: Leaf[] = [];
 
   // its keys, each written when the Mac's changed since the mirror last wrote it
@@ -741,7 +789,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
         record: recordKey(d.name, g.place), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
-        bare: getAt(bare, g.place) as string, named: !g.fields.some((f) => f.endsWith('.userinfo')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
+        bare: getAt(bare, g.place) as string, named: g.fields.every((f) => f === g.place.join('.')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
       });
     }
   }
@@ -798,12 +846,12 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
       bare: (s ? getAt(s.bare, leaf) : d.name === 'settings.json' && place[0] === 'env' ? undefined : getAt(bareDoc, place)) as string | undefined,
       ...(s?.codex && leaf[0] === 'env' && { server: s.at }),
     };
-    const v = getAt(doc, l.place);
-    if (typeof v === 'string' && sha256Hex(v) === h) setLeaf(doc, l, l.bare);
+    if (isCopy(h, getAt(doc, l.place))) setLeaf(doc, l, l.bare);
   }
 
   overrideOver(d, doc, override);
-  return JSON.stringify(doc) === before ? undefined : doc;
+  const keyed = leaves.some((l) => l.want !== undefined) || m.servers.some((x) => x.doc === d.name && Object.keys(x.entry).length > 0 && x.ticked.length > 0);
+  return JSON.stringify(doc) === before ? undefined : { doc, keyed };
 }
 
 /** The home's side: its agent configuration packed and sent to a worker, by what the consent file ticks for it. */
@@ -811,7 +859,8 @@ export class Mirror {
   // each worker's last push, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
 
-  constructor(private o: MirrorHomes & { consent: string; log: Logger }) {}
+  /** `overridesThere`: the fleet's overrides folder on a worker, as its rows name it. */
+  constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string }) {}
 
   /** Resolves once the worker has applied what `link` carried; pushes to one worker go one at a time, in order. */
   push(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
@@ -823,6 +872,21 @@ export class Mirror {
   /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it. */
   consent(machine: MachineId, item: string, fields: string[], on: boolean): void {
     setConsent(this.o.consent, machine, item, fields, on);
+  }
+
+  /** The file of this Mac that holds `item` and cannot be read now, which leaves the item on a worker as the mirror last wrote it. */
+  unreadFile(item: string): string | undefined {
+    const o = this.o;
+    const plugin = /^claude:plugin:(.+?)(?::mcp:.*)?$/.exec(item)?.[1];
+    const installs = plugin === undefined ? [] : readPlugins(o.claudeDir, []).filter((p) => p.name === plugin);
+    const holdsItem = (f: string): boolean => {
+      if (plugin !== undefined) return f === path.join(o.claudeDir, 'plugins/installed_plugins.json') || installs.some((i) => holds(clean(i.installPath), f) || i.unreadMarket === f);
+      if (item === CONFIG_ITEMS.settings) return f === path.join(o.claudeDir, 'settings.json');
+      if (item.startsWith('claude:')) return f === o.claudeJson;
+      if (item.startsWith('codex:')) return f === path.join(o.codexDir, 'config.toml');
+      return item.startsWith('opencode:') && OPENCODE_FILES.some((n) => f === path.join(o.opencodeDir, n));
+    };
+    return mirrorPlan(o).unreadable.find(holdsItem);
   }
 
   /**
@@ -845,7 +909,7 @@ export class Mirror {
     // a worker that did not answer the first is not asked again
     const report = facts && await ask('config.report', reportAsk(plan), ConfigReport);
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
-    return setupRows(plan, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked });
+    return setupRows(plan, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides' });
   }
 
   // the Mac's project folders that hold servers
@@ -879,20 +943,78 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
 };
 
 /**
+ * Holds this user's agent files for one mirror's apply, waiting while another fleet's daemon holds them: every fleet's
+ * mirror on a machine writes the same files.
+ */
+export async function lockAgentFiles(homedir: string): Promise<() => void> {
+  const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
+  for (;;) {
+    const unlock = await tryLock(path.join(homedir, '.svall-mirror.lock'), name);
+    if (unlock) return unlock;
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/**
+ * Takes back what the mirror copied into this machine's agent config files, by the record at `stateFile`: each value it
+ * holds as copied, while it is still the copy, becomes what an untick leaves there, a server's env key its agent's
+ * reference, a settings env key gone and any other key ''. Answers a line for each file it changed or could not.
+ */
+export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
+  const state = readState(o.stateFile);
+  const done: string[] = [];
+  for (const d of DOCS) {
+    const keys = Object.keys(state.secrets).filter((k) => JSON.parse(k)[0] === d.name);
+    if (!keys.length) continue;
+    let doc: Doc | undefined;
+    try { doc = readDocFile(d.at(o), d.parse); } catch (e) {
+      done.push(`could not take the mirror's keys back from ${d.at(o)}: ${(e as Error).message}`);
+      continue;
+    }
+    if (!doc) continue;
+    const projects = Object.keys(isDoc(doc.projects) ? doc.projects : {});
+    let n = 0;
+    for (const k of keys) {
+      const place = (JSON.parse(k) as Place).slice(1);
+      // a Claude project lies under this machine's own path of it, which the record does not keep
+      for (const at of d.name === '.claude.json' && place[0] === 'projects' ? projects.map((p) => ['projects', p, ...place.slice(2)]) : [place]) {
+        if (!isCopy(state.secrets[k], getAt(doc, at))) continue;
+        const key = String(at.at(-1));
+        const leaf: Leaf = { record: k, place: at, named: true, remerged: false, overOwn: true };
+        if (d.name === 'settings.json' && at[0] === 'env' && at.length === 2) setAt(doc, at, undefined);
+        else if (d.name === 'config.toml' && at[0] === 'mcp_servers' && at.at(-2) === 'env') setLeaf(doc, { ...leaf, server: at.slice(0, -2) }, undefined);
+        else if (d.name === '.claude.json' && at.at(-2) === 'env') setAt(doc, at, `\${${key}}`);
+        else if (OPENCODE_FILES.some((f) => f === d.name) && at[0] === 'mcp' && at.at(-2) === 'environment') setAt(doc, at, `{env:${key}}`);
+        else setAt(doc, at, '');
+        n += 1;
+      }
+    }
+    if (!n) continue;
+    put(d.at(o), Buffer.from(d.format(doc)), (statOf(d.at(o))?.mode ?? 0o600) & 0o777);
+    done.push(`took ${n} ${n === 1 ? 'key' : 'keys'} the mirror copied out of ${d.at(o)}`);
+  }
+  return done;
+}
+
+/**
  * A worker's side: `config.state` answers with its record and which of the Mac's projects it has, `config.report` with
  * what it holds and runs of what the home asks, `config.blob` takes the blob's id before the home sends a byte of it,
- * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed.
+ * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed. A blob
+ * may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
   overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;
-}): Record<string, (raw: unknown) => Promise<unknown>> {
-  const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }> }>();
+}): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
+  const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true }>();
   const drop = (id: string): void => {
     const b = blobs.get(id);
     blobs.delete(id);
     if (b) fs.rmSync(b.dir, { recursive: true, force: true });
   };
-  return {
+  for (const f of fs.existsSync(o.stage) ? fs.readdirSync(o.stage, { withFileTypes: true }) : []) {
+    if (f.isDirectory() && f.name.startsWith('mirror-')) fs.rmSync(path.join(o.stage, f.name), { recursive: true, force: true });
+  }
+  const calls: Record<string, (raw: unknown) => Promise<unknown>> = {
     'config.state': async (raw) => configState(parse(StateAsk, raw), o),
     'config.report': async (raw) => configReport(parse(ReportAsk, raw), o),
     'config.blob': async (raw) => {
@@ -909,15 +1031,20 @@ export function mirrorCalls(o: MirrorHomes & {
       const { id } = parse(ById, raw);
       const b = blobs.get(id);
       if (!b) throw new ApiError('not_found', `no agent configuration ${id} came here`);
+      b.applying = true;
       try {
         if ((await b.got).sha256 !== b.sha256) throw new Error('the agent configuration did not arrive as it left');
         await unpack(path.join(b.dir, 'mirror.tar'), path.join(b.dir, 'blob'));
-        const { written, removed } = applyMirror(path.join(b.dir, 'blob'), o);
-        if (written.length || removed.length) o.log.info(`mirror: ${written.length} files of the home's agent configuration written, ${removed.length} removed`);
-        return { written, removed };
+        const unlock = await lockAgentFiles(o.homedir);
+        let done: { written: string[]; removed: string[] };
+        try { done = applyMirror(path.join(b.dir, 'blob'), o); } finally { unlock(); }
+        if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent configuration written, ${done.removed.length} removed`);
+        return done;
       } finally {
         drop(id);
       }
     },
   };
+  // the one being applied goes once it is
+  return { calls, linkLost: () => { for (const [id, b] of blobs) if (!b.applying) drop(id); } };
 }

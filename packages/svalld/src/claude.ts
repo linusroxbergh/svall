@@ -8,6 +8,9 @@ type Piped = ChildProcessByStdio<Writable, Readable, Readable>;
 // and none of their hooks, plugins or MCP servers
 const ISOLATION = ['--tools', '', '--setting-sources', 'project', '--strict-mcp-config', '--no-session-persistence'];
 
+/** A variable's name, as the fleet's .env holds it and its robots take it. */
+export const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 // KEY=value lines, optionally quoted or after `export`; anything else is skipped
 export function readEnvFile(file: string): Record<string, string> {
   let text: string;

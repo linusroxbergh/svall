@@ -127,6 +127,9 @@ export const handlers: Handlers = {
     if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
     }
+    // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
+    const unread = mirror.unreadFile(p.item);
+    if (unread) throw new ApiError('not_mirrored', `${unread} on this Mac cannot be read; the copy stays on ${name} until it can`);
     return setupOf(ctx, p.machine, 0);
   },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),

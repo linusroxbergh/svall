@@ -11,7 +11,7 @@ import { agentHomesEnv, ourUnits } from './linux/setup.js';
 import { configDir, machineId } from './machine.js';
 import { fleetOrigin, portsServing, resolveTailscale, unserve, type MobileDeps } from './mobile.js';
 import { opencodePaths, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
-import { resolvePaths } from './paths.js';
+import { claudePaths, resolvePaths } from './paths.js';
 import { BUNDLE_ID, homePrefix, isFleetName, LAUNCHD_LABEL, PRIVATE, profileHome, SHIM } from './profile.js';
 import { readJsonSettings, readOrUndefined, requireWritable, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shimNames } from './setup.js';
@@ -172,7 +172,8 @@ export function stranded(homes: string[], prefix?: string, released: string[] = 
 export class UninstallRefused extends Error {}
 
 // takes back what setup put outside the fleet homes: the Claude hooks and statusline, the Codex hooks and the OpenCode
-// plugin that run `home`'s scripts, every fleet's phone link, service and tmux server, the installed releases and the shims. The
+// plugin that run `home`'s scripts, every fleet's phone link, service and tmux server, the keys a home's mirror copied into
+// the agents' files, the installed releases and the shims. The
 // fleets' own data stays for purge. Unless forced, it refuses where that would strand a fleet; `forceFleets` passes
 // only the gateway records of those fleets.
 export async function runUninstall(o: {
@@ -235,6 +236,12 @@ export async function runUninstall(o: {
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
   }
+  // the keys a home's mirror copied into the agent files its daemons wrote, now that nothing runs to write them back; the
+  // mirror is loaded here, as it leads through the move back to the handover modules that load this one
+  const { takeBackCopies } = await import('./placement/mirror.js');
+  const env = linux ? agentHomes : process.env;
+  const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
+  for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
   if (o.prefix) done.push(...removeReleases(o.prefix));
   // where host add uploads and stages a release
   if (linux && o.cache && fs.existsSync(o.cache)) {
