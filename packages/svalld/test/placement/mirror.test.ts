@@ -526,7 +526,7 @@ describe('the agent configuration mirror', () => {
     expect(json(market).plugins[1].headers).toEqual({ Authorization: '' });
     expect([agentServers(read(agent)), read(agent).startsWith('---\nname: db\n'), read(agent).endsWith('---\nthe agent\n')])
       .toEqual([[['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }]], true, true]);
-    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.endsWith(f)))).toEqual([]);
+    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.includes(f)))).toEqual([]);
   });
 
   it('takeBackCopies takes a ticked key back where it alone lies now when an item added above moved it, and warns where the copy lies twice', async () => {
@@ -557,10 +557,51 @@ describe('the agent configuration mirror', () => {
     expect(read(twins.agent)).toContain('pg_fake');
   });
 
-  it('a plugin\'s subagent its plugin.json names by path is listed whole as one in agents/ is', () => {
+  it('takeBackCopies takes a ticked key back at its place and still names the file where the worker copied it below; a place left bare, empty or with references only says nothing', async () => {
+    const mac = macHome();
+    const scratch = makeHome();
+    const md = (...servers: string[]) => ['---', 'name: db', 'mcpServers:', ...servers, '---', 'the agent', ''].join('\n');
+    const pg = (name: string, v = 'pg_fake_1234567890') => [`  - ${name}:`, '      command: npx', '      env:', `        PG_PASSWORD: ${v}`];
+    const source = { source: 'url', url: 'https://x.test/m.json', headers: { Authorization: 'Bearer mh_fake_1234567890' } };
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.extraKnownMarketplaces = { x: { source } }; });
+    editJson(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), (j) => { j.x = { source, installLocation: path.join(mac.claudeDir, 'plugins/marketplaces/x') }; });
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), JSON.stringify({
+      name: 'mp', plugins: [{ name: 'zip', source: { source: 'url', url: 'https://z.test/z.zip' }, headers: { Authorization: 'Bearer mk_fake_1234567890' } }],
+    }));
+    put(path.join(mac.claudeDir, 'agents/db.md'), md(...pg('pg')));
+    const consent = new Set(['claude:settings#extraKnownMarketplaces.x.source.headers.Authorization', 'claude:marketplace:mp#plugins.zip', 'claude:agent:db.md#mcpServers.pg']);
+    await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    const worker = () => {
+      const h = farHome();
+      const o = { ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') };
+      applyMirror(path.join(scratch, 'blob'), o);
+      const files = {
+        list: path.join(h.claudeDir, 'plugins/known_marketplaces.json'), market: path.join(h.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'),
+        agent: path.join(h.claudeDir, 'agents/db.md'),
+      };
+      return { o, ...files, lines: () => takeBackCopies(o).filter((l) => Object.values(files).some((f) => l.includes(f))) };
+    };
+    const below = worker();
+    put(below.agent, md(...pg('pg'), ...pg('twin')));
+    expect(below.lines().sort()).toEqual([
+      `left ${below.agent}, which holds keys the mirror copied and changed there since`, ...[below.agent, below.list, below.market].map((f) => `took 1 key the mirror copied out of ${f}`),
+    ].sort());
+    expect(agentServers(read(below.agent))).toEqual([['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }], ['twin', { command: 'npx', env: { PG_PASSWORD: 'pg_fake_1234567890' } }]]);
+    const bare = worker();
+    put(bare.agent, md(...pg('pg', '${PG_PASSWORD}')));
+    editJson(bare.market, (j) => { j.plugins[0].headers.Authorization = ''; });
+    editJson(bare.list, (j) => { j.x.source.headers.Authorization = 'Bearer ${MK_TOKEN}'; });
+    expect(bare.lines()).toEqual([]);
+  });
+
+  it.each([
+    ['no server', {}], ['a server inline', { mcpServers: { s: { command: 'node', args: ['x.js'] } } }],
+    ['a server holding a key inline', { mcpServers: { s: { command: 'node', env: { K: 'inline_key_fake_123456' } } } }],
+  ])('a plugin\'s subagent its plugin.json names by path is listed whole as one in agents/ is, the plugin.json holding %s', (_, servers) => {
     const mac = macHome();
     const acme = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0');
-    put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'acme', agents: ['./reviewers/db.md'] }));
+    put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'acme', agents: ['./reviewers/db.md'], ...servers }));
     put(path.join(acme, 'reviewers/db.md'), ['---', 'name: db', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: custom_agent_fake_123', '---', 'b', ''].join('\n'));
     const plan = mirrorPlan(mac);
     const rel = 'plugins/cache/mp/acme/1.0.0/reviewers/db.md';
@@ -568,15 +609,20 @@ describe('the agent configuration mirror', () => {
     expect(plan.files.filter((f) => f.from.endsWith('reviewers/db.md'))).toEqual([]);
   });
 
-  it('a subagent a strict:false marketplace entry names in its agents is listed whole, in the marketplace and in the plugin\'s install', () => {
+  it('a subagent a strict:false marketplace entry names in its agents is listed whole, in the marketplace, its list held for a key, and in the plugin\'s install', () => {
     const mac = macHome();
     const md = ['---', 'name: db', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: entry_agent_fake_123', '---', 'b', ''].join('\n');
-    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), JSON.stringify({
-      name: 'mp', plugins: [{ name: 'acme', source: './acme', strict: false, agents: ['./reviewers/db.md'] }],
+    const list = path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json');
+    put(list, JSON.stringify({
+      name: 'mp', plugins: [
+        { name: 'acme', source: './acme', strict: false, agents: ['./reviewers/db.md'] },
+        { name: 'kv', source: './kv', strict: false, mcpServers: { kv: { command: 'kv', env: { KV_TOKEN: 'kv_fake_1234567890' } } } },
+      ],
     }));
     const rels = ['plugins/marketplaces/mp/acme/reviewers/db.md', 'plugins/cache/mp/acme/1.0.0/reviewers/db.md'];
     for (const rel of rels) put(path.join(mac.claudeDir, rel), md);
     const plan = mirrorPlan(mac);
+    expect(plan.skipped).toContain(`${list} holds a key`);
     expect(plan.plugins).toEqual(rels.map((rel) => ({ key: `claude:agent:${rel}`, name: rel, fields: ['mcpServers.pg'], ticked: false, files: [path.join(mac.claudeDir, rel)] })));
     expect(plan.files.filter((f) => f.from.endsWith('reviewers/db.md'))).toEqual([]);
   });

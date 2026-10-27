@@ -292,6 +292,8 @@ function pluginFile(file: string, servers: McpServer[], consent: ReadonlySet<str
 // a server that may travel raw: one whose fields the mirror knows, holding no key
 const plain = (s: McpServer): boolean => s.known && !secretsOf(s).length;
 const manifestOf = (root: string): string => path.join(root, '.claude-plugin/plugin.json');
+// the folders among `files` that hold a .claude-plugin folder, a plugin's or a marketplace's
+const pluginRoots = (files: string[]): string[] => [...new Set(files.filter((f) => path.basename(path.dirname(f)) === '.claude-plugin').map((f) => path.dirname(path.dirname(f))))];
 
 // the files a plugin's manifest names as its servers', wherever they lie
 function namedServerFiles(root: string): string[] {
@@ -500,17 +502,17 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     unreadable.push(file);
   };
   // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's, in an agents folder or
-  // where its plugin.json or marketplace entry names it in `agents`, `also` those of an install, is named by its path
-  // under Claude's folder
+  // where the plugin.json or marketplace.json of one of `plugin.roots` names it in `agents`, read whether or not they
+  // travel, or one of `plugin.also`, is named by its path under Claude's folder
   const agentsDir = path.join(o.claudeDir, 'agents');
-  const vetAgents = (found: string[], plugin = false, also: string[] = []): void => {
-    const manifests = found.filter((f) => path.basename(path.dirname(f)) === '.claude-plugin' && ['plugin.json', 'marketplace.json'].includes(path.basename(f)));
-    const named = [...also, ...manifests.flatMap((m) => {
-      const [doc, root] = [readJson(m), path.dirname(path.dirname(m))];
-      if (!isDoc(doc)) return [];
-      if (path.basename(m) === 'plugin.json') return namedPaths(doc.agents).map((n) => path.resolve(root, n));
-      if (!Array.isArray(doc.plugins)) return [];
-      return (doc.plugins as unknown[]).flatMap((p) => (isDoc(p) && typeof p.source === 'string' ? namedPaths(p.agents).map((n) => path.resolve(root, p.source as string, n)) : []));
+  const vetAgents = (found: string[], plugin?: { roots: string[]; also?: string[] }): void => {
+    const named = [...plugin?.also ?? [], ...(plugin?.roots ?? []).flatMap((root) => {
+      const [manifest, market] = [readJson(manifestOf(root)), readJson(path.join(root, '.claude-plugin/marketplace.json'))];
+      const entries = isDoc(market) && Array.isArray(market.plugins) ? market.plugins as unknown[] : [];
+      return [
+        ...(isDoc(manifest) ? namedPaths(manifest.agents).map((n) => path.resolve(root, n)) : []),
+        ...entries.flatMap((p) => (isDoc(p) && typeof p.source === 'string' ? namedPaths(p.agents).map((n) => path.resolve(root, p.source as string, n)) : [])),
+      ];
     })];
     const isAgent = (x: string): boolean => path.relative(o.claudeDir, x).split(path.sep).includes('agents') || named.some((n) => x === n || holds(n, x));
     for (const f of found.filter((x) => x.endsWith('.md') && (!plugin || isAgent(x)))) {
@@ -535,7 +537,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
       const m = path.relative(path.join(pluginsDir, 'marketplaces'), h.file).split(path.sep)[0];
       whole(`claude:marketplace:${m}`, `${m}'s marketplace.json`, h.fields, [h.file]);
     }
-    vetAgents(found.filter((f) => !held.includes(f)), true);
+    vetAgents(found.filter((f) => !held.includes(f)), { roots: pluginRoots(found) });
   });
   const unreadInstalls: string[] = [];
   for (const p of plugins) {
@@ -550,7 +552,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
       continue;
     }
     const also = (p.namedAgents ?? []).map((n) => path.resolve(p.installPath, n));
-    tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath), undefined, (found) => vetAgents(found, true, also));
+    tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath), undefined, (found) => vetAgents(found, { roots: [p.installPath, ...pluginRoots(found)], also }));
     for (const [file, ss] of byFile) {
       if (!holds(p.installPath, file) || unreadable.includes(file) || waiting.has(file)) continue;
       const data = pluginFile(file, ss, consent);
@@ -1238,18 +1240,21 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     let doc: { value: unknown; write: (value: unknown) => string } | undefined;
     try { doc = to.endsWith('.md') ? agentDoc(text) : { value: JSON.parse(text), write: (v) => asJson(v as Doc) }; } catch { /* below */ }
     const value = doc?.value;
+    const recorded = new Set(keys.map((k) => JSON.stringify((JSON.parse(k) as Place).slice(1))));
     let [n, left] = [0, !doc];
     for (const k of doc ? keys : []) {
       const at = (JSON.parse(k) as Place).slice(1);
       const v = getAt(value, at);
       const bare = state.bare?.[k]?.value;
-      // a copy no longer at its place, as an item added above it moves it, is taken back where it alone lies now; one
-      // lying twice, or gone while its place holds no bare form, leaves the file as changed there since
-      const found = isCopy(state.secrets[k], v) ? [at] : stringPlaces(value).filter((p) => isCopy(state.secrets[k], getAt(value, p)));
-      if (found.length === 1) {
-        setAt(value as Doc, found[0], bare ?? '');
+      // a copy is taken back at its place, or, moved as by an item added above it, where it alone lies now; a copy also
+      // lying where no record puts one, or one gone while its place holds no bare form, leaves the file as changed
+      const found = stringPlaces(value).filter((p) => isCopy(state.secrets[k], getAt(value, p)));
+      const own = isCopy(state.secrets[k], v);
+      if (own || found.length === 1) {
+        setAt(value as Doc, own ? at : found[0], bare ?? '');
         n += 1;
-      } else if (found.length || !(typeof v === 'string' && (v === bare || v === '' || isReferenceOnly(v)))) left = true;
+      }
+      if (own ? found.some((p) => !recorded.has(JSON.stringify(p))) : found.length > 1 || (!found.length && !(typeof v === 'string' && (v === bare || v === '' || isReferenceOnly(v))))) left = true;
     }
     if (doc && n) {
       put(file, Buffer.from(doc.write(doc.value)), (statOf(realPath(file))?.mode ?? 0o600) & 0o777);
