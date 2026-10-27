@@ -138,17 +138,16 @@ final class ControllerProcess {
 
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
-    case add, doctor, upgrade, rollback, remove, enable
+    case add, doctor, upgrade, rollback, remove
 
     /// doctor prints its checks as one report when it ends; the others print a step per line as they go
     var printsReport: Bool { self == .doctor }
 
-    /// enable, remove and upgrade rewrite fleet.json, which names the fleet's gateway
-    var rewritesFleetConfig: Bool { self == .enable || self == .remove || self == .upgrade }
+    /// remove and upgrade rewrite fleet.json, which names the fleet's gateway
+    var rewritesFleetConfig: Bool { self == .remove || self == .upgrade }
 }
 
-/// What the page named the operation with. Each field belongs to one operation's flags; the fleet an
-/// enable is for is the shell's own, never the page's.
+/// What the page named the operation with. Each field belongs to one operation's flags.
 struct HostArgs: Decodable, Equatable {
     let name: String
     var ssh: String?
@@ -177,8 +176,7 @@ let handoverWords: Set<String> = ["on", "off", "status", "attach"]
 /// The argv of `svall host <op> … --json`. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {
-    /// `fleet` is the profile of the fleet this window runs, which only enable names.
-    static func arguments(op: HostOp, args: HostArgs, fleet: String?) -> [String]? {
+    static func arguments(op: HostOp, args: HostArgs) -> [String]? {
         guard args.name.allowed(by: machineNamePattern) else { return nil }
         // a rollback is the upgrade command's
         var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
@@ -187,9 +185,6 @@ enum HostCommand {
             guard let ssh = args.ssh, args.forget == nil,
                   ssh.allowed(by: sshDestinationPattern) else { return nil }
             argv += ["--ssh", ssh]
-        case .enable:
-            guard let fleet, args.ssh == nil, args.forget == nil, fleet.allowed(by: "^[a-z][a-z0-9-]*$") else { return nil }
-            argv += ["--fleet", fleet]
         case .remove:
             guard args.ssh == nil else { return nil }
             if args.forget == true { argv.append("--forget") }
@@ -206,16 +201,27 @@ enum HostCommand {
 /// One run of the bundled `svall host …`: its steps go to the page as the child prints them, and it
 /// is killed when the page cancels or the window goes.
 final class HostProcess {
+    /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies.
+    struct Tick: Decodable, Equatable {
+        let item: String
+        let fields: [String]
+        let on: Bool
+        let preview: [String]
+    }
+
     struct Step: Decodable, Equatable {
         let step: String, status: String
         let detail: String?, action: String?
         // a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
         var run: String? = nil
+        // the port a login on the machine is forwarded through, and the consent a row asks for
+        var forward: Int? = nil
+        var tick: Tick? = nil
     }
 
     /// What `svall host doctor --json` prints once it is done: each check becomes a step.
     private struct Report: Decodable {
-        struct Check: Decodable { let name: String, status: String, detail: String?, run: String? }
+        struct Check: Decodable { let name: String, status: String, detail: String?, action: String?, run: String?, forward: Int?, tick: Tick? }
         let checks: [Check]
     }
 
@@ -262,7 +268,7 @@ final class HostProcess {
     /// command itself said.
     private func finish(_ status: Int32, said: [String]) {
         if report, let report = try? JSONDecoder().decode(Report.self, from: Data(printed.joined(separator: "\n").utf8)) {
-            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: nil, run: check.run)) }
+            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: check.action, run: check.run, forward: check.forward, tick: check.tick)) }
         }
         if status != 0, !sawFailure, !said.isEmpty {
             onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))
