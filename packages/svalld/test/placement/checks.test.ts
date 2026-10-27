@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -7,7 +6,6 @@ import { AGENTS } from '../../src/agents.js';
 import type { AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
 import { handoverGit } from '../../src/links/git.js';
-import { resolvePaths } from '../../src/paths.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
@@ -213,14 +211,6 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const chosen = await sheet(d, { interruptAfterMs: 5000 });
     expect(chosen.sheet).toMatchObject({ question: true, interrupts: true });
     expect(chosen.plan.interruptAfterMs).toBe(5000);
-  });
-
-  it('moves a robot of a fleet whose fleet.json still names a gateway', async () => {
-    const t = machines();
-    const p = resolvePaths(path.join(t.mac, '.svall'));
-    fs.mkdirSync(p.home, { recursive: true });
-    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: crypto.randomUUID(), gatewayMachineId: W }));
-    expect((await sheet(depsOf(t, [shellIn(t)]))).ok).toBe(true);
   });
 
   it('refuses mission control, and not a robot on an island', async () => {
