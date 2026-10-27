@@ -169,12 +169,15 @@ function Machines() {
   useEffect(list, []);
   return (
     <div className="rows" data-testid="machines">
+      {machines && !machines.some((m) => m.ssh) && (
+        <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.</span></div>
+      )}
       {machines?.filter((m) => m.ssh).map((m) => (
         <div key={m.id} className="machine" data-testid={`machine-${m.name}`}>
           <div className="row">
             <span><b>{m.name}</b> {m.ssh}</span>
             <b className="machine-said">
-              {[m.fleets?.length ? `gateway for ${m.fleets.join(', ')}` : '', m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
+              {[m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>

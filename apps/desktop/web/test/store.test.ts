@@ -768,6 +768,11 @@ describe('the machine that owns the fleet', () => {
     store.getState().hostDone('add', 0);
     expect(store.getState().host?.running).toBe(false);
     expect(store.getState().host?.code).toBe(0);
+    // the rows a tick answers with stand where the run's own were
+    store.getState().hostStep('add', { step: 'mirror:var:X', status: 'warn', action: 'set X on box' });
+    store.getState().hostRows([{ step: 'mirror:var:X', status: 'ok', detail: 'X is set on machine 5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }]);
+    expect(store.getState().host?.steps.map((s) => [s.step, s.status])).toEqual([['ssh', 'ok'], ['master', 'fail'], ['mirror:var:X', 'ok']]);
+    expect(store.getState().host?.steps.at(-1)?.detail).toBe('X is set on studio');
   });
   it('asks before it removes or forgets a machine, and only then', () => {
     const store = createAppStore();
@@ -792,6 +797,8 @@ describe('the machine that owns the fleet', () => {
     const store = createAppStore();
     store.getState().openHostTerminal('studio', 'codex login');
     expect(store.getState()).toMatchObject({ hostOpen: true, hostMachine: 'studio', hostTerminal: { run: 'codex login' } });
+    store.getState().openHostTerminal('studio', 'claude', 3334);
+    expect(store.getState().hostTerminal).toEqual({ run: 'claude', forward: 3334 });
     store.getState().toggleHost(false);
     store.getState().toggleHost(true, 'box');
     expect(store.getState().hostTerminal).toBeUndefined();

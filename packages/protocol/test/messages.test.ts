@@ -18,6 +18,10 @@ describe('serverWait', () => {
     expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(3 * 60_000);
     // a retry waits out the worker's taking the snapshot, the robot's start there and the release
     expect(serverWait('robot.moveRetry', { moveId: 'mv_0123456789' })).toBe(5 * 60_000);
+    // the setup rows wait for the link as long as asked, then for the worker's two answers; a tick waits for its push
+    expect(serverWait('machines.setup', { machine: UUID_A })).toBe(20_000);
+    expect(serverWait('machines.setup', { machine: UUID_A, waitMs: 5_000 })).toBe(25_000);
+    expect(serverWait('machines.consent', { machine: UUID_A, item: 'claude:mcp:linear', fields: [], on: false })).toBe(15 * 60_000);
   });
 });
 
@@ -154,6 +158,14 @@ describe('protocol version', () => {
     expect(PROTOCOL_VERSION).toBe(34);
     expect(Object.keys(methods).filter((m) => /^(handover|ownership)\./.test(m))).toEqual([]);
     expect(Object.keys(SystemInfo.shape).filter((k) => k === 'transferSchema' || k === 'heapLimit')).toEqual([]);
+  });
+
+  it('was 33 with machines.setup and machines.consent', () => {
+    expect(methods['machines.consent'].params.parse({ machine: UUID_A, item: 'claude:mcp:linear', fields: ['env.K'], on: true }).on).toBe(true);
+    expect(methods['machines.setup'].params.parse({ machine: UUID_A, waitMs: 5_000 }).waitMs).toBe(5_000);
+    expect(methods['machines.setup'].params.safeParse({ machine: UUID_A, waitMs: 60_001 }).success).toBe(false);
+    const row = { key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to w1', tick: { item: 'claude:mcp:linear', fields: ['env.K'], on: true, preview: ['env.K lin…90'] } };
+    expect(methods['machines.setup'].result.parse({ rows: [row] })).toEqual({ rows: [row] });
   });
 
   it("was 32 with a worker's outbox epoch and the home's user folder on the link, and each machine's user folder, last replayed event and last snapshot in the fleet", () => {

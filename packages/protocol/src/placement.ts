@@ -70,3 +70,13 @@ export const WORKER_OWNED = ['tmux', 'agent', 'unread', 'revive', 'resumeError',
 /** A worker's fleet home: the home it serves, and the token that home proves itself with. */
 export const WorkerFile = z.object({ homeMachineId: MachineId, fleetId: FleetId, token: z.string().min(32), homeName: z.string() });
 export type WorkerFile = z.infer<typeof WorkerFile>;
+
+/**
+ * One line of a machine's setup: how a thing stands there, and what to do when it is not right; `tick` the consent it
+ * toggles, whose `item` and `fields` a tick hands to `machines.consent`.
+ */
+export const SetupRow = z.object({
+  key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(),
+  forward: z.number().int().optional(), tick: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()) }).optional(),
+});
+export type SetupRow = z.infer<typeof SetupRow>;

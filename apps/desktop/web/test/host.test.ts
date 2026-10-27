@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
-  runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
+  replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
+import type { HostStep } from '../src/bridge.js';
 
-const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: { detail?: string; action?: string; run?: string } = {}) =>
+const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: Omit<HostStep, 'step' | 'status'> = {}) =>
   ({ step: s, status, ...extra });
 
 describe('host run', () => {
@@ -28,6 +29,9 @@ describe('host run', () => {
     expect(runActions(run)).toEqual(['ssh u@h, then claude auth status and log in', 'ssh u@h and see what svall doctor says']);
     run = applyStep(run, step('codex', 'warn', { detail: 'not logged in', action: 'ssh u@h, then codex login', run: 'codex login' }));
     expect(run.steps.at(-1)?.run).toBe('codex login');
+    const tick = { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] };
+    run = applyStep(run, step('mirror:claude:mcp:linear', 'warn', { action: "copy linear's keys to box", run: 'claude', forward: 3334, tick }));
+    expect(run.steps.at(-1)).toEqual(step('mirror:claude:mcp:linear', 'warn', { action: "copy linear's keys to box", run: 'claude', forward: 3334, tick }));
     run = endRun(run, 1);
     expect(run.running).toBe(false);
     expect(run.code).toBe(1);
@@ -99,8 +103,19 @@ describe('the end of a run', () => {
       .toEqual({ text: 'box needs 2 things before robots can move there.' });
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
     expect(outcomeOf(blocked)).toEqual({ text: 'box needs 2 things before robots can move there.' });
+    // each distinct action is one thing, as the CLI's verdict counts them: two rows saying check box again are one
+    const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
+    const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'),
+      step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:opencode:mcp:sentry', 'warn', { action: "copy sentry's keys to box" })]);
+    expect(outcomeOf(mirrored)).toEqual({ text: 'box needs 3 things before robots can move there.' });
+    // a mirror row is its own thing, though two servers' rows read alike
+    const alike = ended('doctor', 0, [step('mirror:claude:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" })]);
+    expect(outcomeOf(alike)).toEqual({ text: 'box needs 2 things before robots can move there.' });
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
+    // an add in the list that exited 1 for the things it left is ready once ticks there leave none
+    expect(outcomeOf(ended('add', 1, [step('ssh', 'ok'), step('registry', 'ok'), step('mirror:claude:mcp:linear', 'ok')]))).toEqual({ text: ready, done: true });
+    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
@@ -130,6 +145,18 @@ describe('a step by name', () => {
     expect(stepLabel('weather')).toBe('weather');
   });
 
+  it('stepLabel names a mirror row by agent and server, a var row by its variable', () => {
+    expect(stepLabel('mirror:claude:mcp:linear')).toBe('Claude MCP linear'); expect(stepLabel('mirror:var:GAMMA_TOKEN')).toBe('GAMMA_TOKEN');
+    expect([
+      'mirror:codex:mcp:github', 'mirror:opencode:mcp:sentry@/Users/ada/app', 'mirror:claude:plugin:acme@market:mcp:db', 'mirror:oauth:claude:mcp:notion',
+      'mirror:oauth:claude:plugin:acme:mcp:db', 'mirror:runtime:npx', 'mirror:maconly:claude:chrome', 'mirror:claude:settings', 'mirror:codex:config',
+      'mirror:opencode:config', 'mirror:claude:plugin:acme@market', 'mirror:unreadable:/Users/ada/.codex/config.toml', 'mirror:unchecked',
+    ].map(stepLabel)).toEqual([
+      'Codex MCP github', 'OpenCode MCP sentry', 'plugin acme@market MCP db', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
+      'OpenCode opencode.json', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked',
+    ]);
+  });
+
   it('leaves out the machine the panel already names where a step starts with it', () => {
     expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
     expect(stepSaid({ step: 'fleet', status: 'ok', detail: "studio's unused fleet is now this fleet" }, 'studio')).toBe("studio's unused fleet is now this fleet");
@@ -143,17 +170,26 @@ describe('the attended checklist', () => {
     const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tools', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('versions', 'warn'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Reaching the machine', ['ssh', 'master']],
-      ['What the machine needs', ['tools']],
-      ['Svall on the machine', ['release', 'tmux']],
-      ['Agent CLIs', ['claude', 'codex', 'opencode', 'versions']],
+      ['Reaching it', ['ssh', 'master']],
+      ['What it needs', ['tools']],
+      ['Svall there', ['release', 'tmux']],
+      ['Agents there', ['claude', 'codex', 'opencode', 'versions']],
       ['Trying it out', ['probe']],
     ]);
   });
 
-  it('opens a phase again when a later step comes back to it', () => {
-    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')]).map((g) => g.label))
-      .toEqual(['Reaching the machine', 'What the machine needs', 'Reaching the machine']);
+  it('groups steps under the six labels in the spec\'s order, mirror rows by prefix, and registry under Trying it out', () => {
+    const steps = ['ssh', 'master', 'release', 'claude', 'gh', 'probe', 'registry', 'mirror:claude:mcp:linear'].map((s) => step(s, 'ok'));
+    expect(groupSteps(steps).map((g) => g.label)).toEqual(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
+    // a machine's own doctor reports its service, and the checks Svall knows nothing of come last
+    expect(groupSteps(['weather', 'systemd', 'git', 'mirror:unchecked'].map((s) => step(s, 'ok'))).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['What it needs', ['git']], ['Svall there', ['systemd']], ['Your agent setup', ['mirror:unchecked']], ['Checks', ['weather']],
+    ]);
+  });
+
+  it("a step that comes back to an earlier phase joins that phase's group", () => {
+    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')]).map((g) => [g.label, g.rows.map((r) => r.step)]))
+      .toEqual([['Reaching it', ['ssh', 'master']], ['What it needs', ['tools']]]);
   });
 
   it('calls no phase by the name of a step in it', () => {
@@ -177,18 +213,39 @@ describe('the attended checklist', () => {
     const steps = [step('machine', 'ok'), step('master', 'ok'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok'),
                    step('probe', 'warn'), step('rollback', 'warn')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
-      ['Reaching the machine', ['machine', 'master']],
-      ['Svall on the machine', ['release', 'upload', 'install']],
+      ['Reaching it', ['machine', 'master']],
+      ['Svall there', ['release', 'upload', 'install']],
       ['Trying it out', ['probe', 'rollback']],
     ]);
   });
 
   it('lists what a machine needs without rsync', () => {
-    expect(groupSteps([step('tools', 'ok'), step('rsync', 'ok')]).map((g) => g.label)).toEqual(['What the machine needs', 'Checks']);
+    expect(groupSteps([step('tools', 'ok'), step('rsync', 'ok')]).map((g) => g.label)).toEqual(['What it needs', 'Checks']);
   });
 
   it('shows a step it does not know rather than dropping it', () => {
     expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
+  });
+
+  it('replaceRows swaps the mirror rows in place and keeps every other step', () => {
+    const run = { ...beginRun('doctor', { name: 'box' }), steps: [step('ssh', 'ok'), step('mirror:claude:mcp:linear', 'warn'), step('mirror:var:X', 'warn'), step('probe', 'ok')] };
+    expect(replaceRows(run, [step('mirror:claude:mcp:linear', 'ok')]).steps).toEqual([step('ssh', 'ok'), step('mirror:claude:mcp:linear', 'ok'), step('probe', 'ok')]);
+    expect(replaceRows({ ...run, steps: [step('ssh', 'ok')] }, [step('mirror:var:X', 'warn')]).steps).toEqual([step('ssh', 'ok'), step('mirror:var:X', 'warn')]);
+  });
+
+  it('replaceRows words the rows as a step from the shell is worded: no token, and a machine by its name', () => {
+    const studio = '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
+    const rows = [step('mirror:var:X', 'warn', { action: `check machine ${studio} again`, detail: 'pushed with token=s3cr3t; not yet there' })];
+    const run = replaceRows(beginRun('doctor', { name: 'studio' }), rows, { [studio]: 'studio' });
+    expect(run.steps).toEqual([step('mirror:var:X', 'warn', { action: 'check studio again', detail: 'pushed with token=…; not yet there' })]);
+  });
+
+  it('rowToStep names a row of the report as svall host does, keeping what it carries', () => {
+    const tick = { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true, preview: ['env.LINEAR_API_KEY lin…90'] };
+    expect(rowToStep({ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to box: env.LINEAR_API_KEY lin…90', tick }))
+      .toEqual({ step: 'mirror:claude:mcp:linear', status: 'ok', detail: 'keys copied to box: env.LINEAR_API_KEY lin…90', tick });
+    expect(rowToStep({ key: 'oauth:codex:mcp:figma', status: 'skip', detail: 'log in once', run: 'codex mcp login figma', forward: 1455 }))
+      .toEqual({ step: 'mirror:oauth:codex:mcp:figma', status: 'skip', detail: 'log in once', run: 'codex mcp login figma', forward: 1455 });
   });
 });
 
@@ -208,6 +265,14 @@ describe('what the page may ask for', () => {
     expect(loginForward('codex login --device-auth')).toBeUndefined();
     expect(loginForward('codex')).toBeUndefined();
     expect(loginForward('claude auth login')).toBeUndefined();
+  });
+
+  it("loginForward prefers the row's forward, then codex login's 1455", () => {
+    expect(loginForward('claude', 3334)).toBe(3334); expect(loginForward('codex login')).toBe(1455);
+    // the Claude login's row names the port its run fixes; a run alone names none
+    expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude', 3118)).toBe(3118);
+    expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude')).toBeUndefined();
+    expect(loginForward('claude')).toBeUndefined();
   });
 });
 

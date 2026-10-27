@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
@@ -15,6 +15,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { OwnershipState } from '../ownership/state.js';
 import { classification, guardMethod } from '../ownership/guard.js';
 import type { RemoteWatches } from '../placement/far-viewers.js';
+import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
@@ -27,10 +28,10 @@ import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a gateway's daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -41,6 +42,20 @@ const placementOf = ({ placement }: Ctx): Placement => {
   if (!placement) throw new ApiError('not_on_worker', 'not on a worker');
   return placement;
 };
+
+// the agent configuration a worker takes is its home's
+const mirrorOf = ({ mirror }: Ctx): Mirror => {
+  if (!mirror) throw new ApiError('not_on_worker', 'not on a worker');
+  return mirror;
+};
+
+// the setup rows of `machine`, asked of its worker once the link is up or `waitMs` has passed
+async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number): Promise<{ rows: SetupRow[] }> {
+  const mirror = mirrorOf(ctx);
+  const link = ctx.links?.for(machine);
+  await link?.linked(waitMs);
+  return { rows: await mirror.report(link, machine, { name: ctx.store.state.machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '' }) };
+}
 
 // the folders a scan here lists are those of the robots that run here
 const roots = ({ router }: Pick<Ctx, 'router'>) => router && rootHere((c) => router.runsHere(c));
@@ -100,6 +115,22 @@ export const handlers: Handlers = {
     })),
   }),
   'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
+  'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0),
+  // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
+  'machines.consent': async (p, ctx) => {
+    const mirror = mirrorOf(ctx);
+    const name = ctx.store.state.machines?.[p.machine]?.name;
+    if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
+    mirror.consent(p.machine, p.item, p.fields, p.on);
+    const link = ctx.links?.for(p.machine);
+    if (link?.connected()) {
+      await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
+    }
+    // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
+    const unread = mirror.unreadFile(p.item);
+    if (unread) throw new ApiError('not_mirrored', `${unread} on this Mac cannot be read; the copy stays on ${name} until it can`);
+    return setupOf(ctx, p.machine, 0);
+  },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),
   'column.rename': (p, { fleet }) => fleet.renameColumn(p.id, p.name),
   'column.reorder': (p, { fleet }) => fleet.reorderColumn(p.id, p.targetId, p.after),

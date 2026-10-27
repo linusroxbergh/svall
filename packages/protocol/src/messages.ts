@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { MachineId, SystemInfo } from './handover.js';
-import { MoveId, MoveSheet, Refusal } from './placement.js';
+import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
@@ -93,6 +93,12 @@ const MOVE_TIMEOUT_MS = 15 * 60_000;
 const MOVE_CHECK_TIMEOUT_MS = 3 * 60_000;
 // a retry waits for the worker to take the snapshot (60 s), to start the robot (two minutes) and for the release
 const MOVE_RETRY_TIMEOUT_MS = 5 * 60_000;
+// how long the home waits for each of a worker's answers about its agent configuration while it builds the setup rows
+export const REPORT_MS = 10_000;
+// the setup rows past the wait for the link: the worker's two answers
+const SETUP_REPORT_MS = 2 * REPORT_MS;
+// a tick waits for the push already under way and its own, each of up to the 200 MB tree, then for the setup rows
+const CONSENT_TIMEOUT_MS = 15 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -104,6 +110,8 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
   if (method === 'robot.moveCheck') return MOVE_CHECK_TIMEOUT_MS;
   if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
+  if (method === 'machines.setup') return ((params as { waitMs?: number }).waitMs ?? 0) + SETUP_REPORT_MS;
+  if (method === 'machines.consent') return CONSENT_TIMEOUT_MS;
   return 0;
 };
 
@@ -247,6 +255,16 @@ export const methods = {
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
   'machines.refresh': { params: z.object({}), result: z.object({}) },
+  // the setup rows of a machine's agent configuration, once its link is up or waitMs has passed
+  'machines.setup': {
+    params: z.object({ machine: MachineId, waitMs: z.number().int().min(0).max(60_000).optional() }),
+    result: z.object({ rows: z.array(SetupRow) }),
+  },
+  // ticks `fields` of `item` for `machine`, or unticks all of them, pushes the change there and answers the setup rows
+  'machines.consent': {
+    params: z.object({ machine: MachineId, item: z.string(), fields: z.array(z.string()), on: z.boolean() }),
+    result: z.object({ rows: z.array(SetupRow) }),
+  },
   // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
   // without afterId the column goes last, and a deleted column's robots go to moveTo
   'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },

@@ -97,11 +97,19 @@ the list; the others say what they did or what is still to do. Each exits 1 unle
 | `claude` | add | Claude Code on the PATH the daemon uses, its version (2.1.251 or newer), its login, and, once logged in, Svall's hooks as the machine's doctor finds them. Each finding is a warning with an action. | Install, update, log in or set up the hooks as the action says. |
 | `codex` | add | The same for Codex (0.156.0 or newer). When it is not logged in, the action also says to trust Svall's hooks once with `/hooks`. | As for `claude`. |
 | `opencode` | add | The same for OpenCode (2.0.22 or newer), its login a model provider's that `opencode auth list` names, with Svall's OpenCode plugin as the machine's doctor finds it. | As for `claude`. |
+| `gh` | add | The GitHub CLI's login there, as the machine's doctor finds it with the daemon's PATH. Not installed or not logged in is a warning that names the command to run there and has no action, so it is advice and never a thing left; a doctor that reports no `gh` check skips it. | Run the `sudo apt install gh` or `gh auth login` it names. |
 | `versions` | add | Each agent's release there against this Mac's, as this Mac's own daemon finds it, since a handover each way needs the destination's at least the source's. A difference is a warning naming the side behind. An agent below Svall's floor there is left to its own row. Skipped when this Mac's own daemon cannot be asked, as when it is not running or speaks another protocol, or when no agent CLI is left to compare. | Run the update the action names on the side behind: `claude update`, `codex update` or `opencode upgrade`. |
 | `probe` | add, upgrade, upgrade --rollback | add: the machine's own fleet answers through a forwarded port from the release just installed, `svall version --json` there says this fleet runs as a worker, and tmux opens a window, on a socket of its own with the units' PATH, and closes it. upgrade, with or without `--rollback`: the machine's doctor answers with its daemon unit running, and its fleet answers from the release now current. | An add stops here. An upgrade whose probe fails goes back to the release before (`rollback`). After `--rollback`, read the daemon log there; the action names the release it runs now. |
 | `rollback` | upgrade, upgrade --rollback | Puts back the release the machine ran before, or the kept release `--rollback <release>` names. The machine's own `svall setup --rollback` restarts its units and checks each fleet's daemon answers from that release. `--rollback` first refuses, changing nothing, when a fleet's `state.json` there is at a newer state schema than that release reads, whose daemon would then refuse to start; or, for a release whose `svall version --json` names no schema, newer than the oldest any release has read. It refuses too when that release carries no tmux and a fleet's tmux server there runs another version than the machine's own tmux, which that release would run and which cannot reach it. | Read the daemon log there; the action names the release it runs now, and when the rollback failed, `svall host upgrade <host> --rollback <release>` to put back another release kept there. Refused for a newer state, or for a tmux server, the machine stays on the release it runs: keep it, or go back to a release that reads that schema or carries a tmux. |
 | `registry` | add, remove | Writes or drops the machine in this Mac's registry. | Check `~/.config/svall` is writable. |
 | `uninstall` | remove | Runs `svall uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names. Its fleets and their files stay there. With `--forget` it is skipped and the machine is left untouched. | A failure names the exit and what `svall uninstall` said: `ssh <destination>` and run it to see what stops it. `svall host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
+
+After `registry`, `host add` lists each row of [your agent setup there](setup.md#your-agent-setup-on-the-machine) as a
+step `mirror:<key>`: a server or file whose keys you tick (`claude:mcp:<name>`, `claude:settings`, `codex:config`,
+`opencode:config`, `claude:plugin:<name>`), `var:<VAR>`, `oauth:<item>`, `runtime:<command>`,
+`maconly:<agent>:<name>`, `unreadable:<path>`, or `unchecked` when this Mac's daemon could not be asked. None fails; a
+warning's action says what to do: tick the box (`svall host consent`), set the variable there (`svall worker env`),
+log in, install the program, or check the machine again.
 
 ### Doctor checks
 
@@ -140,3 +148,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `versions` | host doctor | Each agent there runs this Mac's release of it, as for `host add`, one below Svall's floor included. |
 | `space` | host doctor | Free space in the home. |
 | `home` | host doctor | The machine's home is still the one the registry records. |
+
+`host doctor` ends with the same `mirror:<key>` rows as `host add` lists ([above](#steps)); each warning with an
+action counts as one thing left before robots can move there, and the rows that ask to check the machine again count
+once.

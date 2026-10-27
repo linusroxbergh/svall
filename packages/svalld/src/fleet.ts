@@ -71,6 +71,8 @@ type Deps = {
   created?: (c: Robot, p: ParsedParams<'robot.create'>) => void;
   // the main root a robot's repository docs hang off, as the home names it
   repoRoot?: (c: Robot) => string | undefined;
+  // variable names beyond the agent keys that robots here get from the fleet's .env
+  extraKeys?: () => string[];
 };
 // a note given at the start is the user's
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string };
@@ -589,7 +591,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private robotKeys(): Record<string, string> {
-    return robotKeyEnv(this.deps.paths.env);
+    return robotKeyEnv(this.deps.paths.env, this.deps.extraKeys?.() ?? []);
   }
 
   private codexEnv(): Record<string, string> {

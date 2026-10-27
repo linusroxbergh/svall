@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -12,11 +12,11 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, doctorHost, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, thingOf, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { farProfile, type Target } from '../target.js';
-import { MARK, type Check } from '../checks-view.js';
+import { MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
 import { withClient } from './fleet.js';
 
@@ -61,12 +61,14 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     fleet: { home: fleet.home, ...(farProfile(fleet) && { profile: farProfile(fleet) }) },
     // a daemon that is not running links the machine when it starts
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
+    setupRows: (machine, waitMs) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs })).then((r) => r.rows),
+    consent: (machine, item, fields, on) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.consent', { machine, item, fields, on })).then((r) => r.rows),
   };
 }
 
 /** A step as a run prints it; a detail of several lines, as the replicas step's, lists them under the step. */
 export const stepLine = (e: StepEvent): string =>
-  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
+  `${MARK[e.status as keyof typeof MARK] ?? ' '} ${e.step}  ${tickMark(e.tick)}${[e.detail, e.action].filter(Boolean).join(' -> ')}`.trimEnd().replaceAll('\n', '\n    ');
 
 type Op = 'add' | 'upgrade' | 'rollback' | 'remove';
 const plural = (n: number, noun: string): string => `${n} ${noun}${n === 1 ? '' : 's'}`;
@@ -93,10 +95,12 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
   return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`)].join('\n');
 }
 
-/** The last line of a check: ready, or how many failed checks are left before robots can move there. */
+/** The last line of a check: ready, or the things left before robots can move there, each failed check and each warning's action once, as a run counts them. */
 export function doctorVerdict(checks: Check[], name: string): string {
-  const failed = checks.filter((c) => c.status === 'fail');
-  return failed.length ? `${needsLine(name, failed.length)}: ${failed.map((c) => c.name).join(', ')}` : readyLine(name);
+  const todo = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
+  const thing = (c: Check): string => (c.action === undefined ? c.name : thingOf(c.name, c.action));
+  const left = todo.filter((c, i) => todo.findIndex((o) => thing(o) === thing(c)) === i);
+  return left.length ? `${needsLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}` : readyLine(name);
 }
 
 const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
@@ -192,6 +196,26 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       if (entry) recordCheck(dir(), entry.id, report);
       printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, name)].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
+    });
+
+  host.command('consent')
+    .description("tick or untick one setting of the machine's mirror, as host doctor lists it")
+    .argument('<name>', 'the machine in the registry')
+    .argument('<item>', 'the setting, such as claude:mcp:linear')
+    .argument('<state>', 'on to copy its keys there, off to stop')
+    .option('--field <field...>', 'with on, only these fields of it; off unticks every field')
+    .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
+      if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);
+      let rows;
+      try {
+        rows = await consentHost(name, { item, on: state === 'on', ...(o.field && { fields: o.field }) }, realDeps(() => { /* rows print below */ }, dir(), target()));
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'not_mirrored')) throw e;
+        process.stdout.write(`${e.message}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      printResult(rows, json(), () => rows.map((r) => stepLine(rowStep(r))).join('\n'));
     });
 
   host.command('upgrade')

@@ -271,7 +271,7 @@ test('Machines lists every machine with its ssh, the fleets it is the gateway of
   expect(screen.queryByTestId('machine-mac')).toBeNull();
   const trift = screen.getByTestId('machine-trift');
   expect(trift.textContent).toContain('ada@trift');
-  expect(trift.textContent).toContain('gateway for private, work');
+  expect(trift.textContent).not.toContain('gateway for');
   expect(trift.textContent).toContain('release 0.13.0');
   expect(trift.textContent).toContain('2 warnings');
   expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
@@ -286,6 +286,7 @@ test('Machines lists every machine with its ssh, the fleets it is the gateway of
   expect(store.getState().hostMachine).toBe('trift');
 
   // one run at a time
+  fireEvent.click(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-more"]')!);
   expect((screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]') as HTMLButtonElement).disabled).toBe(true);
   act(() => { store.getState().hostDone('doctor', 0); store.getState().toggleHost(false); });
   fireEvent.click(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-forget"]')!);

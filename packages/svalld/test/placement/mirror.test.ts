@@ -1,10 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import { applyMirror, MIRROR_FILE_MAX, mirrorPlan, packMirror } from '../../src/placement/mirror.js';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { realPath } from '../../src/path-tools.js';
+import { claudeAdapter } from '../../src/sessions/claude.js';
+import { clearConsent, mask, readConsent, setConsent, tickedFields } from '../../src/placement/mirror-consent.js';
+import { silentLogger } from '../../src/log.js';
+import { applyMirror, lockAgentFiles, MIRROR_FILE_MAX, mirrorCalls, mirrorPlan, packMirror, takeBackCopies } from '../../src/placement/mirror.js';
 import { unpack } from '../../src/placement/move.js';
+import { seedTrust } from '../../src/placement/trust.js';
+import { SHIM } from '../../src/profile.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { W, until, world } from './world.js';
+import { editJson, FAR_HOOKS, FAR_STATUS, farHome, macHome, mirroredFiles, put, statsOf } from './mirror-homes.js';
+import { H, W, until, world } from './world.js';
 
 const stops: (() => unknown)[] = [];
 afterEach(async () => {
@@ -12,79 +20,30 @@ afterEach(async () => {
   cleanHomes();
 });
 
-const put = (file: string, data: string | Buffer): void => {
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, data);
-};
 const read = (file: string): string => fs.readFileSync(file, 'utf8');
-const json = (file: string): unknown => JSON.parse(read(file));
+const json = (file: string): any => JSON.parse(read(file));
 
-const MAC_HOOKS = { Stop: [{ hooks: [{ type: 'command', command: '/Applications/Svall.app/hook' }] }] };
-const MAC_STATUS = { type: 'command', command: '/Applications/Svall.app/status' };
+const ACME = 'claude/plugins/cache/mp/acme/1.0.0';
 const PLANNED = [
-  'claude/CLAUDE.md', 'claude/agents/planner.md', 'claude/commands/ship.md', 'claude/keybindings.json', 'claude/rules/style.md',
-  'claude/skills/review/SKILL.md', 'codex/AGENTS.md', 'home/.agents/skills/lint/SKILL.md', 'profiles/reviewer.md',
+  'claude/CLAUDE.md', 'claude/agents/planner.md', 'claude/commands/ship.md', 'claude/keybindings.json',
+  `${ACME}/.mcp.json`, `${ACME}/skills/pdf/SKILL.md`, 'claude/plugins/installed_plugins.json', 'claude/plugins/known_marketplaces.json',
+  'claude/plugins/marketplaces/mp/.claude-plugin/marketplace.json', 'claude/rules/style.md', 'claude/skills/review/SKILL.md', 'codex/AGENTS.md',
+  'home/.agents/skills/lint/SKILL.md', 'opencode/plugins/mine.js', 'profiles/reviewer.md',
 ];
-
-// a Mac home: Claude's configuration with what must not travel beside it, Codex's, the shared skills and a profile
-function macHome() {
-  const homedir = makeHome();
-  const claudeDir = path.join(homedir, '.claude');
-  const codexDir = path.join(homedir, '.codex');
-  const agentProfiles = path.join(homedir, '.svall/agent-profiles');
-  put(path.join(claudeDir, 'CLAUDE.md'), '# how I work\n');
-  put(path.join(claudeDir, 'skills/review/SKILL.md'), 'review it\n');
-  put(path.join(claudeDir, 'skills/review/.env'), 'TOKEN=secret\n');
-  put(path.join(claudeDir, 'rules/style.md'), 'terse\n');
-  put(path.join(claudeDir, 'agents/planner.md'), 'plan\n');
-  put(path.join(claudeDir, 'commands/ship.md'), 'ship\n');
-  put(path.join(claudeDir, 'keybindings.json'), '[]\n');
-  put(path.join(claudeDir, 'settings.json'), JSON.stringify({
-    model: 'opus', theme: 'dark', hooks: MAC_HOOKS, statusLine: MAC_STATUS,
-    scratchDir: path.join(homedir, 'scratch'), sandbox: { workPath: [path.join(homedir, 'code')], cwd: '/opt/shared' },
-    env: { ANTHROPIC_API_KEY: 'sk-mac' }, apiKeyHelper: '/Users/ada/bin/key', awsCredentialExport: '/Users/ada/bin/aws', awsAuthRefresh: 'aws sso login', otelHeadersHelper: '/Users/ada/bin/otel',
-  }));
-  put(path.join(claudeDir, 'plugins/installed_plugins.json'), '{}');
-  put(path.join(claudeDir, '.credentials.json'), '{"token":"x"}');
-  put(path.join(claudeDir, 'projects/-Users-ada-code/s.jsonl'), '{}\n');
-  put(path.join(homedir, '.claude.json'), '{"mcpServers":{}}');
-  put(path.join(codexDir, 'AGENTS.md'), '# codex\n');
-  put(path.join(codexDir, 'auth.json'), '{}');
-  put(path.join(homedir, '.agents/skills/lint/SKILL.md'), 'lint\n');
-  put(path.join(agentProfiles, 'reviewer.md'), 'a reviewer\n');
-  return { homedir, claudeDir, codexDir, agentProfiles };
-}
-
-const FAR_HOOKS = { Stop: [{ hooks: [{ type: 'command', command: '/home/ada/.svall/hooks/hook' }] }] };
-const FAR_STATUS = { type: 'command', command: '/home/ada/.svall/hooks/status' };
-
-// a worker's homes: its own settings, and overrides for the model and CLAUDE.md
-function farHome() {
-  const homedir = makeHome();
-  const far = {
-    homedir, claudeDir: path.join(homedir, '.claude'), codexDir: path.join(homedir, '.codex'),
-    agentProfiles: path.join(homedir, '.svall/agent-profiles'), overrides: path.join(homedir, '.svall/mirror-overrides'),
-  };
-  put(path.join(far.claudeDir, 'settings.json'), JSON.stringify({
-    model: 'haiku', cleanupPeriodDays: 7, hooks: FAR_HOOKS, statusLine: FAR_STATUS, env: { HTTPS_PROXY: 'http://proxy:3128' }, apiKeyHelper: '/home/ada/bin/key',
-  }));
-  put(path.join(far.overrides, 'claude/settings.json'), JSON.stringify({ model: 'sonnet' }));
-  put(path.join(far.overrides, 'claude/CLAUDE.md'), '# this worker\n');
-  return far;
-}
+const marketKey = (mac: ReturnType<typeof macHome>) => `${path.join(mac.claudeDir, 'plugins/marketplaces/mp/acme/.mcp.json')} holds a key`;
 
 describe('the agent configuration mirror', () => {
-  it('the plan lists CLAUDE.md, skills, rules, agents, commands and a settings.json without hooks and statusLine, and nothing from .claude.json or plugins', () => {
+  it('the plan lists CLAUDE.md, skills, rules, agents, commands and a settings.json without hooks and statusLine, and the plugin trees, and nothing from .claude.json as a file or from the logins', () => {
     const mac = macHome();
-    const plan = mirrorPlan(mac);
+    const plan = mirrorPlan(mac, new Set());
     expect(plan.files.map((f) => f.to).sort()).toEqual(PLANNED);
     expect(plan.files.find((f) => f.to === 'claude/CLAUDE.md')).toEqual({ from: path.join(mac.claudeDir, 'CLAUDE.md'), to: 'claude/CLAUDE.md', mode: fs.statSync(path.join(mac.claudeDir, 'CLAUDE.md')).mode & 0o777 });
     // and none of the settings that hold secrets or run what fetches them
     expect(plan.settings).toEqual({ model: 'opus', theme: 'dark', scratchDir: path.join(mac.homedir, 'scratch'), sandbox: { workPath: [path.join(mac.homedir, 'code')], cwd: '/opt/shared' } });
-    expect(plan.skipped).toEqual([]);
+    expect(plan.skipped).toEqual([marketKey(mac)]);
   });
 
-  it('a link into plugins or to a login file, and a key by any of its names, stays on the Mac; a link to a plain file travels', () => {
+  it('a link to a login file, and a key by any of its names, stays on the Mac; a link into plugins and to a plain file travels', () => {
     const mac = macHome();
     put(path.join(mac.claudeDir, 'plugins/cache/acme/skills/pdf/SKILL.md'), 'pdf\n');
     fs.symlinkSync(path.join(mac.claudeDir, 'plugins/cache/acme/skills/pdf'), path.join(mac.claudeDir, 'skills/pdf'));
@@ -94,7 +53,7 @@ describe('the agent configuration mirror', () => {
     for (const key of ['id_ed25519', 'id_ed25519.pub', 'deploy.p12', 'credentials.json', 'auth.json', 'server.pem']) put(path.join(mac.homedir, '.agents/skills/lint', key), 'secret\n');
     put(path.join(mac.homedir, 'notes/house.md'), 'house style\n');
     fs.symlinkSync(path.join(mac.homedir, 'notes/house.md'), path.join(mac.claudeDir, 'rules/house.md'));
-    expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/rules/house.md'].sort());
+    expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/rules/house.md', 'claude/skills/pdf/SKILL.md'].sort());
   });
 
   it('the common credential files and folders stay on the Mac, under a mirrored root or through a link into a dotfiles tree', () => {
@@ -119,25 +78,136 @@ describe('the agent configuration mirror', () => {
     expect(plan.files.map((f) => f.to)).toContain('claude/skills/review/SKILL.md');
     expect(plan.files.filter((f) => f.to.startsWith('claude/skills/review/model') || f.to.startsWith('claude/commands/'))).toEqual([]);
     expect(plan.skipped).toEqual([
+      marketKey(mac),
       `${path.join(mac.claudeDir, 'skills/review/model.bin')} is over 5 MB`,
       `${path.join(mac.claudeDir, 'commands')} is over 200 MB`,
     ]);
   });
 
-  it('applyMirror keeps the worker\'s hooks and statusLine and merges mirror-overrides last; an unchanged file is not rewritten', async () => {
+  it('a plugin or marketplace server file whose server holds a key or a field the mirror does not know, and a marketplace list defining one, stay on the Mac; a manifest that cannot be read keeps its whole plugin here, and what one names', () => {
+    const mac = macHome();
+    const market = path.join(mac.claudeDir, 'plugins/marketplaces/mp');
+    const acme = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    const keyed = (k: string) => JSON.stringify({ s: { command: 'x', env: { K: k } } });
+    put(path.join(market, 'odd/.mcp.json'), JSON.stringify({ odd: { command: 'odd', sandbox: { token: 'odd_token_1234567890' } } }));
+    put(path.join(market, 'bad/.claude-plugin/plugin.json'), '{ "mcpServers": "./servers.json", ');
+    put(path.join(market, 'bad/servers.json'), keyed('bad_key_1234567890'));
+    put(path.join(market, 'far/.claude-plugin/plugin.json'), JSON.stringify({ name: 'far', mcpServers: '../shared/keys.json' }));
+    put(path.join(market, 'shared/keys.json'), keyed('far_key_1234567890'));
+    put(path.join(market, '.claude-plugin/marketplace.json'), JSON.stringify({ name: 'mp', plugins: [{ name: 'inline', source: './inline', mcpServers: { s: { command: 'x', env: { K: 'inline_key_1234567890' } } } }] }));
+    put(path.join(acme, '.claude-plugin/plugin.json'), '{ "mcpServers": "./servers.json", ');
+    put(path.join(acme, 'servers.json'), keyed('acme_key_1234567890'));
+    const plan = mirrorPlan(mac);
+    expect(plan.files.map((f) => f.to).filter((t) => t.startsWith('claude/plugins/')).sort()).toEqual(['claude/plugins/installed_plugins.json', 'claude/plugins/known_marketplaces.json']);
+    expect(plan.skipped).toEqual(expect.arrayContaining([
+      `${path.join(market, 'odd/.mcp.json')} holds a key`, `${path.join(market, '.claude-plugin/marketplace.json')} holds a key`,
+      `${path.join(market, 'bad/.claude-plugin/plugin.json')} cannot be read`, `${path.join(market, 'far/.claude-plugin/plugin.json')} cannot be read`,
+      `${path.join(acme, '.claude-plugin/plugin.json')} cannot be read`,
+    ]));
+  });
+
+  it('a server file a marketplace entry names by path is the plugin\'s server file in its install, redacted until ticked, and stays on the Mac in the marketplace while it holds a key', () => {
+    const mac = macHome();
+    const market = path.join(mac.claudeDir, 'plugins/marketplaces/mp');
+    const acme = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    const servers = JSON.stringify({ mcpServers: { s: { command: 'x', env: { K: 'mk_key_1234567890' } } } });
+    put(path.join(market, '.claude-plugin/marketplace.json'), JSON.stringify({ name: 'mp', plugins: [{ name: 'acme', source: './acme', strict: false, mcpServers: './servers.json' }] }));
+    put(path.join(market, 'acme/servers.json'), servers);
+    put(path.join(acme, 'servers.json'), servers);
+    const plan = mirrorPlan(mac);
+    expect(plan.skipped).toContain(`${path.join(market, 'acme/servers.json')} holds a key`);
+    expect(plan.files.map((f) => f.to)).not.toContain('claude/plugins/marketplaces/mp/acme/servers.json');
+    const installed = plan.files.find((f) => f.to === `${ACME}/servers.json`);
+    expect(JSON.parse(installed!.data!)).toEqual({ mcpServers: { s: { command: 'x', env: { K: '${K}' } } } });
+    expect(plan.servers.find((s) => s.key === 'claude:plugin:acme:mcp:s')).toMatchObject({ secretFields: ['env.K'], ticked: [] });
+    const ticked = mirrorPlan(mac, new Set(['claude:plugin:acme:mcp:s#env.K'])).files.find((f) => f.to === `${ACME}/servers.json`);
+    expect([JSON.parse(ticked!.data!).mcpServers.s.env.K, ticked!.mode]).toEqual(['mk_key_1234567890', 0o600]);
+  });
+
+  it('a server file an entry of a marketplace added from a local folder names by path is redacted in its install until ticked; one whose folder is gone, or every one known_marketplaces.json alone names while it cannot be read, keeps its plugins on the Mac', () => {
+    const mac = macHome();
+    const local = path.join(mac.homedir, 'work/dirmp');
+    const gone = path.join(mac.homedir, 'work/gone');
+    const acme = path.join(mac.claudeDir, 'plugins/cache/dirmp/acme/1.0.0');
+    const beta = path.join(mac.claudeDir, 'plugins/cache/gone/beta/1.0.0');
+    const servers = JSON.stringify({ mcpServers: { s: { command: 'x', env: { K: 'mk_key_1234567890' } } } });
+    put(path.join(local, '.claude-plugin/marketplace.json'), JSON.stringify({ name: 'dirmp', plugins: [{ name: 'acme', source: './acme', strict: false, mcpServers: './servers.json' }] }));
+    put(path.join(local, 'acme/servers.json'), servers);
+    put(path.join(acme, 'servers.json'), servers);
+    put(path.join(beta, 'servers.json'), servers);
+    editJson(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), (j) => {
+      j.plugins = { 'acme@dirmp': [{ scope: 'user', installPath: acme }], 'beta@gone': [{ scope: 'user', installPath: beta }] };
+    });
+    editJson(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), (j) => {
+      j.dirmp = { source: { source: 'directory', path: local }, installLocation: local };
+      j.gone = { source: { source: 'directory', path: gone }, installLocation: gone };
+    });
+    const plan = mirrorPlan(mac);
+    const installed = plan.files.find((f) => f.to === 'claude/plugins/cache/dirmp/acme/1.0.0/servers.json');
+    expect(JSON.parse(installed!.data!)).toEqual({ mcpServers: { s: { command: 'x', env: { K: '${K}' } } } });
+    expect(plan.servers.find((s) => s.name === 's')).toMatchObject({ secretFields: ['env.K'], ticked: [] });
+    expect(plan.files.some((f) => f.from.startsWith(beta))).toBe(false);
+    expect(plan.unreadable).toContain(path.join(gone, '.claude-plugin/marketplace.json'));
+    put(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), '{');
+    expect(mirrorPlan(mac).files.some((f) => f.from.startsWith(acme))).toBe(false);
+  });
+
+  it('a marketplace list that cannot be read keeps that marketplace and each plugin installed from it on the Mac', () => {
+    const mac = macHome();
+    const list = path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json');
+    put(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'acme@mp': [{ scope: 'user', installPath: path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0') }] } }));
+    put(list, '{ "plugins": ');
+    const plan = mirrorPlan(mac);
+    expect(plan.files.map((f) => f.to).filter((t) => t.startsWith('claude/plugins/')).sort()).toEqual(['claude/plugins/installed_plugins.json', 'claude/plugins/known_marketplaces.json']);
+    expect(plan.unreadable).toContain(list);
+  });
+
+  it('a plugin settings.json that cannot be read stays on the Mac as a file to set up by hand, not a config to tick', () => {
+    const mac = macHome();
+    const settings = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json');
+    put(settings, '{ "env": ');
+    const plan = mirrorPlan(mac);
+    expect([plan.plugins, plan.unreadable, plan.files.some((f) => f.from === settings)]).toEqual([[], [settings], false]);
+  });
+
+  it('a server\'s env key not ticked is a variable the worker\'s robots read, ticked it is not; a name no variable can have is none', () => {
+    const mac = macHome();
+    editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'x', env: { 'not-a-var': 'odd_key_1234567890' } }; });
+    expect(mirrorPlan(mac).vars).toEqual(['E', 'GITHUB_TOKEN', 'LINEAR_API_KEY', 'PDF_KEY', 'REMOTE_TOKEN']);
+    expect(mirrorPlan(mac, new Set(['claude:mcp:linear#env.LINEAR_API_KEY'])).vars).not.toContain('LINEAR_API_KEY');
+  });
+
+  it('a file the mirror writes itself is left out over 5 MB too', () => {
+    const mac = macHome();
+    const mcp = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    // under 5 MB as the Mac holds it, over once written out with its indent
+    put(mcp, JSON.stringify({ mcpServers: { pdf: { command: 'node', args: Array<string>(700_000).fill('-v') } } }));
+    expect(fs.statSync(mcp).size).toBeLessThan(MIRROR_FILE_MAX);
+    const plan = mirrorPlan(mac);
+    expect(plan.files.map((f) => f.to)).not.toContain(`${ACME}/.mcp.json`);
+    expect(plan.skipped).toContain(`${mcp} is over 5 MB`);
+  });
+
+  it('applyMirror keeps the worker\'s hooks and statusLine, writes the servers into its .claude.json and merges mirror-overrides last; an unchanged file is not rewritten', async () => {
     const mac = macHome();
     const worker = farHome();
     const far = worker.homedir;
     const scratch = makeHome();
-    await packMirror(mirrorPlan(mac), mac, path.join(scratch, 'mirror.tar'));
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    await packMirror(mirrorPlan(mac), path.join(scratch, 'mirror.tar'));
     const blob = path.join(scratch, 'blob');
     await unpack(path.join(scratch, 'mirror.tar'), blob);
 
-    const written = applyMirror(blob, worker);
+    const { written } = applyMirror(blob, o);
     expect(written.sort()).toEqual([
       path.join(far, '.agents/skills/lint/SKILL.md'), path.join(worker.agentProfiles, 'reviewer.md'),
-      ...['CLAUDE.md', 'agents/planner.md', 'commands/ship.md', 'keybindings.json', 'rules/style.md', 'settings.json', 'skills/review/SKILL.md'].map((f) => path.join(worker.claudeDir, f)),
-      path.join(worker.codexDir, 'AGENTS.md'),
+      ...[
+        'CLAUDE.md', 'agents/planner.md', 'commands/ship.md', 'keybindings.json', 'rules/style.md', 'settings.json', 'skills/review/SKILL.md', '.claude.json',
+        'plugins/installed_plugins.json', 'plugins/known_marketplaces.json', 'plugins/cache/mp/acme/1.0.0/.mcp.json', 'plugins/cache/mp/acme/1.0.0/skills/pdf/SKILL.md',
+        'plugins/marketplaces/mp/.claude-plugin/marketplace.json',
+      ].map((f) => path.join(worker.claudeDir, f)),
+      path.join(worker.codexDir, 'AGENTS.md'), path.join(worker.codexDir, 'config.toml'),
+      path.join(worker.opencodeDir, 'opencode.jsonc'), path.join(worker.opencodeDir, 'plugins/mine.js'),
     ].sort());
     // the worker's own secrets, as its hooks and status line, stay as they were
     expect(json(path.join(worker.claudeDir, 'settings.json'))).toEqual({
@@ -146,13 +216,19 @@ describe('the agent configuration mirror', () => {
     });
     expect(read(path.join(worker.claudeDir, 'CLAUDE.md'))).toBe('# this worker\n');
     expect(read(path.join(worker.claudeDir, 'skills/review/SKILL.md'))).toBe('review it\n');
-    for (const gone of ['skills/review/.env', 'plugins', '.credentials.json', 'projects']) expect(fs.existsSync(path.join(worker.claudeDir, gone))).toBe(false);
+    for (const gone of ['skills/review/.env', '.credentials.json', 'projects']) expect(fs.existsSync(path.join(worker.claudeDir, gone))).toBe(false);
+    expect(json(worker.claudeJson).mcpServers).toEqual({
+      linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: '${LINEAR_API_KEY}' } },
+      remote: { type: 'http', url: 'https://remote.test/mcp', headers: { Authorization: 'Bearer ${REMOTE_TOKEN}' } },
+      empty: { command: 'npx', args: ['-y', 'empty-mcp'], env: { E: '${E}' } },
+    });
     expect(fs.existsSync(path.join(far, '.claude.json'))).toBe(false);
     expect(fs.existsSync(path.join(worker.codexDir, 'auth.json'))).toBe(false);
+    expect(json(o.varsFile)).toEqual(['E', 'GITHUB_TOKEN', 'LINEAR_API_KEY', 'PDF_KEY', 'REMOTE_TOKEN']);
 
     const skill = fs.statSync(path.join(worker.claudeDir, 'skills/review/SKILL.md'));
     const settings = fs.statSync(path.join(worker.claudeDir, 'settings.json'));
-    expect(applyMirror(blob, worker)).toEqual([]);
+    expect(applyMirror(blob, o)).toEqual({ written: [], removed: [] });
     expect(fs.statSync(path.join(worker.claudeDir, 'skills/review/SKILL.md'))).toMatchObject({ ino: skill.ino, mtimeMs: skill.mtimeMs });
     expect(fs.statSync(path.join(worker.claudeDir, 'settings.json'))).toMatchObject({ ino: settings.ino, mtimeMs: settings.mtimeMs });
   });
@@ -170,6 +246,433 @@ describe('the agent configuration mirror', () => {
     expect(read(path.join(worker.claudeDir, 'CLAUDE.md'))).toBe('# this worker\n');
     expect(json(path.join(worker.claudeDir, 'settings.json'))).toMatchObject({ model: 'sonnet', theme: 'dark', hooks: FAR_HOOKS, env: { HTTPS_PROXY: 'http://proxy:3128' } });
     // each blob's folder under the worker's cache goes once applied, the one the link's own push sent too
-    await until(() => expect(fs.readdirSync(w.worker.paths.cache).filter((f) => f.startsWith('mirror-'))).toEqual([]));
+    await until(() => expect(fs.readdirSync(w.worker.paths.cache, { withFileTypes: true }).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'))).toEqual([]));
+  });
+
+  it('takeBackCopies empties each value the record holds as copied while it is still the copy, as an untick leaves it, and leaves a value the worker set itself', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const project = path.join(mac.homedir, 'code/app');
+    editJson(mac.claudeJson, (j) => { j.projects[project].mcpServers.db.env = { DB_PASSWORD: 'db_pass_1234567890' }; });
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    const consent = new Set([
+      'claude:mcp:linear#env.LINEAR_API_KEY', `claude:mcp:db@${project}#env.DB_PASSWORD`, 'claude:settings#env.ANTHROPIC_API_KEY', 'codex:mcp:github#env.GITHUB_TOKEN',
+      'codex:config#model_providers.acme.http_headers.X-Key', 'opencode:config#provider.openai.options.apiKey',
+    ]);
+    await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    applyMirror(path.join(scratch, 'blob'), o);
+    editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
+    const toml = path.join(worker.codexDir, 'config.toml');
+    const settings = path.join(worker.claudeDir, 'settings.json');
+    const jsonc = path.join(worker.opencodeDir, 'opencode.jsonc');
+    expect(takeBackCopies(o).sort()).toEqual([
+      `took 1 key the mirror copied out of ${jsonc}`, `took 1 key the mirror copied out of ${settings}`, `took 1 key the mirror copied out of ${worker.claudeJson}`,
+      `took 2 keys the mirror copied out of ${toml}`,
+    ].sort());
+    const claude = json(worker.claudeJson);
+    expect(claude.mcpServers.linear.env.LINEAR_API_KEY).toBe('worker-own');
+    expect(Object.values(claude.projects).map((p: any) => p.mcpServers.db.env)).toEqual([{ DB_PASSWORD: '${DB_PASSWORD}' }]);
+    expect(json(settings).env).toEqual({ HTTPS_PROXY: 'http://proxy:3128' });
+    const codex = parseToml(read(toml)) as any;
+    expect([codex.mcp_servers.github.env, codex.mcp_servers.github.env_vars, codex.model_providers.acme.http_headers]).toEqual([{}, ['GITHUB_TOKEN'], { 'X-Key': '' }]);
+    expect(json(jsonc).provider.openai.options.apiKey).toBe('');
+    expect(takeBackCopies(o)).toEqual([]);
+  });
+  it('takeBackCopies removes a server copied whole, a plugin file holding a ticked key while each is still the copy, and a blob left beside the record; it leaves one the worker changed', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    editJson(mac.claudeJson, (j) => {
+      j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } };
+      j.mcpServers.mine = { command: 'mine', sandbox: { token: 'mine_token_1234567890' } };
+    });
+    fs.appendFileSync(path.join(mac.codexDir, 'config.toml'), '\n[mcp_servers.tbl]\ncommand = "tbl"\nenv = { TBL_KEY = "tbl_key_1234567890" }\nlabel = "tbl"\n');
+    put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    const consent = new Set([
+      'claude:mcp:odd#command', 'claude:mcp:odd#sandbox', 'claude:mcp:mine#command', 'claude:mcp:mine#sandbox',
+      'codex:mcp:tbl#command', 'codex:mcp:tbl#env', 'codex:mcp:tbl#label', 'claude:plugin:acme#env', 'claude:plugin:acme:mcp:pdf#env.PDF_KEY',
+    ]);
+    await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    applyMirror(path.join(scratch, 'blob'), o);
+    const toml = path.join(worker.codexDir, 'config.toml');
+    const mcp = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    const settings = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json');
+    expect([json(worker.claudeJson).mcpServers.odd, (parseToml(read(toml)) as any).mcp_servers.tbl.label, read(mcp).includes('pdf_key_1234567890'), json(settings).env])
+      .toEqual([{ command: 'odd', sandbox: { token: 'odd_token_1234567890' } }, 'tbl', true, { ACME_KEY: 'acme_1234567890abcd' }]);
+    editJson(worker.claudeJson, (j) => { j.mcpServers.mine.command = 'mine-here'; });
+    put(path.join(scratch, 'mirror-left/claude/.claude.json'), '{}');
+    expect(takeBackCopies(o).sort()).toEqual([
+      `removed 1 mirror blob left in ${scratch}`,
+      `removed ${mcp}, which held keys the mirror copied`, `removed ${settings}, which held keys the mirror copied`,
+      `took 1 server the mirror copied whole out of ${toml}`, `took 1 server the mirror copied whole out of ${worker.claudeJson}`,
+    ].sort());
+    expect(json(worker.claudeJson).mcpServers).not.toHaveProperty('odd');
+    expect(json(worker.claudeJson).mcpServers.mine).toEqual({ command: 'mine-here', sandbox: { token: 'mine_token_1234567890' } });
+    expect((parseToml(read(toml)) as any).mcp_servers).not.toHaveProperty('tbl');
+    expect([fs.existsSync(mcp), fs.existsSync(settings), fs.existsSync(path.join(scratch, 'mirror-left'))]).toEqual([false, false, false]);
+    expect(takeBackCopies(o)).toEqual([]);
+  });
+
+
+  it('a mirror blob a daemon left in its cache goes at the next start, beside the record it keeps; a blob not yet applied goes when its link closes', async () => {
+    const stage = path.join(makeHome(), 'cache');
+    for (const f of ['mirror-abc123/mirror.tar', 'mirror-abc123/blob/mirror.json', 'docs-xyz/a.tar']) put(path.join(stage, f), 'x');
+    put(path.join(stage, 'mirror-state.json'), '{}'); put(path.join(stage, 'mirror-vars.json'), '[]');
+    const connection = { receiveBlob: async (_id: string, into: string) => { put(into, 'tar'); return { sha256: '0'.repeat(64) }; } };
+    const m = mirrorCalls({ ...farHome(), stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log: silentLogger });
+    expect(fs.readdirSync(stage).sort()).toEqual(['docs-xyz', 'mirror-state.json', 'mirror-vars.json']);
+    await m.calls['config.blob']({ id: 'mirror_1', sha256: '0'.repeat(64) });
+    expect(fs.readdirSync(stage).filter((f) => f.startsWith('mirror-') && fs.statSync(path.join(stage, f)).isDirectory())).toHaveLength(1);
+    m.linkLost();
+    expect(fs.readdirSync(stage).sort()).toEqual(['docs-xyz', 'mirror-state.json', 'mirror-vars.json']);
+    await expect(m.calls['config.apply']({ id: 'mirror_1' })).rejects.toMatchObject({ code: 'not_found' });
+  });
+
+  it('consent is per field: a new secret field on a ticked server is not ticked; setConsent off clears the item and no other; clearConsent clears the machine; mask', () => {
+    const file = path.join(makeHome(), 'mirror-consent.json');
+    setConsent(file, W, 'claude:plugin:acme', ['env'], true); setConsent(file, W, 'claude:plugin:acme:mcp:pdf', ['env.PDF_KEY'], true);
+    setConsent(file, W, 'claude:plugin:acme', [], false);
+    expect([...readConsent(file, W)]).toEqual(['claude:plugin:acme:mcp:pdf#env.PDF_KEY']);
+    setConsent(file, W, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    // short of every field: off
+    expect(tickedFields(readConsent(file, W), 'claude:mcp:linear', ['env.LINEAR_API_KEY', 'env.NEW_KEY'])).toEqual(['env.LINEAR_API_KEY']);
+    setConsent(file, H, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true); clearConsent(file, W);
+    expect([...readConsent(file, W)]).toEqual([]); expect([...readConsent(file, H)]).toEqual(['claude:mcp:linear#env.LINEAR_API_KEY']);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect(mask('lin_api_1234567890')).toBe('lin…90'); expect(mask('short-value')).toBe('••••');
+  });
+});
+
+describe('the mirror over the link carries servers, plugins and each agent\'s config by key, only what changed, with keys only where ticked', () => {
+  let mac: ReturnType<typeof macHome>;
+  let worker: ReturnType<typeof farHome>;
+  let w: ReturnType<typeof world>;
+  beforeEach(async () => {
+    mac = macHome();
+    worker = farHome();
+    w = world({ mirror: { home: mac, worker } });
+    stops.push(() => w.stop());
+    await w.link();
+    await w.home.links.pushMirror(W);
+  });
+  const push = () => w.home.mirror!.push(w.home.links.for(W)!);
+  const tick = (item: string, fields: string[], on: boolean) => setConsent(w.home.paths.mirrorConsent, W, item, fields, on);
+  const workerJson = () => json(worker.claudeJson);
+  const setWorkerServer = (name: string, fields: Record<string, unknown>) => editJson(worker.claudeJson, (j) => { Object.assign(j.mcpServers[name], fields); });
+  const codexToml = () => parseToml(read(path.join(worker.codexDir, 'config.toml'))) as any;
+
+  it('a ticked field travels, an unticked one arrives emptied, and unticking later empties it on the next push', async () => {
+    expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    tick('claude:mcp:linear', [], false); await push();
+    expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+  });
+
+  it('an unticked field keeps the worker\'s own non-empty value; a copied value an agent wrote back after the untick is emptied on the next push', async () => {
+    setWorkerServer('linear', { env: { LINEAR_API_KEY: 'worker-own' } }); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('worker-own');
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); await push(); tick('claude:mcp:linear', [], false); await push();
+    setWorkerServer('linear', { env: { LINEAR_API_KEY: 'lin_api_1234567890' } }); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+  });
+
+  it('an unticked field\'s own value on the worker survives the Mac changing its server', async () => {
+    setWorkerServer('linear', { env: { LINEAR_API_KEY: 'worker-own' } });
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.args.push('--verbose'); }); await push();
+    expect(workerJson().mcpServers.linear).toEqual({ command: 'npx', args: ['-y', 'linear-mcp', '--verbose'], env: { LINEAR_API_KEY: 'worker-own' } });
+  });
+
+  it('an empty env value on the Mac is ${E} on the worker', async () => {
+    await push();
+    expect(workerJson().mcpServers.empty.env.E).toBe('${E}');
+  });
+
+  it('a second push with nothing changed sends no file and rewrites nothing; a worker-side edit survives until the Mac changes', async () => {
+    await push();
+    const before = statsOf(mirroredFiles(worker));
+    expect((await push()).sent).toBe(0);
+    expect(statsOf(mirroredFiles(worker))).toEqual(before);
+    put(path.join(worker.claudeDir, 'rules/style.md'), 'edited here\n'); await push();
+    expect(read(path.join(worker.claudeDir, 'rules/style.md'))).toBe('edited here\n');
+    put(path.join(mac.claudeDir, 'rules/style.md'), 'changed on the Mac\n'); await push();
+    expect(read(path.join(worker.claudeDir, 'rules/style.md'))).toBe('changed on the Mac\n');
+  });
+
+  it('a settings key edited on the worker stays until the Mac changes that key; one the Mac drops leaves the worker', async () => {
+    const settings = path.join(worker.claudeDir, 'settings.json');
+    editJson(settings, (j) => { j.theme = 'light'; }); await push();
+    expect(json(settings)).toMatchObject({ theme: 'light' });
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.theme = 'solarized'; }); await push();
+    expect(json(settings)).toMatchObject({ theme: 'solarized' });
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { delete j.theme; }); await push();
+    expect(json(settings)).not.toHaveProperty('theme');
+  });
+
+  it('a server gone from the Mac leaves the worker; one the worker added by hand stays; a recorded one deleted on the worker is written again; a removed file goes', async () => {
+    editJson(worker.claudeJson, (j) => { j.mcpServers.mine = { command: 'x' }; delete j.mcpServers.linear; });
+    editJson(mac.claudeJson, (j) => { delete j.mcpServers.remote; }); fs.rmSync(path.join(mac.claudeDir, 'rules/style.md')); await push();
+    expect(Object.keys(workerJson().mcpServers).sort()).toEqual(['empty', 'linear', 'mine']);
+    expect(fs.existsSync(path.join(worker.claudeDir, 'rules/style.md'))).toBe(false);
+  });
+
+  it('a worker without its .claude.json gets {"mcpServers":{…}} there, and claudeAdapter.trusts still reads it', async () => {
+    expect(workerJson()).toEqual({ mcpServers: {
+      linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: '${LINEAR_API_KEY}' } },
+      remote: { type: 'http', url: 'https://remote.test/mcp', headers: { Authorization: 'Bearer ${REMOTE_TOKEN}' } },
+      empty: { command: 'npx', args: ['-y', 'empty-mcp'], env: { E: '${E}' } },
+    } });
+    expect(fs.existsSync(path.join(worker.homedir, '.claude.json'))).toBe(false);
+    const app = path.join(worker.homedir, 'code/app');
+    fs.mkdirSync(app, { recursive: true });
+    expect(await seedTrust('claude', app, { agentHome: worker.claudeDir, agentRunning: async () => false })).toBe('seeded');
+    editJson(mac.claudeJson, (j) => { j.mcpServers.extra = { command: 'npx', args: ['extra-mcp'] }; }); await push();
+    expect(claudeAdapter.trusts!(worker.claudeDir, { cwd: app })).toBe(true);
+    expect(workerJson().mcpServers.extra).toEqual({ command: 'npx', args: ['extra-mcp'] });
+  });
+
+  it('Codex config.toml keeps the worker\'s [projects] and [hooks], drops the Mac\'s notify, [desktop], [marketplaces] and [plugins], carries the rest by key, and http_headers only when ticked', async () => {
+    const file = path.join(worker.codexDir, 'config.toml');
+    expect(codexToml().model_providers.acme.http_headers).toEqual({ 'X-Key': '' });
+    const own = { projects: { '/home/ada/code': { trust_level: 'trusted' } }, hooks: { state: { command: '/home/ada/.svall/hooks/hook' } }, notify: ['/home/ada/notify'] };
+    fs.writeFileSync(file, stringifyToml({ ...codexToml(), ...own }));
+    tick('codex:config', ['model_providers.acme.http_headers.X-Key'], true); await push();
+    const toml = codexToml();
+    expect(toml).toMatchObject({ ...own, model: 'gpt-5', model_providers: { acme: { name: 'Acme', base_url: 'https://acme.test/v1', http_headers: { 'X-Key': 'acme_key_1234567890' } } } });
+    for (const gone of ['desktop', 'marketplaces', 'plugins']) expect(toml).not.toHaveProperty(gone);
+    expect(toml.mcp_servers).toEqual({ github: { command: 'npx', args: ['-y', 'github-mcp'], cwd: path.join(worker.homedir, 'code'), env: {}, env_vars: ['GITHUB_TOKEN'] } });
+  });
+
+  it('opencode.jsonc merges by key, the Mac\'s plugin list included, and keeps the worker\'s own mcp entries and Svall\'s plugin file', async () => {
+    editJson(path.join(worker.opencodeDir, 'opencode.jsonc'), (j) => { j.mcp.mine = { type: 'local', command: ['x'] }; }); await push();
+    expect(json(path.join(worker.opencodeDir, 'opencode.jsonc'))).toMatchObject({
+      plugin: ['oc-plugin'], mcp: { ctx: expect.any(Object), mine: { type: 'local', command: ['x'] } }, provider: { openai: { options: { apiKey: '' } } },
+    });
+    expect(read(path.join(worker.opencodeDir, `plugins/${SHIM}.js`))).toBe('// svall there\n');
+    expect(fs.existsSync(path.join(worker.opencodeDir, 'plugins/mine.js'))).toBe(true);
+  });
+
+  it('plugins: installed_plugins.json and known_marketplaces.json land with their paths moved and no git login, the install tree travels, its .mcp.json redacted unless ticked; a marketplace server file holding a key stays on the Mac', async () => {
+    const acme = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    expect(json(path.join(worker.claudeDir, 'plugins/installed_plugins.json'))).toMatchObject({ plugins: { acme: [{ installPath: acme }] } });
+    expect(json(path.join(worker.claudeDir, 'plugins/known_marketplaces.json')))
+      .toMatchObject({ mp: { installLocation: path.join(worker.claudeDir, 'plugins/marketplaces/mp'), source: { url: 'https://git.test/mp.git' } } });
+    expect(read(path.join(acme, 'skills/pdf/SKILL.md'))).toBe('pdf\n');
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
+    tick('claude:plugin:acme:mcp:pdf', ['env.PDF_KEY'], true); await push();
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: 'pdf_key_1234567890' } } } });
+    tick('claude:plugin:acme:mcp:pdf', [], false); await push();
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
+    expect(fs.existsSync(path.join(worker.claudeDir, 'plugins/marketplaces/mp/acme/.mcp.json'))).toBe(false);
+    expect(mirrorPlan(mac).skipped).toContain(marketKey(mac));
+  });
+
+  it('project servers land only under projects the worker has; command, args and cwd under the home are moved', async () => {
+    expect(workerJson()).not.toHaveProperty('projects');
+    const app = path.join(worker.homedir, 'code/app');
+    fs.mkdirSync(app, { recursive: true });
+    await push();
+    expect(workerJson().projects[realPath(app)].mcpServers.db).toEqual({ command: path.join(worker.homedir, '.local/bin/db-mcp'), args: ['--db', path.join(app, 'db.sqlite')] });
+    expect(codexToml().mcp_servers.github.cwd).toBe(path.join(worker.homedir, 'code'));
+  });
+
+  it('settings env keys travel only when ticked, never over a key the worker set itself, and go when unticked', async () => {
+    const settings = path.join(worker.claudeDir, 'settings.json');
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.env.HTTPS_PROXY = 'http://mac-proxy:3128'; }); await push();
+    expect(json(settings).env).toEqual({ HTTPS_PROXY: 'http://proxy:3128' });
+    tick('claude:settings', ['env.ANTHROPIC_API_KEY', 'env.HTTPS_PROXY'], true); await push();
+    expect(json(settings).env).toEqual({ HTTPS_PROXY: 'http://proxy:3128', ANTHROPIC_API_KEY: 'sk-mac' });
+    tick('claude:settings', [], false); await push();
+    expect(json(settings).env).toEqual({ HTTPS_PROXY: 'http://proxy:3128' });
+  });
+
+  it('a ticked Codex env key lands in env and leaves env_vars; unticked it goes back to env_vars', async () => {
+    tick('codex:mcp:github', ['env.GITHUB_TOKEN'], true); await push();
+    expect(codexToml().mcp_servers.github).toMatchObject({ env: { GITHUB_TOKEN: 'ghp_1234567890abcdef' } });
+    expect(codexToml().mcp_servers.github).not.toHaveProperty('env_vars');
+    tick('codex:mcp:github', [], false); await push();
+    expect(codexToml().mcp_servers.github).toMatchObject({ env: {}, env_vars: ['GITHUB_TOKEN'] });
+  });
+
+  it('each of the Mac\'s opencode.json and opencode.jsonc merges into the worker\'s file of its name, each server into its own file and place', async () => {
+    put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ theme: 'tokyo', mcp: { servers: { docs: { type: 'remote', url: 'https://docs.test/mcp' } } } }));
+    await push();
+    expect(json(path.join(worker.opencodeDir, 'opencode.json'))).toEqual({ theme: 'tokyo', mcp: { servers: { docs: { type: 'remote', url: 'https://docs.test/mcp' } } } });
+    expect(json(path.join(worker.opencodeDir, 'opencode.jsonc'))).toMatchObject({ plugin: ['oc-plugin'], mcp: { ctx: { type: 'local', command: ['bunx', 'ctx-mcp'] } } });
+    expect(json(path.join(worker.opencodeDir, 'opencode.jsonc'))).not.toHaveProperty('theme');
+  });
+
+  it('a config the Mac cannot read leaves the worker\'s copy and its servers as they are', async () => {
+    const before = [read(worker.claudeJson), read(path.join(worker.codexDir, 'config.toml'))];
+    put(mac.claudeJson, '{ "mcpServers": ');
+    put(path.join(mac.codexDir, 'config.toml'), '[mcp_servers.x\n');
+    await push();
+    expect([read(worker.claudeJson), read(path.join(worker.codexDir, 'config.toml'))]).toEqual(before);
+    expect(mirrorPlan(mac).unreadable).toEqual([mac.claudeJson, path.join(mac.codexDir, 'config.toml')]);
+  });
+
+  it('a server or plugin settings whose fields the mirror does not know travels whole only once every field is ticked, and leaves when unticked', async () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } }; });
+    const acmeSettings = 'plugins/cache/mp/acme/1.0.0/settings.json';
+    put(path.join(mac.claudeDir, acmeSettings), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
+    tick('claude:mcp:odd', ['command'], true); await push();
+    const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
+    expect(plan.servers.find((s) => s.name === 'odd')).toMatchObject({ known: false, secretFields: [], ticked: ['command'], entry: {} });
+    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: 'acme', fields: ['env'], ticked: false, files: [path.join(mac.claudeDir, acmeSettings)] }]);
+    expect(workerJson().mcpServers).not.toHaveProperty('odd');
+    expect(fs.existsSync(path.join(worker.claudeDir, acmeSettings))).toBe(false);
+    tick('claude:mcp:odd', ['sandbox'], true); tick('claude:plugin:acme', ['env'], true); await push();
+    expect(workerJson().mcpServers.odd).toEqual({ command: 'odd', sandbox: { token: 'odd_token_1234567890' } });
+    expect(json(path.join(worker.claudeDir, acmeSettings))).toEqual({ env: { ACME_KEY: 'acme_1234567890abcd' } });
+    tick('claude:mcp:odd', [], false); tick('claude:plugin:acme', [], false); await push();
+    expect(workerJson().mcpServers).not.toHaveProperty('odd');
+    expect(fs.existsSync(path.join(worker.claudeDir, acmeSettings))).toBe(false);
+  });
+
+  it('a copied value whose field the Mac no longer holds as a key leaves the worker on the next push: a dropped settings env key, a literal turned into ${VAR}, a Codex key moved to env_vars', async () => {
+    tick('claude:settings', ['env.ANTHROPIC_API_KEY'], true); tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); tick('codex:mcp:github', ['env.GITHUB_TOKEN'], true);
+    await push();
+    expect(json(path.join(worker.claudeDir, 'settings.json')).env).toMatchObject({ ANTHROPIC_API_KEY: 'sk-mac' });
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    expect(codexToml().mcp_servers.github.env).toEqual({ GITHUB_TOKEN: 'ghp_1234567890abcdef' });
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { delete j.env.ANTHROPIC_API_KEY; });
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = '${LINEAR_API_KEY}'; });
+    const toml = path.join(mac.codexDir, 'config.toml');
+    fs.writeFileSync(toml, read(toml).replace('env = { GITHUB_TOKEN = "ghp_1234567890abcdef" }', 'env = {}\nenv_vars = ["GITHUB_TOKEN"]'));
+    await push();
+    expect(json(path.join(worker.claudeDir, 'settings.json')).env).toEqual({ HTTPS_PROXY: 'http://proxy:3128' });
+    expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    expect(codexToml().mcp_servers.github).toMatchObject({ env: {}, env_vars: ['GITHUB_TOKEN'] });
+  });
+
+  it('a plugin list or server file the Mac cannot read leaves the worker\'s plugin files as the mirror last wrote them', async () => {
+    const acme = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    const list = path.join(mac.claudeDir, 'plugins/installed_plugins.json');
+    const good = read(list);
+    put(list, '{ "plugins": '); await push();
+    expect(read(path.join(acme, 'skills/pdf/SKILL.md'))).toBe('pdf\n');
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
+    expect(json(path.join(worker.claudeDir, 'plugins/installed_plugins.json'))).toMatchObject({ plugins: { acme: [{ installPath: acme }] } });
+    put(list, good);
+    put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json'), '{ "mcpServers": '); await push();
+    expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
+  });
+
+  it('the worker\'s overrides of .claude.json servers, config.toml and an OpenCode file are merged last, and stay as they are', async () => {
+    const files = ['claude/.claude.json', 'codex/config.toml', 'opencode/opencode.jsonc'].map((f) => path.join(worker.overrides, f));
+    put(files[0], JSON.stringify({ mcpServers: { linear: { env: { LINEAR_API_KEY: 'worker-key' } }, mine: { command: 'mine' } }, theme: 'x' }));
+    put(files[1], 'model = "o3"\n\n[mcp_servers.github]\nstartup_timeout_sec = 30\n');
+    put(files[2], JSON.stringify({ theme: 'mine' }));
+    const before = files.map(read);
+    await push();
+    expect(workerJson().mcpServers).toMatchObject({ linear: { command: 'npx', env: { LINEAR_API_KEY: 'worker-key' } }, mine: { command: 'mine' } });
+    expect(workerJson()).not.toHaveProperty('theme');
+    expect(codexToml()).toMatchObject({ model: 'o3', mcp_servers: { github: { command: 'npx', startup_timeout_sec: 30 } } });
+    expect(json(path.join(worker.opencodeDir, 'opencode.jsonc'))).toMatchObject({ theme: 'mine', plugin: ['oc-plugin'] });
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.args.push('--verbose'); });
+    put(path.join(mac.codexDir, 'config.toml'), read(path.join(mac.codexDir, 'config.toml')).replace('model = "gpt-5"', 'model = "gpt-6"'));
+    await push();
+    expect(workerJson().mcpServers.linear).toMatchObject({ args: ['-y', 'linear-mcp', '--verbose'], env: { LINEAR_API_KEY: 'worker-key' } });
+    expect(codexToml().model).toBe('o3');
+    expect(files.map(read)).toEqual(before);
+  });
+
+  it('an OpenCode key travels when ticked and leaves when unticked, in its own file only: the other file\'s reference at that path stays', async () => {
+    put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ provider: { openai: { options: { apiKey: '{env:OPENAI_KEY}' } } } }));
+    await push();
+    const apiKey = (f: string) => json(path.join(worker.opencodeDir, f)).provider.openai.options.apiKey;
+    expect([apiKey('opencode.json'), apiKey('opencode.jsonc')]).toEqual(['{env:OPENAI_KEY}', '']);
+    tick('opencode:config', ['provider.openai.options.apiKey'], true); await push();
+    expect([apiKey('opencode.json'), apiKey('opencode.jsonc')]).toEqual(['{env:OPENAI_KEY}', 'sk-oc-1234567890']);
+    tick('opencode:config', [], false); await push();
+    expect([apiKey('opencode.json'), apiKey('opencode.jsonc')]).toEqual(['{env:OPENAI_KEY}', '']);
+  });
+
+  it('an apply waits while another fleet\'s mirror holds this user\'s agent files', async () => {
+    const unlock = await lockAgentFiles(worker.homedir);
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    let done = false;
+    const pushed = push().then(() => { done = true; });
+    await new Promise((r) => setTimeout(r, 600));
+    expect([done, workerJson().mcpServers.linear.env.LINEAR_API_KEY]).toEqual([false, '${LINEAR_API_KEY}']);
+    unlock();
+    await pushed;
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+  });
+
+  it('two pushes at once go one after the other, each whole', async () => {
+    const link = w.home.links.for(W)!;
+    const calls: string[] = [];
+    const spy = {
+      machine: link.machine,
+      sendBlob: (id: string, file: string | Buffer) => link.sendBlob(id, file),
+      call<T>(method: string, params: unknown, o?: Parameters<typeof link.call>[2]): Promise<T> {
+        calls.push(`${method}>`);
+        return link.call<T>(method, params, o).finally(() => calls.push(`<${method}`));
+      },
+    };
+    const first = w.home.mirror!.push(spy);
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    await Promise.all([first, w.home.mirror!.push(spy)]);
+    const one = ['config.state>', '<config.state', 'config.blob>', '<config.blob', 'config.apply>', '<config.apply'];
+    expect(calls).toEqual([...one, ...one]);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+  });
+
+  it('a key an apply wrote before it failed is emptied by the untick once the worker is fixed, and never reads as the worker\'s own; a key changed on the Mac too', async () => {
+    const skills = path.join(worker.claudeDir, 'skills');
+    const failing = async (n: number) => {
+      put(path.join(mac.claudeDir, `skills/new-${n}/SKILL.md`), 'new\n');
+      fs.chmodSync(skills, 0o555);
+      try { await expect(push()).rejects.toThrow(); } finally { fs.chmodSync(skills, 0o755); }
+    };
+    const setup = () => w.home.mirror!.report(w.home.links.for(W), W, { name: 'w1', fleetFlag: '' });
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    await failing(1);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    tick('claude:mcp:linear', [], false); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+    expect((await setup()).find((r) => r.key === 'claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); await push();
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'lin_api_changed_0987654321'; });
+    await failing(2);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_changed_0987654321');
+    tick('claude:mcp:linear', [], false); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+  });
+
+  it('a config file or plugin server file holding a ticked key is written for its owner alone', async () => {
+    const acme = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    const settings = path.join(worker.claudeDir, 'settings.json');
+    for (const f of [worker.claudeJson, settings, acme]) fs.chmodSync(f, 0o644);
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); tick('claude:settings', ['env.ANTHROPIC_API_KEY'], true); tick('claude:plugin:acme:mcp:pdf', ['env.PDF_KEY'], true);
+    await push();
+    expect([worker.claudeJson, settings, acme].map((f) => fs.statSync(f).mode & 0o777)).toEqual([0o600, 0o600, 0o600]);
+  });
+
+  it('a file holding a ticked key that an apply finds readable to others is its owner\'s alone again, its content as it was', async () => {
+    const acme = path.join(worker.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    const settings = path.join(worker.claudeDir, 'settings.json');
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); tick('claude:settings', ['env.ANTHROPIC_API_KEY'], true); tick('claude:plugin:acme:mcp:pdf', ['env.PDF_KEY'], true);
+    await push();
+    const files = [worker.claudeJson, settings, acme];
+    const before = files.map(read);
+    for (const f of files) fs.chmodSync(f, 0o644);
+    await push();
+    expect(files.map((f) => fs.statSync(f).mode & 0o777)).toEqual([0o600, 0o600, 0o600]);
+    expect(files.map(read)).toEqual(before);
+  });
+
+  it('a path too long for ustar is skipped with a line, and the push still goes', async () => {
+    const deep = path.join(mac.claudeDir, 'skills', 'x'.repeat(120), 'y'.repeat(120), 'SKILL.md');
+    put(deep, 'deep\n'); put(path.join(mac.claudeDir, 'rules/new.md'), 'new\n');
+    expect(mirrorPlan(mac).skipped).toContain(`${deep} has a path too long for the mirror to carry`);
+    await push();
+    expect(read(path.join(worker.claudeDir, 'rules/new.md'))).toBe('new\n');
   });
 });

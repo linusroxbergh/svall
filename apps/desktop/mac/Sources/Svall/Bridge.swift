@@ -195,6 +195,8 @@ enum FromShell {
             if let detail = step.detail { event["detail"] = detail }
             if let action = step.action { event["action"] = action }
             if let run = step.run { event["run"] = run }
+            if let forward = step.forward { event["forward"] = forward }
+            if let tick = step.tick { event["tick"] = ["item": tick.item, "fields": tick.fields, "on": tick.on, "preview": tick.preview] as [String: Any] }
             return ["type": "host.step", "op": op, "event": event]
         case .hostDone(let op, let code): return ["type": "host.done", "op": op, "code": Int(code)]
         case .hostMachines(let machines, let error):

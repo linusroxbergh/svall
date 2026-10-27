@@ -1,6 +1,8 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MachineId, type SetupRow } from '@svall/protocol';
 import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
@@ -8,6 +10,7 @@ import { Fleet } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
 import { machineId } from '../src/machine.js';
 import { resolvePaths } from '../src/paths.js';
+import { readConsent } from '../src/placement/mirror-consent.js';
 import { PRIVATE, profileHome } from '../src/profile.js';
 import { workspaceRoot } from '../src/resources/scan.js';
 import { agentProber, type AgentRun } from '../src/sessions/registry.js';
@@ -17,6 +20,7 @@ import { Workspace } from '../src/workspace/workspace.js';
 import { TerminalHub } from '../src/terminals.js';
 import { hasGit } from './git-fixture.js';
 import { cleanHomes, makeHome, ownerOf } from './helpers.js';
+import { farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
 import { W, island, placed, world } from './placement/world.js';
 
@@ -214,6 +218,128 @@ describe('machines.refresh', () => {
     expect(await dispatch({ id: 1, method: 'machines.refresh' }, ctx)).toEqual({ id: 1, result: {} });
     expect(refreshed).toBe(1);
     expect(await dispatch({ id: 2, method: 'machines.refresh' }, { ...ctx, links: undefined })).toEqual({ id: 2, result: {} });
+  });
+});
+
+describe('machines.setup and machines.consent', () => {
+  let worker: ReturnType<typeof farHome>;
+  let w: ReturnType<typeof world>;
+  afterEach(() => w.stop());
+  const byKey = (key: string) => (r: SetupRow) => r.key === key;
+  const call = async (ctx: Ctx, method: 'machines.setup' | 'machines.consent', params: object): Promise<{ rows: SetupRow[] }> => {
+    const res = await dispatch({ id: 1, method, params }, ctx);
+    if ('error' in res) throw new Error(`${res.error.code}: ${res.error.message}`);
+    return res.result as { rows: SetupRow[] };
+  };
+  const workerJson = () => JSON.parse(fs.readFileSync(worker.claudeJson, 'utf8'));
+  // every file the mirror writes on the worker but the one that holds linear
+  const others = () => statsOf(mirroredFiles(worker).filter((f) => f !== worker.claudeJson));
+  const linked = async () => {
+    worker = farHome();
+    w = world({ mirror: { home: macHome(), worker } });
+    await w.link();
+    await w.home.links.pushMirror(W);
+  };
+
+  it('machines.consent on ticks a server\'s fields, mirrors only that change, and answers rows with the server ok and its keys on the worker', async () => {
+    await linked();
+    const before = others();
+    const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90', tick: { on: true } });
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    expect(others()).toEqual(before);
+  });
+
+  it('machines.consent off empties the copied keys there on the same call', async () => {
+    await linked();
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    const r = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: [], on: false });
+    expect(workerJson().mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1", tick: { on: false } });
+  });
+
+  it('machines.consent answers not_mirrored, naming no value, when the worker does not apply the change, and the untick stays saved', async () => {
+    await linked();
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    w.worker.handlers['config.apply'] = async () => { throw new Error('ENOSPC: no space left on device'); };
+    const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
+    expect(res).toMatchObject({ id: 1, error: { code: 'not_mirrored', message: expect.stringContaining('ENOSPC: no space left on device') } });
+    expect(JSON.stringify(res)).not.toContain('lin_api_1234567890');
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
+  });
+
+  it('machines.consent answers not_mirrored while this Mac cannot read the item\'s file, the untick saved, and the next readable push empties the copy', async () => {
+    const mac = macHome();
+    worker = farHome();
+    w = world({ mirror: { home: mac, worker } });
+    await w.link();
+    await w.home.links.pushMirror(W);
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    const good = fs.readFileSync(mac.claudeJson, 'utf8');
+    fs.writeFileSync(mac.claudeJson, '{ "mcpServers": ');
+    const res = await dispatch({ id: 1, method: 'machines.consent', params: { machine: W, item: 'claude:mcp:linear', fields: [], on: false } }, w.home.ctx);
+    expect(res).toEqual({ id: 1, error: { code: 'not_mirrored', message: `${mac.claudeJson} on this Mac cannot be read; the copy stays on w1 until it can` } });
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    fs.writeFileSync(mac.claudeJson, good);
+    await w.home.mirror!.push(w.home.links.for(W)!);
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+  });
+
+  it('machines.consent with the link down saves the change, and the key rows say it takes effect when the machine links', async () => {
+    worker = farHome();
+    w = world({
+      mirror: { home: macHome(), worker }, connect: async () => { throw new Error('connection refused'); },
+      home: { machines: { [W]: { name: 'w1', reachable: false, since: 0 } } },
+    });
+    const { rows } = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 is not reachable; saved, and takes effect when w1 links', tick: { on: true } });
+    expect(rows.find(byKey('codex:mcp:github'))?.detail).toMatch(/^not checked: w1 is not reachable; saved, and takes effect when w1 links: mirrored without env\.GITHUB_TOKEN/);
+  });
+
+  it('machines.consent refuses a machine not in the fleet before it saves anything', async () => {
+    await linked();
+    const other = MachineId.parse(crypto.randomUUID());
+    expect(await dispatch({ id: 1, method: 'machines.consent', params: { machine: other, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true } }, w.home.ctx))
+      .toEqual({ id: 1, error: { code: 'not_found', message: `no machine ${other}` } });
+    expect(readConsent(w.home.paths.mirrorConsent, other).size).toBe(0);
+  });
+
+  it('machines.setup with the link down answers the plan rows, the probe-dependent ones saying not checked, within waitMs', async () => {
+    worker = farHome();
+    w = world({
+      mirror: { home: macHome(), worker }, connect: async () => { throw new Error('connection refused'); },
+      home: { machines: { [W]: { name: 'w1', reachable: false, since: 0 } } },
+    });
+    w.home.links.start();
+    const started = Date.now();
+    const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 500 });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(490);
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toEqual({ key: 'var:REMOTE_TOKEN', status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
+  });
+
+  it('machines.setup waits for a link coming up and answers what the worker holds', async () => {
+    worker = farHome();
+    w = world({ mirror: { home: macHome(), worker } });
+    await w.worker.connection.start();
+    w.home.links.start();
+    const started = Date.now();
+    const { rows } = await call(w.home.ctx, 'machines.setup', { machine: W, waitMs: 5_000 });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN' });
+  });
+
+  it('machines.setup on a worker answers not_on_worker, machines.consent from a worker is refused by the home, and a phone is refused both', async () => {
+    await linked();
+    const consent = { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true };
+    expect(await dispatch({ id: 1, method: 'machines.setup', params: { machine: W } }, w.worker.ctx)).toEqual({ id: 1, error: { code: 'not_on_worker', message: 'not on a worker' } });
+    expect(await dispatch({ id: 2, method: 'machines.consent', params: consent }, w.worker.ctx)).toMatchObject({ id: 2, error: { code: 'unauthorized' } });
+    const phone = { ...w.home.ctx, viewer: { ...w.home.ctx.viewer, kind: 'phone' } } as Ctx;
+    expect(await dispatch({ id: 3, method: 'machines.setup', params: { machine: W } }, phone)).toMatchObject({ id: 3, error: { code: 'forbidden' } });
+    expect(await dispatch({ id: 4, method: 'machines.consent', params: consent }, phone)).toMatchObject({ id: 4, error: { code: 'forbidden' } });
+    expect(readConsent(w.home.paths.mirrorConsent, W).size).toBe(0);
   });
 });
 

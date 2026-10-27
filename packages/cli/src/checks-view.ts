@@ -1,7 +1,14 @@
 import { styleText } from 'node:util';
+import type { SetupRow } from '@svall/protocol';
 
-/** One thing a doctor checked, and what it found; `run`: a next command toward the fix, for the user to run on that machine. */
-export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string };
+/**
+ * One thing a doctor checked, and what it found; `run`: a next command toward the fix, for the user to run on that machine;
+ * `action`, `forward` and `tick`: a setup row's, as its step carries them.
+ */
+export type Check = { name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick'] };
+
+/** `[x] ` or `[ ] ` before the detail of a row with a tick. */
+export const tickMark = (tick?: SetupRow['tick']): string => (tick ? (tick.on ? '[x] ' : '[ ] ') : '');
 
 export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };
 

@@ -1,42 +1,10 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import type { Page } from '@playwright/test';
-import { expect, nativeShell, receive, sent, test, type Svall } from './fixtures.js';
+import { expect, nativeShell, receive, sent, seed, test, unplace, VAULT, type Svall } from './fixtures.js';
 
-const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a';
+test.afterEach(async ({ svall }) => { await unplace(svall); });
+
 const fakeShell = (page: Page, svall: Svall) =>
   nativeShell(page, { port: svall.port, token: svall.token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
-
-// the state the daemon restarts on, edited by hand
-async function rewrite(svall: Svall, edit: (state: { machines?: unknown; robots: Record<string, Record<string, unknown>> }) => void): Promise<void> {
-  await svall.stopDaemon();
-  const file = path.join(svall.home, 'state.json');
-  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
-  edit(state);
-  fs.writeFileSync(file, JSON.stringify(state));
-  await svall.startDaemon();
-}
-
-/** ada on an island of her own, with linus-vault as the home last saw it; `ada` edits her record. */
-async function seed(svall: Svall, reachable: boolean, ada?: (c: Record<string, unknown>) => void): Promise<string> {
-  const island = await svall.api.call('island.create', { name: svall.uniq('vault') });
-  const a = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'ada' });
-  await rewrite(svall, (state) => {
-    state.machines = { [VAULT]: { name: 'linus-vault', reachable, since: Date.now() } };
-    ada?.(state.robots[a.id]);
-  });
-  return a.id;
-}
-
-// a robot placed on a machine that is gone cannot be closed, so the next spec's fixture finds every robot back home
-test.afterEach(async ({ svall }) => {
-  const state = await svall.api.call('state.get', {});
-  if (!state.machines) return;
-  await rewrite(svall, (s) => {
-    delete s.machines;
-    for (const c of Object.values(s.robots)) { delete c.machine; delete c.moving; }
-  });
-});
 
 test('a placed robot shows its machine badge, Move to this Mac, and a not-reachable terminal when the link is down', async ({ page, svall }) => {
   const id = await seed(svall, false, (c) => { c.machine = VAULT; });

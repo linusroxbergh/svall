@@ -111,7 +111,7 @@ test('a release blocker opens the machines panel on the Linux machine, in place 
   fireEvent.click(screen.getByTestId('handover-upgrade'));
   expect(screen.queryByTestId('handover-sheet')).toBeNull();
   expect(screen.getByTestId('host-machine').textContent).toBe('trift');
-  expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-upgrade"]')).not.toBeNull();
+  expect(screen.getByTestId('host-setup').querySelector('[data-testid="machine-more"]')).not.toBeNull();
 });
 
 const nothingOpen: HandoverEvent = { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover of this fleet is open anywhere' } };

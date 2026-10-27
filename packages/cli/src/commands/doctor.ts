@@ -21,7 +21,7 @@ import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile'
 import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
-import { MARK, grouped, renderGroups, useColor, type Check } from '../checks-view.js';
+import { MARK, grouped, renderGroups, tickMark, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
 import { printResult } from '../format.js';
@@ -410,7 +410,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
 /** One padded line per check, for a report too short to group. */
 export function checkLines(checks: Check[]): string[] {
   const width = Math.max(...checks.map((c) => c.name.length));
-  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${c.detail}`);
+  return checks.map((c) => `${MARK[c.status]} ${c.name.padEnd(width)}  ${tickMark(c.tick)}${[c.detail, c.action].filter(Boolean).join(' -> ')}`);
 }
 
 /** What `svall doctor` prints when it is not asked for JSON. */
