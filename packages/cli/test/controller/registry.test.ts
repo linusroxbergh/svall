@@ -24,6 +24,12 @@ const trift: MachineRecord = {
 };
 
 describe('machine registry', () => {
+  it('names the fix for a machine.json it cannot read', () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'machine.json'), '{"id":');
+    expect(() => MachineRegistry.load(dir)).toThrow('; delete the file to mint a new machine id, or restore it from backup');
+  });
+
   it('writes the local machine on the first load and reads it back after', () => {
     const dir = path.join(tmp(), 'svall');
     const registry = MachineRegistry.load(dir, { hostname: 'Kolvik.local' });

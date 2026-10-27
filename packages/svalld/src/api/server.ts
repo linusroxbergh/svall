@@ -7,7 +7,6 @@ import type { Fleets } from '../fleets.js';
 import type { Logger } from '../log.js';
 import type { Mobile } from '../mobile.js';
 import type { Phones } from '../phones.js';
-
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';

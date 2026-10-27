@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { MachineId, MachineRecord } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
-import { configDir, machineId, Registry, registryFile } from '@svall/svalld/machine';
+import { configDir, machineId, machineIdFailure, Registry, registryFile } from '@svall/svalld/machine';
 import { svallHome } from '@svall/svalld/paths';
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
@@ -50,7 +50,8 @@ export class MachineRegistry {
   ) {}
 
   static load(dir: string = configDir(), o: { hostname?: string; warn?: (line: string) => void } = {}): MachineRegistry {
-    const id = machineId(dir);
+    let id: MachineId;
+    try { id = machineId(dir); } catch (e) { throw new Error(machineIdFailure(e), { cause: e }); }
     const file = registryFile(dir);
     let machines = new Map<MachineId, MachineRecord>();
     if (fs.existsSync(file)) {
