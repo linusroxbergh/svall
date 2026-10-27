@@ -76,8 +76,10 @@ enum ToShell: Decodable {
     case awake(reason: String?, battery: Bool?)
     case connectionRetry
     case connectionHere
+    case menuState(chords: [String: String], state: MenuState)
+    case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, start, op, args, to, choices, check, reason, battery, state, fleets, note }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -136,6 +138,8 @@ enum ToShell: Decodable {
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason), battery: try c.decodeIfPresent(Bool.self, forKey: .battery))
         case "connection.retry": self = .connectionRetry
         case "connection.here": self = .connectionHere
+        case "menu.state": self = .menuState(chords: try c.decode([String: String].self, forKey: .chords), state: try c.decode(MenuState.self, forKey: .state))
+        case "menu.fleets": self = .menuFleets(fleets: try c.decode([MenuFleet].self, forKey: .fleets), note: try c.decodeIfPresent(String.self, forKey: .note))
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -173,7 +177,9 @@ enum FromShell {
     case notifyAction(key: String, action: String, promptId: String)
     case quitAsk
     case quitStop
-    case fleets
+    case menuAsk
+    case menuRun(action: String)
+    case menuOpenFleet(home: String)
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
     case folderPicked(path: String)
@@ -234,7 +240,9 @@ enum FromShell {
         case .notifyAction(let key, let action, let promptId): return ["type": "notify.action", "key": key, "action": action, "promptId": promptId]
         case .quitAsk: return ["type": "quit.ask"]
         case .quitStop: return ["type": "quit.stop"]
-        case .fleets: return ["type": "fleets"]
+        case .menuAsk: return ["type": "menu.ask"]
+        case .menuRun(let action): return ["type": "menu.run", "action": action]
+        case .menuOpenFleet(let home): return ["type": "menu.openFleet", "home": home]
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]
         case .folderPicked(let path): return ["type": "folder.picked", "path": path]
