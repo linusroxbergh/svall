@@ -305,6 +305,10 @@ const readJson = (file: string): unknown => {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
 };
 
+// the place of each string in `v`
+const stringPlaces = (v: unknown, place: Place = []): Place[] => (typeof v === 'string' ? [place] : typeof v !== 'object' || v === null ? []
+  : Object.entries(v).flatMap(([k, x]) => stringPlaces(x, [...place, Array.isArray(v) ? Number(k) : k])));
+
 // each string of `v` that `bare` holds otherwise at its place, with its sha and what `bare` holds there
 function keysIn(v: unknown, bare: unknown, place: Place = []): InPlace['places'] {
   if (typeof v === 'string') return typeof bare === 'string' && bare !== v ? [{ place, sha: sha256Hex(v), bare }] : [];
@@ -495,11 +499,16 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     skipped.push(`${file} cannot be read`);
     unreadable.push(file);
   };
-  // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's is named by its path under
-  // Claude's folder
+  // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's, in an agents folder or
+  // where its plugin.json's `agents` names it, is named by its path under Claude's folder
   const agentsDir = path.join(o.claudeDir, 'agents');
   const vetAgents = (found: string[], plugin = false): void => {
-    for (const f of found.filter((x) => x.endsWith('.md') && (!plugin || path.relative(o.claudeDir, x).split(path.sep).includes('agents')))) {
+    const named = found.filter((f) => path.basename(f) === 'plugin.json' && path.basename(path.dirname(f)) === '.claude-plugin').flatMap((m) => {
+      const doc = readJson(m);
+      return isDoc(doc) ? namedPaths(doc.agents).map((n) => path.resolve(path.dirname(path.dirname(m)), n)) : [];
+    });
+    const isAgent = (x: string): boolean => path.relative(o.claudeDir, x).split(path.sep).includes('agents') || named.some((n) => x === n || holds(n, x));
+    for (const f of found.filter((x) => x.endsWith('.md') && (!plugin || isAgent(x)))) {
       let source: string;
       try { source = fs.readFileSync(f, 'utf8'); } catch {
         unread(f);
@@ -1222,14 +1231,25 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     try { text = fs.readFileSync(realPath(file), 'utf8'); } catch { continue; }
     let doc: { value: unknown; write: (value: unknown) => string } | undefined;
     try { doc = to.endsWith('.md') ? agentDoc(text) : { value: JSON.parse(text), write: (v) => asJson(v as Doc) }; } catch { /* below */ }
-    const taken = doc ? keys.map((k) => takeBack(doc.value, k, (JSON.parse(k) as Place).slice(1), true)) : keys.map(() => 'changed' as const);
-    const n = taken.filter((r) => r === 'took').length;
-    const changed = taken.filter((r) => r === 'changed').length;
+    const value = doc?.value;
+    let [n, left] = [0, !doc];
+    for (const k of doc ? keys : []) {
+      const at = (JSON.parse(k) as Place).slice(1);
+      const v = getAt(value, at);
+      const bare = state.bare?.[k]?.value;
+      // a copy no longer at its place, as an item added above it moves it, is taken back where it alone lies now; one
+      // lying twice, or gone while its place holds no bare form, leaves the file as changed there since
+      const found = isCopy(state.secrets[k], v) ? [at] : stringPlaces(value).filter((p) => isCopy(state.secrets[k], getAt(value, p)));
+      if (found.length === 1) {
+        setAt(value as Doc, found[0], bare ?? '');
+        n += 1;
+      } else if (found.length || !(typeof v === 'string' && (v === bare || v === '' || isReferenceOnly(v)))) left = true;
+    }
     if (doc && n) {
       put(file, Buffer.from(doc.write(doc.value)), (statOf(realPath(file))?.mode ?? 0o600) & 0o777);
       done.push(`took ${what(n, 0)} out of ${file}`);
     }
-    if (changed) done.push(`left ${what(changed, 0)} in ${file}, which changed there since`);
+    if (left) done.push(`left ${file}, which holds keys the mirror copied and changed there since`);
   }
   // another file the mirror wrote holding a ticked key, a plugin's under Claude's folder, goes while it is the copy
   for (const [to, h] of Object.entries(state.keyed ?? {})) {

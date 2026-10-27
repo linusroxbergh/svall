@@ -529,6 +529,45 @@ describe('the agent configuration mirror', () => {
     expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.endsWith(f)))).toEqual([]);
   });
 
+  it('takeBackCopies takes a ticked key back where it alone lies now when an item added above moved it, and warns where the copy lies twice', async () => {
+    const mac = macHome();
+    const scratch = makeHome();
+    const md = (...servers: string[]) => ['---', 'name: db', 'mcpServers:', '  - github', ...servers, '---', 'the agent', ''].join('\n');
+    const pg = (name: string) => [`  - ${name}:`, '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890'];
+    const entries = (...extra: object[]) => JSON.stringify({ name: 'mp', plugins: [...extra, { name: 'zip', source: { source: 'url', url: 'https://z.test/z.zip' }, headers: { Authorization: 'Bearer mk_fake_1234567890' } }] });
+    put(path.join(mac.claudeDir, 'agents/db.md'), md(...pg('pg')));
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), entries());
+    await packMirror(mirrorPlan(mac, new Set(['claude:agent:db.md#mcpServers.pg', 'claude:marketplace:mp#plugins.zip'])), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    const worker = (twin: boolean) => {
+      const h = farHome();
+      const o = { ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') };
+      applyMirror(path.join(scratch, 'blob'), o);
+      const files = { agent: path.join(h.claudeDir, 'agents/db.md'), market: path.join(h.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json') };
+      put(files.agent, md(...(twin ? pg('twin') : ['  - other:', '      command: x']), ...pg('pg')));
+      put(files.market, entries({ name: 'new', source: './new' }));
+      return { o, ...files };
+    };
+    const moved = worker(false);
+    expect(takeBackCopies(moved.o).filter((l) => [moved.agent, moved.market].some((f) => l.includes(f))).sort())
+      .toEqual([moved.agent, moved.market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
+    expect([/pg_fake/.test(read(moved.agent)), json(moved.market).plugins[1].headers]).toEqual([false, { Authorization: '' }]);
+    const twins = worker(true);
+    expect(takeBackCopies(twins.o).filter((l) => l.includes(twins.agent))).toEqual([`left ${twins.agent}, which holds keys the mirror copied and changed there since`]);
+    expect(read(twins.agent)).toContain('pg_fake');
+  });
+
+  it('a plugin\'s subagent its plugin.json names by path is listed whole as one in agents/ is', () => {
+    const mac = macHome();
+    const acme = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    put(path.join(acme, '.claude-plugin/plugin.json'), JSON.stringify({ name: 'acme', agents: ['./reviewers/db.md'] }));
+    put(path.join(acme, 'reviewers/db.md'), ['---', 'name: db', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: custom_agent_fake_123', '---', 'b', ''].join('\n'));
+    const plan = mirrorPlan(mac);
+    const rel = 'plugins/cache/mp/acme/1.0.0/reviewers/db.md';
+    expect(plan.plugins).toEqual([{ key: `claude:agent:${rel}`, name: rel, fields: ['mcpServers.pg'], ticked: false, files: [path.join(mac.claudeDir, rel)] }]);
+    expect(plan.files.filter((f) => f.from.endsWith('reviewers/db.md'))).toEqual([]);
+  });
+
   it('takeBackCopies says nothing of a key the worker set itself where the user unticked the copy, nor of a record without the bare form of its value', async () => {
     const mac = macHome();
     const worker = farHome();

@@ -443,6 +443,7 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(agentKeys(md('"mcpServers":', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: quoted_fake_1'))).toEqual(['mcpServers']);
     expect(agentKeys(md('mcpServers: [github]', 'name: d', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: dup_fake_2'))).toEqual(['mcpServers']);
     expect(agentKeys(md('name: d', 'mcpServers: [github]'))).toEqual([]);
+    expect(agentKeys(md('"mcp\\u0053ervers":', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: esc_fake_3'))).toEqual(['mcpServers']);
   });
 });
 

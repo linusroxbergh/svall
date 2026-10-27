@@ -839,7 +839,7 @@ function yamlBlock(lines: YamlLine[], i: number, indent: number): [unknown, numb
 
 // a subagent file's frontmatter mcpServers block: its value, and where its lines start among the file's and how many they
 // are; null for none, undefined where it is not in the plain YAML or JSON the mirror reads or the frontmatter names
-// mcpServers anywhere else, as a quoted or second key a YAML reader may take
+// mcpServers anywhere else, as a quoted, escaped or second key a YAML reader may take
 function agentBlock(source: string): { value: unknown; from: number; count: number } | null | undefined {
   const end = frontmatterEnd(source);
   const lines = end ? source.slice(0, end).split(/\r?\n/).slice(1, -1) : [];
@@ -848,7 +848,8 @@ function agentBlock(source: string): { value: unknown; from: number; count: numb
   // the next key at the top ends the block
   const stop = after.findIndex((l) => /^[^\s#-]|^-\S/.test(l));
   const count = at < 0 ? 0 : 1 + (stop < 0 ? after.length : stop);
-  if (lines.some((l, i) => (i < at || i >= at + count) && l.includes('mcpServers'))) return undefined;
+  const names = (l: string): boolean => l.includes('mcpServers') || yamlScalar(YAML_KEY.exec(l)?.[1] ?? '') === 'mcpServers';
+  if (lines.some((l, i) => (i < at || i >= at + count) && names(l))) return undefined;
   if (at < 0) return null;
   const head = lines[at].slice(lines[at].indexOf(':') + 1).trim();
   const body: YamlLine[] = [];
