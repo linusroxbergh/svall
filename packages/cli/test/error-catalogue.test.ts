@@ -30,7 +30,8 @@ function union(text: string, start: string): string[] {
 // the codes the code names only in its text, not in a list it exports
 const named = {
   steps: (text: string) => all(text, /run\.step\('([^']+)'/g),
-  checks: (text: string) => [...all(text, /name(?::| =) '([^']+)'/g), ...all(text, /(?:failed|unitCheck)\('([^']+)'/g)],
+  // a setup row's gap names what will not work there, not a check
+  checks: (text: string) => [...all(text, /(?<!gap: \{ )name(?::| =) '([^']+)'/g), ...all(text, /(?:failed|unitCheck)\('([^']+)'/g)],
 };
 
 /** The first cell of every table row under `heading`, down to the next heading as high or higher. */
