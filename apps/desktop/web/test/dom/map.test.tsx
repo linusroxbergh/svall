@@ -299,6 +299,9 @@ test('the map opens on a fit that knows how tall mission control\'s row has wrap
   const hrow = (el: HTMLElement, v: number) => (el.classList.contains('hrow') ? v : 0);
   Object.defineProperty(HTMLElement.prototype, 'offsetWidth', { configurable: true, get() { return hrow(this, row.w); } });
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', { configurable: true, get() { return hrow(this, row.h); } });
+  // motion on, so only a fit that lands at once is there right after the render
+  const media = window.matchMedia;
+  window.matchMedia = ((q: string) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {} })) as never;
   // one tall island, so the room mission control's row takes decides the zoom
   const f = { ...fleet(), robots: {} };
   f.islands = { i_t: isl('i_t', 't', 0, { size: { w: 7, h: 14 } }), home: { ...f.islands.home, position: { x: 0, y: 18 } } };
@@ -313,6 +316,7 @@ test('the map opens on a fit that knows how tall mission control\'s row has wrap
     delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
     Object.defineProperty(HTMLElement.prototype, 'offsetWidth', own.w);
     Object.defineProperty(HTMLElement.prototype, 'offsetHeight', own.h);
+    window.matchMedia = media;
   }
 });
 
