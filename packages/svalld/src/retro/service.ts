@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {
   ApiError, FOCUS_OF, HOME_ISLAND, RetroPlan, RetroReport,
-  type AgentKind, type Billing, type FleetConfig, type FocusPick, type ParsedParams, type Result, type RetroSpan, type RetroStatus, type Robot,
+  type AgentKind, type Billing, type Finding, type FleetConfig, type FocusPick, type ParsedParams, type Result, type RetroSpan, type RetroStatus, type Robot,
 } from '@svall/protocol';
 import { readEnvFile } from '../claude.js';
 import { patchFleetConfig } from '../config.js';
@@ -54,6 +54,9 @@ type Deps = {
 type Gathered = { repos: string[]; outlines: Outline[]; prOf: Map<string, string>; comments: Map<string, PrComment[]> };
 
 const KEYS: Partial<Record<AgentKind, string>> = { claude: 'ANTHROPIC_API_KEY', codex: 'OPENAI_API_KEY' };
+
+// a diff in which redaction masked a value would write the mask, so it is never applied or handed to a robot
+const masked = (f: Finding): boolean => f.change.text.includes('[redacted]');
 
 /** The retro: plans read the stores here and send nothing to a model; a run reads its plan's batches under its budget. */
 export class Retro {
@@ -147,17 +150,18 @@ export class Retro {
         continue;
       }
       const target = finding.target;
-      if (target?.class === 'local' && finding.change.kind === 'diff') {
+      const diff = finding.change.kind === 'diff' && !masked(finding);
+      if (target?.class === 'local' && diff) {
         results.push({ id: finding.id, outcome: 'apply', path: target.path, diff: finding.change.text });
         continue;
       }
-      if (target?.class === 'repo' && finding.change.kind === 'diff') {
+      if (target?.class === 'repo' && diff) {
         const robot = await this.fixRobot(run, finding.id, target.path, target.realPath, finding.change.text, finding.evidence);
         ledger = markLedger(ledger, finding.id, 'fixed', { at });
         results.push({ id: finding.id, outcome: 'robot', robot: robot.id, path: target.path });
         continue;
       }
-      // settings, synced and plugin skills, Svall's own files and drafts are the user's to place
+      // settings, synced and plugin skills, Svall's own files, drafts and masked diffs are the user's to place
       ledger = markLedger(ledger, finding.id, 'fixed', { at });
       results.push({ id: finding.id, outcome: 'proposal', ...(target && { path: target.path }), diff: finding.change.text });
     }
@@ -169,7 +173,7 @@ export class Retro {
   apply(id: string): Result<'retro.apply'> {
     const { finding } = this.finding(id);
     const t = finding.target;
-    if (!t || t.class !== 'local' || finding.change.kind !== 'diff') throw new Invalid(`finding ${finding.id} has no diff for a file outside git to apply`);
+    if (!t || t.class !== 'local' || finding.change.kind !== 'diff' || masked(finding)) throw new Invalid(`finding ${finding.id} has no diff for a file outside git to apply`);
     let text: string;
     try { text = fs.readFileSync(t.realPath, 'utf8'); } catch { throw new NotFound(`${t.path} is gone`); }
     if (crypto.createHash('sha256').update(text).digest('hex') !== t.hash) {

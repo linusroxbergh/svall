@@ -22,6 +22,12 @@ export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)
 
 export const clip = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 export const inSpan = (at: number, span: Span): boolean => at >= span.from && at <= span.to;
+// a tool input with each string in it redacted, so a .env line it writes is masked before JSON escapes its newlines
+const leaves = (v: unknown): unknown =>
+  typeof v === 'string' ? redact(v)
+  : Array.isArray(v) ? v.map(leaves)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, leaves(x)]))
+  : v;
 
 /** Folds what a reader finds in a session, in order and inside the span, into its outline. */
 export function outliner() {
@@ -33,11 +39,13 @@ export function outliner() {
   const turn = (role: Turn['role'], line: number, at: number, text: string): Turn => {
     if (!o.start || at < o.start) o.start = at;
     o.end = Math.max(o.end, at);
-    const t = { line, at, role, text: redact(text) };
+    const t = { line, at, role, text };
     o.turns.push(t);
     return t;
   };
   const follow = (next: 'interrupt' | 'rejected') => { for (const r of open) r.next ??= next; };
+  // whole before it is clipped, so a secret the clip cuts is still masked
+  const masked = (text: string, max: number): string => clip(redact(text), max);
   return {
     prompt(line: number, at: number, text: string) {
       links(text);
@@ -49,21 +57,21 @@ export function outliner() {
         if (!r.next && r.replyMs <= REPLY_MS) r.next = 'reply';
       }
       open = [];
-      o.prompts.push(turn('user', line, at, clip(text, CLIP.text)));
+      o.prompts.push(turn('user', line, at, masked(text, CLIP.text)));
     },
     said(line: number, at: number, text: string) {
       links(text);
-      turn('agent', line, at, clip(text, CLIP.text));
+      turn('agent', line, at, masked(text, CLIP.text));
     },
     tool(line: number, at: number, name: string, input: unknown) {
-      const given = typeof input === 'string' ? input : JSON.stringify(input) ?? '';
+      const given = typeof input === 'string' ? input : JSON.stringify(leaves(input)) ?? '';
       links(given);
       o.tools++;
-      turn('tool', line, at, `${name} ${clip(given, GH_BODY.test(given) ? CLIP.text : CLIP.input)}`);
+      turn('tool', line, at, `${name} ${masked(given, GH_BODY.test(given) ? CLIP.text : CLIP.input)}`);
     },
     error(line: number, at: number, text: string) {
       o.errors++;
-      turn('error', line, at, clip(text, CLIP.error));
+      turn('error', line, at, masked(text, CLIP.error));
     },
     rejected(line: number, at: number, tool: string) {
       o.rejected++;
@@ -83,7 +91,7 @@ export function outliner() {
       o.skills.push(r);
     },
     command(text: string, failed: boolean) {
-      o.commands.push({ text: redact(clip(text, CLIP.input)), failed });
+      o.commands.push({ text: masked(text, CLIP.input), failed });
     },
     pr(url: string) {
       prs.add(url);

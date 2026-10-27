@@ -87,7 +87,7 @@ describe('the retro service', () => {
   });
 
   // a finished run whose one finding changes `file`, as the judge read it
-  function finished(w: ReturnType<typeof world>, file: string, cls: NonNullable<Finding['target']>['class']): Finding {
+  function finished(w: ReturnType<typeof world>, file: string, cls: NonNullable<Finding['target']>['class'], more: Partial<Finding> = {}): Finding {
     const dir = path.join(w.paths.retro, 'runs', 'r_100');
     fs.mkdirSync(dir, { recursive: true });
     const plan: RetroPlan = {
@@ -100,7 +100,7 @@ describe('the retro service', () => {
       evidence: ['s1', 's2', 's3'].map((session) => ({ source: { agent: 'claude' as const, session, line: 1 }, quote: 'q' })), sessions: 3, prs: 0,
       change: { kind: 'diff', summary: 'add the changelog step', text: '@@ -1,2 +1,3 @@\n # Publish\n+Update the changelog.\n 1. Tag.' },
       target: { path: file, realPath: file, class: cls, hash: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') },
-      measure: { kind: 'none', subject: null, name: 'n', before: null, after: null }, rank: 1,
+      measure: { kind: 'none', subject: null, name: 'n', before: null, after: null }, rank: 1, ...more,
     };
     fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan));
     fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ run: 'r_100', findings: [f], previous: [], mechanical: [], thin: [], skipped: [], usage: { budget: 1, used: 1 } }));
@@ -155,5 +155,21 @@ describe('the retro service', () => {
     expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0]).toMatchObject({ outcome: 'proposal' });
     await w.retro.mark({ marks: [{ id: 'f1', action: 'dismiss', reason: 'wrong' }] });
     expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
+  });
+
+  it('proposes a diff in which a value was masked, and never applies it or hands it to a robot', async () => {
+    const robots: unknown[] = [];
+    const w = world({ robots });
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    const change = { kind: 'diff' as const, summary: 's', text: '@@ -1,2 +1,3 @@\n # Publish\n+export GH_TOKEN=[redacted]\n 1. Tag.' };
+    finished(w, skill(path.join(repo, '.claude', 'skills', 'publish')), 'repo', { change });
+    expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0]).toMatchObject({ outcome: 'proposal' });
+    expect(robots).toEqual([]);
+    const file = skill(path.join(makeHome(), 'skills', 'publish'));
+    finished(w, file, 'local', { change });
+    expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0]).toMatchObject({ outcome: 'proposal' });
+    expect(() => w.retro.apply('f1')).toThrow('has no diff');
+    expect(fs.readFileSync(file, 'utf8')).toBe('# Publish\n1. Tag.\n');
   });
 });

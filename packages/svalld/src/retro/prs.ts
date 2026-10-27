@@ -21,7 +21,7 @@ export async function ghReady(gh: Gh = run): Promise<boolean> {
   try { await gh(['auth', 'status']); return true; } catch { return false; }
 }
 
-/** What others than its author said on a PR, oldest first, each body clipped to 1,500 and redacted; rejects when gh fails. */
+/** What others than its author said on a PR, oldest first, each body redacted and clipped to 1,500; rejects when gh fails. */
 export async function prThread(url: string, gh: Gh = run): Promise<PrComment[]> {
   const m = /^https?:\/\/([^/]+)\/([^/]+)\/([^/]+)\/pull\/(\d+)/.exec(url);
   if (!m) throw new Error(`not a PR: ${url}`);
@@ -35,7 +35,7 @@ export async function prThread(url: string, gh: Gh = run): Promise<PrComment[]> 
   return all.flatMap((c): PrComment[] => {
     const body = c.body?.trim();
     if (!body || c.author === pr.author?.login) return [];
-    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: redact(clip(body, CLIP.text)), ...(c.path && { path: c.path }) }];
+    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: clip(redact(body), CLIP.text), ...(c.path && { path: c.path }) }];
   }).sort((a, b) => a.at - b.at);
 }
 

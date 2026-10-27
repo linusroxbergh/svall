@@ -110,7 +110,7 @@ describe('prThread', () => {
       if (args[0] === 'pr') {
         return JSON.stringify({
           author: { login: 'me' },
-          comments: [{ author: { login: 'me' }, body: 'my own note', createdAt: '2026-10-20T10:00:00Z' }, { author: { login: 'kim' }, body: 'x'.repeat(2000), createdAt: '2026-10-20T12:00:00Z' }],
+          comments: [{ author: { login: 'me' }, body: 'my own note', createdAt: '2026-10-20T10:00:00Z' }, { author: { login: 'kim' }, body: `${'x'.repeat(1490)} TOKEN="${'q'.repeat(500)}"`, createdAt: '2026-10-20T12:00:00Z' }],
           reviews: [{ author: { login: 'bot' }, body: '', submittedAt: '2026-10-20T09:30:00Z' }, { author: { login: 'bot' }, body: 'token ghp_abcdefghijklmnopqrstuvwx', submittedAt: '2026-10-20T11:00:00Z' }],
         });
       }
@@ -123,6 +123,8 @@ describe('prThread', () => {
     ]);
     expect(thread.map((c) => [c.author, c.path])).toEqual([['kim', 'src/a.ts'], ['bot', undefined], ['kim', undefined]]);
     expect(thread[1].body).toBe('token [redacted]');
+    // masked whole, then clipped, so the clip leaves none of a secret it cuts
     expect(thread[2].body).toHaveLength(1500);
+    expect(thread[2].body).not.toContain('q');
   });
 });
