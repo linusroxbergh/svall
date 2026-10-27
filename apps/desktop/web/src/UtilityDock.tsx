@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
-import { useApp } from './hooks.js';
+import { useApp, usePanelWidth } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
 import { LoadPanel } from './LoadPanel.js';
@@ -44,6 +44,7 @@ export function UtilityDock() {
   const loadOpen = useApp((s) => s.loadOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
+  const width = usePanelWidth('sidebar');
   const usageTab = useApp((s) => s.settings.usageTab);
   const bindings = useApp((s) => s.settings.bindings);
   // the control stands whether or not the fleet is served, so it can be switched on from here
@@ -96,7 +97,7 @@ export function UtilityDock() {
 
   return (
     <div className="use" ref={box} data-testid="utility-dock" data-collapsed={!sidebarOpen} data-open={open}>
-      <div className="use-tabs" ref={tabs}>
+      <div className="use-tabs" ref={tabs} style={width}>
         {owner && (
           <span className="use-owner" data-testid="owner-badge" data-state={where}
             title={`This fleet runs on ${owner}`}>{owner}</span>

@@ -3,7 +3,7 @@ import { starredOf, type FleetState, type Robot, type Island } from '@svall/prot
 import { moveRobotTo, newRobotOn, newIsland, reorderIsland, saveRobot, saveIsland, setStar, starRobotAt, toggleIsland } from './actions.js';
 import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
-import { memoByValue, stop, useApp } from './hooks.js';
+import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
 import { EyeGlyph, PrGlyph, reviewText } from './indicators.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
@@ -272,6 +272,7 @@ function UpdateRow() {
 export function Sidebar() {
   const fleet = useApp((s) => s.fleet);
   const active = useApp((s) => s.active);
+  const width = usePanelWidth('sidebar');
   const [editing, setEditing] = useState<string>();
   const [dragIsland, setDragIsland] = useState<string>();
   const [islandHover, setIslandHover] = useState<{ id: string; after: boolean }>();
@@ -299,7 +300,7 @@ export function Sidebar() {
   const setDragging = (id?: string) => { setDragIsland(id); if (!id) setIslandHover(undefined); };
 
   return (
-    <aside className="sb" data-testid="sidebar" data-paused={!active}>
+    <aside className="sb" style={width} data-testid="sidebar" data-paused={!active}>
       <div className="sb-head">
         islands
         <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}>+ New island</button>

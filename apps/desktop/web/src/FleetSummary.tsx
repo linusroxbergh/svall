@@ -1,15 +1,16 @@
-import { useApp } from './hooks.js';
+import { useApp, usePanelWidth } from './hooks.js';
 import { robotsOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, statusOf } from './selectors.js';
 
 export function FleetSummary() {
   const fleet = useApp((s) => s.fleet);
+  const width = usePanelWidth('card');
   const robots = Object.values(fleet.robots);
   const islands = islandsSorted(fleet);
   const counts = countsByStatus(fleet);
   const blocked = robots.filter((c) => statusOf(c, fleet) === 'blocked').length;
   const unread = robots.filter(isUnread).length;
   return (
-    <aside className="side" data-testid="fleet-summary">
+    <aside className="side" style={width} data-testid="fleet-summary">
       <div className="kicker">The fleet</div>
       <h2 className="h2">{robots.length} {robots.length === 1 ? 'robot' : 'robots'}<br />on {islands.length} {islands.length === 1 ? 'island' : 'islands'}</h2>
       <div className="desc">{blocked} blocked, {unread} unread.</div>
