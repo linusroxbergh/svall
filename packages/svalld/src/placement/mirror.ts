@@ -500,13 +500,18 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     unreadable.push(file);
   };
   // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's, in an agents folder or
-  // where its plugin.json's `agents` names it, is named by its path under Claude's folder
+  // where its plugin.json or marketplace entry names it in `agents`, `also` those of an install, is named by its path
+  // under Claude's folder
   const agentsDir = path.join(o.claudeDir, 'agents');
-  const vetAgents = (found: string[], plugin = false): void => {
-    const named = found.filter((f) => path.basename(f) === 'plugin.json' && path.basename(path.dirname(f)) === '.claude-plugin').flatMap((m) => {
-      const doc = readJson(m);
-      return isDoc(doc) ? namedPaths(doc.agents).map((n) => path.resolve(path.dirname(path.dirname(m)), n)) : [];
-    });
+  const vetAgents = (found: string[], plugin = false, also: string[] = []): void => {
+    const manifests = found.filter((f) => path.basename(path.dirname(f)) === '.claude-plugin' && ['plugin.json', 'marketplace.json'].includes(path.basename(f)));
+    const named = [...also, ...manifests.flatMap((m) => {
+      const [doc, root] = [readJson(m), path.dirname(path.dirname(m))];
+      if (!isDoc(doc)) return [];
+      if (path.basename(m) === 'plugin.json') return namedPaths(doc.agents).map((n) => path.resolve(root, n));
+      if (!Array.isArray(doc.plugins)) return [];
+      return (doc.plugins as unknown[]).flatMap((p) => (isDoc(p) && typeof p.source === 'string' ? namedPaths(p.agents).map((n) => path.resolve(root, p.source as string, n)) : []));
+    })];
     const isAgent = (x: string): boolean => path.relative(o.claudeDir, x).split(path.sep).includes('agents') || named.some((n) => x === n || holds(n, x));
     for (const f of found.filter((x) => x.endsWith('.md') && (!plugin || isAgent(x)))) {
       let source: string;
@@ -544,7 +549,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
       if (p.unreadMarket) unreadInstalls.push(p.installPath);
       continue;
     }
-    tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath), undefined, (found) => vetAgents(found, true));
+    const also = (p.namedAgents ?? []).map((n) => path.resolve(p.installPath, n));
+    tree('claude', p.installPath, path.posix.relative(o.claudeDir, p.installPath), undefined, (found) => vetAgents(found, true, also));
     for (const [file, ss] of byFile) {
       if (!holds(p.installPath, file) || unreadable.includes(file) || waiting.has(file)) continue;
       const data = pluginFile(file, ss, consent);

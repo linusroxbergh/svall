@@ -20,10 +20,11 @@ export type McpServer = {
   url?: string; headers: Record<string, string>; raw: Record<string, unknown>; known: boolean; file?: string; place?: string[];
 };
 /**
- * An installed plugin; `named` the server files and `namedLsp` the LSP configs its marketplace entry names by path, under
- * the plugin, and `unreadMarket` its marketplace.json when that cannot be read, so its entry is not known.
+ * An installed plugin; `named` the server files, `namedLsp` the LSP configs and `namedAgents` the subagents its
+ * marketplace entry names by path, under the plugin, and `unreadMarket` its marketplace.json when that cannot be read, so
+ * its entry is not known.
  */
-export type PluginInstall = { name: string; installPath: string; named?: string[]; namedLsp?: string[]; unreadMarket?: string };
+export type PluginInstall = { name: string; installPath: string; named?: string[]; namedLsp?: string[]; namedAgents?: string[]; unreadMarket?: string };
 /**
  * A value found by its field: `env.<KEY>`, `headers.<Name>`, `url.<param>`, `url.userinfo`, `args[<arg>]`, `args[<arg>].<param>`,
  * `args[<arg>].userinfo`, `oauth.<key>`, an arg by what names it as argFields says; a field that holds several is listed once for each.
@@ -248,17 +249,17 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
     unreadable.push(file);
     return [];
   }
-  const { named, namedLsp, broken, known, list } = marketNamed(claudeDir);
+  const { named, namedLsp, namedAgents, broken, known, list } = marketNamed(claudeDir);
   return Object.entries(plugins as Record<string, Doc[]>).flatMap(([name, all]) => {
     const paths = [...all.filter((i) => i.scope === 'user'), ...all.filter((i) => i.scope !== 'user')].map((i) => i.installPath as string);
     // an install is named `<plugin>@<marketplace>`
     const of = (m: Map<string, string[]>) => m.get(name) ?? [...m].find(([k]) => !name.includes('@') && k.startsWith(`${name}@`))?.[1];
-    const [files, lsp] = [of(named), of(namedLsp)];
+    const [files, lsp, agents] = [of(named), of(namedLsp), of(namedAgents)];
     const from = name.includes('@') ? name.slice(name.indexOf('@') + 1) : undefined;
     const market = from === undefined ? undefined : broken.get(from) ?? (list && !known.has(from) ? list : undefined);
     if (market) unreadable.push(market);
     return [...new Set(paths)].map((installPath) => ({
-      name, installPath, ...(files && { named: files }), ...(lsp && { namedLsp: lsp }), ...(market && { unreadMarket: market }),
+      name, installPath, ...(files && { named: files }), ...(lsp && { namedLsp: lsp }), ...(agents && { namedAgents: agents }), ...(market && { unreadMarket: market }),
     }));
   });
 }
@@ -266,15 +267,17 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
 /** The paths an `mcpServers` value names: one, or each of a list. */
 export const namedPaths = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((n): n is string => typeof n === 'string');
 
-// the server files and LSP configs each marketplace's plugin entries name by path, as `strict: false` entries do, by
+// the server files, LSP configs and subagents each marketplace's plugin entries name by path, as `strict: false` entries do, by
 // `<plugin>@<marketplace>`; each marketplace whose folder is not there or whose marketplace.json cannot be read, by its
 // name; every name found; and known_marketplaces.json when it cannot be read. A marketplace lies under
 // plugins/marketplaces, or where known_marketplaces.json puts one added from a local folder
 function marketNamed(claudeDir: string): {
-  named: Map<string, string[]>; namedLsp: Map<string, string[]>; broken: Map<string, string>; known: Set<string>; list?: string;
+  named: Map<string, string[]>; namedLsp: Map<string, string[]>; namedAgents: Map<string, string[]>; broken: Map<string, string>; known: Set<string>;
+  list?: string;
 } {
   const named = new Map<string, string[]>();
   const namedLsp = new Map<string, string[]>();
+  const namedAgents = new Map<string, string[]>();
   const add = (m: Map<string, string[]>, k: string, paths: string[]): void => { if (paths.length) m.set(k, [...new Set([...(m.get(k) ?? []), ...paths])]); };
   const broken = new Map<string, string>();
   const known = new Set<string>();
@@ -296,15 +299,16 @@ function marketNamed(claudeDir: string): {
     if (!inside || unread.length) broken.set(m, file);
     const list: unknown = doc?.plugins;
     for (const e of Array.isArray(list) ? list : []) {
-      if (!isDoc(e) || typeof e.name !== 'string' || !(namedPaths(e.mcpServers).length || namedPaths(e.lspServers).length)) continue;
+      if (!isDoc(e) || typeof e.name !== 'string' || ![e.mcpServers, e.lspServers, e.agents].some((v) => namedPaths(v).length)) continue;
       for (const market of new Set([m, typeof doc?.name === 'string' ? doc.name : m])) {
         known.add(market);
         add(named, `${e.name}@${market}`, namedPaths(e.mcpServers));
         add(namedLsp, `${e.name}@${market}`, namedPaths(e.lspServers));
+        add(namedAgents, `${e.name}@${market}`, namedPaths(e.agents));
       }
     }
   }
-  return { named, namedLsp, broken, known, ...(unreadList.length && { list: listFile }) };
+  return { named, namedLsp, namedAgents, broken, known, ...(unreadList.length && { list: listFile }) };
 }
 
 /** Whether `v` holds only references, after any auth scheme; a reference's default is a value, so only an empty one is. */

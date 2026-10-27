@@ -568,6 +568,19 @@ describe('the agent configuration mirror', () => {
     expect(plan.files.filter((f) => f.from.endsWith('reviewers/db.md'))).toEqual([]);
   });
 
+  it('a subagent a strict:false marketplace entry names in its agents is listed whole, in the marketplace and in the plugin\'s install', () => {
+    const mac = macHome();
+    const md = ['---', 'name: db', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: entry_agent_fake_123', '---', 'b', ''].join('\n');
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), JSON.stringify({
+      name: 'mp', plugins: [{ name: 'acme', source: './acme', strict: false, agents: ['./reviewers/db.md'] }],
+    }));
+    const rels = ['plugins/marketplaces/mp/acme/reviewers/db.md', 'plugins/cache/mp/acme/1.0.0/reviewers/db.md'];
+    for (const rel of rels) put(path.join(mac.claudeDir, rel), md);
+    const plan = mirrorPlan(mac);
+    expect(plan.plugins).toEqual(rels.map((rel) => ({ key: `claude:agent:${rel}`, name: rel, fields: ['mcpServers.pg'], ticked: false, files: [path.join(mac.claudeDir, rel)] })));
+    expect(plan.files.filter((f) => f.from.endsWith('reviewers/db.md'))).toEqual([]);
+  });
+
   it('takeBackCopies says nothing of a key the worker set itself where the user unticked the copy, nor of a record without the bare form of its value', async () => {
     const mac = macHome();
     const worker = farHome();
