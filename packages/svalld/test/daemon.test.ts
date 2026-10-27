@@ -488,6 +488,9 @@ runIf('the machine id a daemon runs as', () => {
 
   it('starts a home with no worker whose machine.json cannot be read, as a fresh id it names', async () => {
     brokenConfig('holding a corrupt machine.json');
+    // `svall host list` writes this Mac's own record, which is no worker
+    const mac = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall', gateway: false };
+    fs.writeFileSync(path.join(process.env.SVALL_CONFIG_DIR!, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: mac } }));
     const home = makeHome();
     homes.push(home);
     const { lines, log } = logged();

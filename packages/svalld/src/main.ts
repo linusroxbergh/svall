@@ -103,15 +103,15 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
 // every fleet home in this account's home, set up or not
 const fleetHomes = (home: string): string[] => [home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
 
-// each worker knows a home by its id, so one that cannot be read stops svalld while any worker is listed, and with none
-// it runs as a fresh id. A machine.json made on other hardware becomes this machine's
+// each worker, a machine reached over ssh, knows a home by its id, so one that cannot be read stops svalld while any
+// worker is listed, and with none it runs as a fresh id. A machine.json made on other hardware becomes this machine's
 function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
   let identity: ReturnType<typeof machineIdentity>;
   try {
     identity = machineIdentity(configDir(), hardware);
   } catch (e) {
     let listed: boolean;
-    try { listed = readRegistry().length > 0; } catch { listed = true; }
+    try { listed = readRegistry().some((m) => m.record.ssh !== undefined); } catch { listed = true; }
     if (listed) throw new Error(machineIdFailure(e, { workers: true }), { cause: e });
     const id = MachineId.parse(crypto.randomUUID());
     log.error(`${machineIdFailure(e)}; no worker knows this Mac, so it runs as ${id}`);
