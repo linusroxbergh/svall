@@ -4,7 +4,7 @@ import path from 'node:path';
 import { z } from 'zod';
 import { FOCUS_OF, JudgeFinding, JudgeReply, Note, NoteReply, type AgentKind, type Finding, type Preset, type RetroPlan, type RetroReport, type RetroStatus, type Source } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
-import { NO_USAGE, type Call, type Runner } from '../scribe/run.js';
+import { NO_USAGE, type Call, type Runner, type Usage } from '../scribe/run.js';
 import { Budget, FAMILY, judgeTokens, RATIO, readTokens } from './budget.js';
 import { dismissedCategories, findingId, measure, readLedger, recordFindings, writeLedger } from './ledger.js';
 import { clip, type Outline, type Span } from './outline.js';
@@ -48,16 +48,26 @@ const said = (e: unknown): string => clip(String(e instanceof Error ? e.message 
 const sessionKey = (s: { agent: AgentKind; session: string }): string => `${s.agent}\n${s.session}`;
 const sourceKey = (s: Source): string => ('pr' in s ? s.pr : sessionKey(s));
 
-// one call whose answer must fit `reply`, retried once; OpenCode has no schema flag, so its prompt carries the schema,
-// and its answer may wrap the JSON in prose or a fence
-async function ask<T>(run: Runner, agent: AgentKind, system: string, prompt: string, call: Call, reply: z.ZodType<T>, budget: Budget, signal: AbortSignal): Promise<T> {
+// one call whose answer must fit `reply`, under the `hold` its caller reserved, retried once under a reservation of its
+// own; a call that fails, or whose CLI says nothing of what it used, is charged all it held. OpenCode has no schema flag,
+// so its prompt carries the schema, and its answer may wrap the JSON in prose or a fence
+async function ask<T>(run: Runner, agent: AgentKind, system: string, prompt: string, call: Call, reply: z.ZodType<T>, hold: number, budget: Budget, signal: AbortSignal): Promise<T> {
   const asked = agent === 'opencode' ? `${prompt}\n\nAnswer with JSON only, fitting this schema:\n${JSON.stringify(call.schema)}` : prompt;
   const once = async (): Promise<T> => {
-    const { text, usage } = await run(system, asked, call, signal);
-    budget.settle(0, usage);
-    return reply.parse(JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)));
+    let used: Usage | undefined;
+    try {
+      const { text, usage } = await run(system, asked, call, signal);
+      if (usage.input || usage.output) used = usage;
+      return reply.parse(JSON.parse(text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)));
+    } finally {
+      budget.settle(hold, used ?? { ...NO_USAGE, input: hold });
+    }
   };
-  try { return await once(); } catch { signal.throwIfAborted(); return once(); }
+  try { return await once(); } catch {
+    signal.throwIfAborted();
+    if (!budget.reserve(hold)) throw new Error("the budget left won't cover a retry");
+    return once();
+  }
 }
 
 // a note stands on a session or PR its own batch holds; a target outside the inventory is none
@@ -101,8 +111,8 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
   const focus = FOCUS_OF[plan.focus];
   const inventory = new Map(o.targets.map((t) => [t.id, t]));
   try {
-    // the judge's share is held first, so reads never eat it
-    const judgeHold = judgeTokens(total, preset.judge.agent).max;
+    // the judge's share is held first, so reads never eat it; with nothing to read the judge is never called
+    const judgeHold = total ? judgeTokens(total, preset.judge.agent).max : 0;
     if (!budget.reserve(judgeHold)) throw new Error(`a budget of ${o.budget} tokens won't cover the judge's ${Math.ceil(judgeHold)}`);
     status('reading');
 
@@ -114,21 +124,17 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
     const worker = async () => {
       while (!stop && next < total) {
         const i = next++, b = plan.batches[i];
+        const excerpts = JSON.parse(fs.readFileSync(path.join(o.dir, 'batches', `${b.id}.json`), 'utf8')) as Excerpt[];
         const hold = readTokens(b.tokens, preset.read.agent).max;
         if (!budget.reserve(hold)) { stop = true; return; }
-        try {
-          const excerpts = JSON.parse(fs.readFileSync(path.join(o.dir, 'batches', `${b.id}.json`), 'utf8')) as Excerpt[];
-          reads[i] = await ask(reader, preset.read.agent, system, readInput({ excerpts }), call, NOTES, budget, signal).then(
-            (r) => {
-              const notes = cut(keep(r, excerpts, inventory), REPLY_TOKENS * RATIO[FAMILY[preset.read.agent]]);
-              writeDurable(path.join(o.dir, 'notes', `${b.id}.json`), notes);
-              return { excerpts, notes };
-            },
-            (e: unknown) => { signal.throwIfAborted(); return { failed: `${b.id} not read: ${said(e)}` }; },
-          );
-        } finally {
-          budget.settle(hold, NO_USAGE);
-        }
+        reads[i] = await ask(reader, preset.read.agent, system, readInput({ excerpts }), call, NOTES, hold, budget, signal).then(
+          (r) => {
+            const notes = cut(keep(r, excerpts, inventory), REPLY_TOKENS * RATIO[FAMILY[preset.read.agent]]);
+            writeDurable(path.join(o.dir, 'notes', `${b.id}.json`), notes);
+            return { excerpts, notes };
+          },
+          (e: unknown) => { signal.throwIfAborted(); return { failed: `${b.id} not read: ${said(e)}` }; },
+        );
         done++;
         status('reading');
       }
@@ -155,7 +161,7 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
       const reply = await ask(
         o.runner(preset.judge.agent), preset.judge.agent, judgePrompt({ focus }),
         judgeInput({ notes, targets, dismissed: dismissedCategories(ledger), previous: o.previous }),
-        { model: preset.judge.model, schema: JUDGE_SCHEMA, timeoutMs: 600_000 }, FINDINGS_OF, budget, signal,
+        { model: preset.judge.model, schema: JUDGE_SCHEMA, timeoutMs: 600_000 }, FINDINGS_OF, judgeHold, budget, signal,
       );
       const dismissed = new Set(Object.values(ledger).filter((e) => e.status === 'dismissed').map((e) => e.id));
       const noted = new Set(notes.map((n) => sourceKey(n.source)));
@@ -180,8 +186,9 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
       }).sort((a, b) => a.rank - b.rank)
         // two findings on one issue share an id, and the better ranked stands for both
         .filter((f, i, all) => all.findIndex((x) => x.id === f.id) === i).slice(0, FINDINGS);
+    } else {
+      budget.settle(judgeHold, NO_USAGE);
     }
-    budget.settle(judgeHold, NO_USAGE);
 
     // a fix is measured from its date
     const previous = o.previous.map((f) => {
@@ -195,7 +202,11 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
         const k = readOf.filter((s) => s === skill).length;
         return k < n ? [`${skill}: ${k} of ${n} runs read`] : [];
       }),
-      ...reads.flatMap((r) => ('failed' in r ? [r.failed] : [])),
+      // each batch the budget or a failed read left unread
+      ...plan.batches.flatMap((b, i) => {
+        const r = reads[i];
+        return !r ? [`${b.id} not read: over the budget`] : 'failed' in r ? [r.failed] : [];
+      }),
     ];
     const usage = { budget: o.budget, used: budget.used };
     writeDurable(path.join(o.dir, 'findings.json'), findings);

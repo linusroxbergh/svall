@@ -155,10 +155,58 @@ describe('runPlan', () => {
 
     expect(seen.filter((s) => s.side === 'read')).toHaveLength(2);
     expect(seen.filter((s) => s.side === 'judge')).toHaveLength(1);
-    expect(report.skipped).toEqual(['babysit-pr: 2 of 131 runs read']);
+    const skipped = ['babysit-pr: 2 of 131 runs read', 'b03 not read: over the budget', 'b04 not read: over the budget'];
+    expect(report.skipped).toEqual(skipped);
     expect(report.usage).toEqual({ budget, used: 450 });
-    expect(read(dir, 'totals.json')).toMatchObject({ usage: { budget, used: 450, over: 450 - budget }, skipped: ['babysit-pr: 2 of 131 runs read'] });
+    expect(read(dir, 'totals.json')).toMatchObject({ usage: { budget, used: 450, over: 450 - budget }, skipped });
     expect(fs.existsSync(path.join(dir, 'notes', 'b03.json'))).toBe(false);
+  });
+
+  it('reads nothing after a batch the budget refused, though a smaller one after it would fit', async () => {
+    const batches = ['s1', 's2', 's3'].map((s) => [excerpt(s)]);
+    const budget = judgeTokens(3, 'claude').max + readTokens(1_000, 'claude').max + readTokens(10, 'claude').max;
+    const { input, seen } = setup(batches, (side, prompt) => (side === 'judge' ? findings() : notes(note(/session=(\w+)/.exec(prompt)![1]))), { budget });
+    input.plan.batches[1].tokens = 500_000;
+    input.plan.batches[2].tokens = 10;
+    const report = await runPlan(input);
+
+    expect(seen.filter((s) => s.side === 'read').map((s) => /session=(\w+)/.exec(s.prompt)![1])).toEqual(['s1']);
+    expect(report.skipped).toEqual(['b02 not read: over the budget', 'b03 not read: over the budget']);
+  });
+
+  it('charges a call that fails, or whose CLI tells no usage, all it held, and reserves again for a retry', async () => {
+    const hold = readTokens(1_000, 'claude').max;
+    const usage = (side: 'read' | 'judge', prompt: string) => (side === 'read' && prompt.includes('session=s1') ? { ...USAGE, input: 0, output: 0 } : USAGE);
+    const runner: Runner = async (system, prompt) => {
+      const side = system.startsWith('You judge') ? 'judge' : 'read';
+      if (prompt.includes('session=s2')) throw new Error('claude -p exited 1');
+      return { text: side === 'judge' ? findings() : notes(note(/session=(\w+)/.exec(prompt)![1])), usage: usage(side, prompt) };
+    };
+    const { input } = setup([[excerpt('s1')], [excerpt('s2')]], () => '', { runner: () => runner });
+    const report = await runPlan(input);
+
+    // s1 told no usage, s2 failed twice, and the judge used 150
+    expect(report.usage.used).toBe(3 * hold + 150);
+    expect(report.skipped).toEqual([expect.stringMatching(/^b02 not read: claude -p exited 1/)]);
+  });
+
+  it('skips a retry the budget left will not cover, and reports it as unread', async () => {
+    const hold = readTokens(1_000, 'claude').max;
+    const { input, seen } = setup([[excerpt('s1')]], () => { throw new Error('claude -p exited 1'); }, { budget: judgeTokens(1, 'claude').max + hold });
+    const report = await runPlan(input);
+
+    expect(seen).toHaveLength(1);
+    expect(report.skipped).toEqual(["b01 not read: the budget left won't cover a retry"]);
+    expect(report.usage.used).toBe(hold);
+  });
+
+  it('finishes a plan with nothing to read on no budget, with no findings', async () => {
+    const { input, seen, statuses } = setup([], () => findings(), { budget: 0 });
+    const report = await runPlan(input);
+
+    expect(seen).toEqual([]);
+    expect(report).toMatchObject({ findings: [], skipped: [], usage: { budget: 0, used: 0 } });
+    expect(statuses.at(-1)).toMatchObject({ stage: 'done' });
   });
 
   it('retries a failed read once then skips it', async () => {

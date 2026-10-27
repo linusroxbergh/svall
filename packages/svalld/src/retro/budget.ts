@@ -44,10 +44,11 @@ export function presetsFor(agent: AgentKind, config: FleetConfig['retro']): Pres
 
 type Call = { tokens: Range; cost?: Range };
 
-// one call: its input read fresh (caching is off), the CLI's own input, and at least half its output cap, at most the cap and reasoning
+// one call: its input read fresh (caching is off), the CLI's own input, and at least half its output cap, at most the cap
+// and reasoning; whole tokens rounded up, so a plan's estimate covers what its run reserves
 function call(input: number, out: number, reasoning: number, agent: AgentKind, price: Price | undefined): Call {
   const o = OVERHEAD[agent];
-  const tokens = { min: input + o.min + out / 2, max: input * 1.15 + o.max + out + reasoning };
+  const tokens = { min: Math.ceil(input + o.min + out / 2), max: Math.ceil(input * 1.15 + o.max + out + reasoning) };
   if (!price) return { tokens };
   const own = o.cached ? price.cacheRead : price.input;
   const usd = (input: number, overhead: number, output: number) => (input * price.input + overhead * own + output * price.output) / 1e6;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { FleetConfig } from '@svall/protocol';
 import { NO_USAGE } from '../src/scribe/run.js';
-import { Budget, estimate, presetsFor } from '../src/retro/budget.js';
+import { Budget, estimate, judgeTokens, presetsFor, readTokens } from '../src/retro/budget.js';
 import { priceOf } from '../src/retro/prices.js';
 
 const retro = (o: object = {}) => FleetConfig.shape.retro.parse(o);
@@ -12,8 +12,8 @@ describe('Budget', () => {
     const b = new Budget(100_000);
     expect(b.reserve(60_000)).toBe(true);
     expect(b.reserve(50_000)).toBe(false);
-    b.settle(60_000, { ...NO_USAGE, input: 30_000, output: 5_000 });
-    expect(b.used).toBe(35_000);
+    b.settle(60_000, { ...NO_USAGE, input: 30_000, output: 5_000, cacheWrite: 1_000 });
+    expect(b.used).toBe(36_000);
     expect(b.reserve(50_000)).toBe(true);
   });
 
@@ -37,6 +37,17 @@ describe('estimate', () => {
     expect(p.tokens.max).toBeGreaterThan(1_000_000);
     expect(p.cost!.min).toBeLessThan(3.1);
     expect(p.cost!.max).toBeGreaterThan(3.1);
+  });
+
+  it("covers the run's own reservations, whatever the batch sizes", () => {
+    for (const agent of ['claude', 'codex', 'opencode'] as const) {
+      for (const sizes of [[107], [1, 33_333], [49_999, 12_345, 7]]) {
+        const p = estimate(sizes.map((tokens) => ({ tokens })), presetsFor(agent, retro())[0], agent);
+        const b = new Budget(Math.ceil(p.tokens.max));
+        expect(b.reserve(judgeTokens(sizes.length, agent).max)).toBe(true);
+        for (const t of sizes) expect(b.reserve(readTokens(t, agent).max)).toBe(true);
+      }
+    }
   });
 
   it('a model missing from the price table has no cost', () => {
