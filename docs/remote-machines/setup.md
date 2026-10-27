@@ -149,8 +149,9 @@ server or plugin config with fields Svall does not know is a row "copy notion wh
 once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
 `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
-or a file a plugin's `plugin.json` names in `agents`, whose `mcpServers` defines a server with a key or fields Svall
-does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on this Mac.
+or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
+key or fields Svall does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
+this Mac.
 From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
 [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
 `--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item.
