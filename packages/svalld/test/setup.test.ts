@@ -914,6 +914,26 @@ esac
     expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
   });
 
+  it("old home settings gain svall retro without losing the user's rules", () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped = fs.readFileSync(settings, 'utf8');
+    const older = shipped.replace(',\n      "Bash(svall retro:*)"', '');
+    expect(older).not.toContain('svall retro');
+    fs.writeFileSync(settings, older);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
+
+    // a rule of the user's after the scribe's keeps its place
+    fs.writeFileSync(settings, older.replace('"Bash(svall scribe sweep:*)"', '"Bash(svall scribe sweep:*)",\n      "Bash(git log:*)"'));
+    installHomeTemplate(mc, { replaceSettings: false });
+    const migrated = fs.readFileSync(settings, 'utf8');
+    expect(JSON.parse(migrated).permissions.allow).toEqual([...JSON.parse(older).permissions.allow, 'Bash(svall retro:*)', 'Bash(git log:*)']);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
+  });
+
   // Claude Code asks before a command holding a shell variable even when a rule allows it
   it('lets the buttons run every svall command their skills name without asking, deleting an island aside', () => {
     const svalld = path.join(repoRoot, 'packages/svalld');

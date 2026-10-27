@@ -16,7 +16,7 @@ describe('state schemas', () => {
       home: {
         cwd: '~/.svall/home', command: 'claude --model opus',
         actions: [
-          { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' },
+          { label: 'update info', prompt: '/svall-update-info' }, { label: 'status', prompt: '/svall-status' }, { label: 'retro', prompt: '/svall-retro' },
         ],
       },
       defaultCwd: DEFAULT_CWD,
@@ -31,8 +31,14 @@ describe('state schemas', () => {
     expect(s.columns).toEqual(defaultColumns());
     expect(s.home.command).toBe('claude --model opus');
     expect(s.defaultCwd).toBe(DEFAULT_CWD);
-    expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status']);
+    expect(s.home.actions.map((a) => a.label)).toEqual(['update info', 'status', 'retro']);
     expect(Home.parse({ cwd: '/x' })).toEqual({ cwd: '/x', command: 'claude --model opus', actions: defaultHome().actions });
+  });
+
+  it('keeps the retro a robot runs, for its card', () => {
+    const retro = { run: 'r_1761562980', stage: 'reading', done: 7, total: 18, robot: 'c_abc123' };
+    expect(FleetState.parse({ version: 12, islands: {}, robots: {}, retro }).retro).toEqual(retro);
+    expect(() => FleetState.parse({ version: 12, islands: {}, robots: {}, retro: { ...retro, stage: 'sleeping' } })).toThrow();
   });
 
   it('accepts a home island and rejects other kinds', () => {

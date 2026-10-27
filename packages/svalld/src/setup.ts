@@ -87,8 +87,10 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
-  // an older svalld allowed only `svall char`, which the rules now call `svall robot`
-  const current = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
+  // an older svalld allowed only `svall char`, which the rules now call `svall robot`, and no `svall retro`
+  const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
+  const current = robot && !robot.includes('"Bash(svall retro:*)"')
+    ? robot.replace(/^([ \t]*)"Bash\(svall scribe sweep:\*\)"(,?)$/m, '$1"Bash(svall scribe sweep:*)",\n$1"Bash(svall retro:*)"$2') : robot;
   if (current !== read) {
     writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);

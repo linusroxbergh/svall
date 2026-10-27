@@ -5,7 +5,7 @@ import { fitWithHome } from '../../src/map/home.js';
 import { crewOf } from '../../src/map/layout.js';
 import { mapIslands } from '../../src/selectors.js';
 import { theme } from '../../src/theme.js';
-import { fleet, isl } from '../fixtures.js';
+import { chr, fleet, isl } from '../fixtures.js';
 import { call, freshStore, store } from './harness.js';
 
 // reduced motion: a refit lands at once, so nothing waits on animation frames
@@ -104,6 +104,20 @@ test('a card fills its top edge with the context used, and leaves it empty witho
   const fill = (id: string) => screen.getByTestId(`token-${id}`).querySelector<HTMLElement>('.edge i');
   expect(fill('c0')?.style.width).toBe('70%');
   expect(fill('c1')).toBeNull();
+});
+
+test('the crew card shows the retro stage', () => {
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, m0: chr('m0', 'home', { x: 1, y: 1 }) },
+    retro: { run: 'r_1', stage: 'reading', done: 7, total: 18, robot: 'm0' } });
+  render(<Map />);
+  const retro = (id: string) => screen.queryByTestId(`token-retro-${id}`)?.textContent;
+  expect(retro('m0')).toBe('retro reading 7/18');
+  expect(retro('c0')).toBeUndefined();
+  act(() => store.getState().applyPatch([{ op: 'replace', path: '/retro/stage', value: 'judging' }]));
+  expect(retro('m0')).toBe('retro judging');
+  act(() => store.getState().applyPatch([{ op: 'remove', path: '/retro' }]));
+  expect(retro('m0')).toBeUndefined();
 });
 
 test('a double click on open water makes an island there', async () => {

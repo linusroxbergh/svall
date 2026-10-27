@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, defaultHome, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -335,8 +335,9 @@ export class Fleet extends EventEmitter<Events> {
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
   private ensureHome(): string | undefined {
+    try { this.offerRetro(); } catch (e) { this.deps.log.error(`retro button: ${String(e)}`); }
     // the crew's model is the one syncAgents picks for the main agent's CLI
-    const { model: _picks, ...home } = this.deps.config.home;
+    const { model: _picks, offered: _offered, ...home } = this.deps.config.home;
     // a robot is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
     try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false })) this.deps.log.info(l); }
@@ -365,6 +366,20 @@ export class Fleet extends EventEmitter<Events> {
     });
     // a new fleet opens with one island beside mission control, for start to put a shell on; only its first start makes it, so a deleted one stays gone
     return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
+  }
+
+  // a fleet.json that lists its own buttons gets the retro one once, in the file and the running config; a fleet on the
+  // default buttons has it already
+  private offerRetro(): void {
+    const file = this.deps.paths.fleetConfig;
+    let listed: unknown;
+    try { listed = (JSON.parse(fs.readFileSync(file, 'utf8')) as { home?: { actions?: unknown } }).home?.actions; } catch { return; }
+    const home = this.deps.config.home;
+    if (listed === undefined || home.offered?.includes('retro')) return;
+    const retro = defaultHome().actions.find((a) => a.label === 'retro')!;
+    const patch = { actions: [...home.actions, retro], offered: [...home.offered ?? [], 'retro'] };
+    patchFleetConfig(file, { home: patch });
+    Object.assign(home, patch);
   }
 
   private endIdleAgents(): Promise<void> {

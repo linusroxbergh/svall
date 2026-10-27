@@ -23,7 +23,7 @@ function footInner(c: Robot, status: DisplayStatus, word: string | undefined, fa
 }
 
 export const Token = memoByValue(function Token({
-  c, status, world, links, selected, dragging, settling, hover, offset, failed, machine, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
+  c, status, world, links, selected, dragging, settling, hover, offset, failed, machine, retro, pointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu,
 }: {
   c: Robot;
   status: DisplayStatus;
@@ -39,6 +39,8 @@ export const Token = memoByValue(function Token({
   failed?: string;
   // the worker a placed robot runs on
   machine?: string;
+  // the stage of a retro the robot runs
+  retro?: string;
   pointer: PointerHandlers;
   onHoverStart(): void;
   onHoverEnd(): void;
@@ -81,7 +83,9 @@ export const Token = memoByValue(function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        {machine && <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />}
+        {machine
+          ? <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />
+          : retro && <span className="mline mach retro" data-testid={`token-retro-${c.id}`}><span>{retro}</span></span>}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />

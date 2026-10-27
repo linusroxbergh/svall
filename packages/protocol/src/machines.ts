@@ -32,8 +32,9 @@ export const FleetConfig = z.object({
   id: FleetId,
   // what the app and `svall <name>` call the fleet; absent, its directory names it
   name: z.string().refine(isProfileName, 'use lowercase letters, digits and dashes, starting with a letter, and no svall command or dev name, which Svall Dev keeps').optional(),
-  // with no command, the crew starts the main agent's crewCommand on that CLI's model in home.model
-  home: Home.extend({ command: z.string().optional(), model: ModelPicks.optional() }).prefault({}),
+  // with no command, the crew starts the main agent's crewCommand on that CLI's model in home.model; offered names the
+  // buttons svalld has added to the fleet's own actions, so one the user deletes stays deleted
+  home: Home.extend({ command: z.string().optional(), model: ModelPicks.optional(), offered: z.array(z.string()).optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
   // the agent the scribe, mission control's crew and `svall robot new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
