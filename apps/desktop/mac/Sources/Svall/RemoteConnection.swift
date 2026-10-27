@@ -97,7 +97,7 @@ final class RemoteConnection {
         helper?.stop()
     }
 
-    /// A handover moved the fleet: a fresh helper resolves its owner now, where the old one would find out only on its next tick.
+    /// A fresh helper resolves where the fleet runs now, where the old one would find out only on its next tick.
     func reconnect(with next: ControllerProcess) {
         helper?.stop()
         helper = next

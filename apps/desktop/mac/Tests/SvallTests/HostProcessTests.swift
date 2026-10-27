@@ -274,4 +274,27 @@ final class HostProcessTests: XCTestCase {
         try "not json".write(toFile: fleet, atomically: true, encoding: .utf8)
         XCTAssertFalse(SvallHome.handoverEnabled(at: dir.path))
     }
+
+    func testTheGatewayIsTheMachineTheFleetNamesInTheRegistry() throws {
+        let root = try temporaryDirectory("svall-gw")
+        let home = root.appendingPathComponent("home"), config = root.appendingPathComponent("config")
+        try FileManager.default.createDirectory(at: home, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: config, withIntermediateDirectories: true)
+        let id = "0b9d6c3e-1f2a-4b5c-8d7e-9f0a1b2c3d4e"
+        try #"{"machines":{"\#(id)":{"name":"studio","gateway":true},"11111111-1f2a-4b5c-8d7e-9f0a1b2c3d4e":{"name":"mac","gateway":false}}}"#
+            .write(to: config.appendingPathComponent("machines.json"), atomically: true, encoding: .utf8)
+
+        XCTAssertNil(SvallHome.gatewayName(home: home.path, configDir: config.path))
+        XCTAssertFalse(SvallHome.namesGateway(home: home.path))
+        try #"{"id":"f","handover":{"enabled":true}}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
+        XCTAssertNil(SvallHome.gatewayName(home: home.path, configDir: config.path))
+        XCTAssertFalse(SvallHome.namesGateway(home: home.path))
+        try #"{"id":"f","gatewayMachineId":"\#(id)"}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
+        XCTAssertEqual(SvallHome.gatewayName(home: home.path, configDir: config.path), "studio")
+        XCTAssertTrue(SvallHome.namesGateway(home: home.path))
+        try #"{"id":"f","gatewayMachineId":"22222222-1f2a-4b5c-8d7e-9f0a1b2c3d4e"}"#.write(to: home.appendingPathComponent("fleet.json"), atomically: true, encoding: .utf8)
+        XCTAssertNil(SvallHome.gatewayName(home: home.path, configDir: config.path))
+        // a gateway this Mac's registry has lost is still one the fleet may run on
+        XCTAssertTrue(SvallHome.namesGateway(home: home.path))
+    }
 }

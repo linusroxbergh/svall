@@ -75,7 +75,7 @@ describe('host run', () => {
     expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
   });
 
-  it('says a step line as the controller wrote it, with no handover rewording', () => {
+  it('drops an unknown id from a step line without naming a handover', () => {
     expect(plainStep('stuck in handover 3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', {})).toBe('stuck in handover');
   });
 
