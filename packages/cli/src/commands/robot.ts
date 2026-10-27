@@ -74,6 +74,7 @@ Handing work to a new robot:
   - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review".
   - New island: svall island create "<name>" --description "<one line>".
   - Wait (svall robot wait <id> --until done,blocked) only when you need the result; closing is the user's call.
+  - Check its work: svall robot read <id> --transcript, and its cwd and branch in svall status --json.
   - Write ids out: a command holding $SVALL_ROBOT_ID asks the user for permission.`)
     .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
       if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
