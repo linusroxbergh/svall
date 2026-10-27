@@ -138,8 +138,8 @@ describe('the end of a run', () => {
 
 describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
-    expect(['master', 'identity', 'enrol', 'fleet', 'replicas', 'registry'].map(stepLabel))
-      .toEqual(['Connection', 'Installed release', 'Worker', 'Fleets', 'Earlier handover', 'Machine list']);
+    expect(['master', 'identity', 'enrol', 'fleet', 'replicas', 'registry', 'keys'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Worker', 'Fleets', 'Earlier handover', 'Machine list', 'Copied keys']);
     // the checks a machine's own doctor reports
     expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
       .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
@@ -152,9 +152,10 @@ describe('a step by name', () => {
       'mirror:codex:mcp:github', 'mirror:opencode:mcp:sentry@/Users/ada/app', 'mirror:claude:plugin:acme@market:mcp:db', 'mirror:oauth:claude:mcp:notion',
       'mirror:oauth:claude:plugin:acme:mcp:db', 'mirror:runtime:npx', 'mirror:maconly:claude:chrome', 'mirror:claude:settings', 'mirror:codex:config',
       'mirror:opencode:config', 'mirror:claude:plugin:acme@market', 'mirror:unreadable:/Users/ada/.codex/config.toml', 'mirror:unchecked',
+      'mirror:claude:agent:team/db.md', 'mirror:claude:marketplace:market',
     ].map(stepLabel)).toEqual([
       'Codex MCP github', 'OpenCode MCP sentry', 'plugin acme@market MCP db', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
-      'OpenCode opencode.json', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked',
+      'OpenCode opencode.json', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked', 'subagent team/db.md', 'marketplace market',
     ]);
   });
 
@@ -195,7 +196,7 @@ describe('the attended checklist', () => {
 
   it('calls no phase by the name of a step in it', () => {
     const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
+      'tmux', 'uninstall', 'keys', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 

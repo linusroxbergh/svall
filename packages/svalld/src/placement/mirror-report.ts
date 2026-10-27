@@ -183,12 +183,13 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const notYet = (tick: NonNullable<SetupRow['tick']>): SetupRow =>
     ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : saved, tick });
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
-  // a server's env key its own once the worker's daemon has that variable
+  // a server's env key its own once the worker's daemon has that variable, and while it still holds a copy, not yet
   const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server = false): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && report?.vars[f.slice('env.'.length)] === true);
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
+    if (!tick.on && fields.some((f) => held(f) === 'copied')) return { key: item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick };
     if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
     if (tick.on) return notYet(tick);
     const env = server ? fields.filter((f) => f.startsWith('env.')).map((f) => `svall ${o.fleetFlag}worker env ${f.slice('env.'.length)}`) : [];

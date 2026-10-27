@@ -54,6 +54,11 @@ describe('the setup rows of the mirror', () => {
     expect(rows(report({ vars: { LINEAR_API_KEY: false } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
   });
 
+  it('an unticked server whose keys the worker still holds as the copy says they are still on w1, to check again', () => {
+    expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'copied' } }))
+      .toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false } });
+  });
+
   it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
     expect(row('claude:mcp:linear', { ticked: true, secrets: {} })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
     expect(row('claude:mcp:linear', { ticked: true, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
@@ -205,7 +210,7 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('claude:plugin:acme:mcp:pdf')).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.PDF_KEY pdf…90' });
     tick('claude:mcp:linear', [], false);
     // the copy stays until the next push takes it
-    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again' });
     await push();
     expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
     editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
