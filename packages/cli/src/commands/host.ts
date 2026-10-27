@@ -12,7 +12,7 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, consentHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowStep, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowStep, thingOf, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { farProfile, type Target } from '../target.js';
@@ -61,8 +61,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     fleet: { home: fleet.home, ...(farProfile(fleet) && { profile: farProfile(fleet) }) },
     // a daemon that is not running links the machine when it starts
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
-    // a machine just linked has up to waitMs to come up and answer
-    setupRows: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs: 30_000 })).then((r) => r.rows),
+    setupRows: (machine, waitMs) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs })).then((r) => r.rows),
     consent: (machine, item, fields, on) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.consent', { machine, item, fields, on })).then((r) => r.rows),
   };
 }
@@ -99,7 +98,7 @@ export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forge
 /** The last line of a check: ready, or the things left before robots can move there, each failed check and each warning's action once, as a run counts them. */
 export function doctorVerdict(checks: Check[], name: string): string {
   const todo = checks.filter((c) => c.status === 'fail' || (c.status === 'warn' && c.action));
-  const thing = (c: Check): string => c.action ?? c.name;
+  const thing = (c: Check): string => (c.action === undefined ? c.name : thingOf(c.name, c.action));
   const left = todo.filter((c, i) => todo.findIndex((o) => thing(o) === thing(c)) === i);
   return left.length ? `${needsLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}` : readyLine(name);
 }
@@ -206,7 +205,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .argument('<name>', 'the machine in the registry')
     .argument('<item>', 'the setting, such as claude:mcp:linear')
     .argument('<state>', 'on to copy its keys there, off to stop')
-    .option('--field <field...>', 'only these fields of it')
+    .option('--field <field...>', 'with on, only these fields of it; off unticks every field')
     .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
       if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);
       let rows;

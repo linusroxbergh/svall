@@ -6,6 +6,7 @@ import { Writable } from 'node:stream';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { WorkerFile } from '@svall/protocol';
+import { VAR_NAME } from '@svall/svalld/claude';
 import { writeDurable } from '@svall/svalld/handover/durable';
 import { realRun } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
@@ -80,7 +81,7 @@ export function workerCommands(target: () => Target): Command {
   cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
     .argument('<VAR>', 'the variable\'s name')
     .action(async (name: string) => {
-      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) throw new Error(`${name} is not a variable name`);
+      if (!VAR_NAME.test(name)) throw new Error(`${name} is not a variable name`);
       const value = await readSecret(name);
       if (!value) throw new Error('no value given');
       // the .env reader would return anything else changed
@@ -96,7 +97,7 @@ export function workerCommands(target: () => Target): Command {
       const kept = lines.filter((l) => !mine.test(l));
       kept.splice(at < 0 ? kept.length : at, 0, line);
       writeDurable(file, Buffer.from(`${kept.join('\n')}\n`), { mode: 0o600 });
-      process.stdout.write(`${name} is set for this fleet's robots on this machine\n`);
+      process.stdout.write(`${name} is set in this fleet's .env on this machine\n`);
     });
   return cmd;
 }

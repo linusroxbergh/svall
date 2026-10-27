@@ -819,15 +819,37 @@ describe('host add', () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const asked: MachineId[] = [];
+    const asked: [MachineId, number][] = [];
     const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), varRow('GAMMA_TOKEN')];
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: (m) => { asked.push(m); return Promise.resolve(rows); } }));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: (m, wait) => { asked.push([m, wait]); return Promise.resolve(rows); } }));
     await d.close();
-    expect(asked).toEqual([REMOTE]);
+    // a machine just linked has 30 s to come up
+    expect(asked).toEqual([[REMOTE, 30_000]]);
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-4)).toEqual(['registry', 'mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN']);
     expect(step('mirror:claude:mcp:linear').at(-1)).toMatchObject({ status: 'warn', action: "copy linear's keys to trift", tick: { item: 'claude:mcp:linear', on: false } });
     expect(step('mirror:var:GAMMA_TOKEN').at(-1)).toMatchObject({ status: 'warn', action: 'set GAMMA_TOKEN on trift', run: 'svall worker env GAMMA_TOKEN' });
     expect(out).toMatchObject({ result: 'actions', actions: ["copy linear's keys to trift", "copy github's keys to trift", 'set GAMMA_TOKEN on trift'] });
+  });
+
+  it('host add counts two servers whose rows read alike as two things, and rows that only ask to check again as one', async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const again = (key: string): SetupRow => ({ key, status: 'warn', action: 'check trift again', detail: 'pushed; not yet on trift' });
+    const rows = [unticked('claude:mcp:github'), unticked('codex:mcp:github'), again('var:X'), again('var:Y')];
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.resolve(rows) }));
+    await d.close();
+    expect(out).toMatchObject({ result: 'actions', actions: ["copy github's keys to trift", "copy github's keys to trift", 'check trift again'] });
+  });
+
+  it('host add with only gh to log in to there is ready, and offers gh\'s login in the terminal', async () => {
+    healthy({ doctor: JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', status: 'warn', detail: 'not logged in: gh auth login', run: 'gh auth login' }] }) });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('gh').at(-1)).toEqual({ step: 'gh', status: 'warn', detail: 'not logged in: gh auth login', run: 'gh auth login' });
+    expect(out).toEqual({ result: 'ready', actions: [] });
   });
 
   it('host add whose daemon is not running ends in one not-checked row and the outcome line', async () => {
@@ -843,12 +865,12 @@ describe('host add', () => {
     expect(outcomeText(out, 'add', 'trift')).toBe('trift needs 1 thing before robots can move there:\n  svall host doctor trift once Svall is open');
   });
 
-  it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal", async () => {
+  it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal and no thing to do", async () => {
     const said = (gh: Record<string, string>): string => JSON.stringify({ checks: [...JSON.parse(DOCTOR).checks, { name: 'gh', ...gh }] });
     const loggedOut = 'not logged in: gh auth login (pull request links stay unresolved)';
     for (const [gh, want] of [
       [{ status: 'ok', detail: 'logged in' }, { status: 'ok', detail: 'logged in' }],
-      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' }, { status: 'warn', detail: loggedOut, action: 'ssh trift.test, then gh auth login', run: 'gh auth login' }],
+      [{ status: 'warn', detail: loggedOut, run: 'gh auth login' }, { status: 'warn', detail: loggedOut, run: 'gh auth login' }],
     ] as const) {
       ssh.clearReplies();
       events = [];
@@ -1087,25 +1109,31 @@ describe('host doctor', () => {
     return registry;
   };
 
-  it('consentHost asks the daemon with the registry\'s id and the row\'s fields, and the command prints the rows with [x]', async () => {
+  it('consentHost asks the daemon with the registry\'s id and the row\'s fields, the rows asked without waiting, and the command prints the rows with [x]', async () => {
     const asked: unknown[] = [];
+    const waits: number[] = [];
     const rows = await consentHost('trift', { item: 'claude:mcp:linear', on: true }, deps({
       registry: registered(),
-      setupRows: () => Promise.resolve([unticked('claude:mcp:linear')]),
+      setupRows: (_m, wait) => { waits.push(wait); return Promise.resolve([unticked('claude:mcp:linear')]); },
       consent: (...a) => { asked.push(a); return Promise.resolve([ticked('claude:mcp:linear')]); },
     }));
-    expect(asked).toEqual([[REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true]]);
+    expect([asked, waits]).toEqual([[[REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true]], [0]]);
     const { stepLine } = await import('../src/commands/host.js');
     expect(stepLine(rowStep(rows[0]))).toContain('[x]');
   });
 
-  it('consentHost refuses an item no row names, and takes explicit fields as given', async () => {
+  it('consentHost refuses an item no row names, a field its row does not list, and --field with off, which unticks every field; it takes listed fields as given', async () => {
     const consent = vi.fn(() => Promise.resolve([]));
     const d = deps({ registry: registered(), setupRows: () => Promise.resolve([unticked('claude:mcp:linear')]), consent });
     await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, d)).rejects.toThrow('no setting codex:mcp:nope on trift; svall host doctor trift lists them');
+    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.X'] }, d))
+      .rejects.toThrow('claude:mcp:linear on trift has no field env.X; svall host doctor trift lists its fields');
+    await expect(consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.LINEAR_API_KEY'] }, d)).rejects.toThrow('off unticks every field of the item; leave out --field');
     expect(consent).not.toHaveBeenCalled();
-    await consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.X'] }, d);
-    expect(consent).toHaveBeenCalledWith(REMOTE, 'claude:mcp:linear', ['env.X'], false);
+    await consentHost('trift', { item: 'claude:mcp:linear', on: true, fields: ['env.LINEAR_API_KEY'] }, d);
+    expect(consent).toHaveBeenCalledWith(REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    await consentHost('trift', { item: 'claude:mcp:linear', on: false }, d);
+    expect(consent).toHaveBeenLastCalledWith(REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], false);
   });
 
   it('reads the companion\'s own doctor, version, linger and free space', async () => {
@@ -1205,12 +1233,12 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     const login: SetupRow = { key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift with codex mcp login figma; Svall cannot see whether you did' };
-    const asked: MachineId[] = [];
+    const asked: [MachineId, number][] = [];
     const report = await doctorHost('trift', deps({
       registry: registered(),
-      setupRows: (m) => { asked.push(m); return Promise.resolve([unticked('claude:mcp:linear'), unticked('codex:mcp:github'), okRow('var:X'), login]); },
+      setupRows: (m, wait) => { asked.push([m, wait]); return Promise.resolve([unticked('claude:mcp:linear'), unticked('codex:mcp:github'), okRow('var:X'), login]); },
     }));
-    expect(asked).toEqual([REMOTE]);
+    expect(asked).toEqual([[REMOTE, 0]]);
     expect(report.checks.filter((c) => c.name.startsWith('mirror:'))).toMatchObject([
       { name: 'mirror:claude:mcp:linear', status: 'warn', action: "copy linear's keys to trift", tick: { on: false } },
       { name: 'mirror:codex:mcp:github', status: 'warn', action: "copy github's keys to trift", tick: { on: false } }, { name: 'mirror:var:X', status: 'ok' },
@@ -2642,10 +2670,10 @@ describe('the last line a run prints', () => {
     expect(doctorVerdict([ok, warn, warn], 'trift')).toBe(ready);
     expect(doctorVerdict([ok, warn, fail('systemd')], 'trift')).toBe('trift needs 1 thing before robots can move there: systemd');
     expect(doctorVerdict([fail('systemd'), fail('release')], 'trift')).toBe('trift needs 2 things before robots can move there: systemd, release');
-    // one thing per action, as a run counts them: rows with no report all say to check again
+    // a mirror row by its key, as a run counts them, though two servers' rows read alike; rows with no report all say to check again
     const again = (key: string) => rowCheck({ key, status: 'warn', action: 'check trift again', detail: 'not checked: trift is not reachable' });
-    expect(doctorVerdict([rowCheck(unticked('claude:mcp:linear')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift'))
-      .toBe('trift needs 4 things before robots can move there: mirror:claude:mcp:linear, mirror:codex:mcp:github, mirror:var:X, systemd');
+    expect(doctorVerdict([rowCheck(unticked('claude:mcp:github')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift'))
+      .toBe('trift needs 4 things before robots can move there: mirror:claude:mcp:github, mirror:codex:mcp:github, mirror:var:X, systemd');
   });
 
   it('lists a detail of several lines under its step', async () => {
