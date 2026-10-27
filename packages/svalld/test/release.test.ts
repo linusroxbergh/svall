@@ -479,6 +479,7 @@ describe('the companion a release builds', () => {
     expect(notice).toMatch(/^tmux 3\.\S+ \(bin\/tmux\)  ISC  licenses\/tmux-LICENSE$/m);
     expect(notice).toMatch(/^libevent \S+ \(linked into bin\/tmux\)  BSD-3-Clause  licenses\/libevent-LICENSE$/m);
     expect(notice).toMatch(/^utf8proc \S+ \(linked into bin\/tmux\)  MIT  licenses\/utf8proc-LICENSE$/m);
-    for (const f of ['tmux-LICENSE', 'libevent-LICENSE', 'utf8proc-LICENSE']) expect(fs.existsSync(path.join(release, 'licenses', f)), f).toBe(true);
+    expect(notice).toMatch(/^ncurses \S+ \(linked into bin\/tmux\)  X11  licenses\/ncurses-LICENSE$/m);
+    for (const f of ['tmux-LICENSE', 'libevent-LICENSE', 'utf8proc-LICENSE', 'ncurses-LICENSE']) expect(fs.existsSync(path.join(release, 'licenses', f)), f).toBe(true);
   }, 180_000);
 });

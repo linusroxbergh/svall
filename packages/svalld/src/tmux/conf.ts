@@ -28,11 +28,11 @@ export function tmuxConfText(config: Config, env: TmuxEnv = {}): string {
     'set -g history-limit 20000',
     'set -g status off',
     'set -g mouse on',
-    // marking text with the mouse copies it: every copy binding pipes through this command,
-    // which only macOS has; elsewhere tmux keeps the selection in its own buffer
+    // marking text with the mouse copies it: on macOS every copy binding pipes through this command
     platform === 'darwin' ? 'set -g copy-command "pbcopy"' : undefined,
-    // and only through it: tmux's OSC 52 copy would reach Ghostty too, whose clipboard-write = ask would then ask
-    'set -s set-clipboard off',
+    // and only through it, as Ghostty's clipboard-write = ask would ask again for tmux's OSC 52 copy. On Linux the
+    // terminal attached over ssh takes tmux's copies, and those of the app in the pane, as OSC 52
+    platform === 'darwin' ? 'set -s set-clipboard off' : 'set -s set-clipboard on',
     // a pane that asks for modified keys (Claude Code does) gets Shift+Enter as CSI 13;2u instead of a bare CR
     'set -s extended-keys on',
     // tmux before 3.5 does not know this option and fails source-file on it; only Shift+Enter is lost
