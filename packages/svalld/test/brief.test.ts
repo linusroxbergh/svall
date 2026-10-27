@@ -12,6 +12,7 @@ const CREW = [
   '- Give self-contained work outside your task (another ticket, a PR review) to a new robot instead of a subagent. Keep small or coupled work here; ask if unsure.',
   '- Ask before starting more than two robots or a new island. Past ~50% context (`ctx` in `svall status`), suggest a new robot for new work.',
   '- How: `svall robot new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
+  '- To the user, name a robot or island as a link to its id, which selects it on click: `[bob](svall://robot/c_abc123)`, `[review](svall://island/i_abc123)`.',
   "- $TMUX is the fleet's tmux server, which runs every robot: use `tmux -L <a name of your own>` for your own tmux, and never kill-server or kill-session on the fleet's.",
 ];
 
@@ -129,7 +130,7 @@ describe('renderBrief', () => {
   it('tells a robot to work in a worktree after the hand-on lines, even with nothing else to say', () => {
     const rule = '- In a git repo, start every task and review in a new worktree inside the main checkout, before you edit or check out anything; reuse one only when its branch is the work and no other agent is in it. A path in the task names a file; change it in your worktree. Change the main checkout only when the user says so.';
     const lines = renderBrief(island(), robot(), [], undefined, true).split('\n');
-    expect(lines.slice(3, 9)).toEqual([...CREW, rule]);
+    expect(lines.slice(3, 10)).toEqual([...CREW, rule]);
     expect(renderBrief(island(), robot({ note: 'x' }))).not.toContain(rule);
     expect(renderBrief(island({ kind: 'home', instructions: 'x' }), robot(), [], undefined, true)).not.toContain(rule);
     expect(renderBrief(island({ instructions: 'x' }), undefined, [], undefined, true)).not.toContain(rule);
@@ -366,7 +367,7 @@ describe('renderBrief with docs', () => {
     );
     const lines = text.split('\n');
     expect(text.length).toBeLessThanOrEqual(9_000);
-    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 18 more island links', '- …and 17 more robot links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
+    expect(lines).toEqual(expect.arrayContaining([...CREW, '- …and 1 more in /d/repos/app-12345678', '- …and 18 more island links', '- …and 18 more robot links', '- …and 39 more tabs', `- https://example.com/${'t'.repeat(150)}/39 (active)`]));
     expect(lines.find((l) => l.startsWith('Island instructions: '))).toHaveLength('Island instructions: '.length + 2000);
     expect(text).toContain(`/${'p'.repeat(150)}/0 (pinned)`);
     expect(text).toContain(`/${'p'.repeat(150)}/1\n`);

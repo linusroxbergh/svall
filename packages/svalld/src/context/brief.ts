@@ -85,6 +85,7 @@ const crewLines = (island: Island, c: Robot): string[] => [
   '- Give self-contained work outside your task (another ticket, a PR review) to a new robot instead of a subagent. Keep small or coupled work here; ask if unsure.',
   '- Ask before starting more than two robots or a new island. Past ~50% context (`ctx` in `svall status`), suggest a new robot for new work.',
   '- How: `svall robot new --help`. Name it PR or ticket id, area, task: "#472 auth review", not "#472 deep review".',
+  '- To the user, name a robot or island as a link to its id, which selects it on click: `[bob](svall://robot/c_abc123)`, `[review](svall://island/i_abc123)`.',
   "- $TMUX is the fleet's tmux server, which runs every robot: use `tmux -L <a name of your own>` for your own tmux, and never kill-server or kill-session on the fleet's.",
 ];
 

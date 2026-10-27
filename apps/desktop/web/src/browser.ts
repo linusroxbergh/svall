@@ -48,8 +48,13 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
   };
 
   // a link followed in a terminal asks whether it opens beside it, as a tab of that robot; anything the
-  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser; a path opens in the robot's Files
+  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser; a path opens in the robot's Files;
+  // svall://robot/<id> and svall://island/<id> select that robot or island, as a click in the sidebar does
   const fromTerminal = (key: string, url: string, x: number, y: number) => {
+    const [, kind, target] = /^svall:\/\/(robot|island)\/([\w-]+)$/.exec(url) ?? [];
+    const s = state();
+    if (kind === 'robot' && s.fleet.robots[target]) { if (s.card) s.focus(target); else s.select(target); return; }
+    if (kind === 'island' && s.fleet.islands[target]) { s.selectIsland(target); return; }
     const id = robotOfKey(key);
     if (state().fleet.robots[id] && !/^[a-z][a-z0-9+.-]*:/i.test(url)) { void openPath({ api, store, bridge }, id, url, key === id ? 'terminal' : 'terminal2'); return; }
     if (!state().fleet.robots[id] || !/^https?:/i.test(url)) { openUrl(bridge, url); return; }
