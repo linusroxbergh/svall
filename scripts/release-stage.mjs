@@ -19,6 +19,8 @@ const ENTRIES = [
   { name: 'svall', entry: 'packages/cli/src/main.ts' },
   { name: 'svalld', entry: 'packages/svalld/src/bin.ts' },
 ];
+// bundled into lib/ beside svalld, which runs each in a worker thread; no shim runs them
+export const WORKERS = [{ name: 'retro-index', entry: 'packages/svalld/src/retro/index-worker.ts' }];
 
 const sha256 = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
@@ -134,7 +136,7 @@ const absent = {
 async function bundle(stage) {
   const bundles = {};
   const inputs = new Set();
-  for (const { name, entry } of ENTRIES) {
+  for (const { name, entry } of [...ENTRIES, ...WORKERS]) {
     const outfile = path.join(stage, 'lib', `${name}.mjs`);
     const result = await build({
       absWorkingDir: REPO,

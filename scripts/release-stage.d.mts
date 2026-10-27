@@ -2,6 +2,7 @@ export const VENDOR: string;
 export const PINS: {
   node: { version: string; platforms: string[]; sha256: Record<string, string> };
 };
+export const WORKERS: { name: string; entry: string }[];
 
 export function describeVersion(repo?: string): string;
 export function nodeRuntime(platform: string, o?: { vendor?: string; shasums?: string }): Promise<{ version: string; platform: string; tarball: string; name: string; sha256: string; verifiedAgainst: string }>;

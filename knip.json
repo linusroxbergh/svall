@@ -3,7 +3,7 @@
   "workspaces": {
     ".": { "entry": ["scripts/**/*.{mjs,js}", "test/*.test.ts"] },
     "packages/cli": { "entry": ["test/fixtures/*.{mjs,ts}"] },
-    "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}"] }
+    "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}", "src/retro/index-worker.ts"] }
   },
   "ignoreFiles": ["**/*.d.mts"],
   "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "mkfifo", "pmset", "script", "shasum", "sips", "ssh-keygen", "swiftc"],
