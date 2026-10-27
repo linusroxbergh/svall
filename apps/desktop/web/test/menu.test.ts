@@ -85,10 +85,6 @@ describe('followMenu', () => {
     c.bridge.emit({ type: 'menu.ask' });
     await settle();
     expect(c.sent.at(-1)).toEqual({ type: 'menu.fleets', fleets });
-    c.store.getState().setConnectionState({ state: 'online', owner: 'trift' });
-    c.bridge.emit({ type: 'menu.ask' });
-    await settle();
-    expect(c.sent.at(-1)).toEqual({ type: 'menu.fleets', fleets: [], note: 'This fleet runs on trift' });
   });
 
   it('opens a fleet picked in File once it has started, and says so when it cannot', async () => {

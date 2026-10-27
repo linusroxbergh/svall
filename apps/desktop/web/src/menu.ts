@@ -24,11 +24,9 @@ export const menuState = (s: AppState): MenuState => ({
   card: s.card !== undefined,
 });
 
-// File lists the fleets of the svalld on this Mac, which a fleet run from another machine cannot reach
+// File lists the fleets of the svalld on this Mac
 async function menuFleets({ store, api }: Pick<KeyDeps, 'store' | 'api'>): Promise<Extract<ToShell, { type: 'menu.fleets' }>> {
   const s = store.getState();
-  const owner = s.connection?.owner;
-  if (owner && owner !== 'local') return { type: 'menu.fleets', fleets: [], note: `This fleet runs on ${owner}` };
   if (s.status !== 'online') return { type: 'menu.fleets', fleets: [], note: 'svalld is not connected' };
   return api.call('fleets.list', {}).then((r) => ({ type: 'menu.fleets' as const, fleets: r.fleets }), () => ({ type: 'menu.fleets' as const, fleets: [], note: 'Fleets could not be listed' }));
 }

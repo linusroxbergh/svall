@@ -8,7 +8,7 @@ import {
   claudeHooksCurrent, codexInstalled, hookCommand, mergeHooks, mergeStatusLine, statusWrapper, unmergeHooks, unmergeStatusLine,
 } from '../src/agent-hooks.js';
 import { codexPaths } from '../src/codex/install.js';
-import { sha256Hex } from '../src/handover/hash.js';
+import { sha256Hex } from '../src/hash.js';
 import { installOpencodePlugin, opencodePaths } from '../src/opencode/install.js';
 import { realDeps } from '../src/mobile.js';
 import type { Run } from '../src/linux/service.js';
