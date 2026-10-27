@@ -23,10 +23,11 @@ const PRESETS: Record<AgentKind, PresetPick[]> = {
     { name: 'balanced', label: 'Balanced — Sonnet reads, Opus judges', read: 'sonnet', judge: 'opus' },
     { name: 'thorough', label: 'Thorough — Opus reads, Opus judges', read: 'opus', judge: 'opus' },
   ],
+  // astra is OpenAI's flagship, sol its middle tier and luna its smallest
   codex: [
-    { name: 'thrifty', label: 'Thrifty — gpt-6-luna reads, gpt-6-astra judges', read: 'gpt-6-luna', judge: 'gpt-6-astra' },
-    { name: 'balanced', label: 'Balanced — gpt-6-astra reads, gpt-6-sol judges', read: 'gpt-6-astra', judge: 'gpt-6-sol' },
-    { name: 'thorough', label: 'Thorough — gpt-6-sol reads, gpt-6-sol judges', read: 'gpt-6-sol', judge: 'gpt-6-sol' },
+    { name: 'thrifty', label: 'Thrifty — gpt-6-luna reads, gpt-6-sol judges', read: 'gpt-6-luna', judge: 'gpt-6-sol' },
+    { name: 'balanced', label: 'Balanced — gpt-6-sol reads, gpt-6-astra judges', read: 'gpt-6-sol', judge: 'gpt-6-astra' },
+    { name: 'thorough', label: 'Thorough — gpt-6-astra reads, gpt-6-astra judges', read: 'gpt-6-astra', judge: 'gpt-6-astra' },
   ],
   opencode: [{ name: 'default', label: "Default — OpenCode's model reads and judges", read: undefined, judge: undefined }],
 };
