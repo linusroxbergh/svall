@@ -224,17 +224,22 @@ export class Tmux {
     }
   }
 
-  /** A server an earlier release started keeps that release's tmux: with no robot window it ends, for ensureServer to start
-   * on this one, and with robots its binary is returned. Linux alone names a process's binary, under /proc. */
-  async startOverStale(proc = '/proc'): Promise<string | undefined> {
+  /** A server running another tmux than `own`, as one an earlier release started does: with no robot window it ends, for
+   * ensureServer to start on `own`. Linux alone names a process's binary, under /proc. */
+  async startOverStale(own: string, proc = '/proc'): Promise<{ running: string; ended: boolean } | undefined> {
+    if (!path.isAbsolute(own) || !fs.existsSync(proc)) return undefined;
     const pid = (await this.run('display', '-p', '#{pid}').catch(() => '')).trim();
-    if (!pid || !path.isAbsolute(this.binary)) return undefined;
+    if (!pid) return undefined;
     let running: string;
     try { running = fs.readlinkSync(path.join(proc, pid, 'exe')); } catch { return undefined; }
-    if (running === fs.realpathSync(this.binary)) return undefined;
-    if ((await this.listWindows()).length) return running;
+    let target = own;
+    try { target = fs.realpathSync(own); } catch { /* compared as named */ }
+    if (running === target) return undefined;
+    // with no fleet session to list, a viewer's may still hold a robot
+    const windows = await this.listWindows().catch(() => undefined);
+    if (!windows || windows.length) return { running, ended: false };
     await this.killServer();
-    return undefined;
+    return { running, ended: true };
   }
 
   connect(): ControlClient {

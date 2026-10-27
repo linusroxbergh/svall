@@ -287,7 +287,7 @@ runIf('Tmux', () => {
 let got = '';
 process.stdin.on('data', (d) => { got += d; });
 process.stdout.write('\\x1b]52;c;?\\x07');
-setTimeout(() => { require('fs').writeFileSync(${JSON.stringify(reply)}, got); process.exit(0); }, 1000);
+setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(reply + '.part')}, got); fs.renameSync(${JSON.stringify(reply + '.part')}, ${JSON.stringify(reply)}); process.exit(0); }, 1000);
 `);
     await t.sendLine(w.paneId, `${q(process.execPath)} ${q(path.join(home, 'query.cjs'))}`, true);
     await waitFor(() => fs.existsSync(reply));
@@ -295,22 +295,42 @@ setTimeout(() => { require('fs').writeFileSync(${JSON.stringify(reply)}, got); p
   });
 
   // a server an earlier release started runs that release's tmux; Linux names a process's binary under /proc
-  it('starts a server running another tmux over when no robot runs in it, and names the one it keeps', async () => {
-    const t = await boot();
+  async function fakeProc(t: Tmux, exe: string): Promise<string> {
     const proc = makeHome();
     const pid = (await t.run('display', '-p', '#{pid}')).trim();
-    const exe = path.join(proc, pid, 'exe');
-    fs.mkdirSync(path.dirname(exe));
-    fs.symlinkSync(fs.realpathSync(t.binary), exe);
-    expect(await t.startOverStale(proc)).toBeUndefined();
-    fs.rmSync(exe);
-    fs.symlinkSync('/home/ada/.local/share/svall/releases/1.0.0/bin/tmux', exe);
+    fs.mkdirSync(path.join(proc, pid));
+    fs.symlinkSync(exe, path.join(proc, pid, 'exe'));
+    return proc;
+  }
+  const old = '/home/ada/.local/share/svall/releases/1.0.0/bin/tmux';
+
+  it("ends a server running another tmux than the daemon's own when no robot runs in it, and names one it keeps", async () => {
+    const t = await boot();
+    const own = fs.realpathSync(t.binary);
+    expect(await t.startOverStale(own, await fakeProc(t, own))).toBeUndefined();
+    const proc = await fakeProc(t, old);
     const w = await t.newWindow('c_kept', '/tmp', {});
-    expect(await t.startOverStale(proc)).toBe('/home/ada/.local/share/svall/releases/1.0.0/bin/tmux');
-    expect((await t.run('display', '-p', '#{pid}')).trim()).toBe(pid);
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old, ended: false });
     await t.killWindow(w.windowId);
-    expect(await t.startOverStale(proc)).toBeUndefined();
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old, ended: true });
     await expect(t.run('has-session')).rejects.toThrow();
+  });
+
+  it('keeps a stale server whose fleet session is gone, and compares an own tmux gone from disk as named', async () => {
+    const t = await boot();
+    const proc = await fakeProc(t, old);
+    const w = await t.newWindow('c_viewed', '/tmp', {});
+    await t.attachSession('v-c_viewed', w.windowId);
+    await t.run('kill-session', '-t', '=fleet');
+    expect(await t.startOverStale('/home/ada/.local/share/svall/releases/2.0.0/bin/tmux', proc)).toEqual({ running: old, ended: false });
+    expect(await t.run('has-session', '-t', '=v-c_viewed')).toBe('');
+  });
+
+  it('asks tmux nothing where there is no /proc', async () => {
+    const t = await boot();
+    const run = vi.spyOn(t, 'run');
+    expect(await t.startOverStale(fs.realpathSync(t.binary), path.join(makeHome(), 'proc'))).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
   });
 
   it('reports one row per window when a window is split', async () => {

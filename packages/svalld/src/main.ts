@@ -49,7 +49,7 @@ import { Store } from './store.js';
 import { TerminalHub } from './terminals.js';
 import { shq } from './text.js';
 import { tmuxConfText, tmuxTooOld } from './tmux/conf.js';
-import { servingTmux, Tmux } from './tmux/tmux.js';
+import { resolveTmux, servingTmux, Tmux } from './tmux/tmux.js';
 import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
@@ -179,15 +179,16 @@ async function start(opts: Options): Promise<Daemon> {
     catch (e) { log.error(`opencode plugin: ${(e as Error).message}`); }
   }
 
-  // a server an earlier release started, such as one on Ubuntu's own tmux before an upgrade, keeps its tmux until it ends
-  const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf, await servingTmux(paths.tmuxSock, readOrUndefined(path.join(paths.home, 'tmux-binary'))));
+  // a server an earlier release started, such as one on Ubuntu's own tmux before an upgrade, is reached with a client of
+  // its version; with no robot in it, it starts over on this release's, as an older companion's sends the Mac no copy
+  const serving = new Tmux(paths.tmuxSock, paths.tmuxConf, await servingTmux(paths.tmuxSock, readOrUndefined(path.join(paths.home, 'tmux-binary'))));
+  const stale = await serving.startOverStale(resolveTmux());
+  const tmux = stale?.ended ? new Tmux(paths.tmuxSock, paths.tmuxConf) : serving;
+  if (stale && !stale.ended) log.error(`tmux ${stale.running}, an earlier release's, runs the robots here, so a copy or link in their terminals may not reach the Mac; it starts over on ${resolveTmux()} at a daemon start with no robot here`);
   // the conf leaves out what this tmux would refuse, so the version is read before it is written
   const tmuxVersion = await tmux.version();
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
-  // an older companion's tmux sends the Mac no copy and no link
-  const kept = await tmux.startOverStale();
-  if (kept) log.error(`tmux ${kept}, an earlier release's, runs the robots here, so a copy or link in their terminals may not reach the Mac; it starts over on ${tmux.binary} at a daemon start with no robot here`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);
