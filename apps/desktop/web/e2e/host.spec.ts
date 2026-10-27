@@ -190,7 +190,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1)).toMatchObject({ machine: { ssh: 'linus@studio', type: 'codex login', forward: 1455 } });
   // an ssh that quits at once says why, and can be opened again
   await receive(page, { type: 'term.failed', id: 'machine:studio', reason: 'ssh quit as soon as it started: Could not request local forwarding.' });
-  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding. Port 1455 on this Mac is taken');
+  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Could not request local forwarding. Port 1455 on this Mac is taken, as by a Codex login running here; close that, then try again.');
   await panel.getByTestId('host-terminal-again').click();
   expect((await sent(page)).filter((m) => m.type === 'term.show')).toHaveLength(3);
   // Done goes back to the checks, which look again, and the panel stays
@@ -323,8 +323,8 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
   ];
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, ...logins]);
-  // one claude logs in to both, as the CLI counts it
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 1 thing before robots can move there.Check again');
+  // each login is its own thing, as the CLI counts them: one terminal forwards one sign-in's port
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio needs 2 things before robots can move there.Check again');
   await expect(panel.getByTestId('host-step-mirror:oauth:claude:mcp:linear').locator('.host-name')).toHaveText('linear login');
 
   // mcp-remote's sign-in comes back on the port its args name
@@ -341,6 +341,9 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
   await expect(panel.getByTestId('host-terminal-note')).toContainText('through port 3118 on this Mac');
   expect((await sent(page)).filter((m) => m.type === 'term.show').at(-1))
     .toMatchObject({ machine: { ssh: 'linus@studio', type: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118 } });
+  // a port taken here names no Codex login but on Codex's own port
+  await receive(page, { type: 'term.failed', id: 'machine:studio', reason: 'ssh quit as soon as it started: Could not request local forwarding.' });
+  await expect(panel.getByTestId('host-terminal-failed')).toContainText('Port 3118 on this Mac is taken; close what uses it, then try again.');
 });
 
 test('a machine is only removed or forgotten once the page has asked', async ({ page, svall }) => {

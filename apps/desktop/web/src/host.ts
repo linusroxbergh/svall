@@ -164,17 +164,21 @@ export type RunOutcome = { text: string; done?: true; next?: 'rollback' };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
-// each distinct action, and each failed step that names none, as the CLI's verdict counts them
-const thingsLeft = (run: HostRun): number => new Set(run.steps.filter((s) => s.action || s.status === 'fail').map((s) => s.action || s.step)).size;
+// what a step leaves to do, as the CLI counts things: its action, or the failed step that names none; a mirror row by its
+// key, as two servers' rows can read alike, unless it only asks to check again
+const thingOf = (s: HostStep): string => (!s.action || (s.step.startsWith(MIRROR) && !/^check .+ again$/.test(s.action)) ? s.step : s.action);
+const thingsLeft = (run: HostRun): number => new Set(run.steps.filter((s) => s.action || s.status === 'fail').map(thingOf)).size;
 
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
   const left = thingsLeft(run);
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
+  // an add that put the machine in the list and failed nowhere exits 1 for the things it left, which ticks there may settle
+  const added = run.op === 'add' && run.steps.some((s) => s.step === 'registry' && s.status === 'ok') && !run.steps.some((s) => s.status === 'fail');
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
     if (left) return { text: `${name} needs ${plural(left, 'thing')} before robots can move there.`, ...rollback };
-    if (run.code === 0) return { text: `${name} is ready. Robots you move there keep working while this Mac sleeps.`, done: true };
+    if (run.code === 0 || added) return { text: `${name} is ready. Robots you move there keep working while this Mac sleeps.`, done: true };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };

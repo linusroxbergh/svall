@@ -155,11 +155,47 @@ test('a tick under way keeps the box where focus is, showing what was asked, and
   box().focus();
   await act(async () => { fireEvent.click(box()); });
   expect([box().checked, box().disabled, box().getAttribute('aria-disabled'), document.activeElement === box()]).toEqual([true, false, 'true', true]);
+  // the row says what is under way, and its box is described by that
+  expect(screen.getByTestId('host-pushing-mirror:claude:mcp:linear').textContent).toBe('pushing to trift…');
+  expect(document.getElementById(box().getAttribute('aria-describedby')!)?.textContent).toBe('pushing to trift…');
   await act(async () => { fireEvent.click(box()); });
   expect(call.mock.calls.filter(([method]) => method === 'machines.consent')).toHaveLength(1);
   expect(box().checked).toBe(true);
   await act(async () => { answer({ rows: [{ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to trift', tick: tick(true) }] }); });
   expect([box().checked, box().getAttribute('aria-disabled')]).toEqual([true, null]);
+  expect(screen.queryByTestId('host-pushing-mirror:claude:mcp:linear')).toBeNull();
+});
+
+test('a consent answer goes to the run its tick was made in, not to a later run of the machine of another kind', async () => {
+  let answer: (v: unknown) => void = () => {};
+  call.mockImplementation((method: string) => (method === 'machines.consent' ? new Promise((resolve) => { answer = resolve; }) : Promise.resolve({})));
+  checked();
+  await act(async () => { fireEvent.click(screen.getByTestId('host-tick-mirror:claude:mcp:linear')); });
+  act(() => {
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'probe', status: 'ok', detail: 'trift answers on release 1.2.3' });
+    store.getState().hostDone('upgrade', 0);
+  });
+  await act(async () => { answer({ rows: [{ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to trift', tick: tick(true) }] }); });
+  expect(store.getState().host?.steps.map((s) => s.step)).toEqual(['probe']);
+});
+
+test('ticking the last key of an add that exited 1 for it reads ready, with Done', async () => {
+  call.mockImplementation(async (method: string) => (method === 'machines.consent'
+    ? { rows: [{ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to trift: env.LINEAR_API_KEY lin…90', tick: tick(true) }] } : {}));
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('add', { name: 'trift', ssh: 'ada@trift' });
+    store.getState().hostStep('add', { step: 'ssh', status: 'ok', detail: 'ada@trift accepted an interactive login' });
+    store.getState().hostStep('add', { step: 'registry', status: 'ok', detail: 'trift is in this Mac\'s list of machines' });
+    store.getState().hostStep('add', unticked);
+    store.getState().hostDone('add', 1);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift needs 1 thing before robots can move there.Check again');
+  await act(async () => { fireEvent.click(screen.getByTestId('host-tick-mirror:claude:mcp:linear')); });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. Robots you move there keep working while this Mac sleeps.Done');
 });
 
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {

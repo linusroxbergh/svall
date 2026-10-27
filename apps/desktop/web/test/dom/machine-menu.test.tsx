@@ -21,7 +21,8 @@ function setup(reachable: boolean | undefined, placed: number) {
   render(<MachineActions name="vault" />);
 }
 const more = () => screen.getByTestId('machine-more');
-const key = (k: string) => act(() => { window.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); });
+// as a key press reaches the page: at what has focus, through the window's capture and back up to it
+const key = (k: string) => act(() => { (document.activeElement ?? document.body).dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true })); });
 
 beforeEach(() => document.body.replaceChildren());
 
@@ -34,8 +35,9 @@ test('opening the menu focuses its first item; arrows step; Escape and an outsid
   key('ArrowUp'); key('ArrowUp');
   expect(document.activeElement).toBe(screen.getByTestId('machine-forget'));
   const outer = vi.fn();
-  document.addEventListener('keydown', outer);
+  window.addEventListener('keydown', outer);
   key('Escape');
+  window.removeEventListener('keydown', outer);
   expect(outer).not.toHaveBeenCalled();
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
   expect(document.activeElement).toBe(more());

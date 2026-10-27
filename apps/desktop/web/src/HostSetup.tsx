@@ -1,5 +1,5 @@
 import type { MachineId, SetupRow } from '@svall/protocol';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
@@ -7,8 +7,9 @@ import { AS_TYPED } from './Field.js';
 import {
   groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
-import { useApp } from './hooks.js';
+import { useApp, useMeasure } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
+import { placeTip } from './settings.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
@@ -27,6 +28,7 @@ export function MachineActions({ name }: { name: string }) {
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
   const up = useApp((s) => !!id && s.fleet.machines?.[id as MachineId]?.reachable === true);
   const [open, setOpen] = useState(false);
+  const [place, setPlace] = useState<CSSProperties>();
   const box = useRef<HTMLSpanElement>(null);
   const more = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
@@ -50,6 +52,15 @@ export function MachineActions({ name }: { name: string }) {
     window.addEventListener('keydown', key, true);
     return () => { document.removeEventListener('pointerdown', away); window.removeEventListener('keydown', key, true); };
   }, [open]);
+  // fixed to the window under ⋯, or over it where the window has more room there, so the panel scrolling it does not clip it
+  useMeasure(open, () => {
+    const at = more.current?.getBoundingClientRect();
+    const el = menu.current;
+    if (!at || !el) return;
+    const { above, maxHeight } = placeTip(at, el.scrollHeight, { top: 0, bottom: window.innerHeight });
+    setPlace({ left: Math.max(0, Math.min(at.left, window.innerWidth - el.offsetWidth)), maxHeight: maxHeight || undefined,
+      ...(above ? { bottom: window.innerHeight - at.top + 4 } : { top: at.bottom + 4 }) });
+  });
   const store = () => app.store.getState();
   const run = (op: HostOp) => { store().toggleHost(true, name); startHost(op, { name }); };
   const ask = (forget: boolean) => { store().toggleHost(true, name); store().confirmHost({ name, forget }); };
@@ -59,7 +70,7 @@ export function MachineActions({ name }: { name: string }) {
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What the machine needs before robots can move there, checked now" onClick={() => run('doctor')}>Check</button>
       <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
-        <div ref={menu} className="machine-menu popover" role="menu">
+        <div ref={menu} className="machine-menu popover" role="menu" style={place}>
           <button role="menuitem" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
           <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
@@ -119,11 +130,13 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const sentence = useId();
   const said = stepSaid(row, name);
   const idle = !run.running;
-  // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them
+  // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them; they go to the run the tick
+  // was made in, known by its args, which its rows keep, or to a check of the machine since
   const tick = (machine: MachineId, on: boolean) => {
+    const shown = app.store.getState().host?.args;
     const show = ({ rows }: { rows: SetupRow[] }) => {
       const now = app.store.getState().host;
-      if (now?.args.name === name && !now.running) app.store.getState().hostRows(rows.map(rowToStep));
+      if (now && !now.running && (now.args === shown || (now.op === 'doctor' && now.args.name === name))) app.store.getState().hostRows(rows.map(rowToStep));
     };
     setAsked(on);
     setFailed(undefined);
@@ -140,7 +153,8 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       <span className="host-mark">{MARK[row.status]}</span>
       <span className="host-name" title={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
-        {row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
+        {asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
+          : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
         {row.action && said && <details className="ho-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>

@@ -109,8 +109,14 @@ describe('the end of a run', () => {
     const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'),
       step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:opencode:mcp:sentry', 'warn', { action: "copy sentry's keys to box" })]);
     expect(outcomeOf(mirrored)).toEqual({ text: 'box needs 3 things before robots can move there.' });
+    // a mirror row is its own thing, though two servers' rows read alike
+    const alike = ended('doctor', 0, [step('mirror:claude:mcp:github', 'warn', { action: "copy github's keys to box" }), step('mirror:codex:mcp:github', 'warn', { action: "copy github's keys to box" })]);
+    expect(outcomeOf(alike)).toEqual({ text: 'box needs 2 things before robots can move there.' });
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
+    // an add in the list that exited 1 for the things it left is ready once ticks there leave none
+    expect(outcomeOf(ended('add', 1, [step('ssh', 'ok'), step('registry', 'ok'), step('mirror:claude:mcp:linear', 'ok')]))).toEqual({ text: ready, done: true });
+    expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
   });
 
   it('offers Roll back only when the rollback after a failed upgrade failed too', () => {
