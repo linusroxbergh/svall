@@ -4,6 +4,12 @@ import XCTest
 final class AttachCommandTests: XCTestCase {
     private let attach = WebAttach(socket: "/tmp/svall/fleet.sock", session: "robot-1")
 
+    func testTheWindowRouteIsThisMacAndARobotOnAWorkerGoesOverItsVia() {
+        XCTAssertEqual(AttachCommand.route(.local, attach), .local)
+        let far = WebAttach(socket: "/home/linus/.svall/tmux.sock", session: "v-c_1", via: WebVia(ssh: "w1", controlSocket: "/tmp/s"))
+        XCTAssertEqual(AttachCommand.route(.local, far), .remote(RemoteRoute(name: "w1", destination: "w1", controlSocket: "/tmp/s")))
+    }
+
     func testLocalAttachRunsTmuxDirectly() {
         let command = AttachCommand.build(route: .local, attach: attach, tmux: "/opt/homebrew/bin/tmux")
         XCTAssertEqual(command, "'/opt/homebrew/bin/tmux' -S '/tmp/svall/fleet.sock' attach -t '=robot-1'")
@@ -104,10 +110,6 @@ final class AttachCommandTests: XCTestCase {
         try shell.run()
         shell.waitUntilExit()
         XCTAssertEqual(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self), "xterm-256color\n")
-    }
-
-    func testNoCommandIsBuiltWhileTheRouteIsUnknown() {
-        XCTAssertNil(AttachCommand.build(route: .pending, attach: attach, tmux: "tmux"))
     }
 
     func testQuotingSurvivesASingleQuoteInASessionName() {

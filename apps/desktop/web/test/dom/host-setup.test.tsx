@@ -11,7 +11,7 @@ const { HostSetup } = await import('../../src/HostSetup.js');
 beforeEach(() => {
   freshStore();
   call.mockImplementation(() => Promise.resolve({}));
-  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
 });
 
 test('opened to add a machine, the panel asks its name and ssh, and the run it starts is that machine\'s', () => {
@@ -59,7 +59,7 @@ test('every step that failed offers a way on: what the step said to do, or the r
 test('a run ends in one line, with Done once nothing is left and Check again while something is', () => {
   render(<HostSetup />);
   act(() => {
-    store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('upgrade', { name: 'trift' });
     store.getState().hostStep('upgrade', { step: 'probe', status: 'ok', detail: 'trift answers on release 1.2.3' });
@@ -92,7 +92,7 @@ const unticked = {
   detail: 'mirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on trift',
 };
 // a check of trift whose report has one server to copy the keys of, a variable and the check after it
-function checked(machines = [{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64', gateway: false, fleets: [] }]) {
+function checked(machines = [{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]) {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines(machines);
@@ -185,7 +185,7 @@ test('ticking the last key of an add that exited 1 for it reads ready, with Done
     ? { rows: [{ key: 'claude:mcp:linear', status: 'ok', detail: 'keys copied to trift: env.LINEAR_API_KEY lin…90', tick: tick(true) }] } : {}));
   render(<HostSetup />);
   act(() => {
-    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('add', { name: 'trift', ssh: 'ada@trift' });
     store.getState().hostStep('add', { step: 'ssh', status: 'ok', detail: 'ada@trift accepted an interactive login' });

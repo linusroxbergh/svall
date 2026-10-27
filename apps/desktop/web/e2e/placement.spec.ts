@@ -26,7 +26,7 @@ test('a placed robot shows its machine badge, Move to this Mac, and a not-reacha
   // the machine terminal, in the robot's folder, once the registry names the way there
   await card.getByTestId('side-finder').click();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);
-  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux' }] });
   await expect(page.getByTestId('host-terminal-note')).toContainText("cd '/tmp'");
   await expect.poll(async () => (await sent(page)).find((m) => m.type === 'term.show' && m.id === 'machine:linus-vault'))
     .toMatchObject({ machine: { ssh: 'linus@vault', type: "cd '/tmp'" } });

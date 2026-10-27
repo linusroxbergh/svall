@@ -41,7 +41,7 @@ test('opens a terminal in the card over the board, switches with Cmd+J, marks se
 });
 
 const fakeShell = (page: Page, svall: Svall) =>
-  nativeShell(page, { port: svall.port, token: svall.token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true } });
+  nativeShell(page, { port: svall.port, token: svall.token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
 
 /** A dormant robot whose resume failed, as svalld records it: the daemon restarts on that state. */
 async function failedResume(svall: Svall, error: string, more?: (c: Record<string, unknown>) => void): Promise<string> {

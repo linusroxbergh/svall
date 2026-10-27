@@ -9,11 +9,8 @@ export type MachineTerm = { ssh: string; type?: string; forward?: number };
 export type Connection = { host: string; port: number; token: string };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
-// handoverEnabled: fleet.json's handover.enabled, which every control for another machine waits on
-// gateway: the registry name of the machine fleet.json names as its gateway
 // profile: the one `svall -p` names this fleet by, absent for the private fleet and a home of its own
-// copyHere: this Mac's daemon runs and the gateway has named no owner here before, so its copy may be opened while the gateway is away
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; handoverEnabled?: boolean; gateway?: string; profile?: string; copyHere?: boolean };
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; profile?: string };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
@@ -24,21 +21,10 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
-// one machine as `svall host list --json` gives it: no ssh for this Mac, the fleets here it is the gateway of, and its last check
+// one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  name: string; id: string; ssh?: string; platform: string; gateway: boolean; fleets: string[];
+  name: string; id: string; ssh?: string; platform: string;
   check?: { at: number; failed: number; warned: number; release?: string };
-};
-
-// where the fleet this window shows is running, as the shell's connect helper reports it;
-// machine: the one that did not answer (`local` for this Mac's daemon), destination: the ssh that reaches it
-export type ConnectionState = {
-  state: 'connecting' | 'online' | 'error' | 'owner-changed';
-  owner: string;
-  kind?: string;
-  message?: string;
-  machine?: string;
-  destination?: string;
 };
 
 export type ToShell =
@@ -96,17 +82,10 @@ export type ToShell =
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string }
   // keeps the Mac from idle-sleeping under this reason; none lets go
-  | { type: 'awake'; reason?: string }
-  // a fresh connect helper, whatever the last one gave up on
-  | { type: 'connection.retry' }
-  // the fleet's copy on this Mac, while the helper cannot say where the fleet runs
-  | { type: 'connection.here' };
+  | { type: 'awake'; reason?: string };
 
 export type FromShell =
   | { type: 'connection'; host: string; port: number; token: string }
-  | ({ type: 'connection.state' } & ConnectionState)
-  // something the page asked for that only the machine the fleet runs on can do
-  | { type: 'notice'; text: string }
   | { type: 'host.step'; op: HostOp; event: HostStep }
   | { type: 'host.done'; op: HostOp; code: number }
   // the registry, read again after every host operation too; `error` when it could not be read

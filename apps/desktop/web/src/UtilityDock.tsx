@@ -53,9 +53,6 @@ export function UtilityDock() {
   // an open sidebar names a waiting update itself
   const update = useApp((s) => !!s.update && !s.sidebarOpen);
   const settingsLabel = update ? 'Settings, update available' : 'Settings';
-  // the machine the fleet runs on, whenever that is not this Mac
-  const owner = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
-  const where = useApp((s) => s.connection?.state);
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -97,10 +94,6 @@ export function UtilityDock() {
   return (
     <div className="use" ref={box} data-testid="utility-dock" data-collapsed={!sidebarOpen} data-open={open}>
       <div className="use-tabs" ref={tabs}>
-        {owner && (
-          <span className="use-owner" data-testid="owner-badge" data-state={where}
-            title={`This fleet runs on ${owner}`}>{owner}</span>
-        )}
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
             title={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}

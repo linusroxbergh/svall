@@ -36,38 +36,6 @@ enum SvallHome {
         return FileManager.default.fileExists(atPath: file) ? file : nil
     }
 
-    /// Whether this fleet's config asks for handover: what every control for another machine waits on.
-    static func handoverEnabled(at home: String = path) -> Bool {
-        guard let handover = readJSON(home + "/fleet.json")?["handover"] as? [String: Any] else { return false }
-        return handover["enabled"] as? Bool ?? false
-    }
-
-    /// Where this Mac keeps its machine id and the registry of the machines it reaches.
-    static var configDir: String {
-        ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
-    }
-
-    /// Whether fleet.json names a gateway at all: a fleet with none has only ever run on this Mac.
-    static func namesGateway(home: String = path) -> Bool {
-        guard let id = readJSON(home + "/fleet.json")?["gatewayMachineId"] as? String else { return false }
-        return !id.isEmpty
-    }
-
-    /// The registry name of the machine fleet.json names as its gateway, which a handover can move the fleet to.
-    static func gatewayName(home: String = path, configDir: String = configDir) -> String? {
-        (readJSON(home + "/fleet.json")?["gatewayMachineId"] as? String).flatMap { machineName($0, in: configDir) }
-    }
-
-    /// This Mac's machine id.
-    static func machineId(in configDir: String) -> String? {
-        readJSON(configDir + "/machine.json")?["id"] as? String
-    }
-
-    /// The name this Mac's registry gives machine `id`.
-    static func machineName(_ id: String, in configDir: String) -> String? {
-        ((readJSON(configDir + "/machines.json")?["machines"] as? [String: Any])?[id] as? [String: Any])?["name"] as? String
-    }
-
     /// The last 20 lines of the daemon log, read from its end so a large log costs no more than a small one.
     static func logTail() -> [String] {
         guard let handle = FileHandle(forReadingAtPath: path + "/svalld.log") else { return [] }
@@ -97,11 +65,6 @@ enum SvallHome {
     }
 
     static var profile: String? { profileName(of: path, in: NSHomeDirectory()) }
-
-    /// The profile `svall` names this home by, the private one included; nil for an ad-hoc $SVALL_HOME.
-    static func fleetProfile(of path: String, in homeDirectory: String) -> String? {
-        (path as NSString).standardizingPath == homeDirectory + "/" + root ? "private" : profileName(of: path, in: homeDirectory)
-    }
 
     static var isPrivate: Bool {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root

@@ -96,18 +96,6 @@ describe('followAwake', () => {
     stop();
   });
 
-  it('holds nothing while the fleet runs on another machine, which goes on while this Mac sleeps', () => {
-    const { store, holds, stop } = setup(patch(fleet(), 'c0', { agent: agent('working', { lastActivityAt: T0 }) }));
-    store.getState().setConnectionState({ state: 'online', owner: 'trift' });
-    store.getState().setStatus('online');
-    expect(holds()).toEqual([null]);
-    store.getState().setConnectionState({ state: 'online', owner: 'local' });
-    expect(holds()).toEqual([null, '1 agent working']);
-    store.getState().setConnectionState({ state: 'owner-changed', owner: 'trift' });
-    expect(holds()).toEqual([null, '1 agent working', null]);
-    stop();
-  });
-
   it('holds for the window after work ends in a wait, counted from the fleet, so a reload does not start it again', () => {
     const { store, holds, stop } = setup();
     store.getState().setStatus('online');

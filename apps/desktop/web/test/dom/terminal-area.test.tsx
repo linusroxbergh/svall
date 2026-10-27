@@ -86,8 +86,8 @@ test('a wake the fleet refuses says why and leaves the button', async () => {
   expect(store.getState().toast?.text).toBe('no session to resume');
 });
 
-test('one a handover could not resume says why and waits for the button while the fleet asks for handover', () => {
-  act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
+test('one whose resume failed says why and waits for the button', () => {
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false }));
   const f = fleet();
   delete f.robots.c1.tmux;
   f.robots.c1.resumeError = 'codex exited back to its shell';
@@ -100,7 +100,7 @@ test('one a handover could not resume says why and waits for the button while th
 });
 
 test('starting afresh from a failed resume asks first, and says where the old session stays once it has started', async () => {
-  act(() => store.getState().setShell({ home: '/h', log: [], op: false, handoverEnabled: true }));
+  act(() => store.getState().setShell({ home: '/h', log: [], op: false }));
   const f = fleet();
   delete f.robots.c1.tmux;
   f.robots.c1.agent = { kind: 'claude', sessionId: 'old-1', transcriptPath: '/h/.claude/projects/-w/old-1.jsonl', status: 'idle', lastActivityAt: 0 };

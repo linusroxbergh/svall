@@ -1,14 +1,12 @@
 import type { StateCreator } from 'zustand/vanilla';
-import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
-import { applyStep, beginRun, endRun, machineNames, replaceRows, withoutTokens, type HostRun } from '../host.js';
+import type { HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
+import { applyStep, beginRun, endRun, machineNames, replaceRows, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
 export type HostConfirm = { name: string; forget: boolean };
 
-// where the fleet runs and the machines panel: what the shell's helpers report
+// the machines panel: what the shell's helpers report
 export type HostState = {
-  // where the fleet runs, as the shell's connect helper last said; absent in a plain browser
-  connection?: ConnectionState;
   // the host operation the machines panel is watching, and the panel itself
   host?: HostRun;
   hostOpen: boolean;
@@ -24,7 +22,6 @@ export type HostState = {
 };
 
 export type HostActions = {
-  setConnectionState(connection: ConnectionState): void;
   toggleHost(open?: boolean, machine?: string): void;
   openHostTerminal(machine: string, run?: string, forward?: number): void;
   closeHostTerminal(): void;
@@ -38,7 +35,6 @@ export type HostActions = {
 };
 
 export const createHostSlice: StateCreator<App, [], [], HostState & HostActions> = (set) => ({
-  connection: undefined,
   host: undefined,
   hostOpen: false,
   hostMachine: undefined,
@@ -46,8 +42,6 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   hostTerminal: undefined,
   machines: undefined,
   machinesError: undefined,
-  // the fleet the page already holds stands while its machine is away: only the report changes
-  setConnectionState: (connection) => set({ connection: { ...connection, ...(connection.message ? { message: withoutTokens(connection.message) } : {}) } }),
   toggleHost: (open, machine) => set((s) => { const next = open ?? !s.hostOpen; return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined }; }),
   openHostTerminal: (machine, run, forward) => set({
     hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run, ...(forward !== undefined && { forward }) } : {},

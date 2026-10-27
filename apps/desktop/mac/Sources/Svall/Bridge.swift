@@ -66,8 +66,6 @@ enum ToShell: Decodable {
     case setupRun(agents: [String], found: [String], projects: String)
     case folderPick(start: String)
     case awake(reason: String?)
-    case connectionRetry
-    case connectionHere
 
     private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, start, op, args, reason }
 
@@ -118,8 +116,6 @@ enum ToShell: Decodable {
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
-        case "connection.retry": self = .connectionRetry
-        case "connection.here": self = .connectionHere
         case let other: throw ShellError("unknown bridge message \(other)")
         }
     }
@@ -128,12 +124,10 @@ enum ToShell: Decodable {
 /// Messages to the webview. Mirrors FromShell in bridge.ts.
 enum FromShell {
     case connection(SvallConnection?)
-    case connectionState(RemoteConnection.State)
-    case notice(text: String)
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
     case hostMachines(machines: [[String: Any]], error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], handoverEnabled: Bool, gateway: String?, profile: String?, copyHere: Bool)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], profile: String?)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -163,14 +157,6 @@ enum FromShell {
     var json: [String: Any] {
         switch self {
         case .connection(let c): return ["type": "connection", "host": c?.host ?? "", "port": c?.port ?? 0, "token": c?.token ?? ""]
-        case .connectionState(let s):
-            var json: [String: Any] = ["type": "connection.state", "state": s.state, "owner": s.owner]
-            if let kind = s.kind { json["kind"] = kind }
-            if let message = s.message { json["message"] = message }
-            if let machine = s.machine { json["machine"] = machine }
-            if let destination = s.destination { json["destination"] = destination }
-            return json
-        case .notice(let text): return ["type": "notice", "text": text]
         case .hostStep(let op, let step):
             var event: [String: Any] = ["step": step.step, "status": step.status]
             if let detail = step.detail { event["detail"] = detail }
@@ -184,9 +170,8 @@ enum FromShell {
             var json: [String: Any] = ["type": "host.machines", "machines": machines]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys, let handoverEnabled, let gateway, let profile, let copyHere):
-            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "handoverEnabled": handoverEnabled, "copyHere": copyHere]
-            if let gateway { json["gateway"] = gateway }
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let profile):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
             if let profile { json["profile"] = profile }
             return json
         case .key(let chord): return ["type": "key", "chord": chord]

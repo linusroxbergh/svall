@@ -9,8 +9,7 @@ extension XCTestCase {
         return dir
     }
 
-    /// A stand-in for the bundled `svall connect --json`: it prints the given NDJSON lines and, like the
-    /// real helper, stays alive until its stdin reaches EOF.
+    /// A stand-in for the bundled svall: it prints the given NDJSON lines, then runs `tail`.
     func fakeHelper(prints lines: [String], then tail: String = "exec cat > /dev/null") throws -> String {
         let dir = try temporaryDirectory("svall-helper")
         let script = (["#!/bin/sh"] + lines.map { "printf '%s\\n' '\($0)'" } + [tail]).joined(separator: "\n") + "\n"

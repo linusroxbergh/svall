@@ -90,7 +90,7 @@ function createApp(): AppContext {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
       if (m.type === 'shell.info') {
-        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, handoverEnabled: m.handoverEnabled, gateway: m.gateway, profile: m.profile, copyHere: m.copyHere });
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, profile: m.profile });
         return;
       }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
@@ -98,9 +98,6 @@ function createApp(): AppContext {
       if (m.type === 'fleets') { openFleetPicker(store); return; }
       // the toast sits below a dialog, and this window is where the user stays
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
-      if (m.type === 'connection.state') { store.getState().setConnectionState({ state: m.state, owner: m.owner, kind: m.kind, message: m.message, machine: m.machine, destination: m.destination }); return; }
-      // something only the machine the fleet runs on can do, which this Mac cannot
-      if (m.type === 'notice') { store.getState().showToast(m.text); return; }
       if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }
       if (m.type === 'host.done') { store.getState().hostDone(m.op, m.code); return; }
       if (m.type === 'host.machines') { store.getState().setMachines(m.machines, m.error); return; }

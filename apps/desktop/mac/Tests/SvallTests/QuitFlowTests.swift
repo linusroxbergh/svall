@@ -11,9 +11,8 @@ final class QuitFlowTests: XCTestCase {
     // what happens while the user's question is up
     private var whileAsked: () -> Void = {}
 
-    private func flow(listening: Bool = true, elsewhere: Bool = false) -> QuitFlow {
+    private func flow(listening: Bool = true) -> QuitFlow {
         QuitFlow(send: { [unowned self] in sent.append($0.json["type"] as? String ?? "") }, isListening: { listening }, hideWindow: {},
-                 elsewhere: { elsewhere },
                  confirm: { [unowned self] message, detail in asked.append("\(message) \(detail)"); whileAsked(); return true },
                  kill: { [unowned self] done in kills += 1; done() }, holdStarts: { [unowned self] in holds += 1 },
                  terminate: { [unowned self] in quits.append($0) })
@@ -68,23 +67,11 @@ final class QuitFlowTests: XCTestCase {
         XCTAssertEqual(quits, [false])
     }
 
-    func testAFleetThatRunsElsewhereIsNeverAskedToStop() {
-        quit(flow(elsewhere: true), working: 1)
-        XCTAssertEqual(sent, ["quit.ask"])
-        XCTAssertEqual(asked, ["Quit Svall? Your robots keep working on the machine this fleet runs on."])
-        // this Mac's daemon alone
-        XCTAssertEqual(kills, 1)
-        XCTAssertEqual(answers, [true])
-    }
-
     func testADaemonStartAlreadyUnderWayIsHeldOnceTheFleetIsBeingStopped() {
         let local = flow()
         quit(local)
         XCTAssertEqual(holds, 1)
         local.stopped(ok: true)
-        XCTAssertEqual(holds, 1)
-        holds = 0
-        quit(flow(elsewhere: true))
         XCTAssertEqual(holds, 1)
     }
 

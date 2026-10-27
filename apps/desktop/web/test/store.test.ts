@@ -742,17 +742,6 @@ describe('resource groups', () => {
 });
 
 describe('the machine that owns the fleet', () => {
-  it('keeps the loaded fleet while the shell reports the connection going and coming back', () => {
-    const store = createAppStore();
-    store.getState().setFleet(fleet());
-    store.getState().setConnectionState({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
-    expect(store.getState().loaded).toBe(true);
-    expect(store.getState().fleet.robots.c0).toBeTruthy();
-    expect(store.getState().connection).toEqual({ state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
-    store.getState().setConnectionState({ state: 'online', owner: 'studio' });
-    expect(store.getState().connection?.state).toBe('online');
-    expect(store.getState().loaded).toBe(true);
-  });
   it('follows one host operation from its first step to its exit code', () => {
     const store = createAppStore();
     store.getState().hostStarted('add', { name: 'box', ssh: 'u@h' });
@@ -761,7 +750,7 @@ describe('the machine that owns the fleet', () => {
     store.getState().hostStep('doctor', { step: 'machine', status: 'ok' });
     expect(store.getState().host?.steps.map((s) => s.step)).toEqual(['ssh']);
     // a machine in the Machines list is named by its name
-    store.getState().setMachines([{ name: 'studio', id: '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', platform: 'linux-x64', gateway: false, fleets: [] }]);
+    store.getState().setMachines([{ name: 'studio', id: '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', platform: 'linux-x64' }]);
     store.getState().hostStep('add', { step: 'master', status: 'fail', detail: 'u@h now reaches machine 5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f, not box' });
     expect(store.getState().host?.steps[1].detail).toBe('u@h now reaches studio, not box');
     store.getState().hostDone('add', 0);

@@ -18,6 +18,17 @@ enum ControlSocket {
     }
 }
 
+/// A route to another machine: the ssh master that reaches it.
+struct RemoteRoute: Equatable {
+    let name: String, destination: String, controlSocket: String
+}
+
+/// Where a terminal's tmux session runs: this Mac, or another machine over its master.
+enum ConnectionRoute: Equatable {
+    case local
+    case remote(RemoteRoute)
+}
+
 /// The shell command a surface runs to attach to a robot's tmux session, here or on the owner's machine.
 enum AttachCommand {
     static func quote(_ s: String) -> String {
@@ -30,7 +41,7 @@ enum AttachCommand {
     }
 
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.
-    // nil while the route is unknown, or its master is gone: a session is attached only where the helper or the daemon says it lives
+    // nil while its master is gone: a session is attached only where the daemon says it lives
     static func build(route: ConnectionRoute, attach: WebAttach, tmux: String,
                       masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let target = "=" + attach.session
@@ -38,8 +49,6 @@ enum AttachCommand {
         switch Self.route(route, attach) {
         case .local:
             return "\(quote(tmux)) \(session)"
-        case .pending:
-            return nil
         case .remote(let route):
             guard masterAnswers(route.controlSocket) else { return nil }
             // ssh joins the words after the destination into one line for the far login shell, which
@@ -103,11 +112,6 @@ struct MachineStart {
 final class SurfaceManager {
     private let makeView: (String, NSRect) -> SurfaceView?
     private let overlay: OverlayViews<SurfaceView>
-    // surfaces attached, or waiting on a route, which rebuild() tells the page exited so it asks for a fresh attach
-    private var attached: Set<String> = []
-    // terminals on another machine, which a change of the fleet's route leaves open
-    private var machines: Set<String> = []
-    var route: () -> ConnectionRoute = { .local }
     private var fontDelta = 0.0
     // false while the window is minimised, hidden or covered, when no surface need draw
     private var windowVisible = true
@@ -146,20 +150,13 @@ final class SurfaceManager {
         }
         if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
         guard let attach else { return }
-        let route = AttachCommand.route(route(), attach)
+        let route = AttachCommand.route(.local, attach)
         // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
-        guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else {
-            // a robot's own master is gone: the page asks again, and the daemon answers once its link is back
-            if attach.via != nil { return onExited(id) }
-            // the helper is opening a route, or opening one again: once it is online rebuild() has the page ask again
-            attached.insert(id)
-            return
-        }
+        // a robot's own master is gone: the page asks again, and the daemon answers once its link is back
+        guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else { return onExited(id) }
         let program = switch route { case .remote: "ssh"; default: binary }
-        guard make(id: id, command: command, program: program, rect: rect, opacity: opacity) != nil else { return }
-        // a robot on another machine is reached over its own route, which a change of the window's leaves open
-        if attach.via != nil { machines.insert(id) } else { attached.insert(id) }
+        _ = make(id: id, command: command, program: program, rect: rect, opacity: opacity)
     }
 
     /// A terminal on another machine, with what the page asked for typed once its prompt is up. An ssh that ends before
@@ -171,7 +168,6 @@ final class SurfaceManager {
         var start = MachineStart(typing: machine.type, at: Date())
         guard let view = make(id: id, command: command, program: "ssh", rect: rect, opacity: opacity,
                               failure: { _ in start.up ? nil : "ssh ended before the machine's prompt came up" }) else { return }
-        machines.insert(id)
         Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self, weak view] timer in
             guard let self, let view, self.overlay[id] === view else { return timer.invalidate() }
             let text = start.saw(view.screenText() ?? "", at: Date())
@@ -221,8 +217,6 @@ final class SurfaceManager {
     }
 
     func close(id: String) {
-        attached.remove(id)
-        machines.remove(id)
         overlay.close(id)
     }
 
@@ -236,18 +230,7 @@ final class SurfaceManager {
         else { overlay.focusPage() }
     }
 
-    /// After a reconnection or a new owner, tmux has destroyed each viewer session its client left, so every
-    /// surface is let go and the page told it exited, to ask the daemon for a fresh attach.
-    func rebuild() {
-        for id in Set(overlay.views.keys).union(attached).subtracting(machines) {
-            close(id: id)
-            onExited(id)
-        }
-    }
-
     func closeAll() {
-        attached = []
-        machines = []
         overlay.closeAll()
     }
 }

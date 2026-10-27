@@ -287,24 +287,11 @@ describe('the PR in review', () => {
 });
 
 describe('resumeErrorOf', () => {
-  const failed = 'ada\'s terminal resumed claude session s, but its window closed, so it is dormant again with that session; revive it to see';
-  const dormant = { resumeError: failed };
-  const on = { shell: { handoverEnabled: true } };
-
-  it('shows why a handover could not resume a dormant terminal only while the fleet asks for handover', () => {
-    expect(resumeErrorOf(on, dormant)).toBe(failed);
-    expect(resumeErrorOf({ shell: { handoverEnabled: false } }, dormant)).toBeUndefined();
-    expect(resumeErrorOf({}, dormant)).toBeUndefined();
+  it("shows a dormant terminal's resume error whatever the fleet's config says", () => {
+    expect(resumeErrorOf({ resumeError: 'claude did not come up' })).toBe('claude did not come up');
+    expect(resumeErrorOf({ tmux: {}, resumeError: 'x' })).toBeUndefined();
   });
-  it('shows nothing for a terminal whose window is open, or one there is not', () => {
-    expect(resumeErrorOf(on, { ...dormant, tmux: { windowId: '@1', paneId: '%1' } })).toBeUndefined();
-    expect(resumeErrorOf(on, undefined)).toBeUndefined();
-  });
-  it('shows why a terminal of a robot on a worker could not resume there, either terminal, whatever the fleet asks', () => {
-    const W = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
-    expect(resumeErrorOf({}, { ...dormant, machine: W })).toBe(failed);
-    const second = { machine: W, tmux: { windowId: '@1', paneId: '%1' }, second: { cwd: '/w', unread: false, resumeError: failed } };
-    expect(resumeErrorOf({}, second)).toBeUndefined();
-    expect(resumeErrorOf({}, second, 2)).toBe(failed);
+  it('shows nothing for a terminal there is not', () => {
+    expect(resumeErrorOf(undefined)).toBeUndefined();
   });
 });

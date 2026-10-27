@@ -10,11 +10,9 @@ import { HALF_KEY, SETTINGS_KEY, TOUR_KEY } from '../src/store/index.js';
 
 export const FAKE_CLAUDE = `node ${path.join(ROOT, 'packages/svalld/test/fixtures/fake-claude.mjs')}`;
 
-type State = Extract<FromShell, { type: 'connection.state' }>;
-// __state: what the shell says about the connection each time the page asks for it, which a spec may move on
-export type Shell = { __sent: ToShell[]; __state?: State; __svall: { receive(json: string): void } };
+export type Shell = { __sent: ToShell[]; __svall: { receive(json: string): void } };
 type NativeShell = { sent(): Promise<ToShell[]>; receive(m: FromShell): Promise<void> };
-type Reply = { port: number; token: string; info?: Extract<FromShell, { type: 'shell.info' }>; state?: State };
+type Reply = { port: number; token: string; info?: Extract<FromShell, { type: 'shell.info' }> };
 
 export type Svall = DaemonInfo & {
   api: NodeClient;
@@ -117,12 +115,11 @@ export const test = base.extend<{ svall: Svall }>({
 export const sent = (page: Page) => page.evaluate(() => (window as unknown as Shell).__sent);
 export const receive = (page: Page, m: FromShell) => page.evaluate((json) => (window as unknown as Shell).__svall.receive(json), JSON.stringify(m));
 
-// a stand-in for the native shell: it records what the page sends and answers each connection request with info, the daemon and state
+// a stand-in for the native shell: it records what the page sends and answers each connection request with info and the daemon
 export async function nativeShell(page: Page, reply: Reply): Promise<NativeShell> {
   await page.addInitScript((r: Reply) => {
     const w = window as unknown as Shell & { webkit: unknown };
     w.__sent = [];
-    w.__state = r.state;
     w.webkit = { messageHandlers: { svall: { postMessage: (json: string) => {
       const m = JSON.parse(json) as ToShell;
       w.__sent.push(m);
@@ -130,7 +127,6 @@ export async function nativeShell(page: Page, reply: Reply): Promise<NativeShell
       setTimeout(() => {
         if (r.info) w.__svall.receive(JSON.stringify(r.info));
         w.__svall.receive(JSON.stringify({ type: 'connection', host: '127.0.0.1', port: r.port, token: r.token }));
-        if (w.__state) w.__svall.receive(JSON.stringify(w.__state));
       }, 0);
     } } } };
   }, reply);

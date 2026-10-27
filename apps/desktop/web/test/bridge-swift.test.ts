@@ -68,6 +68,14 @@ describe('bridge between the page and the shell', () => {
   it('carries no handover message either way', () => {
     expect([...Object.keys(tsUnion('ToShell')), ...Object.keys(tsUnion('FromShell'))].filter((t) => t.startsWith('handover.'))).toEqual([]);
   });
+
+  it('carries no connection report and asks for no other route', () => {
+    const to = tsUnion('ToShell');
+    const from = tsUnion('FromShell');
+    expect(['connection.retry', 'connection.here'].filter((t) => t in to)).toEqual([]);
+    expect('connection.state' in from).toBe(false);
+    expect(from['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op', 'profile']);
+  });
 });
 
 // the banner's click and the phone's notification tag spell the second terminal's key out themselves

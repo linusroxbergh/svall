@@ -81,18 +81,14 @@ describe('bridge', () => {
     expect(connectionFromUrl('?port=1&token=t&host=10.0.0.2')?.host).toBe('10.0.0.2');
     expect(connectionFromUrl('')).toBeUndefined();
   });
-  it('carries the shell\'s connection state, notices and host steps to handlers', () => {
+  it('carries the shell\'s host steps to handlers', () => {
     const win = { webkit: { messageHandlers: { svall: { postMessage: vi.fn() } } } } as unknown as Window;
     const b = createBridge(win);
     const got: FromShell[] = [];
     b.onMessage((m) => got.push(m));
-    win.__svall!.receive(JSON.stringify({ type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' }));
-    win.__svall!.receive(JSON.stringify({ type: 'notice', text: '/w/isle is on studio; open it there' }));
     win.__svall!.receive(JSON.stringify({ type: 'host.step', op: 'add', event: { step: 'ssh', status: 'ok' } }));
     win.__svall!.receive(JSON.stringify({ type: 'host.done', op: 'add', code: 0 }));
     expect(got).toEqual([
-      { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' },
-      { type: 'notice', text: '/w/isle is on studio; open it there' },
       { type: 'host.step', op: 'add', event: { step: 'ssh', status: 'ok' } },
       { type: 'host.done', op: 'add', code: 0 },
     ]);

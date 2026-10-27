@@ -5,8 +5,6 @@ final class QuitFlow {
     private let send: (FromShell) -> Void
     private let isListening: () -> Bool
     private let hideWindow: () -> Void
-    // whether the fleet runs on another machine, where a quit here leaves it running
-    private let elsewhere: () -> Bool
     private let confirm: (_ message: String, _ detail: String) -> Bool
     private let kill: (@escaping () -> Void) -> Void
     private let holdStarts: () -> Void
@@ -26,14 +24,12 @@ final class QuitFlow {
     private var killing = false
 
     init(send: @escaping (FromShell) -> Void, isListening: @escaping () -> Bool, hideWindow: @escaping () -> Void,
-         elsewhere: @escaping () -> Bool = { false },
          confirm: @escaping (_ message: String, _ detail: String) -> Bool = QuitFlow.alert,
          kill: @escaping (@escaping () -> Void) -> Void = FleetDaemon.kill, holdStarts: @escaping () -> Void = FleetDaemon.holdStarts,
          terminate: @escaping (_ quietly: Bool) -> Void = { NSApplication.quietQuit = $0; NSApp.terminate(nil) }) {
         self.send = send
         self.isListening = isListening
         self.hideWindow = hideWindow
-        self.elsewhere = elsewhere
         self.confirm = confirm
         self.kill = kill
         self.holdStarts = holdStarts
@@ -108,10 +104,9 @@ final class QuitFlow {
         answer(ok)
     }
 
-    // the page has the daemon put every robot to sleep and exit; what it cannot reach is ended from here, as is this
-    // Mac's daemon alone for a fleet that runs elsewhere
+    // the page has the daemon put every robot to sleep and exit; what it cannot reach is ended from here
     private func stopFleet() {
-        guard isListening(), !elsewhere() else { return fleetStopped(ok: false) }
+        guard isListening() else { return fleetStopped(ok: false) }
         stopping = true
         hideWindow()
         quitTimeout = after(12) { [weak self] in self?.fleetStopped(ok: false) }
@@ -136,15 +131,13 @@ final class QuitFlow {
     }
 
     private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0) -> Bool {
-        let working = elsewhere() ? 0 : working
         let busy = working == 0 ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
-        let away = elsewhere() || placed == 0 ? ""
+        let away = placed == 0 ? ""
             : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
         let message: String, detail: String
         if unsaved.isEmpty {
             message = "Quit Svall?"
-            detail = elsewhere() ? "Your robots keep working on the machine this fleet runs on."
-                : working == 0 ? "\(placed == 0 ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
+            detail = working == 0 ? "\(placed == 0 ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
                 : busy + " Everything picks up where it left off when you open Svall again." + away
         } else {
             message = "Quit with unsaved changes?"

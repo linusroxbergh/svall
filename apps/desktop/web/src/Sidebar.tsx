@@ -144,7 +144,7 @@ const RobotRow = memo(function RobotRow({ c, editing, setEditing }: { c: Robot; 
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id);
   const reorderHover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after !== undefined);
   const hoverAfter = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === c.id && s.dropHover.after);
-  const failed = useApp((s) => resumeErrorOf(s, c));
+  const failed = resumeErrorOf(c);
   const [dragging, setDragging] = useState(false);
   const status = useApp((s) => statusOf(c, s.fleet));
   const attention = useApp((s) => wantsUser(c, s.fleet));

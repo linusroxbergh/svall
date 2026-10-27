@@ -18,7 +18,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const c = useApp((s) => s.fleet.robots[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
-  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id], second ? 2 : 1));
+  const failed = resumeErrorOf(second ? c?.second : c);
   const veiled = useApp(isVeiled);
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
   const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
