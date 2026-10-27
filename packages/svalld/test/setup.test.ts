@@ -914,28 +914,38 @@ esac
     expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
   });
 
-  it("old home settings gain svall retro without losing the user's rules", () => {
+  it("old home settings gain svall retro in their allow list when the fleet offers it, keeping the user's rules", () => {
     const mc = path.join(makeHome(), 'mc');
     installHomeTemplate(mc, { replaceSettings: false });
     const settings = path.join(mc, '.claude/settings.json');
     const shipped = fs.readFileSync(settings, 'utf8');
-    const older = shipped.replace(',\n      "Bash(svall retro:*)"', '');
-    expect(older).not.toContain('svall retro');
-    fs.writeFileSync(settings, older);
-    installHomeTemplate(mc, { replaceSettings: false });
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    const retro = allow.filter((r) => r.startsWith('Bash(svall retro '));
+    const older = allow.filter((r) => !retro.includes(r));
+    const write = (permissions: { allow: string[]; deny?: string[] }) => fs.writeFileSync(settings, `${JSON.stringify({ permissions }, null, 2)}\n`);
+    const permissions = () => JSON.parse(fs.readFileSync(settings, 'utf8')).permissions;
+    write({ allow: older });
+    installHomeTemplate(mc, { replaceSettings: false, addRetro: true });
     expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
 
+    // a start that offers nothing leaves out the rules a user removed
+    write({ allow: older });
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(permissions().allow).toEqual(older);
+
     // a rule of the user's after the scribe's keeps its place
-    fs.writeFileSync(settings, older.replace('"Bash(svall scribe sweep:*)"', '"Bash(svall scribe sweep:*)",\n      "Bash(git log:*)"'));
-    installHomeTemplate(mc, { replaceSettings: false });
-    const migrated = fs.readFileSync(settings, 'utf8');
-    expect(JSON.parse(migrated).permissions.allow).toEqual([...JSON.parse(older).permissions.allow, 'Bash(svall retro:*)', 'Bash(git log:*)']);
-    installHomeTemplate(mc, { replaceSettings: false });
-    expect(fs.readFileSync(settings, 'utf8')).toBe(migrated);
+    write({ allow: [...older, 'Bash(git log:*)'] });
+    installHomeTemplate(mc, { replaceSettings: false, addRetro: true });
+    expect(permissions().allow).toEqual([...older, ...retro, 'Bash(git log:*)']);
+
+    // the scribe's rule under deny pulls none into deny
+    write({ allow: ['Bash(svall status:*)'], deny: ['Bash(svall scribe sweep:*)'] });
+    installHomeTemplate(mc, { replaceSettings: false, addRetro: true });
+    expect(permissions()).toEqual({ allow: ['Bash(svall status:*)', ...retro], deny: ['Bash(svall scribe sweep:*)'] });
   });
 
   // Claude Code asks before a command holding a shell variable even when a rule allows it
-  it('lets the buttons run every svall command their skills name without asking, deleting an island aside', () => {
+  it('lets the buttons run every svall command their skills name without asking, deleting an island, applying a retro finding and changing its config aside', () => {
     const svalld = path.join(repoRoot, 'packages/svalld');
     const allow: string[] = JSON.parse(fs.readFileSync(path.join(svalld, 'home/.claude/settings.json'), 'utf8')).permissions.allow;
     const prefixes = allow.map((a) => /^Bash\((.+):\*\)$/.exec(a)![1]);
@@ -943,17 +953,19 @@ esac
       const text = fs.readFileSync(path.join(svalld, 'skills', skill, 'SKILL.md'), 'utf8');
       const commands = [...text.matchAll(/(?:`|^ {4,})(svall [^`\n]+)/gm)].map((m) => m[1].trim());
       expect(commands.length, skill).toBeGreaterThan(0);
-      for (const c of commands.filter((c) => !c.startsWith('svall island delete'))) {
+      // `svall retro` alone names the command and runs nothing
+      for (const c of commands.filter((c) => !/^svall (island delete|retro apply|retro config)\b|^svall retro$/.test(c))) {
         expect(c, `${skill}: ${c}`).not.toContain('$');
         expect(prefixes.some((p) => c.startsWith(p)), `${skill}: ${c}`).toBe(true);
       }
     }
   });
 
-  it('the codex rules allow svall retro', () => {
+  it('the codex rules allow svall retro, applying a finding and changing its config aside', () => {
     const mc = path.join(makeHome(), 'mc');
     installHomeTemplate(mc, { replaceSettings: false });
-    expect(fs.readFileSync(path.join(mc, '.codex/rules/svall.rules'), 'utf8')).toContain('prefix_rule(pattern = ["svall", "retro"], decision = "allow")');
+    expect(fs.readFileSync(path.join(mc, '.codex/rules/svall.rules'), 'utf8'))
+      .toContain('prefix_rule(pattern = ["svall", "retro", ["plan", "run", "wait", "status", "findings", "mark"]], decision = "allow")');
   });
 
   it('allows a Codex crew exactly the svall commands a Claude crew is allowed', () => {

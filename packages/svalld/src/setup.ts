@@ -47,7 +47,7 @@ export function installHookScripts(paths: Paths, helper: string | undefined = ho
 
 // every daemon start refreshes Svall's instructions and the skills the mission control buttons call in the crew's cwd;
 // the CLAUDE.md and the settings are the user's, seeded once, and only `svall setup` replaces edited settings, keeping a copy
-export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }): string[] {
+export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; addRetro?: boolean }): string[] {
   const done: string[] = [];
   const template = assetDir('home');
   const skills = assetDir('skills');
@@ -87,10 +87,9 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
-  // an older svalld allowed only `svall char`, which the rules now call `svall robot`, and no `svall retro`
+  // an older svalld allowed only `svall char`, which the rules now call `svall robot`
   const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
-  const current = robot && !robot.includes('"Bash(svall retro:*)"')
-    ? robot.replace(/^([ \t]*)"Bash\(svall scribe sweep:\*\)"(,?)$/m, '$1"Bash(svall scribe sweep:*)",\n$1"Bash(svall retro:*)"$2') : robot;
+  const current = robot && o.addRetro ? withRetro(robot, shipped) : robot;
   if (current !== read) {
     writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);
@@ -105,6 +104,18 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean }
   writeDurable(settings, Buffer.from(shipped), { mode: 0o644 });
   done.push(`home settings -> ${settings}`);
   return done;
+}
+
+// the shipped `svall retro` rules, after the scribe's in the allow list of settings that allow no `svall retro` yet
+function withRetro(text: string, shipped: string): string {
+  let json: { permissions?: { allow?: unknown } } | null;
+  try { json = JSON.parse(text); } catch { return text; }
+  const allow = json?.permissions?.allow;
+  if (!Array.isArray(allow) || allow.some((r) => String(r).startsWith('Bash(svall retro'))) return text;
+  const retro = (JSON.parse(shipped).permissions.allow as string[]).filter((r) => r.startsWith('Bash(svall retro '));
+  const scribe = allow.indexOf('Bash(svall scribe sweep:*)');
+  allow.splice(scribe < 0 ? allow.length : scribe + 1, 0, ...retro);
+  return `${JSON.stringify(json, null, 2)}\n`;
 }
 
 export type FleetHome = { home: string; port?: number };

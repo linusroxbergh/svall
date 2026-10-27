@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, defaultHome, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, defaultHome, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -10,7 +10,7 @@ import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/trans
 import { robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
-import { initConfig, modelPicks, patchFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
+import { initConfig, modelPicks, patchFleetConfig, readFleetConfig, saveConfig, saveMainAgent, type Config } from './config.js';
 import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { setContext, settleItems } from './context/items.js';
@@ -335,12 +335,13 @@ export class Fleet extends EventEmitter<Events> {
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
   private ensureHome(): string | undefined {
-    try { this.offerRetro(); } catch (e) { this.deps.log.error(`retro button: ${String(e)}`); }
+    let retro = false;
+    try { retro = this.offerRetro(); } catch (e) { this.deps.log.error(`retro button: ${String(e)}`); }
     // the crew's model is the one syncAgents picks for the main agent's CLI
     const { model: _picks, offered: _offered, ...home } = this.deps.config.home;
     // a robot is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
-    try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false })) this.deps.log.info(l); }
+    try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false, addRetro: retro })) this.deps.log.info(l); }
     catch (e) { this.deps.log.error(`home cwd ${home.cwd}: ${String(e)}`); }
     // the directory a crewless island starts in; it is the user's folder, so never create it
     const cwd = this.deps.config.defaultCwd;
@@ -368,18 +369,18 @@ export class Fleet extends EventEmitter<Events> {
     return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
   }
 
-  // a fleet.json that lists its own buttons gets the retro one once, in the file and the running config; a fleet on the
-  // default buttons has it already
-  private offerRetro(): void {
+  // each fleet is offered the retro button and its crew's rules for it once, recorded in fleet.json, so one the user
+  // deletes stays deleted; the default buttons, or a list naming its prompt, have the button already. True when offered now
+  private offerRetro(): boolean {
     const file = this.deps.paths.fleetConfig;
-    let listed: unknown;
-    try { listed = (JSON.parse(fs.readFileSync(file, 'utf8')) as { home?: { actions?: unknown } }).home?.actions; } catch { return; }
-    const home = this.deps.config.home;
-    if (listed === undefined || home.offered?.includes('retro')) return;
+    let home: FleetConfig['home'];
+    try { home = readFleetConfig({ fleetConfig: file }).home; } catch { return false; }
+    if (home.offered?.includes('retro')) return false;
     const retro = defaultHome().actions.find((a) => a.label === 'retro')!;
-    const patch = { actions: [...home.actions, retro], offered: [...home.offered ?? [], 'retro'] };
+    const patch = { ...(!home.actions.some((a) => a.prompt === retro.prompt) && { actions: [...home.actions, retro] }), offered: [...home.offered ?? [], 'retro'] };
     patchFleetConfig(file, { home: patch });
-    Object.assign(home, patch);
+    Object.assign(this.deps.config.home, patch);
+    return true;
   }
 
   private endIdleAgents(): Promise<void> {

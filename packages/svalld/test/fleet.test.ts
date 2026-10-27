@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState, type HomeAction } from '@svall/protocol';
+import { SPACING, crewGrid, defaultHome, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState, type HomeAction } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
@@ -2386,10 +2386,30 @@ runIf('Fleet', () => {
     expect(fleetJson(second.home)).toEqual({ actions: own, offered: ['retro'] });
   });
 
-  it('a fleet with default actions shows retro', async () => {
-    const { store, home } = await boot({ fleetHome: {} });
+  it('a fleet with default actions shows retro, and its crew settings gain the retro rules once', async () => {
+    const mc = path.join(makeHome(), 'mc');
+    const shipped = fs.readFileSync(path.join(import.meta.dirname, '../home/.claude/settings.json'), 'utf8');
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    const older = `${JSON.stringify({ permissions: { allow: allow.filter((r) => !r.startsWith('Bash(svall retro ')) } }, null, 2)}\n`;
+    const settings = path.join(mc, '.claude/settings.json');
+    fs.mkdirSync(path.dirname(settings), { recursive: true });
+    fs.writeFileSync(settings, older);
+    const { store, home } = await boot({ homeCwd: mc, fleetHome: {} });
     expect(store.state.home.actions.at(-1)).toEqual({ label: 'retro', prompt: '/svall-retro' });
-    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({});
+    expect(store.state.home).not.toHaveProperty('offered');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({ offered: ['retro'] });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
+    // the user took them out again
+    fs.writeFileSync(settings, older);
+    await boot({ homeCwd: mc, fleetHome: { offered: ['retro'] } });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(older);
+  });
+
+  it('a fleet.json that lists the retro button already gets no second one', async () => {
+    const { actions } = defaultHome();
+    const { store, home } = await boot({ fleetHome: { actions } });
+    expect(store.state.home.actions).toEqual(actions);
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({ actions, offered: ['retro'] });
   });
 
   it('opens a new fleet on a Mac with one island holding a shell, and does not make them again once deleted', async () => {

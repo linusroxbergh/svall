@@ -20,7 +20,12 @@
       "Bash(svall island update:*)",
       "Bash(svall island arrange:*)",
       "Bash(svall scribe sweep:*)",
-      "Bash(svall retro:*)"
+      "Bash(svall retro plan:*)",
+      "Bash(svall retro run:*)",
+      "Bash(svall retro wait:*)",
+      "Bash(svall retro status:*)",
+      "Bash(svall retro findings:*)",
+      "Bash(svall retro mark:*)"
     ]
   }
 }
