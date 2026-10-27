@@ -171,8 +171,9 @@ works, and kills the home's daemon or drops the link at each phase of a move, ch
 index, files, locks and journals, the one agent resumed on its session, and the remote untouched. Then, from `kanban`
 on the worker, it starts a reviewer and four more robots while the home is stopped, sweeps the scribe over them,
 changes kanban's notes on both machines apart, reads its files from the home, and closes the reviewer while the
-worker is stopped. `--steps`, `--scenarios`, `--keep` and `--prefix` work as in the handover run; it exits 1 at the
-first step with a failed check.
+worker is stopped. Last, it gives the home's Claude three MCP servers with keys, ticks one's key for the worker, sets
+there the variable another reads, moves a robot there and unticks the key while it runs. `--steps`, `--scenarios`,
+`--keep` and `--prefix` work as in the handover run; it exits 1 at the first step with a failed check.
 
 ## Fresh installs
 

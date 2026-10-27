@@ -119,7 +119,10 @@ function gitOf(dir) {
   };
 }
 
-/** Each process whose command line holds `needle`, with its arguments, working folder and the robot its terminal names. */
+/**
+ * Each process whose command line holds `needle`, with its arguments, working folder, the robot its terminal names and
+ * the names of its environment's variables, never their values.
+ */
 function processes(needle) {
   const out = [];
   for (const pid of fs.readdirSync('/proc').filter((f) => /^\d+$/.test(f))) {
@@ -128,9 +131,10 @@ function processes(needle) {
     if (!args.some((a) => a.includes(needle))) continue;
     let cwd = null;
     try { cwd = fs.readlinkSync(`/proc/${pid}/cwd`); } catch { /* gone */ }
-    let robotId = null;
-    try { robotId = fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').find((e) => e.startsWith('SVALL_ROBOT_ID='))?.slice(15) ?? null; } catch { /* gone */ }
-    out.push({ pid: Number(pid), args, cwd, robotId });
+    let environ = [];
+    try { environ = fs.readFileSync(`/proc/${pid}/environ`, 'utf8').split('\0').filter(Boolean); } catch { /* gone */ }
+    const robotId = environ.find((e) => e.startsWith('SVALL_ROBOT_ID='))?.slice(15) ?? null;
+    out.push({ pid: Number(pid), args, cwd, robotId, env: environ.map((e) => e.slice(0, e.indexOf('='))) });
   }
   return out;
 }

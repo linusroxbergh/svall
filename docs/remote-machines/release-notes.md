@@ -10,6 +10,10 @@ fleet stays on the Mac; the Linux machine is its worker.
   a worker of the fleet with a systemd user service, and ends with one line: ready, or what is left for you to do,
   such as logging the agents in. `svall host doctor`, `upgrade` and `remove` look after it, and
   `svall host upgrade <name> --rollback` puts it back on the release before.
+- **Your agent setup on each machine.** Svall copies your Claude Code, Codex and OpenCode setup there, MCP servers and
+  plugins included, and copies what changed before every move. A key travels only once you tick it for that machine,
+  and a server that reads a variable asks you to set it there with `svall worker env`. See
+  [Your agent setup on the machine](setup.md#your-agent-setup-on-the-machine).
 - **Move a robot** there from its card, or with `svall robot move <id> --machine <name>`, and back with **Move to
   this Mac** or `--machine local`. It keeps its conversation, its branch, its commits and its uncommitted changes, and
   keeps working while the Mac sleeps. See [Moving a robot](placement.md).

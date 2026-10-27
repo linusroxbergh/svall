@@ -12,10 +12,11 @@
 // agent works, moves `faults` back and forth with the home's daemon killed or the link dropped at each phase, and
 // returns `agent` through a dirty Mac worktree. Then, from `kanban` on the worker, it starts a reviewer and four more
 // robots while the home is stopped, sweeps the scribe over them, changes kanban's notes on both machines apart, reads
-// its files from the home, and closes the reviewer while the worker is stopped. With no `--archive` it builds the
-// companion for the docker host's architecture from this checkout, and with no `--image` the machine image from the
-// Dockerfile here. `--steps` picks steps by number (the fixture always runs); `--prefix` replaces `svall` in the
-// machines' names and the network's.
+// its files from the home, and closes the reviewer while the worker is stopped. Last, it gives the home's Claude three
+// MCP servers with keys, ticks one's key for remote, sets there the variable another reads, moves `agent` there and
+// unticks the key while it runs. With no `--archive` it builds the companion for the docker host's architecture from
+// this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks steps by number (the
+// fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
 // Every check that fails is printed; the run exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -589,6 +590,68 @@ function deleteWorkerDown(ids, fx) {
   check('worktree locked', w.locks['src/app/.claude/worktrees/review'] === `closed robot ${reviewer}`, () => brief(w.locks));
 }
 
+// ---------------------------------------------------------------------------------------------- the agent setup mirror
+
+/** The user-scope MCP servers `~/.claude.json` holds on `machine`. */
+const serversOn = (machine) => JSON.parse(sh(machine, 'cat ~/.claude.json 2>/dev/null || echo {}').stdout).mcpServers ?? {};
+
+/** The checks `svall host doctor` lists for remote. */
+const doctor = () => JSON.parse(sh(L, 'svall host doctor remote --json', { ok: false }).stdout).checks;
+/** The mirror's rows among `checks`, by key. */
+const mirrorRows = (checks) => Object.fromEntries(checks.filter((c) => c.name.startsWith('mirror:')).map((c) => [c.name.slice(7), c]));
+
+/** `svall host consent remote <item> <on|off>`: the rows it answers, by key. */
+const consent = (item, state) => Object.fromEntries(JSON.parse(sh(L, `svall host consent remote ${item} ${state} --json`).stdout).map((r) => [r.key, r]));
+
+// a server's command the mocked agent never starts
+const ECHO = { command: 'node', args: ['/opt/it/mcp-echo.mjs'] };
+const SERVERS = {
+  alpha: { ...ECHO, env: { ALPHA_KEY: 'secret-alpha-0001' } },
+  beta: { ...ECHO, env: { BETA_KEY: 'secret-beta-0002' } },
+  gamma: { ...ECHO, env: { GAMMA_TOKEN: '${GAMMA_TOKEN}' } },
+};
+// adds the servers on stdin to `~/.claude.json`'s user scope
+const ADD_SERVERS = 'const fs = require("fs"); const f = process.env.HOME + "/.claude.json"; let j = {}; try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch {}'
+  + ' j.mcpServers = { ...j.mcpServers, ...JSON.parse(fs.readFileSync(0, "utf8")) }; fs.writeFileSync(f, JSON.stringify(j, null, 2));';
+
+function agentSetup(ids, fx) {
+  const id = fx.agent;
+  sh(L, `/opt/it/node/bin/node -e '${ADD_SERVERS}'`, { input: JSON.stringify(SERVERS) });
+  const mac = serversOn(L);
+  check('servers on the Mac', Object.entries(SERVERS).every(([k, v]) => same(mac[k], v)), () => brief(mac));
+
+  const checks = doctor();
+  const rows = mirrorRows(checks);
+  const unticked = (k) => rows[k]?.status === 'warn' && rows[k].tick?.on === false;
+  const gamma = rows['var:GAMMA_TOKEN'];
+  const todo = checks.filter((c) => c.status === 'warn' && c.action);
+  check('unticked rows', unticked('claude:mcp:alpha') && unticked('claude:mcp:beta') && gamma?.status === 'warn' && gamma.run === 'svall worker env GAMMA_TOKEN' && todo.length === 3,
+    () => `${brief(rows)}; to do ${brief(todo.map((c) => c.name))}`);
+
+  const ticked = consent('claude:mcp:alpha', 'on');
+  const after = serversOn(R);
+  check('alpha ticked', after.alpha?.env?.ALPHA_KEY === 'secret-alpha-0001' && after.beta?.env?.BETA_KEY === '${BETA_KEY}'
+    && ticked['claude:mcp:alpha']?.status === 'ok' && same(ticked['claude:mcp:alpha'].tick?.preview, ['env.ALPHA_KEY sec…01']),
+  () => `${brief({ alpha: after.alpha, beta: after.beta })} ${brief(ticked['claude:mcp:alpha'])}`);
+
+  // the agent starts on remote after the variable is set there, so its environment holds it
+  sh(R, "printf 'xyz' | svall worker env GAMMA_TOKEN");
+  const set = mirrorRows(doctor())['var:GAMMA_TOKEN'];
+  const moved = (r) => r.code === 0 && r.res?.ok;
+  const back = robotIn(snap(L, true), id)?.machine === ids.remote ? move(id, 'local') : undefined;
+  const m = move(id, 'remote');
+  const w = until(R, (s) => agentsOf(s, id).length === 1, 60);
+  const env = agentsOf(w, id)[0]?.env ?? [];
+  check('GAMMA_TOKEN set there', set?.status === 'ok' && (!back || moved(back)) && moved(m) && env.includes('GAMMA_TOKEN'),
+    () => `${brief(set)}; ${[back, m].filter(Boolean).map((r) => `move exit ${r.code}: ${r.stderr.trim()}`).join('; ')}; the agent's variables ${brief(env)}`);
+
+  const pid = agentsOf(w, id)[0]?.pid;
+  consent('claude:mcp:alpha', 'off');
+  const alpha = serversOn(R).alpha;
+  check('alpha unticked', alpha?.env?.ALPHA_KEY === '${ALPHA_KEY}' && pid && agentsOf(snap(R, true), id)[0]?.pid === pid,
+    () => `${brief(alpha)}; agent ${pid} then ${brief(agentsOf(snap(R, true), id))}`);
+}
+
 // ---------------------------------------------------------------------------------------------- the fault matrix
 
 // a drop lands only where the move needs the link: on the way back the prepare is this Mac's own, and the move runs on
@@ -689,13 +752,14 @@ function faults(ids, list) {
 const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
+  12: 'agent setup mirror',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 11, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 12, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
-if (steps.some((s) => s >= 7) && !steps.includes(2)) steps.unshift(2);
+if (steps.some((s) => s >= 7 && s <= 11) && !steps.includes(2)) steps.unshift(2);
 if ((steps.includes(8) || steps.includes(11)) && !steps.includes(7)) steps.push(7);
 
 let code = 0;
@@ -720,6 +784,7 @@ try {
   if (steps.includes(9)) step(`9. ${STEPS[9]}`, () => docsConflict(ids, fx));
   if (steps.includes(10)) step(`10. ${STEPS[10]}`, () => filesFar(ids, fx));
   if (steps.includes(11)) step(`11. ${STEPS[11]}`, () => deleteWorkerDown(ids, fx));
+  if (steps.includes(12)) step(`12. ${STEPS[12]}`, () => agentSetup(ids, fx));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);

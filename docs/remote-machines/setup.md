@@ -107,14 +107,63 @@ Adding the same machine again runs every check again and changes nothing that is
 add the machine from that fleet: `svall -p work host add studio --ssh ada@studio` makes it a worker of `work` too, with
 its own `svall-svalld@work.service`.
 
-### An API key in your shell
+### Your agent setup on the machine
 
-A move checks each agent's login in the Svall daemon's systemd environment, with the fleet's `.env` keys
-(`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a robot gets them, not in your shell. An agent's terminal starts
-your shell, so an API key exported only in `~/.bashrc` or `~/.profile` works for the agent while the check says it is
-not logged in. Put the key in the fleet's `.env`, which the checks read each time, or in
-`~/.config/environment.d/agents.conf` as `NAME=value` lines and then run `systemctl --user daemon-reload` and
-`systemctl --user restart svall-svalld@private`.
+Once the machine is in this Mac's list, Svall copies your agent setup there. It copies it again each time this Mac
+links to the machine and before every move, one way, and only what changed on this Mac since the last copy:
+
+- **Claude Code:** `settings.json`, merged key by key; `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/` and
+  `keybindings.json`; your plugins and their marketplaces; and the MCP servers in `~/.claude.json`, yours and those of
+  each project whose folder the machine has.
+- **Codex:** `config.toml`, merged key by key, with its MCP servers; `AGENTS.md`; and `~/.agents/skills`. Its
+  `notify`, `[desktop]`, `[marketplaces]` and `[plugins]` stay on this Mac, and the machine keeps its own
+  `[projects]` and `[hooks]`.
+- **OpenCode:** `opencode.json` or `opencode.jsonc`, merged key by key, with its MCP servers; and its commands, skills,
+  agents, plugins and `AGENTS.md`.
+
+A path under your home on this Mac lands under the home there. Svall's own hooks, statusline and OpenCode plugin on
+the machine are never replaced. Logins never travel: log each agent, and `gh`, in on the machine.
+
+**Keys.** A key in your setup travels only once you tick it for that machine. Keys are an MCP server's `env` values,
+its headers, and a key in its URL or arguments, plus the key fields of `settings.json`, `config.toml` and the OpenCode
+config. Each server or file that holds one is a row under **Your agent setup**, such as "copy linear's keys to
+studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). Unticked, it is copied without them, and the
+row stays until you tick it or the machine has keys of its own (below). Ticking or unticking changes the copy there
+at once, whatever runs there. A server or plugin config with fields Svall does not know is a row "copy notion whole
+to studio", and is copied only once ticked. From a terminal, `svall host doctor studio` lists the rows, and
+`svall host consent studio claude:mcp:linear on` (or `off`) ticks one, named as its row is after `mirror:`.
+
+**Variables.** A server can read a variable, as `"GITHUB_TOKEN": "${GITHUB_TOKEN}"` in its `env` does, or hold an
+empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable.
+**Open terminal** types `svall worker env GITHUB_TOKEN` there. It asks for the value without showing it, or takes it
+from a pipe, and keeps it in the fleet's `.env` on the machine. Robots that start there afterwards have it.
+
+**Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
+terminal** starts Claude Code there with the sign-in's port forwarded; type `/mcp` and sign in. A Codex or OpenCode
+server's login is listed with the command to run there, since Svall cannot see whether you did. A server whose program
+the machine lacks is a row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension,
+is listed and not copied.
+
+**The machine's own settings.** Files under `mirror-overrides/` in the fleet's home on the machine (`~/.svall` for the
+private fleet) are merged over Svall's copy, last, and Svall never changes them. Their folders `claude/`, `codex/`,
+`opencode/` and `home/` stand for `~/.claude`, `~/.codex`, `~/.config/opencode` and the home. In
+`claude/.claude.json`, only `mcpServers` counts, merged over the copied servers by name. `claude/settings.json`,
+`codex/config.toml` and `opencode/opencode.json` merge key by key, and any other file replaces the copy. Keep there
+what the machine should have of its own, such as its own key for a server. Any other edit made on the machine stays
+until that setting changes on this Mac, but a copied server you delete there comes back, and a ticked key you change
+there is written again.
+
+Comments in `config.toml` and `opencode.jsonc` do not survive a merge. Svall writes both back without them, and
+`opencode.jsonc` as plain JSON under its own name.
+
+Claude Code also writes `~/.claude.json`, from the copy it holds in memory. If a Claude Code running on the machine
+saves just after Svall's copy, it can drop a server Svall added or bring back a key Svall removed. The next copy, at
+the next move, tick or link, writes the server again or removes the key again.
+
+A move checks each agent's login in the Svall daemon's environment, with the fleet's `.env` keys added as a robot gets
+them, not in your shell. An API key exported only in `~/.bashrc` or `~/.profile` works in the agent's terminal while
+the check says it is not logged in. Set it with `svall worker env ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) on the
+machine.
 
 ### The companion release
 
@@ -161,7 +210,7 @@ gateway, and the release and result of its last check, each with the buttons bel
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `svall host list` | Settings → Machines | Every machine in the registry, with its id, any fleets on this Mac that name it as their gateway, and its last check. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path; `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends in the same one line as `host add`: ready, or the number of failed checks before robots can move there, with their names. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends in the same one line as `host add`: ready, or the number of things left before robots can move there, with their names. Each failed check counts, and so does each warning with something to do, such as a key not ticked. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move. |
 | `svall host upgrade <name>` | Upgrade | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. A machine that was a fleet's gateway then becomes its worker ([above](#a-machine-that-was-a-fleets-gateway)). On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux until it ends, as at a reboot. Robots running there keep running. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
 | `svall host remove <name>` | Remove | Runs `svall uninstall` there and drops the machine from the registry and its last check from `checks.json`. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
