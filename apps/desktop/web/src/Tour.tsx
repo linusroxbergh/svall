@@ -12,7 +12,9 @@ import { scopedKey, SETTINGS_KEY, TOUR_KEY, type AppState } from './store/index.
 const GAP = 14;
 type Side = 'top' | 'bottom' | 'left' | 'right';
 type Anchor = { id?: string; islandId?: string; cardOpen: boolean };
-type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: (id: Parameters<typeof keyLabel>[0]) => string, cwd: string) => ReactNode };
+// the sentence a key starts, which goes with the key when the user leaves it unbound
+type Hint = (id: Parameters<typeof keyLabel>[0], rest: string) => string;
+type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: Hint, cwd: string) => ReactNode };
 
 const STEPS: Step[] = [
   {
@@ -20,19 +22,19 @@ const STEPS: Step[] = [
     at: ({ id, cardOpen }) => (id && cardOpen ? { sel: `[data-testid="sb-robot-${id}"]`, side: 'right' }
       : { sel: id ? `[data-testid="token-${id}"]` : '[data-testid^="island-new-"]', side: 'bottom' }),
     title: 'Your first robot',
-    body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>. {k('newRobot')} makes another.</>,
+    body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>.{k('newRobot', 'makes another.')}</>,
   },
   {
     at: () => ({ sel: '[data-testid="side-card"]', side: 'left' }),
     title: 'What the robot knows',
-    body: (k) => <>Everything here reaches the robot as context. Svall fills it in as the robot works, and you can add your own. {k('toggleSideCard')} shows or hides it.</>,
+    body: (k) => <>Everything here reaches the robot as context. Svall fills it in as the robot works, and you can add your own.{k('toggleSideCard', 'shows or hides it.')}</>,
   },
   {
     // an open terminal card covers the lighthouse; the side card's Resources button opens the same shelf
     at: ({ cardOpen }) => (cardOpen ? { sel: '[data-testid="side-resources"]', side: 'left' }
       : { sel: '[data-testid="resources-lighthouse"], [data-testid="resources-pill"]', side: 'top' }),
     title: 'Resources',
-    body: (k) => <>An overview of the instructions, skills and settings your robots get, globally and per island, repo and robot. Edit any of them here. {k('toggleResources')} opens it.</>,
+    body: (k) => <>An overview of the instructions, skills and settings your robots get, globally and per island, repo and robot. Edit any of them here.{k('toggleResources', 'opens it.')}</>,
   },
   {
     at: ({ islandId }) => ({ sel: `[data-testid="sb-folder-${islandId}"]`, side: 'right' }),
@@ -43,7 +45,7 @@ const STEPS: Step[] = [
     // an open terminal card covers mission control's row on the map
     at: ({ cardOpen }) => (cardOpen ? { sel: `[data-testid="sb-folder-${HOME_ISLAND}"]`, side: 'right' } : { sel: '[data-testid="island-label-home"], [data-testid="home-arrange"], [data-testid^="home-action-"], [data-testid="home-new-island"], [data-testid="home-new"]', side: 'top' }),
     title: 'Mission control',
-    body: (k) => <>Its robots look after the fleet, not your code. The buttons are quick actions, and {k('missionControl')} asks it anything. It asks once to trust its folder.</>,
+    body: (k) => <>Its robots look after the fleet, not your code. The buttons are quick actions.{k('missionControl', 'asks it anything.')} The first time, it asks you to trust its folder.</>,
   },
 ];
 
@@ -161,8 +163,18 @@ export function Tour() {
     return () => document.removeEventListener('keydown', key);
   }, [shown]);
 
+  // a press anywhere but the bubble moves on; one on a terminal never reaches the page, so the shell reports it
+  useEffect(() => {
+    if (!shown) return;
+    const next = () => { if (!isVeiled(app.store.getState())) go(step + 1); };
+    const away = (e: Event) => { if (!bubble.current?.contains(e.target as Node)) next(); };
+    window.addEventListener('pointerdown', away, true);
+    const off = app.bridge.onMessage((m) => { if (m.type === 'shell.pressedAway') next(); });
+    return () => { window.removeEventListener('pointerdown', away, true); off(); };
+  }, [shown, step]);
+
   if (!cur || !at) return null;
-  const k = (id: Parameters<typeof keyLabel>[0]) => keyLabel(id, bindings) ?? '';
+  const k: Hint = (id, rest) => { const key = keyLabel(id, bindings); return key ? ` ${key} ${rest}` : ''; };
   const last = step === STEPS.length - 1;
   const z = zoom(), vw = view.w / z, vh = view.h / z;
   const ring = box && { left: Math.max(box.left - 6, 3), top: Math.max(box.top - 6, 3), right: Math.min(box.right + 6, vw - 3), bottom: Math.min(box.bottom + 6, vh - 3), radius: (box.radius ?? 12) + 6 };

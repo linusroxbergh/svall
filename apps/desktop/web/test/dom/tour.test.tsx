@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { freshStore, store } from './harness.js';
+import { freshStore, shell, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
@@ -61,6 +61,47 @@ test('with its anchor out of sight the tour still offers its buttons, and Escape
   esc();
   expect(queryByTestId('tour')).toBeNull();
   expect(localStorage.getItem('svall.tour')).toBe('done');
+});
+
+test('a key the user left unbound drops the sentence that names it', () => {
+  // the settings saved in between would mark the machine past its first run
+  const bodies = () => {
+    localStorage.clear();
+    const { getByTestId, queryByTestId, unmount } = render(<Tour />);
+    const out: string[] = [];
+    while (queryByTestId('tour')) {
+      out.push(getByTestId('tour').querySelector('.tour-body')!.textContent!);
+      fireEvent.click(getByTestId('tour-next'));
+    }
+    unmount();
+    return out;
+  };
+  const bound = bodies();
+  expect(bound[0]).toMatch(/opencode\. ⌘T makes another\.$/);
+  expect(bound[1]).toMatch(/add your own\. ⌘I shows or hides it\.$/);
+  expect(bound[2]).toMatch(/here\. ⌘⇧R opens it\.$/);
+  expect(bound[4]).toContain('quick actions. ⌘G asks it anything.');
+  act(() => store.getState().setSettings({ bindings: { newRobot: null, toggleSideCard: null, toggleResources: null, missionControl: null } }));
+  const unbound = bodies();
+  expect(unbound[0]).toMatch(/opencode\.$/);
+  expect(unbound[1]).toMatch(/add your own\.$/);
+  expect(unbound[2]).toMatch(/here\.$/);
+  expect(unbound[4]).toContain('quick actions. The first time');
+});
+
+test('a press outside the bubble, on the page or on a terminal, goes to the next step', () => {
+  const { getByTestId } = render(<><Tour /><div data-testid="sea" /></>);
+  const kicker = () => getByTestId('tour').querySelector('.kicker')!.textContent;
+  fireEvent.pointerDown(getByTestId('tour').querySelector('.tour-body')!);
+  expect(kicker()).toBe('1 of 5');
+  fireEvent.pointerDown(getByTestId('sea'));
+  expect(kicker()).toBe('2 of 5');
+  act(() => shell({ type: 'shell.pressedAway' }));
+  expect(kicker()).toBe('3 of 5');
+  // a dialog over the page takes its own presses
+  act(() => store.getState().setMissionPrompt(true));
+  fireEvent.pointerDown(getByTestId('sea'));
+  expect(kicker()).toBe('3 of 5');
 });
 
 test('a tour with nothing to point at stays mid-window as the window resizes', async () => {
