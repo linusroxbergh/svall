@@ -60,7 +60,7 @@ export type MirrorPlan = {
   /** `data` stands in for `from`'s bytes where the mirror writes the file itself. */
   files: { from: string; to: string; mode: number; data?: string }[];
   servers: MirroredServer[];
-  macOnly: { agent: AgentKind; name: string }[];
+  macOnly: { agent: AgentKind; name: string; scope: Scope }[];
   /** Each config file with a secret field, by its consent item. */
   configs: { key: string; agent: AgentKind; file: string; fields: string[]; preview: string[]; ticked: string[] }[];
   settingsEnv: Record<string, string>;
@@ -400,7 +400,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const macOnly: MirrorPlan['macOnly'] = [];
   for (const s of read.servers) {
     const project = typeof s.scope === 'object' && 'project' in s.scope ? s.scope.project : undefined;
-    if (isMacOnly(s)) macOnly.push({ agent: s.agent, name: s.name });
+    if (isMacOnly(s)) macOnly.push({ agent: s.agent, name: s.name, scope: s.scope });
     else if (project === undefined || !facts || facts.projects[project]) servers.push(mirrored(s, consent));
   }
 

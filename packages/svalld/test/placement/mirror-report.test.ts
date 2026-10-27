@@ -64,7 +64,9 @@ describe('the setup rows of the mirror', () => {
 
   it('an unticked server whose keys the worker still holds as the copy says they are still on w1, to check again', () => {
     expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'copied' } }))
-      .toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false } });
+      .toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false }, gap: { name: 'linear', what: 'unticked; still on w1' } });
+    put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
+    expect(row('claude:plugin:acme', { ticked: false, whole: { 'claude:plugin:acme': true } })).toMatchObject({ gap: { name: "acme's config", what: 'unticked; still on w1' } });
   });
 
   it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
@@ -142,6 +144,7 @@ describe('the setup rows of the mirror', () => {
     expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'not checked: w1 is not reachable' });
     expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude' });
+    expect(all.find(byKey('oauth:claude:mcp:notion'))?.gap).toBeUndefined();
     expect(all.find(byKey('codex:mcp:github'))).toMatchObject({
       status: 'warn', action: "copy github's keys to w1",
       detail: `${SAVED}: mirrored without env.GITHUB_TOKEN ghp…ef; run svall worker env GITHUB_TOKEN there, or set them in ~/.svall/mirror-overrides on w1`,
@@ -152,7 +155,7 @@ describe('the setup rows of the mirror', () => {
     expect(odd.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
   });
 
-  it('a row of what will not work on w1 yet names it and what it lacks; one that is there, a copy still there or a row not checked names none', () => {
+  it('a row of what will not work on w1 yet names it and what it lacks; one that is there or a row not checked names none', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.notion = { type: 'http', url: 'https://mcp.notion.com/mcp' }; });
     expect(Object.fromEntries(rows(report({ commands: { npx: false } })).map((r) => [r.key, r.gap]))).toEqual({
       'claude:mcp:linear': { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
@@ -169,7 +172,6 @@ describe('the setup rows of the mirror', () => {
     });
     const copied = { 'claude:mcp:linear#env.LINEAR_API_KEY': 'copied' } as const;
     expect(row('claude:mcp:linear', { ticked: true, secrets: copied })?.gap).toBeUndefined();
-    expect(row('claude:mcp:linear', { ticked: false, secrets: copied })?.gap).toBeUndefined();
     expect(row('claude:mcp:linear', { ticked: true, secrets: {} })?.gap).toEqual({ name: 'linear', what: 'ticked; not on w1 yet' });
     expect(rows(undefined).find(byKey('var:REMOTE_TOKEN'))?.gap).toBeUndefined();
     expect(rows(report({ vars: { REMOTE_TOKEN: true } })).find(byKey('var:REMOTE_TOKEN'))).toBeDefined();
@@ -188,6 +190,31 @@ describe('the setup rows of the mirror', () => {
     expect(keys(['codex'], [])).toEqual(['codex:mcp:github', 'runtime:npx', 'codex:config']);
     expect(keys(['opencode'], [])).toEqual(['opencode:config']);
     expect(keys([], [])).toEqual([]);
+  });
+
+  it("a robot's rows leave out the plugins, Codex config and OpenCode config of agents it does not run, and the variables only those read", () => {
+    put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
+    const toml = path.join(mac.codexDir, 'config.toml');
+    put(toml, `${fs.readFileSync(toml, 'utf8')}\n[model_providers.oai]\nenv_key = "OAI_KEY"\n`);
+    put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ provider: { groq: { options: { baseURL: '{env:GROQ_URL}' } } } }));
+    const of = (agents: AgentKind[]) => setupRows(forRobot(mirrorPlan(mac, new Set()), { agents, folders: [] }), report(), O).map((x) => x.key);
+    expect(of(['claude'])).toContain('claude:plugin:acme');
+    expect(of(['codex'])).toEqual(expect.arrayContaining(['var:OAI_KEY', 'codex:config']));
+    expect(of(['opencode'])).toEqual(expect.arrayContaining(['var:GROQ_URL', 'opencode:config']));
+    expect(of(['claude']).filter((k) => /^(var:(OAI_KEY|GROQ_URL)|codex:|opencode:)/.test(k))).toEqual([]);
+    expect(of(['codex', 'opencode']).filter((k) => k.startsWith('claude:'))).toEqual([]);
+  });
+
+  it("a robot's rows name the files this Mac cannot read of its agents only, and a project's Mac-only server only where it works in that project", () => {
+    const toml = path.join(mac.codexDir, 'config.toml');
+    put(toml, 'model = [');
+    editJson(mac.claudeJson, (j) => { j.projects[path.join(mac.homedir, 'code/app')].mcpServers.devtools = { command: 'npx', args: ['chrome-devtools-mcp'] }; });
+    const of = (agents: AgentKind[], folders: string[]) => setupRows(forRobot(mirrorPlan(mac, new Set()), { agents, folders }), report(), O).map((x) => x.key);
+    expect(of(['codex'], [])).toContain(`unreadable:${toml}`);
+    expect(of(['claude'], [])).not.toContain(`unreadable:${toml}`);
+    expect(of(['claude'], [path.join(mac.homedir, 'code/app')])).toContain('maconly:claude:devtools');
+    expect(of(['claude'], [path.join(mac.homedir, 'code/other')])).not.toContain('maconly:claude:devtools');
+    expect(of(['claude'], [])).toContain('maconly:claude:chrome');
   });
 
   it('Mirror.report reads no link as not reachable and one in mismatch as another release; a worker that does not answer is asked once, logged, and the rows come unchecked', async () => {

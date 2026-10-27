@@ -212,6 +212,24 @@ test('an add that leaves parts of the agent setup asks to set them up now, which
   expect(screen.queryByTestId('host-show-all')).toBeNull();
 });
 
+test('agent setup that nothing here can set up asks for none, and a run started from a narrowed page shows every step', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('add', { name: 'trift', ssh: 'ada@trift' });
+    store.getState().hostStep('add', { step: 'mirror:maconly:claude:chrome', status: 'skip', detail: 'chrome only runs on a Mac; not mirrored', gap: { name: 'chrome', what: 'runs only on a Mac' } });
+    store.getState().hostStep('add', { step: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' } });
+    store.getState().hostDone('add', 0);
+  });
+  expect(screen.queryByTestId('host-set-up')).toBeNull();
+  act(() => {
+    store.getState().narrowHost(true);
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+  });
+  expect(store.getState().hostNarrow).toBeUndefined();
+});
+
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {
   checked([]);
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;

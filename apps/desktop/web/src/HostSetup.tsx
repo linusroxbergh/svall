@@ -1,4 +1,4 @@
-import type { MachineId, SetupRow } from '@svall/protocol';
+import { settable, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
@@ -87,8 +87,8 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
-// the footer: the run's one line, then Stop while it runs, Set them up now while parts of the agent setup will not work
-// there and the page shows every step, and Done, or Check again on a machine in the registry while something is left to fix
+// the footer: the run's one line, then Stop while it runs, Set them up now while parts of the agent setup can be set up
+// from here and the page shows every step, and Done, or Check again on a machine in the registry while something is left to fix
 function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
   const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
   if (run.running) {
@@ -111,7 +111,7 @@ function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
           <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
             onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
         )}
-        {o.setup && narrow && <button className="btn" data-testid="host-set-up" onClick={narrow}>Set them up now</button>}
+        {narrow && run.steps.some((s) => s.gap && settable(s)) && <button className="btn" data-testid="host-set-up" onClick={narrow}>Set them up now</button>}
         {o.done || !known
           ? <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
           : <button className="btn" data-testid="host-check-again" onClick={() => startHost('doctor', { name })}>Check again</button>}

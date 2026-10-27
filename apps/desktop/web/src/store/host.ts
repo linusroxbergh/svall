@@ -55,7 +55,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   }),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included
-  hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
+  hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name, hostNarrow: undefined }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
   hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
   hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),

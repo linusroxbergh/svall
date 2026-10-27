@@ -340,6 +340,14 @@ describe('machines.setup and machines.consent', () => {
           c_there: placed({ id: 'c_there', cwd: '/home/ada/code/app/web', agent: agent('claude') }),
           c_here: placed({ id: 'c_here', machine: undefined, placement: undefined, cwd: path.join(mac.homedir, 'code/other'), agent: agent('claude') }),
           c_codex: placed({ id: 'c_codex', cwd: '/home/ada/code/app', agent: agent('codex') }),
+          c_second: placed({
+            id: 'c_second', machine: undefined, placement: undefined, cwd: path.join(mac.homedir, 'code/other'), agent: agent('claude'),
+            second: { cwd: path.join(app, 'web'), agent: agent('codex'), unread: false },
+          }),
+          c_main: placed({
+            id: 'c_main', machine: undefined, placement: undefined, cwd: path.join(mac.homedir, 'code/other'), agent: agent('claude'),
+            repo: { root: path.join(mac.homedir, 'code/other'), mainRoot: app, branch: 'fix', isWorktree: true },
+          }),
         },
       },
     });
@@ -349,6 +357,9 @@ describe('machines.setup and machines.consent', () => {
     expect(await keys('c_there')).not.toContain('codex:mcp:github');
     expect(await keys('c_here')).not.toContain(db);
     expect(await keys('c_codex')).toEqual(['codex:mcp:github', 'codex:config']);
+    // a second terminal's agent and folder count, and so does the checkout a worktree comes from
+    expect(await keys('c_second')).toEqual(expect.arrayContaining([db, 'codex:mcp:github']));
+    expect(await keys('c_main')).toContain(db);
     expect(await dispatch({ id: 1, method: 'machines.setup', params: { machine: W, robot: 'c_gone' } }, w.home.ctx)).toEqual({ id: 1, error: { code: 'not_found', message: 'no robot c_gone' } });
   });
 

@@ -75,10 +75,10 @@ studio is ready. 3 parts of your agent setup will not work there yet:
 Set them up now? [Y/n]
 ```
 
-In a terminal, `svall host add` and `svall host upgrade` then ask whether to set them up now: yes asks for each key
-in turn whether to copy it there, which it does only on a yes, and prints the commands to run on the machine. In the
-app the footer offers **Set them up now**, which shows those rows alone, each with its box or **Open terminal**, until
-**Show every step**. A run exits 1 while something is left to fix. In the app, a step that failed with nothing named
+When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
+then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
+yes, and prints each command to run on the machine once. In the app the footer then offers **Set them up now**, which
+shows those rows alone, each with its box or **Open terminal**, until **Show every step**. A run exits 1 while something is left to fix. In the app, a step that failed with nothing named
 to do offers **Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer
 and never copies a login, so these are yours.
 
@@ -156,7 +156,7 @@ key: a key for that server in the overrides (below) counts, and so does the vari
 machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
 takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
 copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
-reads "still on studio; check studio again". A file there that holds a ticked key is readable by your account alone. A
+reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
 server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
 once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
@@ -235,7 +235,7 @@ says what a machine is.
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `svall host list` | Settings → Machines | Every machine in the registry, with its ssh destination, release, last check and id. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends as `host add` does: ready, or the things to fix there, with their names, then what of your agent setup will not work there yet. Each failed check counts, and so does each warning with an action outside your agent setup. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found, your agent setup aside. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends as `host add` does: ready, or the things to fix there, with their names, then what of your agent setup will not work there yet. Each failed check counts, and so does each warning with an action outside your agent setup. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
 | `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already, and ends with your agent setup there as `host add` does, asking the same. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux while a robot runs in it, and starts over on the new release's at a daemon start with none. Robots running there keep running, and while an older companion's tmux runs them, what is copied in their terminals may not reach the Mac. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
 | `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"). Its fleets and their files stay on that machine. |

@@ -469,6 +469,13 @@ test('a robot on a worker the fleet no longer lists goes by the machine\'s id', 
   expect(screen.getByTestId('side-cwd').title).toBe('Copy 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f:/tmp');
 });
 
+test('a placed robot that is moving asks nothing of its machine and shows no section for it', async () => {
+  withVault(true, { machine: VAULT, moving: { id: 'mv_0123456789', to: 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId, phase: 'bundle' } });
+  await act(async () => { render(<Side />); });
+  expect(calls().some(([m]) => m === 'machines.setup')).toBe(false);
+  expect(document.querySelector('[data-section="robot.machine"]')).toBeNull();
+});
+
 test('mission control and a robot already moving offer no move', () => {
   withVault(true, { islandId: 'home' });
   render(<Side />);

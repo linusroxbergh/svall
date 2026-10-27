@@ -1243,8 +1243,8 @@ describe('host doctor', () => {
     } finally {
       out.mockRestore();
     }
-    // linger, and the mirror's one not-checked row, as this fleet's daemon is not running
-    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 2, release: '1.2.3' } });
+    // linger; the mirror's not-checked row, as this fleet's daemon is not running, is agent setup and no warning
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
     expect((JSON.parse(said.join('')) as HostReport).checks.at(-1)).toEqual({
       name: 'mirror:unchecked', status: 'warn', detail: expect.stringMatching(/^not checked: svalld is not running/), action: 'svall host doctor trift once Svall is open',
       gap: { name: 'agent setup', what: 'not checked' },
@@ -2401,6 +2401,7 @@ describe('the last line a run prints', () => {
       varRow('GAMMA_TOKEN'),
       row('runtime:/Users/ada/bin/db-mcp', { action: 'install db-mcp on trift', gap: { name: 'db-mcp', what: 'not installed; db needs it' } }),
       row('claude:mcp:odd', { action: 'check trift again', gap: { name: 'odd', what: 'ticked; not on trift yet' } }),
+      row('claude:mcp:jira', { action: 'check trift again', tick: { item: 'claude:mcp:jira', fields: ['env.K'], on: false, preview: [] }, gap: { name: 'jira', what: 'unticked; still on trift' } }),
       row('maconly:claude:chrome', { status: 'skip', gap: { name: 'chrome', what: 'runs only on a Mac' } }),
       okRow('var:X'),
     ], 'trift', { ssh: 'ada@trift', svall: 'svall -p work' })).toEqual([
@@ -2409,6 +2410,7 @@ describe('the last line a run prints', () => {
       '  GAMMA_TOKEN  not set; gamma reads it               → ssh ada@trift, then svall worker env GAMMA_TOKEN',
       '  db-mcp       not installed; db needs it            → install db-mcp on trift',
       '  odd          ticked; not on trift yet              → svall -p work host doctor trift',
+      '  jira         unticked; still on trift              → svall -p work host doctor trift',
       '  chrome       runs only on a Mac',
     ]);
   });
@@ -2429,7 +2431,7 @@ describe('the last line a run prints', () => {
         },
       };
     };
-    const yes = talk(['', 'y', 'n']);
+    const yes = talk(['', 'y', '']);
     await setUpNow(rows, { name: 'trift', machine: REMOTE, there: THERE }, yes.io);
     expect(yes.asked).toEqual([
       'Set them up now? [Y/n] ',
@@ -2450,6 +2452,25 @@ describe('the last line a run prints', () => {
     expect(no.asked).toEqual(['Set them up now? [Y/n] ']);
     expect(no.consent).toEqual([]);
     expect(no.said).toEqual([]);
+  });
+
+  it('asks nothing when no row can be set up from here, never to tick a copy still there, and names each command to run there once', async () => {
+    const { setUpNow } = await import('../src/commands/host.js');
+    const asked: string[] = [];
+    const said: string[] = [];
+    const io = { ask: (q: string) => { asked.push(q); return Promise.resolve(''); }, write: (t: string) => { said.push(t); }, consent: () => Promise.resolve([]) };
+    const macOnly: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
+    const unchecked: SetupRow = { key: 'unchecked', status: 'warn', detail: 'd', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' } };
+    const still: SetupRow = { ...unticked('claude:mcp:jira'), action: 'check trift again', gap: { name: 'jira', what: 'unticked; still on trift' } };
+    await setUpNow([macOnly, unchecked, still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect([asked, said]).toEqual([[], []]);
+
+    const login = (name: string): SetupRow => ({
+      key: `oauth:claude:mcp:${name}`, status: 'warn', action: 'log in once on trift', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'd', gap: { name, what: 'not logged in' },
+    });
+    await setUpNow([login('notion'), login('linear'), still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect(asked).toEqual(['Set them up now? [Y/n] ']);
+    expect(said.join('')).toBe('Run these on trift:\n  ssh -L 3118:localhost:3118 trift.test, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp\nsvall host doctor trift checks again once they are done.\n');
   });
 
   it('a run\'s lines leave the agent setup rows to the list at its end', async () => {

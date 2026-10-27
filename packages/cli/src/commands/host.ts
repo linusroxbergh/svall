@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { ApiError, PROTOCOL_VERSION, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, checksAgain, PROTOCOL_VERSION, settable, toTick, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -102,9 +102,9 @@ const asRow = <T extends { step: string } | { name: string }>(e: T): T & { key: 
 
 /** The one thing to do about a row from this Mac's terminal: tick it from here, or run its command there; Claude Code signs in with /mcp. */
 function gapAction(r: Gapped, machine: string, there: There): string | undefined {
-  if (r.tick && !r.tick.on) return `${there.svall} host consent ${machine} ${r.tick.item} on`;
+  if (toTick(r)) return `${there.svall} host consent ${machine} ${r.tick!.item} on`;
   if (r.run) return `ssh ${r.forward ? `-L ${r.forward}:localhost:${r.forward} ` : ''}${there.ssh}, then ${r.run}${r.key.startsWith('oauth:claude:') ? ', /mcp' : ''}`;
-  if (r.action && /^check .+ again$/.test(r.action)) return `${there.svall} host doctor ${machine}`;
+  if (checksAgain(r)) return `${there.svall} host doctor ${machine}`;
   return r.action;
 }
 
@@ -119,7 +119,7 @@ export function setupList(rows: Gapped[], machine: string, there: There): string
 export function outcomeText(o: HostOutcome, op: Op, name: string, flags: { forget?: boolean; there?: There } = {}): string {
   const setup = op === 'add' || op === 'upgrade';
   const rows = (o.setup ?? []).map(asRow);
-  const list = setup && rows.length ? setupList(rows, name, flags.there ?? { ssh: name, svall: 'svall' }) : [];
+  const list = setup && rows.length ? setupList(rows, name, flags.there!) : [];
   if (o.result === 'ready') return !setup ? doneLine(op, name, flags) : list.length ? withList(list, name, true).join('\n') : readyLine(name);
   const left = setup ? `${fixLine(name, o.actions.length)}:` : 'still to do:';
   return [o.stopped ? `stopped at ${o.stopped}; ${left}` : left, ...o.actions.map((a) => `  ${a}`), ...withList(list, name, false)].join('\n');
@@ -143,11 +143,11 @@ export function robotSetupText(rows: SetupRow[], robot: string, machine: string,
 
 type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; consent: HostDeps['consent'] };
 
-/** Asks to set up what will not work on the machine yet: each key to copy there, one at a time, then the commands to run there. */
+/** Asks to set up what of the machine's agent setup can be from here: each key to copy there, one at a time, then the commands to run there. */
 export async function setUpNow(steps: StepEvent[], o: { name: string; machine: MachineId; there: There }, io: SetUpIo): Promise<void> {
-  if (!/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
+  if (!steps.some(settable) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
   const rows = steps.map(asRow);
-  for (const r of rows.filter((x) => x.tick && !x.tick.on)) {
+  for (const r of rows.filter(toTick)) {
     const { item, fields, preview } = r.tick!;
     if (!/^y(es)?$/i.test((await io.ask(`${r.action![0].toUpperCase()}${r.action!.slice(1)}? ${preview.join(', ')} [y/N] `)).trim())) continue;
     try {
@@ -157,7 +157,7 @@ export async function setUpNow(steps: StepEvent[], o: { name: string; machine: M
       io.write(`  ${MARK.warn} ${r.gap!.name}: ${(e as Error).message}\n`);
     }
   }
-  const runs = rows.filter((x) => x.run).map((x) => gapAction(x, o.name, o.there)!);
+  const runs = [...new Set(rows.filter((x) => x.run).map((x) => gapAction(x, o.name, o.there)!))];
   if (runs.length) io.write([`Run these on ${o.name}:`, ...runs.map((a) => `  ${a}`), ''].join('\n'));
   io.write(`${o.there.svall} host doctor ${o.name} checks again once they are done.\n`);
 }
@@ -174,9 +174,9 @@ export function lastChecks(dir: string): Record<string, LastCheck> {
   try { return z.record(z.string(), LastCheck).parse(JSON.parse(fs.readFileSync(checksFile(dir), 'utf8'))); } catch { return {}; }
 }
 
-// a check that could not reach the machine is one that failed
+// a check that could not reach the machine is one that failed; the agent setup's rows are no warnings
 function recordCheck(dir: string, id: MachineId, report: HostReport | undefined): void {
-  const count = (status: string) => report?.checks.filter((c) => c.status === status).length ?? 0;
+  const count = (status: string) => report?.checks.filter((c) => c.status === status && !c.name.startsWith(MIRROR)).length ?? 0;
   const check: LastCheck = { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
   writeDurable(checksFile(dir), { ...lastChecks(dir), [id]: check });
 }

@@ -109,7 +109,7 @@ test('a running move shows one line per step as it gets there under a bar of six
 });
 
 test("once through on a worker the sheet says how much of the robot's agent setup will not work there", async () => {
-  const gap = (name: string): SetupRow => ({ key: `claude:mcp:${name}`, status: 'warn', detail: 'd', gap: { name, what: 'not logged in' } });
+  const gap = (name: string): SetupRow => ({ key: `oauth:claude:mcp:${name}`, status: 'warn', detail: 'd', action: 'log in once on linus-vault', gap: { name, what: 'not logged in' } });
   const rows = [gap('linear'), gap('notion'), { key: 'var:X', status: 'ok', detail: 'X is set on linus-vault' } satisfies SetupRow];
   const move = heldMove();
   const held = call.getMockImplementation()!;

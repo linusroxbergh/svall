@@ -44,6 +44,14 @@ describe('a robot landing on a worker', () => {
     expect(store.getState().toast).toBeUndefined();
   });
 
+  it('says nothing when nothing of what will not work there has a way on', async () => {
+    const { store, call } = setup([{ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } }]);
+    store.getState().setFleet(landed);
+    await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(store.getState().toast).toBeUndefined();
+  });
+
   it('says nothing for one whose agent setup all works there, for a move back to this Mac, or for a robot that did not move', async () => {
     const quiet = setup([{ key: 'var:X', status: 'ok', detail: 'X is set on vault' }]);
     quiet.store.getState().setFleet(landed);

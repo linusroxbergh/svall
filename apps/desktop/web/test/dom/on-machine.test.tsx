@@ -56,3 +56,12 @@ test('a copy the machine did not take says why, and a robot whose agent setup al
   const { container } = await act(async () => render(<OnMachine id="c2" machine={VAULT} name="vault" />));
   expect(container.innerHTML).toBe('');
 });
+
+test('a row whose way on is its action says it, and one whose copy is still there offers no copy', async () => {
+  const still: SetupRow = { ...linear, key: 'claude:mcp:jira', action: 'check vault again', gap: { name: 'jira', what: 'unticked; still on vault' } };
+  const db: SetupRow = { key: 'runtime:/Users/ada/bin/db-mcp', status: 'warn', detail: 'd', action: 'install db-mcp on vault', gap: { name: 'db-mcp', what: 'not installed; db needs it' } };
+  rows = [still, db];
+  await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  expect(shown()).toEqual(['jira unticked; still on vaultcheck vault again', 'db-mcp not installed; db needs itinstall db-mcp on vault']);
+  expect(screen.queryByTestId('side-gap-copy-claude:mcp:jira')).toBeNull();
+});

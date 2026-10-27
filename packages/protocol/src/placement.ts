@@ -87,3 +87,11 @@ export const SetupRow = z.object({
   gap: z.object({ name: z.string(), what: z.string() }).optional(),
 });
 export type SetupRow = z.infer<typeof SetupRow>;
+
+type WayOn = Pick<SetupRow, 'tick' | 'run' | 'action'>;
+/** Whether a setup row asks for the machine to be checked again, as one holding a copy it should not still does. */
+export const checksAgain = (r: WayOn): boolean => /^check .+ again$/.test(r.action ?? '');
+/** Whether a setup row's way on is to tick it here: not ticked, and no copy of it left there to check for first. */
+export const toTick = (r: WayOn): boolean => r.tick !== undefined && !r.tick.on && !checksAgain(r);
+/** Whether a setup row can be set up now: ticked from here, or its command run there. */
+export const settable = (r: WayOn): boolean => toTick(r) || r.run !== undefined;
