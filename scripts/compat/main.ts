@@ -1,5 +1,6 @@
 // `pnpm compat`: whether what Svall reads from Claude Code, Codex and OpenCode is still in each one's newest release,
-// and whether the installed CLIs still take the flags Svall passes. Exits 1 when anything is gone or couldn't be checked.
+// whether the installed CLIs still take the flags Svall passes, and whether a retro call on each still runs no tool.
+// Exits 1 when anything is gone or couldn't be checked.
 // --update records the releases' event lists in snapshot.json; --json prints the findings and reports for a script to read
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -8,6 +9,7 @@ import type { AgentKind } from '@svall/protocol';
 import { AGENTS, versionOk } from '../../packages/svalld/src/agents.js';
 import { helpHas } from './extract.js';
 import { HARNESSES, HELP, type Harness } from './harnesses.js';
+import { toolsOff } from './tools-off.js';
 
 export type Snapshot = Partial<Record<AgentKind, { version: string; events: string[] }>>;
 export type Report = { kind: AgentKind; version?: string; installed?: string; events: string[]; problems: string[]; added: string[]; notes: string[] };
@@ -77,6 +79,7 @@ async function main(): Promise<void> {
   const snap = (fs.existsSync(SNAPSHOT) ? JSON.parse(fs.readFileSync(SNAPSHOT, 'utf8')) : {}) as Snapshot;
   const reports = await Promise.all((Object.keys(HARNESSES) as AgentKind[]).map((k) => checkRelease(k, snap)));
   for (const r of reports) checkInstalled(r);
+  await Promise.all(reports.filter((r) => r.installed).map(async (r) => { r.problems.push(...await toolsOff(r.kind)); }));
   console.log(args.has('--json') ? JSON.stringify({ findings: findings(reports), reports }, null, 2) : format(reports));
   if (args.has('--update')) {
     const next: Snapshot = { ...snap };

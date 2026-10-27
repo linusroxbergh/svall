@@ -293,13 +293,13 @@ export const HARNESSES: Record<AgentKind, Harness> = { claude, codex, opencode }
 export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
   claude: [
     [['--help'], ['-p', '--print', '--model', '--add-dir', '--resume', '--tools', '--setting-sources', '--strict-mcp-config',
-      '--no-session-persistence', '--input-format', '--output-format', '--verbose', '--system-prompt']],
+      '--no-session-persistence', '--input-format', '--output-format', '--verbose', '--system-prompt', '--effort', '--json-schema']],
     [['auth', 'status', '--help'], ['--json']],
   ],
   codex: [
     [['--help'], ['resume', 'exec', 'app-server', 'login', '-m']],
     [['resume', '--help'], ['-c', '--config']],
-    [['exec', '--help'], ['--json', '-m', '-c', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o']],
+    [['exec', '--help'], ['--json', '-m', '-c', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o', '--output-schema']],
     [['login', '--help'], ['status']],
   ],
   opencode: [
