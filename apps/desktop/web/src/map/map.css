@@ -12,13 +12,11 @@
 .map-world .island, .map-world .tok { --ms: inherit; translate: calc(var(--ox) * var(--ms)) calc(var(--oy) * var(--ms)); }
 .map-world .tok, .home .tok { --k: inherit; }
 .map-world .island, .map-world .ilabel, .map-world .inew[data-empty="true"] { --lk: inherit; }
-/* the map's width and mission control's row change with a panel or the window; not inherited, they restyle only what reads them */
+/* the map's width and mission control's row change with a panel or the window; set on the one element that reads each
+   and not inherited, they restyle only it */
 @property --map-w { syntax: '*'; inherits: false; }
 @property --home-row-top { syntax: '*'; inherits: false; }
 @property --home-shift { syntax: '*'; inherits: false; }
-.map-overlay, .home, .home .hrow { --map-w: inherit; }
-.home .hrow { --home-shift: inherit; }
-.map-overlay, .res-room { --home-row-top: inherit; }
 .map-world .island { pointer-events: none; }
 .map-world .tok, .map-world .island > * { pointer-events: auto; }
 

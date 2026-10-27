@@ -191,7 +191,7 @@ function FlowScene() {
         {s.crew.map((m, i) => <div key={m.id} className="pop">{tok(m, REVIEWS.id, REVIEWS_AT, RG.cells[i])}</div>)}
       </div>
       <Home island={HOME} crew={s.mc ? [robot(s.mc, 'home', { x: 1, y: 1 })] : []} config={HOME_CONFIG} collapsed={false} selected={false}
-        status={(c) => c.agent!.status} shift={place.homeShift} rowShift={place.homeShift} scale={place.homeScale}
+        status={(c) => c.agent!.status} shift={place.homeShift} rowShift={place.homeShift} mapW={SIZE.w} scale={place.homeScale}
         onToggle={none} onAction={asyncNone} onArrange={none} onNewIsland={none} onNew={none} label={pointer}
         tokenPointer={() => pointer} onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
       <Islet place={place} count={31} />
@@ -206,7 +206,6 @@ const map = host.querySelector<HTMLElement>('.scene-map')!;
 function fit() {
   const s = Math.min(1, host.clientWidth / SIZE.w);
   Object.assign(map.style, { width: `${SIZE.w}px`, height: `${SIZE.h}px`, transform: `scale(${s})`, left: `${(host.clientWidth - SIZE.w * s) / 2}px` });
-  map.style.setProperty('--map-w', `${SIZE.w}px`);
   host.style.height = `${SIZE.h * s}px`;
 }
 fit();

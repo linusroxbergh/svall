@@ -5,7 +5,7 @@ import { saveRobot, saveRobotContext, setStar } from './actions.js';
 import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
-import { useApp, useTick } from './hooks.js';
+import { useApp, usePanelWidth, useTick } from './hooks.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
@@ -26,8 +26,9 @@ type Patch = Omit<Params<'robot.update'>, 'id'>;
 // collapsing is sticky: the card stays shut until the user opens it again.
 export function Collapse() {
   const bindings = useApp((s) => s.settings.bindings);
+  const width = usePanelWidth('card');
   return (
-    <button className="side-collapse" data-testid="side-collapse" title={keyTip('Hide the side card', 'toggleSideCard', bindings)}
+    <button className="side-collapse" style={width} data-testid="side-collapse" title={keyTip('Hide the side card', 'toggleSideCard', bindings)}
       aria-label="Hide the side card" onClick={() => app.store.getState().toggleSideCard(false)}>›</button>
   );
 }
@@ -69,6 +70,7 @@ export function SideCard({ id }: { id: string }) {
   const active = useApp((s) => s.active);
   const load = useLoad(details && active).load?.robots?.[id];
   const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id]));
+  const width = usePanelWidth('card');
   if (!c) return null;
 
   const status = statusOf(c, fleet);
@@ -85,7 +87,7 @@ export function SideCard({ id }: { id: string }) {
   const saveContext = (context: ContextItem[], removed?: string) => saveRobotContext(deps(), id, context, removed);
 
   return (
-    <aside className="side" data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
+    <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
         <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
         {placed && <span className="badge" data-testid="side-machine">{placed}</span>}
