@@ -1,5 +1,5 @@
 import type { AgentKind, Focus } from '@svall/protocol';
-import type { Outline, SkillRun, Turn } from './outline.js';
+import { GH_BODY, type Outline, type SkillRun, type Turn } from './outline.js';
 import type { PrComment } from './prs.js';
 import type { Target } from './targets.js';
 
@@ -14,8 +14,6 @@ export type Excerpt = {
 
 // runs read per skill, first prompts read for triggers, failures before a command is listed, and the evidence a focus needs
 const RUNS = 20, FIRST_PROMPTS = 200, FAILURES = 3, THIN_SESSIONS = 3, THIN_PRS = 2;
-// a call that writes a PR's body or a comment on one, the output most rules govern
-const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
 const REJECTED = '[rejected] ';
 
 type Run = { s: Outline; r: SkillRun };

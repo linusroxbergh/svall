@@ -17,6 +17,9 @@ export const CLIP = { text: 1500, input: 300, error: 300 } as const;
 const REPLY_MS = 2 * 60_000;
 const PR = /https?:\/\/[^\s/"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/pull\/\d+/g;
 
+// a call that writes a PR's body or a comment on one, the output most rules govern, whose input is kept as agent text is
+export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
+
 export const clip = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 export const inSpan = (at: number, span: Span): boolean => at >= span.from && at <= span.to;
 
@@ -56,7 +59,7 @@ export function outliner() {
       const given = typeof input === 'string' ? input : JSON.stringify(input) ?? '';
       links(given);
       o.tools++;
-      turn('tool', line, at, `${name} ${clip(given, CLIP.input)}`);
+      turn('tool', line, at, `${name} ${clip(given, GH_BODY.test(given) ? CLIP.text : CLIP.input)}`);
     },
     error(line: number, at: number, text: string) {
       o.errors++;

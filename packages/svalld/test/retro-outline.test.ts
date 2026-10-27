@@ -96,6 +96,13 @@ describe('outlineClaude', () => {
     expect(o.turns.some((t) => t.text.includes('OUTPUT-MARKER'))).toBe(false);
   });
 
+  it('keeps a PR body a gh call writes to 1500, as the rules it is judged by need it', () => {
+    const body = `gh pr create --title t --body "${'b'.repeat(3000)}"`;
+    const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
+      + assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: body } }], '2026-10-26T09:00:01.000Z');
+    expect(outlineClaude(text, file, span).turns[1].text).toHaveLength('Bash '.length + CLIP.text);
+  });
+
   it('finds PR links', () => {
     // one in what the agent said, one Claude Code noted for the session
     expect(outlineClaude(claude, file, span).prs).toEqual(['https://github.com/acme/app/pull/42', 'https://github.com/acme/app/pull/43']);
