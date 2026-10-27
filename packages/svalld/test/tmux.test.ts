@@ -25,7 +25,14 @@ describe('tmuxConfText', () => {
     const mac = tmuxConfText(Config.parse({}), { platform: 'darwin' }).split('\n');
     const linux = tmuxConfText(Config.parse({}), { platform: 'linux' }).split('\n');
     expect(mac.filter((l) => !linux.includes(l))).toEqual(['set -g copy-command "pbcopy"', 'set -s set-clipboard off']);
-    expect(linux.filter((l) => !mac.includes(l))).toEqual(['set -s set-clipboard on']);
+    expect(linux.filter((l) => !mac.includes(l))).toEqual(['set -s set-clipboard on', 'set -s get-clipboard off']);
+  });
+
+  it('drops get-clipboard on a tmux before 3.7, which fails source-file on it', () => {
+    const current = tmuxConfText(Config.parse({}), { platform: 'linux', tmuxVersion: 'tmux 3.7c' }).split('\n');
+    const old = tmuxConfText(Config.parse({}), { platform: 'linux', tmuxVersion: 'tmux 3.6a' }).split('\n');
+    expect(current.filter((l) => !old.includes(l))).toEqual(['set -s get-clipboard off']);
+    expect(old.filter((l) => !current.includes(l))).toEqual([]);
   });
 
   it('drops the option a tmux before 3.5 fails source-file on, and nothing else', () => {
@@ -253,13 +260,14 @@ runIf('Tmux', () => {
     const t = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
     // the terminal: another tmux, which keeps each OSC 52 it is sent as a buffer
     const term = new Tmux(`${home}/term.sock`, '/dev/null');
-    cleanup.push(async () => { await t.killServer(); await term.killServer(); });
+    cleanup.push(async () => { await Promise.all([t.killServer(), term.killServer()]); });
     await t.ensureServer();
     await term.ensureServer();
     await term.run('set', '-s', 'set-clipboard', 'on');
     const w = await t.newWindow('c_copy', '/tmp', {});
     await t.attachSession('v-c_copy', w.windowId);
-    await term.run('new-window', '-d', `env TERM=xterm-256color ${t.binary} -S ${home}/tmux.sock attach -t '=v-c_copy'`);
+    const q = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+    await term.run('new-window', '-d', `env TERM=xterm-256color ${q(t.binary)} -S ${q(`${home}/tmux.sock`)} attach -t '=v-c_copy'`);
     await waitFor(async () => (await t.run('list-clients', '-t', '=v-c_copy')) !== '');
     const copied = async () => (await term.run('show-buffer').catch(() => '')).trim();
 
@@ -272,6 +280,37 @@ runIf('Tmux', () => {
       await t.run(step[0], '-t', w.paneId, ...step.slice(1));
     }
     await waitFor(async () => (await copied()) === 'by-tmux');
+
+    // and a program that reaches only its terminal, in a container or past another ssh, reads no copy back
+    const reply = path.join(home, 'reply');
+    fs.writeFileSync(path.join(home, 'query.cjs'), `process.stdin.setRawMode(true);
+let got = '';
+process.stdin.on('data', (d) => { got += d; });
+process.stdout.write('\\x1b]52;c;?\\x07');
+setTimeout(() => { require('fs').writeFileSync(${JSON.stringify(reply)}, got); process.exit(0); }, 1000);
+`);
+    await t.sendLine(w.paneId, `${q(process.execPath)} ${q(path.join(home, 'query.cjs'))}`, true);
+    await waitFor(() => fs.existsSync(reply));
+    expect(fs.readFileSync(reply, 'utf8')).toBe('');
+  });
+
+  // a server an earlier release started runs that release's tmux; Linux names a process's binary under /proc
+  it('starts a server running another tmux over when no robot runs in it, and names the one it keeps', async () => {
+    const t = await boot();
+    const proc = makeHome();
+    const pid = (await t.run('display', '-p', '#{pid}')).trim();
+    const exe = path.join(proc, pid, 'exe');
+    fs.mkdirSync(path.dirname(exe));
+    fs.symlinkSync(fs.realpathSync(t.binary), exe);
+    expect(await t.startOverStale(proc)).toBeUndefined();
+    fs.rmSync(exe);
+    fs.symlinkSync('/home/ada/.local/share/svall/releases/1.0.0/bin/tmux', exe);
+    const w = await t.newWindow('c_kept', '/tmp', {});
+    expect(await t.startOverStale(proc)).toBe('/home/ada/.local/share/svall/releases/1.0.0/bin/tmux');
+    expect((await t.run('display', '-p', '#{pid}')).trim()).toBe(pid);
+    await t.killWindow(w.windowId);
+    expect(await t.startOverStale(proc)).toBeUndefined();
+    await expect(t.run('has-session')).rejects.toThrow();
   });
 
   it('reports one row per window when a window is split', async () => {

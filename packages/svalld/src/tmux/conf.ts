@@ -1,9 +1,14 @@
 import type { Config } from '../config.js';
 
+// a tmux before 3.<minor>; a version that does not parse (master) counts as newer
+function before3(version: string, minor: number): boolean {
+  const m = /(\d+)\.(\d+)/.exec(version);
+  return !!m && (Number(m[1]) < 3 || (Number(m[1]) === 3 && Number(m[2]) < minor));
+}
+
 // extended-keys-format, which Shift+Enter depends on, arrived in tmux 3.5
 export function tmuxTooOld(version: string): boolean {
-  const m = /(\d+)\.(\d+)/.exec(version);
-  return !!m && (Number(m[1]) < 3 || (Number(m[1]) === 3 && Number(m[2]) < 5));
+  return before3(version, 5);
 }
 
 export type TmuxEnv = { platform?: NodeJS.Platform; tmuxVersion?: string };
@@ -31,8 +36,11 @@ export function tmuxConfText(config: Config, env: TmuxEnv = {}): string {
     // marking text with the mouse copies it: on macOS every copy binding pipes through this command
     platform === 'darwin' ? 'set -g copy-command "pbcopy"' : undefined,
     // and only through it, as Ghostty's clipboard-write = ask would ask again for tmux's OSC 52 copy. On Linux the
-    // terminal attached over ssh takes tmux's copies, and those of the app in the pane, as OSC 52
+    // terminal attached over ssh takes them as OSC 52: `on` passes the pane's own (Claude Code's) too, `external` not
     platform === 'darwin' ? 'set -s set-clipboard off' : 'set -s set-clipboard on',
+    // each copy also stays a paste buffer while the server runs, which no pane reads back with an OSC 52 query; tmux
+    // before 3.7 has no such option, and answers one from the top buffer
+    platform === 'darwin' || (env.tmuxVersion && before3(env.tmuxVersion, 7)) ? undefined : 'set -s get-clipboard off',
     // a pane that asks for modified keys (Claude Code does) gets Shift+Enter as CSI 13;2u instead of a bare CR
     'set -s extended-keys on',
     // tmux before 3.5 does not know this option and fails source-file on it; only Shift+Enter is lost
