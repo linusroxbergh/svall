@@ -335,14 +335,21 @@ export class Fleet extends EventEmitter<Events> {
 
   // one home island per fleet; its cwd, command and buttons, and the fleet's default cwd, come from config on every start
   private ensureHome(): string | undefined {
-    let retro = false;
-    try { retro = this.offerRetro(); } catch (e) { this.deps.log.error(`retro button: ${String(e)}`); }
-    // the crew's model is the one syncAgents picks for the main agent's CLI
-    const { model: _picks, offered: _offered, ...home } = this.deps.config.home;
+    let offer: Partial<FleetConfig['home']> | undefined;
+    try { offer = this.retroOffer(); } catch (e) { this.deps.log.error(`retro button: ${String(e)}`); }
     // a robot is refused a cwd that is not a directory, so mission control's crew needs this one;
     // make the folder the buttons promise, holding the skills they call
-    try { for (const l of installHomeTemplate(home.cwd, { replaceSettings: false, addRetro: retro })) this.deps.log.info(l); }
-    catch (e) { this.deps.log.error(`home cwd ${home.cwd}: ${String(e)}`); }
+    const { cwd: homeCwd } = this.deps.config.home;
+    try {
+      for (const l of installHomeTemplate(homeCwd, { replaceSettings: false, addRetro: !!offer })) this.deps.log.info(l);
+      // the offer is kept once its rules are in place, so a start that couldn't place them offers it again
+      if (offer) {
+        patchFleetConfig(this.deps.paths.fleetConfig, { home: offer });
+        Object.assign(this.deps.config.home, offer);
+      }
+    } catch (e) { this.deps.log.error(`home cwd ${homeCwd}: ${String(e)}`); }
+    // the crew's model is the one syncAgents picks for the main agent's CLI
+    const { model: _picks, offered: _offered, ...home } = this.deps.config.home;
     // the directory a crewless island starts in; it is the user's folder, so never create it
     const cwd = this.deps.config.defaultCwd;
     if (!fs.statSync(expandHome(cwd), { throwIfNoEntry: false })?.isDirectory()) {
@@ -370,17 +377,14 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   // each fleet is offered the retro button and its crew's rules for it once, recorded in fleet.json, so one the user
-  // deletes stays deleted; the default buttons, or a list naming its prompt, have the button already. True when offered now
-  private offerRetro(): boolean {
-    const file = this.deps.paths.fleetConfig;
+  // deletes stays deleted; the default buttons, or a list naming its prompt, have the button already. The fleet.json
+  // change that makes the offer, or none when it was made
+  private retroOffer(): Partial<FleetConfig['home']> | undefined {
     let home: FleetConfig['home'];
-    try { home = readFleetConfig({ fleetConfig: file }).home; } catch { return false; }
-    if (home.offered?.includes('retro')) return false;
+    try { home = readFleetConfig({ fleetConfig: this.deps.paths.fleetConfig }).home; } catch { return undefined; }
+    if (home.offered?.includes('retro')) return undefined;
     const retro = defaultHome().actions.find((a) => a.label === 'retro')!;
-    const patch = { ...(!home.actions.some((a) => a.prompt === retro.prompt) && { actions: [...home.actions, retro] }), offered: [...home.offered ?? [], 'retro'] };
-    patchFleetConfig(file, { home: patch });
-    Object.assign(this.deps.config.home, patch);
-    return true;
+    return { ...(!home.actions.some((a) => a.prompt === retro.prompt) && { actions: [...home.actions, retro] }), offered: [...home.offered ?? [], 'retro'] };
   }
 
   private endIdleAgents(): Promise<void> {

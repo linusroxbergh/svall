@@ -109,7 +109,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; 
 // the shipped `svall retro` rules, after the scribe's in the allow list of settings that allow no `svall retro` yet
 function withRetro(text: string, shipped: string): string {
   let json: { permissions?: { allow?: unknown } } | null;
-  try { json = JSON.parse(text); } catch { return text; }
+  try { json = JSON.parse(text); } catch { throw new Error('.claude/settings.json is not JSON, so the svall retro rules could not be added'); }
   const allow = json?.permissions?.allow;
   if (!Array.isArray(allow) || allow.some((r) => String(r).startsWith('Bash(svall retro'))) return text;
   const retro = (JSON.parse(shipped).permissions.allow as string[]).filter((r) => r.startsWith('Bash(svall retro '));

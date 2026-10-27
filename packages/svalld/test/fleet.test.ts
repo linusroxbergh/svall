@@ -2405,6 +2405,21 @@ runIf('Fleet', () => {
     expect(fs.readFileSync(settings, 'utf8')).toBe(older);
   });
 
+  it('offers retro again on the next start when the crew settings could not take its rules', async () => {
+    const mc = path.join(makeHome(), 'mc');
+    const settings = path.join(mc, '.claude/settings.json');
+    fs.mkdirSync(path.dirname(settings), { recursive: true });
+    fs.writeFileSync(settings, '{ not json');
+    const errors: string[] = [];
+    const first = await boot({ homeCwd: mc, fleetHome: {}, log: { ...silentLogger, error: (m: string) => errors.push(m) } });
+    expect(errors.join('\n')).toContain('svall retro rules could not be added');
+    expect(JSON.parse(fs.readFileSync(resolvePaths(first.home).fleetConfig, 'utf8')).home).toEqual({});
+    fs.writeFileSync(settings, '{ "permissions": { "allow": [] } }');
+    const second = await boot({ homeCwd: mc, fleetHome: {} });
+    expect(JSON.parse(fs.readFileSync(resolvePaths(second.home).fleetConfig, 'utf8')).home).toEqual({ offered: ['retro'] });
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toContain('Bash(svall retro plan:*)');
+  });
+
   it('a fleet.json that lists the retro button already gets no second one', async () => {
     const { actions } = defaultHome();
     const { store, home } = await boot({ fleetHome: { actions } });

@@ -959,6 +959,7 @@ esac
         expect(prefixes.some((p) => c.startsWith(p)), `${skill}: ${c}`).toBe(true);
       }
     }
+    for (const c of ['svall retro apply 1', 'svall retro config --exclude-island x']) expect(prefixes.some((p) => c.startsWith(p)), c).toBe(false);
   });
 
   it('the codex rules allow svall retro, applying a finding and changing its config aside', () => {
