@@ -336,6 +336,13 @@ the list; the others say what they did or what is still to do. Each exits 1 unle
 | `fleet` | add, remove, upgrade | remove: the fleets that name this machine as their gateway, which must all be on this Mac, no fleet this machine owns through any gateway, and no handover open on any fleet here, whatever its gateway. upgrade: drops the machine from this fleet's `fleet.json` as its gateway, before its gateway unit goes, and its gateway mark in the registry once no fleet here names it. add and upgrade: a warning while `fleet.json` still names a gateway, as no robot moves then. | remove: bring each fleet back with `svall handover local` and settle open handovers first. upgrade: check `fleet.json` is readable and writable. A gateway named: `svall host upgrade <gateway>` makes it this fleet's worker. |
 | `uninstall` | remove | Runs `svall uninstall` on the machine, once it has checked the ssh destination reaches the machine the registry names, with `--force-fleet` for each fleet the `fleet` step found naming it as their gateway. That passes only those fleets' gateway records, so the machine still refuses, and the step fails with its reason, for anything else uninstalling would strand: another Mac's fleet records, a record left by a fleet that no longer names it, a fleet it runs for its gateway, or an open handover. Its fleets, their files and the gateway's records stay there. With `--forget` it is skipped and the machine is left untouched. | Another failure names the exit and what `svall uninstall` said: `ssh <destination>` and run it to see what stops it. A refusal: on each other Mac whose fleet it names, bring that fleet home with `svall handover local` and run `svall host remove <host> --forget`; then `ssh <destination>`, run `svall uninstall --force`, and `svall host remove <host> --forget` here. `svall host remove <host> --forget` drops the route when the machine cannot be reached, or the destination now reaches another machine. |
 
+After `registry`, `host add` lists each row of [your agent setup there](setup.md#your-agent-setup-on-the-machine) as a
+step `mirror:<key>`: a server or file whose keys you tick (`claude:mcp:<name>`, `claude:settings`, `codex:config`,
+`opencode:config`, `claude:plugin:<name>`), `var:<VAR>`, `oauth:<item>`, `runtime:<command>`,
+`maconly:<agent>:<name>`, `unreadable:<path>`, or `unchecked` when this Mac's daemon could not be asked. None fails; a
+warning's action says what to do: tick the box (`svall host consent`), set the variable there (`svall worker env`),
+log in, install the program, or check the machine again.
+
 ### Doctor checks
 
 `svall doctor` checks the machine it runs on; `svall host doctor <host>` runs the companion's doctor on that machine
@@ -375,6 +382,9 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `versions` | host doctor | Each agent there runs this Mac's release of it, as for `host add`, one below Svall's floor included. |
 | `space` | host doctor | Free space in the home. |
 | `home` | host doctor | The machine's home is still the one the registry records. |
+
+`host doctor` ends with the same `mirror:<key>` rows as `host add` lists ([above](#steps)); each warning with an
+action counts as one thing left before robots can move there.
 
 ## Disaster recovery
 

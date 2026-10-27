@@ -127,11 +127,16 @@ the machine are never replaced. Logins never travel: log each agent, and `gh`, i
 **Keys.** A key in your setup travels only once you tick it for that machine. Keys are an MCP server's `env` values,
 its headers, and a key in its URL or arguments, plus the key fields of `settings.json`, `config.toml` and the OpenCode
 config. Each server or file that holds one is a row under **Your agent setup**, such as "copy linear's keys to
-studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). Unticked, it is copied without them, and the
-row stays until you tick it or the machine has keys of its own (below). Ticking or unticking changes the copy there
-at once, whatever runs there. A server or plugin config with fields Svall does not know is a row "copy notion whole
-to studio", and is copied only once ticked. From a terminal, `svall host doctor studio` lists the rows, and
-`svall host consent studio claude:mcp:linear on` (or `off`) ticks one, named as its row is after `mirror:`.
+studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). Unticked, the server is copied without them:
+each `env` key becomes the agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code,
+`{env:LINEAR_API_KEY}` for OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable
+from its environment on the machine, and a key in its headers, URL or arguments is left out. The row stays until you
+tick it or the machine has its own key: a key for that server in the overrides (below) counts, and the row then reads
+"studio has its own keys". Ticking or unticking changes the copy there at once, whatever runs there. A server or
+plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only once ticked.
+From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
+[--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`, and
+`--field env.LINEAR_API_KEY` ticks that key alone.
 
 **Variables.** A server can read a variable, as `"GITHUB_TOKEN": "${GITHUB_TOKEN}"` in its `env` does, or hold an
 empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable.
@@ -139,10 +144,11 @@ empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machin
 from a pipe, and keeps it in the fleet's `.env` on the machine. Robots that start there afterwards have it.
 
 **Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
-terminal** starts Claude Code there with the sign-in's port forwarded; type `/mcp` and sign in. A Codex or OpenCode
-server's login is listed with the command to run there, since Svall cannot see whether you did. A server whose program
-the machine lacks is a row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension,
-is listed and not copied.
+terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
+`/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead.
+Over your own ssh, forward the port with `ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed
+with the command to run there, since Svall cannot see whether you did. A server whose program the machine lacks is a
+row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension, is listed and not copied.
 
 **The machine's own settings.** Files under `mirror-overrides/` in the fleet's home on the machine (`~/.svall` for the
 private fleet) are merged over Svall's copy, last, and Svall never changes them. Their folders `claude/`, `codex/`,
@@ -160,10 +166,12 @@ Claude Code also writes `~/.claude.json`, from the copy it holds in memory. If a
 saves just after Svall's copy, it can drop a server Svall added or bring back a key Svall removed. The next copy, at
 the next move, tick or link, writes the server again or removes the key again.
 
-A move checks each agent's login in the Svall daemon's environment, with the fleet's `.env` keys added as a robot gets
-them, not in your shell. An API key exported only in `~/.bashrc` or `~/.profile` works in the agent's terminal while
-the check says it is not logged in. Set it with `svall worker env ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) on the
-machine.
+**An API key in your shell.** A move checks each agent's login in the Svall daemon's systemd environment, with the
+fleet's `.env` keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) added as a robot gets them, not in your shell. An agent's
+terminal starts your shell, so an API key exported only in `~/.bashrc` or `~/.profile` works for the agent while the
+check says it is not logged in. Put the key in the fleet's `.env`, which the checks read each time, with
+`svall worker env ANTHROPIC_API_KEY` on the machine, or in `~/.config/environment.d/agents.conf` as `NAME=value`
+lines and then run `systemctl --user daemon-reload` and `systemctl --user restart svall-svalld@private`.
 
 ### The companion release
 
