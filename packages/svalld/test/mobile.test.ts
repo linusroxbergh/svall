@@ -19,7 +19,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, stubFleets, stubLoad, stubMobile, stubSystemInfo, stubUsage, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, stubFleets, stubLoad, stubMobile, stubSystemInfo, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -157,8 +157,7 @@ runIf('phone sockets', () => {
     fs.writeFileSync(path.join(dist, 'assets', 'app.js'), 'code');
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const ownership = ownerOf(home, config.id);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 200 });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -168,7 +167,7 @@ runIf('phone sockets', () => {
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl, log,
       origins: () => [], logins: () => current.logins, dist, key: () => current.key, pass, fleetName,
-      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), ownership, systemInfo: stubSystemInfo,
+      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), systemInfo: stubSystemInfo,
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
     cleanup.unshift(async () => { await api.close(); });

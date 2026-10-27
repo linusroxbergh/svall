@@ -16,7 +16,6 @@ import { HomeConnection } from '../../src/link/worker.js';
 import { handoverGit, type GitRunner } from '../../src/links/git.js';
 import { silentLogger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
-import { OwnershipState } from '../../src/ownership/state.js';
 import { realPath } from '../../src/path-tools.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { FarViewers } from '../../src/placement/far-viewers.js';
@@ -330,7 +329,6 @@ export function moveWorld(o: {
   let worker: Awaited<ReturnType<typeof bootWorker>> | undefined;
   const bootWorker = async (life: Life = { dead: false }) => {
     const store = Store.load(workerPaths.state, () => {});
-    const ownership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
     const outbox = Outbox.open(workerPaths);
     const tmux = mortal(vault.tmux, life) as unknown as Tmux;
     const handlers: Record<string, (p: unknown) => Promise<unknown>> = {};
@@ -340,7 +338,7 @@ export function moveWorld(o: {
     });
     const router = new Router({ store, me: W, log: silentLogger, home: { id: H, connection } });
     const fleet = new Fleet({
-      store, tmux, paths: workerPaths, config, log: silentLogger, ownership, remote: router,
+      store, tmux, paths: workerPaths, config, log: silentLogger, remote: router,
       report: (r) => connection.report(r), created: (c, p) => mutations.created(c, p), readProcs: async () => [], processes: async () => [],
     });
     const mutations = new WorkerMutations({
@@ -370,7 +368,6 @@ export function moveWorld(o: {
   let home: Awaited<ReturnType<typeof bootHome>> | undefined;
   const bootHome = async (life: Life = { dead: false }, o: { syncAfterMs?: number } = {}) => {
     const store = Store.load(homePaths.state, () => {});
-    const ownership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
     let version = Date.now();
     let ctx: Ctx | undefined;
     const replay = new Replay({ store, paths: homePaths, log: silentLogger, synced: (m) => links.for(m)?.synced === true, homedir: mac });
@@ -395,8 +392,8 @@ export function moveWorld(o: {
       ...(mirror && { mirror }),
     });
     const router = new Router({ store, me: H, log: silentLogger, links });
-    const fleet = new Fleet({ store, tmux: mortal(mac1.tmux, life) as unknown as Tmux, paths: homePaths, config, log: silentLogger, ownership, remote: router });
-    ctx = { store, fleet, ownership, router, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } } as unknown as Ctx;
+    const fleet = new Fleet({ store, tmux: mortal(mac1.tmux, life) as unknown as Tmux, paths: homePaths, config, log: silentLogger, remote: router });
+    ctx = { store, fleet, router, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } } as unknown as Ctx;
     mac1.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const placement = new Placement({
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, paths: homePaths,

@@ -29,7 +29,6 @@ describe('config and paths', () => {
     expect(p.push).toBe(path.join('/x', 'push.json'));
     expect(p.vapid).toBe(path.join('/x', 'vapid.json'));
     expect([p.fleetConfig, p.nodeConfig, p.legacyConfig]).toEqual(['/x/fleet.json', '/x/node.json', '/x/config.json']);
-    expect(p.owner).toBe('/x/owner.json');
   });
   it('finds the Claude settings in CLAUDE_CONFIG_DIR when it is set', () => {
     const home = path.join(os.homedir(), '.claude', 'settings.json');

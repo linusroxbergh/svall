@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -59,7 +59,15 @@ describe('machine id', () => {
     expect(() => machineId(dir, none)).toThrow(`invalid machine file ${path.join(dir, 'machine.json')}`);
     fs.writeFileSync(path.join(dir, 'machine.json'), '{"id":"trift"}');
     expect(() => machineId(dir, none)).toThrow(`invalid machine file ${path.join(dir, 'machine.json')}`);
-    expect(() => machineId(dir, none)).toThrow('delete the file to mint a new machine id, or restore it from backup');
+  });
+
+  it('says to restore a file it cannot read, and to delete it only while no worker knows this Mac by the id in it', () => {
+    const dir = makeHome();
+    fs.writeFileSync(path.join(dir, 'machine.json'), '{ id: nope');
+    let e: unknown;
+    try { machineId(dir, none); } catch (err) { e = err; }
+    expect(machineIdFailure(e)).toMatch(/; delete the file to mint a new machine id, or restore it from backup$/);
+    expect(machineIdFailure(e, { workers: true })).toMatch(/; restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again$/);
   });
 });
 

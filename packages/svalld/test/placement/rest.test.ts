@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetId, MachineId, emptyState, type Agent, type Robot } from '@svall/protocol';
+import { FleetId, emptyState, type Agent, type Robot } from '@svall/protocol';
 import { hookCommand, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
 import { markDormant } from '../../src/dormancy.js';
@@ -12,7 +12,6 @@ import { ProcessTable, killGroup, type Proc } from '../../src/processes.js';
 import { armFailpoints } from '../../src/failpoints.js';
 import { RestJournal, classifyTerminals, restTerminals, unapproved, type Clock, type RestDeps } from '../../src/placement/rest.js';
 import { silentLogger } from '../../src/log.js';
-import { OwnershipState } from '../../src/ownership/state.js';
 import { installedScripts, resolvePaths } from '../../src/paths.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
@@ -25,9 +24,6 @@ const SID2 = '7a1d2e3f-4b5c-4d6e-8f70-81a2b3c4d5e6';
 const OSID = 'ses_eeda388f0ffeOB6E6MBZswShKL';
 const OC_SERVER = '/Users/ada/.opencode/bin/opencode serve --stdio --port 0';
 const fleetId = FleetId.parse(crypto.randomUUID());
-const me = MachineId.parse(crypto.randomUUID());
-const other = MachineId.parse(crypto.randomUUID());
-const tx = { id: 'tx-1', fromMachineId: me, toMachineId: other, phase: 'preparing' as const, startedAt: 0 };
 
 const win = (n: number) => ({ windowId: `@${n}`, paneId: `%${n}` });
 const agent = (kind: Agent['kind'], status: Agent['status'], sessionId = SID, prompt?: string): Agent =>
@@ -186,12 +182,11 @@ function boot(robots: Robot[]) {
   const paths = resolvePaths(makeHome());
   const store = Store.load(paths.state, () => {});
   store.update((d) => { for (const c of robots) d.robots[c.id] = c; });
-  const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
   const world = new World();
   const deps: RestDeps = {
     store, tmux: world.tmux, viewers: world.viewers, journal: restJournal(), processes: world.processes, kill: world.kill, clock: world.clock, bootId: () => 'boot-1',
   };
-  return { store, world, deps, paths, ownership };
+  return { store, world, deps, paths };
 }
 
 describe('restTerminals', () => {
@@ -993,14 +988,13 @@ describe('restTerminals', () => {
   });
 
   it('leaves a terminal whose window it closed dormant with its session even when a later window will not close', async () => {
-    const { store, world, deps, ownership, paths } = boot([
+    const { store, world, deps, paths } = boot([
       robot('c_ada', { tmux: win(1), agent: agent('claude', 'idle') }),
       robot('c_bo', { tmux: win(3), agent: agent('codex', 'idle', SID2) }),
     ]);
     world.pane(1, { job: ['claude'] });
     world.pane(3, { job: ['codex'] });
     world.hangKill.add('@3');
-    await ownership.freeze(tx);
     let error: unknown;
     const run = restTerminals(deps, { choices: {}, callTimeoutMs: 5000 }).catch((e) => { error = e; });
 
@@ -1010,7 +1004,7 @@ describe('restTerminals', () => {
     expect(String(error)).toMatch(/kill-window did not answer/);
 
     // the first window is gone and its record says so, so the exit hook its agent sends next finds nothing to take
-    const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), ownership, log: silentLogger });
+    const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), log: silentLogger });
     await fleet.onSocketEvent({ hook: { robotId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
     expect(store.state.robots.c_ada.tmux).toBeUndefined();
     expect(store.state.robots.c_ada.agent?.sessionId).toBe(SID);
@@ -1162,52 +1156,6 @@ describe('unapproved', () => {
   });
 });
 
-describe('a frozen fleet', () => {
-  it('keeps the agent of a terminal the handover closed when a late SessionEnd arrives, and still hears a live one', async () => {
-    const paths = resolvePaths(makeHome());
-    const store = Store.load(paths.state, () => {});
-    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: true });
-    const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), ownership, log: silentLogger });
-    store.update((d) => {
-      d.robots.c_ada = robot('c_ada', {
-        agent: agent('claude', 'idle'), revive: { command: `claude --resume ${SID}` },
-        second: { cwd: '/s', unread: false, agent: agent('codex', 'idle', SID2), revive: { command: `codex resume ${SID2}` } },
-      });
-      d.robots.c_bo = robot('c_bo', { tmux: win(3), agent: agent('claude', 'working', SID2) });
-    });
-    await ownership.freeze(tx);
-
-    await fleet.onSocketEvent({ hook: { robotId: 'c_ada', backend: 'claude', name: 'SessionEnd', sessionId: SID } });
-    await fleet.onSocketEvent({ hook: { robotId: 'c_ada', backend: 'codex', name: 'SessionEnd', sessionId: SID2, term: 2 } });
-    await fleet.onSocketEvent({ hook: { robotId: 'c_bo', backend: 'claude', name: 'Stop', sessionId: SID2 } });
-
-    expect(store.state.robots.c_ada.agent?.sessionId).toBe(SID);
-    expect(store.state.robots.c_ada.second?.agent?.sessionId).toBe(SID2);
-    expect(store.state.robots.c_bo.agent?.status).toBe('done');
-  });
-
-  it("keeps the session of an OpenCode terminal the handover closed whatever its plugin reports as its server shuts down, and still hears a live one", async () => {
-    const paths = resolvePaths(makeHome());
-    const store = Store.load(paths.state, () => {});
-    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: true });
-    const fleet = new Fleet({ store, tmux: new Tmux(paths.tmuxSock, paths.tmuxConf), paths, config: Config.parse({ id: fleetId }), ownership, log: silentLogger });
-    const other = 'ses_0123456789abCDEFGHIJKLMNop';
-    store.update((d) => {
-      d.robots.c_ada = robot('c_ada', { agent: agent('opencode', 'idle', OSID), revive: { command: `opencode -s ${OSID}` } });
-      d.robots.c_bo = robot('c_bo', { tmux: win(3), agent: agent('opencode', 'working', other) });
-    });
-    await ownership.freeze(tx);
-
-    await fleet.onSocketEvent({ hook: { robotId: 'c_ada', backend: 'opencode', name: 'Interrupt', sessionId: OSID } });
-    await fleet.onSocketEvent({ hook: { robotId: 'c_ada', backend: 'opencode', name: 'SessionStart', sessionId: other } });
-    await fleet.onSocketEvent({ hook: { robotId: 'c_bo', backend: 'opencode', name: 'Stop', sessionId: other } });
-
-    expect(store.state.robots.c_ada.agent).toMatchObject({ sessionId: OSID, status: 'idle' });
-    expect(store.state.robots.c_ada.revive).toEqual({ command: `opencode -s ${OSID}` });
-    expect(store.state.robots.c_bo.agent?.status).toBe('done');
-  });
-});
-
 const runIf = hasTmux() ? describe : describe.skip;
 
 runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)'}`, () => {
@@ -1221,8 +1169,7 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger, standalone: true });
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 150 });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150 });
     await fleet.start();
     cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
     const hub = new TerminalHub(fleet, tmux, store, silentLogger);
@@ -1242,8 +1189,8 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     cleanup.push(async () => { client.kill(); });
     await waitFor(async () => (await tmux.run('list-clients', '-t', `=${session}`, '-F', '#{client_name}')).trim() !== '');
 
-    await ownership.freeze(tx);
-    await fleet.settle();
+    // the poll and the control client, stopped, lay nothing dormant before the rest does
+    await fleet.stop();
     const journal = restJournal();
 
     const result = await restTerminals(

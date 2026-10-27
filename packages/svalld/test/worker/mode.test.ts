@@ -46,7 +46,7 @@ describe('worker.json', () => {
     expect(isWorker(paths)).toBe(true);
     expect(() => readWorkerFile(paths)).toThrow(new RegExp(`${paths.workerFile}.*token`));
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'gateway', 'fleets'] });
+    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'fleets'] });
   });
 });
 

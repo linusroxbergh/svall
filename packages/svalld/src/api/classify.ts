@@ -1,10 +1,6 @@
 import type { MethodName } from '@svall/protocol';
-import type { OwnershipState } from './state.js';
 
-/**
- * What each call does to the fleet. Reads answer on an inactive replica, and the rest need an unfrozen owner. A new
- * method without a class fails typecheck.
- */
+/** What each call does to the fleet; a worker sends every mutation and terminal call to its home. A new method without a class fails typecheck. */
 export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'> = {
   'state.get': 'read',
   'island.create': 'mutation',
@@ -58,7 +54,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'fleets.create': 'read',
   'fleets.start': 'read',
   'fleet.rename': 'mutation',
-  // a quit stops this machine's daemon; Fleet.stopAll ends agents only where the fleet is writable
+  // a quit stops this machine's daemon
   'fleet.stop': 'read',
   'mobile.get': 'read',
   'mobile.set': 'mutation',
@@ -86,18 +82,9 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'term.open': 'terminal',
   'term.input': 'mutation',
   'term.resize': 'mutation',
-  // letting go of a terminal takes nothing from the fleet, so a replica may close what it opened
+  // letting go of a terminal takes nothing from the fleet
   'term.close': 'read',
   'term.lastScreen': 'read',
   'term.attach': 'terminal',
   'system.info': 'read',
 };
-
-/**
- * Throws before the handler runs when this machine may not do what the call asks. A `worker` serves a home's fleet:
- * what it does not read itself its home allows.
- */
-export function guardMethod(ownership: OwnershipState, method: MethodName, worker = false): void {
-  const kind = classification[method];
-  if ((kind === 'mutation' || kind === 'terminal') && !worker) ownership.assertOwner(kind);
-}

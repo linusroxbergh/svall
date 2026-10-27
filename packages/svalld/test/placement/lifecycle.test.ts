@@ -5,7 +5,6 @@ import { ApiError, emptyState, type MachineId, type Robot } from '@svall/protoco
 import { Config } from '../../src/config.js';
 import { Fleet } from '../../src/fleet.js';
 import { silentLogger } from '../../src/log.js';
-import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths } from '../../src/paths.js';
 import { Router } from '../../src/placement/router.js';
 import { Store } from '../../src/store.js';
@@ -35,7 +34,6 @@ async function side(me: MachineId, robots: Record<string, Robot>, home?: Machine
     : new Router({ store, me, log: silentLogger, links: { call: (_machine, method) => down(method) } });
   const fleet = new Fleet({
     store, tmux, paths, config, log: silentLogger, pollMs: 100, processes: async () => [], readProcs: async () => [], remote: router,
-    ownership: OwnershipState.load({ paths, fleetId: config.id, machineId: me, log: silentLogger, standalone: true }),
   });
   stops.push(async () => { await fleet.stop(); await tmux.killServer(); });
   await fleet.start();

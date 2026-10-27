@@ -34,11 +34,10 @@ import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
-import type { OwnershipState } from './ownership/state.js';
 import { expandHome, userPaths, type Paths } from './paths.js';
 import type { Router } from './placement/router.js';
 import { SHIM } from './profile.js';
-import { reconcile, secondName, snapshot, type Carried } from './reconcile.js';
+import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { opencodeRunner } from './scribe/opencode.js';
 import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
@@ -62,7 +61,7 @@ export function setNote(c: Robot, note: string): void {
 
 export type RefreshLinks = (store: Store, config: Config, robotId: string) => Promise<void>;
 type Deps = {
-  store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; ownership: OwnershipState; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
+  store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
   runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>;
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
   // the machines robots placed elsewhere run on; on a worker, what it tells its home of each change to a robot placed here
@@ -97,9 +96,8 @@ export class Fleet extends EventEmitter<Events> {
   private resuming = new Map<string, Resume>();
   private stopped = false;
   private activated?: Promise<void>;
-  // the background writes in flight, so a freeze can wait for the last of them to land
+  // the background writes in flight, which a settle waits for
   private background = new Set<Promise<unknown>>();
-  private carried: Carried = () => false;
   private unwatch?: () => void;
 
   private scribe: Scribe;
@@ -117,32 +115,22 @@ export class Fleet extends EventEmitter<Events> {
     const far = remote && ((id: string, only?: Only, columns?: Column[], sweep?: true) => remote.scribe(id, only, columns, sweep));
     this.scribe = new Scribe({ store, log, run, awake: fullWake, brief: (island, c) => this.render(island, c), runsHere, far });
     this.sleep = { store, tmux: deps.tmux, log, processes: deps.processes ?? processes, ending: this.ending, runsHere };
-    const writable = () => this.writable();
     const track = (work: Promise<unknown>, what: string) => this.track(work, what);
-    this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow(), writable, track, atShell: (key) => this.poll.atShell(key), runsHere });
+    this.link = new ControlLink({ store, tmux: deps.tmux, log, events: this, reconcile: () => this.reconcileNow(), track, atShell: (key) => this.poll.atShell(key), runsHere });
     this.poll = new Poll({
       ...deps, scribe: this.scribe, listWindows: () => this.listWindows(), endIdleAgents: () => this.endIdleAgents(),
-      writable, carried: (id, term) => this.carried(id, term), resuming: this.resuming, ending: this.ending, track, processes: this.sleep.processes, runsHere,
+      resuming: this.resuming, ending: this.ending, track, processes: this.sleep.processes, runsHere,
     });
     this.agentEvents = new AgentEvents({
       store, config, log, render: (island, c) => this.render(island, c), refreshLinks: deps.refreshLinks ?? refreshLinks,
-      writable, frozen: () => deps.ownership.isFrozen(), track, processes: this.sleep.processes,
+      track, processes: this.sleep.processes,
     });
-    this.prompts = new Prompts({
-      fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving, writable, assertOwner: () => deps.ownership.assertOwner('mutation'),
-    });
+    this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
     if (deps.report) this.unwatch = watchOwned(store, runsHere, deps.report);
   }
 
-  /** Whether this daemon may write the fleet: the unfrozen owner, and nobody else. */
-  private writable(): boolean {
-    return this.deps.ownership.writable();
-  }
-
   async start(): Promise<void> {
-    // an inactive replica and a frozen source adopt no window and write nothing: they hold their
-    // snapshot for reading, and start no tmux server to hold a window in
-    if (this.writable()) await this.activate();
+    await this.activate();
   }
 
   /** Reconciles, adopts the tmux windows and starts the poll. Calling it again changes nothing, unless the last attempt failed. */
@@ -177,8 +165,7 @@ export class Fleet extends EventEmitter<Events> {
     void done.then(() => this.background.delete(done));
   }
 
-  /** Resolves once the background writes and every window opening in flight have landed, and the fleet is on disk:
-   *  after a freeze, none follows it. */
+  /** Resolves once the background writes and every window opening in flight have landed, and the fleet is on disk. */
   async settle(): Promise<void> {
     const inFlight = () => [...this.background, ...this.creating, ...this.reviving.values(), ...this.openingSecond.values()];
     while (inFlight().length) await Promise.allSettled(inFlight());
@@ -332,11 +319,10 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   async reconcileNow(): Promise<void> {
-    if (!this.writable()) return;
     const before = snapshot(this.deps.store.state);
     const live = await this.listWindows();
-    if (this.stopped || !this.writable()) return;
-    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), before, this.carried, (c) => this.runsHere(c));
+    if (this.stopped) return;
+    const { mutate, renames, unplaced } = reconcile(this.deps.store.state, live, Date.now(), before, (c) => this.runsHere(c));
     this.deps.store.update(mutate);
     for (const line of unplaced) this.deps.log.error(line);
     for (const r of renames) {
@@ -381,16 +367,16 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   private endIdleAgents(): Promise<void> {
-    // a freeze, or the fleet moving to another machine, while ps ran or an earlier agent closed leaves every agent be
-    return endIdleAgents(this.sleep, this.seen, () => this.stopped || !this.writable(), (id) => this.prompts.holds(id));
+    // a stop while ps ran or an earlier agent closed leaves every agent be
+    return endIdleAgents(this.sleep, this.seen, () => this.stopped, (id) => this.prompts.holds(id));
   }
 
   /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
-   * tmux server goes, and nothing runs again until a robot is opened. A replica only stops: its terminals are the owner's. */
+   * tmux server goes, and nothing runs again until a robot is opened. */
   async stopAll(): Promise<void> {
     // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
     await this.stop();
-    if (this.deps.ownership.writable()) await endAll(this.sleep, this.reviving);
+    await endAll(this.sleep, this.reviving);
     setImmediate(() => this.emit('stopped'));
   }
 
@@ -523,27 +509,17 @@ export class Fleet extends EventEmitter<Events> {
     // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves
     const panePath = fs.realpathSync(cwd);
     const prompt = p.command && isAgentCommand(p.command) ? p.run : undefined;
-    this.deps.ownership.assertOwner('terminal');
     const opening = this.openRobot(id, cwd, panePath, p, prompt);
     this.creating.add(opening);
     const done = () => { this.creating.delete(opening); };
     void opening.then(done, done);
     await opening;
-    // a freeze since the window opened stops the background work and the prompt
-    if (!this.writable()) {
-      if (p.run && !prompt) this.deps.log.error(`robot ${id}: the fleet froze for a handover, prompt not sent`);
-      return { ...this.robot(id), ...(p.run && { runSent: !!prompt }) };
-    }
     this.refresh(id);
     if (!p.run) return this.robot(id);
     const timeoutMs = this.deps.runTimeoutMs ?? RUN_TIMEOUT_MS;
     let runSent = await this.prompts.waitForAgent(id, timeoutMs);
     // an agent has its prompt already, and submits it once it is up
     if (prompt) return { ...this.robot(id), runSent: true };
-    if (runSent && !this.writable()) {
-      this.deps.log.error(`robot ${id}: the fleet froze for a handover, prompt not sent`);
-      return { ...this.robot(id), runSent: false };
-    }
     if (runSent) {
       // the window can die between the agent attaching and the send; the robot stays, without its prompt
       try { await this.run(id, p.run, true); } catch { runSent = false; }
@@ -837,7 +813,7 @@ export class Fleet extends EventEmitter<Events> {
         return victims;
       })
       .finally(() => { for (const name of [id, secondName(id)]) this.closing.delete(name); });
-    // a freeze waits for the windows to close and what the robot started to end
+    // a settle waits for the windows to close and what the robot started to end
     this.track(killed.then((victims) => endProcs(victims, () => this.readLive(), this.deps.endOpts)), `end ${id}`);
     await killed;
     this.forgetRobot(id);
@@ -868,8 +844,6 @@ export class Fleet extends EventEmitter<Events> {
     const pids = [agentProc(c.agent), second].flatMap((p) => (p ? [p.pid] : []));
     const windows = [c.tmux.windowId];
     const keys = [id];
-    // a freeze while the processes were read leaves the robot as it is
-    this.deps.ownership.assertOwner('mutation');
     // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear. A close, another
     // sleep or an idle ending meanwhile leaves nothing to put to sleep
     this.deps.store.update((d) => {
@@ -886,7 +860,7 @@ export class Fleet extends EventEmitter<Events> {
       }
     });
     // registered with the state change under both windows' names, so a revive or a poll waits for the windows, the
-    // agents and what they started, as a freeze does
+    // agents and what they started, as a settle does
     const killed = Promise.all(windows.map((w) => this.deps.tmux.killWindow(w)));
     const closing: Promise<void> = killed
       .then(() => Promise.all(pids.map((pid) => exited(pid))))
@@ -898,11 +872,9 @@ export class Fleet extends EventEmitter<Events> {
     await killed;
   }
 
-  /** Revives every robot whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet.
-   *  Only the owner opens windows, and a terminal an open handover carries is that handover's to reopen. */
+  /** Revives every robot whose agent a quit, reboot or crash ended mid-turn; called once hooks can reach the fleet. */
   async resumeInterrupted(): Promise<void> {
-    if (!this.writable()) return;
-    const ids = Object.values(this.deps.store.state.robots).filter((c) => c.revive?.interrupted && !c.moving && this.runsHere(c) && !this.carried(c.id)).map((c) => c.id);
+    const ids = Object.values(this.deps.store.state.robots).filter((c) => c.revive?.interrupted && !c.moving && this.runsHere(c)).map((c) => c.id);
     await Promise.all(ids.map((id) => this.reviveRobot(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
@@ -918,26 +890,22 @@ export class Fleet extends EventEmitter<Events> {
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
-    const p = this.doRevive(id, prompt, this.writable(), fresh).finally(() => this.reviving.delete(id));
+    const p = this.doRevive(id, prompt, fresh).finally(() => this.reviving.delete(id));
     this.reviving.set(id, p);
     return p;
   }
 
-  // `admitted`: asked while the fleet was writable, so a freeze since then stops it before it opens anything; a
-  // handover's own revive runs frozen
-  private async doRevive(id: string, prompt: string | undefined, admitted: boolean, fresh?: string): Promise<Revived> {
+  private async doRevive(id: string, prompt: string | undefined, fresh?: string): Promise<Revived> {
     // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
-    if (admitted) this.deps.ownership.assertOwner('terminal');
     const c = this.robot(id);
     if (c.tmux) return c;
     // a robot marked dormant while its window lived goes back to that window; a new one would run the resume twice
     const alive = (await this.deps.tmux.listWindows()).find((w) => w.name === id && !w.dead);
-    if (admitted) this.deps.ownership.assertOwner('terminal');
     if (alive) {
       this.deps.store.update((d) => {
         const cur = d.robots[id];
-        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; if (!this.carried(id)) delete cur.revive; delete cur.resumeError; }
+        if (cur) { cur.tmux = { windowId: alive.windowId, paneId: alive.paneId }; delete cur.revive; delete cur.resumeError; }
       });
       const delivery = prompt ? await this.run(id, prompt, true) : undefined;
       return { ...this.robot(id), ...(delivery && { delivery }) };
@@ -949,18 +917,17 @@ export class Fleet extends EventEmitter<Events> {
       throw new NotFound(`no robot ${id}`);
     }
     const island = this.deps.store.state.islands[c.islandId];
-    if (!this.carried(id)) fresh ??= unsaved(c);
+    fresh ??= unsaved(c);
     const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
     const moved = gone ? { from: gone, to: cwd } : undefined;
     if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
-    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], this.carried(id), id) : undefined;
+    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], id) : undefined;
     try {
       const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
       this.deps.store.update((d) => {
         const cur = d.robots[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
-        // one a handover has yet to answer for keeps the resume command it carries, which a retry lays it dormant with again
-        if (!this.carried(id)) delete cur.revive;
+        delete cur.revive;
         delete cur.resumeError;
         // a new session reports itself as it starts
         if (fresh !== undefined) delete cur.agent;
@@ -1001,7 +968,6 @@ export class Fleet extends EventEmitter<Events> {
     const which = term === 2 ? `${c.name}'s second terminal` : c.name;
     if (!slot?.agent || slot.tmux) throw new Invalid(`${which} has no dormant session to start afresh from`);
     if (!slot.resumeError) throw new Invalid(`${which} has no failed resume to start afresh from; revive it`);
-    if (this.carried(id, term)) throw new Invalid(`${which} is still being resumed by a handover`);
     const { kind, sessionId, transcriptPath } = slot.agent;
     const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, 4 * 1024 * 1024) : '', { sessionId });
     const command = freshCommand(slot.revive?.command ?? '', kind, sessionId);
@@ -1042,20 +1008,19 @@ export class Fleet extends EventEmitter<Events> {
     if (far) return far;
     const inFlight = this.openingSecond.get(id);
     if (inFlight) return inFlight;
-    const p = this.doOpenSecond(id, this.writable(), fresh).finally(() => this.openingSecond.delete(id));
+    const p = this.doOpenSecond(id, fresh).finally(() => this.openingSecond.delete(id));
     this.openingSecond.set(id, p);
     return p;
   }
 
-  private async doOpenSecond(id: string, admitted: boolean, fresh?: { command: string; prompt: string }): Promise<Robot> {
+  private async doOpenSecond(id: string, fresh?: { command: string; prompt: string }): Promise<Robot> {
     // a second window still closing is not one to open beside
     await this.ending.get(secondName(id));
-    if (admitted) this.deps.ownership.assertOwner('terminal');
     const c = this.robot(id);
     if (c.second?.tmux) return c;
     const cwd = c.second ? this.reviveCwd(c, 2) : c.cwd;
     const island = this.deps.store.state.islands[c.islandId];
-    const unprompted = c.second && !this.carried(id, 2) ? unsaved(c.second) : undefined;
+    const unprompted = c.second ? unsaved(c.second) : undefined;
     if (unprompted !== undefined) fresh ??= { command: unprompted, prompt: '' };
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
     const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
@@ -1065,11 +1030,11 @@ export class Fleet extends EventEmitter<Events> {
       await this.deps.tmux.killWindow(w.windowId);
       throw new NotFound(`no robot ${id}`);
     }
-    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.robots[id].second, this.carried(id, 2), id, 2);
+    const resuming = fresh ? undefined : resumeOf(this.deps.store.state.robots[id].second, id, 2);
     this.deps.store.update((d) => {
       const cur = d.robots[id];
       const second = { unread: false, ...cur.second, cwd, tmux: { windowId: w.windowId, paneId: w.paneId } };
-      if (!this.carried(id, 2)) delete second.revive;
+      delete second.revive;
       delete second.resumeError;
       if (fresh) delete second.agent;
       // a resumed session keeps its old agent record; its stale status must not answer the next wait.
@@ -1172,8 +1137,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   async onSocketEvent(e: SocketEvent): Promise<string | undefined> {
-    // a frozen source still watches its agents settle; a replica's agents belong to the owner, and a placed robot's to its machine
-    if (!this.deps.ownership.isOwner()) return undefined;
+    // a placed robot's agents belong to its machine
     const target = this.deps.store.state.robots[('hook' in e ? e.hook : e.status).robotId];
     if (target && !this.runsHere(target)) return undefined;
     const reply = await this.agentEvents.apply(e);

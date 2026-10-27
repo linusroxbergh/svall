@@ -183,22 +183,6 @@ describe('svall argument parsing', () => {
     expect(r.stdout).not.toContain('a'.repeat(48));
   });
 
-  it('says a handover moved the fleet here once its owner.json names this machine past its first record', async () => {
-    const home = makeHome();
-    const config = makeHome();
-    const fleetId = crypto.randomUUID();
-    const version = async () => JSON.parse((await run({ SVALL_HOME: home, SVALL_CONFIG_DIR: config }, 'version', '--json')).stdout);
-    const me = (await version()).machineId;
-    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleetId }));
-    // a fleet no gateway holds owns itself from its first start
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 0, ownerMachineId: me }));
-    expect((await version()).handedOver).toBeUndefined();
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: me }));
-    expect((await version()).handedOver).toEqual({ fleetId });
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: crypto.randomUUID() }));
-    expect((await version()).handedOver).toBeUndefined();
-  });
-
   it('says whether its release was built signed: with a signature and no unsigned mark', async () => {
     const root = makeHome();
     const signed = async () => JSON.parse((await run({ SVALL_RELEASE_ROOT: root }, 'version', '--json')).stdout).signed;

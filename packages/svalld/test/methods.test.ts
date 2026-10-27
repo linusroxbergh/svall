@@ -19,19 +19,15 @@ import type { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
 import { TerminalHub } from '../src/terminals.js';
 import { hasGit } from './git-fixture.js';
-import { cleanHomes, makeHome, ownerOf } from './helpers.js';
+import { cleanHomes, makeHome } from './helpers.js';
 import { farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
 import { W, island, placed, world } from './placement/world.js';
 
 afterEach(cleanHomes);
 
-// a fleet this machine owns, as a daemon with no gateway holds it
-const owned = (store: Store, paths: ReturnType<typeof resolvePaths>) => {
-  const config = Config.parse({});
-  const ownership = ownerOf(paths.home, config.id);
-  return { fleet: new Fleet({ store, tmux: {} as Tmux, paths, config, log: silentLogger, ownership }), ownership };
-};
+// a fleet on this machine that is never started
+const unstarted = (store: Store, paths: ReturnType<typeof resolvePaths>) => ({ fleet: new Fleet({ store, tmux: {} as Tmux, paths, config: Config.parse({}), log: silentLogger }) });
 
 // a name every object inherits must find nothing, rather than the prototype
 describe('names every object has', () => {
@@ -44,7 +40,7 @@ describe('names every object has', () => {
   it('finds no robot or island by such an id, and leaves every other object alone', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
-    const ctx = { store, ...owned(store, paths) } as unknown as Ctx;
+    const ctx = { store, ...unstarted(store, paths) } as unknown as Ctx;
     for (const id of ['__proto__', 'constructor', 'toString']) {
       expect(await dispatch({ id: 1, method: 'robot.update', params: { id, name: 'pwned', instructions: 'pwned' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
       expect(await dispatch({ id: 2, method: 'island.update', params: { id, name: 'pwned', description: 'pwned' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
@@ -57,7 +53,7 @@ describe('names every object has', () => {
   it('finds no robot by such an id for a hook or a statusline to report on', async () => {
     const paths = resolvePaths(makeHome());
     const store = Store.load(paths.state, () => {});
-    const { fleet } = owned(store, paths);
+    const { fleet } = unstarted(store, paths);
     const before = structuredClone(store.state);
     for (const robotId of ['__proto__', 'constructor', 'toString']) {
       expect(await fleet.onSocketEvent({ hook: { robotId, backend: 'claude', name: 'SessionStart', sessionId: '11111111-1111-4111-8111-111111111111', pid: process.pid } })).toBeUndefined();
@@ -81,7 +77,7 @@ describe('names every object has', () => {
       d.islands.i_a = { id: 'i_a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 7, h: 5 }, seed: 1 };
       d.robots.c_a = { id: 'c_a', islandId: 'i_a', cell: { x: 3, y: 2 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/', context: [], shell: { lastOutputAt: 0 }, unread: false };
     });
-    const ctx = { store, ...owned(store, paths) } as unknown as Ctx;
+    const ctx = { store, ...unstarted(store, paths) } as unknown as Ctx;
     for (const islandId of ['__proto__', 'constructor']) {
       expect(await dispatch({ id: 1, method: 'robot.create', params: { islandId, cwd: '/' } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
       expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_a', islandId } }, ctx)).toMatchObject({ error: { code: 'not_found' } });
@@ -94,7 +90,7 @@ describe('names every object has', () => {
 
 describe('the fleets beside this one', () => {
   const fleets = { list: async () => [], create: async () => '/u/.svall-work', start: async (home: string) => home };
-  const ctx = (kind: 'app' | 'phone') => ({ fleets, fleet: { renameFleet() {}, async stopAll() {} }, viewer: { kind }, ownership: { assertOwner() {} } }) as unknown as Ctx;
+  const ctx = (kind: 'app' | 'phone') => ({ fleets, fleet: { renameFleet() {}, async stopAll() {} }, viewer: { kind } }) as unknown as Ctx;
 
   it('are refused to a phone', async () => {
     for (const [method, params] of [['fleets.list', {}], ['fleets.create', { name: 'work' }], ['fleets.start', { home: '/u/.svall-work' }], ['fleet.rename', { name: 'home' }], ['fleet.stop', {}]] as const) {
@@ -134,7 +130,7 @@ describe('resources.delete', () => {
       fs.writeFileSync(path.join(claude.dir, rel), rel);
     }
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude), silentLogger, () => [claude.json], [], path.join(home, 'trash'));
-    const ctx = { store, workspace, claude, viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;
+    const ctx = { store, workspace, claude, viewer: { kind: 'app' } } as unknown as Ctx;
     const call = (method: string, params: unknown) => dispatch({ id: 1, method, params }, ctx) as Promise<{ result?: { token: string }; error?: { code: string } }>;
     const id = `r:${claude.dir}`;
     for (const rel of ['CLAUDE.md', 'settings.json', 'skills/tidy/SKILL.md', 'agents'])
@@ -162,7 +158,7 @@ describe('a failed call', () => {
 
   it('answers internal for a code no client knows, such as an errno', async () => {
     const fleet = { renameFleet() { throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }); } };
-    expect(await dispatch({ id: 1, method: 'fleet.rename', params: { name: 'x' } }, { fleet, viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx))
+    expect(await dispatch({ id: 1, method: 'fleet.rename', params: { name: 'x' } }, { fleet, viewer: { kind: 'app' } } as unknown as Ctx))
       .toEqual({ id: 1, error: { code: 'internal', message: 'EACCES: permission denied' } });
   });
 });
@@ -174,7 +170,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     const w = moveWorld();
     worlds.push(w);
     const home = await w.start();
-    const ctx = { store: home.store, fleet: home.fleet, router: home.router, placement: home.placement, viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;
+    const ctx = { store: home.store, fleet: home.fleet, router: home.router, placement: home.placement, viewer: { kind: 'app' } } as unknown as Ctx;
     return { home, ctx };
   };
 
@@ -214,7 +210,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
 describe('machines.refresh', () => {
   it('has the home link each machine enrolled since it started, and does nothing on a worker', async () => {
     let refreshed = 0;
-    const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} }, links: { refresh: () => { refreshed++; } } } as unknown as Ctx;
+    const ctx = { viewer: { kind: 'app' }, links: { refresh: () => { refreshed++; } } } as unknown as Ctx;
     expect(await dispatch({ id: 1, method: 'machines.refresh' }, ctx)).toEqual({ id: 1, result: {} });
     expect(refreshed).toBe(1);
     expect(await dispatch({ id: 2, method: 'machines.refresh' }, { ...ctx, links: undefined })).toEqual({ id: 2, result: {} });
@@ -345,7 +341,7 @@ describe('machines.setup and machines.consent', () => {
 
 describe('a move asked of a daemon that makes none', () => {
   it('is refused as a worker refuses what its home does', async () => {
-    const ctx = { viewer: { kind: 'app' }, ownership: { assertOwner() {} } } as unknown as Ctx;
+    const ctx = { viewer: { kind: 'app' } } as unknown as Ctx;
     for (const [method, params] of [['robot.moveCheck', { id: 'c_1', machine: W }], ['robot.moveTo', { id: 'c_1', machine: W }], ['robot.moveRetry', { moveId: 'mv_0123456789' }]] as const) {
       expect(await dispatch({ id: 1, method, params }, ctx)).toEqual({ id: 1, error: { code: 'not_on_worker', message: 'not on a worker' } });
     }

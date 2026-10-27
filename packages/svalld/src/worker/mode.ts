@@ -6,7 +6,7 @@ import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
 
 /** What `svalld --worker` leaves to the home. */
-const OFF = ['mobile', 'push', 'scribe', 'gateway', 'fleets'] as const;
+const OFF = ['mobile', 'push', 'scribe', 'fleets'] as const;
 export type Off = (typeof OFF)[number];
 
 export const isWorker = (paths: Paths): boolean => fs.existsSync(paths.workerFile);

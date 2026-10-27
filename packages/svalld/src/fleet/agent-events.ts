@@ -16,7 +16,7 @@ import type { Store } from '../store.js';
 
 type Deps = {
   store: Store; config: Config; log: Logger; render: (island: Island, c?: Robot) => string; refreshLinks: RefreshLinks;
-  writable: () => boolean; frozen: () => boolean; track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
+  track: (work: Promise<unknown>, what: string) => void; processes: () => Promise<Proc[]>;
 };
 
 // a pid is looked at again after this long, as one an ended server freed may come back as an agent
@@ -46,13 +46,10 @@ export class AgentEvents {
   private async run(e: SocketEvent): Promise<string | undefined> {
     if ('hook' in e && e.hook.pid && await this.fromServer(e.hook.pid)) { this.letGo(e.hook.robotId, e.hook.pid); return undefined; }
     const ev = 'hook' in e ? e.hook : e.status;
-    const frozen = this.deps.frozen();
     let reply: string | undefined;
     this.deps.store.update((d) => {
       const c = d.robots[ev.robotId];
       if (!Object.hasOwn(d.robots, ev.robotId)) return;
-      // a terminal the handover has closed carries its agent to the next machine; a late SessionEnd must not take it
-      if (frozen && !(ev.term === 2 ? c.second : c)?.tmux) return;
       const apply = <T extends Slot>(slot: T): T => {
         let next = 'hook' in e ? applyHook(slot, e.hook, Date.now()) : applyStatus(slot, e.status);
         // codex has no statusline to push its context reading, so each hook reads it off the tail of the rollout
@@ -86,7 +83,7 @@ export class AgentEvents {
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the robot
     const agent = this.deps.store.state.robots[ev.robotId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
-    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId && this.deps.writable()) {
+    if ('hook' in e && e.hook.cwd && e.hook.term !== 2 && !nested && !e.hook.agentId) {
       const cwd = agent?.kind === 'codex' ? this.codexCwd(ev.robotId, agent.transcriptPath, e.hook.cwd) : e.hook.cwd;
       this.deps.track(this.followCwd(ev.robotId, cwd), `follow ${ev.robotId} to ${cwd}`);
     }

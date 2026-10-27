@@ -12,8 +12,6 @@ import { errorFrame } from '../errors.js';
 import type { ClaudePaths } from '../paths.js';
 import { mergeSources } from '../resources/merge.js';
 import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/scan.js';
-import type { OwnershipState } from '../ownership/state.js';
-import { classification, guardMethod } from '../ownership/guard.js';
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
@@ -27,8 +25,9 @@ import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
+import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
@@ -235,8 +234,6 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
   try {
-    // ahead of parsing: what this machine may not do, it may not do with any parameters
-    guardMethod(ctx.ownership, req.method as MethodName, ctx.router?.onWorker);
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
     if (ctx.mutations?.serves(req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };

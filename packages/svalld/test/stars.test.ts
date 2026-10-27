@@ -6,7 +6,7 @@ import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, makeHome, ownerOf } from './helpers.js';
+import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
 
@@ -21,7 +21,7 @@ describe('stars', () => {
     const store = Store.load(paths.state, () => {});
     store.update((d) => { for (const [n, id] of ['a', 'b', 'c', 'd'].entries()) d.robots[id] = robot(id, n); });
     const config = Config.parse({});
-    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config, ownership: ownerOf(home, config.id), log: silentLogger });
+    const fleet = new Fleet({ store, tmux: {} as Tmux, paths, config, log: silentLogger });
     const starred = () => starredOf(store.state).map((c) => c.id);
     return { fleet, store, starred };
   }

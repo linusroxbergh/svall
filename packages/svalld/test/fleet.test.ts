@@ -1,11 +1,10 @@
 import { execFileSync, spawn } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MachineId, SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
+import { SPACING, crewGrid, emptyState, isLand, landCells, sizeForCrew, type AgentKind, type FleetState } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { Config } from '../src/config.js';
 import { docsDir } from '../src/docs.js';
@@ -16,14 +15,13 @@ import { startHookReceiver, type HookEvent } from '../src/hooks/receiver.js';
 import { aboveHome, placementOk } from '../src/layout.js';
 import type { Deps as LinkDeps } from '../src/links/refresh.js';
 import { silentLogger, type Logger } from '../src/log.js';
-import type { OwnershipState } from '../src/ownership/state.js';
 import { expandHome, resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import type { LiveProc } from '../src/load/procs.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { parseScreen, SESSION, Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
 const OSID = 'ses_0f3a5b7c9d1eAbCdEfGhIjKlMn';
 // a pane of a real agent CLI as `Tmux.screen` reads it
@@ -47,8 +45,7 @@ runIf('Fleet', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const ownership = ownerOf(home, config.id);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 150, processes: async () => procs, readProcs: async () => [], ...deps });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => procs, readProcs: async () => [], ...deps });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -60,7 +57,7 @@ runIf('Fleet', () => {
     // a spawned stand-in agent reaches the fleet the way a real one does: over the hooks socket
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), silentLogger);
     cleanup.push(() => hooks.close());
-    return { fleet, store, tmux, home, procs, ownership };
+    return { fleet, store, tmux, home, procs };
   }
 
   // the next listing tmux gives is handed back only once released
@@ -415,7 +412,7 @@ runIf('Fleet', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership: ownerOf(home, config.id), log: silentLogger, pollMs: 150 });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150 });
     cleanup.push(async () => { fleet.stop(); await tmux.killServer(); });
     vi.spyOn(tmux, 'ensureServer').mockRejectedValueOnce(new Error('tmux server would not start'));
     await expect(fleet.activate()).rejects.toThrow('would not start');
@@ -1141,24 +1138,6 @@ runIf('Fleet', () => {
     expect(fresh.tmux).toBeDefined();
   });
 
-  it('leaves an agent whose monitors a quit stopped dormant on a frozen fleet', async () => {
-    const b = await boot();
-    const { c } = await withAgent(b);
-    await b.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'PostToolUse', sessionId: SID, toolName: 'Monitor', monitor: 'b1' } });
-    await b.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'Stop', sessionId: SID, backgroundTasks: 1, backgroundShells: ['b1'] } });
-    expect(b.store.state.robots[c.id].agent).toMatchObject({ status: 'done', monitors: ['b1'] });
-    await b.fleet.stopAll();
-    expect(b.store.state.robots[c.id].revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
-
-    const typed: string[] = [];
-    const frozen = await boot({ opening: true, state: structuredClone(b.store.state) });
-    await frozen.ownership.freeze({ id: 'tx-1', fromMachineId: MachineId.parse(crypto.randomUUID()), toMachineId: MachineId.parse(crypto.randomUUID()), phase: 'preparing', startedAt: 1 });
-    vi.spyOn(frozen.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
-    await frozen.fleet.resumeInterrupted();
-    expect(frozen.store.state.robots[c.id].tmux).toBeUndefined();
-    expect(typed).toEqual([]);
-  });
-
   it('has every change on disk once it has stopped', async () => {
     const { fleet, home } = await boot();
     fleet.setDormancy(5);
@@ -1198,75 +1177,6 @@ runIf('Fleet', () => {
     expect(store.state.robots[c.id].tmux).toBeUndefined();
   });
 
-  it('ends no agent once a handover freezes the fleet, one found idle before ps answered included', async () => {
-    const b = await boot();
-    const { fleet, store, ownership } = b;
-    const { c } = await withAgent(b);
-    store.update((d) => { d.robots[c.id].agent!.lastActivityAt = 0; });
-    let answer!: () => void;
-    const listed = new Promise<void>((r) => { answer = r; });
-    fleet['deps'].processes = async () => { await listed; return b.procs; };
-    const ending = fleet['endIdleAgents']();
-    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-    answer();
-    await ending;
-    expect(store.state.robots[c.id].tmux).toBeDefined();
-    expect(store.state.robots[c.id].revive).toBeUndefined();
-  });
-
-  const OTHER = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
-  const freeze = (o: OwnershipState) => o.freeze({ id: 'tx-1', fromMachineId: o.machineId, toMachineId: OTHER, phase: 'preparing', startedAt: 1 });
-
-  it('stops a frozen or a replica fleet for a quit without ending any terminal, and still says it stopped', async () => {
-    const handed: [string, (o: OwnershipState) => Promise<void>][] = [
-      ['frozen', freeze],
-      ['replica', (o) => o.installCommitted({ fleetId: o.record().fleetId, generation: 1, ownerMachineId: OTHER })],
-    ];
-    for (const [what, hand] of handed) {
-      const b = await boot();
-      const { fleet, store, tmux, ownership } = b;
-      const { c, pid } = await withAgent(b);
-      await hand(ownership);
-      const stopped = new Promise<void>((r) => fleet.once('stopped', r));
-      await fleet.stopAll();
-      await stopped;
-      expect(store.state.robots[c.id].tmux, what).toEqual(c.tmux);
-      expect(store.state.robots[c.id].agent?.sessionId, what).toBe(SID);
-      expect(store.state.robots[c.id].revive, what).toBeUndefined();
-      expect((await tmux.listWindows()).map((w) => w.name), what).toContain(c.id);
-      expect(() => process.kill(pid, 0), what).not.toThrow();
-    }
-  });
-
-  it('writes nothing, and starts no scribe pass, from a poll whose listing a freeze overtook', async () => {
-    const b = await boot();
-    const { fleet, store, tmux, ownership } = b;
-    const listing = holdListing(tmux);
-    await listing.listed;
-    const tick = fleet['poll']['ticking'];
-    await freeze(ownership);
-    const update = vi.spyOn(store, 'update');
-    const scribe = vi.spyOn(fleet['scribe'], 'tick');
-    listing.release();
-    await tick;
-    expect(update).not.toHaveBeenCalled();
-    expect(scribe).not.toHaveBeenCalled();
-  });
-
-  it('adopts no stray window from a reconcile whose listing a freeze overtook', async () => {
-    const b = await boot();
-    const { fleet, store, tmux, ownership } = b;
-    await tmux.newWindow('stray', '/tmp', {});
-    const listing = holdListing(tmux);
-    const reconciling = fleet.reconcileNow();
-    await listing.listed;
-    await freeze(ownership);
-    listing.release();
-    await reconciling;
-    expect(store.state.robots).toEqual({});
-    expect((await tmux.listWindows()).map((w) => w.name)).toContain('stray');
-  });
-
   it('leaves an agent whose pid is gone or runs another program, or whose launch a resume would change', async () => {
     const b = await boot();
     const { fleet, store, procs } = b;
@@ -1290,11 +1200,11 @@ runIf('Fleet', () => {
     const sleepBoot = (extra: { pollMs?: number } = {}) => {
       return boot({
         ...extra,
-        readProcs: async () => { await reading.hold; await procsRef.onRead?.(); return live(procsRef.list); },
+        readProcs: async () => { await reading.hold; return live(procsRef.list); },
         endOpts: { kill: () => { ended.kills++; }, wait: async () => { ended.waits++; await ended.gate; } },
-      }).then((x) => { procsRef.list = x.procs; procsRef.onRead = undefined; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); reading.hold = Promise.resolve(); return x; });
+      }).then((x) => { procsRef.list = x.procs; ended.kills = 0; ended.waits = 0; ended.gate = Promise.resolve(); reading.hold = Promise.resolve(); return x; });
     };
-    const procsRef: { list: Proc[]; onRead?: () => Promise<void> } = { list: [] };
+    const procsRef: { list: Proc[] } = { list: [] };
     it('puts a working robot to sleep without marking it interrupted', async () => {
       const b = await sleepBoot();
       const { c } = await withAgent(b);
@@ -1446,62 +1356,6 @@ runIf('Fleet', () => {
       release();
       await sleeping;
     });
-
-    it('refuses a sleep a freeze overtook while it read the processes, and leaves the robot running', async () => {
-      const b = await sleepBoot();
-      const { c } = await withAgent(b);
-      procsRef.onRead = () => freeze(b.ownership);
-      await expect(b.fleet.sleepRobot(c.id)).rejects.toMatchObject({ code: 'frozen' });
-      expect(b.store.state.robots[c.id].tmux).toEqual(c.tmux);
-      expect(b.store.state.robots[c.id].revive).toBeUndefined();
-      expect(await b.tmux.hasWindow(c.tmux!.windowId)).toBe(true);
-      expect(ended.kills).toBe(0);
-    });
-
-    it('has a freeze settle only once a sleep it let through has ended what the robot started', async () => {
-      const b = await sleepBoot();
-      const { c } = await withAgent(b);
-      let release!: () => void;
-      ended.gate = new Promise<void>((r) => { release = r; });
-      await b.fleet.sleepRobot(c.id);
-      await freeze(b.ownership);
-      let settled = false;
-      const settling = b.fleet.settle().then(() => { settled = true; });
-      await new Promise((r) => setTimeout(r, 300));
-      expect(settled).toBe(false);
-      release();
-      await settling;
-      expect(ended.kills).toBeGreaterThan(0);
-    });
-  });
-
-  it('has a freeze settle only once a delete it overtook has closed the windows and ended what the robot started', async () => {
-    const kills: number[] = [];
-    let release!: () => void;
-    const gate = new Promise<void>((r) => { release = r; });
-    let onRead: (() => Promise<void>) | undefined;
-    const procs = { list: [] as Proc[] };
-    const b = await boot({
-      readProcs: async () => { await onRead?.(); return procs.list.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args, args: p.args })); },
-      endOpts: { kill: (pid) => { kills.push(pid); }, wait: () => gate },
-    });
-    procs.list = b.procs;
-    const { c, pid } = await withAgent(b);
-    let settling: Promise<void> | undefined;
-    let settled = false;
-    onRead = async () => {
-      onRead = undefined;
-      await freeze(b.ownership);
-      settling = b.fleet.settle().then(() => { settled = true; });
-    };
-    await b.fleet.closeRobot(c.id);
-    expect(settling).toBeDefined();
-    await new Promise((r) => setTimeout(r, 300));
-    expect(settled).toBe(false);
-    expect(kills).toContain(pid);
-    release();
-    await settling;
-    expect(await b.tmux.hasWindow(c.tmux!.windowId)).toBe(false);
   });
 
   it('leaves an agent with work in the background, or no transcript to resume from', async () => {
@@ -1616,74 +1470,6 @@ runIf('Fleet', () => {
     release();
     await ending;
     expect((await revived).tmux?.windowId).not.toBe(windowId);
-  });
-
-  it('opens no window for a revive admitted before a freeze, and settles only once that revive has answered', async () => {
-    const b = await boot();
-    const { fleet, store, tmux, ownership } = b;
-    const { c } = await withAgent(b);
-    store.update((d) => { d.robots[c.id].agent!.lastActivityAt = 0; });
-    const real = tmux.killWindow.bind(tmux);
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    vi.spyOn(tmux, 'killWindow').mockImplementation(async (id) => { await held; return real(id); });
-    const ending = fleet['endIdleAgents']();
-    await waitFor(() => !store.state.robots[c.id].tmux);
-    // admitted while the fleet was writable, it waits on the idle close past the freeze
-    const revived = fleet.reviveRobot(c.id).then(() => 'opened', (e: Error & { code?: string }) => e.code);
-    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-    let settled = false;
-    const settling = fleet.settle().then(() => { settled = true; });
-    await new Promise((r) => setTimeout(r, 100));
-    expect(settled).toBe(false);
-    release();
-    await ending;
-    await settling;
-    expect(await revived).toBe('frozen');
-    expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
-    expect(store.state.robots[c.id].tmux).toBeUndefined();
-  });
-
-  it('settles only once a robot created before a freeze holds its window, and opens no window for one asked once frozen', async () => {
-    const b = await boot();
-    const { fleet, store, tmux, ownership } = b;
-    const islandId = fleet.createIsland({ name: 'x' }).id;
-    const real = tmux.newWindow.bind(tmux);
-    let release!: () => void;
-    const held = new Promise<void>((r) => { release = r; });
-    const spy = vi.spyOn(tmux, 'newWindow').mockImplementationOnce(async (...a) => { const w = await real(...a); await held; return w; });
-    // admitted while the fleet was writable, its window is open and not yet on its record when the freeze comes
-    const created = fleet.createRobot({ islandId, cwd: '/tmp', command: 'sleep 600' });
-    await waitFor(() => spy.mock.calls.length === 1);
-    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-    let settled = false;
-    const settling = fleet.settle().then(() => { settled = true; });
-    await new Promise((r) => setTimeout(r, 100));
-    expect(settled).toBe(false);
-    release();
-    await settling;
-    // what the rest lists next is what the state holds
-    const c = Object.values(store.state.robots)[0];
-    expect((await tmux.listWindows()).map((w) => w.windowId)).toEqual([c.tmux!.windowId]);
-    await created;
-
-    await expect(fleet.createRobot({ islandId, cwd: '/tmp' })).rejects.toMatchObject({ code: 'frozen' });
-    expect(await tmux.listWindows()).toHaveLength(1);
-  });
-
-  it('types no prompt into a robot created before a freeze whose agent reports in after it', async () => {
-    const b = await boot({ runTimeoutMs: 5000 });
-    const { fleet, store, tmux, ownership } = b;
-    const typed: string[] = [];
-    const send = tmux.sendLine.bind(tmux);
-    vi.spyOn(tmux, 'sendLine').mockImplementation(async (pane, text, enter) => { typed.push(text); return send(pane, text, enter); });
-    const created = fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600', run: 'fix the tests' });
-    await waitFor(() => Object.keys(store.state.robots).length === 1 && typed.length === 1);
-    const id = Object.keys(store.state.robots)[0];
-    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-    await fleet.onSocketEvent({ hook: { robotId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
-    expect((await created).runSent).toBe(false);
-    expect(typed).toEqual(['sleep 600']);
   });
 
   it('goes back to a window whose kill failed, rather than start a second agent', async () => {
@@ -2236,49 +2022,6 @@ runIf('Fleet', () => {
       expect(typed).toEqual([]);
     });
 
-    it('waits out a freeze, and goes in once it lifts', async () => {
-      const { fleet, ownership, c, screen, typed } = await agentPane('claude');
-      screen.mockResolvedValue(pane('claude-draft'));
-      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-      const reads = screen.mock.calls.length;
-      screen.mockResolvedValue(pane('claude-empty'));
-      await new Promise((r) => setTimeout(r, 1200));
-      expect(typed).toEqual([]);
-      // a frozen fleet's panes are not read either
-      expect(screen.mock.calls.length).toBe(reads);
-      await ownership.unfreeze();
-      await waitFor(() => typed.length === 1);
-      expect(typed).toEqual(['go']);
-    });
-
-    it('types nothing when a freeze lands while the prompt line is being read', async () => {
-      const { fleet, ownership, c, screen, typed } = await agentPane('claude');
-      screen.mockResolvedValue(pane('claude-draft'));
-      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      screen.mockImplementation(async () => {
-        if (!ownership.isFrozen()) await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-        return pane('claude-empty');
-      });
-      await waitFor(() => ownership.isFrozen());
-      await new Promise((r) => setTimeout(r, 1200));
-      expect(typed).toEqual([]);
-    });
-
-    it('is held when a freeze lands while its prompt line is being read, and goes in once it lifts', async () => {
-      const { fleet, store, ownership, c, screen, typed } = await agentPane('claude');
-      screen.mockImplementationOnce(async () => {
-        await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-        return pane('claude-empty');
-      });
-      expect(await fleet.run(c.id, 'go', true)).toBe('queued');
-      expect(typed).toEqual([]);
-      expect(store.state.robots[c.id].agent?.status).not.toBe('working');
-      await ownership.unfreeze();
-      await waitFor(() => typed.length === 1);
-      expect(typed).toEqual(['go']);
-    });
-
     it("is dropped when the agent's session ends, not typed into the next one", async () => {
       const { fleet, c, hook, screen, typed } = await agentPane('claude');
       screen.mockResolvedValue(pane('claude-draft'));
@@ -2417,17 +2160,6 @@ runIf('Fleet', () => {
       screen.mockResolvedValue({ ...pane('claude-trust'), command: 'vim' });
       expect(await fleet.run(c.id, ':q', true)).toBe('delivered');
       expect(typed).toEqual(['ls', ':q']);
-    });
-
-    it('is refused, not typed into a shell, when a freeze lands while the pane is read', async () => {
-      const { fleet, ownership, c, screen, typed } = await silentPane();
-      screen.mockImplementationOnce(async () => {
-        await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
-        return { ...pane('claude-trust'), command: 'sh' };
-      });
-      await expect(fleet.run(c.id, 'make deploy', true)).rejects.toMatchObject({ code: 'frozen' });
-      expect(fleet['prompts'].holds(c.id)).toBe(false);
-      expect(typed).toEqual([]);
     });
   });
 
@@ -2927,8 +2659,8 @@ runIf('Fleet', () => {
     expect(fleet.robot(c.id).agent).toBeUndefined();
   });
 
-  it('keeps the agent a dormant terminal resumes when an event from the shared server names it, frozen or not', async () => {
-    const { fleet, store, ownership } = await boot({ pollMs: 60_000 });
+  it('keeps the agent a dormant terminal resumes when an event from the shared server names it', async () => {
+    const { fleet, store } = await boot({ pollMs: 60_000 });
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const server = spawn('sleep', ['60'], { argv0: '/u/.codex/bin/codex app-server --listen unix:// --managed-daemon', stdio: 'ignore' });
     cleanup.push(async () => { server.kill(); });
@@ -2943,9 +2675,6 @@ runIf('Fleet', () => {
       markSlotDormant(held.second);
     });
     const stop = (term?: 2) => fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'codex', name: 'Stop', sessionId, pid: server.pid, ...(term && { term }) } });
-    stop();
-    stop(2);
-    await ownership.freeze({ id: 'tx-1', fromMachineId: ownership.machineId, toMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'), phase: 'preparing', startedAt: 1 });
     stop();
     stop(2);
     expect(fleet.robot(c.id).agent?.sessionId).toBe(sessionId);

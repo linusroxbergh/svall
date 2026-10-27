@@ -20,7 +20,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, stubFleets, stubLoad, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, stubFleets, stubLoad, stubMobile, stubUsage, waitFor } from './helpers.js';
 
 const PHONE_KEY = 'k'.repeat(48);
 
@@ -72,7 +72,7 @@ describe('startApi', () => {
         store: {} as never, fleet: {} as never, fleets: stubFleets, terminals: {} as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
         push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
         claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
-        ownership: {} as never, systemInfo: {} as never,
+        systemInfo: {} as never,
       })).rejects.toThrow(/EADDRINUSE/);
       expect(vi.getTimerCount()).toBe(0);
     } finally {
@@ -93,8 +93,7 @@ runIf('API', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const ownership = ownerOf(home, config.id);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log, pollMs: 200 });
+    const fleet = new Fleet({ store, tmux, paths, config, log, pollMs: 200 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -104,11 +103,11 @@ runIf('API', () => {
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: o.token ?? 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(),
-      claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs, ownership, key: () => PHONE_KEY, logins: () => ['me@example.com'],
+      claude, docs: paths.docs, agentProfiles: paths.agentProfiles, heartbeatMs, key: () => PHONE_KEY, logins: () => ['me@example.com'],
       systemInfo: () => systemInfo({ machineId: machineId(), agents: async () => [] }),
     });
     cleanup.unshift(async () => { await api.close(); workspace.close(); });
-    return { api, store, fleet, terminals, claude, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, config };
+    return { api, store, fleet, terminals, claude, docs: paths.docs, agentProfiles: paths.agentProfiles, config };
   }
 
   it('rejects a bad token and accepts a good one', async () => {

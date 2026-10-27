@@ -31,14 +31,15 @@ export const registryFile = (dir: string = configDir()): string => path.join(dir
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
-/** Every machine in the registry; none while it has no file. */
+/** Every machine in the registry; none while it has no file, as when a file stands where its folder would be. */
 export function readRegistry(dir: string = configDir()): MachineEntry[] {
   const file = registryFile(dir);
   let text: string;
   try {
     text = fs.readFileSync(file, 'utf8');
   } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return [];
     throw e;
   }
   try {
@@ -63,11 +64,13 @@ export function hardwareId(platform: NodeJS.Platform = process.platform, ioreg =
   return undefined;
 }
 
+class InvalidMachineFile extends Error {}
+
 function read(file: string): Machine {
   try {
     return Machine.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
   } catch (err) {
-    throw new Error(`invalid machine file ${file}: ${String(err)}; delete the file to mint a new machine id, or restore it from backup`);
+    throw new InvalidMachineFile(`invalid machine file ${file}: ${String(err)}`);
   }
 }
 
@@ -98,11 +101,15 @@ function machine(dir: string, hardware: HardwareReader): Machine {
   return { ...m, hardwareId: actual };
 }
 
-/** Why `machineId()` threw, with the fix when ~/.config is not this account's to write. */
-export function machineIdFailure(err: unknown): string {
+const REMINT = 'delete the file to mint a new machine id, or restore it from backup';
+const RESTORE = 'restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again';
+
+/** Why `machineId()` threw, with the fix; while `workers` know this Mac by its id, a file that does not parse is restored. */
+export function machineIdFailure(err: unknown, o: { workers?: boolean } = {}): string {
   const dir = configDir();
   const code = (err as NodeJS.ErrnoException).code;
-  const fix = code === 'EACCES' ? `; fix it with: sudo chown -R $USER ${path.dirname(dir)}`
+  const fix = err instanceof InvalidMachineFile ? `; ${o.workers ? RESTORE : REMINT}`
+    : code === 'EACCES' ? `; fix it with: sudo chown -R $USER ${path.dirname(dir)}`
     : code === 'ENOTDIR' ? `; a file is in the way of the folder ${dir}: move it aside`
     : '';
   return `${(err as Error).message}${fix}`;

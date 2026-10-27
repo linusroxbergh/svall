@@ -45,7 +45,6 @@ export function resolvePaths(home: string = svallHome()) {
     fleetConfig: path.join(home, 'fleet.json'),
     nodeConfig: path.join(home, 'node.json'),
     legacyConfig: path.join(home, 'config.json'),
-    owner: path.join(home, 'owner.json'),
     env: path.join(home, '.env'),
     token: path.join(home, 'token'),
     port: path.join(home, 'port'),

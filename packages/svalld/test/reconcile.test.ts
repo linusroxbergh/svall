@@ -223,19 +223,6 @@ describe('reconcile', () => {
     expect(gone('codex').second?.revive).toEqual({ command: `codex resume -c tui.resume_cwd=session ${SID}` });
   });
 
-  it('keeps the resume command of a terminal a handover has yet to start when it finds the window opened for it', () => {
-    const s = emptyState();
-    const agent = { kind: 'claude' as const, sessionId: SID, transcriptPath: '/t', status: 'idle' as const, lastActivityAt: 0 };
-    const revive = { command: `claude --resume ${SID}` };
-    s.robots.c_a = robot({ agent, revive, second: { cwd: '/s', unread: false, agent, revive } });
-    s.robots.c_b = robot({ id: 'c_b', revive: { command: '' } });
-    const carried = (id: string) => id === 'c_a';
-    reconcile(s, [live('c_a'), live('c_a-2', '@2', '%2'), live('c_b', '@3', '%3')], 0, undefined, carried).mutate(s);
-    expect(s.robots.c_a).toMatchObject({ tmux: { windowId: '@1' }, agent, revive, second: { tmux: { windowId: '@2' }, agent, revive } });
-    expect(s.robots.c_b.tmux).toEqual({ windowId: '@3', paneId: '%3' });
-    expect(s.robots.c_b.revive).toBeUndefined();
-  });
-
   it('a second terminal opened since the listing was taken is left alone', () => {
     const s = emptyState();
     s.robots.c_a = robot({});

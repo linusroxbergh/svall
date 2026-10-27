@@ -97,7 +97,7 @@ function config(t: Target, d: DoctorDeps): Check {
   }
 }
 
-// a machine.json copied from another machine gives this one that machine's id, so svalld runs a fleet a gateway holds read-only here
+// a machine.json copied from another machine gives this one that machine's id
 function machine(d: DoctorDeps): Check {
   const { file, hardwareId: actual } = d.machine;
   let stored: string | undefined;
@@ -122,7 +122,7 @@ export function unattended(env: NodeJS.ProcessEnv, tty: boolean): string | undef
 
 /**
  * `svall doctor --rebind`: machine.json bound to this machine's hardware, for a person whose machine changed hardware
- * under it; on a copy of another machine's file, both would run the fleets a gateway holds.
+ * under it; on a copy of another machine's file, both would go by one id.
  */
 export function rebindMachineFile(o: { file: string; hardwareId?: string; unattended?: string; read(file: string): string | undefined; rebind(hardwareId: string): void }): { ok: boolean; message: string } {
   if (o.unattended) return { ok: false, message: `nothing was changed: rebinding machine.json needs a person at a terminal outside any fleet's agents and tmux panes, and this run ${o.unattended}` };
