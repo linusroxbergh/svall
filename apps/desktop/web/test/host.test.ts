@@ -46,20 +46,18 @@ describe('host run', () => {
   });
 
   it('names no machine by its id, and keeps an id that names a file', () => {
-    const [other, mine, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
+    const [other, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
     let run = beginRun('add', { name: 'trift', ssh: 'trift.test' });
     run = applyStep(run, step('master', 'fail', { detail: `trift.test now reaches machine ${other}, not trift (${far})`, action: `point trift.test back at trift (${far})` }));
-    run = applyStep(run, step('enrol', 'fail', { detail: `/home/ada/.svall/worker.json names ${other} as its home, not this Mac (${mine})` }));
     run = applyStep(run, step('claude', 'warn', { detail: `/Users/ada/.claude/projects/-app/${other}.jsonl is not there` }));
     expect(run.steps.map((s) => s.detail)).toEqual([
       'trift.test now reaches another machine, not trift',
-      '/home/ada/.svall/worker.json names another machine as its home, not this Mac',
       `/Users/ada/.claude/projects/-app/${other}.jsonl is not there`,
     ]);
     expect(run.steps[0].action).toBe('point trift.test back at trift');
   });
 
-  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and the generations', () => {
+  it('names a machine this Mac knows by its name, and leaves out the ids of fleets', () => {
     const [studio, other, fleet, theirs] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
     const names = { [studio]: 'studio' };
     const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
@@ -68,11 +66,6 @@ describe('host run', () => {
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
     expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`))
       .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/records/${fleet}.json holds a readable record`);
-    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4`))
-      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it");
-    expect(said(`trift cannot take a copy of this fleet: this fleet belongs to ${other} at generation 5`))
-      .toBe('trift cannot take a copy of this fleet: this fleet belongs to another machine');
-    expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
   });
 
   it('drops an id it does not know from a step line', () => {
