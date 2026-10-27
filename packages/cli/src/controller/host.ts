@@ -1036,7 +1036,14 @@ export async function consentHost(name: string, o: { item: string; on: boolean; 
   return d.consent(entry.id, o.item, o.fields ?? listed, o.on);
 }
 
-/** `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget. */
+// a line of the far uninstall that says what it did with the keys the mirror copied there, and one that leaves some there
+const TAKE_BACK = /the mirror copied|the mirror's keys|mirror blobs? left/;
+const KEYS_LEFT = /^(could not|left) /;
+
+/**
+ * `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget; then what the
+ * uninstall did with the keys the mirror copied there.
+ */
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => {
@@ -1047,7 +1054,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     const fleets = await run.step('fleet', () => Promise.resolve(gatewayFleets(entry, d)));
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {
-      if (o.forget) return { value: false, status: 'skip' as const, detail: `${name} is left untouched: ${entry.record.ssh} keeps Svall until svall uninstall runs there` };
+      if (o.forget) return { value: undefined, status: 'skip' as const, detail: `${name} is left untouched: ${entry.record.ssh} keeps Svall until svall uninstall runs there` };
       let master: SshMaster | undefined;
       try {
         master = await d.openMaster(entry.record.ssh);
@@ -1066,7 +1073,8 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
             `${onThere(entry.record.ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
         }
         // its last line can name a command for that machine, such as the rm -rf of the fleets it kept
-        return { value: true, detail: `on ${entry.record.ssh}: ${r.stdout.trim().split('\n').at(-1) || 'svall uninstall'}` };
+        const lines = r.stdout.trim().split('\n');
+        return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: `on ${entry.record.ssh}: ${lines.at(-1) || 'svall uninstall'}` };
       } catch (err) {
         if (err instanceof StepError) throw err;
         throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
@@ -1082,6 +1090,12 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       d.registry.save();
       return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
     });
+    if (!uninstalled?.length) return;
+    const left = uninstalled.some((l) => KEYS_LEFT.test(l));
+    await run.step('keys', () => Promise.resolve({
+      value: undefined, detail: uninstalled.join('; '),
+      ...(left && { status: 'warn' as const, action: onThere(entry.record.ssh, 'take the keys the mirror copied out of the files named here, or delete those files') }),
+    }));
   });
 }
 

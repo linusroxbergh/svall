@@ -54,6 +54,19 @@ describe('the setup rows of the mirror', () => {
     expect(rows(report({ vars: { LINEAR_API_KEY: false } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
   });
 
+  it('an unticked env key holding a reference with a default asks for the variable that reference reads, and is the worker\'s own once it has it', () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = '${LIN_KEY:-lin_fake_1234567890}'; });
+    expect(rows(report({ vars: { LINEAR_API_KEY: true } })).find(byKey('claude:mcp:linear'))).toMatchObject({
+      status: 'warn', detail: 'mirrored without env.LINEAR_API_KEY ${L…0}; run svall worker env LIN_KEY there, or set them in ~/.svall/mirror-overrides on w1',
+    });
+    expect(rows(report({ vars: { LIN_KEY: true } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
+  });
+
+  it('an unticked server whose keys the worker still holds as the copy says they are still on w1, to check again', () => {
+    expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'copied' } }))
+      .toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false } });
+  });
+
   it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
     expect(row('claude:mcp:linear', { ticked: true, secrets: {} })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
     expect(row('claude:mcp:linear', { ticked: true, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
@@ -205,7 +218,7 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('claude:plugin:acme:mcp:pdf')).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.PDF_KEY pdf…90' });
     tick('claude:mcp:linear', [], false);
     // the copy stays until the next push takes it
-    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
+    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again' });
     await push();
     expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
     editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
@@ -231,6 +244,31 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('oauth:claude:mcp:notion')).toMatchObject({ status: 'warn', action: 'log in once on w1' });
     put(path.join(worker.claudeDir, '.credentials.json'), JSON.stringify({ mcpOAuth: { 'notion|4f1c': { accessToken: 'x' } } }));
     expect(await rowOf('oauth:claude:mcp:notion')).toMatchObject({ status: 'ok', detail: 'logged in on w1' });
+  });
+
+  it('a subagent file listed whole asks to be copied whole and reads as copied once the worker holds it', async () => {
+    put(path.join(mac.claudeDir, 'agents/db.md'), ['---', 'mcpServers:', '  - pg:', '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890', '---', ''].join('\n'));
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md whole to w1', tick: { fields: ['mcpServers.pg'], on: false } });
+    tick('claude:agent:db.md', ['mcpServers.pg'], true);
+    await push();
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
+    expect(fs.statSync(path.join(worker.claudeDir, 'agents/db.md')).mode & 0o777).toBe(0o600);
+  });
+
+  it('an unticked item carried whole that the worker still holds says it is still on w1, to check again, until a push takes it', async () => {
+    put(path.join(mac.claudeDir, 'agents/db.md'), ['---', 'mcpServers:', '  - pg:', '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890', '---', ''].join('\n'));
+    editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } }; });
+    tick('claude:agent:db.md', ['mcpServers.pg'], true);
+    tick('claude:mcp:odd', ['command', 'sandbox'], true);
+    await push();
+    tick('claude:agent:db.md', [], false);
+    tick('claude:mcp:odd', [], false);
+    for (const item of ['claude:agent:db.md', 'claude:mcp:odd']) {
+      expect(await rowOf(item)).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false } });
+    }
+    await push();
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md whole to w1' });
+    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'copy odd whole to w1' });
   });
 
   it('a key in an arg under the Mac\'s home, unticked, reads as the mirror left it there, moved, and not as the worker\'s own', async () => {

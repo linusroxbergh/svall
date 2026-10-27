@@ -127,19 +127,31 @@ A path under your home on this Mac lands under the home there. Svall's own hooks
 the machine are never replaced. Logins never travel: log each agent, and `gh`, in on the machine.
 
 **Keys.** A key in your setup travels only once you tick it for that machine. Keys are an MCP server's `env` values,
-its headers, and a key in its URL or arguments, plus the key fields of `settings.json`, `config.toml` and the OpenCode
-config. Each server or file that holds one is a row under **Your agent setup**, such as "copy linear's keys to
-studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). Unticked, the server is copied without them:
-each `env` key becomes the agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code,
-`{env:LINEAR_API_KEY}` for OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable
-from its environment on the machine, which robots there take from the fleet's `.env` (below); a key in its headers,
-URL or arguments is left out. The row stays until you tick it or the machine has its own key: a key for that server
-in the overrides (below) counts, and so does an `env` key's variable set there with `svall worker env LINEAR_API_KEY`;
-the row then reads "studio has its own keys". While this Mac is linked to the machine, ticking or unticking changes
-the copy there at once, whatever runs there; otherwise the change is saved, and takes effect when studio links. An
-untick while this Mac cannot read the file that holds the key is saved too, and the copy stays on studio until this
-Mac can read that file again. A file there that holds a ticked key is readable by your account alone. A server or
-plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only once ticked.
+its headers, and a key in its URL or arguments, plus the key fields of `settings.json` (among them the headers a
+marketplace in `extraKnownMarketplaces` sends and the query of its URL, which are emptied in `known_marketplaces.json`
+too until ticked), `config.toml` and the OpenCode config. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
+holds its default as a key. Each server or file that holds one is a row under **Your agent setup**, such as "copy
+linear's keys to studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). A key in an argument is named
+by the flag before it, its own `--flag=` or `KEY=`, or its URL's scheme and host, such as `args[--api-key]` or
+`args[https://example.com].token`, and every argument of one name is that one key, as an `env` key is, so a tick
+follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
+agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code, `{env:LINEAR_API_KEY}` for
+OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable from its environment on
+the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
+out; a reference with a default keeps the reference alone. The row stays until you tick it or the machine has its own
+key: a key for that server in the overrides (below) counts, and so does the variable an `env` key reads set there with
+`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While this Mac is linked to the
+machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
+takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
+copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
+reads "still on studio; check studio again". A file there that holds a ticked key is readable by your account alone. A
+server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
+once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+`plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
+`marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
+or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
+key or fields Svall does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
+this Mac.
 From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
 [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
 `--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item.
@@ -154,9 +166,11 @@ from a pipe, and keeps it in the fleet's `.env` on the machine. Robots that star
 
 **Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
 terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
-`/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead.
-Over your own ssh, forward the port with `ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed
-with the command to run there, since Svall cannot see whether you did. A server whose program the machine lacks is a
+`/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead,
+and an `mcp-remote` server the port that follows its URL. Over your own ssh, forward the port with
+`ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, since Svall
+cannot see whether you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
+port the login names. A server whose program the machine lacks is a
 row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension, is listed and not copied.
 
 **The machine's own settings.** Files under `mirror-overrides/` in the fleet's home on the machine (`~/.svall` for the
@@ -166,8 +180,8 @@ home. In `claude/.claude.json`, only `mcpServers` counts, merged over the copied
 `claude/settings.json`, `codex/config.toml` and `opencode/opencode.json` merge key by key, and any other file replaces
 the copy. Keep there
 what the machine should have of its own, such as its own key for a server. Any other edit made on the machine stays
-until that setting changes on this Mac, but a copied server you delete there comes back, and a ticked key you change
-there is written again.
+until that setting changes on this Mac, but a copied server you delete there, or a ticked key you change there, is
+written back at the next copy; a key of the machine's own belongs in the overrides.
 
 Comments in `config.toml` and `opencode.jsonc` on the machine do not survive a merge. Svall writes both back without
 them, and `opencode.jsonc` as plain JSON under its own name.
@@ -234,7 +248,7 @@ says what a machine is.
 | `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends in the same one line as `host add`: ready, or the number of things left before robots can move there, with their names. Each failed check counts, and so does each warning with an action, such as a key not ticked. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
 | `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. A machine that was a fleet's gateway then becomes its worker ([above](#a-machine-that-was-a-fleets-gateway)). On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux until it ends, as at a reboot. Robots running there keep running. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
-| `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), and drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
+| `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys the mirror copied there stay there. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until both machines run the same release, a move
@@ -248,11 +262,14 @@ On the Linux machine itself:
 - `svall uninstall` refuses while the machine is a fleet's gateway, runs a fleet for its gateway, or holds a handover
   journal, since that would strand the fleet. Before it removes Svall, it takes back what each fleet's mirror copied
   there with keys, each while it is as the mirror wrote it: a copied key becomes what an untick leaves (an `env` key
-  the agent's reference to its variable, any other key emptied), a server copied whole leaves its config file, a
-  plugin's server or settings file that holds a ticked key is deleted, and a copy a daemon left unapplied in the fleet's
-  `cache` goes. A key, server or file changed on the machine since the mirror wrote it stays, and so does every key in
-  a config file there that no longer parses, as do the fleet's `.env` and its `mirror-overrides/`, which are the
-  machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
+  the agent's reference to its variable, a key in a URL or argument the rest of it, any other key emptied), a server
+  copied whole leaves its config file, a key in `known_marketplaces.json`, a `marketplace.json` or a subagent is
+  taken out where it lies there, even where an entry added above it moved it, and the file stays, another file the
+  mirror wrote holding a ticked key, such as a plugin's server file or a subagent whose `mcpServers` Svall cannot
+  read or whose server has fields Svall does not know, is deleted, and a copy a daemon left unapplied in the fleet's
+  `cache` goes. A key, server or file changed on the machine since the mirror wrote it stays, named in what it
+  prints, and so does every key in a config file there that no longer parses, as do the fleet's `.env` and its
+  `mirror-overrides/`, which are the machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
   from the Mac checks the fleets that Mac knows of, then runs it with `--force-fleet` for each of them that names the
   machine as its gateway, so it still refuses for a fleet another Mac keeps there. To
   remove a machine two Macs use, bring the other Mac's fleet home and run `svall host remove <name> --forget` there,
