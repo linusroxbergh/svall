@@ -4,13 +4,13 @@ import { runChild, stderrCause } from './child.js';
 /** Answers a pass; an aborted `signal` ends the pass's child and rejects. */
 export type RunScribe = (system: string, prompt: string, signal?: AbortSignal) => Promise<string>;
 
-export type Effort = 'low' | 'medium' | 'high';
+type Effort = 'low' | 'medium' | 'high';
 /** What a call spent: input read fresh, output (reasoning included, and also counted on its own), and the cache's reads and writes. */
 export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number; costUsd?: number };
 export const NO_USAGE: Usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 };
 /** What one call asks of its CLI; each part left out is the CLI's own default. A schema makes the answer JSON that fits it. */
 export type Call = { model?: string; effort?: Effort; schema?: Record<string, unknown>; timeoutMs?: number };
-export type Answer = { text: string; usage: Usage };
+type Answer = { text: string; usage: Usage };
 /** Answers one call; an aborted `signal` ends the call's child and rejects. */
 export type Runner = (system: string, prompt: string, call: Call, signal?: AbortSignal) => Promise<Answer>;
 

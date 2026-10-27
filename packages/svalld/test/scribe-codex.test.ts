@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Config, modelPicks } from '../src/config.js';
 import { codexRunner as runner } from '../src/scribe/codex.js';
 import { scribeOf, type Call } from '../src/scribe/run.js';
@@ -73,23 +73,32 @@ describe('codexRunner for the retro', () => {
   const turn = (input: number, cached: number, output: number, reasoning: number) =>
     `echo '${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output, reasoning_output_tokens: reasoning } })}'`;
 
-  it('turns the shell tool off, hands codex the schema and adds up what each turn spent', async () => {
+  it('turns the shell and codex\'s other default tools off, hands codex the schema and adds up what each turn spent', async () => {
     const dir = makeHome();
     const keep = `while [ "$1" != "--output-schema" ]; do shift; done; cp "$2" "${dir}/schema"`;
     const bin = fakeCodex(dir, `(${keep}); ${turn(100, 40, 10, 4)}; ${turn(50, 0, 5, 0)}; ${writeAnswer}`);
     const answer = await runner({ cwd: dir, bin, retro: true })('s', 'p', { effort: 'medium', schema: { type: 'object', required: ['notes'] } });
     expect(answer).toEqual({ text: '{"note":"ok"}', usage: { input: 110, output: 15, cacheRead: 40, cacheWrite: 0, reasoning: 4 } });
     const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
-    expect(args).toContain('-c model_reasoning_effort="medium" -c features.shell_tool=false');
+    expect(args).toContain('-c model_reasoning_effort="medium" -c features.shell_tool=false -c web_search="disabled" '
+      + '--disable multi_agent --disable apps --disable view_image --disable image_generation --disable plugins --disable browser_use --disable computer_use');
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'schema'), 'utf8'))).toEqual({ type: 'object', required: ['notes'] });
   });
 
-  it('leaves the scribe its shell tool and gives it no schema', async () => {
+  it('leaves the scribe its tools and gives it no schema', async () => {
     const dir = makeHome();
     await codexRunner({ cwd: dir, bin: fakeCodex(dir, writeAnswer) })('s', 'p');
     const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
-    expect(args).not.toContain('shell_tool');
-    expect(args).not.toContain('--output-schema');
+    for (const flag of ['shell_tool', 'web_search', '--disable', '--output-schema']) expect(args).not.toContain(flag);
+  });
+
+  it('leaves no folder behind when the schema can\'t be written', async () => {
+    const dir = makeHome();
+    vi.stubEnv('TMPDIR', dir);
+    try {
+      await expect(runner({ cwd: path.join(dir, 'scribe'), bin: fakeCodex(dir, writeAnswer), retro: true })('s', 'p', { schema: { n: 1n } })).rejects.toThrow(/BigInt/);
+    } finally { vi.unstubAllEnvs(); }
+    expect(fs.readdirSync(dir).filter((f) => f.startsWith('svall-scribe-'))).toEqual([]);
   });
 });
 

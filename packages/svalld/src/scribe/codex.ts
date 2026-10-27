@@ -9,6 +9,9 @@ import type { Runner, Usage } from './run.js';
 // the flags that keep a headless pass off the user's machine: nothing written, no session left behind,
 // and none of their config, which is where their MCP servers and hooks live
 const ISOLATION = ['--sandbox', 'read-only', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config'];
+// a retro call turns off the shell, web search and the other tool features codex has on by default
+const TOOLS_OFF = ['-c', 'features.shell_tool=false', '-c', 'web_search="disabled"',
+  ...['multi_agent', 'apps', 'view_image', 'image_generation', 'plugins', 'browser_use', 'computer_use'].flatMap((f) => ['--disable', f])];
 
 // codex reports a failed turn on its event stream and leaves stderr empty; the message it wraps is the API's own
 function failure(events: string): string | undefined {
@@ -43,14 +46,14 @@ export function codexRunner(o: { cwd: string; bin?: string; retro?: true }): Run
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-scribe-'));
     const last = path.join(dir, 'last.txt');
     const schema = path.join(dir, 'schema.json');
-    if (call.schema) fs.writeFileSync(schema, JSON.stringify(call.schema));
     // without a robot id the Svall hook exits at once, so the pass is not mistaken for a robot
     const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = process.env;
     const args = [
       'exec', '--json', ...(call.model ? ['-m', call.model] : []), '-c', `model_reasoning_effort="${call.effort ?? 'low'}"`,
-      ...(o.retro ? ['-c', 'features.shell_tool=false'] : []), ...ISOLATION, ...(call.schema ? ['--output-schema', schema] : []), '-o', last, '-',
+      ...(o.retro ? TOOLS_OFF : []), ...ISOLATION, ...(call.schema ? ['--output-schema', schema] : []), '-o', last, '-',
     ];
     try {
+      if (call.schema) fs.writeFileSync(schema, JSON.stringify(call.schema));
       const { code, out, err } = await runChild(
         () => spawn(o.bin ?? 'codex', args, { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] }),
         { label: 'codex exec', stdin: `${system}\n\n---\n\n${prompt}`, timeoutMs: call.timeoutMs, signal },
