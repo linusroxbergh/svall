@@ -98,11 +98,11 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {refusal && (
           <>
             <div className="host-note" data-testid="move-refusal">
-              <span><span data-testid="move-reason">{refusal.reason}</span><span className="ho-sub">{refusal.action}</span></span>
+              <span><span data-testid="move-reason">{refusal.reason}</span><span className="modal-sub">{refusal.action}</span></span>
               {refusal.details.length > 0 && (
-                <details className="ho-more" data-testid="move-details">
+                <details className="modal-more" data-testid="move-details">
                   <summary>details</summary>
-                  <div className="ho-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
+                  <div className="modal-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
                 </details>
               )}
             </div>

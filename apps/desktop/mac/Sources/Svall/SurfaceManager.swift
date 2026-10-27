@@ -20,7 +20,7 @@ enum ControlSocket {
 
 /// A route to another machine: the ssh master that reaches it.
 struct RemoteRoute: Equatable {
-    let name: String, destination: String, controlSocket: String
+    let destination: String, controlSocket: String
 }
 
 /// Where a terminal's tmux session runs: this Mac, or another machine over its master.
@@ -37,7 +37,7 @@ enum AttachCommand {
 
     /// The robot's own route when it runs on another machine, else the window's.
     static func route(_ window: ConnectionRoute, _ attach: WebAttach) -> ConnectionRoute {
-        attach.via.map { .remote(RemoteRoute(name: $0.ssh, destination: $0.ssh, controlSocket: $0.controlSocket)) } ?? window
+        attach.via.map { .remote(RemoteRoute(destination: $0.ssh, controlSocket: $0.controlSocket)) } ?? window
     }
 
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.

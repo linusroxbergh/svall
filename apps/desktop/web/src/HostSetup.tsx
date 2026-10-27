@@ -155,7 +155,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       <span className="host-said">
         {asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
-        {row.action && said && <details className="ho-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
+        {row.action && said && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
       {row.tick ? (
@@ -276,7 +276,7 @@ export function HostSetup() {
                 <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
                   <span>
                     {confirm.forget ? `Forget drops the route to ${confirm.name} and leaves the machine as it is.` : `Remove uninstalls Svall on ${confirm.name} and drops its route.`}
-                    <span className="ho-sub">{confirm.forget ? 'Svall and its fleets stay on that machine.' : 'Its fleets and their files stay on that machine.'}</span>
+                    <span className="modal-sub">{confirm.forget ? 'Svall and its fleets stay on that machine.' : 'Its fleets and their files stay on that machine.'}</span>
                   </span>
                   <div className="acts">
                     <button className="btn dan" data-testid="host-confirm-yes"

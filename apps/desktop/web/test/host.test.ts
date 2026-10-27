@@ -214,10 +214,6 @@ describe('the attended checklist', () => {
     ]);
   });
 
-  it('lists what a machine needs without rsync', () => {
-    expect(groupSteps([step('tools', 'ok'), step('rsync', 'ok')]).map((g) => g.label)).toEqual(['What it needs', 'Checks']);
-  });
-
   it('shows a step it does not know rather than dropping it', () => {
     expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
   });

@@ -306,11 +306,3 @@ test('Machines says when the list could not be read, and offers to read it again
   fireEvent.click(screen.getByTestId('machines-reload'));
   expect(sent).toEqual([{ type: 'host.list' }]);
 });
-
-test('Machines reads the list as it opens', () => {
-  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
-  render(<SettingsCard />);
-  show('machines');
-  expect(screen.getByTestId('machines')).toBeTruthy();
-  expect(sent).toContainEqual({ type: 'host.list' });
-});

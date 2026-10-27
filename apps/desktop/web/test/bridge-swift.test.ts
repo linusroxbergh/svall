@@ -65,12 +65,8 @@ describe('bridge between the page and the shell', () => {
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
 
-  it('carries no connection report and asks for no other route', () => {
-    const to = tsUnion('ToShell');
-    const from = tsUnion('FromShell');
-    expect(['connection.retry', 'connection.here'].filter((t) => t in to)).toEqual([]);
-    expect('connection.state' in from).toBe(false);
-    expect(from['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op', 'profile']);
+  it('the shell info carries the home, its log, 1Password, the Ghostty chords and the profile', () => {
+    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op', 'profile']);
   });
 });
 

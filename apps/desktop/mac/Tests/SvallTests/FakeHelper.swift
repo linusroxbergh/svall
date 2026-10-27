@@ -10,7 +10,7 @@ extension XCTestCase {
     }
 
     /// A stand-in for the bundled svall: it prints the given NDJSON lines, then runs `tail`.
-    func fakeHelper(prints lines: [String], then tail: String = "exec cat > /dev/null") throws -> String {
+    func fakeHelper(prints lines: [String], then tail: String = "exit 0") throws -> String {
         let dir = try temporaryDirectory("svall-helper")
         let script = (["#!/bin/sh"] + lines.map { "printf '%s\\n' '\($0)'" } + [tail]).joined(separator: "\n") + "\n"
         let path = dir.appendingPathComponent("svall").path

@@ -38,7 +38,7 @@ struct StderrTail {
     }
 }
 
-enum ControllerProcess {
+enum BundledSvall {
     /// A dev build points `SVALL_HELPER` at a checkout; a shipped app carries the release in its bundle.
     static func locate(environment: [String: String] = ProcessInfo.processInfo.environment,
                        resourcePath: String? = Bundle.main.resourcePath) -> String? {

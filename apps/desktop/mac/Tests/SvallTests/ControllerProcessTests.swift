@@ -10,10 +10,10 @@ final class ControllerProcessTests: XCTestCase {
         try FileManager.default.createDirectory(atPath: (bundled as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         try FileManager.default.copyItem(atPath: bundle, toPath: bundled)
 
-        XCTAssertEqual(ControllerProcess.locate(environment: ["SVALL_HELPER": helper], resourcePath: resources), helper)
-        XCTAssertEqual(ControllerProcess.locate(environment: [:], resourcePath: resources), bundled)
-        XCTAssertNil(ControllerProcess.locate(environment: [:], resourcePath: nil))
-        XCTAssertNil(ControllerProcess.locate(environment: ["SVALL_HELPER": "/nonexistent/svall"], resourcePath: nil))
+        XCTAssertEqual(BundledSvall.locate(environment: ["SVALL_HELPER": helper], resourcePath: resources), helper)
+        XCTAssertEqual(BundledSvall.locate(environment: [:], resourcePath: resources), bundled)
+        XCTAssertNil(BundledSvall.locate(environment: [:], resourcePath: nil))
+        XCTAssertNil(BundledSvall.locate(environment: ["SVALL_HELPER": "/nonexistent/svall"], resourcePath: nil))
     }
 
     func testAFleetHomeIsNamedByItsProfile() {

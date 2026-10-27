@@ -335,7 +335,7 @@ final class ShellRouter {
     /// The page names an operation and its arguments; the argv, and the binary, are the shell's own.
     private func startHost(op: HostOp, args: HostArgs) {
         guard hostRun == nil else { return }
-        let svall = ControllerProcess.locate()
+        let svall = BundledSvall.locate()
         guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args) else {
             let detail = svall == nil ? "this build has no svall beside it to set a machine up with"
                 : "these are not arguments svall host \(op.rawValue) takes"
@@ -361,7 +361,7 @@ final class ShellRouter {
     /// The registry as `svall host list --json` gives it; a list asked for while one runs is read again after it.
     private func listMachines() {
         if listing != nil { listAgain = true; return }
-        guard let executable = ControllerProcess.locate() else {
+        guard let executable = BundledSvall.locate() else {
             return bridge.send(.hostMachines(machines: [], error: "this build has no svall beside it to list machines with"))
         }
         let child = LineChild(executable: executable, arguments: ["host", "list", "--json"])

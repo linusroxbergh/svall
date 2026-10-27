@@ -217,7 +217,7 @@ const unticked = (server: string, agent: string, field: string): HostStep => ({
 // what a check of studio says before its report: every step there passed
 const PASSED: HostStep[] = [
   { step: 'ssh', status: 'ok', detail: 'linus@studio accepted an interactive login' },
-  { step: 'release', status: 'ok', detail: '0.5.0, protocol 33' },
+  { step: 'release', status: 'ok', detail: '0.5.0, protocol 34' },
   { step: 'claude', status: 'ok', detail: '2.1.310 (Claude Code), logged in' },
   { step: 'probe', status: 'ok', detail: 'studio answers' },
 ];

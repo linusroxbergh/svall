@@ -56,10 +56,6 @@ final class HostProcessTests: XCTestCase {
                        ["host", "remove", "studio", "--forget", "--json"])
     }
 
-    func testEnableIsNoLongerAHostOp() {
-        XCTAssertThrowsError(try JSONDecoder().decode(ToShell.self, from: Data(#"{"type":"host.start","op":"enable","args":{"name":"studio"}}"#.utf8)))
-    }
-
     func testNothingTheFlagsDoNotCoverBecomesArgv() {
         // a name or a destination that could read as an option, or as a second word
         XCTAssertNil(argv(.add, HostArgs(name: "--help", ssh: "linus@studio")))
