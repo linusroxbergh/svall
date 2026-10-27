@@ -32,6 +32,16 @@ describe('the bundles a release carries', () => {
       expect(app).toContain(`'${name}': '${entry}'`);
     }
   });
+
+  it("gives the app's runtime the daemon's folders a release stages, systemd aside", () => {
+    const read = (file: string) => fs.readFileSync(path.join(import.meta.dirname, '../scripts', file), 'utf8');
+    const release = read('release-stage.mjs');
+    const at = release.indexOf('export function stageAssets');
+    const staged = [...release.slice(at, release.indexOf('\n}\n', at)).matchAll(/'packages\/svalld\/([\w-]+)'/g)].map((m) => m[1]);
+    const app = /for \(const dir of \[([^\]]+)\]\)/.exec(read('runtime-bundle.mjs'))![1].split(',').map((d) => d.trim().slice(1, -1));
+    expect(staged).toContain('skills');
+    expect(app).toEqual(staged.filter((d) => d !== 'systemd'));
+  });
 });
 
 describe('the Node runtime a release carries', () => {

@@ -174,6 +174,48 @@ describe('the retro service', () => {
     }
   });
 
+  // a run whose reads wait for `open` before the judge answers with no findings
+  function held() {
+    let open!: () => void;
+    let gate: Promise<void> = Promise.resolve();
+    const runner: Runner = async () => {
+      await gate;
+      return { text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } };
+    };
+    return { runner, hold: () => { gate = new Promise((r) => { open = r; }); }, open: () => open() };
+  }
+  const ENDED = ['done', 'failed', 'interrupted'];
+  const SHOWN_MS = 10 * 60_000;
+
+  it('clears an ended run from the crew card ten minutes on, leaving a newer run on it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      let now = NOW;
+      const h = held();
+      const w = world({ now: () => now, runner: h.runner });
+      const first = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+      w.retro.run({ plan: first.id, preset: 'balanced', robot: 'c_crew' });
+      await vi.waitFor(() => expect(ENDED).toContain(w.store.state.retro?.stage));
+      vi.advanceTimersByTime(SHOWN_MS / 2);
+      expect(w.store.state.retro?.run).toBe(first.id);
+
+      now += HOUR;
+      h.hold();
+      const second = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+      w.retro.run({ plan: second.id, preset: 'balanced', robot: 'c_crew' });
+      await vi.waitFor(() => expect(w.store.state.retro).toMatchObject({ run: second.id, stage: 'reading' }));
+      vi.advanceTimersByTime(SHOWN_MS);
+      expect(w.store.state.retro).toMatchObject({ run: second.id, stage: 'reading' });
+
+      h.open();
+      await vi.waitFor(() => expect(ENDED).toContain(w.store.state.retro?.stage));
+      vi.advanceTimersByTime(SHOWN_MS);
+      expect(w.store.state.retro).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('classes the reads and the mutations', () => {
     expect(['retro.status', 'retro.findings'].map((m) => classification[m as keyof typeof classification])).toEqual(['read', 'read']);
     expect(['retro.plan', 'retro.run', 'retro.mark', 'retro.apply'].map((m) => classification[m as keyof typeof classification])).toEqual(['mutation', 'mutation', 'mutation', 'mutation']);

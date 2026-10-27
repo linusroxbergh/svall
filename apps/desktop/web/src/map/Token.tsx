@@ -85,7 +85,7 @@ export const Token = memoByValue(function Token({
       <div className="card">
         {machine
           ? <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />
-          : retro && <span className="mline mach retro" data-testid={`token-retro-${c.id}`}><span>{retro}</span></span>}
+          : retro && <span className="mline mach retro" data-testid={`token-retro-${c.id}`} title={retro}><span>{retro}</span></span>}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />
