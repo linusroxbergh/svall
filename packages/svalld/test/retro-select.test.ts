@@ -93,11 +93,11 @@ describe('select', () => {
   it('sends lines that several focuses pick once, and lists unused skills', () => {
     const s = session('a', T0, [['user', 'write the release notes'], ['tool', 'Bash {"command":"gh pr create --title x --body \\"notes\\""}'], ['agent', 'opened the PR'], ['user', 'thanks'], ['agent', 'bye']]);
     const r = pick({ outlines: [s], focus: ['skill-triggers', 'new-skills', 'instructions'], targets: [target('babysit-pr'), target('ship-it')], skillsSeen: ['ship-it'] });
-    expect(r.excerpts.map((e) => e.id).sort()).toEqual(['a:1', 'a:2', 'unused']);
+    expect(r.excerpts.map((e) => e.id).sort()).toEqual(['a:1', 'a:2']);
     // the first prompt for triggers and every prompt for new skills, as one excerpt
     expect(r.excerpts.find((e) => e.id === 'a:1')?.text).toBe('L1 USER: write the release notes\nL4 USER: thanks');
     expect(r.excerpts.find((e) => e.id === 'a:2')?.text).toBe('L2 TOOL: Bash {"command":"gh pr create --title x --body \\"notes\\""}\nL5 AGENT: bye');
-    expect(r.excerpts.find((e) => e.id === 'unused')).toMatchObject({ focus: 'skill-triggers', text: 'unused: babysit-pr' });
+    expect(r.mechanical).toContain('skills no transcript on disk has run, to keep or retire: babysit-pr');
     expect(r.thin).toEqual(['skill triggers: 1 session of evidence', 'new skills: 1 session of evidence', 'instructions: 1 session of evidence']);
   });
 });

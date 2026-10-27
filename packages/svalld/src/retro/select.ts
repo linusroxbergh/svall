@@ -141,9 +141,8 @@ export function select(o: {
       ...(d.comments ?? []).map((c) => `PR ${c.author}${c.path ? ` on ${c.path}` : ''}: ${c.body}`),
     ].join('\n'),
   }));
-  // installed skills no transcript on disk has run, which no session can show
-  const unused = want.has('skill-triggers') ? o.targets.filter((t) => t.kind === 'skill' && !o.skillsSeen.has(t.name)).map((t) => `unused: ${t.name}`) : [];
-  if (unused.length) excerpts.push({ id: 'unused', focus: 'skill-triggers', priority: 2, text: unused.join('\n') });
+  // installed skills no transcript on disk has run: a fact code reads, listed beside the findings with nothing for a model to judge
+  const unused = want.has('skill-triggers') ? o.targets.filter((t) => t.kind === 'skill' && !o.skillsSeen.has(t.name)).map((t) => t.name) : [];
 
   const thin = o.focus.flatMap((f): string[] => {
     const label = f.replace('-', ' ');
@@ -156,5 +155,6 @@ export function select(o: {
     return new Set(linked.map((x) => x.url)).size < THIN_PRS ? [`${label}: ${count(linked.length, 'review run')} with a linked PR${without ? `, ${without} without` : ''}`] : [];
   });
 
-  return { excerpts, runs: Object.fromEntries([...bySkill].map(([k, rs]) => [k, rs.length])), mechanical: mechanical(o.outlines), thin };
+  const never = unused.length ? [`skills no transcript on disk has run, to keep or retire: ${unused.join(', ')}`] : [];
+  return { excerpts, runs: Object.fromEntries([...bySkill].map(([k, rs]) => [k, rs.length])), mechanical: [...mechanical(o.outlines), ...never], thin };
 }
