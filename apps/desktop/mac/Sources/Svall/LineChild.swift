@@ -56,10 +56,6 @@ final class LineChild {
             }
         }
         process.terminationHandler = { [weak self] _ in self?.ended.leave() }
-        if let input {
-            // a child that went away turns a write into EPIPE, not a signal that ends the app
-            _ = fcntl(input.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
-        }
         do { try process.run() } catch {
             output.fileHandleForReading.readabilityHandler = nil
             errors?.fileHandleForReading.readabilityHandler = nil
@@ -70,11 +66,6 @@ final class LineChild {
             let said = lock.withLock { self.stderr.lines }
             onExit(process.terminationStatus, said)
         }
-    }
-
-    func write(_ line: String) {
-        guard let input, process.isRunning else { return }
-        try? input.fileHandleForWriting.write(contentsOf: Data((line + "\n").utf8))
     }
 
     /// Ends the child within a bound: a second after its stdin closes, when it has one, then SIGTERM, then after two

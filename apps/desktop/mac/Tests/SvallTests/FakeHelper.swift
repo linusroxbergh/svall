@@ -29,14 +29,3 @@ func pkill(_ script: String) {
     try? kill.run()
     kill.waitUntilExit()
 }
-
-/// Whether any process still runs a fake helper's script.
-func running(_ script: String) -> Bool {
-    let find = Process()
-    find.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-    find.arguments = ["-f", script]
-    find.standardOutput = FileHandle.nullDevice
-    try? find.run()
-    find.waitUntilExit()
-    return find.terminationStatus == 0
-}
