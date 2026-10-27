@@ -68,7 +68,7 @@ function refuseRemote({ router, store }: Pick<Ctx, 'router' | 'store'>, id: stri
 // svalld runs on macOS and Linux alone; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
 
-export const handlers: Handlers = {
+const handlers: Handlers = {
   'state.get': (_p, { store }) => store.state,
   'island.create': (p, { fleet }) => fleet.createIsland(p),
   'island.update': (p, { fleet }) => fleet.updateIsland(p.id, p),

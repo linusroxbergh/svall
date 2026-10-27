@@ -52,10 +52,6 @@ export interface SessionAdapter {
   readonly trustQuestion?: string;
   /** The choice at that question that goes on. */
   readonly trustAnswer?: string;
-  /** Whether a resume command, as a revive keeps it, starts the CLI in bypass mode; absent for a CLI with no such mode to warn about. */
-  asksBypass?(command: string): boolean;
-  /** Whether the CLI, keeping its files in `home`, starts in bypass mode in `folder` without first warning about it. */
-  acceptsBypass?(home: string, folder: ResumeFolder): boolean;
   /**
    * For a CLI that keeps its sessions in a database of its own: the file under the agent home a move writes the
    * session out to, which travels with its files and is read back in on the destination rather than placed.

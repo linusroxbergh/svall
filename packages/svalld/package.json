@@ -6,7 +6,6 @@
   "exports": {
     ".": "./src/main.ts",
     "./agents": "./src/agents.ts",
-    "./agent/reducer": "./src/agent/reducer.ts",
     "./claude": "./src/claude.ts",
     "./paths": "./src/paths.ts",
     "./log": "./src/log.ts",

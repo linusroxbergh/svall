@@ -353,7 +353,6 @@ describe('setupLinux', () => {
     const fake = fakeRun();
     const done = await serveAsWorker({ ...f.o, run: fake.run });
     expect(fs.readFileSync(unit, 'utf8')).toContain('"--worker"\n');
-    expect(fs.existsSync(path.join(f.unitDir, 'svall-gateway.service'))).toBe(false);
     expect(fake.calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],

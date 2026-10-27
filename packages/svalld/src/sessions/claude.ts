@@ -28,7 +28,7 @@ const readJson = (file: string): Record<string, unknown> | undefined => {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
 };
 
-// the config can run to megabytes and a watch asks it again and again, so it is read again only once it has changed
+// the config can run to megabytes, so it is read again only once it has changed
 let config: { file: string; stamp: string; value?: Record<string, unknown> } | undefined;
 function readConfig(home: string): Record<string, unknown> | undefined {
   const file = configOf(home);
@@ -56,19 +56,6 @@ function trusts(home: string, folder: ResumeFolder): boolean {
     if (p === top || p === path.dirname(p)) return false;
   }
   return false;
-}
-
-// the launch flags a revive keeps that start Claude in bypass mode
-const BYPASS = /(?:^| )(?:--dangerously-skip-permissions|--allow-dangerously-skip-permissions|--permission-mode 'bypassPermissions')(?= |$)/;
-
-/**
- * As Claude 2.1.283 decides: bypass mode is accepted by its config, which a start moves into its settings, by its
- * settings, or by the local settings of the folder or of its repository's main checkout.
- */
-function acceptsBypass(home: string, folder: ResumeFolder): boolean {
-  const skips = (file: string) => readJson(file)?.skipDangerousModePermissionPrompt === true;
-  if (readConfig(home)?.bypassPermissionsModeAccepted === true || skips(path.join(home, 'settings.json'))) return true;
-  return [folder.cwd, folder.repo].some((d) => d !== undefined && skips(path.join(d, '.claude', 'settings.local.json')));
 }
 
 export const claudeAdapter: SessionAdapter = {
@@ -104,7 +91,4 @@ export const claudeAdapter: SessionAdapter = {
   trustQuestion: 'Is this a project you created or one you trust?',
   // its prompt preselects "No, exit"
   trustAnswer: 'Yes, I trust this folder',
-
-  asksBypass: (command) => BYPASS.test(command),
-  acceptsBypass,
 };

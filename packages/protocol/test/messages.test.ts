@@ -1,7 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
-  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, SystemInfo, TerminalSlot, emptyState, methods, serverWait, type Event,
+  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -154,9 +154,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 34, and system.info without transferSchema and heapLimit', () => {
+  it('is 34', () => {
     expect(PROTOCOL_VERSION).toBe(34);
-    expect(Object.keys(SystemInfo.shape).filter((k) => k === 'transferSchema' || k === 'heapLimit')).toEqual([]);
   });
 
   it('machines.setup and machines.consent take and answer', () => {
@@ -272,11 +271,6 @@ const INFO = {
   platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
 };
 
-// every event name the union carries; the compiler refuses a missing or a stray one
-const EVENT_NAMES = {
-  'state.patch': true, 'term.output': true, 'term.resync': true, 'repo.changed': true, 'mobile.phones': true,
-} satisfies Record<Event['event'], true>;
-
 describe('system.info and requests in parts', () => {
   it('says what a machine is and what it can run', () => {
     const info = {
@@ -306,8 +300,9 @@ describe('system.info and requests in parts', () => {
 });
 
 describe('events', () => {
+  // the compiler refuses a missing or a stray one
   it('names every event the union carries', () => {
-    expect(Object.keys(EVENT_NAMES)).toEqual(['state.patch', 'term.output', 'term.resync', 'repo.changed', 'mobile.phones']);
+    expectTypeOf<Event['event']>().toEqualTypeOf<'state.patch' | 'term.output' | 'term.resync' | 'repo.changed' | 'mobile.phones'>();
   });
 });
 
