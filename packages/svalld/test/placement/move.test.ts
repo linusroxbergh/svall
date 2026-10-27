@@ -707,6 +707,16 @@ describe.skipIf(!hasGit)('the move transaction', () => {
   });
 
   it('a move sends the worker the home\'s agent configuration before its bundle, and goes on when that fails', async () => {
+  it('a move whose link to the worker drops before its prepare waits for the link to come back, and goes on', async () => {
+    const w = open();
+    const home = await w.start();
+    // as the home closes a link whose ping went unanswered
+    at('move.bundle', 'after', () => home.links.for(W)!['stream']!.close());
+    await home.placement.start('c_1', W);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
     let pushes = 0;
     const w = open({ mirror: { push: async () => { pushes++; throw new Error('no space left on device'); } } });
     const home = await w.start();

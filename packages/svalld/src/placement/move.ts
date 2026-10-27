@@ -83,6 +83,7 @@ const WATCH_MS = 60_000;
 const REST_MS = 10 * 60_000;
 const PREPARE_MS = 15 * 60_000;
 const SHEET_MS = 30_000;
+const RELINK_MS = 60_000;
 
 // a worker that gives no sheet: too slow, on a release without one, or out of reach
 const sheetRefusal = (e: Error, name: string): Failure => {
@@ -655,10 +656,11 @@ export class Placement {
     this.d.store.update((d) => { d.robots[j.robotId] = converted(d.robots[j.robotId], c.repo!, cv.slug); });
   }
 
-  // the worker takes the blobs' ids first, then the blobs, then prepares from them
+  // the worker takes the blobs' ids first, then the blobs, then prepares from them; a link that dropped since the checks,
+  // as one to a worker too busy writing to answer a ping, is waited for
   private async prepareThere(j: MoveJournal): Promise<void> {
     const link = this.d.links.for(j.to);
-    if (!link) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
+    if (!link || !(await link.linked(RELINK_MS))) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
     const stage = this.files.stage(j.id);
     const ids = blobIds(j.id);
     const bundle = j.manifest ? path.join(stage, 'bundle.tar') : undefined;
