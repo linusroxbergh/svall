@@ -1,3 +1,7 @@
+# a blank image filled by ditto: hdiutil refuses to fill one from a folder that holds an app bundle
+hdiutil create -volname "$NAME" -fs HFS+ -size "$SIZE" -ov "$WORK/rw.dmg" >/dev/null || fail "hdiutil could not create the image"
+hdiutil attach -readwrite -noverify -noautoopen "$WORK/rw.dmg" >/dev/null
+ditto "$WORK/stage" "$MNT"
 #!/bin/sh
 # Packs an app into a compressed disk image whose Finder window shows it beside a link to Applications, over a
 # background (gen.mjs) with an arrow between them. Finder lays the window out, so the first run asks to control it.
