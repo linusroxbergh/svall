@@ -65,7 +65,7 @@ export const Island = memoByValue(function Island({
             <stop offset="1" stopColor="var(--sand-deep)" />
           </linearGradient>
         </defs>
-        <Seabed id={island.id} sand={sand} cx={cx} cy={cy} bank="var(--bank)" />
+        <Seabed sand={sand} cx={cx} cy={cy} bank="var(--bank)" />
         <g {...land} {...hold} style={{ pointerEvents: 'visiblePainted' }}>
           <path className="land" d={sand} fill={`url(#${sid})`} />
           <path className="land grass" d={grass} fill={`url(#${gid})`} stroke="var(--shore)" strokeWidth="1" />

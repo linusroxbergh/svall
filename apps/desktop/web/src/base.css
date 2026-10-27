@@ -111,6 +111,7 @@ textarea.fld { padding-block: var(--sp-md); }
   outline: 2px solid var(--sand); outline-offset: 2px;
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
-/* the map under a full card, and the map and sidebar while the app is in the background, hold their loops still */
-[data-paused="true"] *, [data-paused="true"] *::before, [data-paused="true"] *::after { animation-play-state: paused !important; }
+/* the map under a full card, and the map and sidebar while the app is in the background, hold their loops still.
+   An svg's own parts are left alone: restyling them all costs a frame, and motion.ts stills the robots */
+[data-paused="true"] :not(svg *), [data-paused="true"] :not(svg *)::before, [data-paused="true"] :not(svg *)::after { animation-play-state: paused !important; }
 .board { flex: 1; min-width: 0; display: flex; flex-direction: column; }

@@ -59,7 +59,7 @@ export function ResourcesIsland({ place }: { place: Placement }) {
               <feColorMatrix values="0 0 0 0 .12  0 0 0 0 .12  0 0 0 0 .11  0 0 0 1.6 -.5" />
             </filter>
           </defs>
-          <Seabed id="res" sand={rock} cx={cx} cy={cy} bank="var(--rock-bank)" />
+          <Seabed sand={rock} cx={cx} cy={cy} bank="var(--rock-bank)" />
           <g style={{ pointerEvents: 'visiblePainted', cursor: 'pointer' }} onPointerDown={stop} onDoubleClick={stop} onClick={press}>
             <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
             {/* a wet rim inside the shore, a paler top face, two darker facets, one pale, and a grain over it all */}
