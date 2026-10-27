@@ -174,4 +174,32 @@ describe('the retro service', () => {
     expect(() => w.retro.apply('f1')).toThrow('has no diff');
     expect(fs.readFileSync(file, 'utf8')).toBe('# Publish\n1. Tag.\n');
   });
+
+  it("proposes a repo diff naming another file or not fitting the file, and a diff of a file the judge didn't read", async () => {
+    const robots: unknown[] = [];
+    const w = world({ robots });
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    const file = skill(path.join(repo, '.claude', 'skills', 'publish'));
+    const diff = (text: string) => ({ change: { kind: 'diff' as const, summary: 's', text } });
+    const proposed = async (more: Partial<Finding>, cls: 'repo' | 'local' = 'repo') => {
+      finished(w, file, cls, more);
+      return (await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0].outcome;
+    };
+    expect(await proposed(diff('--- a/.claude/skills/publish/SKILL.md\n+++ b/.claude/skills/publish/SKILL.md\n@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.\n--- a/README.md\n+++ b/README.md\n@@ -1 +1 @@\n-x\n+y'))).toBe('proposal');
+    expect(await proposed(diff('@@ -1,2 +1,3 @@\n # Release\n+Step.\n 1. Tag.'))).toBe('proposal');
+    expect(await proposed({ target: { path: file, realPath: file, class: 'local', hash: null } }, 'local')).toBe('proposal');
+    expect(robots).toEqual([]);
+    expect(await proposed(diff('--- a/.claude/skills/publish/SKILL.md\n+++ b/.claude/skills/publish/SKILL.md\n@@ -1,2 +1,3 @@\n # Publish\n+Step.\n 1. Tag.'))).toBe('robot');
+  });
+
+  it('applies only to a local file, never to a repo, plugin or claude.ai one', () => {
+    const w = world();
+    for (const cls of ['repo', 'synced'] as const) {
+      const file = skill(path.join(makeHome(), 'skills', 'publish'));
+      finished(w, file, cls);
+      expect(() => w.retro.apply('f1')).toThrow('has no diff for a file outside git');
+      expect(fs.readFileSync(file, 'utf8')).toBe('# Publish\n1. Tag.\n');
+    }
+  });
 });

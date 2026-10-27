@@ -90,6 +90,36 @@ describe('inventory', () => {
     expect(ts['skill:anthropic-skills:docs'].class).toBe('synced');
   });
 
+  it("drops a repo's or mission control's file whose real path leaves its folder", () => {
+    const home = makeHome(), repo = makeHome();
+    const mc = path.join(home, '.svall/home');
+    put(path.join(home, '.zshrc'), 'export PATH=x\n');
+    link(path.join(home, '.zshrc'), path.join(repo, '.claude/skills/evil/SKILL.md'));
+    link(path.join(home, '.zshrc'), path.join(repo, 'CLAUDE.md'));
+    link(path.join(home, '.zshrc'), path.join(mc, 'AGENTS.md'));
+    put(path.join(repo, 'docs/AGENTS.md'), '# repo\n');
+    link(path.join(repo, 'docs/AGENTS.md'), path.join(repo, 'AGENTS.md'));
+
+    const ts = byId(inventory({ ...dirs(home), repos: [repo], homeCwd: mc, isGitWithRemote: () => true }));
+
+    expect(Object.keys(ts)).toEqual([`rule:${repo}/AGENTS.md`]);
+  });
+
+  it('tells apart skills of one name in different folders by the folder, and keeps one file found twice', () => {
+    const home = makeHome(), a = path.join(home, 'code/a'), b = path.join(home, 'code/b');
+    put(path.join(a, '.claude/skills/deploy/SKILL.md'), skill('deploy', 'deploys a'));
+    put(path.join(b, '.claude/skills/deploy/SKILL.md'), skill('deploy', 'deploys b'));
+    put(path.join(a, '.agents/skills/deploy/SKILL.md'), skill('deploy', 'a copy in a'));
+    put(path.join(a, '.claude/skills/lint/SKILL.md'), skill('lint'));
+    link(path.join(a, '.claude/skills/lint'), path.join(home, '.claude/skills/lint'));
+
+    const ts = byId(inventory({ ...dirs(home), repos: [a, b], homeCwd: path.join(home, '.svall/home'), isGitWithRemote: () => true }));
+
+    expect(Object.keys(ts).sort()).toEqual(['skill:deploy@~/code/a', 'skill:deploy@~/code/b', 'skill:lint']);
+    expect(ts['skill:deploy@~/code/a']).toMatchObject({ name: 'deploy', description: 'deploys a', path: path.join(a, '.claude/skills/deploy/SKILL.md') });
+    expect(ts['skill:deploy@~/code/b']).toMatchObject({ name: 'deploy', description: 'deploys b', path: path.join(b, '.claude/skills/deploy/SKILL.md') });
+  });
+
   it('review skills by name and by config', () => {
     const home = makeHome();
     for (const n of ['deep-review', 'prepush', 'ship-it']) put(path.join(home, `.claude/skills/${n}/SKILL.md`), skill(n));

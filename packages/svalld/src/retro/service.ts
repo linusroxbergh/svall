@@ -58,6 +58,13 @@ const KEYS: Partial<Record<AgentKind, string>> = { claude: 'ANTHROPIC_API_KEY', 
 // a diff in which redaction masked a value would write the mask, so it is never applied or handed to a robot
 const masked = (f: Finding): boolean => f.change.text.includes('[redacted]');
 
+// a diff a robot may take to a repo: one naming no file but its target, that applies cleanly to the file as it is
+function fits(t: NonNullable<Finding['target']>, diff: string): boolean {
+  const named = [...diff.matchAll(/^(?:---|\+\+\+) (?:[ab]\/)?(\S+)/gm)].map((m) => m[1].replace(/^~?\//, ''));
+  if (!named.every((n) => [t.path, t.realPath].some((p) => p.endsWith(`/${n}`)))) return false;
+  try { applyUnified(fs.readFileSync(t.realPath, 'utf8'), diff, t.path); return true; } catch { return false; }
+}
+
 /** The retro: plans read the stores here and send nothing to a model; a run reads its plan's batches under its budget. */
 export class Retro {
   private current?: { status: RetroStatus; aborter: AbortController; done: Promise<void> };
@@ -152,18 +159,19 @@ export class Retro {
         continue;
       }
       const target = finding.target;
-      const diff = finding.change.kind === 'diff' && !masked(finding);
+      // a target the judge read has its hash; a path it named outside the inventory has none
+      const diff = finding.change.kind === 'diff' && !!target?.hash && !masked(finding);
       if (target?.class === 'local' && diff) {
         results.push({ id: finding.id, outcome: 'apply', path: target.path, diff: finding.change.text });
         continue;
       }
-      if (target?.class === 'repo' && diff) {
+      if (target?.class === 'repo' && diff && fits(target, finding.change.text)) {
         const robot = await this.fixRobot(run, finding.id, target.path, target.realPath, finding.change.text, finding.evidence);
         ledger = markLedger(ledger, finding.id, 'fixed', { at });
         results.push({ id: finding.id, outcome: 'robot', robot: robot.id, path: target.path });
         continue;
       }
-      // settings, synced and plugin skills, Svall's own files, drafts and masked diffs are the user's to place
+      // settings, synced and plugin skills, Svall's own files, drafts, and diffs masked or not fitting their file are the user's to place
       ledger = markLedger(ledger, finding.id, 'fixed', { at });
       results.push({ id: finding.id, outcome: 'proposal', ...(target && { path: target.path }), diff: finding.change.text });
     }

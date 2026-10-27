@@ -142,7 +142,7 @@ export function select(o: {
     ].join('\n'),
   }));
   // installed skills no transcript on disk has run: a fact code reads, listed beside the findings with nothing for a model to judge
-  const unused = want.has('skill-triggers') ? o.targets.filter((t) => t.kind === 'skill' && !o.skillsSeen.has(t.name)).map((t) => t.name) : [];
+  const unused = want.has('skill-triggers') ? [...new Set(o.targets.filter((t) => t.kind === 'skill' && !o.skillsSeen.has(t.name)).map((t) => t.name))] : [];
 
   const thin = o.focus.flatMap((f): string[] => {
     const label = f.replace('-', ' ');

@@ -14,7 +14,8 @@ export type Target = {
   id: string; kind: 'skill' | 'rule'; name: string; description?: string; path: string; realPath: string; class: TargetClass; hash: string; review: boolean;
 };
 
-type Found = { kind: 'skill' | 'rule'; name: string; path: string };
+// `root` is the folder a skill was found under, which tells apart two skills of one name
+type Found = { kind: 'skill' | 'rule'; name: string; path: string; root: string };
 
 // a committed link can lead to a device or a huge file, so only a plain file under the cap is read
 const readFile = (p: string): Buffer | undefined => {
@@ -28,18 +29,21 @@ const names = (dir: string): string[] => {
 };
 
 // a skill is named as the agent calls it: its folder, after its plugin's name for a plugin's
-const skillsIn = (dir: string, prefix = ''): Found[] => names(dir).map((n) => ({ kind: 'skill', name: prefix + n, path: path.join(dir, n, 'SKILL.md') }));
+const skillsIn = (dir: string, root: string, prefix = ''): Found[] => names(dir).map((n) => ({ kind: 'skill', name: prefix + n, path: path.join(dir, n, 'SKILL.md'), root }));
 const rulesIn = (dir: string): string[] => names(dir).filter((n) => n.endsWith('.md')).map((n) => path.join(dir, n));
 
 // the plugins Claude installed, by the name each one's manifest gives
 const pluginSkills = (claude: string): Found[] => plugins(readJson(path.join(claude, 'plugins/installed_plugins.json')).plugins, {}).flatMap((p) => {
   if (p.path === undefined) return [];
   const named = readJson(path.join(p.path, '.claude-plugin/plugin.json')).name;
-  return skillsIn(path.join(p.path, 'skills'), `${typeof named === 'string' ? named : p.name}:`);
+  return skillsIn(path.join(p.path, 'skills'), p.path, `${typeof named === 'string' ? named : p.name}:`);
 });
 
 // claude.ai syncs its skills into a folder per account, and Claude calls them anthropic-skills:<name>
-const syncedSkills = (claude: string): Found[] => names(path.join(claude, 'skills/synced')).flatMap((b) => skillsIn(path.join(claude, 'skills/synced', b), 'anthropic-skills:'));
+const syncedSkills = (claude: string): Found[] => names(path.join(claude, 'skills/synced')).flatMap((b) => {
+  const dir = path.join(claude, 'skills/synced', b);
+  return skillsIn(dir, dir, 'anthropic-skills:');
+});
 
 const SETTINGS = /^(settings(\.local)?|hooks)\.json$/;
 const tilde = (p: string, home: string): string => (within(p, home) ? `~${p.slice(home.length)}` : p);
@@ -47,20 +51,26 @@ const sha256 = (b: Buffer): string => crypto.createHash('sha256').update(b).dige
 
 /**
  * The skills and rule files the agents read here, from Claude's and Codex's own folders, ~/.agents, mission control's and
- * the repos'; the first of a name or a real path is kept.
+ * the repos'. The first of a real path is kept; a repo's or mission control's file whose real path leaves its folder, as a
+ * committed link may, is none, and skills of one name in different files each have the folder they were found in in their id.
  */
 export function inventory(o: {
   homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean;
 }): Target[] {
   const claude = o.claudeDir, codex = o.codexDir;
-  const roots = [o.homeCwd, ...o.repos];
+  const folders = [o.homeCwd, ...o.repos];
+  const rule = (p: string): Found => ({ kind: 'rule', name: tilde(p, o.homedir), path: p, root: path.dirname(p) });
   const found: Found[] = [
-    ...skillsIn(path.join(claude, 'skills')), ...syncedSkills(claude), ...skillsIn(path.join(o.homedir, '.agents/skills')), ...skillsIn(path.join(codex, 'skills')),
-    ...pluginSkills(claude),
-    ...roots.flatMap((r) => [...skillsIn(path.join(r, '.claude/skills')), ...skillsIn(path.join(r, '.agents/skills'))]),
-    ...[path.join(claude, 'CLAUDE.md'), ...rulesIn(path.join(claude, 'rules')), path.join(codex, 'AGENTS.md'),
-      ...roots.flatMap((r) => [path.join(r, 'CLAUDE.md'), path.join(r, 'AGENTS.md'), ...rulesIn(path.join(r, '.claude/rules'))])]
-      .map((p): Found => ({ kind: 'rule', name: tilde(p, o.homedir), path: p })),
+    ...skillsIn(path.join(claude, 'skills'), claude), ...syncedSkills(claude), ...skillsIn(path.join(o.homedir, '.agents/skills'), path.join(o.homedir, '.agents')),
+    ...skillsIn(path.join(codex, 'skills'), codex), ...pluginSkills(claude),
+    ...[path.join(claude, 'CLAUDE.md'), ...rulesIn(path.join(claude, 'rules')), path.join(codex, 'AGENTS.md')].map(rule),
+    ...folders.flatMap((r) => {
+      const inside = realPath(r);
+      return [
+        ...skillsIn(path.join(r, '.claude/skills'), r), ...skillsIn(path.join(r, '.agents/skills'), r),
+        ...[path.join(r, 'CLAUDE.md'), path.join(r, 'AGENTS.md'), ...rulesIn(path.join(r, '.claude/rules'))].map(rule),
+      ].filter((f) => within(realPath(f.path), inside));
+    }),
   ];
 
   // a local edit to a plugin's or claude.ai's skill is overwritten at the next sync
@@ -73,13 +83,22 @@ export function inventory(o: {
     : o.isGitWithRemote(real) ? 'repo' : 'local';
 
   const review = new Set(o.reviewSkills);
-  const ids = new Set<string>(), reals = new Set<string>();
-  return found.flatMap((f): Target[] => {
-    const id = `${f.kind}:${f.name}`, real = realPath(f.path);
-    if (ids.has(id) || reals.has(real)) return [];
-    const bytes = readFile(f.path);
+  const reals = new Set<string>();
+  const read = found.flatMap((f) => {
+    const real = realPath(f.path);
+    const bytes = reals.has(real) ? undefined : readFile(f.path);
     if (bytes === undefined) return [];
-    ids.add(id); reals.add(real);
+    reals.add(real);
+    return [{ f, real, bytes }];
+  });
+  // the folders each name is found under; within one, the first file of a name is kept
+  const roots = new Map<string, Set<string>>();
+  for (const { f } of read) roots.set(`${f.kind}:${f.name}`, (roots.get(`${f.kind}:${f.name}`) ?? new Set()).add(f.root));
+  const ids = new Set<string>();
+  return read.flatMap(({ f, real, bytes }): Target[] => {
+    const id = roots.get(`${f.kind}:${f.name}`)!.size > 1 ? `${f.kind}:${f.name}@${tilde(f.root, o.homedir)}` : `${f.kind}:${f.name}`;
+    if (ids.has(id)) return [];
+    ids.add(id);
     const { description } = f.kind === 'skill' ? frontmatter(bytes.toString('utf8')) : {};
     return [{
       id, kind: f.kind, name: f.name, ...(description && { description }), path: f.path, realPath: real, class: classOf(real), hash: sha256(bytes),
