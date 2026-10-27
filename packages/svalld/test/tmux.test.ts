@@ -18,14 +18,14 @@ describe('tmuxConfText', () => {
 
   // a copy sent on to the terminal as OSC 52 as well would ask again under Ghostty's clipboard-write = ask
   it('leaves the copy to pbcopy alone', () => {
-    expect(tmuxConfText(Config.parse({}))).toMatch(/^set -s set-clipboard off$/m);
+    expect(tmuxConfText(Config.parse({}), { platform: 'darwin' })).toMatch(/^set -s set-clipboard off$/m);
   });
 
-  it('drops pbcopy on Linux and nothing else', () => {
+  it('copies through pbcopy on macOS and through the attached terminal on Linux, and differs in nothing else', () => {
     const mac = tmuxConfText(Config.parse({}), { platform: 'darwin' }).split('\n');
     const linux = tmuxConfText(Config.parse({}), { platform: 'linux' }).split('\n');
-    expect(mac.filter((l) => !linux.includes(l))).toEqual(['set -g copy-command "pbcopy"']);
-    expect(linux.filter((l) => !mac.includes(l))).toEqual([]);
+    expect(mac.filter((l) => !linux.includes(l))).toEqual(['set -g copy-command "pbcopy"', 'set -s set-clipboard off']);
+    expect(linux.filter((l) => !mac.includes(l))).toEqual(['set -s set-clipboard on']);
   });
 
   it('drops the option a tmux before 3.5 fails source-file on, and nothing else', () => {
@@ -244,6 +244,34 @@ runIf('Tmux', () => {
   it('pipes copied text to the system clipboard', async () => {
     const t = await boot();
     expect((await t.run('show-options', '-gv', 'copy-command')).trim()).toBe('pbcopy');
+  });
+
+  // the Mac's terminal reaches a robot on a Linux machine over ssh, where no pbcopy reaches the Mac's clipboard
+  it('hands a copy on Linux, made by tmux or by the app in the pane, to the terminal attached as OSC 52', async () => {
+    const home = makeHome();
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({ shell: '/bin/sh' }), { platform: 'linux' }));
+    const t = new Tmux(`${home}/tmux.sock`, `${home}/tmux.conf`);
+    // the terminal: another tmux, which keeps each OSC 52 it is sent as a buffer
+    const term = new Tmux(`${home}/term.sock`, '/dev/null');
+    cleanup.push(async () => { await t.killServer(); await term.killServer(); });
+    await t.ensureServer();
+    await term.ensureServer();
+    await term.run('set', '-s', 'set-clipboard', 'on');
+    const w = await t.newWindow('c_copy', '/tmp', {});
+    await t.attachSession('v-c_copy', w.windowId);
+    await term.run('new-window', '-d', `env TERM=xterm-256color ${t.binary} -S ${home}/tmux.sock attach -t '=v-c_copy'`);
+    await waitFor(async () => (await t.run('list-clients', '-t', '=v-c_copy')) !== '');
+    const copied = async () => (await term.run('show-buffer').catch(() => '')).trim();
+
+    await t.sendLine(w.paneId, "printf '\\033]52;c;YnktYXBw\\a'", true);
+    await waitFor(async () => (await copied()) === 'by-app');
+
+    await t.sendLine(w.paneId, 'echo by-tmux', true);
+    await waitFor(async () => (await t.capture(w.paneId, 50)).toString().split('\n').some((l) => l.trim() === 'by-tmux'));
+    for (const step of [['copy-mode'], ['send-keys', '-X', 'cursor-up'], ['send-keys', '-X', 'select-line'], ['send-keys', '-X', 'copy-pipe-and-cancel']]) {
+      await t.run(step[0], '-t', w.paneId, ...step.slice(1));
+    }
+    await waitFor(async () => (await copied()) === 'by-tmux');
   });
 
   it('reports one row per window when a window is split', async () => {

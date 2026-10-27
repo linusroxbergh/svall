@@ -193,7 +193,7 @@ reset and kill a move, a worker or an install makes, with what authorises it:
   - each npm package esbuild bundled;
   - each package the phone page can bundle, which is the web app's production dependency closure;
   - the phone page's fonts (OFL) and art;
-  - in a companion, its tmux (ISC) and the libevent (BSD-3-Clause) and utf8proc (MIT) linked into it.
+  - in a companion, its tmux (ISC) and the libevent (BSD-3-Clause), utf8proc (MIT) and ncurses (X11) linked into it.
 - **When a package has no licence file.** The build stops at a bundled package that ships no licence file, unless
   `scripts/release/licenses/<name>-LICENSE` holds its upstream text. `http_ece`'s is kept there.
   (`svalld/test/release.test.ts` "stops the build at a bundled package that ships no licence file…", "a release built
