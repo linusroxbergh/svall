@@ -75,6 +75,10 @@ textarea { overflow-x: hidden; }
 .meter > span { flex: 1; height: 5px; border-radius: var(--r-pill); background: var(--line); overflow: hidden; }
 .meter > span > i { display: block; height: 100%; border-radius: var(--r-pill); }
 .meter > b { flex: none; font-size: var(--text-sm); color: var(--ink-3); }
+/* the machine a robot on a worker runs on, in the colour that means it; each place sets its size */
+.mline { display: flex; align-items: center; gap: var(--sp-xs); min-width: 0; color: var(--away); font-weight: var(--w-medium); white-space: nowrap; }
+.mline > span { overflow: hidden; text-overflow: ellipsis; }
+.mline .ind-glyph { flex: none; width: 1em; height: 1em; }
 .badge { font-size: var(--text-2xs); font-weight: var(--w-bold); letter-spacing: var(--track-loose); text-transform: uppercase; padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-xs); background: var(--sand-fill); color: var(--sand); margin-left: var(--sp-sm); }
 .pills { display: flex; flex-wrap: wrap; gap: var(--sp-sm); margin-top: var(--sp-lg); }
 .lg { font-family: var(--mono); font-size: var(--text-2xs); font-weight: var(--w-medium); font-style: normal; letter-spacing: var(--track-loose); color: var(--ink-3); }

@@ -410,7 +410,7 @@ const withVault = (reachable: boolean, c0: Partial<Robot> = {}) => {
 };
 const moves = () => [...document.querySelectorAll('[data-testid^="side-move"]')].map((b) => b.textContent);
 // the card's buttons, in the one block at its foot
-const foot = () => [...document.querySelectorAll('.side > .acts > button')].map((b) => b.textContent);
+const foot = () => [...document.querySelectorAll('.side > .acts button')].map((b) => b.textContent);
 
 test('a robot here offers a move to each worker within reach, which opens the move sheet', () => {
   const f = fleet();

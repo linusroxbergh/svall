@@ -40,9 +40,20 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   await expect.poll(async () => (await sent(page)).find((m) => m.type === 'term.show' && m.id === 'machine:linus-vault'))
     .toMatchObject({ machine: { ssh: 'linus@vault', type: "cd '/tmp'" } });
 
+  // a neighbour here, to hold the placed robot's card up against
+  const here = await svall.api.call('robot.create', { islandId: (await svall.api.call('state.get', {})).robots[id].islandId, cwd: '/tmp', name: 'bo' });
   await svall.open('map');
   await expect(page.getByTestId(`token-${id}`)).toHaveAttribute('data-status', 'unknown');
   await expect(page.getByTestId(`token-machine-${id}`)).toHaveText('on linus-vault');
+  // the band tops the card and takes nothing from it: the figure, the foot and the printed frame sit as on its neighbour
+  const paper = (c: string) => page.getByTestId(`token-${c}`).locator('.card');
+  const [placed, plain] = await Promise.all([paper(id), paper(here.id)].map(async (l) => (await l.boundingBox())!));
+  const [stage, stage2] = await Promise.all([paper(id), paper(here.id)].map(async (l) => (await l.locator('.stage').boundingBox())!.height));
+  expect(stage).toBeCloseTo(stage2, 0);
+  expect(placed.y + placed.height).toBeCloseTo(plain.y + plain.height, 0);
+  const frameTop = (c: string) => paper(c).evaluate((el) => parseFloat(getComputedStyle(el, '::before').top));
+  const band = await page.getByTestId(`token-machine-${id}`).evaluate((el) => parseFloat(getComputedStyle(el).height));
+  expect(await frameTop(id)).toBeCloseTo((await frameTop(here.id)) + band, 0);
 });
 
 test('a placed robot\'s Files and Changes say its machine is not reachable while the link is down', async ({ page, svall }) => {

@@ -5,7 +5,7 @@ import { BrowserArea } from './BrowserArea.js';
 import { useApp } from './hooks.js';
 import { Changes } from './ide/Changes.js';
 import { FilesArea } from './ide/FilesArea.js';
-import { MachineGlyph } from './indicators.js';
+import { MachineLine } from './indicators.js';
 import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
 import { awayLine, isPlaced, machineName } from './placement.js';
@@ -98,7 +98,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
           : <button className="tbtn psplit" data-testid="pane-split" title="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
-      {on && <div className="pon" data-testid={`pane-${side}-machine`}><MachineGlyph /><span>Runs on <b>{on}</b></span></div>}
+      {on && <MachineLine name={on} lead="Runs on" className="pon" testid={`pane-${side}-machine`} />}
       <div className="pbody">{body(surface, side)}</div>
     </div>
   );

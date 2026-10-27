@@ -6,7 +6,7 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
-import { MachineGlyph } from './indicators.js';
+import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { useLoad } from './load.js';
@@ -99,7 +99,7 @@ export function SideCard({ id }: { id: string }) {
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
-      {placed && <div className="side-on" data-testid="side-machine"><MachineGlyph /><span>Runs on <b>{placed}</b></span></div>}
+      {placed && <MachineLine name={placed} lead="Runs on" className="side-on" testid="side-machine" />}
       {c.repo && (
         <div className="side-branch" data-testid="side-branch">
           <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -164,11 +164,15 @@ export function SideCard({ id }: { id: string }) {
             onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
-        {movable && (placed
-          ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
-          : workers.map(([m, w]) => (
-            <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
-          )))}
+        {movable && (placed || workers.length > 0) && (
+          <div className="moves">
+            {placed
+              ? <button className="btn" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
+              : workers.map(([m, w]) => (
+                <button key={m} className="btn" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
+              ))}
+          </div>
+        )}
         <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>

@@ -45,6 +45,11 @@ export function HandGlyph() {
   );
 }
 
+/** The machine a robot on a worker runs on: its glyph, then `lead` and the name, on one line. */
+export function MachineLine({ name, lead = 'on', className, testid }: { name: string; lead?: string; className: string; testid: string }) {
+  return <span className={`mline ${className}`} data-testid={testid} title={`Runs on ${name}`}><MachineGlyph /><span>{lead} {name}</span></span>;
+}
+
 export function MachineGlyph() {
   return (
     <svg className="ind-glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
