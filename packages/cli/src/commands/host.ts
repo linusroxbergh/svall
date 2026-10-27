@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/handover/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -12,7 +12,7 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowStep, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { farProfile, type Target } from '../target.js';
@@ -63,6 +63,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     refreshLinks: () => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.refresh', {})).then(() => undefined, () => undefined),
     // a machine just linked has up to waitMs to come up and answer
     setupRows: (machine) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.setup', { machine, waitMs: 30_000 })).then((r) => r.rows),
+    consent: (machine, item, fields, on) => withClient(() => Client.connect(fleet.home), (c) => c.call('machines.consent', { machine, item, fields, on })).then((r) => r.rows),
   };
 }
 
@@ -198,6 +199,26 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       if (entry) recordCheck(dir(), entry.id, report);
       printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks), doctorVerdict(report.checks, name)].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
+    });
+
+  host.command('consent')
+    .description("tick or untick one setting of the machine's mirror, as host doctor lists it")
+    .argument('<name>', 'the machine in the registry')
+    .argument('<item>', 'the setting, such as claude:mcp:linear')
+    .argument('<state>', 'on to copy its keys there, off to stop')
+    .option('--field <field...>', 'only these fields of it')
+    .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
+      if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);
+      let rows;
+      try {
+        rows = await consentHost(name, { item, on: state === 'on', ...(o.field && { fields: o.field }) }, realDeps(() => { /* rows print below */ }, dir(), target()));
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === 'not_mirrored')) throw e;
+        process.stdout.write(`${e.message}\n`);
+        process.exitCode = 1;
+        return;
+      }
+      printResult(rows, json(), () => rows.map((r) => stepLine(rowStep(r))).join('\n'));
     });
 
   host.command('upgrade')

@@ -7,6 +7,7 @@ import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
+import { clearConsent } from '@svall/svalld/placement/mirror-consent';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
@@ -61,6 +62,8 @@ export type HostDeps = {
   refreshLinks(): Promise<void>;
   /** the machine's setup rows, as this fleet's daemon reads its mirror there; rejects when the daemon cannot be asked */
   setupRows(machine: MachineId): Promise<SetupRow[]>;
+  /** ticks or unticks `fields` of `item` for the machine in this fleet's mirror, and answers its setup rows */
+  consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
 };
 
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
@@ -1010,6 +1013,14 @@ function placedOn(entry: Registered, d: HostDeps): void {
   throw new StepError(`${n} ${n === 1 ? 'robot is' : 'robots are'} on ${entry.record.name}: ${found.map((f) => f.robot.name).join(', ')}; move ${n === 1 ? 'it' : 'them'} back first`, action);
 }
 
+/** `svall host consent`: ticks or unticks one setting of the machine's mirror; `fields` default to the ones its setup row names. */
+export async function consentHost(name: string, o: { item: string; on: boolean; fields?: string[] }, d: HostDeps): Promise<SetupRow[]> {
+  const entry = need(d.registry, name);
+  const fields = o.fields ?? (await d.setupRows(entry.id)).find((r) => r.tick?.item === o.item)?.tick?.fields;
+  if (!fields) throw new StepError(`no setting ${o.item} on ${name}; svall host doctor ${name} lists them`);
+  return d.consent(entry.id, o.item, fields, o.on);
+}
+
 /** `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget. */
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
@@ -1051,6 +1062,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     });
     await run.step('registry', () => {
       for (const home of fleets) patchFleetConfig(resolvePaths(home).fleetConfig, { gatewayMachineId: undefined });
+      for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) clearConsent(resolvePaths(home).mirrorConsent, entry.id);
       d.registry.remove(entry.id);
       d.registry.save();
       return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });

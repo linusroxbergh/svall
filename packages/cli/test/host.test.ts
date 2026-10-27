@@ -13,7 +13,7 @@ import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
-import { addHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type HostReport, type StepEvent } from '../src/controller/host.js';
+import { addHost, consentHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -103,6 +103,7 @@ function deps(o: Partial<HostDeps> = {}): HostDeps {
     fleet: { home: fleet },
     refreshLinks: () => { refreshed++; return Promise.resolve(); },
     setupRows: () => Promise.resolve([]),
+    consent: () => Promise.resolve([]),
     ...o,
   };
 }
@@ -116,6 +117,10 @@ const unticked = (item: string): SetupRow => {
     detail: `mirrored without ${field} ${name.slice(0, 3)}…90; or set them in ~/.svall/mirror-overrides on trift`,
     tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] },
   };
+};
+const ticked = (item: string): SetupRow => {
+  const row = unticked(item);
+  return { key: item, status: 'ok', detail: `keys copied to trift`, tick: { ...row.tick!, on: true } };
 };
 const varRow = (v: string): SetupRow =>
   ({ key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which trift's daemon does not have` });
@@ -1081,6 +1086,27 @@ describe('host doctor', () => {
     }, REMOTE);
     return registry;
   };
+
+  it('consentHost asks the daemon with the registry\'s id and the row\'s fields, and the command prints the rows with [x]', async () => {
+    const asked: unknown[] = [];
+    const rows = await consentHost('trift', { item: 'claude:mcp:linear', on: true }, deps({
+      registry: registered(),
+      setupRows: () => Promise.resolve([unticked('claude:mcp:linear')]),
+      consent: (...a) => { asked.push(a); return Promise.resolve([ticked('claude:mcp:linear')]); },
+    }));
+    expect(asked).toEqual([[REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true]]);
+    const { stepLine } = await import('../src/commands/host.js');
+    expect(stepLine(rowStep(rows[0]))).toContain('[x]');
+  });
+
+  it('consentHost refuses an item no row names, and takes explicit fields as given', async () => {
+    const consent = vi.fn(() => Promise.resolve([]));
+    const d = deps({ registry: registered(), setupRows: () => Promise.resolve([unticked('claude:mcp:linear')]), consent });
+    await expect(consentHost('trift', { item: 'codex:mcp:nope', on: true }, d)).rejects.toThrow('no setting codex:mcp:nope on trift; svall host doctor trift lists them');
+    expect(consent).not.toHaveBeenCalled();
+    await consentHost('trift', { item: 'claude:mcp:linear', on: false, fields: ['env.X'] }, d);
+    expect(consent).toHaveBeenCalledWith(REMOTE, 'claude:mcp:linear', ['env.X'], false);
+  });
 
   it('reads the companion\'s own doctor, version, linger and free space', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -2272,6 +2298,19 @@ describe('host remove', () => {
 
     expect((await removeHost('trift', { forget: true }, deps({ registry }))).result).toBe('ready');
     expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it("clears the machine's consent in every fleet home here, on remove and on --forget", async () => {
+    const second = path.join(work, '.svall-other');
+    fs.mkdirSync(second, { recursive: true });
+    fs.writeFileSync(resolvePaths(second).fleetConfig, JSON.stringify({ id: FLEET }));
+    const files = [resolvePaths(fleet).mirrorConsent, resolvePaths(second).mirrorConsent];
+    for (const forget of [false, true]) {
+      for (const f of files) fs.writeFileSync(f, JSON.stringify({ [REMOTE]: ['claude:mcp:linear#env.K'], [OTHER_MAC]: ['codex:mcp:g#env.K'] }));
+      ssh.reply(['uninstall'], { stdout: 'removed\n' });
+      await removeHost('trift', { forget }, deps({ registry: registered('trift.test') }));
+      for (const f of files) expect(JSON.parse(fs.readFileSync(f, 'utf8'))).toEqual({ [OTHER_MAC]: ['codex:mcp:g#env.K'] });
+    }
   });
 
   it('names the machine on the line the far uninstall ends with, whose rm -rf is for that machine', async () => {
