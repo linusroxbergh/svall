@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { SHIM } from '@svall/svalld/profile';
 import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
+import { retroCommands } from './commands/retro.js';
 import { robotCommands } from './commands/robot.js';
 import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
@@ -77,6 +78,7 @@ export function buildProgram(): Command {
   program.addCommand(islandCommands(connect, json));
   program.addCommand(robotCommands(connect, json));
   program.addCommand(scribeCommands(connect, json));
+  program.addCommand(retroCommands(connect, json, home));
   program.addCommand(browserCommands(connect, json));
   program.addCommand(mobileCommand(connect, json));
   program.addCommand(setupCommand(target, json));
