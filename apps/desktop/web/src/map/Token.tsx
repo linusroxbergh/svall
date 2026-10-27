@@ -81,7 +81,7 @@ export const Token = memoByValue(function Token({
       onContextMenu={onMenu}
     >
       <div className="card">
-        {machine && <MachineLine name={machine} className="mach" testid={`token-machine-${c.id}`} />}
+        {machine && <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Robot, Island } from '@svall/protocol';
+import { isPlaced } from '../placement.js';
 import { theme, tokenPx } from '../theme.js';
 import { homeBox, homeCellToScreen } from './home.js';
 import { HoverCard } from './HoverCard.js';
@@ -45,7 +46,9 @@ export function HoverLayer({ c, island, layout, place, host }: { c: Robot; islan
   const cx = p.x + size / 2;
   // a token is drawn at the cards' scale, hover lift and all
   const k = sharedCardScale(layout.scale, place.homeScale);
-  const top = p.y + size / 2 - (tokenPx.h * 0.48 + HOVER_LIFT) * k;   // the token's top edge on screen
+  // the token's top edge on screen, over the band a robot on a worker wears above its card
+  const band = isPlaced(c) ? theme.token.band * theme.token.unit : 0;
+  const top = p.y + size / 2 - (tokenPx.h * 0.48 + band + HOVER_LIFT) * k;
   const bottom = p.y + size / 2 + (tokenPx.h * 0.52 - HOVER_LIFT) * k;
   const flip = top < 12 + theme.hoverCardMaxH;
   return (

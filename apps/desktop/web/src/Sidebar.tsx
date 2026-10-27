@@ -6,12 +6,11 @@ import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
 import { EyeGlyph, MachineLine, PrGlyph, reviewText } from './indicators.js';
-import { isPlaced, machineName } from './placement.js';
+import { machineOf } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
 const attentionIn = (robots: Robot[], f: Pick<FleetState, 'machines'>): number => robots.filter((c) => wantsUser(c, f)).length;
-const machineOf = (f: Pick<FleetState, 'machines'>, c: Robot) => (isPlaced(c) ? machineName(f, c.machine) : undefined);
 
 // a robot dragged out of the list; the type alone is readable while the drag is in flight, the id only on the drop
 const ROBOT_DRAG = 'application/x-svall-robot';
@@ -144,7 +143,7 @@ function Marks({ c }: { c: Robot }) {
 // a robot on a worker names the machine on a line under its name
 function RobotName({ c, machine, title }: { c: Robot; machine?: string; title?: string }) {
   const name = <span className="sb-name" title={title}>{c.name}</span>;
-  return machine ? <span className="sb-names">{name}<MachineLine name={machine} className="sb-on" testid={`sb-machine-${c.id}`} /></span> : name;
+  return machine ? <span className="sb-names">{name}<MachineLine name={machine} short className="sb-on" testid={`sb-machine-${c.id}`} /></span> : name;
 }
 
 const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c: Robot; machine?: string; editing: boolean; setEditing(id?: string): void }) {

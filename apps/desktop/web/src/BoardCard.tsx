@@ -54,7 +54,7 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
       data-selected={selected} data-need={status === 'blocked'} data-unread={unread} data-arrived={arrived}
       data-dragging={dragging} data-lifted={lifted}
       {...(!lifted && { 'data-drop': `robot:${c.id}`, 'data-drop-hover': fileHover })} {...on}>
-      {machine && <MachineLine name={machine} className="kc-on" testid={`kc-machine-${c.id}`} />}
+      {machine && <MachineLine name={machine} short className="kc-on" testid={`kc-machine-${c.id}`} />}
       <span className="kc-av"><img src={figureUrl(figureOf(c))} alt="" draggable={false} /></span>
       {renaming
         ? <NameInput name={c.name} className="kb-ren kc-ren" testid={`kc-name-input-${c.id}`} onSave={(name) => onRename?.(name)} onDone={() => onRenamed?.()} />

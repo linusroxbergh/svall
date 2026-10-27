@@ -27,6 +27,7 @@ test('a token on a worker wears a band naming the machine across the top of its 
   rerender(<Token {...props} machine="linus-vault" />);
   const band = screen.getByTestId('token-machine-c0');
   expect(band.textContent).toBe('on linus-vault');
+  expect(band.title).toBe('Runs on linus-vault');
   expect(band.parentElement?.className).toBe('card');
   expect(band.nextElementSibling?.className).toBe('edge');
 });

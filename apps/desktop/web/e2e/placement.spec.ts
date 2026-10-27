@@ -46,14 +46,17 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   await expect(page.getByTestId(`token-${id}`)).toHaveAttribute('data-status', 'unknown');
   await expect(page.getByTestId(`token-machine-${id}`)).toHaveText('on linus-vault');
   // the band tops the card and takes nothing from it: the figure, the foot and the printed frame sit as on its neighbour
-  const paper = (c: string) => page.getByTestId(`token-${c}`).locator('.card');
-  const [placed, plain] = await Promise.all([paper(id), paper(here.id)].map(async (l) => (await l.boundingBox())!));
-  const [stage, stage2] = await Promise.all([paper(id), paper(here.id)].map(async (l) => (await l.locator('.stage').boundingBox())!.height));
-  expect(stage).toBeCloseTo(stage2, 0);
-  expect(placed.y + placed.height).toBeCloseTo(plain.y + plain.height, 0);
-  const frameTop = (c: string) => paper(c).evaluate((el) => parseFloat(getComputedStyle(el, '::before').top));
+  // read from layout, which a hover's or a selection's transform leaves alone
+  const paper = (c: string) => page.getByTestId(`token-${c}`).locator('.card').evaluate((el) => {
+    const px = (v: string) => parseFloat(v);
+    const card = getComputedStyle(el);
+    return { stage: px(getComputedStyle(el.querySelector('.stage')!).height), bottom: px(card.marginTop) + px(card.height), frame: px(getComputedStyle(el, '::before').top) };
+  });
+  const [placed, plain] = [await paper(id), await paper(here.id)];
   const band = await page.getByTestId(`token-machine-${id}`).evaluate((el) => parseFloat(getComputedStyle(el).height));
-  expect(await frameTop(id)).toBeCloseTo((await frameTop(here.id)) + band, 0);
+  expect(placed.stage).toBeCloseTo(plain.stage, 1);
+  expect(placed.bottom).toBeCloseTo(plain.bottom, 1);
+  expect(placed.frame).toBeCloseTo(plain.frame + band, 1);
 });
 
 test('a placed robot\'s Files and Changes say its machine is not reachable while the link is down', async ({ page, svall }) => {

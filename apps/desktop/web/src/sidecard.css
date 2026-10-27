@@ -41,6 +41,7 @@
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
 /* a robot on a worker: the machine it runs on, close under its name */
 .side-on { gap: var(--sp-sm); margin-top: calc(-1 * var(--sp-md)); font-size: var(--text-md); }
+.side-on b { font-weight: var(--w-semibold); }
 .side-portrait { position: relative; flex: none; }
 .side-portrait .side-figure { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
   object-fit: contain; object-position: center bottom; }

@@ -13,7 +13,7 @@ import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
-import { isPlaced, machineName } from './placement.js';
+import { machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -76,7 +76,7 @@ export function SideCard({ id }: { id: string }) {
 
   const status = statusOf(c, fleet);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
-  const placed = isPlaced(c) ? machineName(fleet, c.machine) : undefined;
+  const placed = machineOf(fleet, c);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
@@ -99,7 +99,7 @@ export function SideCard({ id }: { id: string }) {
         <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
-      {placed && <MachineLine name={placed} lead="Runs on" className="side-on" testid="side-machine" />}
+      {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
       {c.repo && (
         <div className="side-branch" data-testid="side-branch">
           <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}

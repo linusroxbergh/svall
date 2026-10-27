@@ -33,7 +33,8 @@ export const theme = {
   menu: { margin: 8 },
   // card box in token units, unit one token unit in world px; a card keeps its screen size between map scales `floor`
   // and 1, above that taking `grow` of the growth. At .88 a card and the link rail on its right stay inside the three cells between crew
-  token: { w: 2.66, h: 3.73, unit: 36.1, floor: 0.88, grow: 0.5 },
+  // `band` is the strip a robot on a worker wears above its card, which map.css matches
+  token: { w: 2.66, h: 3.73, unit: 36.1, floor: 0.88, grow: 0.5, band: 0.38 },
   // an island's label pill scales with the map up to 1, then takes `grow` of the map's growth
   label: { grow: 0.2 },
   // the home island: visible land above the bottom edge, tall enough that a crew card at its largest clears it, gap to

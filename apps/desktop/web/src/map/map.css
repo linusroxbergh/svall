@@ -209,8 +209,13 @@
   border-radius:calc(var(--tok)*.27);color:var(--ink-land);
   font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
 .tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
-/* the worker a placed robot runs on, a band topping its card: the card grows up by the band, so the figure, the frame,
-   the foot and the marks keep their places */
+/* the machine a robot on a worker runs on, in the colour that means it, here and wherever else it shows; each place sets its size */
+.mline{display:flex;align-items:center;gap:var(--sp-xs);min-width:0;color:var(--away);font-weight:var(--w-medium);white-space:nowrap}
+.mline>span{overflow:hidden;text-overflow:ellipsis}
+.mline b{font-weight:inherit}
+.mline .ind-glyph{flex:none;width:1em;height:1em}
+/* the worker a placed robot runs on, a band topping its card, theme.token.band tall: the card grows up by the band, so the
+   figure, the frame, the foot and the marks keep their places */
 .tok .mach{flex:none;justify-content:center;gap:calc(var(--tok)*.08);height:calc(var(--tok)*.38);padding:0 calc(var(--tok)*.1);
   background:var(--away);color:var(--ink-on-away);font-size:calc(var(--tok)*.22);font-weight:var(--w-bold);letter-spacing:var(--track-loose);text-transform:uppercase}
 .tok:has(.mach) .card{height:calc(var(--card-h) + var(--tok)*.38);margin-top:calc(var(--tok)*-.38)}
