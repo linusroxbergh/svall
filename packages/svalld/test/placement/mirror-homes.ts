@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { configOf } from '../../src/handover/sessions/claude.js';
+import { configOf } from '../../src/sessions/claude.js';
 import { filesIn } from '../../src/placement/docs-sync.js';
 import type { MirrorHomes } from '../../src/placement/mirror.js';
 import { SHIM } from '../../src/profile.js';

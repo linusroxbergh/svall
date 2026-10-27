@@ -1,8 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { must } from '../handover/git-graph.js';
-import type { GitRunner } from '../links/git.js';
+import { must, type GitRunner } from '../links/git.js';
 import { applyBundle, buildBundle, fingerprintOf, isCredential, untrackedFiles } from './bundle.js';
 
 export const WORKTREES = '.claude/worktrees';

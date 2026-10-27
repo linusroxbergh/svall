@@ -56,16 +56,6 @@ final class HostProcessTests: XCTestCase {
                        ["host", "remove", "studio", "--forget", "--json"])
     }
 
-    func testEnableIsNoLongerAHostOp() {
-        XCTAssertThrowsError(try JSONDecoder().decode(ToShell.self, from: Data(#"{"type":"host.start","op":"enable","args":{"name":"studio"}}"#.utf8)))
-    }
-
-    func testAFleetIsNamedByTheProfileSvallKnowsItBy() {
-        XCTAssertEqual(SvallHome.fleetProfile(of: "/Users/x/.svall", in: "/Users/x"), "private")
-        XCTAssertEqual(SvallHome.fleetProfile(of: "/Users/x/.svall-work", in: "/Users/x"), "work")
-        XCTAssertNil(SvallHome.fleetProfile(of: "/tmp/somewhere", in: "/Users/x"))
-    }
-
     func testNothingTheFlagsDoNotCoverBecomesArgv() {
         // a name or a destination that could read as an option, or as a second word
         XCTAssertNil(argv(.add, HostArgs(name: "--help", ssh: "linus@studio")))
@@ -249,29 +239,5 @@ final class HostProcessTests: XCTestCase {
                        ["type": "host.step", "op": "doctor", "event": ["step": "machine", "status": "ok"]] as NSDictionary)
         XCTAssertEqual(FromShell.hostDone(op: "add", code: 1).json as NSDictionary,
                        ["type": "host.done", "op": "add", "code": 1] as NSDictionary)
-    }
-
-    func testTheOperationsThatRewriteTheFleetsConfigAreTheOnesThatTellThePageItsGatewayAfresh() {
-        // an upgrade drops the gateway of a fleet whose machine becomes its worker
-        for op in [HostOp.remove, .upgrade] { XCTAssertTrue(op.rewritesFleetConfig, op.rawValue) }
-        for op in [HostOp.add, .doctor] { XCTAssertFalse(op.rewritesFleetConfig, op.rawValue) }
-    }
-
-    func testTheWindowNamesTheMachineTheFleetIsOn() {
-        XCTAssertEqual(RemoteConnection.windowTitle(base: "Svall", owner: "local"), "Svall")
-        XCTAssertEqual(RemoteConnection.windowTitle(base: "Svall · work", owner: "studio"), "Svall · work — studio")
-    }
-
-    func testTheHandoverControlsFollowTheFleetsOwnConfig() throws {
-        let dir = try temporaryDirectory("svall-home")
-        let fleet = dir.appendingPathComponent("fleet.json").path
-
-        XCTAssertFalse(SvallHome.handoverEnabled(at: dir.path))
-        try #"{"id":"f","handover":{"exclude":[]}}"#.write(toFile: fleet, atomically: true, encoding: .utf8)
-        XCTAssertFalse(SvallHome.handoverEnabled(at: dir.path))
-        try #"{"id":"f","handover":{"enabled":true}}"#.write(toFile: fleet, atomically: true, encoding: .utf8)
-        XCTAssertTrue(SvallHome.handoverEnabled(at: dir.path))
-        try "not json".write(toFile: fleet, atomically: true, encoding: .utf8)
-        XCTAssertFalse(SvallHome.handoverEnabled(at: dir.path))
     }
 }

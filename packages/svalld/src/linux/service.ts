@@ -51,8 +51,6 @@ export const disableUnit = async (run: Run, unit: string): Promise<void> => { aw
 
 export const restartUnit = async (run: Run, unit: string): Promise<void> => { await systemctl(run, ['restart', unit]); };
 
-export const stopUnit = async (run: Run, unit: string): Promise<void> => { await systemctl(run, ['stop', unit]); };
-
 // `systemctl status` exits non-zero for a unit that is merely stopped and prints for a reader;
 // `show` answers the same questions in fields, and exits 0 even for a unit systemd never loaded
 export async function unitStatus(run: Run, unit: string): Promise<UnitStatus> {

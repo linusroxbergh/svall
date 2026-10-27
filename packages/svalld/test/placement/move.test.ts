@@ -1,16 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
+import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
-import { armFailpoints, type Edge, type Failpoint } from '../../src/handover/failpoints.js';
-import { realPath } from '../../src/handover/portable-path.js';
-import { handoverGit } from '../../src/links/git.js';
+import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
+import { hooklessGit } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
-import { Store } from '../../src/store.js';
-import { hasGit } from '../handover/git-fixture.js';
-import { cleanHomes } from '../helpers.js';
-import { Crash, OSID, SID, moveWorld, until, type MoveWorld } from './move-world.js';
+import { hasGit } from '../git-fixture.js';
+import { cleanHomes, waitForPolls } from '../helpers.js';
+import { Crash, OSID, SID, listed, moveWorld, state, until, type MoveWorld } from './move-world.js';
 import { H, W } from './world.js';
 
 const worlds: MoveWorld[] = [];
@@ -22,22 +20,6 @@ afterEach(async () => {
   cleanHomes();
 });
 const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w = moveWorld(o); worlds.push(w); return w; };
-
-// what `git worktree list` says of the worktree at `root`, or undefined when git lists none there
-function listed(w: MoveWorld, repo: string, root: string): { locked?: string } | undefined {
-  const entries = w.g(repo, 'worktree', 'list', '--porcelain').split('\n\n');
-  const entry = entries.find((e) => e.split('\n')[0] === `worktree ${realPath(root)}`);
-  if (!entry) return undefined;
-  const locked = entry.split('\n').find((l) => l.startsWith('locked'));
-  return locked === undefined ? {} : { locked: locked.slice('locked'.length).trim() };
-}
-
-const state = (w: MoveWorld, root: string) => ({
-  head: w.g(root, 'rev-parse', 'HEAD'), branch: w.g(root, 'symbolic-ref', '--short', 'HEAD'),
-  staged: w.g(root, 'diff', '--cached', '--name-status'), unstaged: w.g(root, 'diff', '--name-status'),
-  // a credential file travels only when ticked
-  untracked: w.g(root, 'ls-files', '--others', '--exclude-standard').split('\n').filter((f) => f && f !== '.env').sort(),
-});
 
 // fires `then` at a step's edge, once
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
@@ -53,7 +35,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const w = open();
     const home = await w.start();
     const before = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     // a terminal, a second one, a revive, a prompt and a close, asked for while the robot is on its way
     const refused: unknown[] = [];
     let closed: Promise<unknown> | undefined;
@@ -75,7 +57,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     // the worker: the branch with its commit, staged against unstaged, the untracked file, no .env, the session
     expect(state(w, w.farWt)).toEqual(before);
     expect(fs.existsSync(path.join(w.farWt, '.env'))).toBe(false);
-    expect(await fingerprintOf(w.farWt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.farWt, hooklessGit)).toBe(fingerprint);
     const farTranscript = path.join(w.farClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`);
     expect(fs.readFileSync(farTranscript, 'utf8')).toBe(fs.readFileSync(path.join(w.macClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`), 'utf8'));
     const there = w.worker.store.state.robots.c_1;
@@ -87,7 +69,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects[fs.realpathSync(w.clone)]).toEqual({ hasTrustDialogAccepted: true });
     // the Mac: as it was, locked, and the robot placed there with what it left
     expect(state(w, w.wt)).toEqual(before);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(fs.readFileSync(path.join(w.wt, '.env'), 'utf8')).toBe('TOKEN=secret\n');
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
     const here = home.store.state.robots.c_1;
@@ -102,7 +84,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
   it('a failure in prepare reopens the robot at home with its window and the worker has nothing left', async () => {
     const w = open();
     const home = await w.start();
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
 
     await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
@@ -114,7 +96,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.opened).toEqual(['c_1']);
     expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^claude --resume ${SID}`));
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     const [j] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
     expect(home.placement.status(j.slice(0, -'.json'.length))).toMatchObject({ phase: 'aborted', error: 'the disk is full' });
     // the worker: no worktree, no branch, no session, no robot of its own
@@ -137,7 +119,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
     const id = file.slice(0, -'.json'.length);
 
-    expect(Store.readSnapshot(w.homePaths.state).robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'commit' } });
+    expect(FleetState.parse(JSON.parse(fs.readFileSync(w.homePaths.state, 'utf8'))).robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'commit' } });
     const again = await w.bootHome();
     await again.placement.recoverMoves();
 
@@ -147,6 +129,24 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(again.store.state.robots.c_1.moving).toBeUndefined();
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
+  it('recovers a move whose journal holds the rest 0.19.0 writes, with role, transactionId, generation and phase', async () => {
+    const w = open();
+    const first = await w.start();
+    at('move.journal.activate', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
+    await expect(first.placement.start('c_1', W)).rejects.toThrow(Crash);
+    first.links.stop();
+    const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
+    const journal = JSON.parse(fs.readFileSync(path.join(w.homePaths.moves, file), 'utf8'));
+    fs.writeFileSync(path.join(w.homePaths.moves, file), JSON.stringify({
+      ...journal, rest: { role: 'source', transactionId: journal.id, generation: 0, phase: 'freeze', stoppedTerminals: [], terminated: [], serverKills: [] },
+    }));
+
+    const again = await w.bootHome();
+    await again.placement.recoverMoves();
+
+    expect(['done', 'aborted']).toContain(again.placement.status(journal.id).phase);
   });
 
   it('returns a robot whose Mac worktree is unchanged: reset to the recorded base, bundle applied, badge gone', async () => {
@@ -160,7 +160,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const farTranscript = path.join(w.farClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`);
     fs.appendFileSync(farTranscript, `${JSON.stringify({ type: 'assistant', sessionId: SID })}\n`);
     const there = state(w, w.farWt);
-    const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+    const fingerprint = await fingerprintOf(w.farWt, hooklessGit);
     // the sheet counts what comes back as the worker holds it
     const check = await home.placement.check('c_1', H);
     if (!check.ok) throw new Error(check.refusal.reason);
@@ -170,7 +170,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const back = await home.placement.start('c_1', H);
 
     expect(state(w, w.wt)).toEqual(there);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(fs.readFileSync(path.join(w.wt, '.env'), 'utf8')).toBe('TOKEN=secret\n');
     expect(listed(w, w.main, w.wt)).toEqual({});
     expect(fs.readFileSync(path.join(w.macClaude, 'projects/-Users-ada-code-app', `${SID}.jsonl`), 'utf8')).toBe(fs.readFileSync(farTranscript, 'utf8'));
@@ -275,6 +275,35 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
   });
 
+  it('a resume that exits back to its shell on the worker stalls the move with its error, the session kept, and Retry resumes it there', async () => {
+    const w = open({ pollMs: 50 });
+    const home = await w.start();
+    // the agent the worker resumes runs a moment and exits before it reports its session, as a Claude without its login does
+    const report = w.vault.started;
+    w.vault.started = () => {};
+    const moved = home.placement.start('c_1', W);
+    await until(() => { expect(w.vault.lines.some((l) => l.text.startsWith('claude --resume'))).toBe(true); });
+    await waitForPolls(w.worker.fleet, 2);
+    for (const win of w.vault.windows.values()) if (win.name === 'c_1') delete win.job;
+    const id = await moved;
+
+    const error = `kanban's terminal resumed claude session ${SID}, but claude exited back to its shell before that session started, so it is dormant again with that session; revive it to see`;
+    const there = w.worker.store.state.robots.c_1;
+    expect(there).toMatchObject({ resumeError: error, agent: { sessionId: SID }, revive: { command: expect.stringContaining(`--resume ${SID}`) } });
+    expect(there.tmux).toBeUndefined();
+    expect(home.placement.status(id)).toMatchObject({ phase: 'activate', error });
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W, moving: { id, phase: 'activate', error } });
+    await until(() => { expect(home.store.state.robots.c_1.resumeError).toBe(error); });
+
+    w.vault.started = report;
+    await home.placement.retry(id);
+
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.moving).toBeUndefined();
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
+    expect(w.worker.store.state.robots.c_1.resumeError).toBeUndefined();
+  });
+
   it('a worker that could not seed trust answers the agent\'s trust question as it shows', async () => {
     const w = open({ agentRunsThere: true });
     w.vault.screens.set('%1', TRUST_DIALOG);
@@ -341,7 +370,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const home = await w.start();
     const out = await home.placement.start('c_1', W);
     const before = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     w.opencode.mac.sessions.get(OSID)!.messages.push({ id: 'msg_here' });
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
       code: 'refused', message: `OpenCode went on with session ${OSID} on this Mac since the move; save it with opencode session export, then delete it`,
@@ -350,7 +379,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.machine).toBe(W);
     // the Mac worktree keeps the changes it held, locked as the robot left it
     expect(state(w, w.wt)).toEqual(before);
-    expect(await fingerprintOf(w.wt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.wt, hooklessGit)).toBe(fingerprint);
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${out}` });
     expect(home.store.state.robots.c_1.left?.fingerprint).toBe(fingerprint);
   });
@@ -455,7 +484,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     fs.appendFileSync(path.join(w.wt, 'b.txt'), 'and on the Mac\n');
     fs.writeFileSync(path.join(w.wt, 'again.md'), 'again\n');
     const now = state(w, w.wt);
-    const fingerprint = await fingerprintOf(w.wt, handoverGit);
+    const fingerprint = await fingerprintOf(w.wt, hooklessGit);
     // a prepare that fails there leaves that worktree as the robot left it, locked again, for the next move to take
     at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
     await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
@@ -466,7 +495,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     const id = await home.placement.start('c_1', W);
 
     expect(state(w, w.farWt)).toEqual(now);
-    expect(await fingerprintOf(w.farWt, handoverGit)).toBe(fingerprint);
+    expect(await fingerprintOf(w.farWt, hooklessGit)).toBe(fingerprint);
     expect(listed(w, w.clone, w.farWt)).toEqual({});
     expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
     expect(home.store.state.robots.c_1).toMatchObject({ machine: W, left: { moveId: id, machine: H, path: w.wt, branchSha: now.head } });
@@ -488,7 +517,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     disarm();
     disarm = undefined;
     first.links.stop();
-    const fingerprint = await fingerprintOf(w.farWt, handoverGit);
+    const fingerprint = await fingerprintOf(w.farWt, hooklessGit);
 
     const again = await w.bootHome();
     await again.placement.recoverMoves();
@@ -636,98 +665,5 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     expect(atBundle).toBe(2);
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-  });
-});
-
-// the home's side of a move out, each step a crash can fall on
-const HOME_STEPS: Failpoint[] = [
-  'move.journal.rest', 'move.rest', 'move.journal.bundle', 'move.bundle', 'move.journal.prepare', 'move.journal.commit', 'move.commit.state',
-  'move.journal.activate', 'move.journal.release', 'move.release.lock', 'move.journal.done',
-];
-
-describe.skipIf(!hasGit)('a crash of the home during a move', () => {
-  for (const name of HOME_STEPS) {
-    for (const edge of ['before', 'after'] as const) {
-      it(`at ${name}:${edge} ends with the move done or aborted and the robot on exactly one machine`, async () => {
-        const w = open();
-        const first = await w.start();
-        at(name, edge, () => { first.life.dead = true; throw new Crash(name); });
-        await expect(first.placement.start('c_1', W)).rejects.toThrow();
-        first.links.stop();
-        const opened = w.mac1.opened.length;
-
-        const again = await w.bootHome();
-        await again.placement.recoverMoves();
-
-        const ids = (fs.existsSync(w.homePaths.moves) ? fs.readdirSync(w.homePaths.moves) : []).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length));
-        const phase = ids.length ? again.placement.status(ids[0]).phase : 'never journaled';
-        const here = again.store.state.robots.c_1;
-        expect(here.moving).toBeUndefined();
-        if (phase === 'done') {
-          expect(here.machine).toBe(W);
-          expect(w.mac1.opened.length).toBe(opened);
-          expect([...w.mac1.windows.values()].some((x) => x.name === 'c_1')).toBe(false);
-          expect(listed(w, w.main, w.wt)?.locked).toBe(`moved to w1 ${ids[0]}`);
-          await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-          expect(w.vault.opened).toEqual(['c_1']);
-        } else {
-          expect(['aborted', 'never journaled']).toContain(phase);
-          expect(here.machine).toBeUndefined();
-          expect(here.tmux).toBeDefined();
-          expect([...w.mac1.windows.values()].filter((x) => x.name === 'c_1')).toHaveLength(1);
-          expect(listed(w, w.main, w.wt)).toEqual({});
-          expect(fs.existsSync(w.farWt)).toBe(false);
-          expect(w.vault.opened).toEqual([]);
-          await until(() => { expect(w.worker.store.state.robots.c_1?.machine).toBeUndefined(); });
-        }
-      });
-    }
-  }
-
-  it('a worker linked again after a crash at move.journal.activate starts the robot only once it holds the commit\'s snapshot', async () => {
-    const w = open();
-    const first = await w.start();
-    at('move.journal.activate', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
-    await expect(first.placement.start('c_1', W)).rejects.toThrow(Crash);
-    first.links.stop();
-    const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
-    const id = file.slice(0, -'.json'.length);
-    // what the worker holds of the robot is its own prepare's, marked so
-    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, placement: { generation: 1 }, moving: { id, phase: 'prepare' } });
-    let held: unknown;
-    at('worker.activate.open', 'before', () => { held = structuredClone(w.worker.store.state.robots.c_1.moving); });
-
-    // the link answers at once and syncs late: the move runs on as it answers, and waits for the sync
-    const again = await w.bootHome(undefined, { syncAfterMs: 1500 });
-
-    await until(() => { expect(again.placement.status(id).phase).toBe('done'); });
-    expect(held).toEqual({ id, to: W, phase: 'activate' });
-    expect(w.vault.opened).toEqual(['c_1']);
-  });
-
-  it('a return cut short before its commit leaves the robot on the worker and the Mac worktree locked, and the next return goes through', async () => {
-    const w = open();
-    const first = await w.start();
-    await first.placement.start('c_1', W);
-    w.g(w.farWt, 'commit', '-qm', 'staged work');
-    fs.appendFileSync(path.join(w.farWt, 'b.txt'), 'more\n');
-    at('move.journal.commit', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
-    await expect(first.placement.start('c_1', H)).rejects.toThrow(Crash);
-    first.links.stop();
-    disarm?.();
-
-    const again = await w.bootHome();
-    await again.placement.recoverMoves();
-    const here = again.store.state.robots.c_1;
-    expect(here).toMatchObject({ machine: W });
-    expect(here.moving).toBeUndefined();
-    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
-    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-    expect(w.vault.opened).toEqual(['c_1', 'c_1']);
-
-    const there = state(w, w.farWt);
-    await again.placement.start('c_1', H);
-    expect(state(w, w.wt)).toEqual(there);
-    expect(again.store.state.robots.c_1.machine).toBeUndefined();
   });
 });

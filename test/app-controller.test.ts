@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { describeVersion } from '../scripts/release-stage.mjs';
+import { describeVersion, PINS, VENDOR } from '../scripts/release-stage.mjs';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const read = (file: string): string => fs.readFileSync(path.join(ROOT, file), 'utf8');
@@ -88,6 +88,23 @@ describe('the controller release build.sh carries', () => {
   });
 });
 
+const files = (dir: string): string[] => fs.readdirSync(dir, { recursive: true, encoding: 'utf8' });
+const notice = (dir: string): string => fs.readFileSync(path.join(dir, 'licenses/NOTICE'), 'utf8');
+
+// the build done for real where its inputs are on disk: a unit test may not reach nodejs.org, and vitest builds no phone page
+const SHASUMS = path.join(VENDOR, 'node', `SHASUMS256-${PINS.node.version}.txt`);
+const unbuilt = process.platform !== 'darwin'
+  || ![path.join(VENDOR, 'node', `node-${PINS.node.version}-darwin-${process.arch}.tar.xz`), SHASUMS, path.join(ROOT, 'apps/desktop/web/dist-mobile')].every((f) => fs.existsSync(f));
+
+it.skipIf(unbuilt)('the controller tree the app carries holds no rsync', () => {
+  const out = temp();
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'scripts/build-controller.mjs'), '--out', out, '--version', '0.0.0-test', '--node-shasums', SHASUMS], { encoding: 'utf8' });
+  expect(r.status, r.stderr).toBe(0);
+  const tree = path.join(out, 'releases/0.0.0-test');
+  expect(files(tree).filter((f) => /(^|\/)rsync$/.test(f))).toEqual([]);
+  expect(notice(tree)).not.toMatch(/rsync/i);
+}, 180_000);
+
 describe('the node the carried controller runs', () => {
   const build = read('scripts/app-build.sh');
   const from = 'APP="$ROOT/apps/desktop/mac/build.noindex/Svall.app"\n';
@@ -120,7 +137,7 @@ describe('signing Svall.app', () => {
   function sign(carried: boolean, linked = false): string[] {
     const dir = temp();
     const app = path.join(dir, 'Svall.app');
-    for (const f of carried ? ['bin/rsync', 'node/bin/node'] : []) {
+    for (const f of carried ? ['node/bin/node'] : []) {
       fs.mkdirSync(path.dirname(path.join(app, 'Contents/Resources/release', f)), { recursive: true });
       fs.writeFileSync(path.join(app, 'Contents/Resources/release', f), '');
     }
@@ -136,15 +153,13 @@ describe('signing Svall.app', () => {
     return s.log().map((c) => c.replaceAll(app, 'APP').replaceAll(MAC, 'MAC'));
   }
 
-  it('signs the carried controller\'s rsync and node for notarization before the app that seals them', () => {
+  it('signs the carried controller\'s node for notarization before the app that seals it', () => {
     const calls = sign(true);
     const app = calls.indexOf('codesign --force --options runtime --timestamp --sign Developer ID Application: Test --entitlements MAC/app.entitlements APP');
-    const rsync = calls.indexOf('codesign --force --options runtime --timestamp --sign Developer ID Application: Test APP/Contents/Resources/release/bin/rsync');
     const node = calls.indexOf('codesign --force --options runtime --timestamp --sign Developer ID Application: Test --entitlements MAC/node.entitlements APP/Contents/Resources/release/node/bin/node');
     expect(app, calls.join('\n')).toBeGreaterThan(-1);
-    expect(rsync, calls.join('\n')).toBeGreaterThan(-1);
     expect(node, calls.join('\n')).toBeGreaterThan(-1);
-    expect(Math.max(rsync, node)).toBeLessThan(app);
+    expect(node).toBeLessThan(app);
   });
 
   it('signs the app\'s node once when the carried release links to it', () => {
@@ -152,7 +167,6 @@ describe('signing Svall.app', () => {
     expect(calls.filter((c) => c.includes('node.entitlements')), calls.join('\n')).toEqual([
       'codesign --force --options runtime --timestamp --sign Developer ID Application: Test --entitlements MAC/node.entitlements APP/Contents/Helpers/node',
     ]);
-    expect(calls.some((c) => c.endsWith('APP/Contents/Resources/release/bin/rsync'))).toBe(true);
   });
 
   it('still signs an app that carries no controller', () => {

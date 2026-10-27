@@ -1,12 +1,14 @@
 # Integration runs
 
-The unit and fault suites (`pnpm test`, `pnpm test:faults`) drive the handover against fakes and one shared disk. The
-integration run below drives it on real machines: two Linux containers with real sshd, rsync, tmux, Git and systemd.
+The unit suites (`pnpm test`) drive robot moves against fakes on one disk, and
+`packages/svalld/test/placement/faults.test.ts` crashes either daemon on both edges of every step of a move, of the
+worker's outbox and of the home's apply of it. The runs below drive Svall on real machines: Linux containers with real
+sshd, tmux, Git and systemd.
 
-## Fleet handover between two machines
+## Robot placement between two machines
 
-`scripts/integration/fleet-handover.sh` hands a fleet between two Ubuntu 24.04 containers and checks every step.
-It is retiring with the fleet handover and does not run on this release: its provisioning calls `svall host enable`.
+`pnpm integration:placement` (`scripts/integration/robot-placement.mjs`) moves robots between two Ubuntu 24.04
+containers, a home and the worker `svall host add` makes of the other, and checks every step on both.
 
 ### Run it
 
@@ -14,167 +16,131 @@ It needs Docker and the checkout's own `pnpm install`. On a Mac, colima or Docke
 
 ```sh
 colima start                                   # if Docker is not already running
-scripts/integration/fleet-handover.sh --out /tmp/fleet-handover
+pnpm integration:placement --out /tmp/robot-placement
 ```
-
-Options:
 
 | Option | What it does |
 | --- | --- |
 | `--archive <file>` | Use this companion archive instead of building one from the checkout. |
+| `--image <tag>` | Use this machine image instead of building one from `scripts/integration/Dockerfile`. |
 | `--out <dir>` | Where the logs go (default a new folder under the system temp folder, named when the run starts). |
-| `--scenarios <spec>` | `all` (default), `none` (the clean round trip only), `kill`, `drop`, or a list such as `kill@begin,drop@transfer`. |
+| `--steps <spec>` | `all` (default) or a list of step numbers such as `1,5`. The fixture always runs, and a step also runs the steps whose robots it works with. |
+| `--scenarios <spec>` | The faults of step 5: `all` (default), `none`, `kill`, `drop`, or a list such as `kill@rest,drop@commit`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u svall svall-local bash -l`. |
-| `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` and the network `<name>-it` (default `svall`), so another run can share the Docker host. The handover benchmark uses `svall-bench`. |
+| `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
 
 The script builds the companion archive for the Docker host's architecture (`scripts/build-companion.mjs`), and
-`apps/desktop/web/dist-mobile` first if it is missing. It builds the image from `scripts/integration/Dockerfile`, then
-runs `scripts/integration/fleet-handover.mjs`. A full run takes about 15 minutes on an M-series Mac. The kill
-scenarios take seconds each. Each drop scenario waits out the controller's ssh timeouts, one to two minutes.
-
-It exits 0 when every check passed. Each step prints `PASS`, or one `FAIL` line per failed check, and the run stops at
-the first failed step. The output folder holds:
-
-- `run.log`: every docker command and its output;
-- one `.ndjson` per handover: the controller's event stream, and a `.stderr` beside it when the controller wrote any;
-- a `.summary.json` per handover: the fault, when it landed, and the result;
-- a `.stopped.json` per fault: both machines' snapshots right after it;
-- a `.recovery.ndjson` per fault: the `status` and the action taken;
-- the tail of each machine's daemon and gateway logs.
+`apps/desktop/web/dist-mobile` first if it is missing. It exits 0 when every check passed. Each step prints `PASS`, or
+one `FAIL` line per failed check, and the run stops at the first failed step. The output folder holds `run.log`, every
+docker command and its output; a `.summary.json` per move step 5 drives, with the fault, the phase it landed at and the
+result; `home-down.watch.ndjson`, the robot as the home's API showed it while it came back in step 4; and the tail of
+each machine's daemon and unit logs.
 
 ### The machines
 
 | | `svall-local` | `svall-remote` |
 | --- | --- | --- |
-| Plays | the controller's machine | the companion machine and gateway |
-| Installed by | `svall setup --release <archive>` | `svall host add remote --release <archive>` from local |
-| Runs | svalld and the controller (`svall handover …`) | svalld and the gateway, as systemd user units with linger |
+| Plays | the home, as a Mac | the worker |
+| Installed by | `svall setup --release <archive> --allow-unsigned` | `svall host add remote --ssh svall@svall-remote --release <archive> --allow-unsigned` from local |
+| Runs | the fleet's svalld as a systemd user unit, and every `svall` the run types | `svalld --worker` as a systemd user unit with linger, and the bare repository both machines fetch from |
 
-- **One account.** Both machines have `svall`, at home `/Users/svall` on local, as on a Mac, and `/home/svall` on
-  remote, so each handover moves every path from one home to the other. Local reaches remote with its own key, made
-  when the run starts.
+- **Two homes.** The account is `svall` on both, at `/Users/svall` on local, as on a Mac, and `/home/svall` on remote,
+  so each move relocates every path from one home to the other. Local reaches remote with its own key, made when the
+  run starts.
 - **Node.** Neither machine has Node on PATH. The release brings its own. The harness keeps a copy of the release's
-  node at `/opt/it/node`, which the mocked agents and the in-machine checks run on.
+  node at `/opt/it/node`, which the mocked agents and the in-machine checks (`scripts/integration/machine.mjs`) run on.
 - **Tailscale.** The containers have no tailnet, so `tailscale` is a double that answers its version and nothing else.
-- **Mocked Claude.** `scripts/integration/claude.mjs` is a hook-speaking Claude. It posts
-  its hooks to `$SVALL_HOME/hooks.sock` and keeps a Claude Code 2.1.x transcript. As Claude Code does after its folder
-  moved, it resumes a session from the transcript under its cwd's slug, or else the newest of that id in another
-  project folder, appending there while its SessionStart names the cwd's slug.
-  - `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
-    Claude.
-  - There is no Codex, so `host add` advises installing it.
-- **Mocked OpenCode.** `scripts/integration/opencode.mjs` answers as OpenCode 2.0.22: `--version`, `auth list`, and
-  `session export|import|delete --standalone`, where an import of an id it already holds says so on stderr and exits
-  0. It keeps each session as a JSON file under `~/.local/share/opencode/mock-sessions`, where the real one keeps its
-  database.
-  - `~/.local/bin/opencode` execs node on it as `opencode`, and it sets its process title to `opencode <args>`, so `ps`
-    reads it as the native binary, launch flags and all.
-  - In a terminal, `opencode --standalone [-s <id>]` runs a private `serve --stdio` server in a group of its own and
-    posts the hook lines Svall's plugin would. `-s` on an id it does not hold starts an empty session, as the real
-    one does.
+- **Mocked Claude.** `scripts/integration/claude.mjs` is a hook-speaking Claude. It posts its hooks to
+  `$SVALL_HOME/hooks.sock` and keeps a Claude Code 2.1.x transcript. As Claude Code does after its folder moved, it
+  resumes a session from the transcript under its cwd's slug, or else the newest of that id in another project folder.
+  `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
+  Claude. There is no Codex or `gh`, so `host add` advises installing them.
+- **The fixture.** Repo `~/src/app` on local, whose remote is a bare repository on remote, with a stash, a linked
+  worktree `~/src/app-wt` holding staged, unstaged, untracked and `.env` changes, main with changes of its own and an
+  ignored `node_modules/`, and a worktree `~/src/app-faults` with a commit not on the remote. Three Claude robots run
+  in them: `agent` in `app-wt`, `kanban` on main and `faults` in `app-faults`.
 
 ### What it checks
 
-1. **Provisioning.**
-   - `svall setup` starts the daemon unit.
-   - Every `host add` step is `ok`. The only warning allowed is the missing Codex.
-   - `handover.enabled` is turned on, and `host enable` makes remote the gateway.
-2. **The fixture.** Repo `~/src/app` has:
-   - a linked worktree `~/src/app-wt`;
-   - staged, unstaged and untracked changes in both;
-   - a stash;
-   - an ignored `data/` of 16 MiB;
-   - a default-excluded `node_modules/`.
+1. **Move the dirty robot.** `agent` moves to remote. The sheet says `.env stays here` and that remote clones the
+   repository. On remote the worktree has the branch, commits, index, status and files the Mac's had, without `.env`,
+   and the agent resumes its session there; the Mac's worktree is kept as it was and locked `moved to remote <move
+   id>`, and the stash stays on the Mac. A turn on remote reaches the home's state and transcript.
+2. **Move the robot on main.** `kanban` moves, and the move converts main into a worktree on a new branch `kanban`,
+   staged and unstaged apart, leaving main clean with its stash; `node_modules` is named and never travels.
+3. **Worker restart.** A restart of the worker's unit keeps each agent's process. One that stops tmux too, as a
+   reboot does, leaves the robots dormant with their resume commands, and a revive from the home starts them there.
+4. **Home down during work.** With the home's unit stopped, two turns typed on remote wait in its outbox. Once the
+   home starts, it takes each once and in order, from its first answer on.
+5. **The fault matrix**, below.
+6. **Return through a dirty Mac worktree.** A return refuses an edit made on the Mac since the move, with its exact
+   sentence. Once it is undone, `agent` comes back with the worker's commit and changes, `.env` still on the Mac, the
+   Mac's worktree unlocked, the worker's locked, and the session as the worker left it.
+7. **A reviewer started while the Mac sleeps.** With the home stopped, `svall` on remote, as `kanban`'s agent would
+   run it there, starts a reviewer and four more robots and refuses a sixth, and the worker journals each; the home
+   applies them in order once it is back, each in a cell of its own.
+8. **The scribe over a robot on the worker.** A sweep from the home notes `kanban`, read on remote.
+9. **A docs conflict.** `kanban`'s notes changed on both machines while apart keep the Mac's text, with remote's as a
+   conflict copy named in the robot's note.
+10. **Files over the link.** The home reads `kanban`'s branch, changed files and a file on remote, and a write is
+    refused read-only.
+11. **A delete while the worker is down.** With remote stopped, `kanban` keeps the last screen remote sent, and the
+    home closes the reviewer at once. Once remote is back the reviewer's window is gone, neither state holds it, and
+    its worktree is locked `closed robot <id>`.
+12. **The agent setup mirror.** The home's Claude has two MCP servers with keys and one that reads a variable. One
+    key is ticked for remote and the variable set there with `svall worker env`; a robot moves there; the key is
+    unticked while it runs. No file on remote ever holds a key not ticked.
 
-   A mocked-Claude robot runs in the worktree, a mocked-OpenCode robot `oc` in the main checkout, each with
-   one turn, and a shell robot runs in the main checkout.
-3. **local → remote, then remote → local**, each with a turn on the new owner, all through the controller on local.
-   Each handover checks:
-   - **The manifest:** four roots at their paths in the source's home (the two checkouts, mission control's folder
-     and the agent profiles) and two sessions, Claude's and OpenCode's, no blockers, and each root and session
-     verified in full.
-   - **Git:** on the new owner, each checkout's HEAD, branch, `status --porcelain=v2`, index (`ls-files --stage`),
-     stash, worktree list, refs and `fsck` equal the source's before the handover, with each machine's home read as
-     `~`, so a worktree list that still names the old home fails. Every file of both working
-     trees, ignored ones included, has the same content and mode. `node_modules/` never reaches remote.
-   - **The state:** the same robots, names, cwds (each in the new owner's home) and islands, and the shell robot's terminal runs bash.
-   - **The agents:** Claude runs as `claude --resume <its session id>` and OpenCode as
-     `opencode --standalone -s <its session id>`, each in its cwd in the new owner's home, under the same session id and pid the state records. Claude's transcript is identical, and the
-     next turn appends to the same file. OpenCode runs one private server, and holds its session with the same
-     messages, in the terminal's folder, never as an empty session a resume made up; the next turn adds to it.
-   - **Ownership:** the new owner's daemon owns the fleet at the next generation and is not frozen. The old one is
-     fenced to the new owner and runs no agent, OpenCode server or window: it has stopped the fleet's tmux server.
-     The gateway's record names the new owner with no transaction. No handover journal is left on either machine or
-     in the controller.
-4. **Faults.** A fault at each boundary, in both directions. After each, `svall handover status` must offer what the
-   spec says, and the harness takes that action: `--abort` before the commit, `--resume` after it. Then every check
-   of step 3 runs against the owner the fleet should have. Before recovering, the harness also snapshots both
-   machines where the fault left them.
+Steps 1, 2, 5 and 6 also check that the bare repository on remote is untouched: a move never pushes.
 
-| Boundary | Faults | The fault lands when | Commit | Checked where it stopped |
-| --- | --- | --- | --- | --- |
-| before Freeze | kill, drop | the ssh carrying the gateway's Begin appears | pre | Begin landed (kill); the source never froze, and its agents keep their pids through the abort |
-| during transfer | kill, drop | the first rsync that copies appears | pre | the source is frozen and its agents rested |
-| after Ready | kill, drop | the ssh carrying Ready appears | pre | Ready landed (kill); the source is frozen |
-| right after Commit | kill | the ssh carrying Commit appears | post | the gateway committed; neither machine runs the fleet |
-| during activation | kill, drop | the controller reports `activate` | post | the gateway committed; the source runs nothing |
+### The fault matrix
 
-Every pre-commit stop is also checked for a gateway that has not committed and a destination that runs nothing.
+Step 5 moves `faults` out to remote and back with a fault at each phase of a move, in both directions: 6 phases, 2
+faults and 2 directions, 24 moves. Before each, `faults` is moved to the side the move starts from.
 
-- **Controller kill.** A SIGKILL of the controller alone. The ssh already carrying a gateway operation lands it, as it
-  does when a helper dies mid-call, so the boundary is exact. During the transfer the kill takes the controller's whole
-  session, rsync and ssh with it, as a crash would.
-- **Link drop.** A root agent on remote (`machine.mjs link`) drops every packet to and from port 22 with iptables. The
-  controller runs on until it gives up with an `interrupted` result. The harness then restores the link.
-- **No drop right after Commit.** A drop there races the commit's own packets, so where it lands is not
-  deterministic. The drop during activation is the post-commit drop.
-- **The triggers.** They run inside local, beside the controller: `machine.mjs drive` polls `/proc` for the
-  controller's session every 2 ms and reads its event stream.
-- **Pre-commit, after the abort:** the source runs the fleet as before, the destination runs nothing, and the
-  gateway has no transaction.
-- **Post-commit, after the resume:** the destination runs the fleet with each agent resumed under its session id, and
-  the source never runs a terminal or an agent again.
+| Phase | Commit | A fault there ends the move |
+| --- | --- | --- |
+| `rest` | pre | aborted: the robot runs where it was |
+| `bundle` | pre | aborted |
+| `prepare` | pre | aborted, but a drop on the way back, where the prepare is this Mac's own, ends done |
+| `commit` | post | done: the robot runs on the destination |
+| `activate` | post | done |
+| `release` | post | done |
+
+- **Home kill.** The trigger stops the home's daemon at the first write of the move's journal at that phase, then
+  SIGKILLs it; systemd starts it again, and the move goes on from its journal.
+- **Link drop.** A root agent on remote (`machine.mjs link`) drops every packet to and from port 22 with iptables, and
+  the harness restores the link once the move's `svall` gives up or ends.
+- **The trigger.** `machine.mjs drive` runs `svall robot move` on local and watches `journal/moves` there, stopping the
+  daemon at each journal write until it has read the phase, so the fault lands at that phase.
+- **Afterwards**, once the move has ended, by itself or after `--retry` or a restart: both journals end `done` or
+  `aborted` as above; the robot runs on one machine alone, with one agent on its session and one window, and both
+  machines' records agree. An aborted move leaves the source's worktree unlocked and as it was, and no worktree of
+  the move on the destination.
 
 ### The CI job
 
-No workflow runs this script. `.github/workflows/ci.yml` job `placement` runs the
-[placement run](#robot-placement-between-two-machines) on `ubuntu-24.04`, which is x86-64. When it fails, it scans the
-output folder with `release-scan.mjs --secrets-only` and uploads it only if the scan passed. Actions jobs do not start
-on this repository (billing), so the job has not run on GitHub.
+`.github/workflows/ci.yml` job `placement` runs `pnpm integration:placement` on `ubuntu-24.04`, which is x86-64. When
+it fails, it scans the output folder with `release-scan.mjs --secrets-only` and uploads it only if the scan passed.
+Actions jobs do not start on this repository (billing), so the job has not run on GitHub.
 
-The script runs the machines on the Docker host's own architecture: arm64 on an Apple Silicon Mac, x86-64 on the
-runner. It cannot run under user-mode emulation, such as Docker's qemu binfmt on an arm64 host. There every process
-reads as `qemu-x86_64`, so the rest classifier finds every terminal busy and preflight blocks. An x86-64 run needs an
-x86-64 Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Silicon Mac](#x86-64-on-an-apple-silicon-mac)).
+The run uses the Docker host's own architecture: arm64 on an Apple Silicon Mac, x86-64 on the runner. It cannot run
+under user-mode emulation, such as Docker's qemu binfmt on an arm64 host. There every process reads as
+`qemu-x86_64`, so the rest classifier finds every terminal busy and every move refuses. An x86-64 run needs an x86-64
+Docker host, such as a full-system x86-64 VM (see [x86-64 on an Apple Silicon Mac](#x86-64-on-an-apple-silicon-mac)).
 
 ### What this run does not cover
 
-- **Mac ↔ Linux.** The controller here runs from the Linux companion build, and GitHub's macOS runners cannot run Linux
-  containers. The Mac's bundled rsync 3.4.4 and launchd, and Mac-to-Linux paths, are covered by a manual run on real
-  machines.
-- **The app's helper.** The harness runs `svall handover` in the foreground with `--json`, not the app's
-  `--detach` and `attach`.
+- **Mac ↔ Linux.** The home here runs the Linux companion build, and GitHub's macOS runners cannot run Linux
+  containers. The Mac's launchd, the app and Mac-to-Linux paths are covered by a manual run on real machines.
 - **Real agents.** Real Claude Code, Codex and OpenCode need logins. The mocked Claude speaks the same hooks and
-  transcript layout, and the live probes cover the real Claude and Codex CLIs
-  (`packages/svalld/test/handover/sessions-live.test.ts`). Nothing runs a real OpenCode's export and import; the mock
-  starts its session at launch, where the real one does at the first prompt.
+  transcript layout; `pnpm compat` checks each new release's session layout and flags.
+- **Other agents' moves.** The run moves Claude robots only: the mocked OpenCode (`scripts/integration/opencode.mjs`)
+  answers just the version and login probes, and `packages/svalld/test/placement/move.test.ts` moves an OpenCode
+  session against fakes.
 - **Tailscale.** The containers talk over the docker network.
 - **Fresh installs.** Installing on a clean machine with no Node, `host upgrade` and `setup --rollback` are the
   fresh-install run's, below. `host upgrade --rollback` runs in neither.
-
-## Robot placement between two machines
-
-`pnpm integration:placement` (`scripts/integration/robot-placement.mjs`) builds a companion from the checkout and two
-Ubuntu 24.04 containers, a home and the worker `svall host add` makes of the other, with three Claude robots over a
-bare remote both reach. It moves them out and back, restarts the worker, stops the home while the worker's agent
-works, and kills the home's daemon or drops the link at each phase of a move, checking on both machines the branch,
-index, files, locks and journals, the one agent resumed on its session, and the remote untouched. Then, from `kanban`
-on the worker, it starts a reviewer and four more robots while the home is stopped, sweeps the scribe over them,
-changes kanban's notes on both machines apart, reads its files from the home, and closes the reviewer while the
-worker is stopped. Last, it gives the home's Claude two MCP servers with keys and one that reads a variable, ticks
-one's key for the worker, sets the variable there, moves a robot there and unticks the key while it runs, checking
-that no file on the worker holds a key not ticked. `--steps`, `--scenarios`,
-`--keep` and `--prefix` work as in the handover run; it exits 1 at the first step with a failed check.
 
 ## Fresh installs
 
@@ -198,8 +164,8 @@ scripts/integration/fresh-install.sh --out /tmp/fresh-install
 Without `--release`, the script builds the checkout twice with `scripts/release-build.sh`: as its `git describe`
 name, carrying its companions as Svall.app does, and as that name with `-next`, pinning its companions on a free
 loopback port, so `host add` takes the app's route and `host upgrade` downloads. The machine runs on the Docker host's
-own architecture, as the handover run's do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines
-per step, like the handover run. The output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the
+own architecture, as the placement run's do. It exits 0 when every check passed, and prints `PASS` or its `FAIL` lines
+per step, like the placement run. The output folder holds `run.log`, the NDJSON of `host add` and `host upgrade`, the
 JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with what the checks read on the machine,
 `served.log` with each download, and `machine.log` with the units' logs.
 
@@ -212,9 +178,9 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
    - A Linux runner cannot run the Mac's Node, so there the tree's `lib/svall.mjs` runs on the runner's Node 24,
      with `SVALL_RELEASE_ROOT` at the tree: the same code, manifest and signers.
 2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, polkit, sshd, tmux
-   3.4, Git, rsync and the `tailscale` double, and no Node.
+   3.4, Git and the `tailscale` double, and no Node.
    - The run makes one account whose home is the controller's home, a folder of its own under `/var/tmp` on both. It
-     is short enough for the fleet's socket paths, which hold at most 108 bytes, and outside `/tmp`, which the
+     is short enough for the fleet's socket paths, which hold at most 107 bytes, and outside `/tmp`, which the
      machine empties when it starts again.
    - The account logs in with a key made for the run, and lingering is off.
    - No `node` exists anywhere on the machine, and the home holds only Ubuntu's skeleton.
@@ -228,12 +194,14 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
      names the companion's `file:` URL inside it.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
    - Whichever route, the release step says whether the release is signed, as its manifest does.
-   - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
+   - Every step is `ok` but the advice a fresh machine gets: Claude Code, Codex, OpenCode and `gh` not installed,
+     `versions` skipped with no agent to compare, and `mirror:unchecked`, as no daemon runs on the controller. The
      linger step turns lingering on, and the tmux step finds the release's own.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
-   - The JSON result's `actions` are exactly the three installs, the things the text line `fresh needs 3 things
-     before robots can move there` counts.
+   - The JSON result's `actions` are exactly the three installs and `svall host doctor fresh once Svall is open`,
+     the things the text line `fresh needs 4 things before robots can move there` counts; `gh` is advice and counts
+     for none.
 4. **A restart with no login.**
    - The private fleet's svalld unit, which runs the worker, is active and enabled.
    - It runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.
@@ -304,7 +272,8 @@ included, and drops the rest.
 | Job | Runner | What it does |
 | --- | --- | --- |
 | `key` | `ubuntu-24.04` | Checks the key before anything is built: an OpenSSH key without a passphrase whose public half is in `scripts/release/allowed_signers`. Says whether the tag is signed. |
-| `build` | `macos-latest` | Needs `key`, and never holds the key. Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Restores no cache on a signed tag, so a signed release builds its own rsync. Passes both to the other jobs as workflow artifacts, kept for one day. |
+| `tmux` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Builds the tmux each Linux companion carries, in an Ubuntu 22.04 container on its own architecture. |
+| `build` | `macos-latest` | Needs `key` and `tmux`, and never holds the key. Runs `release-build.sh` twice: for the tag, and as `<tag>-next`, the release the fresh installs upgrade to, which is never published and pins its companions at `http://127.0.0.1:8765/upgrade`. Restores no cache on a signed tag, so a signed release downloads its own pinned Node. Passes both to the other jobs as workflow artifacts, kept for one day. |
 | `sign` | `macos-latest` | Runs only with the key. Signs both builds' archives with `release-build.sh --sign` and puts them back in place of the unsigned ones. |
 | `fresh-install` | `ubuntu-24.04` (x64), `ubuntu-24.04-arm` (arm64) | Needs `build`, and `sign` unless a run without the key skips it. Runs `fresh-install.sh` with both releases. `host add` installs the tag's companion by path, as its GitHub URL does not resolve before publish; `host upgrade` downloads the `-next` companion from the run's loopback server. |
 | `publish` | `ubuntu-24.04` | Needs `key` and `fresh-install`. With the key, it lists every archive in `SHA256SUMS`, signs that with `ssh-keygen -Y sign`, checks the signature against the committed `scripts/release/allowed_signers`, and creates the GitHub release with the archives, `SHA256SUMS` and its signature. Without the key, or for a tag with a `-`, it notes that the dry run passed, and uploads nothing. |
@@ -316,7 +285,7 @@ included, and drops the rest.
   at a pinned commit.
 - **The signers.** `scripts/release/allowed_signers` lists the release key and its offline backup. The `key` job
   fails at once, naming the file, when the secret is not an OpenSSH key without a passphrase or its public half is not
-  listed there. See [Release keys](security/fleet-handover.md#release-integrity) for retiring a key.
+  listed there. See [Release integrity](security/workers.md#release-integrity) for retiring a key.
 - **Dry run.** A tag in a repository without the secret builds and fresh-installs everything, and
   uploads nothing. A tag with a `-`, such as `v1.0.0-test1`, does the same, signed when the secret is there.
 - **Logs.** A failed job's logs are scanned with `--secrets-only` before they are uploaded, and a hit keeps them back.
@@ -331,11 +300,4 @@ Actions jobs do not start on this repository (billing), so these steps have run 
 - the `sign` job's upload over the build's artifacts, and the fresh-install job running when a run without the key skips it;
 - the fresh-install job's server on the runner's `127.0.0.1:8765`, which needs nothing else listening there;
 - the Mac controller's `svall.mjs` on a Linux runner's Node, which has run only on a Mac's Node;
-- the build on a macOS runner, with the runner's `strip` and an rsync build on a cache miss.
-
-## Tests that need rsync
-
-`packages/cli/test/controller/rsync.test.ts` and `transfer.test.ts` drive the pinned rsync under `vendor/rsync`, or
-`SVALL_TEST_RSYNC`. `packages/svalld/test/handover/manifest.test.ts` drives the `rsync` on PATH. Without an rsync
-they skip what needs it. The CI test job builds the pinned rsync with `scripts/build-controller.mjs`, caches it, and
-sets `SVALL_REQUIRE_RSYNC=1`, so a missing rsync fails those files instead.
+- the build on a macOS runner, which downloads the pinned Node on a cache miss.

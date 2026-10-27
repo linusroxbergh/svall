@@ -1,10 +1,10 @@
 import path from 'node:path';
 import type { AgentKind, Repo, Robot } from '@svall/protocol';
-import { realScanFs } from '../handover/manifest.js';
-import { clean, holds } from '../handover/portable-path.js';
-import { relocate, type Relocation } from '../handover/relocate.js';
-import { sessionAdapter } from '../handover/sessions/registry.js';
-import type { SessionFs } from '../handover/sessions/types.js';
+import { clean, holds } from '../path-tools.js';
+import { realSessionFs } from '../sessions/records.js';
+import { sessionAdapter } from '../sessions/registry.js';
+import type { SessionFs } from '../sessions/types.js';
+import { relocate, type Relocation } from './relocate.js';
 
 /** The user home and each agent's home on the Mac (`from`) and on the worker (`to`). */
 export type Homes = { user: Relocation; agent: Record<AgentKind, Relocation> };
@@ -37,7 +37,7 @@ export function destinationPaths(c: Robot, clone: string, homes: Homes): {
 }
 
 /** The agent home a robot's session lies in on the source and its files relative to it, which land at the same place under the destination's. */
-export async function sessionLanding(c: Robot, fs: SessionFs = realScanFs): Promise<{ sourceHome: string; files: string[] }> {
+export async function sessionLanding(c: Robot, fs: SessionFs = realSessionFs): Promise<{ sourceHome: string; files: string[] }> {
   const a = c.agent;
   if (!a?.transcriptPath) return { sourceHome: '', files: [] };
   const { home, files } = await sessionAdapter(a.kind).discover(a.transcriptPath, a.sessionId, fs);

@@ -32,3 +32,10 @@ export function num(value: string, flag: string, { min, max }: { min: number; ma
   if (!(n >= min && n <= max)) throw new Error(`bad ${flag} "${value}", expected a number from ${min} to ${max}`);
   return n;
 }
+
+export function parseDuration(s: string): number {
+  const m = /^(\d+(?:\.\d+)?)(ms|s|m|h)?$/.exec(s.trim());
+  if (!m) throw new Error(`bad duration "${s}": seconds, or a number with ms, s, m or h after it, like 30s`);
+  const unit = { ms: 1, s: 1000, m: 60_000, h: 3_600_000 }[(m[2] ?? 's') as 'ms' | 's' | 'm' | 'h'];
+  return Math.round(Number(m[1]) * unit);
+}

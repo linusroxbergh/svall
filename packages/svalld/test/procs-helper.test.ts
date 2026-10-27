@@ -11,7 +11,7 @@ import { hookHelperSources } from '../src/runtime.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf, waitFor } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const helperDir = fs.mkdtempSync('/tmp/svall-procs-');
 const helper = path.join(helperDir, 'svall-hook');
@@ -95,7 +95,7 @@ const alive = (pid: number): boolean => { try { process.kill(pid, 0); return tru
     const config = Config.parse({ shell: '/bin/sh', home: { cwd: path.join(home, 'mc') } });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store: Store.load(paths.state, () => {}), tmux, paths, config, ownership: ownerOf(home, config.id), log: silentLogger, pollMs: 150, processes: async () => [], readProcs: read });
+    const fleet = new Fleet({ store: Store.load(paths.state, () => {}), tmux, paths, config, log: silentLogger, pollMs: 150, processes: async () => [], readProcs: read });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;

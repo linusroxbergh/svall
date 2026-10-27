@@ -97,7 +97,7 @@ const SDK_TYPES = 'sdk.d.ts';
 // no SDK holds Claude Code's config keys or session paths; its native binary, published with each release, holds its JS as plain text
 const CLAUDE_BIN = 'claude';
 const binTarball = (version: string) => `https://registry.npmjs.org/@anthropic-ai/claude-code-darwin-arm64/-/claude-code-darwin-arm64-${version}.tgz`;
-// what the session adapter (src/handover/sessions/claude.ts) reads: projects/<slug>/<id>.jsonl, by the minified joins that
+// what the session adapter (src/sessions/claude.ts) reads: projects/<slug>/<id>.jsonl, by the minified joins that
 // build it, and the config and settings keys that trust a folder and accept bypass mode
 const CLAUDE_STRINGS = [',"projects")', '}.jsonl`', '.claude.json', '.config.json', 'settings.local.json',
   'hasTrustDialogAccepted', 'bypassPermissionsModeAccepted', 'skipDangerousModePermissionPrompt'];
@@ -179,7 +179,7 @@ export const CODEX_CONFIG: typeof CODEX_LOG = [
   [CONFIG_TYPES, 'struct', 'Tui', ['resume_cwd']],
   [CONFIG_TYPES, 'enum', 'ResumeCwdMode', ['session']],
 ];
-// where the session adapter (src/handover/sessions/codex.ts) finds a rollout: sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl
+// where the session adapter (src/sessions/codex.ts) finds a rollout: sessions/<yyyy>/<mm>/<dd>/rollout-<time>-<id>.jsonl
 const CODEX_PATHS: Record<string, string[]> = {
   'codex-rs/rollout/src/lib.rs': ['SESSIONS_SUBDIR: &str = "sessions"'],
   'codex-rs/rollout/src/recorder.rs': ['push(SESSIONS_SUBDIR)', 'push(timestamp.year().to_string())', '"{:02}", u8::from(timestamp.month())', '"{:02}", timestamp.day()'],
@@ -230,7 +230,7 @@ const PLUGIN_API: Record<string, string[]> = {
   'packages/core/src/tool/plugin/opencode.ts': ['name: "worktree_create"', 'namespace: "opencode"'],
   'packages/core/src/mcp/index.ts': ['kind: "mcp-elicitation"', 'message: params.message'],
 };
-// what the session adapter (src/handover/sessions/opencode.ts) reads: an export's message ids, pending undo and folder, and
+// what the session adapter (src/sessions/opencode.ts) reads: an export's message ids, pending undo and folder, and
 // what export, import and a session it does not hold print
 const SESSION_API: Record<string, string[]> = {
   'packages/cli/src/commands/handlers/session/export.ts': ['process.stdout.write(JSON.stringify(data'],

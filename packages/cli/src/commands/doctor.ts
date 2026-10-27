@@ -18,18 +18,15 @@ import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svall
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
 import { PRIVATE, SHIM, profileHome, profileLabel } from '@svall/svalld/profile';
-import { isRelease } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { readOrUndefined } from '@svall/svalld/settings-file';
 import { shimsCurrent } from '@svall/svalld/setup';
 import { MARK, grouped, renderGroups, tickMark, useColor, type Check } from '../checks-view.js';
 import { Client, restartHint } from '../client.js';
 import { askCodexTrust, type HookTrust } from '@svall/svalld/codex/trust';
-import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
-import { unattended } from './fleet-recover.js';
 import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
 // daemonEnv: the agent homes setup hands a fleet's daemon from this account, which the agent checks ran with
@@ -60,13 +57,10 @@ export type DoctorDeps = PreflightDeps & {
   // the program this build's plist starts svalld with
   daemon: string[];
   user: string;
-  // the rsync this Mac hands over with, and how to get it back when it is missing
-  rsync: { bundled: string; fix: string };
   // machine.json, and the hardware id of the machine doctor runs on
   machine: { file: string; hardwareId?: string };
 };
 const LOG_LINES = 20;
-const firstLine = (s: string): string => s.trim().split('\n')[0] ?? '';
 
 async function gh(d: DoctorDeps): Promise<Check> {
   try {
@@ -103,7 +97,7 @@ function config(t: Target, d: DoctorDeps): Check {
   }
 }
 
-// a machine.json copied from another machine gives this one that machine's id, so svalld runs a fleet a gateway holds read-only here
+// a machine.json copied from another machine gives this one that machine's id
 function machine(d: DoctorDeps): Check {
   const { file, hardwareId: actual } = d.machine;
   let stored: string | undefined;
@@ -114,9 +108,21 @@ function machine(d: DoctorDeps): Check {
     : { name: 'machine id', status: 'warn', detail: `${file} was made on hardware ${stored}, and this machine is ${actual}: ${copiedRemedy(file)}` };
 }
 
+/** Why this run is not a person's at a terminal outside the fleets, or undefined when it is. */
+export function unattended(env: NodeJS.ProcessEnv, tty: boolean): string | undefined {
+  if (!tty) return 'has no terminal';
+  // a session an older svalld started carries SVALL_CHAR_ID
+  if (env.SVALL_ROBOT_ID || env.SVALL_CHAR_ID) return 'is a robot\'s';
+  // $TMUX names the server the terminal runs in, and a fleet's is the tmux.sock in its home
+  const sock = env.TMUX?.split(',')[0];
+  const home = sock && path.dirname(sock);
+  if (home && sock === resolvePaths(home).tmuxSock && fs.existsSync(resolvePaths(home).fleetConfig)) return 'is in a fleet\'s tmux pane';
+  return undefined;
+}
+
 /**
  * `svall doctor --rebind`: machine.json bound to this machine's hardware, for a person whose machine changed hardware
- * under it; on a copy of another machine's file, both would run the fleets a gateway holds.
+ * under it; on a copy of another machine's file, both would go by one id.
  */
 export function rebindMachineFile(o: { file: string; hardwareId?: string; unattended?: string; read(file: string): string | undefined; rebind(hardwareId: string): void }): { ok: boolean; message: string } {
   if (o.unattended) return { ok: false, message: `nothing was changed: rebinding machine.json needs a person at a terminal outside any fleet's agents and tmux panes, and this run ${o.unattended}` };
@@ -304,23 +310,6 @@ function hooks(d: DoctorDeps): Check {
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
-async function rsyncAt(d: DoctorDeps, exe: string): Promise<{ version: string } | { reason: string }> {
-  try {
-    return rsyncVersion(await d.run(exe, ['--version']));
-  } catch (e) {
-    return { reason: missing(e) ? 'is not there' : `could not run: ${firstLine((e as Error).message)}` };
-  }
-}
-
-/** The rsync a handover runs on this Mac. macOS's own is openrsync, which cannot stand in for it. */
-async function rsync(d: DoctorDeps): Promise<Check> {
-  const bundled = await rsyncAt(d, d.rsync.bundled);
-  if ('version' in bundled) return { name: 'rsync', status: 'ok', detail: `${bundled.version} at ${d.rsync.bundled}` };
-  const system = await rsyncAt(d, 'rsync');
-  const fallback = 'version' in system ? `the rsync on PATH is ${system.version}, which handover does not use` : `the rsync on PATH ${system.reason}`;
-  return { name: 'rsync', status: 'warn', detail: `${d.rsync.bundled} ${bundled.reason}, and ${fallback}; handover needs the bundled rsync: ${d.rsync.fix}` };
-}
-
 // verifies the hook definition is installed and current, then asks Codex whether it is trusted.
 export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'integrations' | 'codexTrust'>): Promise<Check> {
   if (d.integrations && !d.integrations.includes('codex')) return { name: 'codex hooks', status: 'skip', detail: 'turned off in setup' };
@@ -401,7 +390,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     ...(linux
       ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
-      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.handover ? [await rsync(d)] : [])]),
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),
     ...(linux ? [await codexSandbox(d)] : []),
@@ -490,10 +479,6 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
       shimsCurrent: shimsCurrent(shimDir, ownRuntime()),
       daemon: ownRuntime().daemon,
       user: os.userInfo().username,
-      rsync: {
-        bundled: bundledRsync(),
-        fix: isRelease() ? 'reinstall Svall; its release carries one in bin/' : 'build it with node scripts/build-controller.mjs',
-      },
       machine: { file: path.join(configDir(), 'machine.json'), hardwareId: hardwareId() },
     }) };
     printResult(report, json(), () => reportLines(report, useColor()).join('\n'));

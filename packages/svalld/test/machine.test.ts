@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -59,7 +59,15 @@ describe('machine id', () => {
     expect(() => machineId(dir, none)).toThrow(`invalid machine file ${path.join(dir, 'machine.json')}`);
     fs.writeFileSync(path.join(dir, 'machine.json'), '{"id":"trift"}');
     expect(() => machineId(dir, none)).toThrow(`invalid machine file ${path.join(dir, 'machine.json')}`);
-    expect(() => machineId(dir, none)).toThrow('delete the file to mint a new machine id, or restore it from backup');
+  });
+
+  it('says to restore a file it cannot read, and to delete it only while no worker knows this Mac by the id in it', () => {
+    const dir = makeHome();
+    fs.writeFileSync(path.join(dir, 'machine.json'), '{ id: nope');
+    let e: unknown;
+    try { machineId(dir, none); } catch (err) { e = err; }
+    expect(machineIdFailure(e)).toMatch(/; delete the file to mint a new machine id, or restore it from backup$/);
+    expect(machineIdFailure(e, { workers: true })).toMatch(/; restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again$/);
   });
 });
 
@@ -125,7 +133,7 @@ describe('the hardware a machine id was made on', () => {
 
   it('tells a machine that shares another one\'s id how to get its own', () => {
     expect(copiedRemedy('/c/machine.json')).toBe(
-      "this machine shares another machine's id; move /c/machine.json aside and restart svalld so this machine mints its own id, then `svall host add` it again from the controller, or on the controller `svall fleet recover --force-owner local` runs the fleet here; if it is the machine the file was made on, with new hardware, `svall doctor --rebind` keeps its id",
+      "this machine shares another machine's id; move /c/machine.json aside and restart svalld so this machine mints its own id, then `svall host add` each worker again; if it is the machine the file was made on, with new hardware, `svall doctor --rebind` keeps its id",
     );
   });
 });
@@ -135,7 +143,7 @@ describe('readRegistry', () => {
     const dir = makeHome();
     expect(readRegistry(dir)).toEqual([]);
     const id = crypto.randomUUID();
-    const record = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false };
+    const record = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' };
     fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [id]: record } }));
     expect(readRegistry(dir)).toEqual([{ id, record }]);
     fs.writeFileSync(path.join(dir, 'machines.json'), '{');

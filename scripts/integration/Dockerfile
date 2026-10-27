@@ -1,15 +1,15 @@
 # One disposable Ubuntu 24.04 machine for the integration runs: systemd as PID 1 (the companion runs as systemd user
-# units), polkit, which lets an account turn lingering on as Ubuntu Server's does, sshd, and the tools a handover
+# units), polkit, which lets an account turn lingering on as Ubuntu Server's does, sshd, and the tools a move
 # drives. No Node and no checkout: the release brings its own. The `machine`
 # stage has no account yet, as a fresh install needs one at the controller's home path; the last stage adds the
-# handover run's.
+# placement run's.
 FROM ubuntu:24.04 AS machine
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
       systemd systemd-sysv dbus dbus-user-session libpam-systemd polkitd \
-      openssh-server openssh-client rsync tmux git iptables procps ca-certificates \
+      openssh-server openssh-client tmux git iptables procps ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 # what a container has no use for, and what would wait on hardware it does not have

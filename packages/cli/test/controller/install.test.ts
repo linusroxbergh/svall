@@ -65,7 +65,7 @@ describe('the companion archive', () => {
 
   it('refuses a release the controller does not run itself', async () => {
     const c = await inspect(makeArchive({ version: '9.9.9', signed: true }));
-    expect(() => requireCompatible(c, { ...CONTROLLER, arch: 'arm64' })).toThrow(/1\.2\.3/);
+    expect(() => requireCompatible(c, { ...CONTROLLER, arch: 'arm64' })).toThrow("is release 9.9.9, not this controller's 1.2.3; a worker runs this Mac's release");
   });
 
   it('lets a development controller install any archive of its own protocol', async () => {

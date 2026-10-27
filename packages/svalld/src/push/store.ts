@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { PushStatus } from '@svall/protocol';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
 
 export const Subscription = z.object({

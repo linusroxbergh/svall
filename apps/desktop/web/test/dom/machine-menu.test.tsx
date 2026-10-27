@@ -17,7 +17,7 @@ function setup(reachable: boolean | undefined, placed: number) {
   if (reachable !== undefined) f.machines = { [VAULT]: { name: 'vault', reachable, since: 0 } };
   for (let i = 0; i < placed; i++) f.robots[`c${i}`] = chr(`c${i}`, 'i_b', { x: 1, y: 1 }, { name: `r${i}`, machine: VAULT });
   store.getState().setFleet(f);
-  act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64', gateway: false, fleets: [] }]));
+  act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64' }]));
   render(<MachineActions name="vault" />);
 }
 const more = () => screen.getByTestId('machine-more');

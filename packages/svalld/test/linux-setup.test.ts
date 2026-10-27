@@ -1,17 +1,11 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FleetId, MachineId } from '@svall/protocol';
 import { rollbackRelease } from '../../../scripts/install-release.mjs';
 import { codexPaths } from '../src/codex/install.js';
-import { DEFAULT_EXCLUDES, rootMatcher } from '../src/handover/inventory.js';
-import { scanPath } from '../src/handover/manifest.js';
-import { ReplicaStore } from '../src/handover/replicas.js';
-import { agentHomesEnv, svalldUnit, gatewayUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
+import { agentHomesEnv, svalldUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
-import { machineId } from '../src/machine.js';
 import { opencodePaths } from '../src/opencode/install.js';
 import { resolvePaths } from '../src/paths.js';
 import { profileHome } from '../src/profile.js';
@@ -70,31 +64,6 @@ WantedBy=default.target
 `);
   });
 
-  it('renders one gateway for the machine', () => {
-    const unit = gatewayUnit(release);
-    expect(unit.name).toBe('svall-gateway.service');
-    expect(unit.text).toBe(`# One per machine, rendered by \`svall setup\`: the ownership authority for every fleet that names
-# this machine as its gateway.
-[Unit]
-Description=Svall gateway
-After=network.target
-
-[Service]
-Type=simple
-ExecStart="/home/linus/.local/share/svall/current/bin/svall" "gateway" "serve"
-Environment="HOME=/home/linus"
-Environment="PATH=/home/linus/.local/share/svall/current/node/bin:/home/linus/.local/share/svall/current/bin:/home/linus/.local/bin:/home/linus/.opencode/bin:/usr/local/bin:/usr/bin:/bin"
-Environment=LANG=C.UTF-8
-Restart=always
-RestartSec=2
-StandardOutput=append:/home/linus/.local/share/svall/log/svall-gateway.log
-StandardError=append:/home/linus/.local/share/svall/log/svall-gateway.log
-
-[Install]
-WantedBy=default.target
-`);
-  });
-
   // every rendered value takes a path with a space, a percent systemd would read as a specifier and
   // a dollar it would read as a variable
   const odd = {
@@ -119,14 +88,6 @@ WantedBy=default.target
     expect(unit.text).toContain('Description=Svall daemon for the work fleet\n');
   });
 
-  it('escapes the gateway the same way', () => {
-    const unit = gatewayUnit(odd);
-    expect(unit.text).toContain('ExecStart="/tmp/x y%%z/$home/.local/share/svall/current/bin/svall" "gateway" "serve"\n');
-    expect(unit.text).toContain('Environment="HOME=/tmp/x y%%z/$home"\n');
-    expect(unit.text).toContain('Environment="PATH=/tmp/x y%%z/$home/.local/share/svall/current/node/bin:/tmp/x y%%z/$home/.local/share/svall/current/bin:/tmp/x y%%z/$home/.local/bin:/tmp/x y%%z/$home/.opencode/bin:/usr/local/bin:/usr/bin:/bin"\n');
-    expect(unit.text).toContain('StandardOutput=append:/tmp/x y%%z/$home/.local/share/svall/log/svall-gateway.log\n');
-  });
-
   it('starts a development checkout through tsx, still with absolute paths', () => {
     const unit = svalldUnit({ runtime: checkoutRuntime('/src/svall'), homedir: '/home/linus', prefix: '/p', fleet: 'private', home: '/home/linus/.svall' });
     expect(unit.text).toContain('ExecStart="/src/svall/node_modules/.bin/tsx" "/src/svall/packages/svalld/src/bin.ts"\n');
@@ -144,13 +105,11 @@ WantedBy=default.target
     expect(svalldUnit({ ...release, fleet: 'private', home }).text).toContain('ExecStart="/home/linus/.local/share/svall/current/bin/svalld" "--worker"\n');
   });
 
-  it('writes the fleet\'s unit alone, and the gateway\'s only when asked for it', () => {
+  it('writes the fleet\'s unit alone', () => {
     const unitDir = makeHome();
     const o = { ...release, prefix: path.join(makeHome(), 'svall'), fleet: 'private', home: makeHome(), unitDir };
     writeUnits(o);
     expect(fs.readdirSync(unitDir)).toEqual(['svall-svalld@private.service']);
-    writeUnits({ ...o, gateway: true });
-    expect(fs.readdirSync(unitDir).sort()).toEqual(['svall-gateway.service', 'svall-svalld@private.service']);
   });
 });
 
@@ -385,41 +344,6 @@ describe('setupLinux', () => {
     expect(again.calls.some(([cmd, , verb]) => cmd === 'systemctl' && verb === 'restart')).toBe(false);
   });
 
-  it('leaves mission control\'s folder as it is where the fleet is owned elsewhere, so the next handover takes it as it stands', async () => {
-    const f = installed();
-    const mc = path.join(f.root, 'mc');
-    // an older release's folder, the same as the owner's
-    for (const [file, text] of [['CLAUDE.md', 'mission control\n'], ['.claude/rules/svall.md', 'older rules\n']]) {
-      fs.mkdirSync(path.dirname(path.join(mc, file)), { recursive: true });
-      fs.writeFileSync(path.join(mc, file), text);
-    }
-    const snapshot = (): Record<string, string> => Object.fromEntries((fs.readdirSync(mc, { recursive: true }) as string[]).sort().map((file) => {
-      const at = path.join(mc, file);
-      const st = fs.statSync(at);
-      return [file, st.isDirectory() ? 'dir' : `${crypto.createHash('sha256').update(fs.readFileSync(at)).digest('hex').slice(0, 16)}:${st.mtimeMs}`];
-    }));
-    const before = snapshot();
-    const incoming = (await scanPath(mc, rootMatcher('home', [...DEFAULT_EXCLUDES])))!.files;
-    const paths = resolvePaths(f.home);
-    const fleetId = FleetId.parse('11111111-2222-3333-4444-555555555555');
-    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 2, ownerMachineId: MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f') }));
-    // a copy another machine owns is one a gateway holds
-    fs.writeFileSync(paths.legacyConfig, JSON.stringify({ home: { cwd: mc }, gatewayMachineId: '99999999-2222-3333-4444-555555555555' }));
-
-    const { done } = await setupLinux(f.o);
-    expect(snapshot()).toEqual(before);
-    expect(done).toContain('home folder left as it is, as 42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f owns this fleet');
-    const root = { id: 'r_home', kind: 'home' as const, entry: 'dir' as const, path: mc };
-    expect(await new ReplicaStore({ fleetId, paths }).claim(root, { transactionId: 'tx-3', excludes: [...DEFAULT_EXCLUDES], incoming }))
-      .toMatchObject({ ok: true, kind: 'replica' });
-
-    // the owner's own setup brings the folder up to date
-    fs.writeFileSync(paths.owner, JSON.stringify({ fleetId, generation: 3, ownerMachineId: machineId() }));
-    await setupLinux(f.o);
-    expect(fs.readFileSync(path.join(mc, '.claude/rules/svall.md'), 'utf8')).not.toBe('older rules\n');
-    expect(fs.existsSync(path.join(mc, 'AGENTS.md'))).toBe(true);
-  });
-
   it('serves the fleet as a worker: its unit written again with --worker, and its daemon restarted onto it', async () => {
     const f = installed();
     await setupLinux(f.o);
@@ -429,7 +353,6 @@ describe('setupLinux', () => {
     const fake = fakeRun();
     const done = await serveAsWorker({ ...f.o, run: fake.run });
     expect(fs.readFileSync(unit, 'utf8')).toContain('"--worker"\n');
-    expect(fs.existsSync(path.join(f.unitDir, 'svall-gateway.service'))).toBe(false);
     expect(fake.calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
@@ -616,21 +539,23 @@ describe('rollbackRelease', () => {
 });
 
 describe('restartUnits', () => {
-  it('starts every fleet daemon and the gateway again from where current points, and says which did not start', async () => {
-    const unitDir = makeHome();
-    for (const u of ['svall-gateway.service', 'svall-svalld@work.service', 'svall-svalld@private.service', 'other.service']) {
-      fs.writeFileSync(path.join(unitDir, u), '');
-    }
-    const fake = fakeRun({ 'systemctl --user restart svall-gateway.service': new Error('unit_failed') });
-    expect(await restartUnits(fake.run, unitDir)).toEqual([
+  const unitDir = (): string => {
+    const dir = makeHome();
+    for (const u of ['svall-gateway.service', 'svall-svalld@work.service', 'svall-svalld@private.service', 'other.service']) fs.writeFileSync(path.join(dir, u), '');
+    return dir;
+  };
+
+  it('restarts every fleet daemon and never the gateway unit', async () => {
+    const fake = fakeRun();
+    expect(await restartUnits(fake.run, unitDir())).toEqual(['systemctl --user restart svall-svalld@private.service', 'systemctl --user restart svall-svalld@work.service']);
+    expect(fake.calls.flat()).not.toContain('svall-gateway.service');
+  });
+
+  it('says which fleet daemon did not restart', async () => {
+    const fake = fakeRun({ 'systemctl --user restart svall-svalld@work.service': new Error('unit_failed') });
+    expect(await restartUnits(fake.run, unitDir())).toEqual([
       'systemctl --user restart svall-svalld@private.service',
-      'systemctl --user restart svall-svalld@work.service',
-      expect.stringMatching(/^svall-gateway\.service did not restart: /),
-    ]);
-    expect(fake.calls).toEqual([
-      ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
-      ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
-      ['systemctl', '--user', 'restart', 'svall-gateway.service'],
+      expect.stringMatching(/^svall-svalld@work\.service did not restart: /),
     ]);
   });
 });
@@ -650,7 +575,7 @@ describe('probeOrRollback', () => {
     expect(fake.calls).toEqual([]);
   });
 
-  it('swaps current back and restarts every daemon and the gateway when the daemon does not answer', async () => {
+  it('swaps current back and restarts every fleet daemon when the daemon does not answer', async () => {
     const p = prefixWithReleases();
     const fake = fakeRun();
     const done = await probeOrRollback({ prefix: p.prefix, unitDir: unitDir(), run: fake.run, probe: async () => false, rollback: rollbackRelease });
@@ -659,7 +584,6 @@ describe('probeOrRollback', () => {
     expect(fake.calls).toEqual([
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],
       ['systemctl', '--user', 'restart', 'svall-svalld@work.service'],
-      ['systemctl', '--user', 'restart', 'svall-gateway.service'],
     ]);
     expect(done.join('\n')).toContain(p.first);
   });

@@ -4,7 +4,7 @@ import { frontmatterEnd, type AgentKind } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
 import { z } from 'zod';
 import { VAR_NAME } from '../claude.js';
-import { holds } from '../handover/portable-path.js';
+import { holds } from '../path-tools.js';
 import { shq } from '../text.js';
 import { relocated, type MirrorHomes } from './mirror.js';
 

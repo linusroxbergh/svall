@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { preflight, realPreflightDeps, type PreflightDeps } from '../src/commands/preflight.js';
 
 const loggedOut = () => Object.assign(new Error('Not logged in'), { code: 1 });
 
-function deps(commands: Record<string, string | Error>, handover = true): PreflightDeps & { calls: string[] } {
+function deps(commands: Record<string, string | Error>, moves = true): PreflightDeps & { calls: string[] } {
   const calls: string[] = [];
   return {
     calls,
@@ -18,7 +18,7 @@ function deps(commands: Record<string, string | Error>, handover = true): Prefli
       if (answer instanceof Error) throw answer;
       return answer;
     },
-    node: 'v24.0.0', pathEnv: '/u/.local/bin', shimDir: '/u/.local/bin', keys: {}, platform: 'darwin', handover,
+    node: 'v24.0.0', pathEnv: '/u/.local/bin', shimDir: '/u/.local/bin', keys: {}, platform: 'darwin', moves,
   };
 }
 
@@ -39,7 +39,7 @@ describe('preflight of an agent CLI below its version floor', () => {
     expect((await preflight(d)).find((c) => c.name === 'claude')?.detail).toBe('2.1.250 (Claude Code): Svall needs 2.1.251 or newer; update Claude Code');
   });
 
-  it("leaves Claude Code below a handover's floor be for a fleet that never hands over, and still holds the others to theirs", async () => {
+  it("leaves Claude Code below a move's floor be where no robot moves, and still holds the others to theirs", async () => {
     const d = deps({ 'claude --version': '2.1.250 (Claude Code)\n', 'claude auth status --json': '{"loggedIn":true}\n', 'codex --version': 'codex-cli 0.155.0\n', 'codex login status': '' }, false);
     const checks = await preflight(d);
     expect(checks.find((c) => c.name === 'claude')).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
@@ -48,7 +48,7 @@ describe('preflight of an agent CLI below its version floor', () => {
 });
 
 describe('preflight of OpenCode', () => {
-  it("says it is signed in only when auth list names a model provider's login, as the handover's checks read it", async () => {
+  it("says it is signed in only when auth list names a model provider's login, as a move's checks read it", async () => {
     const opencode = async (listed: object[]) => (await preflight(deps({
       'opencode --version': 'opencode v2.0.27\n', 'opencode auth list --standalone --format json': `${JSON.stringify(listed)}\n`,
     }))).find((c) => c.name === 'opencode');
@@ -59,20 +59,29 @@ describe('preflight of OpenCode', () => {
 });
 
 describe('realPreflightDeps', () => {
-  it('counts a fleet as handing over once fleet.json names a gateway or turns handover on, and any fleet on Linux', () => {
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-pre-'));
+  const local = { id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', record: { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/linus', svallBase: '/Users/linus/.svall' } };
+  const entry = { id: '66666666-7777-8888-9999-aaaaaaaaaaaa', record: { name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall' } };
+
+  /** The checks a fleet gets on `platform` while machines.json holds `machines`, or the text `registry` names, with Claude Code at `claude`. */
+  async function rows(o: { platform: NodeJS.Platform; machines?: (typeof entry | typeof local)[]; registry?: string; claude: string }) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-pre-'));
     try {
-      const fleet = (more: object) => fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', ...more }));
-      expect(realPreflightDeps(home, 'darwin').handover).toBe(false);
-      expect(realPreflightDeps(home, 'linux').handover).toBe(true);
-      fleet({ handover: { enabled: false } });
-      expect(realPreflightDeps(home, 'darwin').handover).toBe(false);
-      fleet({ handover: { enabled: true } });
-      expect(realPreflightDeps(home, 'darwin').handover).toBe(true);
-      fleet({ gatewayMachineId: '11111111-2222-3333-4444-555555555555' });
-      expect(realPreflightDeps(home, 'darwin').handover).toBe(true);
+      fs.writeFileSync(path.join(dir, 'machines.json'), o.registry ?? JSON.stringify({ machines: Object.fromEntries((o.machines ?? []).map((m) => [m.id, m.record])) }));
+      vi.stubEnv('SVALL_CONFIG_DIR', dir);
+      const { moves } = realPreflightDeps(dir, o.platform);
+      return await preflight({ ...deps({ 'claude --version': `${o.claude} (Claude Code)\n`, 'claude auth status --json': '{"loggedIn":true}\n' }), platform: o.platform, moves });
     } finally {
-      fs.rmSync(home, { recursive: true, force: true });
+      vi.unstubAllEnvs();
+      fs.rmSync(dir, { recursive: true, force: true });
     }
+  }
+
+  it('checks the agent floor only where robots move: on Linux, and on a Mac whose machines.json lists one', async () => {
+    expect(await rows({ platform: 'darwin', machines: [], claude: '2.1.200' })).not.toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+    expect(await rows({ platform: 'darwin', machines: [entry], claude: '2.1.200' })).toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+    expect(await rows({ platform: 'linux', machines: [], claude: '2.1.200' })).toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+    // this Mac's own entry is no machine to move a robot to, and a registry that cannot be read may list one
+    expect(await rows({ platform: 'darwin', machines: [local], claude: '2.1.200' })).not.toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
+    expect(await rows({ platform: 'darwin', registry: '{', claude: '2.1.200' })).toContainEqual(expect.objectContaining({ name: 'claude', status: 'warn' }));
   });
 });

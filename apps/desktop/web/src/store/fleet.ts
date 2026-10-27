@@ -63,11 +63,7 @@ export const createFleetSlice: StateCreator<App, [], [], FleetSliceState & Fleet
   loaded: false,
   status: 'connecting',
   resources: [],
-  // a fleet that moved is loaded from its new owner through here, which is what lets its terminals go
-  setFleet: (fleet) => set((s) => ({
-    fleet, loaded: true, ...pruned(s, fleet),
-    ...(s.handover?.awaitingOwner && { handover: { ...s.handover, awaitingOwner: false } }),
-  })),
+  setFleet: (fleet) => set((s) => ({ fleet, loaded: true, ...pruned(s, fleet) })),
   // patches sent before the snapshot arrives are already folded into it
   applyPatch: (ops) => {
     if (!get().loaded) return;

@@ -1,11 +1,7 @@
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION } from '@svall/protocol';
-import { expect, nativeShell, test, type Shell } from './fixtures.js';
-import type { FromShell } from '../src/bridge.js';
-import { FAR_ANSWER_MS } from '../src/host.js';
+import { expect, nativeShell, test } from './fixtures.js';
 import { theme } from '../src/theme.js';
-
-type State = Extract<FromShell, { type: 'connection.state' }>;
 
 test('the connect screen names the daemon log and shows its last lines', async ({ page }) => {
   const { sent } = await nativeShell(page, {
@@ -28,122 +24,6 @@ test('the connect screen asks for svall setup while the daemon has never logged'
   await page.goto('/');
   await page.clock.fastForward(theme.connectGraceMs);
   await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
-});
-
-test('a fleet on another machine that cannot be reached says so in place of the advice for this Mac', async ({ page }) => {
-  await nativeShell(page, {
-    port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
-    state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' },
-  });
-  await page.clock.install();
-  await page.goto('/');
-  await page.clock.fastForward(theme.connectGraceMs);
-  const screen = page.getByTestId('connect-screen');
-  await expect(screen).toContainText('studio is not reachable; trying again.');
-  await expect(screen.getByTestId('connection-detail')).toContainText('Operation timed out');
-  await expect(screen).not.toContainText('svalld not running');
-});
-
-test('a fleet on this Mac whose gateway did not answer says so, and offers the copy here when the shell has one', async ({ page }) => {
-  const { sent } = await nativeShell(page, {
-    port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio', copyHere: true },
-    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'unreachable', machine: 'studio', destination: 'linus@studio',
-      message: 'the gateway studio did not answer, and it has named no owner here before to go on. The gateway said: ssh could not reach linus@studio' },
-  });
-  await page.clock.install();
-  await page.goto('/');
-  await page.clock.fastForward(theme.connectGraceMs);
-  const screen = page.getByTestId('connect-screen');
-  await expect(screen).toContainText('The gateway studio did not answer, so where the fleet runs is not known; trying again.');
-  await expect(screen).not.toContainText('svalld not running');
-  await expect(screen).not.toContainText('setup');
-  await expect(screen.getByTestId('connection-here')).toHaveText("Open this Mac's copy");
-  await screen.getByTestId('connection-here').click();
-  expect((await sent()).filter((m) => m.type === 'connection.here')).toEqual([{ type: 'connection.here' }]);
-});
-
-test('a fleet on this Mac whose connection helper has not answered says so in place of the advice for its own daemon', async ({ page }) => {
-  await nativeShell(page, {
-    port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
-    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' },
-  });
-  await page.clock.install();
-  await page.goto('/');
-  await page.clock.fastForward(theme.connectGraceMs);
-  const screen = page.getByTestId('connect-screen');
-  await expect(screen).toContainText('The connection helper has not said where the fleet runs.');
-  await expect(screen).not.toContainText('svalld not running');
-  await expect(screen.getByTestId('connection-reconnect')).toBeVisible();
-});
-
-test('a fleet on this Mac that asks for handover keeps the advice for its own daemon', async ({ page }) => {
-  await nativeShell(page, {
-    port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
-    state: { type: 'connection.state', state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' },
-  });
-  await page.clock.install();
-  await page.goto('/');
-  await expect(page.getByTestId('connect-screen')).toHaveText('Starting the fleet…');
-  await page.clock.fastForward(theme.connectGraceMs);
-  await expect(page.getByTestId('connect-screen')).toContainText('svalld not running');
-  await expect(page.getByTestId('connect-screen')).toContainText('run svall-dev setup');
-});
-
-test('a fleet on a machine on another version opens the machines panel on it, and nothing runs until asked', async ({ page }) => {
-  const { sent } = await nativeShell(page, {
-    port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true, gateway: 'studio' },
-    state: { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' },
-  });
-  await page.goto('/');
-  const screen = page.getByTestId('connect-screen');
-  await expect(screen).toContainText('studio is on another version of Svall.');
-  await screen.getByTestId('connection-upgrade').click();
-  await expect(page.getByTestId('host-machine')).toHaveText('studio');
-  const starts = async () => (await sent()).filter((m) => m.type === 'host.start');
-  expect(await starts()).toEqual([]);
-  await page.getByTestId('machine-more').click();
-  // the panel holds only Check and ⋯ here, and the menu is not clipped to it
-  await expect(page.getByTestId('machine-upgrade')).toBeInViewport();
-  await page.getByTestId('machine-upgrade').click();
-  expect(await starts()).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'studio' } }]);
-
-  // the upgrade went through and the shell asked again: the panel stays while the fleet comes back
-  for (const state of ['connecting', 'online'] as const) {
-    await page.evaluate((m) => { const w = window as unknown as Shell; w.__state = m; w.__svall.receive(JSON.stringify(m)); },
-      { type: 'connection.state', state, owner: 'studio' } as State);
-    await expect(page.getByTestId('host-machine')).toHaveText('studio');
-  }
-});
-
-test('a fleet on another machine that is online but not loaded yet is still starting, until a minute says its daemon has not answered', async ({ page }) => {
-  // the forward is open, and the daemon behind it has not answered yet
-  const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
-  await new Promise((r) => wss.once('listening', r));
-  try {
-    const { sent } = await nativeShell(page, {
-      port: (wss.address() as { port: number }).port, token: 't',
-      info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z svalld stopped'], op: false, handoverEnabled: true, gateway: 'studio' },
-      state: { type: 'connection.state', state: 'online', owner: 'studio' },
-    });
-    await page.clock.install();
-    await page.goto('/');
-    await page.clock.fastForward(theme.connectGraceMs);
-    const screen = page.getByTestId('connect-screen');
-    await expect(screen).toHaveText('Starting the fleet…');
-    await page.clock.fastForward(FAR_ANSWER_MS);
-    await expect(screen).toContainText("studio's svalld has not answered.");
-    await screen.getByTestId('connection-check').click();
-    expect((await sent()).filter((m) => m.type === 'host.start')).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'studio' } }]);
-    await expect(page.getByTestId('host-setup')).toBeVisible();
-  } finally {
-    for (const c of wss.clients) c.terminate();
-    await new Promise((r) => wss.close(r));
-  }
 });
 
 test('the connect screen says the fleet is starting at first, and shows the log once svalld is slow to answer', async ({ page }) => {

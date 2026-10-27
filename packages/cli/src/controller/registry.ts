@@ -3,22 +3,18 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { MachineId, MachineRecord } from '@svall/protocol';
-import { writeDurable } from '@svall/svalld/handover/durable';
-import { configDir, machineId, Registry, registryFile } from '@svall/svalld/machine';
+import { writeDurable } from '@svall/svalld/durable';
+import { configDir, machineId, machineIdFailure, Registry, registryFile } from '@svall/svalld/machine';
 import { svallHome } from '@svall/svalld/paths';
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
-/** The alias for the machine the command runs on; ownership is written with ids, so it is never stored. */
+/** The alias for the machine the command runs on; records name a machine by its id, so it is never stored. */
 export const LOCAL = 'local';
 
-// `svall handover` reads these as its own words before a machine's name
-const HANDOVER_WORDS = ['on', 'off', 'status', 'attach'];
-
-/** Why `name` can never be a machine's: it is `local` or a word of `svall handover`'s. */
+/** Why `name` can never be a machine's: it is `local`. */
 export function reservedName(name: string): string | undefined {
   if (name === LOCAL) return 'local is an alias for the machine in hand, not a name';
-  if (HANDOVER_WORDS.includes(name)) return `${name} is a word svall handover takes as its own, not a name`;
   return undefined;
 }
 
@@ -39,7 +35,6 @@ function localRecord(hostname: string, taken: string[]): MachineRecord {
     arch: process.arch,
     home: os.homedir(),
     svallBase: svallHome(),
-    gateway: false,
   };
 }
 
@@ -54,7 +49,8 @@ export class MachineRegistry {
   ) {}
 
   static load(dir: string = configDir(), o: { hostname?: string; warn?: (line: string) => void } = {}): MachineRegistry {
-    const id = machineId(dir);
+    let id: MachineId;
+    try { id = machineId(dir); } catch (e) { throw new Error(machineIdFailure(e), { cause: e }); }
     const file = registryFile(dir);
     let machines = new Map<MachineId, MachineRecord>();
     if (fs.existsSync(file)) {
@@ -115,11 +111,6 @@ export class MachineRegistry {
     const entry = this.need(idOrName);
     this.claimName(NAME.parse(name));
     this.machines.set(entry.id, { ...entry.record, name });
-  }
-
-  clearGateway(idOrName: string): void {
-    const entry = this.need(idOrName);
-    this.machines.set(entry.id, { ...entry.record, gateway: false });
   }
 
   remove(idOrName: string): void {

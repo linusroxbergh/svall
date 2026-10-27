@@ -15,7 +15,7 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '@svall/svalld/codex/trust';
-import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps, type Report } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, unattended, type DoctorDeps, type Report } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -46,7 +46,7 @@ function fake(o: {
   shimsCurrent?: boolean;
   platform?: NodeJS.Platform;
   agentPath?: string;
-  handover?: boolean;
+  moves?: boolean;
   hardwareId?: string;
 } = {}) {
   const calls: string[] = [];
@@ -57,7 +57,6 @@ function fake(o: {
     'claude auth status --json': '{"loggedIn":true}\n',
     'gh auth status': '',
     'launchctl print gui/501/io.github.linusroxbergh.svall.svalld': '\tstate = running\n\tlast exit code = (never exited)\n',
-    [`${RSYNC} --version`]: 'rsync  version 3.4.4  protocol version 32\n',
     ...o.commands,
   };
   const mergedFiles: Record<string, string | undefined> = {
@@ -105,9 +104,8 @@ function fake(o: {
     shimsCurrent: o.shimsCurrent ?? true,
     daemon: DAEMON,
     platform: o.platform ?? 'darwin',
-    handover: o.handover ?? true,
+    moves: o.moves ?? true,
     user: 'linus',
-    rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
     machine: { file: MACHINE, hardwareId: o.hardwareId ?? 'HW-1' },
   };
   return { deps, calls, envs };
@@ -115,7 +113,6 @@ function fake(o: {
 
 const CODEX = { dir: '/u/.codex', config: '/u/.codex/config.toml', hooks: '/u/.codex/hooks.json' };
 const MACHINE = '/u/.config/svall/machine.json';
-const RSYNC = '/u/svall/vendor/rsync/3.4.4-arm64/rsync';
 const OPENCODE = { dir: '/u/.config/opencode', plugin: '/u/.config/opencode/plugins/svall.js', data: '/u/.local/share/opencode' };
 const PLUGIN_SOURCE = path.resolve(import.meta.dirname, '../../svalld/hooks/opencode-plugin.js');
 const codexHooks = JSON.stringify(mergeCodexHooks({}, codexHookCommand(SCRIPT), SCRIPT));
@@ -135,7 +132,7 @@ describe('doctor', () => {
     expect(c.svalld.detail).toBe('running on port 47800');
     expect(c['hook receiver']).toMatchObject({ status: 'ok', detail: 'answering at /u/.svall/hooks.sock' });
     expect(c.launchd.detail).toMatch(/state = running/);
-    expect(c.rsync.detail).toBe(`3.4.4 at ${RSYNC}`);
+    expect(c.rsync).toBeUndefined();
     expect(r.log.path).toBe('/u/.svall/svalld.log');
     expect(r.log.lines).toEqual(Array.from({ length: 20 }, (_, i) => `line ${i + 11}`));
     // the plain report shows every check under a title
@@ -168,6 +165,21 @@ describe('doctor', () => {
     expect(bound).toEqual([]);
     expect(run({ stored: 'HW-1', actual: 'HW-2' })).toEqual({ ok: true, message: expect.stringContaining(`${MACHINE} is bound to this machine's hardware`) });
     expect(bound).toEqual(['HW-2']);
+  });
+
+  it('refuses to rebind machine.json from a robot pane or with no terminal', () => {
+    expect(unattended({ SVALL_ROBOT_ID: 'c_1' }, true)).toBe("is a robot's");
+    expect(unattended({}, false)).toBe('has no terminal');
+  });
+
+  it("takes a run at a terminal, in a tmux of its own too, for a person's, and not one in a fleet's tmux pane", () => {
+    const fleet = makeHome();
+    expect(unattended({}, true)).toBeUndefined();
+    expect(unattended({ TMUX: '/private/tmp/tmux-501/default,4242,0' }, true)).toBeUndefined();
+    // a tmux.sock beside no fleet.json is no fleet's
+    expect(unattended({ TMUX: `${path.join(fleet, 'tmux.sock')},4242,0` }, true)).toBeUndefined();
+    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+    expect(unattended({ TMUX: `${path.join(fleet, 'tmux.sock')},4242,0` }, true)).toBe("is in a fleet's tmux pane");
   });
 
   it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {
@@ -371,21 +383,9 @@ describe('doctor', () => {
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
   });
 
-  it('checks neither the bundled rsync nor Claude Code against a handover\'s floor for a fleet that never hands over', async () => {
-    const c = byName(await doctor(priv, fake({ handover: false, commands: { [`${RSYNC} --version`]: undefined as never, 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
-    expect(c.rsync).toBeUndefined();
+  it('checks Claude Code against the plain floor where no robot moves', async () => {
+    const c = byName(await doctor(priv, fake({ moves: false, commands: { 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
     expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
-  });
-
-  it('flags a Mac left with only the system openrsync, or an rsync too old, and names the fix', async () => {
-    const openrsync = 'openrsync: protocol version 29\nrsync version 2.6.9 compatible\n';
-    const gone = byName(await doctor(priv, fake({ commands: { [`${RSYNC} --version`]: undefined as never, 'rsync --version': openrsync } }).deps));
-    expect(gone.rsync).toEqual({
-      name: 'rsync', status: 'warn',
-      detail: `${RSYNC} is not there, and the rsync on PATH is openrsync, which cannot protect remote arguments or report byte progress; handover needs the bundled rsync: build it with node scripts/build-controller.mjs`,
-    });
-    const old = byName(await doctor(priv, fake({ commands: { [`${RSYNC} --version`]: 'rsync  version 3.1.3  protocol version 31\n' } }).deps));
-    expect(old.rsync).toMatchObject({ status: 'warn', detail: expect.stringMatching(/is rsync 3\.1\.3; a handover needs 3\.2\.3 or newer.*build-controller/) });
   });
 
   it('asks launchd about the profile it was pointed at, and not at all for an ad-hoc home', async () => {
@@ -448,8 +448,6 @@ describe('doctor on Linux', () => {
     const f = linux();
     const c = byName(await doctor(priv, f.deps));
     expect(c.launchd).toBeUndefined();
-    // a companion sends with the system rsync, which the host doctor checks from the Mac
-    expect(c.rsync).toBeUndefined();
     expect(c.systemd).toMatchObject({ status: 'ok', detail: expect.stringContaining(`${unit}: loaded, active (running), enabled`) });
     expect(c.linger).toMatchObject({ status: 'ok', detail: expect.stringContaining('on for linus') });
     expect(f.calls.some((call) => call.startsWith('launchctl'))).toBe(false);

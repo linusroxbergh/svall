@@ -13,7 +13,7 @@ import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
-import { addHost, consentHost, doctorHost, fleetsNaming, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type HostReport, type StepEvent } from '../src/controller/host.js';
+import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowCheck, rowStep, upgradeHost, type HostDeps, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -26,8 +26,6 @@ const MAC = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const OTHER_MAC = MachineId.parse('9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const FLEET = FleetId.parse('11111111-2222-3333-4444-555555555555');
 const OTHER_FLEET = FleetId.parse('0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70');
-// a machine an earlier release made this fleet's gateway
-const MILL = MachineId.parse('55555555-6666-7777-8888-999999999999');
 const TOKEN = 'remote-token-never-printed';
 // the fleet home there as a worker of this Mac's fleet, as its `svall version --json` names it
 const SERVES = { homeMachineId: MAC, homeName: 'mac', fleetId: FLEET };
@@ -132,8 +130,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
   ssh.reply(['cat', '/etc/os-release'], { stdout: o.osRelease ?? OS_RELEASE });
   ssh.reply(['svall-home'], { stdout: `${home}\nlinus\n` });
-  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
-  ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.2.7  protocol version 31\n' });
+  ssh.reply(['svall-tools'], { stdout: (o.tools ?? ['tailscale', 'git', 'systemctl', 'loginctl']).map((t) => `${t} yes`).join('\n') + '\n' });
   ssh.reply(['svall-space'], { stdout: DF });
   ssh.reply(['svall-linger'], { stdout: o.linger ?? 'Linger=yes\n' });
   ssh.reply(['cat > "$1"'], {});
@@ -143,6 +140,7 @@ function healthy(o: { linger?: string; tools?: string[]; osRelease?: string; doc
   ssh.reply(['setup'], { stdout: 'release 1.2.3 installed\n' });
   ssh.reply(['svall-tmux-version'], o.tmux ?? { stdout: OWN_TMUX });
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
+  ssh.reply(['svall-units'], { stdout: 'plain\n' });
   ssh.reply(['worker', 'enroll'], { stdout: `systemd unit -> ${home}/.config/systemd/user/svall-svalld@private.service\nsystemctl --user restart svall-svalld@private.service\n` });
   ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }, null, 2) });
   ssh.reply(['svall-tmux'], {});
@@ -198,14 +196,14 @@ describe('host add', () => {
     // each step names the machine, never its id
     expect(JSON.stringify(events)).not.toContain(REMOTE);
     const order = ssh.remoteCalls().map((w) => (w[0] === 'sh' ? w[2].slice(0, 20) : w[0] === 'env' ? `${w[2]} ${w[3]}` : path.basename(w[0]) + (w[1] ? ` ${w[1]}` : '')));
-    expect(order.slice(0, 7)).toEqual([
+    expect(order.slice(0, 6)).toEqual([
       'uname -sm', 'cat /etc/os-release',
       'printf "%s\\n%s\\n" "$', 'for c in "$@"; do if',
-      'rsync --version | he', 'df -Pk "$HOME"', 'l=$(loginctl show-us',
+      'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
-    expect(order.slice(7)).toEqual([
+    expect(order.slice(6)).toEqual([
       'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
-      'sh -c', 'svall doctor', 'svall version', 'svall version', 'svall worker',
+      'sh -c', 'svall doctor', 'svall version', '[ -f "$1/$2" ] && ec', 'svall version', 'svall worker',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall version', 'sh -c',
     ]);
@@ -245,23 +243,6 @@ describe('host add', () => {
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
   });
 
-  it('ends in the upgrade of the gateway this fleet still names, as no robot moves while it does', async () => {
-    healthy();
-    const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'mill', ssh: 'mill.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, MILL);
-    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: MILL }));
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-    await d.close();
-    const action = "svall host upgrade mill makes it this fleet's worker";
-    expect(out).toEqual({ result: 'actions', actions: [action] });
-    expect(step('fleet').at(-1)).toEqual({ step: 'fleet', status: 'warn', detail: 'this fleet names mill as its gateway, and no robot moves while it does', action });
-    const steps = events.filter((e) => e.status !== 'start').map((e) => e.step);
-    expect(steps.indexOf('fleet')).toBe(steps.indexOf('enrol') + 1);
-    expect(registry.get('trift')).toBeDefined();
-  });
-
   it('fails the probe on a fleet there that does not run as a worker, or a tmux that cannot open a window, and registers nothing', async () => {
     for (const [match, reply, said] of [
       [['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) }, 'trift does not serve this fleet as a worker'],
@@ -282,27 +263,39 @@ describe('host add', () => {
     }
   });
 
-  it('enrols nothing over a fleet home there that serves another Mac as a worker or runs a fleet a handover moved there, and registers nothing', async () => {
-    for (const [far, detail, action] of [
-      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
-      [{ handedOver: { fleetId: FLEET } }, 'trift runs this fleet since a handover; take it back first', 'svall handover local'],
-      [{ handedOver: { fleetId: OTHER_FLEET } }, "trift runs another Mac's fleet since a handover; take it back to that Mac first", 'on that Mac, run svall handover local'],
-    ] as const) {
-      ssh.clearReplies();
-      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
-      healthy();
-      const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-      events = [];
-      const registry = MachineRegistry.load(path.join(work, 'config'));
-      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-      await d.close();
-      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
-      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
-      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
-      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
-      expect(registry.get('trift')).toBeUndefined();
-    }
+  it('enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {
+    const action = 'on bea-mbp, run svall host remove trift';
+    ssh.clearReplies();
+    const worker = { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET };
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker }) });
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    events = [];
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    await d.close();
+    expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('add stops and removes a gateway unit it finds there, and enrols the fleet\'s unit as the worker', async () => {
+    ssh.reply(['svall-units'], { stdout: 'gateway\nplain\n' });
+    ssh.reply(['svall-gateway-off'], {});
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    const calls = ssh.remoteCalls();
+    expect(calls).toContainEqual(expect.arrayContaining(['systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload']));
+    expect(calls.findIndex((w) => w.includes('svall-gateway-off'))).toBeLessThan(calls.findIndex((w) => w.includes('enroll')));
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringMatching(/; svall-gateway\.service is stopped and removed$/) });
+    expect(events.map((e) => e.step)).not.toContain('fleet');
   });
 
   it('enrols a fleet home there that already serves this Mac as a worker again, with a new token', async () => {
@@ -335,7 +328,7 @@ describe('host add', () => {
       stdout: [
         'release 1.2.3 installed', 'systemctl --user restart svall-svalld@private.service',
         `the private fleet's daemon did not answer: current -> ${BASE}/releases/1.2.2`,
-        'systemctl --user restart svall-svalld@private.service', 'systemctl --user restart svall-gateway.service',
+        'systemctl --user restart svall-svalld@private.service',
       ].join('\n') + '\n',
     });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.2', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
@@ -409,7 +402,7 @@ describe('host add', () => {
     expect(step('opencode').at(-1)).toMatchObject({ status: 'warn', detail: '2.0.22, not logged in', action: 'ssh trift.test, then opencode auth login' });
   });
 
-  it("names an OpenCode whose auth list names no model provider as not logged in, as doctor and the handover's checks do", async () => {
+  it("names an OpenCode whose auth list names no model provider as not logged in, as doctor and a move's checks do", async () => {
     healthy({ agents: false });
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
     ssh.reply([UNIT_PATH, 'opencode', 'auth', 'list', '--standalone'], { stdout: '[]\n' });
@@ -449,7 +442,7 @@ describe('host add', () => {
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ localAgents: () => Promise.resolve([...mac]) }));
     await d.close();
-    // each machine alone is fine; only a handover between them stops
+    // each machine alone is fine; only a move between them stops
     expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.280 (Claude Code), logged in' });
     const action = 'ssh trift.test, then claude update, then codex update; on this Mac, run opencode upgrade';
     expect(step('versions').at(-1)).toEqual({
@@ -593,7 +586,7 @@ describe('host add', () => {
     expect(entry?.id).toBe(REMOTE);
     expect(entry?.record).toEqual({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     });
   });
 
@@ -638,22 +631,23 @@ describe('host add', () => {
     expect(registry.get('trift')?.record).toMatchObject({ home: ELSEWHERE, svallBase: `${ELSEWHERE}/.local/share/svall` });
   });
 
-  it('stops at a home too long for the gateway\'s socket on Linux, naming the listen EINVAL it would otherwise crash on', async () => {
-    // 66 bytes: its gateway socket, 42 bytes further on, is one past the 107 Linux holds
-    const long = `/tmp/${'h'.repeat(61)}`;
+  it('add refuses a machine whose home makes the fleet socket too long, naming the listen EINVAL it would otherwise crash on', async () => {
+    // 90 bytes: the fleet's hook socket, 18 bytes further on, is one past the 107 Linux holds
+    const long = `/home/${'h'.repeat(84)}`;
     healthy({ home: long });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
+    expect(step('home').at(-1)?.detail).toMatch(/^the socket \/home\/.+\/\.svall\/hooks\.sock is /);
     expect(step('home').at(-1)).toMatchObject({
       status: 'fail',
-      detail: `the gateway's socket ${long}/.local/share/svall/gateway/authority.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
-      action: 'use an account on trift.test whose home path is at most 65 bytes',
+      detail: `the socket ${long}/.svall/hooks.sock is 108 bytes, past the 107 a Unix socket path holds, so its listen fails with EINVAL`,
+      action: 'use an account on trift.test whose home path is at most 89 bytes',
     });
     expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
   });
 
-  it('takes a home just short enough for the gateway\'s socket', async () => {
-    const long = `/tmp/${'h'.repeat(60)}`;
+  it('takes a home just short enough for the fleet socket', async () => {
+    const long = `/home/${'h'.repeat(83)}`;
     healthy({ home: long });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(step('home').at(-1)).toMatchObject({ status: 'ok' });
@@ -689,7 +683,7 @@ describe('host add', () => {
   });
 
   it('takes Ubuntu 22.04, the release the companion\'s tmux is built on', async () => {
-    healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n', tools: ['tailscale', 'rsync', 'systemctl', 'loginctl'] });
+    healthy({ osRelease: 'NAME="Ubuntu"\nID=ubuntu\nVERSION_ID="22.04"\n', tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toMatchObject({ result: 'actions', stopped: 'tools' });
     expect(step('os').at(-1)).toMatchObject({ status: 'ok', detail: 'Ubuntu 22.04 arm64 (LTS)' });
@@ -699,22 +693,19 @@ describe('host add', () => {
     healthy({ tools: ['tailscale', 'systemctl', 'loginctl'] });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out.result).toBe('actions');
-    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git rsync', run: 'sudo apt install git rsync' });
+    expect(step('tools').at(-1)).toMatchObject({ status: 'fail', action: 'ssh trift.test, then sudo apt install git', run: 'sudo apt install git' });
     expect(ssh.remoteCalls().some((w) => w.includes('sudo'))).toBe(false);
   });
 
-  it('warns about an rsync too old to hand a fleet over with, naming what to install, without blocking the rest of setup', async () => {
-    ssh.reply(['svall-rsync'], { stdout: 'rsync  version 3.1.3  protocol version 31\n' });
-    healthy();
+  it('adds a machine that has no rsync', async () => {
+    healthy({ tools: ['tailscale', 'git', 'systemctl', 'loginctl'] });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     await d.close();
-    expect(step('rsync').at(-1)).toMatchObject({
-      status: 'warn', detail: 'the rsync there is rsync 3.1.3; a handover needs 3.2.3 or newer', action: 'ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship',
-    });
-    expect(out).toMatchObject({ result: 'actions', actions: ['ssh trift.test, then install rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship'] });
-    expect(step('registry').at(-1)).toMatchObject({ status: 'ok' });
+    expect(events.map((s) => s.step)).not.toContain('rsync');
+    expect(ssh.remoteCalls().flat()).not.toContainEqual(expect.stringMatching(/\brsync\b/));
+    expect(out.result).toBe('ready');
   });
 
   it('checks the tmux the units start once the release is installed, which is the release\'s own', async () => {
@@ -810,7 +801,7 @@ describe('host add', () => {
     await d.close();
     const names = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(names).toEqual([
-      'name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger',
+      'name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger',
       'release', 'upload', 'install', 'tmux', 'service', 'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry',
     ]);
   });
@@ -999,7 +990,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'other.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(step('name').at(-1)).toMatchObject({ status: 'fail' });
@@ -1008,21 +999,14 @@ describe('host add', () => {
     expect(ssh.calls()).toEqual([]);
   });
 
-  it('refuses a name svall handover takes as its own word before it reaches the machine', async () => {
-    const out = await addHost({ name: 'status', ssh: 'trift.test', release: archive() }, deps());
-    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('status is a word svall handover') });
-    expect(out.result).toBe('actions');
-    expect(ssh.calls()).toEqual([]);
-  });
-
   describe('again for a name in the registry', () => {
-    const gateway = (registry: MachineRegistry, home = HOME): void => {
-      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall`, gateway: true }, REMOTE);
+    const listed = (registry: MachineRegistry, home = HOME): void => {
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall` }, REMOTE);
     };
 
     it('installs nothing on a machine that answers as another than the registry names, and keeps its record', async () => {
       const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
+      listed(registry);
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
       healthy();
       const d = await daemon();
@@ -1035,7 +1019,7 @@ describe('host add', () => {
         action: 'point trift.test back at trift, or svall host remove trift --forget',
       });
       expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
 
     it('stops at identity on a machine with no svall to ask that installs as another, and keeps its record', async () => {
@@ -1049,14 +1033,14 @@ describe('host add', () => {
       saved.machines[localId].home = far;
       fs.writeFileSync(file, JSON.stringify(saved));
       const registry = MachineRegistry.load(config);
-      gateway(registry, far);
+      listed(registry, far);
       for (const [match, stdout] of [
         [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
-        [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-        [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+        [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+        [['svall-tmux-version'], OWN_TMUX], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
       ] as [string[], string][]) ssh.reply(match, { stdout });
       for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
-      ssh.execute({ rsync: '/usr/bin/rsync' });
+      ssh.execute({});
       const svall = `#!/bin/sh
 case "$1" in
   version) printf '%s\\n' '${JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC })}' ;;
@@ -1071,30 +1055,18 @@ esac
         step: 'identity', status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
         action: 'point trift.test back at trift, or svall host remove trift --forget and add it again',
       });
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
 
     it('stops at identity when its setup went back to the release the machine ran, naming that release, and keeps its record', async () => {
       const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
+      listed(registry);
       const out = await wentBack(registry);
       const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then svall host upgrade trift, or add the machine again';
       expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
       expect(step('identity').at(-1)).toMatchObject({ status: 'fail', action });
       expect(step('registry')).toEqual([]);
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
-    });
-
-    it('keeps the gateway mark of the machine it reaches', async () => {
-      const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
-      healthy();
-      const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-      await d.close();
-      expect(out.result).toBe('ready');
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
   });
 });
@@ -1104,7 +1076,7 @@ describe('host doctor', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home, svallBase: BASE, gateway: false,
+      home, svallBase: BASE,
     }, REMOTE);
     return registry;
   };
@@ -1164,11 +1136,10 @@ describe('host doctor', () => {
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
   });
 
-  it("fails a machine whose fleet home serves another Mac as a worker, or runs a fleet a handover moved there, with that row's action", async () => {
+  it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {
     for (const [far, detail] of [
       [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first; on bea-mbp, run svall host remove trift'],
       [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, 'this fleet does not run there as a worker: svall host upgrade trift makes it one'],
-      [{ handedOver: { fleetId: FLEET } }, 'trift runs this fleet since a handover; take it back first; svall handover local'],
     ] as const) {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -1177,21 +1148,6 @@ describe('host doctor', () => {
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
       expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail });
     }
-  });
-
-  it('fails while this fleet names a gateway, naming the upgrade that makes it this fleet\'s worker', async () => {
-    const { doctorVerdict } = await import('../src/commands/host.js');
-    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
-    ssh.reply(['svall-space'], { stdout: DF });
-    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
-    expect((await doctorHost('trift', deps({ registry: registered() }))).checks.map((c) => c.name)).not.toContain('fleet');
-    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
-    const report = await doctorHost('trift', deps({ registry: registered() }));
-    expect(report.checks.find((c) => c.name === 'fleet')).toEqual({
-      name: 'fleet', status: 'fail', detail: "this fleet names trift as its gateway, and no robot moves while it does; svall host upgrade trift makes it this fleet's worker",
-    });
-    expect(doctorVerdict(report.checks, 'trift')).toMatch(/^trift needs \d+ things? before robots can move there: .*\bfleet\b/);
   });
 
   it("compares each agent's release, as the companion's units run it, with this Mac's, and names the update there", async () => {
@@ -1300,7 +1256,7 @@ describe('host doctor', () => {
   it("keeps a machine's check while host remove leaves it in the registry, and drops it with --forget", async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
     const check = { at: 1, failed: 0, warned: 0 };
     fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
@@ -1317,7 +1273,7 @@ describe('host doctor', () => {
   it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
     const { hostCommands, lastChecks } = await import('../src/commands/host.js');
     await expect(hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' })).rejects.toThrow();
@@ -1385,7 +1341,7 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'home')).toEqual({ name: 'home', status: 'ok', detail: `${ELSEWHERE} for linus` });
   });
 
-  it('reports a release the controller cannot hand over to as a failure', async () => {
+  it('reports a release other than the controller\'s as a failure', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '0.9.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
     ssh.reply(['svall-space'], { stdout: DF });
@@ -1403,7 +1359,7 @@ describe('a host command told to stop', () => {
     const registry = MachineRegistry.load(config);
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     registry.save();
     // the far doctor is still running when the app's Stop arrives
@@ -1431,7 +1387,7 @@ describe('host upgrade', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     return registry;
   };
@@ -1442,7 +1398,7 @@ describe('host upgrade', () => {
    * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does; else it goes
    * back to the release it replaced, or after a reinstall under that name to the newest other kept, as a real setup does.
    */
-  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string; gateway?: boolean }) {
+  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/svall`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
@@ -1453,7 +1409,7 @@ now() { basename "$(readlink "$base/current")"; }
 [ "$1" = -p ] && shift 2
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
-  version) x=; for k in worker handedOver; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
+  version) x=; for k in worker; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
     printf '%s%s\\n}\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2).slice(0, -2)}' "$x" ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
@@ -1487,10 +1443,10 @@ esac
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${base}/current/bin/svalld" "--worker"\n`);
     serves(SERVES);
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base, gateway: o.gateway ?? false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base }, REMOTE);
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
     ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
-    ssh.execute({ rsync: '/usr/bin/rsync' });
+    ssh.execute({});
     return { base, now, registry, close: d.close, svall, archive: companionArchive(work, { signedBy: signer.key, svall: svall('1.2.3', PROTOCOL_VERSION) }) };
   }
 
@@ -1541,7 +1497,7 @@ esac
       signedBy: signer.key, svall: far.svall('1.2.3', PROTOCOL_VERSION),
       files: Object.fromEntries(['grep', 'ssh-keygen', 'sha256sum', 'tar'].map((t) => [`node_modules/.bin/${t}`, shim])),
     });
-    ssh.execute({ rsync: '/usr/bin/rsync', path: `node_modules/.bin:${process.env.PATH}` });
+    ssh.execute({ path: `node_modules/.bin:${process.env.PATH}` });
     const out = await upgradeHost('trift', { release: archive }, deps({ registry: far.registry }));
     await far.close();
     expect(fs.existsSync(ran) ? fs.readFileSync(ran, 'utf8') : '').toBe('');
@@ -1573,8 +1529,8 @@ esac
     fs.writeFileSync(file, JSON.stringify(saved));
     for (const [match, stdout] of [
       [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${work}/far\nlinus\n`],
-      [['svall-tools'], ['tailscale', 'git', 'rsync', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
-      [['svall-tmux-version'], OWN_TMUX], [['svall-rsync'], 'rsync  version 3.2.7  protocol version 31\n'], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+      [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+      [['svall-tmux-version'], OWN_TMUX], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
     ] as [string[], string][]) ssh.reply(match, { stdout });
     for (const bin of ['claude', 'codex', 'opencode']) ssh.reply([bin], { code: 127 });
     const intruder = ephemeralSigner(work);
@@ -1770,24 +1726,17 @@ esac
     const log = path.join(work, 'systemctl.log');
     fs.mkdirSync(bin, { recursive: true });
     fs.writeFileSync(path.join(bin, 'systemctl'), `#!/bin/sh\n[ -e '${broken}' ] && { echo 'Failed to connect to bus' >&2; exit 1; }\necho "$*" >> '${log}'\n`, { mode: 0o755 });
-    ssh.execute({ rsync: '/usr/bin/rsync', path: `${bin}:${process.env.PATH}` });
+    ssh.execute({ path: `${bin}:${process.env.PATH}` });
     return log;
   };
 
-  it('host upgrade on a machine with the old gateway unit disables it, enrols the fleet as a worker, drops gatewayMachineId and names the replica folders', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+  it('upgrade stops and removes a gateway unit it finds there and makes the provisioned unit the worker, with no other step', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const systemctl = farSystemctl();
     const home = path.join(work, 'far');
     const units = path.join(home, '.config', 'systemd', 'user');
     fs.writeFileSync(path.join(units, 'svall-gateway.service'), '[Service]\n');
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${far.base}/current/bin/svalld"\n`);
-    // a folder an earlier handover copied there, as the replica record it left names it
-    const kept = path.join(home, 'linus_laboratory');
-    fs.mkdirSync(kept);
-    fs.writeFileSync(path.join(kept, 'repo.pack'), Buffer.alloc(3 * 1024 * 1024, 1));
-    const records = path.join(home, '.svall', 'replicas', FLEET);
-    fs.mkdirSync(records, { recursive: true });
-    fs.writeFileSync(path.join(records, 'a.json'), JSON.stringify({ version: 1, fleetId: FLEET, path: kept, state: 'sealed' }, null, 2));
     fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
 
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
@@ -1799,21 +1748,17 @@ esac
     expect(fs.readFileSync(path.join(home, '.svall', 'worker-token'), 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
     expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET });
-    expect(MachineRegistry.load(path.join(work, 'config')).get('trift')?.record.gateway).toBe(false);
-    expect(step('replicas').at(-1)).toEqual({ step: 'replicas', status: 'warn', detail: `3.0 MB from an earlier handover is in ${kept}; delete it when you no longer need it` });
-    expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-5)).toEqual(['probe', 'enrol', 'fleet', 'gateway', 'replicas']);
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('; svall-gateway.service is stopped and removed') });
+    expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']);
     expect(refreshed).toBe(1);
   });
 
-  /** What the far fleet home serves, as its `svall version --json` names it: the home it is a worker of, none, or a fleet a handover moved there. */
-  const serves = (worker?: object, handedOver?: object): void => {
+  /** What the far fleet home serves, as its `svall version --json` names it: the home it is a worker of, or none. */
+  const serves = (worker?: object): void => {
     fs.mkdirSync(path.join(work, 'far', '.svall'), { recursive: true });
-    for (const [file, value] of [['worker', worker], ['handedOver', handedOver]] as const) {
-      const at = path.join(work, 'far', '.svall', file);
-      if (value) fs.writeFileSync(at, JSON.stringify(value));
-      else fs.rmSync(at, { force: true });
-    }
+    const at = path.join(work, 'far', '.svall', 'worker');
+    if (worker) fs.writeFileSync(at, JSON.stringify(worker));
+    else fs.rmSync(at, { force: true });
   };
 
   /** The machine as an earlier release left it: its gateway unit, a fleet unit without --worker, fleet.json naming it, and no worker.json there. */
@@ -1833,83 +1778,17 @@ esac
     fs.copyFileSync(signer.signers, `${base}/current/release/allowed_signers`);
   };
 
-  /** A folder an earlier handover copied to the far machine, and the record it left naming it. */
-  const copiedThere = (): string => {
-    const kept = path.join(work, 'far', 'linus_laboratory');
-    fs.mkdirSync(kept);
-    fs.writeFileSync(path.join(kept, 'repo.pack'), Buffer.alloc(3 * 1024 * 1024, 1));
-    const records = path.join(work, 'far', '.svall', 'replicas', FLEET);
-    fs.mkdirSync(records, { recursive: true });
-    fs.writeFileSync(path.join(records, 'a.json'), JSON.stringify({ version: 1, fleetId: FLEET, path: kept, state: 'sealed' }));
-    return kept;
-  };
-
-  it('keeps the gateway unit while another fleet here names the machine, and removes it on that fleet\'s own upgrade', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
-    const systemctl = farSystemctl();
-    const { units } = oldGateway();
-    const lab = path.join(work, '.svall-lab');
-    fs.mkdirSync(lab);
-    fs.writeFileSync(path.join(lab, 'fleet.json'), JSON.stringify({ id: OTHER_FLEET, gatewayMachineId: REMOTE }));
-
-    const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    const action = 'svall -p lab host upgrade trift';
-    expect(first).toEqual({ result: 'actions', actions: [action] });
-    expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toHaveLength(1);
-    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET });
-    expect(step('gateway').at(-1)).toEqual({ step: 'gateway', status: 'warn', detail: `svall-gateway.service keeps running there for ${lab}, which names trift as gateway`, action });
-    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
-    expect(fs.existsSync(systemctl)).toBe(false);
-    expect(far.registry.get('trift')?.record.gateway).toBe(true);
-
-    events = [];
-    pinSigners(far.base);
-    const second = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: { home: lab, profile: 'lab' } }));
-    await far.close();
-    expect(second).toEqual({ result: 'ready', actions: [] });
-    expect(ssh.remoteCalls().filter((w) => w.includes('enroll')).at(-1)?.slice(1, 4)).toEqual(['-p', 'lab', 'worker']);
-    expect(JSON.parse(fs.readFileSync(path.join(lab, 'fleet.json'), 'utf8'))).toEqual({ id: OTHER_FLEET });
-    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
-    expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
-    expect(MachineRegistry.load(path.join(work, 'config')).get('trift')?.record.gateway).toBe(false);
-  });
-
-  it('keeps the gateway unit while the gateway there holds the record of a fleet of another Mac, and drops it over records of this Mac\'s fleets', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
-    const systemctl = farSystemctl();
-    const { units } = oldGateway();
-    const records = path.join(far.base, 'gateway', 'fleets');
-    fs.mkdirSync(records, { recursive: true });
-    fs.writeFileSync(path.join(records, `${FLEET}.json`), '{}');
-    fs.writeFileSync(path.join(records, `${OTHER_FLEET}.json`), '{}');
-
-    const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    expect(first).toEqual({ result: 'ready', actions: [] });
-    expect(step('gateway').at(-1)).toEqual({ step: 'gateway', status: 'warn', detail: 'svall-gateway.service keeps running there for a fleet of another Mac' });
-    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
-    expect(fs.existsSync(systemctl)).toBe(false);
-
-    fs.rmSync(path.join(records, `${OTHER_FLEET}.json`));
-    events = [];
-    pinSigners(far.base);
-    const second = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    await far.close();
-    expect(second).toEqual({ result: 'ready', actions: [] });
-    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
-  });
-
-  it('drops this fleet\'s gateway before its unit goes, and a run again after the unit would not stop finishes the move', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+  it('enrols nothing while the gateway unit there will not stop, and a run again makes the machine the worker', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const broken = path.join(work, 'systemctl-broken');
     fs.writeFileSync(broken, '');
     farSystemctl(broken);
     const { units } = oldGateway();
-    const kept = copiedThere();
 
     const first = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    expect(first).toMatchObject({ result: 'actions', stopped: 'gateway' });
-    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET });
-    expect(far.registry.get('trift')?.record.gateway).toBe(false);
+    expect(first).toMatchObject({ result: 'actions', stopped: 'enrol' });
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'systemctl --user disable --now svall-gateway.service exited 1: Failed to connect to bus' });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
 
     fs.rmSync(broken);
@@ -1919,48 +1798,23 @@ esac
     await far.close();
     expect(again).toEqual({ result: 'ready', actions: [] });
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);
-    expect(step('replicas').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining(kept) });
-    expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-4)).toEqual(['enrol', 'fleet', 'gateway', 'replicas']);
+    expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toHaveLength(1);
   });
 
-  it('finishes a move a run stopped after enrolling the machine, without enrolling it again', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+  it('upgrade of a machine already the worker stops and removes a gateway unit it finds there, enrolling nothing', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const systemctl = farSystemctl();
     const { units } = oldGateway();
-    // the enrolment wrote worker.json and rewrote the fleet's unit with --worker
     serves(SERVES);
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${far.base}/current/bin/svalld" "--worker"\n`);
-    const kept = copiedThere();
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(ssh.remoteCalls()).toContainEqual(expect.arrayContaining(['systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload']));
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
-    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET });
     expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
-    expect(step('replicas').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining(kept) });
-    expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-5)).toEqual(['probe', 'enrol', 'fleet', 'gateway', 'replicas']);
-  });
-
-  it('names the folders an earlier handover left on a worker whose move stopped before naming them', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
-    const kept = copiedThere();
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    await far.close();
-    expect(out).toEqual({ result: 'ready', actions: [] });
-    expect(step('replicas').at(-1)).toEqual({ step: 'replicas', status: 'warn', detail: `3.0 MB from an earlier handover is in ${kept}; delete it when you no longer need it` });
-    expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-3)).toEqual(['probe', 'enrol', 'replicas']);
-  });
-
-  it('ends an upgrade in the upgrade of the gateway this fleet still names', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
-    far.registry.add({ name: 'mill', ssh: 'mill.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, MILL);
-    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: MILL }));
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    await far.close();
-    const action = "svall host upgrade mill makes it this fleet's worker";
-    expect(out).toEqual({ result: 'actions', actions: [action] });
-    expect(step('fleet').at(-1)).toEqual({ step: 'fleet', status: 'warn', detail: 'this fleet names mill as its gateway, and no robot moves while it does', action });
-    expect(far.registry.get('mill')?.record.gateway).toBe(true);
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: 'trift serves this fleet as a worker; svall-gateway.service is stopped and removed' });
+    expect(events.map((e) => e.step)).not.toContain('fleet');
   });
 
   it('leaves a machine that serves this fleet as a worker as it is, past the release it installs', async () => {
@@ -1972,29 +1826,23 @@ esac
     expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'skip', detail: 'trift serves this fleet as a worker' });
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(systemctl)).toBe(false);
-    expect(events.map((e) => e.step)).not.toContain('replicas');
   });
 
-  it('enrols nothing over a fleet home there that serves another Mac as a worker or runs a fleet a handover moved there, and keeps the gateway', async () => {
-    for (const [worker, handedOver, detail, action] of [
-      [{ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET }, undefined, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
-      [undefined, { fleetId: FLEET }, 'trift runs this fleet since a handover; take it back first', 'svall handover local'],
-    ] as const) {
-      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
-      const systemctl = farSystemctl();
-      const { units } = oldGateway();
-      serves(worker, handedOver);
-      events = [];
-      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-      await far.close();
-      expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
-      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail, action });
-      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
-      expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
-      expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
-      expect(fs.existsSync(systemctl)).toBe(false);
-      fs.rmSync(path.join(work, 'far'), { recursive: true, force: true });
-    }
+  it('enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {
+    const action = 'on bea-mbp, run svall host remove trift';
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const systemctl = farSystemctl();
+    const { units } = oldGateway();
+    serves({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+    events = [];
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
+    expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
+    expect(fs.existsSync(systemctl)).toBe(false);
   });
 
   it('enrols a worker unit there whose worker.json names another fleet of this Mac', async () => {
@@ -2016,28 +1864,23 @@ esac
     expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'warn', detail: 'no unit of this fleet runs on trift', action });
   });
 
-  it('refuses a machine an earlier handover moved this fleet to, before anything is uploaded', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
-    fs.writeFileSync(path.join(fleet, 'owner.json'), JSON.stringify({ fleetId: FLEET, generation: 2, ownerMachineId: REMOTE }));
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
-    await far.close();
-    expect(out).toEqual({ result: 'actions', stopped: 'machine', actions: ['bring it back to this Mac with svall handover local, then upgrade trift again'] });
-    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: 'this fleet runs on trift, where a handover moved it' });
-    expect(far.now()).toBe('1.2.2');
-    expect(ssh.remoteCalls()).toEqual([]);
-  });
-
-  it('refuses while any fleet here runs on the machine, as one an earlier handover moved there does', async () => {
+  it('upgrade runs where owner.json and route.json name another machine', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const owner = (home: string, fleetId: string) => {
+      fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: REMOTE }));
+      fs.mkdirSync(path.join(home, 'controller'), { recursive: true });
+      fs.writeFileSync(path.join(home, 'controller', 'route.json'), JSON.stringify({ ownerMachineId: REMOTE, generation: 2, at: '2026-10-01T00:00:00.000Z' }));
+    };
+    owner(fleet, FLEET);
     const lab = path.join(work, '.svall-lab');
     fs.mkdirSync(lab);
     fs.writeFileSync(path.join(lab, 'fleet.json'), JSON.stringify({ id: OTHER_FLEET }));
-    fs.writeFileSync(path.join(lab, 'owner.json'), JSON.stringify({ fleetId: OTHER_FLEET, generation: 2, ownerMachineId: REMOTE }));
+    owner(lab, OTHER_FLEET);
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
-    expect(out).toEqual({ result: 'actions', stopped: 'machine', actions: ['bring it back to this Mac with svall -p lab handover local, then upgrade trift again'] });
-    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: `${lab} runs on trift, where a handover moved it` });
-    expect(ssh.remoteCalls()).toEqual([]);
+    expect(step('machine').at(-1)?.status).toBe('ok');
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.3');
   });
 
   it('puts the machine back on the release before when asked, with its own svall, and probes it as an upgrade does', async () => {
@@ -2182,7 +2025,7 @@ esac
 
   it('names the ssh to try in Terminal when an upgrade or a rollback cannot connect', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
       events.length = 0;
       ssh.clearReplies();
@@ -2249,37 +2092,17 @@ esac
 });
 
 describe('host list', () => {
-  it('names each machine with its ssh, the fleets here it is the gateway of, and its last check, this Mac without an ssh', async () => {
+  it('names each machine with its ssh and its last check, this Mac without an ssh', async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     const { machineRows } = await import('../src/commands/host.js');
     const check = { at: 1, failed: 0, warned: 2, release: '1.2.3' };
-    const rows = machineRows(registry, { [REMOTE]: check }, (id) => (id === REMOTE ? ['private', 'work'] : []));
+    const rows = machineRows(registry, { [REMOTE]: check });
     expect(rows).toEqual([
-      { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}`, gateway: false, fleets: [] },
-      { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', gateway: true, fleets: ['private', 'work'], check },
+      { name: registry.localMachine().name, id: registry.localId, platform: `${process.platform === 'linux' ? 'linux' : 'darwin'}-${process.arch}` },
+      { name: 'trift', id: REMOTE, ssh: 'ada@trift', platform: 'linux-arm64', check },
     ]);
-  });
-
-  it('finds the fleets on this Mac whose fleet.json names a machine as their gateway, by profile', () => {
-    const fleet = (dir: string, gateway?: string) => {
-      fs.mkdirSync(path.join(work, dir), { recursive: true });
-      fs.writeFileSync(path.join(work, dir, 'fleet.json'), JSON.stringify({ id: FLEET, ...(gateway && { gatewayMachineId: gateway }) }));
-    };
-    fleet('.svall', REMOTE);
-    fleet('.svall-work', REMOTE);
-    fleet('.svall-lab', OTHER_MAC);
-    fleet('.svall-home');
-    fs.mkdirSync(path.join(work, '.svall-broken'));
-    fs.writeFileSync(path.join(work, '.svall-broken', 'fleet.json'), '{');
-    expect(fleetsNaming(REMOTE, work).sort()).toEqual(['private', 'work']);
-  });
-
-  it('finds a fleet whose home is named for a command svall keeps among those naming a machine as their gateway', () => {
-    fs.mkdirSync(path.join(work, '.svall-host'), { recursive: true });
-    fs.writeFileSync(path.join(work, '.svall-host', 'fleet.json'), JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE }));
-    expect(fleetsNaming(REMOTE, work)).toEqual(['host']);
   });
 });
 
@@ -2288,19 +2111,10 @@ describe('host remove', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     return registry;
   };
-
-  it('uninstalls on the machine before the route is dropped, forcing past no refusal, and never purges', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls()).toEqual([[SVALL, 'version', '--json'], [SVALL, 'uninstall']]);
-    expect(registry.get('trift')).toBeUndefined();
-  });
 
   it('uninstalls nothing while a robot of a fleet here is on the machine or moving to it, and names them; --forget still drops the route', async () => {
     const ada = {
@@ -2426,176 +2240,16 @@ describe('host remove', () => {
   const gatewayOf = (home: string): string | undefined =>
     (JSON.parse(fs.readFileSync(path.join(home, 'fleet.json'), 'utf8')) as { gatewayMachineId?: string }).gatewayMachineId;
 
-  it('refuses to strand a fleet another machine owns through this gateway, and names its home', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const away = fleetAt('.svall-lab', { gateway: REMOTE, owner: OTHER_MAC });
-    for (const forget of [false, true]) {
-      const out = await removeHost('trift', { forget }, deps({ registry }));
-      expect(out.result).toBe('actions');
-      expect(step('fleet').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(away) });
-      expect(registry.get('trift')).toBeDefined();
-    }
-    expect(ssh.calls()).toEqual([]);
-    expect(gatewayOf(away)).toBe(REMOTE);
-  });
-
-  it('refuses to uninstall a machine that owns a fleet through another gateway, and names the handover that brings it back', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const there = fleetAt('.svall-lab', { gateway: OTHER_MAC, owner: REMOTE });
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('actions');
-    expect(step('fleet').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(there) });
-    expect(out.actions.join('\n')).toContain('`svall -p lab handover local`');
-    expect(ssh.calls()).toEqual([]);
-    expect(registry.get('trift')).toBeDefined();
-    expect(gatewayOf(there)).toBe(OTHER_MAC);
-  });
-
-  it('names the handover that brings a stranded fleet back, profile and all, before the machine can go', async () => {
-    const registry = registered('trift.test');
-    fleetAt('.svall-lab', { gateway: REMOTE, owner: OTHER_MAC });
-    fleetAt('.svall', { gateway: REMOTE, owner: OTHER_MAC });
-    const out = await removeHost('trift', {}, deps({ registry }));
-    const said = out.actions.join('\n');
-    expect(said).toContain('`svall handover local`');
-    expect(said).toContain('`svall -p lab handover local`');
-    expect(said).toContain('then `svall host remove trift`');
-    expect(said).not.toMatch(/disable handover/);
-  });
-
-  it('refuses while the gateway holds a handover of a fleet open, and names how to settle it', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    // this Mac froze for a handover to trift, which may by now have committed it there
-    const frozen = fleetAt('.svall', { gateway: REMOTE, owner: MAC });
-    fs.mkdirSync(path.join(frozen, 'handover'));
-    fs.writeFileSync(path.join(frozen, 'handover', 'journal.json'), JSON.stringify({
-      role: 'source', transactionId: 'tx-1', generation: 2, fleetId: FLEET, fromMachineId: MAC, toMachineId: REMOTE, phase: 'freeze', updatedAt: 1,
-    }));
-    // begun from this Mac, before any daemon froze
-    const begun = fleetAt('.svall-lab', { gateway: REMOTE, owner: MAC });
-    fs.mkdirSync(path.join(begun, 'controller'));
-    fs.writeFileSync(path.join(begun, 'controller', 'handover.json'), JSON.stringify({
-      version: 1, fleetId: FLEET, transactionId: 'tx-2', generation: 2, source: { machineId: MAC, name: 'mac' }, destination: { machineId: REMOTE, name: 'trift', ssh: 'trift.test' },
-      choices: {}, phase: 'begin', startedAt: 1, updatedAt: 1,
-    }));
-    for (const forget of [false, true]) {
-      const out = await removeHost('trift', { forget }, deps({ registry }));
-      expect(out.result).toBe('actions');
-      const failed = step('fleet').at(-1);
-      expect(failed).toMatchObject({ status: 'fail', detail: expect.stringContaining('holds open') });
-      for (const home of [frozen, begun]) expect(failed?.detail).toContain(home);
-      const said = out.actions.join('\n');
-      for (const cmd of ['`svall handover --resume`', '`svall handover --abort`', '`svall -p lab handover --resume`', '`svall -p lab handover status`', 'then `svall host remove trift`']) {
-        expect(said).toContain(cmd);
-      }
-      expect(registry.get('trift')).toBeDefined();
-    }
-    expect(ssh.calls()).toEqual([]);
-    expect(gatewayOf(frozen)).toBe(REMOTE);
-    expect(gatewayOf(begun)).toBe(REMOTE);
-  });
-
-  it('names a fleet a handover holds open in a home named for a command svall keeps by that home, which no -p reaches', async () => {
-    const registry = registered('trift.test');
-    const held = fleetAt('.svall-host', { gateway: REMOTE, owner: MAC });
-    fs.mkdirSync(path.join(held, 'handover'));
-    fs.writeFileSync(path.join(held, 'handover', 'journal.json'), JSON.stringify({
-      role: 'source', transactionId: 'tx-1', generation: 2, fleetId: FLEET, fromMachineId: MAC, toMachineId: REMOTE, phase: 'freeze', updatedAt: 1,
-    }));
-    const out = await removeHost('trift', {}, deps({ registry }));
-    const said = out.actions.join('\n');
-    expect(said).toContain(`\`SVALL_HOME=${shq(held)} svall handover --resume\``);
-    expect(said).not.toContain('-p host');
-  });
-
-  it('refuses while a handover through another gateway holds a fleet open, as it may by now have left the fleet on this machine', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    // committed on the other gateway to trift, and this Mac's controller stopped before it learnt so
-    const through = fleetAt('.svall-lab', { gateway: OTHER_MAC, owner: MAC });
-    fs.mkdirSync(path.join(through, 'controller'));
-    fs.writeFileSync(path.join(through, 'controller', 'handover.json'), JSON.stringify({
-      version: 1, fleetId: FLEET, transactionId: 'tx-3', generation: 2, source: { machineId: MAC, name: 'mac' }, destination: { machineId: REMOTE, name: 'trift', ssh: 'trift.test' },
-      choices: {}, phase: 'commit', startedAt: 1, updatedAt: 1,
-    }));
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('actions');
-    expect(step('fleet').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(through) });
-    expect(step('fleet').at(-1)?.detail).toContain('holds open');
-    expect(out.actions.join('\n')).toContain('`svall -p lab handover --resume`');
-    expect(ssh.calls()).toEqual([]);
-    expect(registry.get('trift')).toBeDefined();
-    expect(gatewayOf(through)).toBe(OTHER_MAC);
-  });
-
-  it('lets the gateway go once the handover that brought a fleet here has completed, though the record it left names that handover', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const mine = fleetAt('.svall', { gateway: REMOTE });
-    fs.writeFileSync(path.join(mine, 'owner.json'), JSON.stringify({
-      fleetId: FLEET, generation: 3, ownerMachineId: MAC, transaction: { id: 'tx-1', fromMachineId: REMOTE, toMachineId: MAC, phase: 'committed', startedAt: 1 },
-    }));
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('ready');
-    expect(gatewayOf(mine)).toBeUndefined();
-  });
-
-  it('forces the far uninstall past the gateway records of only the fleets it checked, those naming the machine as gateway', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    fleetAt('.svall', { gateway: REMOTE, owner: MAC });
-    const other = fleetAt('.svall-other', { gateway: OTHER_MAC, owner: MAC });
-    fs.writeFileSync(path.join(other, 'fleet.json'), JSON.stringify({ id: OTHER_FLEET, gatewayMachineId: OTHER_MAC }));
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('ready');
-    expect(ssh.remoteCalls().at(-1)).toEqual([SVALL, 'uninstall', '--force-fleet', FLEET]);
-  });
-
-  it('reports the far refusal, with its reason, of what this Mac cannot see, and keeps the route and the fleet\'s gateway', async () => {
-    const why = 'uninstalling here would strand fleets: this machine is the gateway of 1 fleet, whose records are in /home/linus/.local/share/svall/gateway/fleets. Finish or abort the handover';
-    ssh.reply(['uninstall'], { stderr: `svall: ${why}\n`, code: 3 });
-    const registry = registered('trift.test');
-    const mine = fleetAt('.svall', { gateway: REMOTE, owner: MAC });
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('actions');
-    const failed = step('uninstall').at(-1);
-    expect(failed).toMatchObject({ status: 'fail', detail: expect.stringContaining(why) });
-    expect(failed?.detail).not.toContain('could not be reached');
-    expect(failed?.action).toContain('svall handover local');
-    expect(failed?.action).toContain('ssh trift.test, then svall uninstall --force');
-    expect(failed?.action).toContain('svall host remove trift --forget');
-    expect(registry.get('trift')).toBeDefined();
-    expect(gatewayOf(mine)).toBe(REMOTE);
-  });
-
-  it('takes the gateway out of a fleet this Mac owns as the machine goes', async () => {
+  it('remove runs svall uninstall there with no flag before it drops the registry entry, and leaves this Mac\'s fleet.json as it is', async () => {
     ssh.reply(['uninstall'], { stdout: 'removed\n' });
     const registry = registered('trift.test');
     const mine = fleetAt('.svall', { gateway: REMOTE, owner: MAC });
-    const untouched = fleetAt('.svall-other', { gateway: OTHER_MAC, owner: OTHER_MAC });
     const out = await removeHost('trift', {}, deps({ registry }));
     expect(out.result).toBe('ready');
-    expect(gatewayOf(mine)).toBeUndefined();
-    expect(gatewayOf(untouched)).toBe(OTHER_MAC);
+    expect(ssh.remoteCalls().find((a) => a.includes('uninstall'))).toEqual([SVALL, 'uninstall']);
+    expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'uninstall', 'registry']);
     expect(registry.get('trift')).toBeUndefined();
-  });
-
-  it('drops the gateway from fleet.json as it lies, through a link, keeping its own keys and mode and writing no defaults', async () => {
-    ssh.reply(['uninstall'], { stdout: 'removed\n' });
-    const registry = registered('trift.test');
-    const mine = fleetAt('.svall', { gateway: REMOTE, owner: MAC });
-    const real = path.join(work, 'dotfiles-fleet.json');
-    fs.writeFileSync(real, JSON.stringify({ id: FLEET, gatewayMachineId: REMOTE, custom: 1 }), { mode: 0o640 });
-    fs.rmSync(path.join(mine, 'fleet.json'));
-    fs.symlinkSync(real, path.join(mine, 'fleet.json'));
-    const out = await removeHost('trift', {}, deps({ registry }));
-    expect(out.result).toBe('ready');
-    expect(fs.lstatSync(path.join(mine, 'fleet.json')).isSymbolicLink()).toBe(true);
-    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id: FLEET, custom: 1 });
-    expect(fs.statSync(real).mode & 0o777).toBe(0o640);
+    expect(gatewayOf(mine)).toBe(REMOTE);
   });
 
   it('forgets an unreachable machine and says the remote was left alone', async () => {
@@ -2706,8 +2360,8 @@ describe('the last line a run prints', () => {
 
   it('lists a detail of several lines under its step', async () => {
     const { stepLine } = await import('../src/commands/host.js');
-    expect(stepLine({ step: 'replicas', status: 'warn', detail: '3.0 MB … in /a; delete it\n1.2 GB … in /b; delete it' }))
-      .toBe('! replicas  3.0 MB … in /a; delete it\n    1.2 GB … in /b; delete it');
+    expect(stepLine({ step: 'install', status: 'fail', detail: 'svall setup exited 1: one line\nanother line' }))
+      .toBe('✗ install  svall setup exited 1: one line\n    another line');
   });
 
   it('stepLine prints [ ] before an unticked row and [x] before a ticked one', async () => {

@@ -87,13 +87,9 @@ export function firstOfNextIsland(f: FleetState, id: string | undefined): Robot 
   return undefined;
 }
 
-type Resumed = { tmux?: unknown; resumeError?: string };
-
-// why a terminal that lies dormant could not resume, shown for a robot on a worker and while the fleet asks for handover
-export const resumeErrorOf = (s: { shell?: { handoverEnabled?: boolean } }, c: (Resumed & { machine?: unknown; second?: Resumed }) | undefined, term: 1 | 2 = 1): string | undefined => {
-  const slot = term === 2 ? c?.second : c;
-  return (s.shell?.handoverEnabled || c?.machine !== undefined) && slot && !slot.tmux ? slot.resumeError : undefined;
-};
+// why a terminal that lies dormant could not resume
+export const resumeErrorOf = (slot: { tmux?: unknown; resumeError?: string } | undefined): string | undefined =>
+  slot && !slot.tmux ? slot.resumeError : undefined;
 
 // one terminal's status: 1 is the main terminal, 2 the second
 export const slotStatus = (c: Robot, term: 1 | 2): DisplayStatus => {
@@ -187,9 +183,9 @@ export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scrib
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; handoverOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState }): boolean =>
   s.namingRobot || s.missionPrompt || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.deletingColumn !== undefined || s.fleetPicker !== undefined
-  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || s.handoverOpen || !!s.fleet.scribeAsk || placingAsking(s);
+  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || !!s.fleet.scribeAsk || placingAsking(s);
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

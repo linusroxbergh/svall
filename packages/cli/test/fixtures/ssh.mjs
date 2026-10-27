@@ -13,7 +13,6 @@ const info = process.env.SVALL_FAKE_SSH_INFO;
 const remoteLog = process.env.SVALL_FAKE_SSH_REMOTE_LOG;
 const replies = process.env.SVALL_FAKE_SSH_REPLIES;
 const exec = process.env.SVALL_FAKE_SSH_EXEC;
-const cutAfter = Number(process.env.SVALL_FAKE_SSH_CUT_AFTER || 0);
 
 const TAKES_VALUE = new Set(['-S', '-o', '-O', '-L', '-l', '-p', '-i', '-b', '-c', '-e', '-m', '-w']);
 const FLAGS = new Set(['-M', '-N', '-T', '-t', '-tt', '-q', '-v', '-n', '-f', '-g', '-x', '-A', '-4', '-6']);
@@ -178,7 +177,7 @@ function remote(opts) {
 }
 
 // runs the far command on this machine through a login shell, as a mux client does over its master,
-// and dies with the master; a cut drops the whole link once that many bytes have crossed it
+// and dies with the master
 function execute(opts) {
   const master = marker(opts, 'master');
   // the master is the only way through: its host name resolves nowhere
@@ -186,19 +185,17 @@ function execute(opts) {
   const farPath = process.env.SVALL_FAKE_SSH_FAR_PATH;
   const env = farPath ? { ...process.env, PATH: farPath } : process.env;
   const child = spawn('/bin/sh', ['-c', opts.command.join(' ')], { stdio: ['pipe', 'pipe', 'inherit'], env });
-  let crossed = 0;
   const drop = () => {
     try { process.kill(Number(fs.readFileSync(master, 'utf8')), 'SIGTERM'); } catch { /* already gone */ }
     fs.rmSync(master, { force: true });
     child.kill('SIGKILL');
     process.exit(255);
   };
-  const cross = (n) => { crossed += n; if (cutAfter && crossed >= cutAfter) drop(); };
   const watch = setInterval(() => { if (!fs.existsSync(master)) drop(); }, 50);
   child.stdin.on('error', () => { /* the far command exited first */ });
-  process.stdin.on('data', (chunk) => { cross(chunk.length); child.stdin.write(chunk); });
+  process.stdin.on('data', (chunk) => child.stdin.write(chunk));
   process.stdin.on('end', () => child.stdin.end());
-  child.stdout.on('data', (chunk) => { cross(chunk.length); process.stdout.write(chunk); });
+  child.stdout.on('data', (chunk) => process.stdout.write(chunk));
   child.on('close', (code) => {
     clearInterval(watch);
     process.stdin.destroy();

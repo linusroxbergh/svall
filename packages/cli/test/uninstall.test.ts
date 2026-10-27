@@ -1,21 +1,24 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { unitDirOf } from '@svall/svalld/linux/setup';
+import { machineId } from '@svall/svalld/machine';
 import { bundleRuntime, releaseRuntime } from '@svall/svalld/runtime';
-import { UninstallRefused } from '@svall/svalld/uninstall';
+import { runUninstall } from '@svall/svalld/uninstall';
 import { keptLine, uninstall, uninstallCommand, type UninstallDeps } from '../src/commands/uninstall.js';
-import { REFUSED } from '../src/controller/host.js';
 
 function fake(o: { answer?: string; isTTY?: boolean; data?: string[] } = {}) {
   const prompts: string[] = [];
   const purged: string[][] = [];
-  const forced: boolean[] = [];
   const deps: UninstallDeps = {
-    uninstall: async (u) => { forced.push(u.force); return ['removed /u/.local/bin/svall']; },
+    uninstall: async () => ['removed /u/.local/bin/svall'],
     data: () => o.data ?? ['/u/.svall', '/Applications/Svall.app'],
     purge: async (paths) => { purged.push(paths); return paths.map((p) => `deleted ${p}`); },
     prompt: async (q) => { prompts.push(q); return o.answer ?? ''; },
     isTTY: o.isTTY ?? true,
   };
-  return { deps, prompts, purged, forced };
+  return { deps, prompts, purged };
 }
 
 describe('uninstall', () => {
@@ -41,13 +44,6 @@ describe('uninstall', () => {
     expect(script.purged).toEqual([]);
   });
 
-  it('uninstalls where that would strand a fleet only under --force', async () => {
-    const f = fake({ data: [] });
-    await uninstall({ purge: false }, f.deps);
-    await uninstall({ purge: false, force: true }, f.deps);
-    expect(f.forced).toEqual([false, true]);
-  });
-
   it('does not ask when there is nothing left to delete', async () => {
     const f = fake({ data: [] });
     expect(await uninstall({ purge: false }, f.deps)).toEqual({ done: ['removed /u/.local/bin/svall'], kept: [] });
@@ -65,17 +61,24 @@ describe('uninstall', () => {
 describe('svall uninstall', () => {
   afterEach(() => { vi.restoreAllMocks(); process.exitCode = 0; });
 
-  it('passes only the fleets named to force past, and exits with its own code on a refusal, saying why, so host remove tells it from any other failure', async () => {
-    const said: string[] = [];
-    vi.spyOn(process.stderr, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
-    const asked: { force?: boolean; forceFleets?: string[] }[] = [];
-    const why = 'uninstalling here would strand fleets: this machine is the gateway of 1 fleet, whose records are in /home/linus/.local/share/svall/gateway/fleets';
-    const cmd = uninstallCommand(() => false, async (o) => { asked.push(o); throw new UninstallRefused(why); });
-    await cmd.parseAsync(['--no-launchctl', '--force-fleet', '11111111-2222-3333-4444-555555555555', '--force-fleet', '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70'], { from: 'user' });
-    expect(process.exitCode).toBe(REFUSED);
-    expect(said.join('')).toBe(`svall: ${why}\n`);
-    expect(asked).toMatchObject([{ force: false, forceFleets: ['11111111-2222-3333-4444-555555555555', '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70'] }]);
+  it('uninstalls where a fleet.json names a gateway, with no --force', async () => {
+    // this test's own HOME, as a Linux companion's: a fleet it runs for its gateway, and the gateway's unit
+    const home = path.join(os.homedir(), '.svall');
+    const fleet = '7c1e2d3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f';
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleet, gatewayMachineId: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }));
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId: fleet, generation: 3, ownerMachineId: machineId() }));
+    const unitDir = unitDirOf(os.homedir());
+    fs.mkdirSync(unitDir, { recursive: true });
+    fs.writeFileSync(path.join(unitDir, 'svall-gateway.service'), '[Service]\n');
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const linux = uninstallCommand(() => false, (o) => runUninstall({ ...o, platform: 'linux', run: async () => ({ stdout: '', stderr: '' }) }));
+    await linux.parseAsync(['--no-launchctl'], { from: 'user' });
+    expect(process.exitCode ?? 0).toBe(0);
+    expect(fs.existsSync(path.join(unitDir, 'svall-gateway.service'))).toBe(false);
+  });
 
+  it('fails as the uninstall it runs does', async () => {
     const broken = uninstallCommand(() => false, async () => { throw new Error('this terminal runs inside the tmux server of /u/.svall'); });
     await expect(broken.parseAsync(['--no-launchctl'], { from: 'user' })).rejects.toThrow(/tmux server/);
   });

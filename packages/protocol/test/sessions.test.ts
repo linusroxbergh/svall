@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { robotOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, type Agent, type Robot } from '../src/index.js';
+import { TransferFile, robotOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, type Agent, type Robot } from '../src/index.js';
 
 const agent = (status: Agent['status'], extra: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 0, ...extra });
 const robot = (id: string, extra: Partial<Robot> = {}): Robot =>
@@ -36,5 +36,16 @@ describe('sessions', () => {
     const second = { cwd: '/tmp', tmux: { windowId: '@2', paneId: '%2' }, unread: false, agent: agent('idle', { contextPct: 80 }) };
     expect(contextPctOf(robot('a'))).toBeUndefined();
     expect(contextPctOf(robot('a', { agent: agent('idle', { contextPct: 12 }), second }))).toBe(80);
+  });
+});
+
+describe('carried session files', () => {
+  const FILE = { type: 'file', path: 'README.md', mode: 0o644, size: 2000, mtimeMs: 1_700_000_000_000, sha256: 'a'.repeat(64) } as const;
+
+  it('holds a file by its hash and a link by its text', () => {
+    expect(() => TransferFile.parse({ ...FILE, sha256: 'x' })).toThrow();
+    expect(() => TransferFile.parse({ ...FILE, size: -1 })).toThrow();
+    expect(() => TransferFile.parse({ type: 'symlink', path: 'a' })).toThrow();
+    expect(() => TransferFile.parse({ ...FILE, type: 'fifo' })).toThrow();
   });
 });

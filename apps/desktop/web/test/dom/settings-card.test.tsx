@@ -257,26 +257,23 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(checked('set-robot-motion')).toBe('false');
 });
 
-test('Machines lists every machine with its ssh, the fleets it is the gateway of, its release and last check, each with its own actions, and Add machine last', () => {
-  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true, gateway: 'trift' });
+test('Machines lists every machine with its ssh, its release and last check, each with its own actions, and Add machine last', () => {
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
   render(<SettingsCard />);
   show('machines');
   expect(sent).toContainEqual({ type: 'host.list' });
   act(() => store.getState().setMachines([
-    { name: 'mac', id: 'm0', platform: 'darwin-arm64', gateway: false, fleets: [] },
-    { name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', gateway: true, fleets: ['private', 'work'], check: { at: Date.UTC(2026, 9, 21, 12, 0), failed: 0, warned: 2, release: '0.13.0' } },
-    { name: 'studio', id: 'm2', ssh: 'ada@studio', platform: 'linux-arm64', gateway: false, fleets: [] },
+    { name: 'mac', id: 'm0', platform: 'darwin-arm64' },
+    { name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64', check: { at: Date.UTC(2026, 9, 21, 12, 0), failed: 0, warned: 2, release: '0.13.0' } },
+    { name: 'studio', id: 'm2', ssh: 'ada@studio', platform: 'linux-arm64' },
   ]));
   // this Mac is no machine to act on
   expect(screen.queryByTestId('machine-mac')).toBeNull();
   const trift = screen.getByTestId('machine-trift');
   expect(trift.textContent).toContain('ada@trift');
-  expect(trift.textContent).not.toContain('gateway for');
   expect(trift.textContent).toContain('release 0.13.0');
   expect(trift.textContent).toContain('2 warnings');
   expect(screen.getByTestId('machine-studio').textContent).toContain('not checked yet');
-  // no machine is offered as a gateway to make
-  expect(screen.queryByTestId('machine-enable')).toBeNull();
   // a rollback is offered only by the upgrade whose own rollback failed
   expect(trift.querySelector('[data-testid="machine-rollback"]')).toBeNull();
 
@@ -300,7 +297,7 @@ test('Machines lists every machine with its ssh, the fleets it is the gateway of
 });
 
 test('Machines says when the list could not be read, and offers to read it again', () => {
-  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: true });
+  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
   render(<SettingsCard />);
   show('machines');
   act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
@@ -308,14 +305,4 @@ test('Machines says when the list could not be read, and offers to read it again
   sent.length = 0;
   fireEvent.click(screen.getByTestId('machines-reload'));
   expect(sent).toEqual([{ type: 'host.list' }]);
-});
-
-test('Machines stands whether or not fleet.json asks for handover, and the fleet pane has no switch for it', () => {
-  store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, handoverEnabled: false });
-  render(<SettingsCard />);
-  show('fleet');
-  expect(screen.queryByTestId('set-handover')).toBeNull();
-  show('machines');
-  expect(screen.getByTestId('machines')).toBeTruthy();
-  expect(sent).toContainEqual({ type: 'host.list' });
 });

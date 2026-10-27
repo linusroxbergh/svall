@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
 import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
-import { holdsTerminals, restingLine } from './handover.js';
 import { useApp } from './hooks.js';
 import { awayLine, destinationName } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
@@ -19,11 +18,8 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const c = useApp((s) => s.fleet.robots[id]);
   const key = second ? secondKey(id) : id;
   const error = useApp((s) => s.terminalErrors[key]);
-  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id], second ? 2 : 1));
+  const failed = resumeErrorOf(second ? c?.second : c);
   const veiled = useApp(isVeiled);
-  // the fleet is between machines: its terminals were rested at the source and reopen where it lands
-  const resting = useApp((s) => holdsTerminals(s.handover));
-  const restingSays = useApp((s) => (resting ? restingLine(s.handover) : ''));
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
   const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to); });
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
@@ -51,8 +47,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   alpha.current = opacity;
 
   // opening a dormant robot wakes it once it has stayed in view a moment, so passing by wakes nothing.
-  // One whose window is lost while open, bar a close for idleness, or that fails to wake or to resume after a
-  // handover, waits for the button
+  // One whose window is lost while open, bar a close for idleness, or that fails to wake or to resume, waits for the button
   const [held, setHeld] = useState(false);
   const [asked, setAsked] = useState(false);
   const windowId = c?.tmux?.windowId;
@@ -63,16 +58,16 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   }, [windowId]);
   const active = useApp((s) => s.active);
   useEffect(() => {
-    if (second || !dormant || held || failed || resting || away || !active) return;
+    if (second || !dormant || held || failed || away || !active) return;
     const t = setTimeout(() => {
       const cur = app.store.getState().fleet.robots[id];
       if (cur && !cur.tmux) void reviveRobot(deps(), id).then((ok) => { if (!ok) setHeld(true); });
     }, 1000);
     return () => clearTimeout(t);
-  }, [id, second, dormant, held, failed, resting, away, active]);
+  }, [id, second, dormant, held, failed, away, active]);
 
   useEffect(() => {
-    if (resting || away || dormant || error || veiled) return;
+    if (away || dormant || error || veiled) return;
     const el = ref.current;
     if (!el) return;
     const rect = () => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
@@ -81,22 +76,19 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     const ro = new ResizeObserver(() => m.move(key, rect()));
     ro.observe(el);
     return () => { ro.disconnect(); m.hide(key); };
-  }, [key, resting, away, dormant, error, veiled]);
+  }, [key, away, dormant, error, veiled]);
 
   // a changed opacity restates the surface where it is; re-running the attach effect would flicker it.
   // the settings sliders keep the keyboard, so the surface only takes focus while they are away
   useEffect(() => {
     const el = ref.current;
     const s = app.store.getState();
-    if (!el || resting || away || veiled || !s.terminals[key]) return;
+    if (!el || away || veiled || !s.terminals[key]) return;
     const r = el.getBoundingClientRect();
     app.manager().show(key, { x: r.left, y: r.top, width: r.width, height: r.height }, opacity, !s.settingsOpen && !keepPageFocus && !aside).catch(() => {});
-  }, [key, opacity, resting, away, veiled]);
+  }, [key, opacity, away, veiled]);
 
   if (!c) return null;
-  if (resting) {
-    return <button type="button" className="revive held" data-testid="terminal-held" onClick={() => app.store.getState().toggleHandover(true)}>{restingSays}</button>;
-  }
   if (movingTo) {
     return (
       <div className="revive" data-testid="terminal-moving">

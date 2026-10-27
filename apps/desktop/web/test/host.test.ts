@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, connectionBanner, endRun, FAR_ANSWER_MS, groupSteps, loginForward, machineName, outcomeOf,
-  replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
+  applyStep, beginRun, endRun, groupSteps, loginForward, machineName, outcomeOf,
+  plainStep, replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 import type { HostStep } from '../src/bridge.js';
 
@@ -46,33 +46,28 @@ describe('host run', () => {
   });
 
   it('names no machine by its id, and keeps an id that names a file', () => {
-    const [other, mine, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
+    const [other, far] = ['9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '66666666-7777-8888-9999-aaaaaaaaaaaa'];
     let run = beginRun('add', { name: 'trift', ssh: 'trift.test' });
     run = applyStep(run, step('master', 'fail', { detail: `trift.test now reaches machine ${other}, not trift (${far})`, action: `point trift.test back at trift (${far})` }));
-    run = applyStep(run, step('machine', 'fail', { detail: `/Users/ada/.svall/owner.json names ${other}, not this machine (${mine}): its daemon runs as that machine` }));
     run = applyStep(run, step('claude', 'warn', { detail: `/Users/ada/.claude/projects/-app/${other}.jsonl is not there` }));
     expect(run.steps.map((s) => s.detail)).toEqual([
       'trift.test now reaches another machine, not trift',
-      '/Users/ada/.svall/owner.json names another machine, not this machine: its daemon runs as that machine',
       `/Users/ada/.claude/projects/-app/${other}.jsonl is not there`,
     ]);
     expect(run.steps[0].action).toBe('point trift.test back at trift');
   });
 
-  it('names a machine this Mac knows by its name, and leaves out the ids of fleets and handovers and the generations', () => {
-    const [studio, other, fleet, theirs, tx] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '1a1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
+  it('names a machine this Mac knows by its name, and leaves out the ids of fleets', () => {
+    const [studio, other, fleet, theirs] = ['5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '7f7f0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', '8e8e0b1c-2d3e-4f50-8617-9a0b1c2d3e4f'];
     const names = { [studio]: 'studio' };
-    const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('fleet', 'fail', { detail }), names).steps[0].detail;
+    const said = (detail: string) => applyStep(beginRun('upgrade', { name: 'trift' }), step('identity', 'fail', { detail }), names).steps[0].detail;
     expect(said(`trift.test now reaches machine ${studio}, not trift (${other})`)).toBe('trift.test now reaches studio, not trift');
     expect(said(`trift answered with machineId ${other}, not ${studio}`)).toBe('trift answered as another machine');
     expect(said(`trift answered with fleetId ${theirs}, not ${fleet}: it runs another fleet there`)).toBe('trift answered for another fleet: it runs another fleet there');
-    expect(said(`trift cannot take a copy of this fleet: the record for fleet ${fleet} is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`))
-      .toBe(`trift cannot take a copy of this fleet: the record for the fleet is unreadable (bad json); it was left where it is and this fleet is refused until /srv/gateway/${fleet}.json holds a readable record`);
-    expect(said(`trift did not finish making its copy of this fleet: this fleet's record changed since it was read: ${studio} holds it at generation 4 in handover ${tx}`))
-      .toBe("trift did not finish making its copy of this fleet: this fleet's record changed since it was read: studio holds it in another handover");
-    expect(said(`trift cannot take a copy of this fleet: ${tx} is committed; this fleet belongs to ${other} at generation 5`))
-      .toBe('trift cannot take a copy of this fleet: the handover is committed; this fleet belongs to another machine');
-    expect(said('trift cannot take a copy of this fleet: this fleet is at generation 5, not 4')).toBe('trift cannot take a copy of this fleet: this fleet has moved on');
+  });
+
+  it('drops an id it does not know from a step line', () => {
+    expect(plainStep('stuck in move 3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', {})).toBe('stuck in move');
   });
 
   it('masks a token wherever it is labelled, and leaves the rest of the line alone', () => {
@@ -95,8 +90,7 @@ describe('the end of a run', () => {
 
   it('the outcome line reads ready when nothing is left to do, and counts the things otherwise', () => {
     expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: ready, done: true });
-    const replicas = step('replicas', 'warn', { detail: '22 GB from an earlier handover is in /home/box/lab; delete it when you no longer need it' });
-    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok'), replicas]))).toEqual({ text: ready, done: true });
+    expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
     expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: ready, done: true });
     // each step's action is one thing, and so is each failed step that names none
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box needs 1 thing before robots can move there.' });
@@ -138,11 +132,11 @@ describe('the end of a run', () => {
 
 describe('a step by name', () => {
   it('reads as plain words, and a step it does not know as itself', () => {
-    expect(['master', 'identity', 'enrol', 'fleet', 'replicas', 'registry', 'keys'].map(stepLabel))
-      .toEqual(['Connection', 'Installed release', 'Worker', 'Fleets', 'Earlier handover', 'Machine list', 'Copied keys']);
+    expect(['master', 'identity', 'enrol', 'registry', 'keys'].map(stepLabel))
+      .toEqual(['Connection', 'Installed release', 'Worker', 'Machine list', 'Copied keys']);
     // the checks a machine's own doctor reports
-    expect(['systemd', 'gateway', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
-      .toEqual(['Fleet service', 'Gateway service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
+    expect(['systemd', 'daemon env', 'gh', 'path', 'codex sandbox', 'opencode plugin', 'linger', 'doctor'].map(stepLabel))
+      .toEqual(['Fleet service', 'Service environment', 'GitHub CLI', 'PATH', 'Codex sandbox', 'OpenCode plugin', 'Runs after logout', "Machine's own checks"]);
     expect(stepLabel('weather')).toBe('weather');
   });
 
@@ -161,7 +155,7 @@ describe('a step by name', () => {
 
   it('leaves out the machine the panel already names where a step starts with it', () => {
     expect(stepSaid({ step: 'identity', status: 'ok', detail: 'studio runs release 0.5.0' }, 'studio')).toBe('runs release 0.5.0');
-    expect(stepSaid({ step: 'fleet', status: 'ok', detail: "studio's unused fleet is now this fleet" }, 'studio')).toBe("studio's unused fleet is now this fleet");
+    expect(stepSaid({ step: 'enrol', status: 'ok', detail: "studio's fleet home serves this fleet" }, 'studio')).toBe("studio's fleet home serves this fleet");
     expect(stepSaid({ step: 'ssh', status: 'ok', detail: 'studios answered' }, 'studio')).toBe('studios answered');
     expect(stepSaid({ step: 'ssh', status: 'ok' }, 'studio')).toBeUndefined();
   });
@@ -169,11 +163,11 @@ describe('a step by name', () => {
 
 describe('the attended checklist', () => {
   it('names the phase each step belongs to, in the order the steps arrived', () => {
-    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('rsync', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
+    const steps = [step('ssh', 'ok'), step('master', 'ok'), step('tools', 'ok'), step('release', 'ok'), step('tmux', 'ok'),
                    step('claude', 'warn'), step('codex', 'ok'), step('opencode', 'ok'), step('versions', 'warn'), step('probe', 'ok')];
     expect(groupSteps(steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
       ['Reaching it', ['ssh', 'master']],
-      ['What it needs', ['rsync']],
+      ['What it needs', ['tools']],
       ['Svall there', ['release', 'tmux']],
       ['Agents there', ['claude', 'codex', 'opencode', 'versions']],
       ['Trying it out', ['probe']],
@@ -190,20 +184,20 @@ describe('the attended checklist', () => {
   });
 
   it("a step that comes back to an earlier phase joins that phase's group", () => {
-    expect(groupSteps([step('ssh', 'ok'), step('rsync', 'ok'), step('master', 'ok')]).map((g) => [g.label, g.rows.map((r) => r.step)]))
-      .toEqual([['Reaching it', ['ssh', 'master']], ['What it needs', ['rsync']]]);
+    expect(groupSteps([step('ssh', 'ok'), step('tools', 'ok'), step('master', 'ok')]).map((g) => [g.label, g.rows.map((r) => r.step)]))
+      .toEqual([['Reaching it', ['ssh', 'master']], ['What it needs', ['tools']]]);
   });
 
   it('calls no phase by the name of a step in it', () => {
-    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install',
-      'tmux', 'uninstall', 'keys', 'service', 'identity', 'authority', 'fleet', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
+    const steps = ['name', 'machine', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install',
+      'tmux', 'uninstall', 'keys', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'rollback', 'registry'];
     for (const g of groupSteps(steps.map((s) => step(s, 'ok')))) expect(g.rows.map((r) => stepLabel(r.step))).not.toContain(g.label);
   });
 
   it('shows every phase of an add, and of a removal, as one run', () => {
-    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload',
+    const add = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload',
       'install', 'tmux', 'service', 'identity', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
-    const remove = ['machine', 'fleet', 'uninstall', 'registry'];
+    const remove = ['machine', 'uninstall', 'registry'];
     for (const steps of [add, remove]) {
       const labels = groupSteps(steps.map((s) => step(s, 'ok'))).map((g) => g.label);
       expect(labels).not.toContain('Checks');
@@ -271,78 +265,5 @@ describe('what the page may ask for', () => {
     expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude', 3118)).toBe(3118);
     expect(loginForward('MCP_OAUTH_CALLBACK_PORT=3118 claude')).toBeUndefined();
     expect(loginForward('claude')).toBeUndefined();
-  });
-});
-
-describe('the connection state the shell reports', () => {
-  const on = { handoverEnabled: true };
-  const err = (o: { owner: string; kind: string; message?: string; machine?: string; destination?: string }) => ({ state: 'error' as const, message: 'what it said', ...o });
-
-  it('says where the fleet is going, with nothing to do about it', () => {
-    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, on)).toEqual({ text: 'connecting to studio…', actions: [] });
-    expect(connectionBanner({ state: 'owner-changed', owner: 'studio' }, on)).toEqual({ text: 'the fleet moved to studio; reconnecting…', actions: [] });
-    expect(connectionBanner({ state: 'online', owner: 'studio' }, on)).toBeUndefined();
-  });
-
-  it('names the machine once in one plain sentence, folds what it said away, and offers Reconnect on every error', () => {
-    expect(connectionBanner(err({ owner: 'studio', kind: 'unreachable', message: 'ssh: connect to host studio port 22: Operation timed out' }), on)).toEqual({
-      text: 'studio is not reachable; trying again.', detail: 'ssh: connect to host studio port 22: Operation timed out', machine: 'studio', actions: ['reconnect'],
-    });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'daemon_down', machine: 'studio' }), on))
-      .toMatchObject({ text: "studio's svalld is not running; trying again.", actions: ['check', 'reconnect'] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), on))
-      .toMatchObject({ text: 'studio is on another version of Svall.', machine: 'studio', actions: ['upgrade', 'reconnect'] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'other' }), on)).toMatchObject({ text: 'studio could not be reached.', actions: ['check', 'reconnect'] });
-    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), on))
-      .toMatchObject({ text: 'svalld is not running on this Mac; trying again.', actions: ['reconnect'] });
-  });
-
-  it('sends a refused login or host key to one ssh in Terminal, then Reconnect', () => {
-    expect(connectionBanner(err({ owner: 'studio', kind: 'auth', machine: 'studio', destination: 'linus@studio' }), on))
-      .toMatchObject({ text: 'studio did not let ssh log in.', ssh: 'linus@studio', actions: ['reconnect'] });
-    expect(connectionBanner(err({ owner: 'local', kind: 'host_key', machine: 'gate', destination: 'linus@gate' }), on))
-      .toMatchObject({ text: "ssh does not trust gate's host key.", ssh: 'linus@gate', machine: 'gate' });
-    // a helper that names no destination is reached by the machine's name
-    expect(connectionBanner(err({ owner: 'studio', kind: 'auth' }), on)).toMatchObject({ ssh: 'studio' });
-  });
-
-  it('says a gateway that did not answer leaves where the fleet runs unknown, and offers this Mac\'s copy only when the shell has one', () => {
-    const gate = err({ owner: 'local', kind: 'unreachable', machine: 'gate', destination: 'linus@gate' });
-    expect(connectionBanner(gate, on)).toMatchObject({
-      text: 'The gateway gate did not answer, so where the fleet runs is not known; trying again.', actions: ['reconnect'],
-    });
-    expect(connectionBanner(gate, { ...on, copyHere: true })).toMatchObject({ actions: ['here', 'reconnect'] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'other', machine: 'gate' }), on))
-      .toMatchObject({ text: 'The gateway gate did not answer, so where the fleet runs is not known.', actions: ['check', 'reconnect'] });
-  });
-
-  it('says a connection helper that stopped or has not answered has not said where the fleet runs, never that this Mac is out of reach', () => {
-    const helper = err({ owner: 'local', kind: 'helper', message: 'the connection helper has not answered in 10 s' });
-    expect(connectionBanner(helper, on)).toEqual({
-      text: 'The connection helper has not said where the fleet runs.', detail: 'the connection helper has not answered in 10 s', actions: ['reconnect'],
-    });
-    expect(connectionBanner(helper, { ...on, copyHere: true })?.actions).toEqual(['here', 'reconnect']);
-    expect(connectionBanner(err({ owner: 'studio', kind: 'helper' }), { ...on, copyHere: true })?.actions).toEqual(['reconnect']);
-  });
-
-  it('says a far daemon that has not answered since the route opened has not, and offers a check', () => {
-    expect(FAR_ANSWER_MS).toBe(60_000);
-    expect(connectionBanner({ state: 'online', owner: 'studio' }, { ...on, silent: true }))
-      .toEqual({ text: "studio's svalld has not answered.", machine: 'studio', actions: ['check', 'reconnect'] });
-    expect(connectionBanner({ state: 'online', owner: 'local' }, { ...on, silent: true })).toBeUndefined();
-  });
-
-  it('reaches a fleet on this Mac only once it asks for handover, and offers the Machines panel only then', () => {
-    const off = { handoverEnabled: false };
-    expect(connectionBanner(undefined, on)).toBeUndefined();
-    expect(connectionBanner(err({ owner: 'local', kind: 'daemon_down', machine: 'local' }), off)).toBeUndefined();
-    expect(connectionBanner({ state: 'connecting', owner: 'local' }, off)).toBeUndefined();
-    expect(connectionBanner({ state: 'connecting', owner: 'studio' }, off)).toEqual({ text: 'connecting to studio…', actions: [] });
-    expect(connectionBanner(err({ owner: 'studio', kind: 'version', machine: 'studio' }), off)).toMatchObject({ actions: ['reconnect'] });
-    expect(connectionBanner(err({ owner: 'local', kind: 'unreachable', machine: 'gate' }), { ...off, copyHere: true })).toBeUndefined();
-  });
-
-  it('never repeats a token the shell passed on', () => {
-    expect(connectionBanner(err({ owner: 'studio', kind: 'other', message: 'token=s3cr3t' }), on)?.detail).toBe('token=…');
   });
 });

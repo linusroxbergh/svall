@@ -18,8 +18,6 @@ const listFleets = (): Promise<FleetEntry[]> => app.api().call('fleets.list', {}
 
 function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
   const online = useApp((s) => s.status === 'online');
-  // a fleet on another machine talks to that machine's daemon, which knows nothing of this Mac's fleets
-  const away = useApp((s) => (s.connection && s.connection.owner !== 'local' ? s.connection.owner : undefined));
   // a pick still running when the picker closes opens nothing
   const shown = useRef(true);
   const [fleets, setFleets] = useState<FleetEntry[]>();
@@ -31,10 +29,10 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
 
   useEffect(() => { shown.current = true; return () => { shown.current = false; }; }, []);
   const load = () => { listFleets().then((f) => { setFleets(f); setListError(undefined); }, (e: Error) => setListError(e.message)); };
-  useEffect(() => { if (online && !away) load(); }, [online, away]);
-  // away or offline there is no row or field to hold the focus, so the dialog takes it and hears Esc
+  useEffect(() => { if (online) load(); }, [online]);
+  // offline there is no row or field to hold the focus, so the dialog takes it and hears Esc
   const panel = useRef<HTMLDivElement>(null);
-  useEffect(() => { if (!panel.current?.contains(document.activeElement)) panel.current?.focus(); }, [online, away]);
+  useEffect(() => { if (!panel.current?.contains(document.activeElement)) panel.current?.focus(); }, [online]);
 
   const close = () => app.store.getState().setFleetPicker(undefined);
   const problem = name ? fleetNameProblem(name, (fleets ?? []).flatMap((f) => [f.name, directoryName(f.home)])) : undefined;
@@ -75,10 +73,9 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
         }}>
         <div className="kicker">{mode === 'new' ? 'New fleet' : 'Fleets'}<CloseX onClose={close} testid="fleet-picker-close" /></div>
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
-        {away && <div className="modal-note" data-testid="fleet-picker-away">This fleet runs on {away}; open other fleets from a window of a fleet on this Mac.</div>}
         {listError && <div className="fleet-error">{listError}</div>}
         {(mode !== 'new' || errors.new) && <div className="fleet-rows">
-          {!away && fleets?.map((f) => (
+          {fleets?.map((f) => (
             <div key={f.home}>
               {/* a reflex Enter keeps this window's fleet */}
               <button className="fleet-row" data-testid={`fleet-row-${f.name}`} autoFocus={f.current} disabled={!online || busy !== undefined} onClick={() => open(f)}>
@@ -91,13 +88,13 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
             </div>
           ))}
         </div>}
-        {!away && <div className="fleet-new">
+        <div className="fleet-new">
           <input className="fld" placeholder="New fleet" aria-label="New fleet name" value={name} disabled={!online} data-testid="fleet-new-name" autoFocus={mode === 'new'} {...AS_TYPED}
             onChange={(e) => setName(e.target.value.trim())} onKeyDown={(e) => { if (e.key === 'Enter') create(); }} />
           <button className="btn" data-testid="fleet-new-create" disabled={!online || !name || !!problem || busy !== undefined} onClick={create}>
             {busy === 'new' ? 'Creating…' : 'Create'}
           </button>
-        </div>}
+        </div>
         {problem && <div className="fleet-error" data-testid="fleet-new-problem">{problem}</div>}
         {errors.new && <div className="fleet-error">{errors.new}</div>}
         <div className="modal-note">From a terminal: <code>{shim()} &lt;name&gt;</code></div>

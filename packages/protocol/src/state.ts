@@ -143,9 +143,7 @@ export const Home = z.object({
 export type Home = z.infer<typeof Home>;
 export const defaultHome = (): Home => Home.parse({});
 
-// the handover whose rest closed a terminal's window: its destination opens that terminal again, and no other
-const RestedBy = z.string().min(1).optional();
-// why a handover could not resume a terminal, kept while it lies dormant and cleared once it next comes up
+// why a resume could not bring a terminal back, kept while it lies dormant and cleared once it next comes up
 const ResumeError = z.string().optional();
 
 // one terminal of a robot: its directory, its live tmux ids while it has a window, and the
@@ -157,7 +155,6 @@ export const TerminalSlot = z.object({
   unread: z.boolean(),
   // interrupted: the agent was ended mid-turn or on a question, so it resumes as the fleet starts and is told what was lost
   revive: z.object({ command: z.string(), interrupted: z.literal(true).optional() }).optional(),
-  restedBy: RestedBy,
   resumeError: ResumeError,
 });
 export type TerminalSlot = z.infer<typeof TerminalSlot>;
@@ -213,7 +210,7 @@ export const defaultColumns = (): Column[] => [
   { id: 'todo', name: 'To do' }, { id: 'doing', name: 'In progress' }, { id: 'review', name: 'In review' }, { id: 'done', name: 'Done' },
 ];
 
-/** The state.json schema this release reads and writes, which both machines of a handover have to share. */
+/** The state.json schema this release reads and writes, which a worker's link has to share with its home. */
 export const STATE_SCHEMA_VERSION = 12;
 
 export const FleetState = z.object({

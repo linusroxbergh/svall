@@ -6,14 +6,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { Duplex } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { running } from '../agent/reducer.js';
 import { runProcess, type RunResult } from './process.js';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
-export const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
-export const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
+const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
+const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
 // what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
-export const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
+const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;
 
 const CONTROL_TIMEOUT = 10_000;
 const OPEN_TIMEOUT = 20_000;
@@ -60,10 +59,10 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
  * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
  * so nothing falls back to a connection of its own that no one checked reaches the machine meant.
  */
-export const REMOTE_HOST = 'svall-remote.invalid';
+const REMOTE_HOST = 'svall-remote.invalid';
 
 /** This user's folder for sockets in a temp directory. */
-export function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
+function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
   return path.join(tmp, `svall-${process.getuid?.() ?? 0}`);
 }
 
@@ -72,7 +71,7 @@ export function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()
  * directory it creates, so one that was already there — or a symlink someone else left in its
  * place — has to be read back before a socket is put in it.
  */
-export function ownSocketDir(dir: string): string {
+function ownSocketDir(dir: string): string {
   try {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   } catch (err) {
@@ -90,32 +89,6 @@ export function ownSocketDir(dir: string): string {
 // The pid in front keeps each process on a master of its own, and names whose master it is once that process is gone
 const socketFor = (dir: string, destination: string): string =>
   path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
-const SOCKET_NAME = /^(\d+)-[0-9a-f]{12}$/;
-
-/**
- * Ends the master on every socket in `dir` whose process is gone, and removes the socket: a process killed where no
- * handler ran leaves its detached `ssh -M` running. A running process's sockets, and names it cannot read, are left alone.
- */
-export async function sweepMasters(dir: string = defaultSocketDir()): Promise<void> {
-  let names: string[];
-  try {
-    names = fs.readdirSync(ownSocketDir(dir));
-  } catch {
-    return;
-  }
-  await Promise.all(names.map(async (name) => {
-    const pid = Number(SOCKET_NAME.exec(name)?.[1]);
-    const socket = path.join(dir, name);
-    try {
-      if (!pid || pid === process.pid || running(pid)) return;
-      const r = await runProcess('ssh', ['-S', socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', REMOTE_HOST], { timeoutMs: CONTROL_TIMEOUT });
-      // a master that did not take the exit keeps its socket for the next sweep; one no master listens on goes
-      if (r.code === 0 || /control socket connect/i.test(r.stderr)) fs.rmSync(socket, { force: true });
-    } catch {
-      // a socket ssh could not be run for is left to the next sweep
-    }
-  }));
-}
 
 /** One master per socket path, so two callers in this process reaching the same destination share the connection. */
 const masters = new Map<string, Promise<SshMaster>>();

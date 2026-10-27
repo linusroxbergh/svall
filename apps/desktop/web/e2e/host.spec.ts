@@ -11,18 +11,16 @@ const ADD_STEPS = [
   { step: 'claude', status: 'warn', detail: '1.2.3, not logged in', action: 'ssh linus@studio, then claude auth login', run: 'claude auth login' },
   { step: 'opencode', status: 'warn', detail: 'opencode is not installed on this machine', action: 'ssh linus@studio, then install OpenCode' },
   {
-    step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac: a handover there and back needs the same release on both',
+    step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac: a move there and back needs the same release on both',
     action: 'ssh linus@studio, then claude update', run: 'claude update',
   },
   { step: 'probe', status: 'fail', detail: 'ws://127.0.0.1:47800 refused token=s3cr3t', action: 'ssh linus@studio and run svall doctor' },
 ] as const;
 
 const fakeShell = (page: import('@playwright/test').Page, port: number, token: string) =>
-  nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: false } });
-const handoverOn = (page: import('@playwright/test').Page) =>
-  receive(page, { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false, handoverEnabled: true });
+  nativeShell(page, { port, token, info: { type: 'shell.info', home: '/tmp/fleet-x', log: [], op: false } });
 
-test('the machines panel stands without the fleet asking for handover, and reports every step', async ({ page, svall }) => {
+test('the machines panel reads the list as it opens, and reports every step', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
@@ -88,9 +86,8 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64' }] });
   await expect(page.getByTestId('machine-studio')).toContainText('not checked yet');
   await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
   const panel = page.getByTestId('host-setup');
@@ -104,7 +101,6 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0, protocol 4');
   await expect(page.getByTestId('host-outcome')).toContainText('studio is ready. Robots you move there keep working while this Mac sleeps.');
-  await expect(panel.getByTestId('machine-enable')).toHaveCount(0);
 
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
@@ -145,9 +141,8 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64' }] });
   await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
   const panel = page.getByTestId('host-setup');
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'claude', status: 'warn', detail: '2.1.300, not signed in: claude auth login', run: 'claude auth login' } });
@@ -213,7 +208,7 @@ test('a fix the machine leaves to the user opens a terminal there with its comma
 });
 
 const MACHINE = '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] };
+const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'linux-x64' };
 const tick = (item: string, field: string, on: boolean) => ({ item, fields: [field], on, preview: [`${field} lin…90`] });
 const unticked = (server: string, agent: string, field: string): HostStep => ({
   step: `mirror:${agent}:mcp:${server}`, status: 'warn', action: `copy ${server}'s keys to studio`, tick: tick(`${agent}:mcp:${server}`, field, false),
@@ -222,7 +217,7 @@ const unticked = (server: string, agent: string, field: string): HostStep => ({
 // what a check of studio says before its report: every step there passed
 const PASSED: HostStep[] = [
   { step: 'ssh', status: 'ok', detail: 'linus@studio accepted an interactive login' },
-  { step: 'release', status: 'ok', detail: '0.5.0, protocol 33' },
+  { step: 'release', status: 'ok', detail: '0.5.0, protocol 34' },
   { step: 'claude', status: 'ok', detail: '2.1.310 (Claude Code), logged in' },
   { step: 'probe', status: 'ok', detail: 'studio answers' },
 ];
@@ -232,7 +227,6 @@ async function checking(page: import('@playwright/test').Page, svall: { port: nu
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
   await receive(page, { type: 'host.machines', machines: [STUDIO] });
   await page.getByTestId('machine-studio').getByTestId('machine-doctor').click();
@@ -350,9 +344,8 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'studio', id: 'm1', ssh: 'linus@studio', platform: 'linux-x64' }] });
   const starts = async () => (await sent(page)).filter((m) => m.type === 'host.start');
   const row = page.getByTestId('machine-studio');
   const panel = page.getByTestId('host-setup');
@@ -380,7 +373,7 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   await row.getByTestId('machine-more').click();
   await row.getByTestId('machine-forget').click();
   await expect(page.getByTestId('host-confirm')).toHaveAttribute('data-op', 'forget');
-  await expect(page.getByTestId('host-confirm')).toContainText('Svall stays installed there');
+  await expect(page.getByTestId('host-confirm')).toContainText('Svall and its fleets stay on that machine.');
   expect(await starts()).toHaveLength(1);
   await page.getByTestId('host-confirm-yes').click();
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.start', op: 'remove', args: { name: 'studio', forget: true } });
@@ -388,104 +381,17 @@ test('a machine is only removed or forgotten once the page has asked', async ({ 
   expect((await sent(page)).at(-1)).toEqual({ type: 'host.cancel' });
 });
 
-test('the corner names the machine the fleet runs on, and the fleet stays on the screen while it is away', async ({ page, svall }) => {
-  await fakeShell(page, svall.port, svall.token);
-  const island = await svall.api.call('island.create', { name: svall.uniq('host') });
-  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
-  await svall.open();
-  await expect(page.getByTestId('board')).toBeVisible();
-
-  // a fleet on this Mac wears no badge
-  await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
-  await expect(page.getByTestId('owner-badge')).toHaveCount(0);
-  await expect(page.getByTestId('connection-banner')).toHaveCount(0);
-
-  await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
-  await expect(page.getByTestId('owner-badge')).toHaveText('studio');
-
-  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed', machine: 'studio', destination: 'linus@studio' });
-  // one plain sentence, what the helper said folded away, and a fresh helper on asking
-  await expect(page.getByTestId('connection-banner')).toContainText('studio is not reachable; trying again.');
-  await expect(page.getByTestId('connection-detail')).toContainText('ssh closed');
-  await expect(page.getByTestId('connection-detail')).not.toHaveAttribute('open');
-  await page.getByTestId('connection-reconnect').click();
-  expect((await sent(page)).at(-1)).toEqual({ type: 'connection.retry' });
-  await expect(page.getByTestId('owner-badge')).toHaveAttribute('data-state', 'error');
-  // the fleet the page already holds is still there, robots and all
-  await expect(page.getByTestId('board')).toBeVisible();
-  await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
-
-  // a login ssh was refused names the one ssh to run in Terminal
-  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'auth', message: 'Permission denied (publickey)', machine: 'studio', destination: 'linus@studio' });
-  await expect(page.getByTestId('connection-banner')).toContainText('studio did not let ssh log in. Run ssh linus@studio once in Terminal, then Reconnect.');
-  await expect(page.getByTestId('connection-reconnect')).toBeVisible();
-
-  await receive(page, { type: 'connection.state', state: 'connecting', owner: 'studio' });
-  await expect(page.getByTestId('connection-banner')).toHaveText('connecting to studio…');
-  await receive(page, { type: 'connection.state', state: 'online', owner: 'studio' });
-  await expect(page.getByTestId('connection-banner')).toHaveCount(0);
-
-  // a path on that machine is not this Mac's to open, and the shell says so
-  await receive(page, { type: 'notice', text: '/w/isle is on studio; open it there' });
-  await expect(page.getByTestId('toast')).toHaveText('/w/isle is on studio; open it there');
-});
-
-test('a machine on another version opens the machines panel on it from the banner, and nothing runs until asked', async ({ page, svall }) => {
-  await fakeShell(page, svall.port, svall.token);
-  await svall.open();
-  const version = { type: 'connection.state', state: 'error', owner: 'studio', kind: 'version', message: 'studio answered with protocol 3, not 4' } as const;
-  // the machines panel waits for the fleet to ask for handover, and so does the way to it
-  await receive(page, version);
-  await expect(page.getByTestId('connection-banner')).toContainText('studio is on another version of Svall.');
-  await expect(page.getByTestId('connection-detail')).toContainText('studio answered with protocol 3, not 4');
-  await expect(page.getByTestId('connection-upgrade')).toHaveCount(0);
-  await handoverOn(page);
-  await page.getByTestId('connection-upgrade').click();
-  await expect(page.getByTestId('host-setup')).toBeVisible();
-  await expect(page.getByTestId('host-machine')).toHaveText('studio');
-  await expect(page.getByTestId('host-name')).toHaveCount(0);
-  expect((await sent(page)).filter((m) => m.type === 'host.start')).toEqual([]);
-});
-
-test('a fleet on this Mac keeps its one offline banner until it asks for handover', async ({ page, svall }) => {
-  await fakeShell(page, svall.port, svall.token);
-  await svall.open();
-  const localDown = { type: 'connection.state', state: 'error', owner: 'local', kind: 'daemon_down', message: 'svalld is not running' } as const;
-
-  await receive(page, localDown);
-  await svall.stopDaemon();
-  await expect(page.getByTestId('offline-banner')).toBeVisible({ timeout: 10_000 });
-  await expect(page.getByTestId('connection-banner')).toHaveCount(0);
-
-  // a fleet on another machine names it, in place of the offline banner rather than beside it
-  await receive(page, { type: 'connection.state', state: 'error', owner: 'studio', kind: 'unreachable', message: 'ssh closed' });
-  await expect(page.getByTestId('connection-banner')).toContainText('studio is not reachable; trying again.');
-  await expect(page.getByTestId('offline-banner')).toHaveCount(0);
-
-  await handoverOn(page);
-  await receive(page, localDown);
-  await expect(page.getByTestId('connection-banner')).toContainText('svalld is not running on this Mac; trying again.');
-  await expect(page.getByTestId('offline-banner')).toHaveCount(0);
-
-  await svall.startDaemon();
-  await receive(page, { type: 'connection.state', state: 'online', owner: 'local' });
-  await expect(page.getByTestId('connection-banner')).toHaveCount(0);
-  await expect(page.getByTestId('offline-banner')).toBeHidden({ timeout: 15_000 });
-});
-
 test('an empty Machines tab explains what a machine is; a machine has Check and a ⋯ menu; Forget is offered for one that is not reachable; Remove waits for its robots', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
   await receive(page, { type: 'host.machines', machines: [] });
   await expect(page.getByTestId('machines-empty')).toHaveText("A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.");
 
-  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: ['x'] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   const row = page.getByTestId('machine-linus-vault');
   await expect(page.getByTestId('machines-empty')).toHaveCount(0);
-  await expect(row).not.toContainText('gateway for');
   await expect(row.getByTestId('machine-doctor')).toBeVisible();
   await expect(row.getByTestId('machine-upgrade')).toHaveCount(0);
   await row.getByTestId('machine-more').click();
@@ -503,9 +409,8 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   const id = await seed(svall, true, (c) => { c.machine = VAULT; });
   await page.reload();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   await row.getByTestId('machine-more').click();
   await expect(row.getByTestId('machine-forget')).toHaveCount(0);
   await expect(row.getByTestId('machine-remove')).toBeDisabled();
@@ -514,9 +419,8 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await rewrite(svall, (s) => { delete s.robots[id].machine; s.robots[id].moving = { id: 'mv_0123456789', to: VAULT, phase: 'prepare' }; });
   await page.reload();
   await page.getByTestId('settings-open').click();
-  await handoverOn(page);
   await page.getByTestId('settings-tab-machines').click();
-  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64', gateway: false, fleets: [] }] });
+  await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   await row.getByTestId('machine-more').click();
   await expect(row.getByTestId('machine-remove')).toHaveAttribute('title', '1 robot is placed there; move it back first');
 });

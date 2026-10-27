@@ -1,6 +1,5 @@
 import type { FleetState, PhoneSession } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
-import type { HandoverRun } from './handover.js';
 import { isPlaced } from './placement.js';
 import { slotStatus, wantsUser } from './selectors.js';
 import type { KeepAwake } from './settings.js';
@@ -48,39 +47,25 @@ export function awakeHold(need: Need, o: { mode: KeepAwake; now: number }): { re
   return reason && o.now < until ? { reason, until } : undefined;
 }
 
-/** A helper the page follows that has said something: idle sleep would cut the ssh and rsync under it, wherever the fleet runs. */
-const handingOver = (run: HandoverRun | undefined): boolean =>
-  !!run?.following && !!(run.transactionId || run.preflight || run.status);
-
-/** Has the shell hold the Mac awake while the fleet or a handover needs it, under the reason why, and let go once neither does.
- * Nothing is held for the fleet while the daemon is out of reach, or while the fleet runs on another machine; a handover is
- * held on battery too, as it is minutes long and one cut by sleep strands the fleet. */
+/** Has the shell hold the Mac awake while the fleet needs it, under the reason why, and let go once it does not.
+ * Nothing is held while the daemon is out of reach. */
 export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<Bridge, 'send'> }): () => void {
   // null until the first word, which also lets go of a hold the page before this one left
   let held: string | null | undefined = null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const update = () => {
     const s = store.getState();
-    // a run that goes on without this window watching is followed again, so the hold lasts as long as it does
-    if (s.handover?.result?.status === 'detached' && !s.handover.following) {
-      s.handoverFollow(s.handover.to);
-      bridge.send({ type: 'handover.attach' });
-      return;
-    }
     const now = Date.now();
-    const here = !s.connection || s.connection.owner === 'local';
-    const moving = s.settings.keepAwake !== 'off' && handingOver(s.handover);
-    const hold: ReturnType<typeof awakeHold> = moving ? { reason: 'handing the fleet over' }
-      : s.status === 'online' && here ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? []), { mode: s.settings.keepAwake, now }) : undefined;
+    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? []), { mode: s.settings.keepAwake, now }) : undefined;
     clearTimeout(timer);
     // looked at again at least each minute, as the window runs by the clock and a timer can stall while the Mac sleeps
     if (hold?.until) timer = setTimeout(update, Math.min(hold.until - now, 60_000));
     const reason = hold?.reason;
-    if (reason !== held) { held = reason; bridge.send({ type: 'awake', reason, ...(moving && { battery: true }) }); }
+    if (reason !== held) { held = reason; bridge.send({ type: 'awake', reason }); }
   };
   const unwatch = store.subscribe((s, prev) => {
-    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status || s.connection !== prev.connection
-      || s.handover !== prev.handover || s.settings.keepAwake !== prev.settings.keepAwake) update();
+    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status
+      || s.settings.keepAwake !== prev.settings.keepAwake) update();
   });
   update();
   return () => { unwatch(); clearTimeout(timer); };

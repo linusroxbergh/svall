@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -6,10 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
+import { emptyState, PROTOCOL_VERSION } from '@svall/protocol';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { mergeHooks } from '@svall/svalld/agent-hooks';
-import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
@@ -83,7 +82,7 @@ describe('svall argument parsing', () => {
       fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
       const config = path.join(home, 'config');
       const registry = MachineRegistry.load(config);
-      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall', gateway: false }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall' }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
       registry.save();
       // a companion running another fleet refuses at once, so the command ends after one ask
       ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't', fleetHome: '/home/linus/.svall' });
@@ -104,6 +103,14 @@ describe('svall argument parsing', () => {
     expect(['setp', 'stats', 'hlep', 'doctr', 'islands'].map((w) => buildProgram().commands.map((c) => c.name()).concat('help').find((c) => typo(w, c))))
       .toEqual(['setup', 'status', 'help', 'doctor', 'island']);
     expect(['work', 'dev', 'client'].some((w) => buildProgram().commands.some((c) => typo(w, c.name())))).toBe(false);
+  });
+
+  it('answers a retired command with where its work went, and opens no fleet by its name', async () => {
+    const r = await run({}, 'handover');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine');
+    for (const w of ['gateway', 'fleet', 'connect']) expect((await run({}, w)).stderr).toContain(`svall ${w} is gone with the fleet handover`);
+    expect(isProfileName('handover')).toBe(false);
   });
 
   it('keeps every command name out of the profile names', () => {
@@ -159,11 +166,16 @@ describe('svall argument parsing', () => {
       signed: false,
       protocol: PROTOCOL_VERSION,
       stateSchema: emptyState().version,
-      transferSchema: TRANSFER_SCHEMA_VERSION,
-      authoritySchema: AUTHORITY_SCHEMA_VERSION,
       runtime: { node: process.version, platform: process.platform, arch: process.arch },
     });
     expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it('reports its release, machine, protocol and state schema, and no transfer or authority schema', async () => {
+    const v = JSON.parse((await run({}, 'version', '--json')).stdout);
+    expect(v.protocol).toBe(34);
+    expect(v).not.toHaveProperty('transferSchema');
+    expect(v).not.toHaveProperty('authoritySchema');
   });
 
   it("names the home whose fleet it serves as a worker, as its worker.json says, and never the token", async () => {
@@ -176,22 +188,6 @@ describe('svall argument parsing', () => {
     expect(r.stdout).not.toContain('a'.repeat(48));
   });
 
-  it('says a handover moved the fleet here once its owner.json names this machine past its first record', async () => {
-    const home = makeHome();
-    const config = makeHome();
-    const fleetId = crypto.randomUUID();
-    const version = async () => JSON.parse((await run({ SVALL_HOME: home, SVALL_CONFIG_DIR: config }, 'version', '--json')).stdout);
-    const me = (await version()).machineId;
-    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: fleetId }));
-    // a fleet no gateway holds owns itself from its first start
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 0, ownerMachineId: me }));
-    expect((await version()).handedOver).toBeUndefined();
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: me }));
-    expect((await version()).handedOver).toEqual({ fleetId });
-    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: crypto.randomUUID() }));
-    expect((await version()).handedOver).toBeUndefined();
-  });
-
   it('says whether its release was built signed: with a signature and no unsigned mark', async () => {
     const root = makeHome();
     const signed = async () => JSON.parse((await run({ SVALL_RELEASE_ROOT: root }, 'version', '--json')).stdout).signed;
@@ -202,24 +198,6 @@ describe('svall argument parsing', () => {
     expect((await run({ SVALL_RELEASE_ROOT: root }, 'version')).stdout).toContain('release          1.2.3 (signed)\n');
     fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', unsigned: true }));
     expect(await signed()).toBe(false);
-  });
-
-  it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
-    const prefix = makeHome();
-    const server = await startAuthorityServer({ prefix });
-    const env = { SVALL_GATEWAY_PREFIX: prefix };
-    const fleet = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-    const owner = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-    try {
-      const created = await run(env, 'gateway', 'owner', 'create', '--fleet', fleet, '--params', JSON.stringify({ initialOwnerMachineId: owner }));
-      expect(created.code).toBe(0);
-      expect(JSON.parse(created.stdout)).toEqual({ result: { record: { fleetId: fleet, generation: 0, ownerMachineId: owner } } });
-      const missing = await run(env, 'gateway', 'owner', 'get', '--fleet', '7c2b0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
-      expect(missing.code).not.toBe(0);
-      expect(JSON.parse(missing.stdout)).toMatchObject({ error: { code: 'not_found' } });
-    } finally {
-      await server.close();
-    }
   });
 
   it('mints the machine id a controller registers this installation under', async () => {
@@ -564,31 +542,6 @@ describe('svall setup --if-needed --login-shell', () => {
     } finally {
       cleanHomes();
     }
-  });
-});
-
-describe('svall connect', () => {
-  afterEach(() => cleanHomes());
-
-  it('streams the local connection as NDJSON and lets go when its input ends', async () => {
-    const home = makeHome();
-    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
-    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
-    fs.writeFileSync(path.join(home, 'port'), '4711');
-    fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
-
-    // the helper sweeps the ssh sockets of its temp folder as it starts, so it gets one of its own
-    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, SVALL_HOME: home, TMPDIR: home } });
-    let out = '';
-    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
-    child.stdin.end();
-    const code = await new Promise((resolve) => child.on('close', resolve));
-
-    expect(code).toBe(0);
-    expect(out.trim().split('\n').map((line) => JSON.parse(line))).toEqual([
-      { type: 'connecting', owner: 'local' },
-      { type: 'online', host: '127.0.0.1', port: 4711, token: 'local-token' },
-    ]);
   });
 });
 

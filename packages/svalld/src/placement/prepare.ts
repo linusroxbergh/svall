@@ -1,17 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
+import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type MachineId } from '@svall/protocol';
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
-import { boundary } from '../handover/failpoints.js';
-import { must } from '../handover/git-graph.js';
-import { clean, realPath } from '../handover/portable-path.js';
-import type { RestDeps } from '../handover/rest.js';
-import { cliRunner, type AgentProber } from '../handover/sessions/registry.js';
-import type { CliRun } from '../handover/sessions/types.js';
+import { boundary } from '../failpoints.js';
+import { clean, realPath } from '../path-tools.js';
+import type { RestDeps } from './rest.js';
+import { cliRunner, type AgentProber } from '../sessions/registry.js';
+import type { CliRun } from '../sessions/types.js';
 import type { HomeConnection } from '../link/worker.js';
-import { cloneGit, type GitRunner } from '../links/git.js';
+import { cloneGit, must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
@@ -19,7 +18,7 @@ import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, branchAhead, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, takeBack, unpack, wake,
+  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, serversLeft, takeBack, unpack, wake,
   type ReturnSheet,
 } from './move.js';
 import { seedTrust } from './trust.js';
@@ -33,7 +32,6 @@ export type PrepareDeps = {
   viewers: RestDeps['viewers'];
   connection: Pick<HomeConnection, 'sendBlob' | 'receiveBlob'>;
   me: MachineId;
-  fleetId: FleetId;
   /** The home's name, as worker.json gives it. */
   homeName: string;
   paths: Pick<Paths, 'moves'>;
@@ -43,6 +41,7 @@ export type PrepareDeps = {
   agents: AgentProber;
   processes?: RestDeps['processes'];
   kill?: RestDeps['kill'];
+  clock?: RestDeps['clock'];
   agentRunning?: (kind: AgentKind) => Promise<boolean>;
   log: Logger;
   moves?: MoveFiles;
@@ -341,10 +340,10 @@ export class PrepareService {
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? j.robotId} does not run on ${this.name}`);
     this.save({ ...j, phase: 'rest' });
-    const { store, tmux, viewers, processes, kill } = this.d;
+    const { store, tmux, viewers, processes, kill, clock } = this.d;
     const { interruptAfterMs } = j.plan;
     try {
-      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }) }, j, (x) => this.save(x), this.d.fleetId,
+      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x),
         interruptAfterMs === undefined ? {} : { interruptAfterMs, terminate: true });
       this.save({ ...rested, phase: 'bundle' });
       return { ok: true };
@@ -384,6 +383,8 @@ export class PrepareService {
     if (j.phase === 'done') throw new ApiError('invalid', `move ${j.id} is done on ${this.name}`);
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine === this.d.me) {
+      const { store, tmux, processes, kill, clock } = this.d;
+      await serversLeft({ store, tmux, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x));
       for (const t of j.rest?.stoppedTerminals ?? []) {
         await (t.term === 2 ? this.d.fleet.openSecond(j.robotId, undefined, j.id) : this.d.fleet.reviveRobot(j.robotId, undefined, undefined, j.id))
           .catch((e: Error) => this.d.log.error(`move ${j.id}: ${j.robotId} did not reopen: ${e.message}`));

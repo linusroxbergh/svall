@@ -46,7 +46,7 @@ describe('worker.json', () => {
     expect(isWorker(paths)).toBe(true);
     expect(() => readWorkerFile(paths)).toThrow(new RegExp(`${paths.workerFile}.*token`));
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'gateway', 'fleets'] });
+    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'fleets'] });
   });
 });
 
@@ -70,15 +70,14 @@ runIf('svalld --worker', () => {
     expect(fs.readFileSync(path.join(config, 'machine.json'), 'utf8')).toBe('{');
   });
 
-  it('a home with worker.json starts with scribe off, no mobile and no gateway, and still answers state.get', async () => {
+  it('a home with worker.json starts with scribe off and no mobile, and still answers state.get', async () => {
     const home = makeHome();
     homes.push(home);
     const paths = resolvePaths(home);
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    // a gateway named in fleet.json is not asked, and leaves the fleet this daemon's to write
+    // fleet.json as an older release left it on a machine it made a gateway
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', gatewayMachineId: crypto.randomUUID() }));
-    let asked = 0;
-    const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger, authority: { get: async () => { asked++; throw new Error('no gateway'); } } });
+    const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
     const api = await client(d.port, d.token);
     try {
       expect(d.store.state.scribeOff).toBe(true);
@@ -90,7 +89,6 @@ runIf('svalld --worker', () => {
       // a change is the home's to make, and no home has linked
       expect(await api.call('island.create', { name: 'x' })).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });
       expect(Object.values(d.store.state.islands).map((i) => i.name)).not.toContain('x');
-      expect(asked).toBe(0);
     } finally {
       api.close();
       await d.stop();

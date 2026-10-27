@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import webpush from 'web-push';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 
 export type Vapid = { publicKey: string; privateKey: string };
 

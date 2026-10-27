@@ -95,8 +95,8 @@ final class AppMenuTests: XCTestCase {
         XCTAssertEqual(rows.map { $0.badge?.stringValue }, [nil, "open", nil])
         XCTAssertTrue(menu.validateMenuItem(newFleet))
 
-        menu.show(fleets: [], note: "This fleet runs on trift")
-        XCTAssertEqual(file.items[file.index(of: newFleet) - 1].title, "This fleet runs on trift")
+        menu.show(fleets: [], note: "svalld is not connected")
+        XCTAssertEqual(file.items[file.index(of: newFleet) - 1].title, "svalld is not connected")
         XCTAssertFalse(file.items.contains { $0.title == "work" })
         XCTAssertFalse(menu.validateMenuItem(newFleet))
     }

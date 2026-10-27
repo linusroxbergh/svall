@@ -5,7 +5,7 @@ export type MachineId = z.infer<typeof MachineId>;
 export const FleetId = z.guid().brand<'FleetId'>();
 export type FleetId = z.infer<typeof FleetId>;
 
-/** A sha256 digest as lowercase hex: what names a transfer manifest on the wire. */
+/** A sha256 digest as lowercase hex. */
 export const Sha256 = z.string().regex(/^[0-9a-f]{64}$/, 'a sha256 hex digest');
 
 /** A path a command can be built from: an absolute one, naming itself and nothing else. */

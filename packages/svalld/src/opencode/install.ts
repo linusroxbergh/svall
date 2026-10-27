@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import { SHIM } from '../profile.js';
 import { assetDir } from '../runtime.js';
 import { readOrUndefined } from '../settings-file.js';
@@ -14,13 +14,6 @@ export function opencodePaths(env: NodeJS.ProcessEnv = process.env, home: string
   const dir = path.join(env.XDG_CONFIG_HOME ? path.resolve(env.XDG_CONFIG_HOME) : path.join(home, '.config'), 'opencode');
   const data = path.join(env.XDG_DATA_HOME ? path.resolve(env.XDG_DATA_HOME) : path.join(home, '.local/share'), 'opencode');
   return { dir, plugin: path.join(dir, 'plugins', `${SHIM}.js`), data };
-}
-
-/** OpenCode's data, config, state and cache folders where `env` puts them. */
-export function opencodeFolders(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): string[] {
-  const { dir, data } = opencodePaths(env, home);
-  const under = (xdg: string | undefined, fallback: string): string => path.join(xdg ? path.resolve(xdg) : path.join(home, fallback), 'opencode');
-  return [data, dir, under(env.XDG_STATE_HOME, '.local/state'), under(env.XDG_CACHE_HOME, '.cache')];
 }
 
 const pluginText = (): string => fs.readFileSync(path.join(assetDir('hooks'), 'opencode-plugin.js'), 'utf8');

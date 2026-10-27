@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { MachineRecord } from '@svall/protocol';
 import { svallHome } from '@svall/svalld/paths';
-import { MachineRegistry } from '../../src/controller/registry.js';
+import { MachineRegistry, reservedName } from '../../src/controller/registry.js';
 
 const made: string[] = [];
 const tmp = (): string => { const d = fs.mkdtempSync('/tmp/svall-t-'); made.push(d); return d; };
@@ -20,10 +20,15 @@ const trift: MachineRecord = {
   arch: 'arm64',
   home: '/home/linus',
   svallBase: '/home/linus/.local/share/svall',
-  gateway: true,
 };
 
 describe('machine registry', () => {
+  it('names the fix for a machine.json it cannot read', () => {
+    const dir = tmp();
+    fs.writeFileSync(path.join(dir, 'machine.json'), '{"id":');
+    expect(() => MachineRegistry.load(dir)).toThrow('; delete the file to mint a new machine id, or restore it from backup');
+  });
+
   it('writes the local machine on the first load and reads it back after', () => {
     const dir = path.join(tmp(), 'svall');
     const registry = MachineRegistry.load(dir, { hostname: 'Kolvik.local' });
@@ -33,7 +38,6 @@ describe('machine registry', () => {
       arch: process.arch,
       home: os.homedir(),
       svallBase: svallHome(),
-      gateway: false,
     });
     expect(registry.localId).toBe(JSON.parse(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8')).id);
     expect(read(dir)).toEqual({ machines: { [registry.localId]: registry.localMachine() } });
@@ -84,7 +88,6 @@ describe('machine registry', () => {
     const fallback = process.platform === 'linux' ? 'linux' : 'mac';
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: '42' }).localMachine().name).toBe(fallback);
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'local' }).localMachine().name).toBe(fallback);
-    expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'status' }).localMachine().name).toBe(fallback);
     expect(MachineRegistry.load(path.join(tmp(), 'c'), { hostname: "Linus's MacBook Pro.lan" }).localMachine().name).toBe('linus-s-macbook-pro');
   });
 
@@ -105,13 +108,13 @@ describe('machine registry', () => {
     expect(registry.list().map((m) => m.record.name).sort()).toEqual(['kolvik', 'trift']);
     expect(registry.get('nowhere')).toBeUndefined();
 
-    registry.rename('trift', 'gateway-box');
+    registry.rename('trift', 'build-box');
     registry.save();
-    expect(read(dir).machines[added.id].name).toBe('gateway-box');
+    expect(read(dir).machines[added.id].name).toBe('build-box');
 
     const reloaded = MachineRegistry.load(dir, { hostname: 'kolvik' });
-    expect(reloaded.get('gateway-box')?.id).toBe(added.id);
-    reloaded.remove('gateway-box');
+    expect(reloaded.get('build-box')?.id).toBe(added.id);
+    reloaded.remove('build-box');
     reloaded.save();
     expect(Object.keys(read(dir).machines)).toEqual([reloaded.localId]);
   });
@@ -131,12 +134,9 @@ describe('machine registry', () => {
     expect(() => registry.rename('kolvik', 'local')).toThrow(/local/);
   });
 
-  it("refuses the words svall handover takes as its own as a machine's name", () => {
-    const registry = MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'kolvik' });
-    for (const word of ['on', 'off', 'status', 'attach']) {
-      expect(() => registry.add({ ...trift, name: word })).toThrow(new RegExp(`${word} is a word svall handover`));
-      expect(() => registry.rename('kolvik', word)).toThrow(new RegExp(word));
-    }
+  it('takes on, off, status and attach as machine names, and refuses only local', () => {
+    for (const n of ['on', 'off', 'status', 'attach']) expect(reservedName(n)).toBeUndefined();
+    expect(reservedName('local')).toBeDefined();
   });
 
   it('refuses a duplicate name, an invalid record and losing the local machine', () => {

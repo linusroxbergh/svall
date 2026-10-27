@@ -18,6 +18,22 @@ import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
+// the machine id system.info answers over the daemon's socket
+async function systemInfo(d: Daemon): Promise<{ machineId: string }> {
+  const ws = new WebSocket(`ws://127.0.0.1:${d.port}`);
+  try {
+    await new Promise((r) => ws.once('open', r));
+    const reply = new Promise<{ result: { machineId: string } }>((resolve) => {
+      ws.on('message', (raw) => { const m = JSON.parse(raw.toString()) as { id?: number }; if (m.id === 1) resolve(m as never); });
+    });
+    ws.send(JSON.stringify({ token: d.token }));
+    ws.send(JSON.stringify({ id: 1, method: 'system.info', params: {} }));
+    return (await reply).result;
+  } finally {
+    ws.close();
+  }
+}
+
 // a port the test holds stands in for the default, which a running fleet may hold
 const defaults = vi.hoisted(() => ({ port: 0 }));
 vi.mock('../src/profile.js', async (importOriginal) => {
@@ -391,77 +407,35 @@ runIf('startDaemon', () => {
       process.env.PATH = saved;
     }
   });
-});
 
-runIf('a daemon that may not write its fleet', () => {
-  const homes: string[] = [];
-  afterEach(async () => {
-    for (const h of homes.splice(0)) { const p = resolvePaths(h); await new Tmux(p.tmuxSock, p.tmuxConf).killServer(); }
-    cleanHomes();
-  });
-
-  // a home with a fleet id we know, so the journal beside it names the same fleet
-  function seed(journal: object): { home: string; paths: ReturnType<typeof resolvePaths>; fleetId: string } {
+  it('starts a home an older release left, owner.json naming another machine and a handover journal open, and runs its robots', async () => {
     const home = makeHome();
     homes.push(home);
+    const p = resolvePaths(home);
     const fleetId = crypto.randomUUID();
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ id: fleetId, shell: '/bin/sh' }));
-    const paths = resolvePaths(home);
-    fs.mkdirSync(paths.handoverDir, { recursive: true });
-    const common = { transactionId: 'tx-1', generation: 0, fleetId, updatedAt: 1 };
-    fs.writeFileSync(paths.journal, JSON.stringify({ ...common, ...journal }));
-    return { home, paths, fleetId };
-  }
-
-  it('stays frozen on a source journal, adopting no window and writing no state', async () => {
     const other = crypto.randomUUID();
-    const { home, paths } = seed({ role: 'source', fromMachineId: machineId(), toMachineId: other, phase: 'freeze', stoppedTerminals: [] });
-    const d = await startDaemon({ home, port: 0, log: silentLogger });
-    try {
-      expect(fs.existsSync(paths.state)).toBe(false);
-      // no window, because a daemon that may not write its fleet starts no tmux server
-      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
-      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
-      // the journal outranks the record this fleet started with, and the surrender survives a restart
-      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ surrendered: true });
-    } finally {
-      await d.stop();
-    }
-  });
-
-  it('waits for activation on a committed destination journal', async () => {
-    const other = crypto.randomUUID();
-    const { home, paths } = seed({ role: 'destination', fromMachineId: other, toMachineId: machineId(), phase: 'commit', manifestDigest: 'a'.repeat(64) });
-    const d = await startDaemon({ home, port: 0, log: silentLogger });
-    try {
-      expect(fs.existsSync(paths.state)).toBe(false);
-      // no window, because a daemon that may not write its fleet starts no tmux server
-      expect(fs.existsSync(paths.tmuxSock)).toBe(false);
-      await expect(new Tmux(paths.tmuxSock, paths.tmuxConf).run('list-windows')).rejects.toThrow();
-      // only the journal holds it back, so nothing durable says this machine gave the fleet up
-      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8')).surrendered).toBeUndefined();
-    } finally {
-      await d.stop();
-    }
-  });
-
-  it('takes a standalone fleet back when its owner record is corrupt', async () => {
-    const home = makeHome();
-    homes.push(home);
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
-    const paths = resolvePaths(home);
-    fs.writeFileSync(paths.owner, '{ not json');
-    const d = await startDaemon({ home, port: 0, log: silentLogger });
-    try {
-      expect(d.store.state.islands.home.kind).toBe('home');
-      expect(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).toMatchObject({ generation: 0, ownerMachineId: machineId() });
-    } finally {
-      await d.stop();
-    }
+    fs.writeFileSync(p.fleetConfig, JSON.stringify({ id: fleetId, gatewayMachineId: crypto.randomUUID(), handover: { enabled: true } }));
+    fs.writeFileSync(p.nodeConfig, JSON.stringify({ shell: '/bin/sh' }));
+    fs.writeFileSync(path.join(home, 'owner.json'), JSON.stringify({ fleetId, generation: 2, ownerMachineId: other }));
+    fs.mkdirSync(path.join(home, 'controller'));
+    fs.writeFileSync(path.join(home, 'controller', 'route.json'), JSON.stringify({ ownerMachineId: other, generation: 2, at: '2026-10-01T00:00:00.000Z' }));
+    fs.mkdirSync(path.join(home, 'handover'));
+    fs.writeFileSync(path.join(home, 'handover', 'journal.json'), JSON.stringify({ role: 'source', transactionId: 'tx-1', phase: 'frozen' }));
+    const state = emptyState();
+    state.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
+    state.robots.c_old001 = {
+      id: 'c_old001', islandId: 'i_1', cell: { x: 1, y: 1 }, name: 'ada', portrait: 'owl', note: '', instructions: '', cwd: '/tmp', context: [],
+      shell: { lastOutputAt: 0 }, unread: false, revive: { command: 'echo back-from-an-older-release', interrupted: true },
+    };
+    fs.writeFileSync(p.state, JSON.stringify(state));
+    const d = await start({ home, port: 0, log: silentLogger });
+    expect((await systemInfo(d)).machineId).toBe(machineId());
+    await waitFor(async () => !!d.store.state.robots.c_old001.tmux && (await d.fleet.readScreen('c_old001', 20)).includes('back-from-an-older-release'));
+    await d.stop();
   });
 });
 
-runIf('a daemon on a machine whose ~/.config/svall cannot be used', () => {
+runIf('the machine id a daemon runs as', () => {
   const homes: string[] = [];
   afterEach(async () => {
     delete process.env.SVALL_CONFIG_DIR;
@@ -480,33 +454,74 @@ runIf('a daemon on a machine whose ~/.config/svall cannot be used', () => {
     return 'invalid machine file';
   }
 
-  it.each(['read-only', 'a file', 'holding a corrupt machine.json'] as const)('starts a fleet no gateway holds with ~/.config %s, as the same machine each time', async (how) => {
+  // the lines a start logs, and a logger that keeps them
+  const logged = () => {
+    const lines: string[] = [];
+    return { lines, log: { info: (line: string) => { lines.push(line); }, error: (line: string) => { lines.push(line); } } };
+  };
+
+  it.each(['read-only', 'a file'] as const)('starts a home with no worker and ~/.config %s, saying how to fix it', async (how) => {
     const says = brokenConfig(how);
     const home = makeHome();
     homes.push(home);
-    const errors: string[] = [];
-    const log = { info() {}, error: (line: string) => { errors.push(line); } };
-    const owners: unknown[] = [];
-    for (let i = 0; i < 2; i++) {
-      const d = await startDaemon({ home, port: 0, log });
-      try {
-        expect(d.store.state.islands.home.kind).toBe('home');
-        owners.push(JSON.parse(fs.readFileSync(resolvePaths(home).owner, 'utf8')));
-      } finally {
-        await d.stop();
-      }
+    const { lines, log } = logged();
+    const d = await startDaemon({ home, port: 0, log });
+    try {
+      expect(d.store.state.islands.home.kind).toBe('home');
+    } finally {
+      await d.stop();
     }
-    // a second start on another id would take the fleet back from the first, at generation 0 again
-    expect(owners[1]).toEqual(owners[0]);
-    expect(errors.filter((l) => l.includes(says))).toHaveLength(2);
+    expect(lines.filter((l) => l.includes(says))).toHaveLength(1);
   });
 
-  it('refuses to start a fleet a gateway holds', async () => {
-    brokenConfig('read-only');
+  it('does not start a home whose machine.json does not parse while machines.json lists a worker, and says to restore it', async () => {
+    brokenConfig('holding a corrupt machine.json');
+    const dir = process.env.SVALL_CONFIG_DIR!;
+    const vault = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' };
+    fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: vault } }));
     const home = makeHome();
     homes.push(home);
-    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh', gatewayMachineId: crypto.randomUUID() }));
-    await expect(startDaemon({ home, port: 0, log: silentLogger })).rejects.toThrow('EACCES');
+    await expect(startDaemon({ home, port: 0, log: silentLogger, hardware: () => 'b' }))
+      .rejects.toThrow('restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again');
+    expect(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8')).toBe('{"id":');
+  });
+
+  it('starts a home with no worker whose machine.json cannot be read, as a fresh id it names', async () => {
+    brokenConfig('holding a corrupt machine.json');
+    // `svall host list` writes this Mac's own record, which is no worker
+    const mac = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall' };
+    fs.writeFileSync(path.join(process.env.SVALL_CONFIG_DIR!, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: mac } }));
+    const home = makeHome();
+    homes.push(home);
+    const { lines, log } = logged();
+    const d = await startDaemon({ home, port: 0, log });
+    try {
+      const id = (await systemInfo(d)).machineId;
+      expect(lines).toContainEqual(expect.stringContaining('delete the file to mint a new machine id, or restore it from backup'));
+      expect(lines).toContainEqual(expect.stringContaining(`no worker knows this Mac, so it runs as ${id}`));
+    } finally {
+      await d.stop();
+    }
+  });
+
+  it('binds a machine.json made on other hardware to this machine and keeps its id', async () => {
+    const dir = path.join(makeHome(), 'svall');
+    process.env.SVALL_CONFIG_DIR = dir;
+    fs.mkdirSync(dir);
+    const machineJson = path.join(dir, 'machine.json');
+    const id = crypto.randomUUID();
+    fs.writeFileSync(machineJson, JSON.stringify({ id, hardwareId: 'a' }));
+    const home = makeHome();
+    homes.push(home);
+    const { lines, log } = logged();
+    const d = await startDaemon({ home, port: 0, log, hardware: () => 'b' });
+    try {
+      expect((await systemInfo(d)).machineId).toBe(id);
+      expect(JSON.parse(fs.readFileSync(machineJson, 'utf8'))).toEqual({ id, hardwareId: 'b' });
+      expect(lines).toContainEqual(`${machineJson} was made on hardware a, and this machine is b; the file is this machine's from now on`);
+    } finally {
+      await d.stop();
+    }
   });
 });
 

@@ -33,7 +33,7 @@ function events(procs: Proc[], delayMs = 20, failures = 0) {
     return listed;
   };
   const ev = new AgentEvents({
-    store, config: Config.parse({}), log, render: () => '', processes, refreshLinks: async () => {}, writable: () => true, frozen: () => false, track: () => {},
+    store, config: Config.parse({}), log, render: () => '', processes, refreshLinks: async () => {}, track: () => {},
   });
   const hook = (name: HookEvent['name'], pid: number, o: Partial<HookEvent> = {}) => ev.apply({ hook: { robotId: 'c_a', backend: 'codex', name, sessionId: SID, pid, ...o } });
   return { store, hook, said, reads: () => reads };

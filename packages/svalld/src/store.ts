@@ -5,7 +5,7 @@ import jsonpatch, { type Operation } from 'fast-json-patch';
 import { Robot, FleetState, NewerStateVersion, OlderStateVersion, emptyState, migrateState } from '@svall/protocol';
 import { readJsonOrQuarantine } from './jsonfile.js';
 import { sinkHome, trimHome } from './layout.js';
-import { cleanupDurableTemps, syncDir, writeDurable } from './handover/durable.js';
+import { cleanupDurableTemps, writeDurable } from './durable.js';
 import { variant } from './runtime.js';
 
 type Listener = (ops: Operation[]) => void;
@@ -31,7 +31,7 @@ export class Store {
   private writing?: NodeJS.Timeout;
   // a change not yet on disk
   private dirty = false;
-  private batching: () => boolean = () => false;
+  private batching = false;
   // the `withheld` calls under way, the flushes waiting for them to end, and the hold the running code is inside
   private holds = 0;
   private waiting: (() => void)[] = [];
@@ -88,7 +88,7 @@ export class Store {
       const bad = next.robots[id] && Robot.safeParse(next.robots[id]).error;
       if (bad) throw new Error(`robot ${id} would not be valid: ${bad.issues.map((i) => `${i.path.join('.')}: ${i.message}`).join('; ')}`);
     }
-    if (!this.batching() && !this.holds) {
+    if (!this.batching && !this.holds) {
       this.commit(next, ops);
       return ops;
     }
@@ -99,12 +99,12 @@ export class Store {
     return ops;
   }
 
-  /** Batches the writes while `when` holds, as for a fleet no handover is moving; otherwise each change is on disk before it is taken. */
-  batchWritesWhile(when: () => boolean): void {
-    this.batching = when;
+  /** Batches the writes from now on; until then each change is on disk before it is taken. */
+  batchWrites(): void {
+    this.batching = true;
   }
 
-  /** Writes nothing while `fn` runs, whatever `batchWritesWhile` says, so what it changes reaches the disk in one write at the next flush. */
+  /** Writes nothing while `fn` runs, batching or not, so what it changes reaches the disk in one write at the next flush. */
   async withheld<T>(fn: () => Promise<T>): Promise<T> {
     const hold = { running: true };
     this.holds++;
@@ -114,28 +114,6 @@ export class Store {
       hold.running = false;
       if (--this.holds === 0) for (const done of this.waiting.splice(0)) done();
     }
-  }
-
-  /** Validates a prepared snapshot without making it the active state. */
-  static readSnapshot(file: string): FleetState {
-    return FleetState.parse(JSON.parse(fs.readFileSync(file, 'utf8')));
-  }
-
-  /**
-   * Makes a prepared file the active state once the gateway has committed the transaction: renamed into
-   * place, both directories synced, then published as it is on disk rather than written again.
-   */
-  promote(preparedFile: string): Operation[] {
-    const next = Store.readSnapshot(preparedFile);
-    fs.renameSync(preparedFile, this.file);
-    syncDir(path.dirname(this.file));
-    syncDir(path.dirname(preparedFile));
-    return this.publish(next);
-  }
-
-  /** Publishes what state.json holds, for a promotion whose rename landed before this process published it. */
-  reload(): Operation[] {
-    return this.publish(Store.readSnapshot(this.file));
   }
 
   subscribe(fn: Listener): () => void {
@@ -167,16 +145,6 @@ export class Store {
   private commit(next: FleetState, ops: Operation[]): void {
     this.persist(next);
     this.notify(next, ops);
-  }
-
-  // what is published is what state.json now holds
-  private publish(next: FleetState): Operation[] {
-    clearTimeout(this.writing);
-    this.writing = undefined;
-    this.dirty = false;
-    const ops = jsonpatch.compare(this.current, next);
-    this.notify(next, ops);
-    return ops;
   }
 
   // outside any hold, so what a listener starts may flush

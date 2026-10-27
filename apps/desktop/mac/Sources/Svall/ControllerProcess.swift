@@ -38,101 +38,13 @@ struct StderrTail {
     }
 }
 
-/// A route to the machine that owns the fleet: the SSH master the helper holds open to reach it.
-struct RemoteRoute: Equatable, Decodable {
-    let name: String, destination: String, controlSocket: String
-}
-
-/// One line of `svall connect --json`.
-enum ControllerEvent: Equatable {
-    case connecting(owner: String)
-    case online(connection: SvallConnection, remote: RemoteRoute?)
-    /// `machine`: the one that did not answer, `local` for this Mac's daemon; `destination`: the ssh that reaches it
-    case error(kind: String, message: String, machine: String?, destination: String?)
-    case ownerChanged(owner: String)
-
-    private struct Line: Decodable {
-        let type: String
-        let owner: String?, host: String?, port: Int?, token: String?, kind: String?, message: String?, machine: String?, destination: String?
-        let remote: RemoteRoute?
-    }
-
-    static func decode(_ line: String) -> ControllerEvent? {
-        guard let data = line.data(using: .utf8), let line = try? JSONDecoder().decode(Line.self, from: data) else { return nil }
-        switch line.type {
-        case "connecting":
-            return line.owner.map { .connecting(owner: $0) }
-        case "online":
-            guard let host = line.host, let port = line.port, let token = line.token else { return nil }
-            return .online(connection: SvallConnection(host: host, port: port, token: token), remote: line.remote)
-        case "error":
-            guard let kind = line.kind, let message = line.message else { return nil }
-            return .error(kind: kind, message: message, machine: line.machine, destination: line.destination)
-        case "owner-changed":
-            return line.owner.map { .ownerChanged(owner: $0) }
-        default:
-            return nil
-        }
-    }
-}
-
-/// The bundled `svall connect --json` helper: one child per window, holding the SSH master and the API
-/// forward for as long as its stdin is open, and reporting where the fleet is on its stdout.
-final class ControllerProcess {
+enum BundledSvall {
     /// A dev build points `SVALL_HELPER` at a checkout; a shipped app carries the release in its bundle.
     static func locate(environment: [String: String] = ProcessInfo.processInfo.environment,
                        resourcePath: String? = Bundle.main.resourcePath) -> String? {
         [environment["SVALL_HELPER"], resourcePath.map { $0 + "/release/bin/svall" }]
             .compactMap { $0 }
             .first { FileManager.default.isExecutableFile(atPath: $0) }
-    }
-
-    static func connectArguments(profile: String?) -> [String] {
-        ["connect", "--json"] + profileFlag(profile)
-    }
-
-    private let child: LineChild
-    private var loggedBadLine = false
-    private var stopping = false
-
-    var onEvent: (ControllerEvent) -> Void = { _ in }
-    var onExit: (Int32) -> Void = { _ in }
-
-    init(executable: String, arguments: [String]) {
-        child = LineChild(executable: executable, arguments: arguments, stdin: true, captureStderr: false)
-    }
-
-    var isRunning: Bool { child.isRunning }
-
-    func start() throws {
-        child.onLine = { [weak self] line in self?.deliver(line) }
-        child.onExit = { [weak self] status, _ in
-            guard let self, !stopping else { return }
-            onExit(status)
-        }
-        try child.start()
-    }
-
-    /// The helper closes its master and forward when its stdin ends, so quitting asks before it insists,
-    /// and a helper that holds SIGTERM off mid-open is killed rather than waited on.
-    func stop() {
-        guard !stopping else { return }
-        stopping = true
-        child.stop()
-    }
-
-    private func deliver(_ line: String) {
-        let line = line.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !stopping, !line.isEmpty else { return }
-        guard let event = ControllerEvent.decode(line) else {
-            // the line may carry the token, so only its arrival is reported, and only once
-            if !loggedBadLine {
-                loggedBadLine = true
-                NSLog("svall: ignoring a line the connect helper's protocol does not cover")
-            }
-            return
-        }
-        onEvent(event)
     }
 }
 
@@ -142,9 +54,6 @@ enum HostOp: String, Decodable {
 
     /// doctor prints its checks as one report when it ends; the others print a step per line as they go
     var printsReport: Bool { self == .doctor }
-
-    /// remove and upgrade rewrite fleet.json, which names the fleet's gateway
-    var rewritesFleetConfig: Bool { self == .remove || self == .upgrade }
 }
 
 /// What the page named the operation with. Each field belongs to one operation's flags.
@@ -159,19 +68,11 @@ extension String {
     func allowed(by pattern: String) -> Bool { range(of: pattern, options: .regularExpression) != nil }
 }
 
-/// svall's flag for a named profile's fleet.
-func profileFlag(_ profile: String?) -> [String] {
-    profile.map { ["-p", $0] } ?? []
-}
-
-/// A machine's registry name: the only name `svall host` and `svall handover` take for one.
+/// A machine's registry name: the only name `svall host` takes for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
 /// An ssh destination the app hands to ssh: never one that reads as a flag.
 let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
-
-/// What `svall handover` reads as its own words before a machine's name, which the registry refuses as names.
-let handoverWords: Set<String> = ["on", "off", "status", "attach"]
 
 /// The argv of `svall host <op> … --json`. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
@@ -236,7 +137,7 @@ final class HostProcess {
 
     init(executable: String, arguments: [String], report: Bool = false) {
         self.report = report
-        child = LineChild(executable: executable, arguments: arguments, stdin: false)
+        child = LineChild(executable: executable, arguments: arguments)
     }
 
     var isRunning: Bool { child.isRunning }

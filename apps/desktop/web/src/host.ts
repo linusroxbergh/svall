@@ -1,5 +1,5 @@
 import type { SetupRow } from '@svall/protocol';
-import type { ConnectionState, HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
+import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
 const TOKEN = /(token["']?\s*[:=]\s*["']?)[^\s"'&,;}]+/gi;
@@ -16,25 +16,16 @@ export const machineNames = (machines: MachineRow[] = []): MachineNames => Objec
 
 // an id says nothing to a person; one inside a path names a file, and stays
 const UUID = '(?<!/)[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?!\\.\\w|/)';
-export const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
+const ids = (pattern: string) => new RegExp(pattern.replaceAll('UUID', UUID), 'gi');
 
-export const withoutGenerations = (text: string): string => text
-  .replace(/\bis at generation \d+, not \d+/g, 'has moved on')
-  .replace(/ at generation \d+/g, '');
-
-/** A step's words with a machine this Mac knows by its name, any other as another machine, and no other id or generation. */
+/** A step's words with a machine this Mac knows by its name, any other as another machine, and no other id. */
 function withoutIds(text: string, names: MachineNames): string {
   const machine = (id: string) => names[id] ?? 'another machine';
-  return withoutGenerations(text)
+  return text
     .replace(ids(' \\(UUID\\)'), '')
     .replace(ids('\\banswered with fleetId UUID, not UUID'), 'answered for another fleet')
     .replace(ids('\\banswered with machineId (UUID), not UUID'), (_, id: string) => `answered as ${machine(id)}`)
-    .replace(ids('\\b(?:the )?fleet UUID'), 'the fleet')
-    .replace(ids(' in handover UUID'), ' in another handover')
-    .replace(ids('UUID is committed'), 'the handover is committed')
     .replace(ids('\\bmachine (UUID)'), (_, id: string) => machine(id))
-    .replace(ids('\\b(names|belongs to) (UUID)'), (_, said: string, id: string) => `${said} ${machine(id)}`)
-    .replace(ids('(UUID) holds'), (_, id: string) => `${machine(id)} holds`)
     // an id said anywhere else is a known machine's name, or nothing
     .replace(ids('\\s?(UUID)'), (all: string, id: string) => (names[id] ? all.replace(id, names[id]) : ''));
 }
@@ -54,10 +45,10 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
 /** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */
 const PHASES = [
   { phase: 'connect', label: 'Reaching it', steps: ['name', 'machine', 'ssh', 'master'] },
-  { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'rsync', 'space', 'linger', 'git'] },
+  { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
   {
     phase: 'svall', label: 'Svall there', steps: [
-      'release', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'gateway', 'fleet', 'replicas', 'systemd', 'worker',
+      'release', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
       'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
       'config', 'machine id', 'doctor', 'svall',
     ],
@@ -118,9 +109,9 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', enrol: 'Worker', fleet: 'Fleets', replicas: 'Earlier handover', claude: 'Claude Code',
+  service: 'Services', identity: 'Installed release', enrol: 'Worker', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
-  systemd: 'Fleet service', worker: 'Worker', gateway: 'Gateway service', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
+  systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
 };
@@ -164,7 +155,7 @@ export const OP_TITLE: Record<HostOp, string> = {
 /** How a finished run ends: its one line, whether nothing is left (`done`), and the one step the panel offers next. */
 export type RunOutcome = { text: string; done?: true; next?: 'rollback' };
 
-export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 // what a step leaves to do, as the CLI counts things: its action, or the failed step that names none; a mirror row by its
 // key, as two servers' rows can read alike, unless it only asks to check again
@@ -194,64 +185,6 @@ const SSH = /^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/;
 
 export const machineName = (value: string): boolean => NAME.test(value);
 export const sshDestination = (value: string): boolean => SSH.test(value);
-
-const who = (owner: string) => (owner === 'local' ? 'this machine' : owner);
-
-/** How long a far daemon may stay silent after its route opened before the banner says so. */
-export const FAR_ANSWER_MS = 60_000;
-
-export type BannerAction = 'reconnect' | 'check' | 'upgrade' | 'here';
-/** One plain sentence, what the helper said folded away, the machine it is about, and what the banner offers. `ssh`: the destination to run ssh to once. */
-export type Banner = { text: string; detail?: string; machine?: string; ssh?: string; actions: BannerAction[] };
-
-/** `machine`: the one that did not answer; none for a helper that failed before it reached one. */
-function errorText(c: ConnectionState, machine: string | undefined): Pick<Banner, 'text' | 'ssh'> {
-  if (machine === undefined) return { text: 'The connection helper has not said where the fleet runs.' };
-  const name = machine === 'local' ? 'this Mac' : machine;
-  // a machine other than the one the fleet was announced on is the gateway, asked who owns it
-  const gateway = machine !== 'local' && machine !== c.owner;
-  const unknown = `The gateway ${machine} did not answer, so where the fleet runs is not known`;
-  switch (c.kind) {
-    case 'auth': return { text: `${name} did not let ssh log in.`, ssh: c.destination ?? machine };
-    case 'host_key': return { text: `ssh does not trust ${name}'s host key.`, ssh: c.destination ?? machine };
-    case 'version': return { text: `${name} is on another version of Svall.` };
-    case 'unreachable': return { text: gateway ? `${unknown}; trying again.` : `${name} is not reachable; trying again.` };
-    case 'daemon_down': return { text: machine === 'local' ? 'svalld is not running on this Mac; trying again.' : `${name}'s svalld is not running; trying again.` };
-    default: return { text: gateway ? `${unknown}.` : `${name} could not be reached.` };
-  }
-}
-
-/**
- * What the banner says while the fleet is not answering here, and what it offers; nothing once it is online, unless
- * the far daemon has been `silent` since. A fleet on this Mac reports its connection only once it asks for handover,
- * which the Machines panel and this Mac's copy (`copyHere`: the shell has one to open) wait on too.
- */
-export function connectionBanner(c: ConnectionState | undefined, o: { handoverEnabled: boolean; copyHere?: boolean; silent?: boolean }): Banner | undefined {
-  if (!c || (c.owner === 'local' && !o.handoverEnabled)) return undefined;
-  const remote = (machine: string) => o.handoverEnabled && machine !== 'local';
-  switch (c.state) {
-    case 'online': {
-      if (!o.silent || c.owner === 'local') return undefined;
-      return { text: `${c.owner}'s svalld has not answered.`, machine: c.owner, actions: [...(remote(c.owner) ? ['check' as const] : []), 'reconnect'] };
-    }
-    case 'connecting': return { text: `connecting to ${who(c.owner)}…`, actions: [] };
-    case 'owner-changed': return { text: `the fleet moved to ${who(c.owner)}; reconnecting…`, actions: [] };
-    case 'error': {
-      const machine = c.kind === 'helper' ? undefined : c.machine ?? c.owner;
-      const { text, ssh } = errorText(c, machine);
-      const away = machine === undefined || remote(machine);
-      const actions: BannerAction[] = [
-        ...(c.owner === 'local' && away && o.copyHere ? ['here' as const] : []),
-        ...(machine && c.kind === 'version' && remote(machine) ? ['upgrade' as const] : []),
-        ...(machine && (c.kind === 'daemon_down' || c.kind === 'other' || !c.kind) && remote(machine) ? ['check' as const] : []),
-        'reconnect',
-      ];
-      return {
-        text, ...(c.message ? { detail: withoutTokens(c.message) } : {}), ...(machine && machine !== 'local' ? { machine } : {}), ...(ssh ? { ssh } : {}), actions,
-      };
-    }
-  }
-}
 
 /** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
 export const loginForward = (run: string, forward?: number): number | undefined => forward ?? (/^codex login\s*$/.test(run) ? 1455 : undefined);

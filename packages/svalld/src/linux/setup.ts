@@ -8,7 +8,7 @@ import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../o
 import { claudePaths, resolvePaths } from '../paths.js';
 import { profileHome } from '../profile.js';
 import { systemdDir } from '../release.js';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import type { Runtime } from '../runtime.js';
 import { readJsonSettings } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';
@@ -24,7 +24,7 @@ export const unitDirOf = (homedir: string): string => path.join(homedir, '.confi
 
 const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^svall-svalld@[a-z][a-z0-9-]*\.service$/.test(f);
 
-/** The units setup and provision wrote to `unitDir`: one daemon per fleet, then the gateway. */
+/** The units setup wrote to `unitDir`: one daemon per fleet, then the gateway unit an older release left. */
 export function ourUnits(unitDir: string): string[] {
   const units = fs.existsSync(unitDir) ? fs.readdirSync(unitDir).filter(isOurUnit).sort() : [];
   return [...units.filter((u) => u !== GATEWAY_UNIT), ...units.filter((u) => u === GATEWAY_UNIT)];
@@ -110,18 +110,6 @@ export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Un
   };
 }
 
-export function gatewayUnit(o: UnitOptions): Unit {
-  return {
-    name: GATEWAY_UNIT,
-    text: render('svall-gateway.service.in', {
-      EXEC_START: execLine([...o.runtime.cli, 'gateway', 'serve']),
-      HOME: esc(o.homedir),
-      PATH: esc(unitPath(o)),
-      LOG: logFile(o, GATEWAY_UNIT).replace(/%/g, '%%'),
-    }),
-  };
-}
-
 export type LinuxSetup = UnitOptions & {
   home: string; fleet: string; unitDir: string; settingsPath: string; codex: CodexPaths; shimDir: string;
   user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; agents?: AgentKind[];
@@ -131,20 +119,17 @@ const readOrUndefined = (file: string): string | undefined => {
   try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
-/** The fleet's unit and, with `gateway`, the machine's gateway, written only when they are not already what they should be. */
-export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string; gateway?: true }): string[] {
+/** The fleet's unit, written only when it is not already what it should be. */
+export function writeUnits(o: UnitOptions & { fleet: string; home: string; unitDir: string }): string[] {
   fs.mkdirSync(o.unitDir, { recursive: true });
   const logs = path.join(o.prefix, 'log');
   fs.mkdirSync(logs, { recursive: true, mode: 0o700 });
   fs.chmodSync(logs, 0o700);
-  const done: string[] = [];
-  for (const unit of [svalldUnit(o), ...(o.gateway === true ? [gatewayUnit(o)] : [])]) {
-    const file = path.join(o.unitDir, unit.name);
-    if (readOrUndefined(file) === unit.text) continue;
-    writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
-    done.push(`systemd unit -> ${file}`);
-  }
-  return done;
+  const unit = svalldUnit(o);
+  const file = path.join(o.unitDir, unit.name);
+  if (readOrUndefined(file) === unit.text) return [];
+  writeDurable(file, Buffer.from(unit.text), { mode: 0o644 });
+  return [`systemd unit -> ${file}`];
 }
 
 type UnitStart = { started: true; done: string[] } | { started: false; reason: string };
@@ -195,7 +180,7 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const done = setupFleetHome(o);
   done.push(...setupUser({ ...o, settings, codexHooks, replaceSettings: o.replaceSettings === true }));
   done.push(...(opencodeWanted ? installOpencodePlugin(opencode) : removeOpencodePlugin(opencode)));
-  // each fleet's unit `fleet provision` wrote here takes the same template, PATH and env as this fleet's
+  // each other fleet's unit here takes the same template, PATH and env as this fleet's
   const named = ourUnits(o.unitDir).map(fleetOf).filter((f): f is string => f !== undefined && f !== o.fleet);
   const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName)];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
@@ -237,12 +222,12 @@ export async function setupLinuxRelease(o: LinuxSetup & {
 }
 
 /**
- * Every fleet's daemon and the machine's gateway, started again from the release `current` now names. A unit that does
- * not start is said, not thrown.
+ * Every fleet's daemon, started again from the release `current` now names, and never the gateway unit an older release
+ * left, which the enrol of `host add` and `host upgrade` stops and removes. A unit that does not start is said, not thrown.
  */
 export async function restartUnits(run: Run, unitDir: string): Promise<string[]> {
   const done: string[] = [];
-  for (const unit of ourUnits(unitDir)) {
+  for (const unit of ourUnits(unitDir).filter((u) => u !== GATEWAY_UNIT)) {
     try {
       await restartUnit(run, unit);
       done.push(`systemctl --user restart ${unit}`);

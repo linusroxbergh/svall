@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
 import type { MachineId } from '@svall/protocol';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import type { McpServer, Secret } from './mirror-config.js';
 
 /** What the mirror asks consent for: a server by its item key, or a whole file by one of these. */

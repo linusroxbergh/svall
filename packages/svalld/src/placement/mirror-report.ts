@@ -4,7 +4,7 @@ import { z } from 'zod';
 import type { SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
-import { sha256Hex } from '../handover/hash.js';
+import { sha256Hex } from '../hash.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
 import {

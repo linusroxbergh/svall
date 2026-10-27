@@ -72,12 +72,7 @@ Select the Claude robot and open its side card.
    - Over ssh on `studio`, `git worktree list` shows the worktree it left, locked.
 3. Move the Codex and the OpenCode robots back the same way.
 
-## 5. The handover refusal
-
-With a robot on `studio`, run `svall handover studio` on the Mac. It stops at once with "this fleet has no gateway, so
-no other machine can be handed it" and names `host upgrade`, and nothing moves.
-
-## 6. A worker out of reach
+## 5. A worker out of reach
 
 With a robot on `studio` and its terminal visible:
 
@@ -89,7 +84,7 @@ With a robot on `studio` and its terminal visible:
    - Within about a minute the terminal re-attaches, with its scrollback.
    - Typing reaches the same shell.
 
-## 7. Clean up
+## 6. Clean up
 
 Move every robot back with **Move to this Mac**, then remove the machine with **Remove** (or `svall host remove
 studio`). To delete the test fleet, stop its daemon and remove its home and agent:

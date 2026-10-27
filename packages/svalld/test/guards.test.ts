@@ -7,8 +7,6 @@ import { HOME_ISLAND, crewGrid, emptyState, type Robot } from '@svall/protocol';
 import { startApi } from '../src/api/server.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
-import { openJournal } from '../src/handover/journal.js';
-import { HandoverService } from '../src/handover/service.js';
 import { aboveHome, placementOk, worldIslands } from '../src/layout.js';
 import { resolveRepo } from '../src/links/git.js';
 import { silentLogger, type Logger } from '../src/log.js';
@@ -19,7 +17,7 @@ import { Store } from '../src/store.js';
 import { TerminalHub } from '../src/terminals.js';
 import { Tmux, type LiveWindow } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, idleSides, makeHome, ownerOf, stubFleets, stubLoad, stubMobile, stubUsage, waitFor } from './helpers.js';
+import { cleanHomes, makeHome, stubFleets, stubLoad, stubMobile, stubSystemInfo, stubUsage, waitFor } from './helpers.js';
 
 vi.mock('../src/links/git.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../src/links/git.js')>();
@@ -43,9 +41,8 @@ function fleetOn(seed: (s: ReturnType<typeof emptyState>) => void, log: Logger =
   const live: LiveWindow[] = [];
   const tmux = { newWindow: async () => { windows++; return { windowId: `@${windows}`, paneId: `%${windows}` }; }, listWindows: async () => live } as unknown as Tmux;
   const config = Config.parse({ shell: '/bin/sh' });
-  const ownership = ownerOf(home, config.id);
-  const fleet = new Fleet({ store, tmux, paths, config, ownership, log });
-  return { fleet, store, home, paths, live, ownership };
+  const fleet = new Fleet({ store, tmux, paths, config, log });
+  return { fleet, store, home, paths, live };
 }
 
 function repo(parent: string, name: string): string {
@@ -202,17 +199,16 @@ describe('robot.wait over a socket', () => {
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); });
 
   it('is called off when the socket that asked closes', async () => {
-    const { fleet, store, home, paths, ownership } = fleetOn((d) => {
+    const { fleet, store, home, paths } = fleetOn((d) => {
       d.islands.i_1 = { id: 'i_1', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1 };
       d.robots.c_a = robot('c_a', 'i_1', { tmux: { windowId: '@1', paneId: '%1' } });
     });
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     const workspace = new Workspace(() => home, silentLogger, () => [claude.json], [paths.docs]);
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', pass: 'p4ss', store, fleet, fleets: stubFleets, terminals: new TerminalHub(fleet, new Tmux(paths.tmuxSock, paths.tmuxConf), store, silentLogger),
       workspace, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
-      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs, ownership, handover,
+      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude, docs: paths.docs, systemInfo: stubSystemInfo,
     });
     cleanup.push(async () => { await api.close(); workspace.close(); });
     let signal: AbortSignal | undefined;

@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, type FleetState } from '@svall/protocol';
 import { repoSlug } from '../../src/docs.js';
-import { sha256Hex } from '../../src/handover/hash.js';
+import { sha256Hex } from '../../src/hash.js';
 import { newMutationId } from '../../src/ids.js';
 import { silentLogger } from '../../src/log.js';
 import { resolvePaths } from '../../src/paths.js';

@@ -138,11 +138,9 @@ fleets' homes and the app's preferences, sign-ins and caches in `~/Library` too.
 moving it to the Trash, and asks before deleting it or the fleets. `--purge`
 deletes them without asking.
 
-With [remote machines](docs/remote-machines/README.md), `svall uninstall` first
-refuses while that would strand a fleet: a handover is open, this Mac runs a
-fleet that has a gateway, or it holds a gateway's records. Bring each fleet home
-and remove the other machine with `svall host remove <name>`; `--force`
-uninstalls anyway.
+With [remote machines](docs/remote-machines/README.md), move each robot back
+to this Mac and remove each machine with `svall host remove <name>` first:
+`svall uninstall` on the Mac leaves Svall running on them.
 
 ### When something breaks
 
@@ -373,8 +371,8 @@ needs (Ubuntu, at any account you reach with ssh), adding it with
 
 A fleet keeps everything in its home: `~/.svall` for the private fleet
 and `~/.svall-<name>` for the others, unless `SVALL_HOME` says otherwise.
-Its `fleet.json` holds what travels with the fleet wherever it runs, and
-`node.json` what belongs to this machine alone:
+Its `fleet.json` holds the fleet's own settings, and `node.json` what
+belongs to this machine alone:
 
 | Key | File | What it does |
 | --- | --- | --- |
@@ -390,7 +388,6 @@ Its `fleet.json` holds what travels with the fleet wherever it runs, and
 | `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model for each CLI as in `home`, or one model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode; set in Settings, OpenCode's only here). |
 | `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
 | `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
-| `handover` | `fleet.json` | [Remote machines](docs/remote-machines/README.md): `enabled` shows them in the app (the `svall host`, `handover`, `gateway` and `fleet recover` commands work either way), `exclude` adds patterns a handover leaves out, `excludeDefaults: false` drops the defaults, and `transferFleetEnv: true` carries the fleet's `.env`. |
 
 - The daemon reads both files when it starts. To restart the private
   fleet's daemon, run
@@ -508,8 +505,8 @@ send:
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
 - A move copies a robot's agent session, branch and changes, and your agent
-  configuration without its secrets, over ssh to the Linux machine you added;
-  a handover copies the fleet's folders and agent sessions there.
+  configuration with only the keys you tick, over ssh to the Linux machine you
+  added.
 - Push notifications go through your phone's push service: Apple's, Google's
   or Mozilla's. The robot's name and prompt are encrypted for your phone;
   the service sees when a push is sent, and the page's address unless

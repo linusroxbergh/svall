@@ -2,6 +2,7 @@ import { execFile, spawn } from 'node:child_process';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { trimEnd, type Repo } from '@svall/protocol';
+import { oneLine } from '../text.js';
 
 const exec = promisify(execFile);
 
@@ -35,10 +36,8 @@ function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', 
   });
 }
 
-export const runGit: GitRunner = gitRunner();
-
-/** git for a handover, whose repositories may carry another machine's config: it runs no fsmonitor or hook that config names. */
-export const handoverGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
+/** git that runs no fsmonitor or hook a repository's config names, as that config may be another machine's. */
+export const hooklessGit: GitRunner = gitRunner(300_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null']);
 
 /** git asking a remote with this machine's own credentials: it never prompts for one, and answers within 20 s. */
 export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
@@ -46,12 +45,27 @@ export const remoteGit: GitRunner = gitRunner(20_000, 'SIGKILL', ['core.fsmonito
 /** git fetching from a remote with this machine's own credentials, which never prompts for one. */
 export const cloneGit: GitRunner = gitRunner(600_000, 'SIGTERM', ['core.fsmonitor=false', 'core.hooksPath=/dev/null'], { GIT_TERMINAL_PROMPT: '0' });
 
+class GitFailure extends Error {}
+
+/** Runs git and answers its output, or throws what it said. */
+export async function must(git: GitRunner, args: readonly string[], cwd: string, subject = cwd): Promise<string> {
+  const r = await git(args, cwd);
+  if (r.code !== 0) throw new GitFailure(`${subject}: git ${args.join(' ')} failed: ${oneLine(r.stderr) || `exit ${r.code}`}`);
+  return r.stdout;
+}
+
+/** `git --version`'s number, or nothing where git cannot run. */
+export async function gitVersion(git: GitRunner = hooklessGit): Promise<string | undefined> {
+  const r = await git(['--version'], '/');
+  return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;
+}
+
 /** A checkout's top, the Git directory its worktrees share and its own, each absolute and real. */
 export type GitDirs = { root: string; commonDir: string; gitDir: string };
 
-export const DIRS_ARGS = ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'] as const;
+const DIRS_ARGS = ['rev-parse', '--path-format=absolute', '--show-toplevel', '--git-common-dir', '--git-dir'] as const;
 
-export function parseDirs(stdout: string): GitDirs {
+function parseDirs(stdout: string): GitDirs {
   const [root, commonDir, gitDir] = stdout.replace(/\n$/, '').split('\n');
   return { root, commonDir, gitDir };
 }

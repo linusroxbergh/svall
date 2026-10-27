@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Agent, Robot, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, columnOf, defaultColumns, defaultHome, emptyState, isSessionId, placingOn } from '../src/index.js';
+import { Agent, Robot, ContextItem, DEFAULT_CWD, FleetState, Home, Island, STATE_SCHEMA_VERSION, TerminalSlot, columnOf, defaultColumns, defaultHome, emptyState, isSessionId, placingOn } from '../src/index.js';
 
 describe('state schemas', () => {
   it("trusts OpenCode's session ids as well as UUIDs, and nothing a shell would read more into", () => {
@@ -77,6 +77,11 @@ describe('state schemas', () => {
     const s = FleetState.parse({ version: 12, islands: {}, robots: { c } });
     expect(s.robots.c.revive).toEqual({ command: 'claude --resume a' });
     expect(s.robots.c.second).toEqual({ cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } });
+  });
+
+  it('reads a terminal slot that still carries restedBy, and drops it', () => {
+    const slot = { cwd: '/work/side', unread: false, revive: { command: 'codex resume b' } };
+    expect(TerminalSlot.parse({ ...slot, restedBy: 'tx-old' })).toEqual(TerminalSlot.parse(slot));
   });
 
   it('puts a robot with no column, or one since deleted, in the first column', () => {

@@ -246,7 +246,7 @@ function runs(label, rel, releases) {
 
 const ADVICE = new Set(['claude', 'codex', 'opencode', 'gh', 'mirror:unchecked']);
 // the controller runs no daemon, so the mirror's rows are one not-checked row
-const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
+const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
   'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry', 'mirror:unchecked'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it

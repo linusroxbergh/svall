@@ -9,7 +9,7 @@ import { resolvePaths } from '../src/paths.js';
 import { Store } from '../src/store.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, ownerOf } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -27,8 +27,7 @@ runIf('Fleet layout', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const ownership = ownerOf(home, config.id);
-    const fleet = new Fleet({ store, tmux, paths, config, ownership, log: silentLogger, pollMs: 150 });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 150 });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;

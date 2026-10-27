@@ -45,7 +45,7 @@ export function requireCompatible(c: CompanionArchive, o: { release: string; pro
   if (c.protocol !== o.protocol) throw new Error(`${c.archive} speaks protocol ${c.protocol}, not this controller's ${o.protocol}`);
   // a development controller has no release of its own to match, so the protocol is the whole agreement
   if (o.release !== 'dev' && c.version !== o.release) {
-    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a handover needs the same release on both machines`);
+    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a worker runs this Mac's release`);
   }
   if (!c.signed && !o.allowUnsigned) throw new Error(`${c.archive} carries no signature; install it with --allow-unsigned or get a signed release`);
 }

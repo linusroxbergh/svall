@@ -65,6 +65,10 @@ describe('bridge between the page and the shell', () => {
     const fields = Object.values(tsUnion('ToShell')).flat().map((f) => f.replace('?', ''));
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
+
+  it('the shell info carries the home, its log, 1Password, the Ghostty chords and the profile', () => {
+    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op', 'profile']);
+  });
 });
 
 describe('the menu bar between the page and the shell', () => {

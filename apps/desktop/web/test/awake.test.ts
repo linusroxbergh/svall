@@ -84,7 +84,7 @@ describe('followAwake', () => {
     const sent: ToShell[] = [];
     const stop = followAwake({ store, bridge: { send: (m) => { sent.push(m); } } });
     const holds = () => sent.filter((m) => m.type === 'awake').map((m) => m.reason ?? null);
-    return { store, sent, holds, stop };
+    return { store, holds, stop };
   }
 
   it('lets go of any hold first, then holds only while the daemon is in reach', () => {
@@ -92,18 +92,6 @@ describe('followAwake', () => {
     expect(holds()).toEqual([null]);
     store.getState().setStatus('online');
     store.getState().setStatus('offline');
-    expect(holds()).toEqual([null, '1 agent working', null]);
-    stop();
-  });
-
-  it('holds nothing while the fleet runs on another machine, which goes on while this Mac sleeps', () => {
-    const { store, holds, stop } = setup(patch(fleet(), 'c0', { agent: agent('working', { lastActivityAt: T0 }) }));
-    store.getState().setConnectionState({ state: 'online', owner: 'trift' });
-    store.getState().setStatus('online');
-    expect(holds()).toEqual([null]);
-    store.getState().setConnectionState({ state: 'online', owner: 'local' });
-    expect(holds()).toEqual([null, '1 agent working']);
-    store.getState().setConnectionState({ state: 'owner-changed', owner: 'trift' });
     expect(holds()).toEqual([null, '1 agent working', null]);
     stop();
   });
@@ -137,47 +125,6 @@ describe('followAwake', () => {
     vi.advanceTimersByTime(AWAKE_WINDOW_MS - 1);
     store.getState().setSettings({ keepAwake: 'off' });
     expect(holds()).toEqual([null, '1 agent with a shell running', null, '1 agent with a shell running', null]);
-    stop();
-  });
-
-  it('holds while the page follows a handover it has heard from, whatever the daemon or the owner, on battery too, until turned off', () => {
-    const { store, sent, holds, stop } = setup();
-    store.getState().setConnectionState({ state: 'connecting', owner: 'trift' });
-    // attaching on load hears nothing from a helper before the replay, so it holds nothing
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
-    expect(holds()).toEqual([null]);
-    store.getState().handoverFollow('trift');
-    expect(holds()).toEqual([null]);
-    store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'transfer' } });
-    expect(sent.at(-1)).toEqual({ type: 'awake', reason: 'handing the fleet over', battery: true });
-    store.getState().handoverExit(1);
-    expect(holds()).toEqual([null, 'handing the fleet over', null]);
-    store.getState().handoverFollow('trift');
-    store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'transfer' } });
-    store.getState().setSettings({ keepAwake: 'off' });
-    expect(holds()).toEqual([null, 'handing the fleet over', null, 'handing the fleet over', null]);
-    stop();
-  });
-
-  it('holds nothing for a journal read back with no helper running, as after a relaunch', () => {
-    const { store, holds, stop } = setup();
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([{ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'finish', safe: ['resume'], reason: 'committed', transactionId: 'tx' } }]);
-    expect(holds()).toEqual([null]);
-    stop();
-  });
-
-  it('follows a handover that went on without this window again, and holds while it runs', () => {
-    const { store, sent, holds, stop } = setup();
-    store.getState().handoverFollow('trift');
-    store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'commit' } });
-    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'detached', transactionId: 'tx' } });
-    store.getState().handoverExit(0);
-    expect(sent.filter((m) => m.type === 'handover.attach')).toEqual([{ type: 'handover.attach' }]);
-    expect(store.getState().handover).toMatchObject({ to: 'trift', following: true });
-    store.getState().handoverEvent({ event: 'handover.status', data: { standing: 'committed', journals: {}, action: 'none', safe: [], reason: 'under way', transactionId: 'tx' } });
-    expect(holds().at(-1)).toBe('handing the fleet over');
     stop();
   });
 

@@ -164,7 +164,7 @@ describe('svall setup on Linux', () => {
     }
   }, 30_000);
 
-  it('restarts every fleet daemon and the gateway after a rollback, so none keeps running the release it left', async () => {
+  it('restarts every fleet daemon after a rollback, so none keeps running the release it left, and never the gateway unit', async () => {
     const home = process.env.HOME!;
     const prefix = path.join(home, '.local', 'share', 'svall');
     for (const v of ['1.0.0', '1.1.0']) fs.mkdirSync(path.join(prefix, 'releases', v), { recursive: true });
@@ -187,7 +187,6 @@ describe('svall setup on Linux', () => {
       expect(fs.readFileSync(log, 'utf8').trim().split('\n')).toEqual([
         '--user restart svall-svalld@private.service',
         '--user restart svall-svalld@work.service',
-        '--user restart svall-gateway.service',
       ]);
       expect(probed).toEqual(['private 1.0.0', 'work 1.0.0']);
     } finally {

@@ -65,8 +65,8 @@ function closeAllModals(store: AppStore): void {
   s.setCapturingKey(undefined);
 }
 
-// the machines panel and the handover sheet hold Esc and the focus, so no other dialog opens while either is up
-export const covered = (s: AppState): boolean => s.hostOpen || s.handoverOpen;
+// the machines panel holds Esc and the focus, so no other dialog opens while it is up
+export const covered = (s: AppState): boolean => s.hostOpen;
 
 export function openFleetPicker(store: AppStore, mode: 'menu' | 'new' = 'menu'): void {
   if (covered(store.getState())) return;

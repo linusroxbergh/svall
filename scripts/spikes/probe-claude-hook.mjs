@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// A handover probe, run by hand; no build or CI runs it.
+// A hook probe, run by hand; no build or CI runs it.
 
 // Records only session identity and transcript location from a disposable hook run.
 import fs from 'node:fs';

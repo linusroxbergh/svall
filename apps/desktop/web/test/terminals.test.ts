@@ -328,34 +328,6 @@ describe('terminal manager', () => {
     expect(store.getState().focusedId).toBe('c1');
   });
 
-  it('retries an attach the old owner refused once the connection to the new owner is online', async () => {
-    const f = fakes({ refuse: true, refuseCode: 'not_owner' });
-    const { calls, sent, store, manager } = f;
-    store.getState().focus('c0');
-    await expect(manager.show('c0', rect)).rejects.toThrow();
-    expect(store.getState().terminalErrors.c0).toBeUndefined();
-    f.opts.refuse = false;
-    store.getState().setStatus('offline');
-    store.getState().setStatus('online');
-    await flush();
-    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(2);
-    expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
-  });
-
-  it('retries an attach a frozen fleet refused, rather than holding it as the terminal\'s error', async () => {
-    const f = fakes({ refuse: true, refuseCode: 'frozen' });
-    const { calls, sent, store, manager } = f;
-    store.getState().focus('c0');
-    await expect(manager.show('c0', rect)).rejects.toThrow();
-    expect(store.getState().terminalErrors.c0).toBeUndefined();
-    f.opts.refuse = false;
-    store.getState().setStatus('offline');
-    store.getState().setStatus('online');
-    await flush();
-    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(2);
-    expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
-  });
-
   it('an attach refused with not_reachable is retried once the machine is reachable again', async () => {
     const f = fakes({ refuse: true, refuseCode: 'not_reachable' });
     const { calls, sent, store, manager } = f;
@@ -394,68 +366,5 @@ describe('terminal manager', () => {
     await flush();
     expect(attaches()).toBe(3);
     expect(store.getState().terminals.c0).toBeDefined();
-  });
-
-  it('shows nothing an attach brings back once the freeze has begun, and attaches again once the fleet runs', async () => {
-    for (const refuseCode of [undefined, 'frozen']) {
-      const f = fakes({ refuse: !!refuseCode, refuseCode });
-      const { calls, sent, store, manager } = f;
-      store.getState().focus('c0');
-      store.getState().handoverFollow('studio');
-      store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'begin' } });
-      // the daemon answers the attach after the page has heard of the freeze
-      const shown = manager.show('c0', rect).catch(() => {});
-      store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } });
-      await shown;
-      expect(sent.filter((m) => m.type === 'term.show'), refuseCode).toEqual([]);
-      expect(store.getState().terminals.c0, refuseCode).toBeUndefined();
-      expect(store.getState().terminalErrors.c0, refuseCode).toBeUndefined();
-      // the freeze could not rest and gave the fleet back while the user decides
-      f.opts.refuse = false;
-      store.getState().handoverEvent({ event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } });
-      await flush();
-      expect(calls.filter((c) => c.method === 'term.attach'), refuseCode).toHaveLength(2);
-      expect(sent, refuseCode).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
-    }
-  });
-
-  it('leaves every surface open while a finished run is read back, a decision and a freeze included', async () => {
-    const { sent, calls, store, manager } = fakes();
-    store.getState().focus('c0');
-    await manager.show('c0', rect);
-    const phase = (p: 'begin' | 'freeze' | 'transfer' | 'activate' | 'complete') => ({ event: 'handover.changed' as const, data: { transactionId: 'tx', phase: p } });
-    store.getState().handoverFollow();
-    store.getState().handoverReplay([phase('begin'), phase('freeze'),
-      { event: 'handover.blocked', data: { transactionId: 'tx', phase: 'freeze', blockers: [{ code: 'agent_working', message: 'still working' }] } },
-      phase('freeze'), phase('transfer'), phase('activate'), phase('complete'),
-      { event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } },
-      { event: 'handover.status', data: { standing: 'none', journals: {}, action: 'none', safe: [], reason: 'no handover is open' } }]);
-    expect(sent.some((m) => m.type === 'term.close')).toBe(false);
-    expect(store.getState().terminals.c0).toBeDefined();
-    expect(store.getState().handoverOpen).toBe(false);
-    await manager.show('c0', rect);
-    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(1);
-  });
-
-  it('closes every surface when the source freezes, and attaches none until the fleet runs again', async () => {
-    const { sent, calls, store, manager } = fakes();
-    store.getState().focus('c0');
-    await manager.show('c0', rect);
-    store.getState().handoverFollow('studio');
-    store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'begin' } });
-    expect(store.getState().terminals.c0).toBeDefined();
-    store.getState().handoverEvent({ event: 'handover.changed', data: { transactionId: 'tx', phase: 'freeze' } });
-    expect(sent.at(-1)).toEqual({ type: 'term.close', id: 'c0' });
-    expect(store.getState().terminals.c0).toBeUndefined();
-    const attaches = () => calls.filter((c) => c.method === 'term.attach').length;
-    await manager.show('c0', rect);
-    expect(attaches()).toBe(1);
-    store.getState().handoverEvent({ event: 'handover.result', data: { status: 'complete', transactionId: 'tx', generation: 3, robots: [] } });
-    await manager.show('c0', rect);
-    expect(attaches()).toBe(1);
-    // the fleet has loaded from its new owner
-    store.getState().setFleet(fleet());
-    await manager.show('c0', rect);
-    expect(attaches()).toBe(2);
   });
 });

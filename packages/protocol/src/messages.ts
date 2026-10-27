@@ -1,10 +1,6 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
-import {
-  Blocker, Generation, HandoverChoices, HandoverEntityKind, HandoverMachines, HandoverPhase, HandoverTransactionStatus, LandedRoot, MachineId,
-  CommitAt, KeptCommit, ManifestSummary, OwnerRecord, OwnershipInfo, MachinePath, ReceivedGraph, ReplicaCheck, ReplicaRootSpec, ResumeFolder, RootClaim, RootProbe, Sha256, SystemInfo, TransactionId, TransferManifestV1,
-  TransferRoot, Warning,
-} from './handover.js';
+import { MachineId, SystemInfo } from './machines.js';
 import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
@@ -91,18 +87,6 @@ const FLEET_START_TIMEOUT_MS = 20_000;
 // how long robot.wait waits when not told, and the most it may: past 2^31-1 ms a timer fires at once, and a client waits a little longer
 const WAIT_DEFAULT_MS = 600_000;
 const WAIT_MAX_MS = 2_000_000_000;
-// how long a source may take to hash its fleet for preflight, or a destination to read its roots against their records
-export const PREFLIGHT_TIMEOUT_MS = 10 * 60_000;
-// how long a source may take to rest every terminal (a three-minute wait, the gateway over ssh, the fleet hashed
-// twice), a destination to prove and take its roots, to write or start a whole fleet, and each side to seal its roots.
-// the controller's rsync passes are not daemon calls and have no budget here
-export const FREEZE_TIMEOUT_MS = 15 * 60_000;
-export const CLAIM_TIMEOUT_MS = 15 * 60_000;
-export const PREPARE_TIMEOUT_MS = 10 * 60_000;
-export const ACTIVATE_TIMEOUT_MS = 10 * 60_000;
-export const COMPLETE_TIMEOUT_MS = 2 * 60_000;
-// how long taking a forced record may take, since the machine it names reopens the terminals its handover rested
-const ADOPT_TIMEOUT_MS = 2 * 60_000;
 // how long a move may take to rest, carry and commit a robot, past the interrupt it was asked to wait for
 const MOVE_TIMEOUT_MS = 15 * 60_000;
 // a check asks the worker its agents and probes its clone (an ls-remote of up to 20 s), and builds the bundle to size it
@@ -123,13 +107,6 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   if (method === 'mobile.set') return MOBILE_SET_TIMEOUT_MS;
   if (method === 'fleets.create' || method === 'fleets.start') return FLEET_START_TIMEOUT_MS;
-  if (method === 'handover.preflight' || method === 'handover.inspect' || method === 'handover.reaches') return PREFLIGHT_TIMEOUT_MS;
-  if (method === 'handover.freeze') return FREEZE_TIMEOUT_MS + ((params as { choices?: { interruptAfterMs?: number } }).choices?.interruptAfterMs ?? 0);
-  if (method === 'handover.claim') return CLAIM_TIMEOUT_MS;
-  if (method === 'handover.prepare') return PREPARE_TIMEOUT_MS;
-  if (method === 'handover.activate') return ACTIVATE_TIMEOUT_MS;
-  if (method === 'handover.complete') return COMPLETE_TIMEOUT_MS;
-  if (method === 'ownership.adopt') return ADOPT_TIMEOUT_MS;
   if (method === 'robot.moveTo') return MOVE_TIMEOUT_MS + ((params as { interruptAfterMs?: number }).interruptAfterMs ?? 0);
   if (method === 'robot.moveCheck') return MOVE_CHECK_TIMEOUT_MS;
   if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
@@ -366,87 +343,6 @@ export const methods = {
     result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
   },
   'system.info': { params: z.object({}), result: SystemInfo },
-  'ownership.get': { params: z.object({}), result: OwnershipInfo },
-  // token-only: the gateway's record as `svall fleet recover` relays it after a forced write, and the gateway that holds it now,
-  // or none when the recovery leaves this machine to run the fleet alone
-  'ownership.adopt': {
-    params: z.object({ record: OwnerRecord, gatewayMachineId: MachineId.optional() }),
-    result: z.object({ adopted: z.boolean(), superseded: TransactionId.optional(), ownership: OwnershipInfo }),
-  },
-  // read-only: it builds the manifest and reports what would stop the move, before any terminal is touched
-  'handover.preflight': {
-    params: z.object({ toMachineId: MachineId, choices: HandoverChoices.default({}) }).merge(HandoverMachines),
-    result: z.object({ manifestSummary: ManifestSummary, blockers: z.array(Blocker), warnings: z.array(Warning), manifest: TransferManifestV1 }),
-  },
-  // read-only, on the destination: whether each root could be claimed there, what each of `folders` is good for, and which of `links` is not there.
-  // A root's `files` are what the handover brings to it, which a root no handover left may already hold exactly, and a copy another handover was
-  // let go with may hold in part
-  'handover.inspect': {
-    params: z.object({
-      roots: z.array(ReplicaRootSpec.extend({ files: TransferRoot.shape.files.optional() })), excludes: z.array(z.string()), folders: z.array(MachinePath), links: z.array(z.string()).optional(),
-      git: z.array(ReceivedGraph).optional(), resumes: z.array(ResumeFolder).optional(),
-    }),
-    result: z.object({
-      roots: z.array(z.object({ id: z.string(), check: ReplicaCheck })), folders: z.record(z.string(), RootProbe), missing: z.array(z.string()).optional(),
-      // the worktrees of the graphs `git` names that stay here, at commits only the source can say it holds
-      unproven: z.array(KeptCommit).optional(),
-      // the folders of `resumes` whose agent here asks whether to trust them before it resumes there
-      untrusted: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
-      // the folders of `resumes` asking for bypass mode whose agent here warns about that mode before it resumes there
-      bypassWarned: z.array(ResumeFolder.pick({ kind: true, cwd: true })).optional(),
-      // the agents of `resumes` whose CLI here has not trusted Svall's hooks, and so stops at its review of them before it resumes
-      hooksUntrusted: z.array(AgentKind).optional(),
-      // the command settings of `git` that git would run here and this machine's own config does not set the same, by where each is read
-      // `conditional`: no repository is at `at` here yet, and this machine's global config holds includes conditional on where one is
-      commands: z.array(z.object({ graph: z.string(), at: z.string(), keys: z.array(z.string()), conditional: z.boolean().optional() })).optional(),
-    }),
-  },
-  'handover.freeze': {
-    params: z.object({ transactionId: TransactionId, generation: Generation, choices: HandoverChoices.default({}) }).merge(HandoverMachines),
-    result: z.object({ manifest: TransferManifestV1.extend({ transactionId: TransactionId }) }),
-  },
-  // the destination takes each root the manifest carries before anything is written into it, archiving one `archive` names
-  // when it cannot otherwise be taken; `landed` is what this handover's transfer has verified so far, which its copy may hold.
-  // `controllerId`, here and in prepare, is the machine whose controller sends it, the only one taken once the handover names one
-  'handover.claim': {
-    params: z.object({
-      transactionId: TransactionId, generation: Generation,
-      manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256, archive: z.array(z.string().min(1)).optional(),
-      landed: z.array(LandedRoot).optional(), controllerId: MachineId.optional(),
-    }),
-    result: z.object({ roots: z.array(RootClaim), unproven: z.array(KeptCommit).optional() }),
-  },
-  // the destination names the generation it prepares for, g + 1, here, in activate, in complete and in its abort. It
-  // prepares the state it would run from the manifest's snapshot; `preparedDigest` is what owner.ready is granted on
-  'handover.prepare': {
-    params: z.object({
-      transactionId: TransactionId, generation: Generation,
-      manifest: TransferManifestV1.extend({ transactionId: TransactionId }), manifestDigest: Sha256,
-      landed: z.array(LandedRoot), controllerId: MachineId.optional(),
-    }),
-    result: z.object({ preparedDigest: Sha256 }),
-  },
-  // `committed` is the gateway's answer that committed the handover, which the destination takes only when the gateway
-  // gives no answer of its own; `notice` is what a robot that came up still waits on in its terminal
-  'handover.activate': {
-    params: z.object({ transactionId: TransactionId, generation: Generation, committed: OwnerRecord.optional() }),
-    result: z.object({ robots: z.array(z.object({ id: z.string(), ok: z.boolean(), error: z.string().optional(), notice: z.string().optional() })) }),
-  },
-  // each side seals the roots it holds at g + 1 and closes its journal; the source seals what the transfer verified, `landed`
-  'handover.complete': {
-    params: z.object({ transactionId: TransactionId, generation: Generation, landed: z.array(LandedRoot).optional() }),
-    result: z.object({}),
-  },
-  'handover.abort': { params: z.object({ transactionId: TransactionId, generation: Generation }), result: z.object({}) },
-  // read-only, on the source, frozen or not: which of these commits no ref of its repository reaches, the ones it lacks included
-  'handover.reaches': { params: z.object({ commits: z.array(CommitAt) }), result: z.object({ unreached: z.array(CommitAt) }) },
-  // `quarantined`: where a journal this daemon could not read was moved, which leaves it unable to say how far a handover got
-  'handover.status': {
-    params: z.object({}),
-    result: z.object({
-      transaction: HandoverTransactionStatus.optional(), quarantined: z.string().optional(),
-    }),
-  },
 } as const;
 
 export type MethodName = keyof typeof methods;
@@ -465,8 +361,6 @@ export class ApiError extends Error {
 export const PART_BYTES = 4 * 1024 * 1024;
 /** The most a request sent in parts may come to, and an answer a client reads. */
 export const MAX_REQUEST_BYTES = 256 * 1024 * 1024;
-/** The most a transfer manifest may come to: claim and prepare carry it and, in what landed, its carried roots' files again, in one request. */
-export const MAX_MANIFEST_BYTES = MAX_REQUEST_BYTES / 2;
 
 /** One slice of a request too large for one socket message: the parts of one request arrive in order, and the whole is answered once. */
 export const RequestPart = z.object({
@@ -474,7 +368,7 @@ export const RequestPart = z.object({
 });
 export type RequestPart = z.infer<typeof RequestPart>;
 
-// data carries the structured half of an error: the blockers of a refused handover, the generations of a mismatch
+// data carries the structured half of an error: a refused move's refusal, the end of what a failed child printed
 export const ErrorFrame = z.object({ code: z.string(), message: z.string(), data: z.record(z.string(), z.unknown()).optional() });
 export type ErrorFrame = z.infer<typeof ErrorFrame>;
 
@@ -487,9 +381,7 @@ export type Event =
   | { event: 'term.output'; data: { id: string; data: string } }
   | { event: 'term.resync'; data: { id: string; screen: string } }
   | { event: 'repo.changed'; data: { id: string } }
-  | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
-  // counts and phases only: a manifest travels as the freeze result, never as an event
-  | { event: 'handover.entity'; data: { transactionId: string; kind: HandoverEntityKind; id: string; phase: HandoverPhase; done?: number; total?: number; error?: string; notice?: string } };
+  | { event: 'mobile.phones'; data: { phones: PhoneSession[] } };
 
 export const Hello = z.object({ token: z.string() });
 /** The reply to the handshake: the daemon's protocol version. */
@@ -504,4 +396,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 33;
+export const PROTOCOL_VERSION = 34;

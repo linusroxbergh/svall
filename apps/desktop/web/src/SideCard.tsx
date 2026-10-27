@@ -69,7 +69,7 @@ export function SideCard({ id }: { id: string }) {
   const details = useApp((s) => !s.sections['robot.details']?.shut);
   const active = useApp((s) => s.active);
   const load = useLoad(details && active).load?.robots?.[id];
-  const failed = useApp((s) => resumeErrorOf(s, s.fleet.robots[id]));
+  const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
   if (!c) return null;
 

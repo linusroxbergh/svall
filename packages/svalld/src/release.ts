@@ -52,7 +52,7 @@ export const askpassPath = (): string => asset('bin/svall-askpass', 'scripts/rel
 /** Where `svall mobile` builds the phone page, and where svalld serves it from. */
 export const mobileDistDir = (): string => asset('web-mobile', 'apps/desktop/web/dist-mobile');
 
-/** The svalld build a handover compares against the other machine's. */
+/** The svalld build this is, which a worker's link reports and a move compares against the other machine's. */
 export function releaseVersion(): string {
   const dir = root();
   if (!dir) return 'dev';

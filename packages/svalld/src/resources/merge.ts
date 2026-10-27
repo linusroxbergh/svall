@@ -1,6 +1,6 @@
 import { farRootId, type FleetState, type MachineId, type ResourceKind, type ResourceSource } from '@svall/protocol';
 import { docsDir, repoSlug } from '../docs.js';
-import { relocate } from '../handover/relocate.js';
+import { relocate } from '../placement/relocate.js';
 import { docsGroups, rootIdOf } from './scan.js';
 
 // a worker's docs are its copy of this Mac's, and its memory and MCP servers are in its user's Claude config

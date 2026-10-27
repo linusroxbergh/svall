@@ -35,7 +35,7 @@ export const Token = memoByValue(function Token({
   settling?: boolean;
   hover: boolean;
   offset?: { x: number; y: number };
-  // why a handover could not resume this robot, from the app's store; the landing page has none
+  // why this robot could not resume, from the app's store; the landing page has none
   failed?: string;
   // the worker a placed robot runs on
   machine?: string;

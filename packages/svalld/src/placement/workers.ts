@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
 import { MachineId } from '@svall/protocol';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 import type { Paths } from '../paths.js';
 
 const Workers = z.record(MachineId, z.object({ token: z.string().min(32), addedAt: z.number() }));

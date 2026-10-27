@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
-import { writeDurable } from '../handover/durable.js';
-import { realPath } from '../handover/portable-path.js';
-import { configOf } from '../handover/sessions/claude.js';
-import type { SessionAdapter } from '../handover/sessions/types.js';
+import { writeDurable } from '../durable.js';
+import { realPath } from '../path-tools.js';
+import { configOf } from '../sessions/claude.js';
+import type { SessionAdapter } from '../sessions/types.js';
 import type { Tmux } from '../tmux/tmux.js';
 
 const POLL_MS = 500;

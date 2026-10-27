@@ -12,7 +12,7 @@ machine needs, how to add it, and how to look after it.
 | System | macOS 15 or newer | Ubuntu LTS 22.04 or newer, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and an older Ubuntu or any other system is refused. |
 | Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
-| Tools | tmux, Git | Git, rsync 3.2.3 or newer, as Ubuntu 22.04 and later ship (`sudo apt install git rsync`) |
+| Tools | tmux, Git | Git (`sudo apt install git`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
 | Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same, each at the Mac's release or newer, since a move refuses a machine whose agent is older |
 
@@ -26,8 +26,8 @@ leaves at the same place under the home it lands in, so `/Users/ada/code/app` on
 Linux, and `/Users/ada/code/app` again once the robot comes back. A robot's repository lands at its main checkout's
 place there, as the worker's own clone. A path outside your home, such as `/Volumes/work/repo`, keeps its path.
 
-The home path can be at most 65 bytes long, because a Unix socket Svall keeps under it holds at most 107 bytes.
-`svall host add` checks it.
+The home path can be at most 89 bytes long (less for a named fleet), because the fleet's hook socket under it, a Unix
+socket, holds a path of at most 107 bytes. `svall host add` checks it.
 
 ## Adding the machine
 
@@ -43,8 +43,7 @@ Both run the same steps and show each as it finishes. The app shows them in thes
 1. **Reaching it.** One interactive ssh, so you can accept the host key and log in, then one control connection for
    the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **What it needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
-   Tailscale, Git, rsync (older than 3.2.3 is a warning), systemd, free space (5 GiB or more) and lingering,
-   which it turns on where it is off.
+   Tailscale, Git, systemd, free space (5 GiB or more) and lingering, which it turns on where it is off.
 3. **Svall there.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it
@@ -76,8 +75,7 @@ or close the panel with ×, the terminal hangs up and the panel checks the machi
 list. **Open a terminal there**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
 each action names the command and the machine to run it on:
 
-- A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install rsync`. An rsync
-  older than 3.2.3 needs a newer one, which Ubuntu 22.04 and later ship.
+- A missing package: the action names the `apt` command, as `ssh ada@studio, then sudo apt install git`.
 - Lingering the system would not turn on: `ssh ada@studio, then sudo loginctl enable-linger ada`. Svall turns it on
   itself where polkit lets an account do so, as on Ubuntu Server; a machine without polkit refuses. Without it the
   fleet's robots there stop when you log out.
@@ -205,35 +203,11 @@ digest the app's release pins, and checks its signature against the keys the app
 says whether the companion is signed, and `svall host doctor` says it of the machine's release and the Mac's.
 
 - `--release <archive>` installs that archive instead. A signed one must be signed by a key the Mac's release lists;
-  `--allow-unsigned` accepts one without a signature. See [the security notes](../security/fleet-handover.md) for how
+  `--allow-unsigned` accepts one without a signature. See [the security notes](../security/workers.md) for how
   releases are checked.
 - Svall Dev runs release `dev` and carries no companion, so its worker runs one built from the same checkout as
   release `dev`: `node scripts/build-companion.mjs --out <dir> --arch x64 --version dev`, then
   `svall-dev host add studio --ssh ada@studio --release <dir>/svall-companion-dev-linux-x64.tar.gz --allow-unsigned`.
-
-## A machine that was a fleet's gateway
-
-A machine an earlier release made a fleet's gateway becomes its worker with **Upgrade to this Mac's release** in its ⋯
-menu under Settings → Machines, or:
-
-```sh
-svall host upgrade studio
-```
-
-It installs this Mac's release there and goes on:
-
-1. **Worker.** The fleet's unit there restarts as `svalld --worker`, a worker of this Mac, in place of the fleet's
-   read-only copy.
-2. **Fleets.** `fleet.json` names no gateway any more, and the machine's gateway mark in this Mac's list goes once no
-   fleet on this Mac names it.
-3. **Gateway.** `svall-gateway.service` is stopped and removed there. While another fleet on this Mac still names the
-   machine as its gateway, the unit keeps running, and the upgrade ends with that fleet's own `host upgrade` to run.
-4. **Earlier handovers.** Each folder an earlier handover copied there is named with its size, such as "22 GB from an
-   earlier handover is in /home/ada/code; delete it when you no longer need it". Nothing there is deleted.
-
-It refuses while a fleet runs on the machine, as one an earlier handover moved there does: bring it back with
-`svall handover local` first. Until the upgrade, no robot of a fleet that names a gateway moves: "this fleet has a
-gateway; svall host upgrade studio makes it this fleet's worker".
 
 ## Looking after it
 
@@ -246,9 +220,9 @@ says what a machine is.
 | --- | --- | --- |
 | `svall host list` | Settings → Machines | Every machine in the registry, with its ssh destination, release, last check and id. |
 | `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends in the same one line as `host add`: ready, or the number of things left before robots can move there, with their names. Each failed check counts, and so does each warning with an action, such as a key not ticked. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
-| `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. A machine that was a fleet's gateway then becomes its worker ([above](#a-machine-that-was-a-fleets-gateway)). On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux until it ends, as at a reboot. Robots running there keep running. |
+| `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux until it ends, as at a reboot. Robots running there keep running. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
-| `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"), while the machine is the gateway of a fleet this Mac does not own, while it owns a fleet through any gateway, and while a handover holds any fleet here open, whatever its gateway; bring each back with `svall handover local` first. The uninstall there passes only the gateway records of this Mac's fleets, so the machine still refuses for anything else, such as another Mac's fleet. Its fleets and their files stay on that machine. |
+| `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"). Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys the mirror copied there stay there. |
 
 After you update Svall on the Mac, run `svall host upgrade <name>`: until both machines run the same release, a move
@@ -259,21 +233,16 @@ On the Linux machine itself:
 - `svall setup --rollback [release]` puts the release before back, or the kept release named, restarts the units and
   checks each fleet's daemon answers from it. `svall setup` sets the machine up again from the release `current`
   names.
-- `svall uninstall` refuses while the machine is a fleet's gateway, runs a fleet for its gateway, or holds a handover
-  journal, since that would strand the fleet. Before it removes Svall, it takes back what each fleet's mirror copied
-  there with keys, each while it is as the mirror wrote it: a copied key becomes what an untick leaves (an `env` key
-  the agent's reference to its variable, a key in a URL or argument the rest of it, any other key emptied), a server
-  copied whole leaves its config file, a key in `known_marketplaces.json`, a `marketplace.json` or a subagent is
-  taken out where it lies there, even where an entry added above it moved it, and the file stays, another file the
-  mirror wrote holding a ticked key, such as a plugin's server file or a subagent whose `mcpServers` Svall cannot
-  read or whose server has fields Svall does not know, is deleted, and a copy a daemon left unapplied in the fleet's
-  `cache` goes. A key, server or file changed on the machine since the mirror wrote it stays, named in what it
-  prints, and so does every key in a config file there that no longer parses, as do the fleet's `.env` and its
-  `mirror-overrides/`, which are the machine's own. Uninstalling a worker ends the robots that run there, so move them back first. `svall host remove`
-  from the Mac checks the fleets that Mac knows of, then runs it with `--force-fleet` for each of them that names the
-  machine as its gateway, so it still refuses for a fleet another Mac keeps there. To
-  remove a machine two Macs use, bring the other Mac's fleet home and run `svall host remove <name> --forget` there,
-  then `svall uninstall --force` here and `svall host remove <name> --forget` on the first Mac.
+- `svall uninstall` ends the robots that run there, so move them back first. Before it removes Svall, it takes back
+  what each fleet's mirror copied there with keys, each while it is as the mirror wrote it: a copied key becomes what
+  an untick leaves (an `env` key the agent's reference to its variable, a key in a URL or argument the rest of it, any
+  other key emptied), a server copied whole leaves its config file, a key in `known_marketplaces.json`, a
+  `marketplace.json` or a subagent is taken out where it lies there, even where an entry added above it moved it, and
+  the file stays, another file the mirror wrote holding a ticked key, such as a plugin's server file or a subagent
+  whose `mcpServers` Svall cannot read or whose server has fields Svall does not know, is deleted, and a copy a daemon
+  left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since the mirror wrote it
+  stays, named in what it prints, and so does every key in a config file there that no longer parses, as do the
+  fleet's `.env` and its `mirror-overrides/`, which are the machine's own.
 - Each fleet's own log is `svalld.log` in its fleet home (`~/.svall` for the private fleet), beside the units'
   logs in `~/.local/share/svall/log`.
 - `systemctl --user status svall-svalld@private` shows the fleet's unit.
@@ -286,10 +255,9 @@ On the Linux machine, all under the account:
   (`bin/tmux`); `~/.local/bin/svall` points into it. Each install keeps the release before it, for a rollback, and
   removes older ones.
 - `~/.config/systemd/user/svall-svalld@<fleet>.service`, one per fleet the machine is a worker of, running
-  `svalld --worker`, and `svall-gateway.service` on a machine that is still a fleet's gateway. Each fleet's unit
-  carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME` and `OPENCODE_DB` the
-  account's login shell sets. Its `PATH` holds the release's `bin`, `~/.local/bin` and `~/.opencode/bin`, where
-  OpenCode's installer puts it.
+  `svalld --worker`. Each fleet's unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`,
+  `XDG_DATA_HOME` and `OPENCODE_DB` the account's login shell sets. Its `PATH` holds the release's `bin`,
+  `~/.local/bin` and `~/.opencode/bin`, where OpenCode's installer puts it.
 - `~/.config/opencode/plugins/svall.js` (under `XDG_CONFIG_HOME` when the login shell sets it), Svall's OpenCode
   plugin, when OpenCode is installed and the fleet does not turn it off.
 - `~/.local/share/svall/log`, the units' logs.

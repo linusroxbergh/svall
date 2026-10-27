@@ -149,17 +149,6 @@ const escapeCloses = () => {
   expect(store.getState().fleetPicker).toBeUndefined();
 };
 
-test('with the fleet on another machine, the picker says where, neither lists nor makes a fleet, and Esc closes it', () => {
-  store.getState().setConnectionState({ state: 'online', owner: 'trift' });
-  store.getState().setFleetPicker('menu');
-  render(<FleetPicker />);
-  expect(screen.getByTestId('fleet-picker-away').textContent).toContain('This fleet runs on trift');
-  expect(screen.queryByTestId('fleet-new-name')).toBeNull();
-  expect(screen.queryAllByTestId(/^fleet-row-/)).toEqual([]);
-  expect(call).not.toHaveBeenCalled();
-  escapeCloses();
-});
-
 test('with svalld offline, the fleets cannot be listed or made, the picker says why, and Esc closes it', () => {
   store.getState().setStatus('offline');
   store.getState().setFleetPicker('menu');

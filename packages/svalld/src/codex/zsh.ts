@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { writeDurable } from '../handover/durable.js';
+import { writeDurable } from '../durable.js';
 
 // zsh reads $ZDOTDIR/.zshenv first: this one restores the user's ZDOTDIR, so the rest of startup is theirs, and gives the
 // interactive shell a codex off Codex's shared server, which agents, queue, remote-control and --remote need

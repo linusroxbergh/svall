@@ -30,7 +30,6 @@ vendor/ghostty-kit/
 vendor/node/
 vendor/sparkle/
 vendor/tmux/
-vendor/rsync/
 __pycache__/
 dist/
 .pnpm-store/

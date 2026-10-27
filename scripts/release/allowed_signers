@@ -2,7 +2,7 @@
 #
 # The release key signs every release; the backup key stays offline and takes over when the release key is retired.
 # Every release carries this file, and a machine checks an upgrade against the copy its installed release carries;
-# see docs/security/fleet-handover.md, "Release keys". A key's line is made from its public half:
+# see docs/security/workers.md, "Release integrity". A key's line is made from its public half:
 #
 #   printf 'svall-release namespaces="svall-release" %s\n' "$(cut -d' ' -f1,2 <key>.pub)"
 

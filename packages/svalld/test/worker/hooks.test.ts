@@ -8,7 +8,6 @@ import { docsDir } from '../../src/docs.js';
 import { Fleet } from '../../src/fleet.js';
 import type { HookEvent } from '../../src/hooks/receiver.js';
 import { silentLogger } from '../../src/log.js';
-import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths } from '../../src/paths.js';
 import { Store } from '../../src/store.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
@@ -46,7 +45,6 @@ function worker() {
   const config = Config.parse({});
   const fleet = new Fleet({
     store, tmux: {} as Tmux, paths, config, log: silentLogger, report: (r) => reports.push(r),
-    ownership: OwnershipState.load({ paths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true }),
   });
   const hook = (name: HookEvent['name']) => fleet.onSocketEvent({ hook: { robotId: 'c_w', backend: 'claude', name, sessionId: SID } });
   return { paths, store, reports, snapshot, hook };

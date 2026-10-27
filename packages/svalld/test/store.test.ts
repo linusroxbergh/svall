@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Operation } from 'fast-json-patch';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CWD, type MachineId } from '@svall/protocol';
 import { createLogger } from '../src/log.js';
@@ -48,7 +47,7 @@ describe('Store', () => {
     vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
-    s.batchWritesWhile(() => true);
+    s.batchWrites();
     const renames = vi.spyOn(fs, 'renameSync');
     for (let n = 1; n <= 5; n++) s.update((d) => { d.dormantAfterHours = n; });
     expect(s.state.dormantAfterHours).toBe(5);
@@ -62,7 +61,7 @@ describe('Store', () => {
     vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
-    s.batchWritesWhile(() => true);
+    s.batchWrites();
     const renames = vi.spyOn(fs, 'renameSync');
     s.update((d) => { d.scribeOff = true; });
     await s.flush();
@@ -72,23 +71,10 @@ describe('Store', () => {
     expect(renames).toHaveBeenCalledTimes(1);
   });
 
-  it('writes a change it takes while it does not batch, along with any still waiting', () => {
-    vi.useFakeTimers();
-    const file = path.join(makeHome(), 'state.json');
-    const s = Store.load(file, () => {});
-    let batch = true;
-    s.batchWritesWhile(() => batch);
-    s.update((d) => { d.scribeOff = true; });
-    batch = false;
-    s.update((d) => { d.dormantAfterHours = 3; });
-    expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toMatchObject({ scribeOff: true, dormantAfterHours: 3 });
-  });
-
   it('withheld holds every write while fn runs, batching off, and the next flush writes its updates as one', async () => {
     vi.useFakeTimers();
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
-    s.batchWritesWhile(() => false);
     s.update((d) => { d.name = 'seed'; });
     const renames = vi.spyOn(fs, 'renameSync');
     await s.withheld(async () => {
@@ -106,7 +92,7 @@ describe('Store', () => {
   it('a flush called while a hold runs waits for it, then writes what it changed in one write', async () => {
     const file = path.join(makeHome(), 'state.json');
     const s = Store.load(file, () => {});
-    s.batchWritesWhile(() => true);
+    s.batchWrites();
     const id = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
     let release!: () => void;
     const gate = new Promise<void>((r) => { release = r; });
@@ -149,7 +135,7 @@ describe('Store', () => {
     const file = path.join(home, 'state.json');
     const logs: string[] = [];
     const s = Store.load(file, (m) => logs.push(m));
-    s.batchWritesWhile(() => true);
+    s.batchWrites();
     // stands in for a full disk or a permission error
     fs.chmodSync(home, 0o500);
     try {
@@ -182,7 +168,7 @@ describe('Store', () => {
   it('does not make a fleet home that is gone again, nor fail on the log gone with it', async () => {
     const home = makeHome();
     const s = Store.load(path.join(home, 'state.json'), createLogger(path.join(home, 'svalld.log')).error);
-    s.batchWritesWhile(() => true);
+    s.batchWrites();
     s.update((d) => { d.scribeOff = true; });
     fs.rmSync(home, { recursive: true });
     expect(await s.flush()).toBe(false);
@@ -301,52 +287,6 @@ describe('Store.update', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(written);
     expect(Object.keys(s.state.robots)).toEqual(['c_1']);
     expect(seen).toEqual([]);
-  });
-});
-
-describe('prepared state', () => {
-  it('reads a prepared snapshot without making it active', () => {
-    const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
-    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
-    fs.mkdirSync(path.dirname(prepared), { recursive: true });
-    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_1: island('i_1') } }));
-    expect(Object.keys(Store.readSnapshot(prepared).islands)).toEqual(['i_1']);
-    expect(s.state.islands).toEqual({});
-  });
-
-  it('refuses a prepared file that is not a valid snapshot', () => {
-    const home = makeHome();
-    const prepared = path.join(home, 'prepared-tx-1.json');
-    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
-    expect(() => Store.readSnapshot(prepared)).toThrow();
-  });
-
-  it('promotes a prepared file onto state.json and replaces the live state', () => {
-    const home = makeHome();
-    const file = path.join(home, 'state.json');
-    const s = Store.load(file, () => {});
-    s.update((d) => { d.islands.i_1 = island('i_1'); });
-    const prepared = path.join(home, 'handover', 'prepared-tx-1.json');
-    fs.mkdirSync(path.dirname(prepared), { recursive: true });
-    fs.writeFileSync(prepared, JSON.stringify({ ...s.state, islands: { i_9: island('i_9') } }));
-    const seen: Operation[][] = [];
-    s.subscribe((ops) => seen.push(ops));
-    const ops = s.promote(prepared);
-    expect(seen).toEqual([ops]);
-    expect(Object.keys(s.state.islands)).toEqual(['i_9']);
-    expect(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8')).islands)).toEqual(['i_9']);
-    expect(fs.existsSync(prepared)).toBe(false);
-  });
-
-  it('leaves the prepared file in place when it does not validate', () => {
-    const home = makeHome();
-    const s = Store.load(path.join(home, 'state.json'), () => {});
-    const prepared = path.join(home, 'prepared-tx-1.json');
-    fs.writeFileSync(prepared, '{"version":7,"islands":{"bad":{}},"characters":{}}');
-    expect(() => s.promote(prepared)).toThrow();
-    expect(fs.existsSync(prepared)).toBe(true);
-    expect(s.state.islands).toEqual({});
   });
 });
 

@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -46,21 +45,6 @@ export function resolvePaths(home: string = svallHome()) {
     fleetConfig: path.join(home, 'fleet.json'),
     nodeConfig: path.join(home, 'node.json'),
     legacyConfig: path.join(home, 'config.json'),
-    owner: path.join(home, 'owner.json'),
-    handoverDir: path.join(home, 'handover'),
-    journal: path.join(home, 'handover', 'journal.json'),
-    // a prepared snapshot waits beside the journal until the gateway commits it; the id stays one path segment
-    preparedState: (transactionId: string) => path.join(home, 'handover', `prepared-${encodeURIComponent(transactionId)}.json`),
-    // the manifest a freeze answered, kept so a repeated freeze answers the same one
-    manifest: (transactionId: string) => path.join(home, 'handover', `manifest-${encodeURIComponent(transactionId)}.json`),
-    // where the controller copies the files of the manifest's session at `index` for prepare to place
-    sessionStage: (transactionId: string, index: number) => path.join(home, 'handover', `sessions-${encodeURIComponent(transactionId)}`, String(index)),
-    // each root a destination carried, as the Git import left it: what Complete seals, and what an abort leaves claimable
-    replicaSeal: (transactionId: string) => path.join(home, 'handover', `seal-${encodeURIComponent(transactionId)}.json`),
-    replicas: path.join(home, 'replicas'),
-    // one record per fleet and root, named by the sha256 of the root's real path, never kept inside the root
-    replicaRecord: (fleetId: string, canonicalPath: string) =>
-      path.join(home, 'replicas', encodeURIComponent(fleetId), `${crypto.createHash('sha256').update(canonicalPath).digest('hex')}.json`),
     env: path.join(home, '.env'),
     token: path.join(home, 'token'),
     port: path.join(home, 'port'),
@@ -107,6 +91,17 @@ export function resolvePaths(home: string = svallHome()) {
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
+
+// the bytes a Unix socket path holds before its NUL
+const SOCKET_MAX: Partial<Record<NodeJS.Platform, number>> = { linux: 107, darwin: 103 };
+
+/** Why nothing can listen on `socket` on `platform`: a path longer than a Unix socket takes, which listen refuses with EINVAL. */
+export function socketTooLong(socket: string, platform: NodeJS.Platform = process.platform): { message: string; over: number } | undefined {
+  const max = SOCKET_MAX[platform];
+  const bytes = Buffer.byteLength(socket);
+  if (max === undefined || bytes <= max) return undefined;
+  return { message: `the socket ${socket} is ${bytes} bytes, past the ${max} a Unix socket path holds, so its listen fails with EINVAL`, over: bytes - max };
+}
 
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile, p.workersFile];

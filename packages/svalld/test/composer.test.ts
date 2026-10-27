@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { describe, expect, it } from 'vitest';
-import { agentInFront, codexHooksReview, readComposer } from '../src/agent/composer.js';
+import { agentInFront, readComposer } from '../src/agent/composer.js';
 import { parseScreen } from '../src/tmux/tmux.js';
 
 // panes of Claude Code 2.1.296–2.1.302, Codex 0.161–0.162 and OpenCode 2.0.26 as `Tmux.screen` read them, cut to their last rows
@@ -85,14 +85,6 @@ describe('readComposer', () => {
   it('takes a colour argument of 2 for no faint', () => {
     expect(readComposer('claude', { rows: ['\x1b[38;5;2m❯ \x1b[39m'], cursor: 0, shown: true, command: 'claude' })).toBe('empty');
     expect(readComposer('claude', { rows: ['\x1b[38;2;2;2;2m❯ \x1b[2mplaceholder\x1b[0m'], cursor: 0, shown: true, command: 'claude' })).toBe('empty');
-  });
-});
-
-describe('codexHooksReview', () => {
-  it("sees Codex's review of untrusted hooks, and not a pane that shows its cursor or its prompt", () => {
-    expect(codexHooksReview(screen('codex-hooks-review'))).toBe(true);
-    expect(codexHooksReview({ ...screen('codex-hooks-review'), shown: true })).toBe(false);
-    expect(codexHooksReview(screen('codex-empty'))).toBe(false);
   });
 });
 

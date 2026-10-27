@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MutationId } from '@svall/protocol';
-import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent, setGateway } from '../src/config.js';
+import { Config, configuredMainAgent, fleetMainAgent, keptPorts, loadConfig, patchFleetConfig, peekConfig, saveConfig, saveMainAgent } from '../src/config.js';
 import { newId, newMutationId } from '../src/ids.js';
 import { resolvePaths, userPaths } from '../src/paths.js';
 import { cleanHomes, makeHome } from './helpers.js';
@@ -29,9 +29,6 @@ describe('config and paths', () => {
     expect(p.push).toBe(path.join('/x', 'push.json'));
     expect(p.vapid).toBe(path.join('/x', 'vapid.json'));
     expect([p.fleetConfig, p.nodeConfig, p.legacyConfig]).toEqual(['/x/fleet.json', '/x/node.json', '/x/config.json']);
-    expect([p.owner, p.handoverDir, p.journal, p.replicas]).toEqual(['/x/owner.json', '/x/handover', '/x/handover/journal.json', '/x/replicas']);
-    expect(p.preparedState('tx-1')).toBe('/x/handover/prepared-tx-1.json');
-    expect(p.preparedState('../escape')).toBe('/x/handover/prepared-..%2Fescape.json');
   });
   it('finds the Claude settings in CLAUDE_CONFIG_DIR when it is set', () => {
     const home = path.join(os.homedir(), '.claude', 'settings.json');
@@ -144,7 +141,6 @@ describe('saveMainAgent', () => {
 });
 
 describe('patchFleetConfig', () => {
-  const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
   const linked = () => {
     const p = resolvePaths(makeHome());
     const real = path.join(p.home, 'dotfiles.json');
@@ -156,9 +152,9 @@ describe('patchFleetConfig', () => {
 
   it('sets and drops keys and keeps every other one as the file held it, through a link and with its mode', () => {
     const { p, real, id } = linked();
-    patchFleetConfig(p.fleetConfig, { gatewayMachineId: GATEWAY });
-    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
-    patchFleetConfig(p.fleetConfig, { gatewayMachineId: undefined });
+    patchFleetConfig(p.fleetConfig, { name: 'home' });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, name: 'home' });
+    patchFleetConfig(p.fleetConfig, { name: undefined });
     expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1 });
     expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
     expect(fs.statSync(real).mode & 0o777).toBe(0o640);
@@ -167,7 +163,7 @@ describe('patchFleetConfig', () => {
   it('refuses a change that leaves no fleet config, and leaves the file as it was', () => {
     const { p, real } = linked();
     const before = fs.readFileSync(real, 'utf8');
-    expect(() => patchFleetConfig(p.fleetConfig, { gatewayMachineId: 'trift' })).toThrow(/invalid config .*gatewayMachineId/);
+    expect(() => patchFleetConfig(p.fleetConfig, { name: 'Home Base' })).toThrow(/invalid config .*name/);
     expect(fs.readFileSync(real, 'utf8')).toBe(before);
   });
 
@@ -177,15 +173,6 @@ describe('patchFleetConfig', () => {
     expect(loadConfig(p).name).toBe('home');
     fs.writeFileSync(real, JSON.stringify({ id, name: 'Home Base' }));
     expect(() => loadConfig(p)).toThrow(/name: /);
-  });
-
-  it('is how the daemon names a gateway, in the file and in the running config', () => {
-    const { p, real, id } = linked();
-    const config = loadConfig(p);
-    setGateway(p, config, GATEWAY as never);
-    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
-    expect(config.gatewayMachineId).toBe(GATEWAY);
-    expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
   });
 });
 

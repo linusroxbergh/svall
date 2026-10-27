@@ -184,7 +184,6 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
  * a rejection, because the panel that shows the switch is also where the reason belongs.
  */
 export function mobileControl(d: MobileDeps, opts: {
-  // read at each look, since activating a handover replaces the configured list
   home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void; pass: string;
   // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked
   kept: () => number[]; savePort: (port: number) => boolean;

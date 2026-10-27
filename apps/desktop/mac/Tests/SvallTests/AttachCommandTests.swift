@@ -4,13 +4,19 @@ import XCTest
 final class AttachCommandTests: XCTestCase {
     private let attach = WebAttach(socket: "/tmp/svall/fleet.sock", session: "robot-1")
 
+    func testTheWindowRouteIsThisMacAndARobotOnAWorkerGoesOverItsVia() {
+        XCTAssertEqual(AttachCommand.route(.local, attach), .local)
+        let far = WebAttach(socket: "/home/linus/.svall/tmux.sock", session: "v-c_1", via: WebVia(ssh: "w1", controlSocket: "/tmp/s"))
+        XCTAssertEqual(AttachCommand.route(.local, far), .remote(RemoteRoute(destination: "w1", controlSocket: "/tmp/s")))
+    }
+
     func testLocalAttachRunsTmuxDirectly() {
         let command = AttachCommand.build(route: .local, attach: attach, tmux: "/opt/homebrew/bin/tmux")
         XCTAssertEqual(command, "'/opt/homebrew/bin/tmux' -S '/tmp/svall/fleet.sock' attach -t '=robot-1'")
     }
 
     func testRemoteAttachGoesThroughTheControlSocket() {
-        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let route = ConnectionRoute.remote(RemoteRoute(destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
         let command = AttachCommand.build(route: route, attach: attach, tmux: "/opt/homebrew/bin/tmux", masterAnswers: { _ in true })
         // the socket and session are quoted once for this shell and once more for the far one. A terminal past the
         // master's MaxSessions opens a login of its own, which never prompts
@@ -19,7 +25,7 @@ final class AttachCommandTests: XCTestCase {
 
     /// The far daemon names the tmux that serves its socket, which a companion carries in its own release.
     func testRemoteAttachRunsTheTmuxTheFarDaemonNames() {
-        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let route = ConnectionRoute.remote(RemoteRoute(destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
         let bundled = WebAttach(socket: "/tmp/svall/fleet.sock", session: "robot-1", tmux: "/home/linus/.local/share/svall/releases/v1/bin/tmux")
         let command = AttachCommand.build(route: route, attach: bundled, tmux: "/opt/homebrew/bin/tmux", masterAnswers: { _ in true })
         XCTAssertEqual(command, "env TERM=xterm-256color ssh -S '/tmp/svall/studio.sock' -o ControlMaster=no -o BatchMode=yes -tt -- 'linus@studio' ''\\''/home/linus/.local/share/svall/releases/v1/bin/tmux'\\''' -S ''\\''/tmp/svall/fleet.sock'\\''' attach -t ''\\''=robot-1'\\'''")
@@ -31,9 +37,9 @@ final class AttachCommandTests: XCTestCase {
         XCTAssertTrue(cmd!.hasPrefix("env TERM=xterm-256color ssh -S '/tmp/svall-501/123-abc'")); XCTAssertTrue(cmd!.contains("'/home/ada lovelace/.svall/tmux.sock'"))
     }
 
-    /// With the helper's master gone, ssh would dial the destination itself, where no check covers which machine answers.
+    /// With the master gone, ssh would dial the destination itself, where no check covers which machine answers.
     func testNoCommandIsBuiltWhileTheMasterDoesNotAnswer() {
-        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let route = ConnectionRoute.remote(RemoteRoute(destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
         var asked: [String] = []
         XCTAssertNil(AttachCommand.build(route: route, attach: attach, tmux: "tmux", masterAnswers: { asked.append($0); return false }))
         XCTAssertEqual(asked, ["/tmp/svall/studio.sock"])
@@ -69,7 +75,7 @@ final class AttachCommandTests: XCTestCase {
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ssh)
 
         let odd = WebAttach(socket: "/home/li nus/.svall/tmux.sock", session: "v-it's $(x)", tmux: "/home/li nus/.local/share/svall/current/bin/tmux")
-        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/a b/studio.sock"))
+        let route = ConnectionRoute.remote(RemoteRoute(destination: "linus@studio", controlSocket: "/tmp/a b/studio.sock"))
         let command = try XCTUnwrap(AttachCommand.build(route: route, attach: odd, tmux: "tmux", masterAnswers: { _ in true }))
 
         let shell = Process()
@@ -92,7 +98,7 @@ final class AttachCommandTests: XCTestCase {
         try "#!/bin/sh\necho \"$TERM\"\n".write(toFile: ssh, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: ssh)
 
-        let route = ConnectionRoute.remote(RemoteRoute(name: "studio", destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
+        let route = ConnectionRoute.remote(RemoteRoute(destination: "linus@studio", controlSocket: "/tmp/svall/studio.sock"))
         let command = try XCTUnwrap(AttachCommand.build(route: route, attach: attach, tmux: "tmux", masterAnswers: { _ in true }))
 
         let shell = Process()
@@ -104,10 +110,6 @@ final class AttachCommandTests: XCTestCase {
         try shell.run()
         shell.waitUntilExit()
         XCTAssertEqual(String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self), "xterm-256color\n")
-    }
-
-    func testNoCommandIsBuiltWhileTheRouteIsUnknown() {
-        XCTAssertNil(AttachCommand.build(route: .pending, attach: attach, tmux: "tmux"))
     }
 
     func testQuotingSurvivesASingleQuoteInASessionName() {

@@ -9,9 +9,8 @@ extension XCTestCase {
         return dir
     }
 
-    /// A stand-in for the bundled `svall connect --json`: it prints the given NDJSON lines and, like the
-    /// real helper, stays alive until its stdin reaches EOF.
-    func fakeHelper(prints lines: [String], then tail: String = "exec cat > /dev/null") throws -> String {
+    /// A stand-in for the bundled svall: it prints the given NDJSON lines, then runs `tail`.
+    func fakeHelper(prints lines: [String], then tail: String = "exit 0") throws -> String {
         let dir = try temporaryDirectory("svall-helper")
         let script = (["#!/bin/sh"] + lines.map { "printf '%s\\n' '\($0)'" } + [tail]).joined(separator: "\n") + "\n"
         let path = dir.appendingPathComponent("svall").path
@@ -28,15 +27,4 @@ func pkill(_ script: String) {
     kill.arguments = ["-9", "-f", script]
     try? kill.run()
     kill.waitUntilExit()
-}
-
-/// Whether any process still runs a fake helper's script.
-func running(_ script: String) -> Bool {
-    let find = Process()
-    find.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
-    find.arguments = ["-f", script]
-    find.standardOutput = FileHandle.nullDevice
-    try? find.run()
-    find.waitUntilExit()
-    return find.terminationStatus == 0
 }

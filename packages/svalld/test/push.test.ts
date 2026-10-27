@@ -212,7 +212,7 @@ describe('turning the phone link off', () => {
         return Promise.resolve({ serving: false, url: '', port: 443, logins: [], phones: [], error: 'tailscale is Stopped' });
       },
     };
-    const set = (enabled: boolean) => dispatch({ id: 1, method: 'mobile.set', params: { enabled } }, { mobile, push, ownership: { assertOwner: () => {} } } as unknown as Ctx);
+    const set = (enabled: boolean) => dispatch({ id: 1, method: 'mobile.set', params: { enabled } }, { mobile, push } as unknown as Ctx);
     await set(true);
     expect(push.list()).toHaveLength(1);
     await set(false);

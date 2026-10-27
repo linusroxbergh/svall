@@ -11,7 +11,7 @@ import type { Config } from '../config.js';
 import type { Proc } from '../dormancy.js';
 import { refreshMany, slice, type Deps as LinkDeps } from '../links/refresh.js';
 import type { Logger } from '../log.js';
-import { secondName, snapshot, syncWindow, type Carried } from '../reconcile.js';
+import { secondName, snapshot, syncWindow } from '../reconcile.js';
 import type { Scribe } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
 import { isShellCommand, type LiveWindow, type Tmux } from '../tmux/tmux.js';
@@ -24,11 +24,11 @@ const RESUME_MS = 60_000;
 /** A resume typed into a revived terminal: the session it resumes and the command that resumes it again. */
 export type Resume = { robotId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
 
-// the resume a revive types, when it brings back the session of the agent the terminal keeps for a handover that
-// carries it or could not resume it; any other resume that fails leaves its terminal at the shell
-export function resumeOf(slot: TerminalSlot | undefined, carried: boolean, robotId: string, term?: 2): Resume | undefined {
+// the resume a revive types, when it brings back the session of a terminal a move carries or that could not resume it;
+// any other resume that fails leaves its terminal at the shell
+export function resumeOf(slot: TerminalSlot | undefined, moved: boolean, robotId: string, term?: 2): Resume | undefined {
   const { agent, revive } = slot ?? {};
-  if (!agent || !revive?.command.includes(agent.sessionId) || (!carried && slot?.resumeError === undefined)) return undefined;
+  if (!agent || !revive?.command.includes(agent.sessionId) || (!moved && slot?.resumeError === undefined)) return undefined;
   return { robotId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
@@ -48,8 +48,6 @@ type Deps = {
   // the windows tmux has, less those still closing for idleness or a sleep
   listWindows: () => Promise<LiveWindow[]>;
   endIdleAgents: () => Promise<void>;
-  writable: () => boolean;
-  carried: Carried;
   // each revived terminal's resume, by window name, until its session starts
   resuming: Map<string, Resume>;
   // the windows closing, by name, until tmux has closed them
@@ -129,33 +127,32 @@ export class Poll {
   }
 
   private async tick(): Promise<void> {
-    if (!this.deps.writable()) return;
     const before = snapshot(this.deps.store.state);
     const activeAt = new Map(Object.values(this.deps.store.state.robots)
       .flatMap((c) => [[c.id, c.agent?.lastActivityAt], [secondName(c.id), c.second?.agent?.lastActivityAt]]));
     const live = await this.deps.listWindows();
-    // a stop while tmux answered has ended what the listing shows, and a freeze leaves the fleet to the handover
-    if (this.stopped || !this.deps.writable()) return;
+    // a stop while tmux answered has ended what the listing shows
+    if (this.stopped) return;
     const byName = new Map(live.map((w) => [w.name, w]));
     const atShell = (key: string, agent?: Agent) => (agent?.pid && isShellCommand(byName.get(key)?.command ?? '', this.deps.config.shell) ? [agent.pid] : []);
     // an agent ctrl+z stopped leaves its shell in front until `fg` brings it back
     const suspended = await stoppedPids(Object.values(this.deps.store.state.robots).filter(this.deps.runsHere)
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
-    if (this.stopped || !this.deps.writable()) return;
+    if (this.stopped) return;
     const cwdChanged: string[] = [];
     const silent: { id: string; pid: number }[] = [];
     const closing: { key: string; windowId: string; error: string }[] = [];
     const { resuming } = this.deps;
     const resumeMs = this.deps.resumeMs ?? RESUME_MS;
-    // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd; one a handover
-    // has yet to start is still to be resumed there, and one resumed that never started its session goes dormant again
-    const settleAgent = (key: string, slot: TerminalSlot, command: string, carried: boolean, dormant: (s: TerminalSlot) => void) => {
+    // an agent whose pane is back at a shell prompt for two polls has ended without a SessionEnd, and one resumed that
+    // never started its session goes dormant again
+    const settleAgent = (key: string, slot: TerminalSlot, command: string, dormant: (s: TerminalSlot) => void) => {
       const resume = resuming.get(key);
       const shell = isShellCommand(command, this.deps.config.shell);
       if (resume && !shell) resume.ran = true;
       // an agent that reported in while tmux answered is not the one the listing shows at a shell
       if (slot.agent && slot.agent.lastActivityAt !== activeAt.get(key)) { this.shellStreak.delete(key); return; }
-      if (slot.agent && shell && !carried && !suspended.has(slot.agent.pid ?? 0)) {
+      if (slot.agent && shell && !suspended.has(slot.agent.pid ?? 0)) {
         const n = (this.shellStreak.get(key) ?? 0) + 1;
         this.shellStreak.set(key, n);
         if (n < 2) return;
@@ -177,7 +174,7 @@ export class Poll {
     this.deps.store.update((d) => {
       for (const c of Object.values(d.robots).filter(this.deps.runsHere)) {
         const cwd = c.cwd;
-        const w = syncWindow(c, byName, before, { carried: this.deps.carried, settle: settleAgent, atShell: (key) => this.atShell(key) });
+        const w = syncWindow(c, byName, before, { settle: settleAgent, atShell: (key) => this.atShell(key) });
         if (c.cwd !== cwd) cwdChanged.push(c.id);
         if (!w) continue;
         // Codex should report promptly; three polls without an event means delivery needs attention.
@@ -258,7 +255,7 @@ export class Poll {
   // dropped; any other codex is silent for its hooks' sake
   private async markSilent(silent: { id: string; pid: number }[]): Promise<void> {
     const procs = await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; });
-    if (!procs || this.stopped || !this.deps.writable()) return;
+    if (!procs || this.stopped) return;
     this.deps.store.update((d) => {
       for (const { id, pid } of silent) {
         const c = d.robots[id];

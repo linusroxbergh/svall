@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { describe, expect, it } from 'vitest';
 import { onPath } from '../src/agents.js';
-import { HANDOVER_KINDS, agentAdapters, probeAgent, realProbeDeps } from '../src/handover/sessions/registry.js';
+import { HANDOVER_KINDS, agentAdapters, probeAgent, realProbeDeps } from '../src/sessions/registry.js';
 import { claudePaths } from '../src/paths.js';
 
 describe('test isolation', () => {
@@ -14,7 +14,7 @@ describe('test isolation', () => {
     expect(process.env.SVALL_TERM).toBeUndefined();
   });
 
-  it("finds a double for every CLI a test could reach the owner's machine through, before the real one", () => {
+  it("finds a double for every CLI a test could reach this machine's own setup through, before the real one", () => {
     const doubles = [process.env.SVALL_TEST_BIN, path.join(import.meta.dirname, 'fixtures/bin')];
     for (const bin of ['claude', 'codex', 'tailscale', 'gh', 'launchctl']) expect(doubles, bin).toContain(onPath(bin, process.env.PATH!));
   });
@@ -32,7 +32,7 @@ describe('test isolation', () => {
     await expect(run('codex', ['resume', '-c', 'tui.resume_cwd=session', sid])).rejects.toMatchObject({ code: 1, stderr: `no rollout found for thread id ${sid}\n` });
   });
 
-  // a whole vitest run of sessions.test.ts: a few seconds alone, several times that beside the full suite
+  // a whole vitest run of adapters.test.ts: a few seconds alone, several times that beside the full suite
   it('leaves the HOME a runner that does not move it gives the tests that write a Claude config', async () => {
     const home = fs.mkdtempSync('/tmp/svall-sentinel-');
     try {
@@ -43,7 +43,7 @@ describe('test isolation', () => {
       const before = claude();
       // the package on its own, as `pnpm --filter @svall/svalld exec vitest` runs it, without the root config's isolate.ts
       const vitest = path.join(import.meta.dirname, '../../../node_modules/.bin/vitest');
-      const { stdout } = await promisify(execFile)(vitest, ['run', 'test/handover/sessions.test.ts'], {
+      const { stdout } = await promisify(execFile)(vitest, ['run', 'test/sessions/adapters.test.ts'], {
         cwd: path.join(import.meta.dirname, '..'), env: { ...process.env, HOME: home, CI: '1', NO_COLOR: '1' },
       });
       expect(stdout).toMatch(/Test Files +1 passed \(1\)/);

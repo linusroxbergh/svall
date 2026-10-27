@@ -11,7 +11,6 @@ import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
-import { OwnershipState } from '../../src/ownership/state.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs, noteConflict } from '../../src/placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from '../../src/placement/far-viewers.js';
@@ -35,7 +34,7 @@ import { makeHome } from '../helpers.js';
 
 export const W = MachineId.parse(crypto.randomUUID());
 export const H = MachineId.parse(crypto.randomUUID());
-const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
+const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } };
 const agentHomes = { claude: '/Users/ada/.claude', codex: '/Users/ada/.codex', opencode: '/Users/ada/.config/opencode' };
 const via = { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' };
 
@@ -67,7 +66,7 @@ function storeWith(paths: Paths, state: Partial<FleetState>): Store {
 }
 
 // the parts of the API context the calls under test read
-const ctxOf = (store: Store, fleet: Fleet, ownership: OwnershipState, router: Router, more: Partial<Ctx>): Ctx => ({ store, fleet, ownership, router, viewer, ...more }) as unknown as Ctx;
+const ctxOf = (store: Store, fleet: Fleet, router: Router, more: Partial<Ctx>): Ctx => ({ store, fleet, router, viewer, ...more }) as unknown as Ctx;
 
 type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
@@ -98,7 +97,6 @@ export function world(o: {
   workerPaths.docs = path.join(workerPaths.cache, 'docs');
   const token = issueToken(homePaths, W);
   const homeStore = storeWith(homePaths, o.home ?? {});
-  const homeOwnership = OwnershipState.load({ paths: homePaths, fleetId: config.id, machineId: H, log: silentLogger, standalone: true });
   let version = 100;
   const homeLog = o.homeLog ?? silentLogger;
   const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(homeStore.state.robots, id), 100);
@@ -139,7 +137,7 @@ export function world(o: {
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
   const homeDocsRoot = (c: Robot) => homeRootOf(c, homeStore.state.machines, '/Users/ada');
   const homeFleet = new Fleet({
-    store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, ownership: homeOwnership, remote: homeRouter,
+    store: homeStore, tmux: untouchable, paths: homePaths, config, log: silentLogger, remote: homeRouter,
     repoRoot: homeDocsRoot, runScribe: o.scribe?.home,
   });
   const homeUsage = usageOf(homeStore, homeRouter);
@@ -151,14 +149,13 @@ export function world(o: {
   );
   const remoteWatches = new RemoteWatches({ links, router: homeRouter });
   const homeTerminals = new TerminalHub(homeFleet, untouchable, homeStore, homeLog, { router: homeRouter, links });
-  const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, {
+  const homeCtx = ctxOf(homeStore, homeFleet, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
     mirror: homeMirror, fleetFlag: '',
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
   workerStore.update((d) => { d.scribeOff = true; });
-  const workerOwnership = OwnershipState.load({ paths: workerPaths, fleetId: config.id, machineId: W, log: silentLogger, standalone: true });
   const handlers: Handlers = {};
   const outbox = Outbox.open(workerPaths);
   const connection = new HomeConnection({
@@ -176,7 +173,7 @@ export function world(o: {
   const workerTmux = { ...o.tmux } as Tmux;
   const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
   const workerFleet = new Fleet({
-    store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, ownership: workerOwnership, remote: workerRouter,
+    store: workerStore, tmux: workerTmux, paths: workerPaths, config, log: silentLogger, remote: workerRouter,
     report: (r) => connection.report(r), readProcs: async () => [], processes: async () => [], refreshLinks: async () => {},
     created: (c, p) => mutations.created(c, p), repoRoot: workerDocsRoot,
     runScribe: o.scribe?.worker,
@@ -204,7 +201,7 @@ export function world(o: {
     }, workerDocs?.handlers,
     workerMirror?.calls,
   );
-  const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());

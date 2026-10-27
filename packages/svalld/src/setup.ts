@@ -1,15 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { OwnerRecord, type AgentKind, type MachineId } from '@svall/protocol';
+import type { AgentKind } from '@svall/protocol';
 import {
   claudeHooksCurrent, codexHooksCurrent, hookRemovals, installClaudeHooks, installCodexHooks, readCodexHooks, requireWritableHooks, type Removal,
 } from './agent-hooks.js';
 import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
 import { initConfig, loadConfig, peekConfig, reservedFleetNames } from './config.js';
-import { writeDurable } from './handover/durable.js';
+import { writeDurable } from './durable.js';
 import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
-import { machineId } from './machine.js';
 import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, homePrefix, profileLabel, profileOf, reservedProfileHomes } from './profile.js';
 import { HOOK_SCRIPT, expandHome, realPath, resolvePaths, type Paths } from './paths.js';
@@ -187,14 +186,6 @@ function writeShims(shimDir: string, runtime: Runtime): string[] {
   });
 }
 
-// the machine this fleet's ownership record names, when it is not this one; no other can own a fleet no gateway holds
-function ownedElsewhere(paths: Paths): MachineId | undefined {
-  if (!peekConfig(paths).gatewayMachineId) return undefined;
-  let owner: MachineId;
-  try { owner = OwnerRecord.parse(JSON.parse(fs.readFileSync(paths.owner, 'utf8'))).ownerMachineId; } catch { return undefined; }
-  return owner === machineId() ? undefined : owner;
-}
-
 export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks?: JsonSettings; shimDir: string; runtime: Runtime; replaceSettings: boolean }): string[] {
   const paths = resolvePaths(o.home);
   // a first install runs from a staging copy that is deleted after it, so the hooks name the installed node
@@ -205,10 +196,7 @@ export function setupUser(o: { home: string; settings?: JsonSettings; codexHooks
   // the home folder comes last and never fails the run: an unreadable config or an unwritable cwd
   // must not cost the user the hooks, the plist and the shim
   try {
-    // mission control's folder travels with the fleet, so only the machine that owns it writes there
-    const owner = ownedElsewhere(paths);
-    if (owner) done.push(`home folder left as it is, as ${owner} owns this fleet`);
-    else done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings }));
+    done.push(...installHomeTemplate(loadConfig(paths).home.cwd, { replaceSettings: o.replaceSettings }));
   } catch (e) {
     done.push(`home folder skipped: ${(e as Error).message}`);
   }

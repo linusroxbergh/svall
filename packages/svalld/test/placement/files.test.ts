@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, MachineId, emptyState, farRootId, type Event, type ResourceSource } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir, repoSlug } from '../../src/docs.js';
-import { relocate } from '../../src/handover/relocate.js';
+import { relocate } from '../../src/placement/relocate.js';
 import type { HomeLinks } from '../../src/link/home.js';
 import { silentLogger } from '../../src/log.js';
 import { resolvePaths } from '../../src/paths.js';

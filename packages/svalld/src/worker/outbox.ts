@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
-import { appendDurable, writeDurable } from '../handover/durable.js';
+import { appendDurable, writeDurable } from '../durable.js';
+import { boundary } from '../failpoints.js';
 import type { Paths } from '../paths.js';
 
 // an unacknowledged entry gives way to a later one of the same kind and key
@@ -44,8 +45,10 @@ export class Outbox {
   append(kind: string, data: unknown, key?: string): number {
     const entry: Entry = { seq: this.lastSeq + 1, kind, data, ...(key !== undefined && { key }) };
     const kept = key === undefined ? this.entries : this.entries.filter((e) => e.kind !== kind || e.key !== key);
-    if (kept.length < this.entries.length) writeDurable(this.paths.outbox, lines([...kept, entry]));
-    else appendDurable(this.paths.outbox, entry);
+    boundary('worker.outbox.append', () => {
+      if (kept.length < this.entries.length) writeDurable(this.paths.outbox, lines([...kept, entry]));
+      else appendDurable(this.paths.outbox, entry);
+    });
     this.entries = [...kept, entry];
     this.lastSeq = entry.seq;
     return entry.seq;
@@ -61,10 +64,10 @@ export class Outbox {
     const upTo = Math.min(seq, this.lastSeq);
     if (upTo <= this.ackedSeq) return;
     record?.(this.entries.filter((e) => e.seq <= upTo));
-    writeDurable(this.paths.acked, Buffer.from(`${upTo}\n`));
+    boundary('worker.outbox.acked', () => writeDurable(this.paths.acked, Buffer.from(`${upTo}\n`)));
     this.ackedSeq = upTo;
     this.entries = this.after(upTo);
-    writeDurable(this.paths.outbox, lines(this.entries));
+    boundary('worker.outbox.trim', () => writeDurable(this.paths.outbox, lines(this.entries)));
   }
 
   last(): number {

@@ -17,7 +17,7 @@ type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
 const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
 const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'a command is running; move anyway and it ends' };
-// as the handover sheet's interrupt: Escape at once
+// the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
 type Answer = { ok: true; sheet: What } | { ok: false; refusal: Refusal } | { error: string };
@@ -98,11 +98,11 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {refusal && (
           <>
             <div className="host-note" data-testid="move-refusal">
-              <span><span data-testid="move-reason">{refusal.reason}</span><span className="ho-sub">{refusal.action}</span></span>
+              <span><span data-testid="move-reason">{refusal.reason}</span><span className="modal-sub">{refusal.action}</span></span>
               {refusal.details.length > 0 && (
-                <details className="ho-more" data-testid="move-details">
+                <details className="modal-more" data-testid="move-details">
                   <summary>details</summary>
-                  <div className="ho-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
+                  <div className="modal-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
                 </details>
               )}
             </div>
