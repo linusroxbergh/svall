@@ -54,10 +54,12 @@ describe('the retro service', () => {
     expect(w.retro.status(plan.id)).toMatchObject({ stage: 'planned' });
   });
 
-  it('saves the exclusions and picks a plan is given to fleet.json', async () => {
+  it('adds the exclusions a plan is given to the saved ones, and saves its picks in place of theirs', async () => {
     const w = world();
     await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { islands: ['i_x'] }, unrecorded: ['/code/docs'] });
     expect(readFleetConfig(w.paths).retro).toMatchObject({ exclude: { repos: [], islands: ['i_x'] }, unrecorded: ['/code/docs'] });
+    await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { repos: ['/code/life'], islands: ['Life', 'i_x'] }, unrecorded: ['/code/app'] });
+    expect(readFleetConfig(w.paths).retro).toMatchObject({ exclude: { repos: ['/code/life'], islands: ['i_x', 'Life'] }, unrecorded: ['/code/app'] });
   });
 
   it('reports a run a restart interrupted, and drops its batches', async () => {

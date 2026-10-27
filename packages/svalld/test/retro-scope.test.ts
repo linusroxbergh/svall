@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -80,8 +81,41 @@ describe('scope', () => {
       { repo: plain, count: 2, picked: false }, { repo: '/nonexistent/gone', count: 1, picked: true }, { repo: 'unknown', count: 1, picked: false },
     ]);
     expect(r.inScope.map((c) => [c.session, c.repo])).toEqual([['A', undefined]]);
-    // asked once for the folder two sessions share, and never for the one that is gone
-    expect(calls).toBe(1);
+    // asked once for the folder two sessions share, and for the one gone by the nearest folder still there
+    expect(calls).toBe(2);
+  });
+
+  it('puts a session in a worktree removed since in its repo', async () => {
+    const repo = makeHome();
+    execFileSync('git', ['init', '-q', repo]);
+    expect(await repoFinder()(path.join(repo, '.claude', 'worktrees', 'gone'))).toBe(fs.realpathSync(repo));
+  });
+
+  it('compares repos by real path, and leaves out an excluded repo even when it is picked', async () => {
+    const [real, other] = [fs.realpathSync(makeHome()), fs.realpathSync(makeHome())];
+    const link = path.join(makeHome(), 'link');
+    fs.symlinkSync(real, link);
+    const repoOf = repos({ '/w/a': real, '/w/b': other });
+    const picked = await scope({ ...base, candidates: [cand('A', { cwd: '/w/a' })], unrecorded: [link], repoOf });
+    expect(picked.inScope.map((c) => c.session)).toEqual(['A']);
+    expect(picked.counts.unrecorded).toEqual([{ repo: real, count: 1, picked: true }]);
+    const out = await scope({
+      ...base, repoOf, candidates: [cand('A', { cwd: '/w/a' }), cand('B', { cwd: '/w/b' }), cand('C')],
+      own: new Map([['C', rec('C', { repo: other })]]), exclude: { repos: [link, `${other}/`], islands: [] }, unrecorded: [link, other],
+    });
+    expect(out.inScope).toEqual([]);
+    expect(out.counts).toMatchObject({ inScope: 0, excluded: 3, unrecorded: [] });
+  });
+
+  it("takes a Codex sub-agent's rollout as the session that started it", async () => {
+    const child = (parent: string) => cand(`${parent}-child`, { agent: 'codex', cwd: '/r', parent });
+    const r = await scope({
+      ...base, candidates: [child('THEIRS'), child('LIFE'), child('MINE')], others: new Set(['THEIRS']),
+      own: new Map([['LIFE', rec('LIFE', { island: 'i_life' })], ['MINE', rec('MINE')]]),
+      exclude: { repos: [], islands: ['i_life'] }, unrecorded: ['/r'], repoOf: repos({ '/r': '/r' }),
+    });
+    expect(r.inScope.map((c) => [c.session, c.record?.session])).toEqual([['MINE-child', 'MINE']]);
+    expect(r.counts).toMatchObject({ otherFleets: 1, excluded: 1, unrecorded: [] });
   });
 });
 
@@ -110,6 +144,12 @@ describe('discover', () => {
     const x1 = touch(path.join(day, `rollout-2026-10-20T10-00-00-${X1}.jsonl`), `{"type":"session_meta","payload":{"id":"${X1}","cwd":"/w/two"}}\n`, IN);
     touch(path.join(day, `rollout-2026-10-19T10-00-00-${X2}.jsonl`), `{"type":"session_meta","payload":{"id":"${X2}","cwd":"/w/two"}}\n`, OLD);
     touch(path.join(day, 'notes.txt'), '', IN);
+    // a sub-agent's rollout: its own session_meta first, naming its parent, then its parent's
+    const X3 = '019eefb3-8d5c-7b00-ad02-80c4930f7428';
+    const x3 = touch(path.join(day, `rollout-2026-10-20T10-05-00-${X3}.jsonl`), [
+      `{"type":"session_meta","payload":{"id":"${X3}","parent_thread_id":"${X1}","cwd":"/w/sub"}}`,
+      `{"type":"session_meta","payload":{"id":"${X1}","cwd":"/w/two"}}`,
+    ].join('\n') + '\n', IN);
 
     const listed = [{ id: 'ses_new', title: 't', updated: IN, created: OLD, projectId: 'p', directory: '/w/three' }, { id: 'ses_old', title: 't', updated: OLD, created: OLD, projectId: 'p', directory: '/w/three' }];
     const dirs: (string | undefined)[] = [];
@@ -122,6 +162,7 @@ describe('discover', () => {
     const found = await discover({ span: { from: FROM, to: IN }, claudeDir, codexDir, opencode: () => opencodeSessions(['/w/three', '/w/three/wt', '/w/broken'], run) });
     expect(found.sort((a, b) => a.session.localeCompare(b.session))).toEqual([
       { agent: 'codex', session: X1, file: x1, cwd: '/w/two', mtime: IN },
+      { agent: 'codex', session: X3, file: x3, cwd: '/w/sub', mtime: IN, parent: X1 },
       { agent: 'claude', session: S1, file: s1, cwd: '/w/one', mtime: IN, subagents: [sub] },
       { agent: 'opencode', session: 'ses_new', file: '', cwd: '/w/three', mtime: IN },
     ]);

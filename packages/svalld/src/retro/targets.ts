@@ -45,9 +45,14 @@ const SETTINGS = /^(settings(\.local)?|hooks)\.json$/;
 const tilde = (p: string, home: string): string => (within(p, home) ? `~${p.slice(home.length)}` : p);
 const sha256 = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex');
 
-/** The skills and rule files the agents read here, mission control's and the repos' included; the first of a name or a real path is kept. */
-export function inventory(o: { homedir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean }): Target[] {
-  const claude = path.join(o.homedir, '.claude'), codex = path.join(o.homedir, '.codex');
+/**
+ * The skills and rule files the agents read here, from Claude's and Codex's own folders, ~/.agents, mission control's and
+ * the repos'; the first of a name or a real path is kept.
+ */
+export function inventory(o: {
+  homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean;
+}): Target[] {
+  const claude = o.claudeDir, codex = o.codexDir;
   const roots = [o.homeCwd, ...o.repos];
   const found: Found[] = [
     ...skillsIn(path.join(claude, 'skills')), ...syncedSkills(claude), ...skillsIn(path.join(o.homedir, '.agents/skills')), ...skillsIn(path.join(codex, 'skills')),

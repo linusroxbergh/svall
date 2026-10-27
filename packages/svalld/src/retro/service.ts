@@ -88,9 +88,11 @@ export class Retro {
   async plan(p: ParsedParams<'retro.plan'>): Promise<RetroPlan> {
     let retro = this.d.config().retro;
     if (p.exclude || p.unrecorded) {
+      // exclusions add to the saved ones, which only `svall retro config --include-*` removes; picks replace theirs
+      const add = (saved: string[], more: string[] = []) => [...new Set([...saved, ...more])];
       retro = {
         ...retro,
-        exclude: { repos: p.exclude?.repos ?? retro.exclude.repos, islands: p.exclude?.islands ?? retro.exclude.islands },
+        exclude: { repos: add(retro.exclude.repos, p.exclude?.repos), islands: add(retro.exclude.islands, p.exclude?.islands) },
         unrecorded: p.unrecorded ?? retro.unrecorded,
       };
       patchFleetConfig(this.d.paths.fleetConfig, { retro });
@@ -229,7 +231,7 @@ export class Retro {
   }
 
   private inventory(repos: string[], retro: FleetConfig['retro']): Target[] {
-    return inventory({ homedir: this.d.homedir, repos, homeCwd: expandHome(this.d.store.state.home.cwd, this.d.homedir), reviewSkills: retro.reviewSkills, isGitWithRemote });
+    return inventory({ homedir: this.d.homedir, claudeDir: this.d.claudeDir, codexDir: this.d.codexDir, repos, homeCwd: expandHome(this.d.store.state.home.cwd, this.d.homedir), reviewSkills: retro.reviewSkills, isGitWithRemote });
   }
 
   private async makePlan(span: RetroPlan['span'], focus: FocusPick, retro: FleetConfig['retro']): Promise<RetroPlan> {

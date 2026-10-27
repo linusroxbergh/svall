@@ -28,12 +28,16 @@ export function outlineCodex(text: string, file: string, span: Span): Outline {
   let session = path.basename(file, '.jsonl'), cwd: string | undefined, model: string | undefined, branch: string | undefined;
   // what was said last: a version that wrote it both as an event and as an item says it twice in a row
   let said: string | undefined;
+  // a sub-agent's rollout holds its parent's session_meta after its own
+  let met = false;
   text.split('\n').forEach((raw, i) => {
     const l = raw.startsWith('{') ? orSkip(() => JSON.parse(raw) as Line) : undefined;
     if (!l?.payload) return;
     const p = l.payload;
     const n = i + 1;
     if (l.type === 'session_meta') {
+      if (met) return;
+      met = true;
       session = p.id ?? session;
       cwd = p.cwd ?? cwd;
       branch = p.git?.branch ?? branch;

@@ -96,6 +96,14 @@ describe('outlineClaude', () => {
     expect(o.turns.some((t) => t.text.includes('OUTPUT-MARKER'))).toBe(false);
   });
 
+  it("leaves out a sidechain's lines", () => {
+    const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
+      + line({ type: 'assistant', isSidechain: true, message: { content: [{ type: 'text', text: 'a subagent answer' }, { type: 'tool_use', id: 't1', name: 'Bash', input: {} }] }, timestamp: '2026-10-26T09:00:01.000Z' });
+    const o = outlineClaude(text, file, span);
+    expect(o.turns.map((t) => t.text)).toEqual(['go']);
+    expect(o.tools).toBe(0);
+  });
+
   it('keeps a PR body a gh call writes to 1500, as the rules it is judged by need it', () => {
     const body = `gh pr create --title t --body "${'b'.repeat(3000)}"`;
     const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
@@ -129,6 +137,18 @@ describe('outlineCodex', () => {
     expect(o.commands).toEqual([{ text: 'cat /u/.codex/skills/review/SKILL.md', failed: false }, { text: 'pnpm lint', failed: true }]);
     expect(o.prs).toEqual(['https://github.com/acme/app/pull/7']);
     expect(o.turns.some((t) => t.text.includes('SKILL-BODY-MARKER') || t.text.includes('environment_context'))).toBe(false);
+  });
+
+  it("drops a resumed rollout's lines before the span", () => {
+    const o = outlineCodex(text, rollout, { from: Date.parse('2026-10-26T10:00:30.000Z'), to: span.to });
+    expect(o.prompts.map((t) => t.text)).toEqual(['stop, just open the PR']);
+    expect([o.skills, o.commands, o.tools, o.interrupts]).toEqual([[], [], 0, 0]);
+  });
+
+  it("names a sub-agent's rollout by its own session_meta, not its parent's after it", () => {
+    const meta = (id: string, cwd: string, branch: string, more = {}) => line({ timestamp: '2026-10-26T10:00:00.000Z', type: 'session_meta', payload: { id, cwd, git: { branch }, ...more } });
+    const o = outlineCodex(meta('child', '/w/sub', 'sub', { parent_thread_id: 'parent' }) + meta('parent', '/w', 'main'), rollout, span);
+    expect(o).toMatchObject({ session: 'child', cwd: '/w/sub', branch: 'sub' });
   });
 });
 
