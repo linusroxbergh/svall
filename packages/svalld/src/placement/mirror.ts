@@ -83,13 +83,17 @@ export type MirrorPlan = {
 
 const Shas = z.record(z.string(), Sha256);
 const Copies = z.record(z.string(), z.union([Sha256, z.array(Sha256)]));
+const Bare = z.record(z.string(), z.object({ value: z.string().optional(), envVar: z.literal(true).optional() }));
 /**
  * What the mirror last wrote on a worker, by sha256: each file by its `to`, each doc's keys, each server and each copied
  * value by the JSON of its doc and the keys that lead to it there; each server copied whole, by its keys in any order,
- * and each file holding a ticked key. A value an apply cut short may have left as either of two.
+ * and each file holding a ticked key. A value an apply cut short may have left as either of two. Beside them each copied
+ * value's bare form, what an untick leaves at its place: its value, none where it goes, `envVar` where a Codex server's
+ * env_vars then names it; and the sequence of the last push applied.
  */
 export const WorkerState = z.object({
-  files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(),
+  files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),
+  applied: z.number().int().nonnegative().optional(),
 });
 export type WorkerState = z.infer<typeof WorkerState>;
 type Copied = WorkerState['secrets'][string];
@@ -117,6 +121,7 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
     files: shas(state.files, next.files), servers: shas(state.servers, next.servers),
     docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
     secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
+    bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }),
   };
 }
 /** The Mac's home and its project folders, which the worker answers for. */
@@ -171,7 +176,7 @@ const Manifest = z.object({
 });
 type Manifest = z.infer<typeof Manifest>;
 const Offer = z.object({ id: z.string(), sha256: Sha256 });
-const ById = z.object({ id: z.string() });
+const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 
 const statOf = (file: string): fs.Stats | undefined => {
   try { return fs.statSync(file); } catch { return undefined; }
@@ -723,18 +728,23 @@ function setLeaf(doc: Doc, l: Leaf, v: string | undefined): void {
 }
 
 // one secret value, `was` the doc before this apply: a ticked one is the Mac's unless it would go over the worker's own
-// and may not; a copied one is emptied once unticked; the worker's own goes back where the merge wrote over it
-function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, secrets: WorkerState['secrets']): void {
+// and may not; a copied one is emptied once unticked; the worker's own goes back where the merge wrote over it. The
+// record `next` keeps each copy with its bare form
+function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next: WorkerState): void {
   const pre = getAt(was, l.place);
   const copied = isCopy(recorded, pre);
   const own = typeof pre === 'string' && pre !== '' && pre !== l.bare && !copied && (l.named || !l.remerged);
   const now = getAt(doc, l.place);
+  const keep = (h: Copied): void => {
+    next.secrets[l.record] = h;
+    (next.bare ??= {})[l.record] = { ...(l.bare !== undefined && { value: l.bare }), ...(l.server && { envVar: true as const }) };
+  };
   if (l.want !== undefined && (l.overOwn || !own)) {
     if (now !== l.want) setLeaf(doc, l, l.want);
-    secrets[l.record] = sha256Hex(l.want);
+    keep(sha256Hex(l.want));
     return;
   }
-  if (recorded !== undefined) secrets[l.record] = recorded;
+  if (recorded !== undefined) keep(recorded);
   if (copied && now !== l.bare) setLeaf(doc, l, l.bare);
   else if (own && now !== pre) setLeaf(doc, l, pre as string);
 }
@@ -757,10 +767,13 @@ function leavesOf(fields: string[], placeOf: (field: string) => Place | undefine
  * each the home no longer carries removed, and the overrides last. A record of everything this apply may write goes
  * first, so an apply cut short still knows each copy it left; the record of what it wrote goes last.
  */
-export function applyMirror(blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string }): { written: string[]; removed: string[] } {
+export function applyMirror(
+  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number },
+): { written: string[]; removed: string[] } {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
   const state = readState(o.stateFile);
-  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {} };
+  const applied = o.seq ?? state.applied;
+  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }) };
   const written: string[] = [];
   const removed: string[] = [];
   const move = mover(m.homes, o);
@@ -935,10 +948,13 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
   Object.assign(next.servers, servers);
 
-  for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next.secrets);
+  for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next);
   // a value copied where the Mac now holds no secret is emptied as that place stands bare, while it is still the copy
   for (const [k, h] of records(state.secrets)) {
-    if (leave) next.secrets[k] ??= h;
+    if (leave) {
+      next.secrets[k] ??= h;
+      if (state.bare?.[k]) (next.bare ??= {})[k] ??= state.bare[k];
+    }
     if (leave || Object.hasOwn(next.secrets, k)) continue;
     const place = (JSON.parse(k) as Place).slice(1);
     const s = carried.find((c) => c.place.every((p, i) => place[i] === p));
@@ -960,6 +976,8 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
 export class Mirror {
   // each worker's last push, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
+  // each worker's last push sequence, which its next one goes above
+  private sent = new Map<MachineId, number>();
 
   /** `overridesThere`: the fleet's overrides folder on a worker, as its rows name it. */
   constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string }) {}
@@ -1031,7 +1049,10 @@ export class Mirror {
       const id = `mirror_${crypto.randomUUID()}`;
       await link.call('config.blob', { id, sha256: await fileSha(file) });
       await link.sendBlob(id, file);
-      await link.call('config.apply', { id }, { timeoutMs: APPLY_MS });
+      // above any push this home gave up on, which the worker may still be applying
+      const seq = Math.max(this.sent.get(link.machine) ?? 0, facts.state.applied ?? 0) + 1;
+      this.sent.set(link.machine, seq);
+      await link.call('config.apply', { id, seq }, { timeoutMs: APPLY_MS });
       return { sent };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -1047,13 +1068,15 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
 
 /**
  * Holds this user's agent files for one mirror's apply, waiting while another fleet's daemon holds them: every fleet's
- * mirror on a machine writes the same files.
+ * mirror on a machine writes the same files. Rejects once `signal` aborts before it holds them.
  */
-export async function lockAgentFiles(homedir: string): Promise<() => void> {
+export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {
   const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
   for (;;) {
+    signal?.throwIfAborted();
     const unlock = await tryLock(path.join(homedir, '.svall-mirror.lock'), name);
-    if (unlock) return unlock;
+    if (unlock && signal?.aborted) unlock();
+    else if (unlock) return unlock;
     await new Promise((r) => setTimeout(r, 100));
   }
 }
@@ -1067,9 +1090,9 @@ function dropBlobs(stage: string): number {
 
 /**
  * Takes back what the mirror copied into this machine's agent files, by the record at `stateFile`, each while it is still
- * the copy: a copied value becomes what an untick leaves there, a server's env key its agent's reference, a settings env
- * key gone and any other key ''; a server copied whole leaves its file; a file holding a ticked key is removed; and a blob
- * left beside the record goes. Answers a line for each file it changed or could not.
+ * the copy: a copied value becomes what an untick leaves there, as the record keeps it, or '' where it keeps none; a
+ * server copied whole leaves its file; a file holding a ticked key is removed; and a blob left beside the record goes.
+ * Answers a line for each file it changed or could not, and for each copy left as it changed there since.
  */
 export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
   const state = readState(o.stateFile);
@@ -1090,33 +1113,41 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
       const place = (JSON.parse(k) as Place).slice(1);
       return d.name === '.claude.json' && place[0] === 'projects' ? projects.map((p) => ['projects', p, ...place.slice(2)]) : [place];
     };
-    let n = 0;
+    // a copy that is neither there as copied nor as an untick leaves it changed there since; one a record may name in
+    // several projects is not told apart from a server of the worker's own
+    let [n, changed] = [0, 0];
     for (const k of keys) {
+      const bare = state.bare?.[k];
       for (const at of places(k)) {
-        if (!isCopy(state.secrets[k], getAt(doc, at))) continue;
-        const key = String(at.at(-1));
-        const leaf: Leaf = { record: k, place: at, named: true, remerged: false, overOwn: true };
-        if (d.name === 'settings.json' && at[0] === 'env' && at.length === 2) setAt(doc, at, undefined);
-        else if (d.name === 'config.toml' && at[0] === 'mcp_servers' && at.at(-2) === 'env') setLeaf(doc, { ...leaf, server: at.slice(0, -2) }, undefined);
-        else if (d.name === '.claude.json' && at.at(-2) === 'env') setAt(doc, at, `\${${key}}`);
-        else if (OPENCODE_FILES.some((f) => f === d.name) && at[0] === 'mcp' && at.at(-2) === 'environment') setAt(doc, at, `{env:${key}}`);
-        else setAt(doc, at, '');
+        const v = getAt(doc, at);
+        if (!isCopy(state.secrets[k], v)) {
+          if (places(k).length === 1 && typeof v === 'string' && v !== '' && v !== bare?.value && !isReferenceOnly(v)) changed += 1;
+          continue;
+        }
+        setLeaf(doc, { record: k, place: at, named: true, remerged: false, overOwn: true, ...(bare?.envVar && { server: at.slice(0, -2) }) }, bare ? bare.value : '');
         n += 1;
       }
     }
-    let w = 0;
+    let [w, rewritten] = [0, 0];
     for (const k of whole) {
       for (const at of places(k)) {
         const v = getAt(doc, at);
-        if (!isDoc(v) || !isCopyOf(state.whole?.[k], serverSha(v))) continue;
+        if (!isDoc(v)) continue;
+        if (!isCopyOf(state.whole?.[k], serverSha(v))) {
+          if (places(k).length === 1) rewritten += 1;
+          continue;
+        }
         setAt(doc, at, undefined);
         w += 1;
       }
     }
-    if (!n && !w) continue;
-    put(d.at(o), Buffer.from(d.format(doc)), (statOf(d.at(o))?.mode ?? 0o600) & 0o777);
-    const took = [n && `${n} ${n === 1 ? 'key' : 'keys'} the mirror copied`, w && `${w} ${w === 1 ? 'server' : 'servers'} the mirror copied whole`].filter(Boolean);
-    done.push(`took ${took.join(' and ')} out of ${d.at(o)}`);
+    const what = (keys: number, servers: number): string => [keys && `${keys} ${keys === 1 ? 'key' : 'keys'} the mirror copied`, servers && `${servers} ${servers === 1 ? 'server' : 'servers'} the mirror copied whole`]
+      .filter(Boolean).join(' and ');
+    if (n || w) {
+      put(d.at(o), Buffer.from(d.format(doc)), (statOf(d.at(o))?.mode ?? 0o600) & 0o777);
+      done.push(`took ${what(n, w)} out of ${d.at(o)}`);
+    }
+    if (changed || rewritten) done.push(`left ${what(changed, rewritten)} in ${d.at(o)}, which changed there since`);
   }
   // every file holding a ticked key is a plugin's, under Claude's folder
   for (const [to, h] of Object.entries(state.keyed ?? {})) {
@@ -1124,7 +1155,10 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     const file = path.join(o.claudeDir, to.slice('claude/'.length));
     let bytes: Buffer;
     try { bytes = fs.readFileSync(realPath(file)); } catch { continue; }
-    if (!isCopyOf(h, sha256Hex(bytes))) continue;
+    if (!isCopyOf(h, sha256Hex(bytes))) {
+      done.push(`left ${file}, which holds keys the mirror copied and changed there since`);
+      continue;
+    }
     try {
       fs.rmSync(realPath(file), { force: true });
       done.push(`removed ${file}, which held keys the mirror copied`);
@@ -1140,13 +1174,14 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
 /**
  * A worker's side: `config.state` answers with its record and which of the Mac's projects it has, `config.report` with
  * what it holds and runs of what the home asks, `config.blob` takes the blob's id before the home sends a byte of it,
- * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed. A blob
- * may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
+ * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed; it refuses
+ * a push whose `seq` is not above the last one applied, and gives up one its link or the home gave up on before it held
+ * the agent files. A blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
   overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;
 }): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
-  const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true }>();
+  const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {
     const b = blobs.get(id);
     blobs.delete(id);
@@ -1163,27 +1198,41 @@ export function mirrorCalls(o: MirrorHomes & {
       const got = o.connection.receiveBlob(id, path.join(dir, 'mirror.tar'));
       // a link that closes before the apply leaves nothing behind
       got.catch(() => drop(id));
-      blobs.set(id, { dir, sha256, got });
+      blobs.set(id, { dir, sha256, got, abandon: new AbortController() });
       return { ready: true };
     },
     'config.apply': async (raw) => {
-      const { id } = parse(ById, raw);
+      const { id, seq } = parse(Apply, raw);
       const b = blobs.get(id);
       if (!b) throw new ApiError('not_found', `no agent configuration ${id} came here`);
       b.applying = true;
+      // the home stops waiting after APPLY_MS
+      const late = setTimeout(() => b.abandon.abort(new ApiError('abandoned', 'the home gave up on this agent configuration before it was applied')), APPLY_MS);
       try {
         if ((await b.got).sha256 !== b.sha256) throw new Error('the agent configuration did not arrive as it left');
         await unpack(path.join(b.dir, 'mirror.tar'), path.join(b.dir, 'blob'));
-        const unlock = await lockAgentFiles(o.homedir);
+        const unlock = await lockAgentFiles(o.homedir, b.abandon.signal);
         let done: { written: string[]; removed: string[] };
-        try { done = applyMirror(path.join(b.dir, 'blob'), o); } finally { unlock(); }
+        try {
+          // an older push would put back what a later one took away
+          const last = readState(o.stateFile).applied;
+          if (last !== undefined && seq <= last) throw new ApiError('stale', `push ${seq} of the agent configuration came after push ${last}, which this machine applied`);
+          done = applyMirror(path.join(b.dir, 'blob'), { ...o, seq });
+        } finally { unlock(); }
         if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent configuration written, ${done.removed.length} removed`);
         return done;
       } finally {
+        clearTimeout(late);
         drop(id);
       }
     },
   };
-  // the one being applied goes once it is
-  return { calls, linkLost: () => { for (const [id, b] of blobs) if (!b.applying) drop(id); } };
+  // one being applied is given up unless it holds the agent files already, and goes once it ends
+  const linkLost = (): void => {
+    for (const [id, b] of blobs) {
+      if (b.applying) b.abandon.abort(new ApiError('abandoned', 'the link closed before this agent configuration was applied'));
+      else drop(id);
+    }
+  };
+  return { calls, linkLost };
 }

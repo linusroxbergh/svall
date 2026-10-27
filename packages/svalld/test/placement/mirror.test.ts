@@ -7,7 +7,7 @@ import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { clearConsent, mask, readConsent, setConsent, tickedFields } from '../../src/placement/mirror-consent.js';
 import { silentLogger } from '../../src/log.js';
 import { applyMirror, lockAgentFiles, MIRROR_FILE_MAX, mirrorCalls, mirrorPlan, packMirror, takeBackCopies } from '../../src/placement/mirror.js';
-import { unpack } from '../../src/placement/move.js';
+import { fileSha, unpack } from '../../src/placement/move.js';
 import { seedTrust } from '../../src/placement/trust.js';
 import { SHIM } from '../../src/profile.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -354,7 +354,7 @@ describe('the agent configuration mirror', () => {
     const jsonc = path.join(worker.opencodeDir, 'opencode.jsonc');
     expect(takeBackCopies(o).sort()).toEqual([
       `took 1 key the mirror copied out of ${jsonc}`, `took 1 key the mirror copied out of ${settings}`, `took 1 key the mirror copied out of ${worker.claudeJson}`,
-      `took 2 keys the mirror copied out of ${toml}`,
+      `took 2 keys the mirror copied out of ${toml}`, `left 1 key the mirror copied in ${worker.claudeJson}, which changed there since`,
     ].sort());
     const claude = json(worker.claudeJson);
     expect(claude.mcpServers.linear.env.LINEAR_API_KEY).toBe('worker-own');
@@ -363,7 +363,7 @@ describe('the agent configuration mirror', () => {
     const codex = parseToml(read(toml)) as any;
     expect([codex.mcp_servers.github.env, codex.mcp_servers.github.env_vars, codex.model_providers.acme.http_headers]).toEqual([{}, ['GITHUB_TOKEN'], { 'X-Key': '' }]);
     expect(json(jsonc).provider.openai.options.apiKey).toBe('');
-    expect(takeBackCopies(o)).toEqual([]);
+    expect(takeBackCopies(o)).toEqual([`left 1 key the mirror copied in ${worker.claudeJson}, which changed there since`]);
   });
   it('takeBackCopies removes a server copied whole, a plugin file holding a ticked key while each is still the copy, and a blob left beside the record; it leaves one the worker changed', async () => {
     const mac = macHome();
@@ -394,12 +394,95 @@ describe('the agent configuration mirror', () => {
       `removed 1 mirror blob left in ${scratch}`,
       `removed ${mcp}, which held keys the mirror copied`, `removed ${settings}, which held keys the mirror copied`,
       `took 1 server the mirror copied whole out of ${toml}`, `took 1 server the mirror copied whole out of ${worker.claudeJson}`,
+      `left 1 server the mirror copied whole in ${worker.claudeJson}, which changed there since`,
     ].sort());
     expect(json(worker.claudeJson).mcpServers).not.toHaveProperty('odd');
     expect(json(worker.claudeJson).mcpServers.mine).toEqual({ command: 'mine-here', sandbox: { token: 'mine_token_1234567890' } });
     expect((parseToml(read(toml)) as any).mcp_servers).not.toHaveProperty('tbl');
     expect([fs.existsSync(mcp), fs.existsSync(settings), fs.existsSync(path.join(scratch, 'mirror-left'))]).toEqual([false, false, false]);
-    expect(takeBackCopies(o)).toEqual([]);
+    expect(takeBackCopies(o)).toEqual([`left 1 server the mirror copied whole in ${worker.claudeJson}, which changed there since`]);
+  });
+
+  it('takeBackCopies leaves each copied value as an untick leaves it, by the kind of leaf its record keeps: a url, arg and header keep the rest, an env key its reference, in a server named env too', async () => {
+    const mac = macHome();
+    editJson(mac.claudeJson, (j) => {
+      j.mcpServers.env = { type: 'http', url: 'https://x.test/mcp?token=tk_fake_1234567890&mode=a', headers: { 'X-Key': 'hk_fake_1234567890' } };
+      j.mcpServers.cli = { command: 'cli', args: ['--api-key=ak_fake_1234567890', '--verbose'] };
+    });
+    fs.appendFileSync(path.join(mac.codexDir, 'config.toml'), '\n[mcp_servers.env]\nurl = "https://c.test/mcp?key=ck_fake_1234567890&v=1"\n');
+    const consent = new Set([
+      'claude:mcp:env#url.token', 'claude:mcp:env#headers.X-Key', 'claude:mcp:cli#args[--api-key]', 'claude:mcp:linear#env.LINEAR_API_KEY', 'codex:mcp:env#url.key',
+      'codex:mcp:github#env.GITHUB_TOKEN', 'claude:settings#env.ANTHROPIC_API_KEY',
+    ]);
+    const scratch = makeHome();
+    const blob = async (name: string, c: Set<string>) => {
+      await packMirror(mirrorPlan(mac, c), path.join(scratch, `${name}.tar`));
+      await unpack(path.join(scratch, `${name}.tar`), path.join(scratch, name));
+      return path.join(scratch, name);
+    };
+    const [ticked, unticked] = [await blob('ticked', consent), await blob('unticked', new Set())];
+    const taken = farHome();
+    const untick = farHome();
+    const at = (h: ReturnType<typeof farHome>) => ({ ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') });
+    applyMirror(ticked, at(taken)); takeBackCopies(at(taken));
+    applyMirror(ticked, at(untick)); applyMirror(unticked, at(untick));
+    const docs = (h: ReturnType<typeof farHome>) => JSON.stringify([
+      json(h.claudeJson).mcpServers, (parseToml(read(path.join(h.codexDir, 'config.toml'))) as any).mcp_servers, json(path.join(h.claudeDir, 'settings.json')).env,
+    ]).replaceAll(h.homedir, '~');
+    expect(docs(taken)).toEqual(docs(untick));
+    expect(json(taken.claudeJson).mcpServers.env).toEqual({ type: 'http', url: 'https://x.test/mcp?token=&mode=', headers: { 'X-Key': '' } });
+    expect((parseToml(read(path.join(taken.codexDir, 'config.toml'))) as any).mcp_servers.env).toEqual({ url: 'https://c.test/mcp?key=&v=' });
+  });
+
+  it('an apply older than the last one applied is refused once it takes the agent files, its blob dropped, so an untick pushed after it stays', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const stage = path.join(scratch, 'cache');
+    const tar = async (name: string, consent: Set<string>) => {
+      await packMirror(mirrorPlan(mac, consent), path.join(scratch, name));
+      return path.join(scratch, name);
+    };
+    const tars: Record<string, string> = { old: await tar('old.tar', new Set(['claude:mcp:linear#env.LINEAR_API_KEY'])), new: await tar('new.tar', new Set()) };
+    const arrive = new Map<string, () => void>();
+    const connection = {
+      receiveBlob: (id: string, into: string) => new Promise<{ sha256: string }>((resolve) => {
+        arrive.set(id, () => { fs.copyFileSync(tars[id], into); void fileSha(into).then((sha256) => resolve({ sha256 })); });
+      }),
+    };
+    const m = mirrorCalls({ ...worker, stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log: silentLogger });
+    await m.calls['config.blob']({ id: 'old', sha256: await fileSha(tars.old) });
+    const old = m.calls['config.apply']({ id: 'old', seq: 1 });
+    await m.calls['config.blob']({ id: 'new', sha256: await fileSha(tars.new) });
+    const applied = m.calls['config.apply']({ id: 'new', seq: 2 });
+    arrive.get('new')!();
+    await applied;
+    arrive.get('old')!();
+    await expect(old).rejects.toMatchObject({ code: 'stale' });
+    expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+    expect(fs.readdirSync(stage).filter((f) => f.startsWith('mirror-') && fs.statSync(path.join(stage, f)).isDirectory())).toEqual([]);
+  });
+
+  it('an apply still waiting for the agent files when its link closes is abandoned and its blob dropped', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const stage = path.join(scratch, 'cache');
+    const file = path.join(scratch, 'm.tar');
+    await packMirror(mirrorPlan(mac, new Set(['claude:mcp:linear#env.LINEAR_API_KEY'])), file);
+    const connection = { receiveBlob: async (_id: string, into: string) => { fs.copyFileSync(file, into); return { sha256: await fileSha(into) }; } };
+    const m = mirrorCalls({ ...worker, stage, stateFile: path.join(stage, 'mirror-state.json'), varsFile: path.join(stage, 'mirror-vars.json'), envFile: path.join(stage, '.env'), connection, log: silentLogger });
+    const unlock = await lockAgentFiles(worker.homedir);
+    await m.calls['config.blob']({ id: 'one', sha256: await fileSha(file) });
+    const apply = m.calls['config.apply']({ id: 'one', seq: 1 });
+    apply.catch(() => {});
+    await new Promise((r) => setTimeout(r, 500));
+    m.linkLost();
+    await expect(apply).rejects.toThrow();
+    unlock();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(fs.existsSync(worker.claudeJson)).toBe(false);
+    expect(fs.readdirSync(stage).filter((f) => f.startsWith('mirror-'))).toEqual([]);
   });
 
 
@@ -414,7 +497,7 @@ describe('the agent configuration mirror', () => {
     expect(fs.readdirSync(stage).filter((f) => f.startsWith('mirror-') && fs.statSync(path.join(stage, f)).isDirectory())).toHaveLength(1);
     m.linkLost();
     expect(fs.readdirSync(stage).sort()).toEqual(['docs-xyz', 'mirror-state.json', 'mirror-vars.json']);
-    await expect(m.calls['config.apply']({ id: 'mirror_1' })).rejects.toMatchObject({ code: 'not_found' });
+    await expect(m.calls['config.apply']({ id: 'mirror_1', seq: 1 })).rejects.toMatchObject({ code: 'not_found' });
   });
 
   it('consent is per field: a new secret field on a ticked server is not ticked; setConsent off clears the item and no other; clearConsent clears the machine; mask', () => {
@@ -762,6 +845,44 @@ describe('the mirror over the link carries servers, plugins and each agent\'s co
     await push(); await push();
     expect(read(path.join(acme, 'skills/pdf/SKILL.md'))).toBe('pdf\n');
     expect(json(path.join(acme, '.mcp.json'))).toMatchObject({ mcpServers: { pdf: { env: { PDF_KEY: '${PDF_KEY}' } } } });
+  });
+
+  it('unticking a copied env key while the Mac changes another field of its server leaves the agent\'s reference on the worker', async () => {
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true); await push();
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+    tick('claude:mcp:linear', [], false);
+    editJson(mac.claudeJson, (j) => { j.mcpServers.linear.args.push('--verbose'); });
+    await push();
+    expect(workerJson().mcpServers.linear).toEqual({ command: 'npx', args: ['-y', 'linear-mcp', '--verbose'], env: { LINEAR_API_KEY: '${LINEAR_API_KEY}' } });
+  });
+
+  it('an apply the home gave up on that reaches the worker after a later untick is refused there, so the key stays emptied', async () => {
+    const link = w.home.links.for(W)!;
+    let first = true;
+    let late: (() => Promise<void>) | undefined;
+    let answer: Promise<unknown> | undefined;
+    const spy = {
+      machine: link.machine,
+      sendBlob: (id: string, file: string | Buffer): Promise<void> => {
+        if (!first) return link.sendBlob(id, file);
+        const bytes = typeof file === 'string' ? fs.readFileSync(file) : file;
+        late = () => link.sendBlob(id, bytes);
+        return Promise.resolve();
+      },
+      call<T>(method: string, params: unknown, o?: Parameters<typeof link.call>[2]): Promise<T> {
+        if (method !== 'config.apply' || !first) return link.call<T>(method, params, o);
+        first = false;
+        answer = link.call(method, params, o).catch((e: unknown) => e);
+        return Promise.reject(new Error('the apply timed out'));
+      },
+    };
+    tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    await expect(w.home.mirror!.push(spy)).rejects.toThrow('the apply timed out');
+    tick('claude:mcp:linear', [], false);
+    await w.home.mirror!.push(spy);
+    await late!();
+    expect(await answer).toMatchObject({ code: 'stale' });
+    expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
   });
 
   it('a path too long for ustar is skipped with a line, and the push still goes', async () => {
