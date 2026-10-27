@@ -181,10 +181,14 @@ async function start(opts: Options): Promise<Daemon> {
 
   // a server an earlier release started, such as one on Ubuntu's own tmux before an upgrade, is reached with a client of
   // its version; with no robot in it, it starts over on this release's, as an older companion's sends the Mac no copy
-  const serving = new Tmux(paths.tmuxSock, paths.tmuxConf, await servingTmux(paths.tmuxSock, readOrUndefined(path.join(paths.home, 'tmux-binary'))));
-  const stale = await serving.startOverStale(resolveTmux());
-  const tmux = stale?.ended ? new Tmux(paths.tmuxSock, paths.tmuxConf) : serving;
-  if (stale && !stale.ended) log.error(`tmux ${stale.running}, an earlier release's, runs the robots here, so a copy or link in their terminals may not reach the Mac; it starts over on ${resolveTmux()} at a daemon start with no robot here`);
+  const own = resolveTmux();
+  const serving = new Tmux(paths.tmuxSock, paths.tmuxConf, await servingTmux(paths.tmuxSock, readOrUndefined(path.join(paths.home, 'tmux-binary')), own));
+  const stale = await serving.startOverStale(own);
+  const tmux = stale && !stale.kept ? new Tmux(paths.tmuxSock, paths.tmuxConf, own) : serving;
+  if (stale?.kept) {
+    const why = { robots: 'runs the robots here', unlisted: 'did not list its windows', unended: 'did not end' }[stale.kept];
+    log.error(`tmux ${stale.running}, not this release's, ${why}, so a copy or link in a robot's terminal may not reach the Mac; it starts over on ${own} at a daemon start with no robot here`);
+  }
   // the conf leaves out what this tmux would refuse, so the version is read before it is written
   const tmuxVersion = await tmux.version();
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));

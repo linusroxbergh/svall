@@ -70,14 +70,14 @@ describe('release root on an installed release', () => {
     const system = path.join(root, 'system-tmux');
     fs.writeFileSync(system, '#!/bin/sh\necho "tmux 3.4"\n', { mode: 0o755 });
     const sock = path.join(root, 'tmux.sock');
-    expect(await servingTmux(sock, system)).toBe(own);
+    expect(await servingTmux(sock, system, own)).toBe(own);
     fs.writeFileSync(sock, 'tmux 3.4\n');
-    expect(await servingTmux(sock, system)).toBe(system);
-    expect(await servingTmux(sock, undefined)).toBe(own);
+    expect(await servingTmux(sock, system, own)).toBe(system);
+    expect(await servingTmux(sock, undefined, own)).toBe(own);
     fs.writeFileSync(sock, 'tmux 3.5\n');
-    expect(await servingTmux(sock, system)).toBe(own);
+    expect(await servingTmux(sock, system, own)).toBe(own);
     fs.writeFileSync(sock, 'tmux 3.7c\n');
-    expect(await servingTmux(sock, system)).toBe(own);
+    expect(await servingTmux(sock, system, own)).toBe(own);
   });
 
   it('falls back to dev when release.json is missing or unreadable', () => {

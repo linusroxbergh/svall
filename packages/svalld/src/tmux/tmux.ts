@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { running as alive } from '../agent/reducer.js';
 import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
@@ -24,11 +25,10 @@ export function resolveTmux(): string {
 }
 
 /**
- * The tmux to run against `socket`: resolveTmux()'s, unless a server of another version already answers there and
+ * The tmux to run against `socket`: `own`, unless a server of another version already answers there and
  * `recorded`, the tmux an earlier daemon ran, is that version, as a newer client cannot attach to an older server.
  */
-export async function servingTmux(socket: string, recorded: string | undefined): Promise<string> {
-  const own = resolveTmux();
+export async function servingTmux(socket: string, recorded: string | undefined, own: string): Promise<string> {
   if (!recorded || recorded === own) return own;
   const read = (binary: string, ...args: string[]): Promise<string | undefined> =>
     exec(binary, args, CALL).then((r) => r.stdout.trim(), () => undefined);
@@ -225,21 +225,24 @@ export class Tmux {
   }
 
   /** A server running another tmux than `own`, as one an earlier release started does: with no robot window it ends, for
-   * ensureServer to start on `own`. Linux alone names a process's binary, under /proc. */
-  async startOverStale(own: string, proc = '/proc'): Promise<{ running: string; ended: boolean } | undefined> {
+   * ensureServer to start on `own`, and `kept` says why one did not. Linux alone names a process's binary, under /proc. */
+  async startOverStale(own: string, proc = '/proc'): Promise<{ running: string; kept?: 'robots' | 'unlisted' | 'unended' } | undefined> {
     if (!path.isAbsolute(own) || !fs.existsSync(proc)) return undefined;
     const pid = (await this.run('display', '-p', '#{pid}').catch(() => '')).trim();
     if (!pid) return undefined;
     let running: string;
-    try { running = fs.readlinkSync(path.join(proc, pid, 'exe')); } catch { return undefined; }
+    try { running = fs.readlinkSync(path.join(proc, pid, 'exe')).replace(/ \(deleted\)$/, ''); } catch { return undefined; }
     let target = own;
     try { target = fs.realpathSync(own); } catch { /* compared as named */ }
     if (running === target) return undefined;
-    // with no fleet session to list, a viewer's may still hold a robot
-    const windows = await this.listWindows().catch(() => undefined);
-    if (!windows || windows.length) return { running, ended: false };
+    // a viewer's session may hold a robot the fleet session no longer does
+    const windows = await this.run('list-windows', '-a', '-f', `#{!=:#{window_name},${KEEP_WINDOW}}`, '-F', '#{window_id}').catch(() => undefined);
+    if (windows === undefined) return { running, kept: 'unlisted' };
+    if (windows.trim()) return { running, kept: 'robots' };
     await this.killServer();
-    return { running, ended: true };
+    // kill-server returns before the server exits, and a new-session sent meanwhile may reach the exiting one
+    for (let n = 0; n < 50 && alive(Number(pid)); n++) await new Promise((r) => setTimeout(r, 100));
+    return alive(Number(pid)) ? { running, kept: 'unended' } : { running };
   }
 
   connect(): ControlClient {

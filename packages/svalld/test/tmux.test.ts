@@ -97,6 +97,7 @@ describe('rawPasteArgs', () => {
 runIf('Tmux', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => {
+    vi.restoreAllMocks();
     for (const f of cleanup.splice(0)) await f();
     cleanHomes();
     for (const k of ['SVALL_RELEASE_ROOT', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME']) delete process.env[k];
@@ -308,21 +309,50 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     const t = await boot();
     const own = fs.realpathSync(t.binary);
     expect(await t.startOverStale(own, await fakeProc(t, own))).toBeUndefined();
-    const proc = await fakeProc(t, old);
+    const proc = await fakeProc(t, `${old} (deleted)`);
     const w = await t.newWindow('c_kept', '/tmp', {});
-    expect(await t.startOverStale(own, proc)).toEqual({ running: old, ended: false });
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old, kept: 'robots' });
     await t.killWindow(w.windowId);
-    expect(await t.startOverStale(own, proc)).toEqual({ running: old, ended: true });
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old });
     await expect(t.run('has-session')).rejects.toThrow();
   });
 
-  it('keeps a stale server whose fleet session is gone, and compares an own tmux gone from disk as named', async () => {
+  it('ends a stale server only once its process is gone', async () => {
+    const t = await boot();
+    const proc = await fakeProc(t, old);
+    const pid = Number((await t.run('display', '-p', '#{pid}')).trim());
+    // kill-server returns before the server exits
+    const run = t.run.bind(t);
+    vi.spyOn(t, 'run').mockImplementation(async (...args) => {
+      if (args[0] !== 'kill-server') return run(...args);
+      setTimeout(() => { run('kill-server').catch(() => {}); }, 300);
+      return '';
+    });
+    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old });
+    expect(() => process.kill(pid, 0)).toThrow();
+  });
+
+  it('keeps a stale server that does not end, or does not list its windows', async () => {
+    const t = await boot();
+    const proc = await fakeProc(t, old);
+    const run = t.run.bind(t);
+    vi.spyOn(t, 'run').mockImplementation(async (...args) => (args[0] === 'kill-server' ? '' : run(...args)));
+    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old, kept: 'unended' });
+    vi.spyOn(t, 'run').mockImplementation(async (...args) => (args[0] === 'list-windows' ? Promise.reject(new Error('timed out')) : run(...args)));
+    expect(await t.startOverStale(fs.realpathSync(t.binary), proc)).toEqual({ running: old, kept: 'unlisted' });
+    expect(await run('has-session', '-t', '=fleet')).toBe('');
+  });
+
+  it('keeps a stale server while a viewer holds a robot, its fleet session gone, across starts, and compares an own tmux gone from disk as named', async () => {
     const t = await boot();
     const proc = await fakeProc(t, old);
     const w = await t.newWindow('c_viewed', '/tmp', {});
     await t.attachSession('v-c_viewed', w.windowId);
     await t.run('kill-session', '-t', '=fleet');
-    expect(await t.startOverStale('/home/ada/.local/share/svall/releases/2.0.0/bin/tmux', proc)).toEqual({ running: old, ended: false });
+    const own = '/home/ada/.local/share/svall/releases/2.0.0/bin/tmux';
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old, kept: 'robots' });
+    await t.ensureServer();
+    expect(await t.startOverStale(own, proc)).toEqual({ running: old, kept: 'robots' });
     expect(await t.run('has-session', '-t', '=v-c_viewed')).toBe('');
   });
 
