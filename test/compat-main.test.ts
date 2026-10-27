@@ -64,7 +64,7 @@ test('an installed CLI\'s help is read for each flag, and a help that prints not
   fs.writeFileSync(bin, ['#!/bin/sh', 'case "$1 $2" in',
     '"--version ") echo "codex-cli 9.9.9";;',
     `"--help ") ${lines('resume', 'exec', 'login', '-m, --model')};;`,
-    `"exec --help") ${lines('--json', '-m, --model', '-c, --config', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o, --output-last-message', '--output-schema <FILE>')};;`,
+    `"exec --help") ${lines('--json', '-m, --model', '-c, --config', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o, --output-last-message', '--output-schema <FILE>', '--disable <FEATURE>')};;`,
     `"login --help") ${lines('status')};;`,
     'esac', ''].join('\n'), { mode: 0o755 });
   const r: Report = { kind: 'codex', events: [], problems: [], added: [], notes: [] };

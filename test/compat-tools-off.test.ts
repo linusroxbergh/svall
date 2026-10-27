@@ -1,8 +1,10 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { toolsOff } from '../scripts/compat/tools-off.js';
-import { NO_USAGE, type Runner } from '../packages/svalld/src/scribe/run.js';
+import { AGENTS } from '../packages/svalld/src/agents.js';
+import { NO_USAGE, type Call, type Runner } from '../packages/svalld/src/scribe/run.js';
 
 // a stand-in model that does what the prompt asks with whatever access `can` gives it
 const model = (can: { run?: boolean; read?: boolean }): Runner => async (_system, prompt) => {
@@ -27,7 +29,33 @@ test('passes when the model could do neither, and leaves nothing behind', async 
   expect(fs.existsSync(dir)).toBe(false);
 });
 
+test('asks with the shape of a retro call: low effort and a schema', async () => {
+  const calls: Call[] = [];
+  await toolsOff('claude', { run: async (system, prompt, call) => { calls.push(call); return model({})(system, prompt, call); } });
+  expect(calls).toEqual([{
+    model: AGENTS.claude.scribeModel, effort: 'low', timeoutMs: 180_000,
+    schema: { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false },
+  }]);
+});
+
 test('reports a runner that failed', async () => {
   expect(await toolsOff('claude', { run: async () => { throw new Error('claude -p failed: not logged in'); } }))
     .toEqual(["tools-off probe couldn't run: claude -p failed: not logged in"]);
+});
+
+test('leaves OpenCode the folder it deletes its session from once the probe is done', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-fake-opencode-'));
+  const said = path.join(dir, 'delete');
+  fs.writeFileSync(path.join(dir, 'opencode'), ['#!/bin/sh', 'case "$1 $2" in',
+    `"run "*) cat > /dev/null; echo '${JSON.stringify({ type: 'text', part: { text: 'NO TOOLS' } })}';;`,
+    `"session delete") sleep 0.3; if pwd -P > /dev/null 2>&1; then echo kept > "${said}"; else echo gone > "${said}"; fi;;`,
+    'esac', ''].join('\n'), { mode: 0o755 });
+  vi.stubEnv('PATH', `${dir}:${process.env.PATH}`);
+  try {
+    expect(await toolsOff('opencode')).toEqual([]);
+    await vi.waitFor(() => expect(fs.readFileSync(said, 'utf8')).toBe('kept\n'), { timeout: 5000 });
+  } finally {
+    vi.unstubAllEnvs();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });

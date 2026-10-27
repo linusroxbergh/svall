@@ -299,7 +299,7 @@ export const HELP: Record<AgentKind, [argv: string[], words: string[]][]> = {
   codex: [
     [['--help'], ['resume', 'exec', 'app-server', 'login', '-m']],
     [['resume', '--help'], ['-c', '--config']],
-    [['exec', '--help'], ['--json', '-m', '-c', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o', '--output-schema']],
+    [['exec', '--help'], ['--json', '-m', '-c', '--sandbox', '--skip-git-repo-check', '--ephemeral', '--ignore-user-config', '-o', '--output-schema', '--disable']],
     [['login', '--help'], ['status']],
   ],
   opencode: [
