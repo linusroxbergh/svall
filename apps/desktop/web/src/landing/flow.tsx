@@ -124,7 +124,7 @@ function Islet({ place, count }: { place: Placement; count: number }) {
             <linearGradient id="s-res" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="var(--rock-0)" /><stop offset="1" stopColor="var(--rock-1)" /></linearGradient>
             <clipPath id="c-res"><path d={rock} /></clipPath>
           </defs>
-          <Seabed id="res" sand={rock} cx={bw / 2} cy={bh / 2} bank="var(--rock-bank)" />
+          <Seabed sand={rock} cx={bw / 2} cy={bh / 2} bank="var(--rock-bank)" />
           <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
           <g clipPath="url(#c-res)">
             <path d={rock} fill="none" stroke="rgba(58,52,42,.13)" strokeWidth="14" />

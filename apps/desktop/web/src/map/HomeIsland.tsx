@@ -74,7 +74,7 @@ export function Home({
                 <stop offset="1" stopColor="var(--home-sand-deep)" />
               </linearGradient>
             </defs>
-            <Seabed id="home" sand={sand} cx={cx} cy={cy} bank="var(--home-bank)" />
+            <Seabed sand={sand} cx={cx} cy={cy} bank="var(--home-bank)" />
             <g {...label} style={{ pointerEvents: 'visiblePainted' }}>
               <path className="land" d={sand} fill="url(#s-home)" stroke="rgba(120,104,68,.28)" strokeWidth="1" />
               <path className="land grass" d={dune} fill="rgba(255,250,236,.33)" />
