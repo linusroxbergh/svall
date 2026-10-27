@@ -76,6 +76,8 @@ if [ "${1:-}" = --in-container ]; then
   export CFLAGS=-O2
   ncurses "$(nproc)" >&2
   build "$(nproc)" >&2
+  # a tmux that fell back to tiparm builds and links all the same, so its configure's finding is checked
+  grep -q -- '-DHAVE_TIPARM_S=1' "$TMP/tmux-$TMUX/Makefile" || { echo "tmux was built without tiparm_s" >&2; exit 1; }
   cp "$TMP/ncurses-$NCURSES/COPYING" "$TMP/out/LICENSE.ncurses"
   strip "$TMP/out/tmux"
   FOREIGN="$(objdump -p "$TMP/out/tmux" | awk '/NEEDED/ { print $2 }' | grep -Ev '^(libc|libm|libresolv|ld-linux-[a-z0-9_-]+)\.so\.[0-9]+$' || true)"

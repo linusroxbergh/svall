@@ -184,6 +184,9 @@ async function start(opts: Options): Promise<Daemon> {
   const tmuxVersion = await tmux.version();
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config, { tmuxVersion }));
   if (tmuxTooOld(tmuxVersion)) log.error(`${tmuxVersion} is older than 3.5: Shift+Enter will not reach Claude Code; ${process.platform === 'linux' ? 'Ubuntu 24.04 ships 3.4' : 'brew upgrade tmux'}`);
+  // an older companion's tmux sends the Mac no copy and no link
+  const kept = await tmux.startOverStale();
+  if (kept) log.error(`tmux ${kept}, an earlier release's, runs the robots here, so a copy or link in their terminals may not reach the Mac; it starts over on ${tmux.binary} at a daemon start with no robot here`);
   // the app attaches its terminals with this tmux, which an app opened from Finder may not find on its own PATH
   fs.writeFileSync(path.join(paths.home, 'tmux-binary'), tmux.binary);
   fs.writeFileSync(path.join(paths.home, 'version'), `${runtimeVersion()}\n${process.pid}\n`);

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { onPath } from '../agents.js';
@@ -221,6 +222,19 @@ export class Tmux {
       const value = process.env[key];
       await this.run('set-environment', '-g', ...(value ? [key, value] : ['-u', key]));
     }
+  }
+
+  /** A server an earlier release started keeps that release's tmux: with no robot window it ends, for ensureServer to start
+   * on this one, and with robots its binary is returned. Linux alone names a process's binary, under /proc. */
+  async startOverStale(proc = '/proc'): Promise<string | undefined> {
+    const pid = (await this.run('display', '-p', '#{pid}').catch(() => '')).trim();
+    if (!pid || !path.isAbsolute(this.binary)) return undefined;
+    let running: string;
+    try { running = fs.readlinkSync(path.join(proc, pid, 'exe')); } catch { return undefined; }
+    if (running === fs.realpathSync(this.binary)) return undefined;
+    if ((await this.listWindows()).length) return running;
+    await this.killServer();
+    return undefined;
   }
 
   connect(): ControlClient {
