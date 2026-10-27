@@ -244,9 +244,10 @@ function runs(label, rel, releases) {
 
 // ---------------------------------------------------------------------------------------------- the provisioning
 
-const ADVICE = new Set(['claude', 'codex', 'opencode']);
+const ADVICE = new Set(['claude', 'codex', 'opencode', 'gh', 'mirror:unchecked']);
+// the controller runs no daemon, so the mirror's rows are one not-checked row
 const ADD_STEPS = ['name', 'ssh', 'master', 'os', 'home', 'tools', 'rsync', 'space', 'linger', 'release', 'upload', 'install', 'tmux', 'service',
-  'identity', 'enrol', 'claude', 'codex', 'opencode', 'versions', 'probe', 'registry'];
+  'identity', 'enrol', 'claude', 'codex', 'opencode', 'gh', 'versions', 'probe', 'registry', 'mirror:unchecked'];
 
 // with no --release the controller fetches the companion its manifest pins, checks its digest and caches it
 const named = (rel) => (rel.served || rel.carried ? [] : ['--release', rel.companion, ...(rel.unsigned ? ['--allow-unsigned'] : [])]);
@@ -271,7 +272,7 @@ function hostAdd(a) {
   save('host-add.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // a fresh machine has no agents yet: each is something to go and do, and none has a release to compare
+  // a fresh machine has no agents or gh yet: each is something to go and do, and none has a release to compare
   for (const s of steps) {
     check(`host add ${s.step}`, s.status === 'ok' || (s.status === 'warn' && ADVICE.has(s.step)) || (s.status === 'skip' && s.step === 'versions'),
       () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
@@ -287,11 +288,14 @@ function hostAdd(a) {
   check('host add release', at('release')?.detail === from(a), () => brief(at('release')));
   downloaded(a, 'host add');
   check('host add home', at('home')?.detail === `${HOME} for ${USER}`, () => brief(at('home')));
-  // the JSON actions are the three installs, what the text line "fresh needs 3 things ..." counts
+  // the JSON actions are the three installs and the mirror's check, what the text line "fresh needs 4 things ..." counts; gh
+  // is advice, offered in the terminal with no thing to do
   const result = events.at(-1);
   check('host add result', result?.result === 'actions'
     && JSON.stringify(result.actions) === JSON.stringify(['ssh fresh, then install Claude Code, then svall setup',
-      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup']), () => brief(result));
+      'ssh fresh, then install Codex, then svall setup', 'ssh fresh, then install OpenCode, then svall setup',
+      'svall host doctor fresh once Svall is open']), () => brief(result));
+  check('host add gh', at('gh')?.status === 'warn' && at('gh').run === 'sudo apt install gh' && at('gh').action === undefined, () => brief(at('gh')));
 }
 
 function doctor(rel, label) {

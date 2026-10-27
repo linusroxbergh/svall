@@ -102,6 +102,7 @@ export function world(o: {
   let version = 100;
   const homeLog = o.homeLog ?? silentLogger;
   const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(homeStore.state.robots, id), 100);
+  const homeMirror = o.mirror && new Mirror({ ...o.mirror.home, consent: homePaths.mirrorConsent, log: homeLog });
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
@@ -132,7 +133,7 @@ export function world(o: {
     onLost: (machine) => homeTerminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),
     ...(homeDocs && { docs: homeDocs }),
-    ...(o.mirror && { mirror: new Mirror({ ...o.mirror.home, log: silentLogger }) }),
+    ...(homeMirror && { mirror: homeMirror }),
   });
   const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog, synced: (m) => links.for(m)?.synced === true, homedir: '/Users/ada' });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
@@ -152,6 +153,7 @@ export function world(o: {
   const homeTerminals = new TerminalHub(homeFleet, untouchable, homeStore, homeLog, { router: homeRouter, links });
   const homeCtx = ctxOf(homeStore, homeFleet, homeOwnership, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
+    mirror: homeMirror, fleetFlag: '',
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
@@ -162,9 +164,14 @@ export function world(o: {
   const connection = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store: workerStore, outbox,
     log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers, onAcked: (dropped) => mutations.acked(dropped),
-    onLink: (live) => { if (!live) for (const v of farViewers.dropAll()) { workerWorkspace.unwatchAll(v); terminals.closeAll(v); } },
+    onLink: (live) => {
+      if (live) return;
+      for (const v of farViewers.dropAll()) { workerWorkspace.unwatchAll(v); terminals.closeAll(v); }
+      workerMirror?.linkLost();
+    },
   });
   const farViewers = new FarViewers({ connection });
+  const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
@@ -195,7 +202,7 @@ export function world(o: {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
     }, workerDocs?.handlers,
-    o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, connection, log: silentLogger }),
+    workerMirror?.calls,
   );
   const workerCtx = ctxOf(workerStore, workerFleet, workerOwnership, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
 
@@ -203,7 +210,7 @@ export function world(o: {
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());
   return {
     home: {
-      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage, terminals: homeTerminals,
+      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage, terminals: homeTerminals, mirror: homeMirror,
       /** Holds the mutations the home takes from here on, until the function it returns is called. */
       hold(): () => void {
         let release!: () => void;

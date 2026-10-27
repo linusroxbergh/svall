@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState } from '@svall/protocol';
+import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
 import { gatewayPaths, socketTooLong } from '@svall/svalld/gateway/authority';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { resolvePaths } from '@svall/svalld/paths';
+import { clearConsent } from '@svall/svalld/placement/mirror-consent';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
@@ -34,8 +35,9 @@ const DU_TIMEOUT = 120_000;
 const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
-// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
-export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string };
+// run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
+// port its terminal forwards from this Mac; tick: the consent a mirror row toggles
+export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
 // stopped: the step a run failed at, past which nothing ran
 export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
 
@@ -58,6 +60,10 @@ export type HostDeps = {
   fleet: { home: string; profile?: string };
   /** has this fleet's daemon link the machines enrolled since it started; one that is not running links them at its start */
   refreshLinks(): Promise<void>;
+  /** the machine's setup rows, as this fleet's daemon reads its mirror there, its link given up to `waitMs` to come up; rejects when the daemon cannot be asked */
+  setupRows(machine: MachineId, waitMs: number): Promise<SetupRow[]>;
+  /** ticks or unticks `fields` of `item` for the machine in this fleet's mirror, and answers its setup rows */
+  consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
 };
 
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
@@ -67,18 +73,26 @@ class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
+
+/**
+ * What a step with `action` leaves to do, as every surface counts things: the action, as two steps can find the same
+ * one, but a mirror row by its key, since rows of two servers can read alike, unless it only asks to check again.
+ */
+export const thingOf = (step: string, action: string): string => (step.startsWith('mirror:') && !/^check .+ again$/.test(action) ? step : action);
 
 /** The step events a host command emits, and the actions they leave the user with. */
 class Runner {
   readonly actions: string[] = [];
+  private things = new Set<string>();
   private failed?: string;
 
   constructor(private readonly emit: (e: StepEvent) => void) {}
 
-  // two steps can find the same thing to do, as lingering is both its own step and the service's
-  private todo(action: string): void {
-    if (!this.actions.includes(action)) this.actions.push(action);
+  private todo(step: string, action: string): void {
+    if (this.things.has(thingOf(step, action))) return;
+    this.things.add(thingOf(step, action));
+    this.actions.push(action);
   }
 
   async step<T>(step: string, fn: () => Promise<Outcome<T>>): Promise<T> {
@@ -89,14 +103,15 @@ class Runner {
     } catch (err) {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = step;
-      this.todo(e.action ?? e.detail);
+      this.todo(step, e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}) });
       throw e;
     }
-    if (r.action) this.todo(r.action);
+    if (r.action) this.todo(step, r.action);
     this.emit({
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
+      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}),
     });
     return r.value;
   }
@@ -298,11 +313,11 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
   const call = agentCall(master, o);
   const versions: FarVersions = {};
   const used = fleetAgents(o.homedir);
+  const todo = (detail: string, how: string, command?: string): Outcome<void> =>
+    ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
   for (const kind of Object.keys(AGENT_CHECKS) as AgentKind[]) {
     await run.step(kind, async () => {
       const a = AGENTS[kind];
-      const todo = (detail: string, how: string, command?: string): Outcome<void> =>
-        ({ value: undefined, status: 'warn', detail, action: onThere(o.destination, how), ...(command && { run: command }) });
       const v = await call(a.bin, ['--version']);
       // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
       if (v.code === 127) {
@@ -323,6 +338,12 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       return todo(`${version}, not logged in`, kind === 'codex' ? `${a.loginHint}, and trust the hooks once with /hooks` : a.loginHint, a.loginHint);
     });
   }
+  // the companion's doctor runs gh with the daemon's PATH and config home; gh is advice, never a thing left before a move
+  await run.step('gh', () => {
+    const gh = o.report.checks.find((c) => c.name === 'gh');
+    if (!gh) return Promise.resolve({ value: undefined, status: 'skip' as const, detail: "the companion's doctor reported no gh check" });
+    return Promise.resolve(gh.status === 'ok' ? { value: undefined, detail: 'logged in' } : { value: undefined, status: 'warn' as const, detail: gh.detail, ...(gh.run && { run: gh.run }) });
+  });
   return versions;
 }
 
@@ -578,6 +599,12 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
       await d.refreshLinks();
+      // a machine just linked has up to 30 s to come up and answer
+      const rows = await d.setupRows(machine, 30_000).catch((e: Error) => [notChecked(e, o.name, d)]);
+      for (const r of rows) {
+        const { step, ...out } = rowStep(r);
+        await run.step(step, () => Promise.resolve({ value: undefined, ...out }));
+      }
     } finally {
       await master.close().catch(() => undefined);
     }
@@ -665,8 +692,18 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
   } finally {
     await master.close().catch(() => undefined);
   }
+  const rows = await d.setupRows(entry.id, 0).catch((e: Error) => [notChecked(e, entry.record.name, d)]);
+  checks.push(...rows.map(rowCheck));
   return { machine: entry.record.name, checks, ...(release && { release }) };
 }
+
+/** A setup row as a host command's step, and as a check that keeps its action apart. */
+export const rowStep = ({ key, ...row }: SetupRow): StepEvent => ({ step: `mirror:${key}`, ...row });
+export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:${key}`, ...row });
+
+/** The one row a command makes of a daemon it could not ask for the rows; its action asks that fleet's daemon again. */
+export const notChecked = (e: Error, name: string, d: HostDeps): SetupRow =>
+  ({ key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open` });
 
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
@@ -985,6 +1022,20 @@ function placedOn(entry: Registered, d: HostDeps): void {
   throw new StepError(`${n} ${n === 1 ? 'robot is' : 'robots are'} on ${entry.record.name}: ${found.map((f) => f.robot.name).join(', ')}; move ${n === 1 ? 'it' : 'them'} back first`, action);
 }
 
+/**
+ * `svall host consent`: ticks one setting of the machine's mirror, `fields` of it or every one its setup row names, or
+ * unticks every field of it.
+ */
+export async function consentHost(name: string, o: { item: string; on: boolean; fields?: string[] }, d: HostDeps): Promise<SetupRow[]> {
+  const entry = need(d.registry, name);
+  if (o.fields && !o.on) throw new StepError('off unticks every field of the item; leave out --field');
+  const listed = (await d.setupRows(entry.id, 0)).find((r) => r.tick?.item === o.item)?.tick?.fields;
+  if (!listed) throw new StepError(`no setting ${o.item} on ${name}; svall host doctor ${name} lists them`);
+  const unknown = (o.fields ?? []).filter((f) => !listed.includes(f));
+  if (unknown.length) throw new StepError(`${o.item} on ${name} has no field ${unknown.join(', ')}; svall host doctor ${name} lists its fields`);
+  return d.consent(entry.id, o.item, o.fields ?? listed, o.on);
+}
+
 /** `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget. */
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
@@ -1026,6 +1077,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     });
     await run.step('registry', () => {
       for (const home of fleets) patchFleetConfig(resolvePaths(home).fleetConfig, { gatewayMachineId: undefined });
+      for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) clearConsent(resolvePaths(home).mirrorConsent, entry.id);
       d.registry.remove(entry.id);
       d.registry.save();
       return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });

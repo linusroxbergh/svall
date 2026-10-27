@@ -30,8 +30,8 @@ private let doctorReport = #"""
 """#
 
 final class HostProcessTests: XCTestCase {
-    private func argv(_ op: HostOp, _ args: HostArgs, fleet: String? = "work") -> [String]? {
-        HostCommand.arguments(op: op, args: args, fleet: fleet)
+    private func argv(_ op: HostOp, _ args: HostArgs) -> [String]? {
+        HostCommand.arguments(op: op, args: args)
     }
 
     private func run(_ process: HostProcess) throws -> (steps: [HostProcess.Step], code: Int32?) {
@@ -54,21 +54,10 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(argv(.remove, HostArgs(name: "studio")), ["host", "remove", "studio", "--json"])
         XCTAssertEqual(argv(.remove, HostArgs(name: "studio", forget: true)),
                        ["host", "remove", "studio", "--forget", "--json"])
-        XCTAssertEqual(argv(.enable, HostArgs(name: "studio")),
-                       ["host", "enable", "studio", "--fleet", "work", "--json"])
-        XCTAssertEqual(argv(.enable, HostArgs(name: "studio"), fleet: "private"),
-                       ["host", "enable", "studio", "--fleet", "private", "--json"])
     }
 
-    func testTheGatewayIsForTheFleetTheShellRunsNotOneThePageNames() throws {
-        let start = #"{"type":"host.start","op":"enable","args":{"name":"studio","fleet":"other"}}"#
-        guard case .hostStart(let op, let args) = try JSONDecoder().decode(ToShell.self, from: Data(start.utf8)) else {
-            return XCTFail("host.start did not decode")
-        }
-        XCTAssertEqual(argv(op, args), ["host", "enable", "studio", "--fleet", "work", "--json"])
-        // a home that is no profile has no name for --fleet
-        XCTAssertNil(argv(.enable, HostArgs(name: "studio"), fleet: nil))
-        XCTAssertEqual(argv(.doctor, HostArgs(name: "studio"), fleet: nil), ["host", "doctor", "studio", "--json"])
+    func testEnableIsNoLongerAHostOp() {
+        XCTAssertThrowsError(try JSONDecoder().decode(ToShell.self, from: Data(#"{"type":"host.start","op":"enable","args":{"name":"studio"}}"#.utf8)))
     }
 
     func testAFleetIsNamedByTheProfileSvallKnowsItBy() {
@@ -84,7 +73,6 @@ final class HostProcessTests: XCTestCase {
         XCTAssertNil(argv(.add, HostArgs(name: "studio", ssh: "-oProxyCommand=curl evil")))
         XCTAssertNil(argv(.add, HostArgs(name: "studio", ssh: "linus@studio extra")))
         XCTAssertNil(argv(.add, HostArgs(name: "studio")))
-        XCTAssertNil(argv(.enable, HostArgs(name: "studio"), fleet: "--json"))
         // a flag on an operation that does not take it
         XCTAssertNil(argv(.doctor, HostArgs(name: "studio", ssh: "linus@studio")))
         XCTAssertNil(argv(.add, HostArgs(name: "studio", ssh: "linus@studio", forget: true)))
@@ -194,6 +182,24 @@ final class HostProcessTests: XCTestCase {
         XCTAssertFalse(HostOp.add.printsReport)
     }
 
+    func testATickRowDecodesAndReachesThePageWithItsItemFieldsAndPreview() throws {
+        let row = #"{"step":"mirror:claude:mcp:linear","status":"warn","detail":"mirrored without env.LINEAR_API_KEY lin…90","action":"copy linear's keys to studio","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]}}"#
+        let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
+        XCTAssertEqual(step.tick, HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"]))
+        XCTAssertEqual(step.forward, 3334)
+        let event = FromShell.hostStep(op: "add", step: step).json["event"] as? [String: Any]
+        XCTAssertEqual(event?["tick"] as? NSDictionary, ["item": "claude:mcp:linear", "fields": ["env.LINEAR_API_KEY"], "on": false, "preview": ["env.LINEAR_API_KEY lin…90"]])
+        XCTAssertEqual(event?["forward"] as? Int, 3334)
+    }
+
+    func testADoctorReportCarriesActionForwardAndTickIntoSteps() throws {
+        let report = #"{"machine":"studio","checks":[{"name":"mirror:oauth:claude:mcp:linear","status":"warn","detail":"then /mcp and sign in to linear","action":"log in once on studio","run":"claude","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]}}]}"#
+        let helper = try fakeHelper(prints: [report], then: "exit 0")
+        let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"], report: true))
+        XCTAssertEqual(steps.first, HostProcess.Step(step: "mirror:oauth:claude:mcp:linear", status: "warn", detail: "then /mcp and sign in to linear", action: "log in once on studio", run: "claude", forward: 3334,
+            tick: HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"])))
+    }
+
     func testStderrIsKeptInWholeLinesAcrossChunksAndUpToTheLastByte() throws {
         let tail = [
             "printf 'Warning: Permanently added studio to the list of known hosts.\\n' >&2",
@@ -247,7 +253,7 @@ final class HostProcessTests: XCTestCase {
 
     func testTheOperationsThatRewriteTheFleetsConfigAreTheOnesThatTellThePageItsGatewayAfresh() {
         // an upgrade drops the gateway of a fleet whose machine becomes its worker
-        for op in [HostOp.enable, .remove, .upgrade] { XCTAssertTrue(op.rewritesFleetConfig, op.rawValue) }
+        for op in [HostOp.remove, .upgrade] { XCTAssertTrue(op.rewritesFleetConfig, op.rawValue) }
         for op in [HostOp.add, .doctor] { XCTAssertFalse(op.rewritesFleetConfig, op.rawValue) }
     }
 

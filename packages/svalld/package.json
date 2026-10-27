@@ -55,6 +55,7 @@
     "./linux/setup": "./src/linux/setup.ts",
     "./linux/service": "./src/linux/service.ts",
     "./linux/provision": "./src/linux/provision.ts",
+    "./placement/mirror-consent": "./src/placement/mirror-consent.ts",
     "./placement/workers": "./src/placement/workers.ts",
     "./worker/mode": "./src/worker/mode.ts"
   },

@@ -79,6 +79,8 @@ export function resolvePaths(home: string = svallHome()) {
     agentProfiles: path.join(home, 'agent-profiles'),
     // a worker's own settings and files, in the mirror's layout, over what the home's agent configuration brings
     mirrorOverrides: path.join(home, 'mirror-overrides'),
+    // the home's: which keys each worker's mirror may copy, field by field
+    mirrorConsent: path.join(home, 'mirror-consent.json'),
     trash: path.join(home, 'trash'),
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),
@@ -90,6 +92,9 @@ export function resolvePaths(home: string = svallHome()) {
     snapshotFile: path.join(home, 'cache', 'snapshot.json'),
     // the sha256 of each doc as the worker and the home last both held it
     docsSynced: path.join(home, 'cache', 'docs-synced.json'),
+    // what the mirror last wrote here, by sha256, and the variables the home's agent configuration names
+    mirrorState: path.join(home, 'cache', 'mirror-state.json'),
+    mirrorVars: path.join(home, 'cache', 'mirror-vars.json'),
     outbox: path.join(home, 'journal', 'outbox.ndjson'),
     acked: path.join(home, 'journal', 'acked'),
     epoch: path.join(home, 'journal', 'epoch'),

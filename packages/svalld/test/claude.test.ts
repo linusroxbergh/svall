@@ -78,6 +78,12 @@ describe('readEnvFile', () => {
     expect(readEnvFile('/tmp/svall-no-such-env')).toEqual({});
   });
 
+  it('robotKeyEnv hands out the extra names the mirror recorded, and nothing else from .env', () => {
+    const file = path.join(makeHome(), '.env');
+    fs.writeFileSync(file, 'ANTHROPIC_API_KEY=a\nGAMMA_TOKEN=g\nOTHER=o\n');
+    expect(robotKeyEnv(file, ['GAMMA_TOKEN'])).toEqual({ ANTHROPIC_API_KEY: 'a', GAMMA_TOKEN: 'g' });
+  });
+
   it('passes only agent API keys to robot shells', () => {
     const file = path.join(makeHome(), '.env');
     fs.writeFileSync(file, 'ANTHROPIC_API_KEY=anthropic\nOPENAI_API_KEY=openai\nOTHER_SECRET=private\nSVALL_ROBOT_ID=wrong\n');

@@ -671,6 +671,35 @@ describe('the link', () => {
     expect(machine()?.mismatch).toBeUndefined();
   });
 
+  it('linked answers true once the worker is synced, and false at its timeout, once the worker greets in mismatch or once the link stops', async () => {
+    const w = world();
+    await w.worker.start();
+    const up = w.links();
+    up.start();
+    expect(await up.for(W)!.linked(5_000)).toBe(true);
+    expect(await up.for(W)!.linked(0)).toBe(true);
+    up.stop();
+
+    const down = w.links(async () => { throw new Error('connection refused'); });
+    down.start();
+    const started = Date.now();
+    expect(await down.for(W)!.linked(300)).toBe(false);
+    expect(Date.now() - started).toBeGreaterThanOrEqual(290);
+    const waiting = down.for(W)!.linked(5_000);
+    down.stop();
+    expect(await waiting).toBe(false);
+    expect(await down.for(W)!.linked(5_000)).toBe(false);
+
+    const odd = world({ versions: { schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION + 1 } });
+    await odd.worker.start();
+    const mismatched = odd.links();
+    mismatched.start();
+    const asked = Date.now();
+    expect(await mismatched.for(W)!.linked(5_000)).toBe(false);
+    expect(Date.now() - asked).toBeLessThan(4_000);
+    expect(mismatched.for(W)!.mismatch()).toBeDefined();
+  });
+
   it('the worker answers a home on another state schema or link protocol with its hello alone and takes nothing but pings, until it greets it matching', async () => {
     const w = world();
     await w.worker.start();

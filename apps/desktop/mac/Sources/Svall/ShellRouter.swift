@@ -408,10 +408,8 @@ final class ShellRouter {
     private func startHost(op: HostOp, args: HostArgs) {
         guard hostRun == nil else { return }
         let svall = ControllerProcess.locate()
-        let fleet = SvallHome.fleetProfile(of: SvallHome.path, in: NSHomeDirectory())
-        guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args, fleet: fleet) else {
+        guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args) else {
             let detail = svall == nil ? "this build has no svall beside it to set a machine up with"
-                : op == .enable && fleet == nil ? "\(SvallHome.path) is not a profile's home, so svall host enable cannot name it"
                 : "these are not arguments svall host \(op.rawValue) takes"
             bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: detail, action: nil)))
             bridge.send(.hostDone(op: op.rawValue, code: 1))
@@ -475,7 +473,7 @@ final class ShellRouter {
         switching = HandoverSwitch.turn(on, executable: executable, profile: SvallHome.profile, done: said)
     }
 
-    // `svall host enable`, from the page or a terminal, can name a gateway for a fleet whose window went without a helper
+    // upgrade and remove rewrite fleet.json, so a window that went without a helper gets one if a gateway is now named
     private func followGateway() {
         remote.followIfGatewayNamed(with: Self.connect())
     }

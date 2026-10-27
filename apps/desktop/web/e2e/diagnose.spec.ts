@@ -106,6 +106,9 @@ test('a fleet on a machine on another version opens the machines panel on it, an
   await expect(page.getByTestId('host-machine')).toHaveText('studio');
   const starts = async () => (await sent()).filter((m) => m.type === 'host.start');
   expect(await starts()).toEqual([]);
+  await page.getByTestId('machine-more').click();
+  // the panel holds only Check and ⋯ here, and the menu is not clipped to it
+  await expect(page.getByTestId('machine-upgrade')).toBeInViewport();
   await page.getByTestId('machine-upgrade').click();
   expect(await starts()).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'studio' } }]);
 

@@ -55,12 +55,13 @@ function refuseOver(root: string, bytes: number): void {
   if (bytes > BUNDLE_MAX) throw new BundleTooLarge(`${root}: its changes and commits come to ${(bytes / 2 ** 20).toFixed(1)} MB, over the ${BUNDLE_MAX / 2 ** 20} MB a move carries`);
 }
 
-// ustar holds a name of 100 bytes, or one a slash splits into 155 and 100, and a link target of 100; bsdtar leaves any
-// other out with a warning and exit 0
+/** Whether ustar holds `name`: one of 100 bytes, or one a slash splits into 155 and 100; bsdtar leaves any other out with a warning and exit 0. */
+export const ustarFits = (name: Buffer): boolean => name.length <= 100 || name.some((b, at) => b === 0x2f && at <= 155 && name.length - at - 1 <= 100);
+
+// ustar holds a link target of 100 bytes and the names ustarFits takes
 function refuseUnpackable(root: string, paths: readonly string[], stats: readonly fs.Stats[]): void {
   for (const [i, p] of paths.entries()) {
-    const name = Buffer.from(`./${p}`);
-    if (name.length > 100 && !name.some((b, at) => b === 0x2f && at <= 155 && name.length - at - 1 <= 100)) {
+    if (!ustarFits(Buffer.from(`./${p}`))) {
       throw new Error(`${p} has a path too long for a move to carry; rename or ignore it first`);
     }
     if (stats[i].isSymbolicLink() && fs.readlinkSync(path.join(root, p), { encoding: 'buffer' }).length > 100) {

@@ -87,14 +87,19 @@ Mission control's robots stay on this Mac and have no move button.
 - **The branch.** The commits the worker's clone lacks, as a Git bundle; the staged and the unstaged changes, each
   applied as they were; and the untracked files Git does not ignore, with their modes and links. The first move into a
   repository clones it on the worker from its remote, and carries only the commits the clone does not hold.
-- **The agent's setup.** Before every move this Mac copies its agent configuration to the worker, one way: Claude's
-  `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/`, `keybindings.json` and `settings.json`, Codex's
-  `AGENTS.md`, `~/.agents/skills` and the fleet's agent profiles. Svall's own hooks and statusline there, logins, keys,
-  plugins, `~/.claude.json` and the settings that hold secrets (`env`, `apiKeyHelper`, `awsCredentialExport`,
-  `awsAuthRefresh`, `otelHeadersHelper`) never travel, nor does a credential file in those folders or behind a link
-  from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`, `*.key`, Docker's `config.json`,
-  gh's `hosts.yml`, or anything under `.aws`, `.ssh` or `.gnupg`. A file under `~/.svall/mirror-overrides/` on the worker, laid
-  out the same way, is merged last and wins.
+- **The agent's setup.** Before every move, and each time it links to the worker, this Mac copies its agent setup
+  there, one way and only what changed since the last copy. That is Claude's `settings.json`, `CLAUDE.md`, `skills/`,
+  `rules/`, `agents/`, `commands/`, `keybindings.json`, plugins and the MCP servers in `~/.claude.json`; Codex's
+  `config.toml`, `AGENTS.md` and `~/.agents/skills`; OpenCode's config, commands, skills, agents, plugins and
+  `AGENTS.md`; and the fleet's agent profiles. A key in them, such as an MCP server's `env` value, travels only once
+  you tick it for that worker; until then the rest travels without it. Logins never travel. Nor do Svall's own hooks
+  and statusline there, the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
+  `awsAuthRefresh`, `otelHeadersHelper`), or a git login in a plugin marketplace's URL. Nor does a credential file in
+  those folders or behind a link from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`,
+  `*.key`, Docker's `config.json`, gh's `hosts.yml`, or anything under `.aws`, `.ssh` or `.gnupg`. A file under
+  `mirror-overrides/` in the fleet's home on the worker (`~/.svall` for the private fleet, `~/.svall-<fleet>` for
+  another) is merged last and wins. See
+  [Your agent setup on the machine](setup.md#your-agent-setup-on-the-machine).
 - **Trust of the folder.** The first move into a clone on the worker trusts its main checkout, and so every worktree in
   it, in the agent's own settings there (Claude's `~/.claude.json`, Codex's `config.toml`), while no agent of that kind
   runs there; otherwise the agent's "Trust this folder?" question is answered for it as it opens. Bypass-mode consent

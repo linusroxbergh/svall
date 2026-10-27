@@ -8,6 +8,9 @@ type Piped = ChildProcessByStdio<Writable, Readable, Readable>;
 // and none of their hooks, plugins or MCP servers
 const ISOLATION = ['--tools', '', '--setting-sources', 'project', '--strict-mcp-config', '--no-session-persistence'];
 
+/** A variable's name, as the fleet's .env holds it and its robots take it. */
+export const VAR_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
 // KEY=value lines, optionally quoted or after `export`; anything else is skipped
 export function readEnvFile(file: string): Record<string, string> {
   let text: string;
@@ -23,10 +26,10 @@ export function readEnvFile(file: string): Record<string, string> {
 }
 
 // A robot is a general-purpose shell. Only agent credentials cross from the fleet's
-// .env into it; other values in that file belong to headless daemon tasks.
-export function robotKeyEnv(file: string): Record<string, string> {
+// .env into it, plus the variables a mirrored server needs; other values in that file belong to headless daemon tasks.
+export function robotKeyEnv(file: string, extra: readonly string[] = []): Record<string, string> {
   const values = readEnvFile(file);
-  return Object.fromEntries(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY']
+  return Object.fromEntries(['ANTHROPIC_API_KEY', 'OPENAI_API_KEY', ...extra]
     .filter((key) => values[key])
     .map((key) => [key, values[key]]));
 }

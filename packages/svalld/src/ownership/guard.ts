@@ -40,6 +40,8 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'robot.moveRetry': 'mutation',
   'machines.list': 'read',
   'machines.refresh': 'read',
+  'machines.setup': 'read',
+  'machines.consent': 'mutation',
   'column.add': 'mutation',
   'column.rename': 'mutation',
   'column.reorder': 'mutation',
