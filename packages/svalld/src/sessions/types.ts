@@ -16,10 +16,10 @@ export type SessionFs = {
 export type CliRun = (cmd: string, args: string[], o?: { stdout?: string; cwd?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
 
 /**
- * The folder a carried session's agent resumes in on the destination, the main checkout of the repository holding it, the
- * top of the checkout it is in, and whether its resume starts the agent in bypass mode.
+ * The folder a carried session's agent resumes in on the destination, the main checkout of the repository holding it, and the
+ * top of the checkout it is in.
  */
-export type ResumeFolder = { cwd: string; repo?: string; root?: string; bypass?: boolean };
+export type ResumeFolder = { cwd: string; repo?: string; root?: string };
 
 export type SessionIssueCode = 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing';
 

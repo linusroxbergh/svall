@@ -5,7 +5,7 @@ import { AgentKind, DEFAULT_CWD, Home } from './state.js';
 
 // names such as `trift` and `local` route and present; records name machines and fleets by these ids, so renaming a
 // host leaves every record alone
-export { FleetId, MachineId, MachinePath, ObjectName, Sha256 } from './ids.js';
+export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
 
 /**
  * One machine in the controller's registry. A machine reached directly has no `ssh`.

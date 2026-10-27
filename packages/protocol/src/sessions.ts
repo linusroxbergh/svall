@@ -30,7 +30,7 @@ export const contextPctOf = (c: Robot): number | undefined => {
   return all.length ? Math.max(...all) : undefined;
 };
 
-/** One file of a carried session as the source read it, by its path under its agent home. A link is carried as its text, never followed. */
+/** One file of a carried session as the source read it, by its path under its agent home. */
 export const TransferFile = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('file'), path: z.string(),
