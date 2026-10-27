@@ -1,8 +1,8 @@
 // The in-machine half of the robot placement integration run, run inside each container with the release's own node:
 //
 //   snap [--light]                        one JSON document: this machine's view of the fleet, its repos, sessions,
-//                                         terminals, agent processes and OpenCode servers, worktree locks, move
-//                                         journals, outbox and its epoch, applied mutations and docs conflict copies;
+//                                         terminals, agent processes, worktree locks, move journals, outbox and
+//                                         its epoch, applied mutations and docs conflict copies;
 //                                         --light leaves out repos, trees and sessions
 //   machines                              the links the fleet's state holds, by machine id
 //   call <method> [<params json>]         one call to this machine's daemon: its answer, or its error, as one JSON document
