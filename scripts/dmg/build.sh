@@ -1,7 +1,3 @@
-# a blank image filled by ditto: hdiutil refuses to fill one from a folder that holds an app bundle
-hdiutil create -volname "$NAME" -fs HFS+ -size "$SIZE" -ov "$WORK/rw.dmg" >/dev/null || fail "hdiutil could not create the image"
-hdiutil attach -readwrite -noverify -noautoopen "$WORK/rw.dmg" >/dev/null
-ditto "$WORK/stage" "$MNT"
 #!/bin/sh
 # Packs an app into a compressed disk image whose Finder window shows it beside a link to Applications, over a
 # background (gen.mjs) with an arrow between them. Finder lays the window out, so the first run asks to control it.
@@ -25,13 +21,10 @@ tiffutil -cathidpicheck "$DIR/background.png" "$DIR/background@2x.png" -out "$WO
   fail "could not make the background from $DIR/background.png and background@2x.png"
 # room for the .DS_Store Finder writes
 SIZE="$(($(du -sm "$WORK/stage" | cut -f1) + 20))m"
-# hdiutil create fails now and then on a stage it builds fine a moment later
-for try in 1 2 3; do
-  hdiutil create -volname "$NAME" -srcfolder "$WORK/stage" -fs APFS -format UDRW -size "$SIZE" -ov "$WORK/rw.dmg" && break
-  [ "$try" -lt 3 ] || fail "hdiutil could not create the image"
-  sleep 10
-done
+# a blank image filled by ditto: hdiutil will not fill one from a folder that holds an app bundle
+hdiutil create -volname "$NAME" -fs HFS+ -size "$SIZE" -ov "$WORK/rw.dmg" >/dev/null || fail "hdiutil could not create the image"
 hdiutil attach -readwrite -noverify -noautoopen "$WORK/rw.dmg" >/dev/null
+ditto "$WORK/stage" "$MNT"
 
 osascript <<EOF || fail "Finder could not lay out the window; if macOS refused, let your terminal control Finder in System Settings > Privacy & Security > Automation"
 tell application "Finder"
