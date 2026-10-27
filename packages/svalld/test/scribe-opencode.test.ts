@@ -1,17 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { opencodeRunner } from '../src/scribe/opencode.js';
+import { opencodeRunner as runner } from '../src/scribe/opencode.js';
+import { scribeOf, type Call } from '../src/scribe/run.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
 afterEach(cleanHomes);
 
 // a stand-in for `opencode`: it records each run's arguments, its stdin and its env, then does what `body` says
-const fakeOpencode = (dir: string, body: string): string => {
+const fakeOpencode = (dir: string, body: string, exported = '{}'): string => {
   const bin = path.join(dir, 'opencode');
-  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_CONFIG_CONTENT" > "${dir}/config"; ${body}; fi\n`, { mode: 0o755 });
+  fs.writeFileSync(bin, `#!/bin/sh\necho "$@" >> "${dir}/args"\nif [ "$1" = run ]; then cat > "${dir}/stdin"; echo "$OPENCODE_CONFIG_CONTENT" > "${dir}/config"; ${body}; fi\nif [ "$2" = export ]; then echo '${exported}'; fi\n`, { mode: 0o755 });
   return bin;
 };
+// the scribe's passes: its model, nothing else
+const opencodeRunner = (o: { cwd: string; bin: string } & Call) => scribeOf(runner({ cwd: o.cwd, bin: o.bin }), { model: o.model });
 const line = (o: unknown) => `echo '${JSON.stringify(o)}'`;
 const answers = [line({ type: 'step_start', sessionID: 'ses_1' }), line({ type: 'text', sessionID: 'ses_1', part: { text: 'thinking' } }), line({ type: 'text', sessionID: 'ses_1', part: { text: '{"note":"ok"}' } })].join('; ');
 
@@ -37,6 +40,20 @@ describe('opencodeRunner', () => {
   it('deletes the session the run left behind', async () => {
     const dir = makeHome();
     await opencodeRunner({ cwd: dir, bin: fakeOpencode(dir, answers) })('s', 'p');
+    await waitFor(() => fs.readFileSync(path.join(dir, 'args'), 'utf8').includes('session delete --standalone ses_1'));
+  });
+
+  it('runs a retro call on an agent that stops after three steps, and reads what it spent off the export', async () => {
+    const dir = makeHome();
+    const reply = (cost: number, input: number, output: number, reasoning: number, read: number) => ({ type: 'assistant', cost, tokens: { input, output, reasoning, cache: { read, write: 1 } } });
+    const exported = JSON.stringify({ info: {}, messages: [{ type: 'user', text: 'p' }, reply(0.01, 4, 10, 2, 100), reply(0.02, 6, 20, 0, 200)] });
+    const answer = await runner({ cwd: dir, bin: fakeOpencode(dir, answers, exported), retro: true })('s', 'p', {});
+    expect(answer).toEqual({ text: '{"note":"ok"}', usage: { input: 10, output: 32, reasoning: 2, cacheRead: 300, cacheWrite: 2, costUsd: 0.03 } });
+    const args = fs.readFileSync(path.join(dir, 'args'), 'utf8').split('\n');
+    expect(args[0]).toBe('run --standalone --format json --agent svall-retro');
+    expect(args[1]).toBe('session export --standalone ses_1');
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')).agents)
+      .toEqual({ 'svall-retro': { mode: 'primary', steps: 3, permissions: [{ action: '*', resource: '*', effect: 'ask' }] } });
     await waitFor(() => fs.readFileSync(path.join(dir, 'args'), 'utf8').includes('session delete --standalone ses_1'));
   });
 

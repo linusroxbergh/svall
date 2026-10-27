@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Config, modelPicks } from '../src/config.js';
-import { codexRunner } from '../src/scribe/codex.js';
+import { codexRunner as runner } from '../src/scribe/codex.js';
+import { scribeOf, type Call } from '../src/scribe/run.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -14,6 +15,8 @@ const fakeCodex = (dir: string, body: string): string => {
   return bin;
 };
 const writeAnswer = `while [ "$1" != "-o" ]; do shift; done; printf '{"note":"ok"}' > "$2"`;
+// the scribe's passes: its model and deadline, nothing else
+const codexRunner = (o: { cwd: string; bin: string } & Call) => scribeOf(runner({ cwd: o.cwd, bin: o.bin }), { model: o.model, timeoutMs: o.timeoutMs });
 
 describe('codexRunner', () => {
   it('reads the answer out of the last-message file, the system prompt leading the one prompt exec takes', async () => {
@@ -63,6 +66,30 @@ describe('codexRunner', () => {
     const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
     expect(args).toContain('-c model_reasoning_effort="low"');
     expect(args).not.toContain('-m ');
+  });
+});
+
+describe('codexRunner for the retro', () => {
+  const turn = (input: number, cached: number, output: number, reasoning: number) =>
+    `echo '${JSON.stringify({ type: 'turn.completed', usage: { input_tokens: input, cached_input_tokens: cached, output_tokens: output, reasoning_output_tokens: reasoning } })}'`;
+
+  it('turns the shell tool off, hands codex the schema and adds up what each turn spent', async () => {
+    const dir = makeHome();
+    const keep = `while [ "$1" != "--output-schema" ]; do shift; done; cp "$2" "${dir}/schema"`;
+    const bin = fakeCodex(dir, `(${keep}); ${turn(100, 40, 10, 4)}; ${turn(50, 0, 5, 0)}; ${writeAnswer}`);
+    const answer = await runner({ cwd: dir, bin, retro: true })('s', 'p', { effort: 'medium', schema: { type: 'object', required: ['notes'] } });
+    expect(answer).toEqual({ text: '{"note":"ok"}', usage: { input: 110, output: 15, cacheRead: 40, cacheWrite: 0, reasoning: 4 } });
+    const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
+    expect(args).toContain('-c model_reasoning_effort="medium" -c features.shell_tool=false');
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'schema'), 'utf8'))).toEqual({ type: 'object', required: ['notes'] });
+  });
+
+  it('leaves the scribe its shell tool and gives it no schema', async () => {
+    const dir = makeHome();
+    await codexRunner({ cwd: dir, bin: fakeCodex(dir, writeAnswer) })('s', 'p');
+    const args = fs.readFileSync(path.join(dir, 'args'), 'utf8');
+    expect(args).not.toContain('shell_tool');
+    expect(args).not.toContain('--output-schema');
   });
 });
 

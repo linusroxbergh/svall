@@ -40,7 +40,7 @@ import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
 import { codexRunner } from './scribe/codex.js';
 import { opencodeRunner } from './scribe/opencode.js';
-import { claudeRunner, perPass, type RunScribe } from './scribe/run.js';
+import { claudeRunner, perPass, scribeOf, type RunScribe } from './scribe/run.js';
 import { Scribe, type FarPass, type Only, type SweepOptions } from './scribe/scribe.js';
 import { fullWake } from './scribe/wake.js';
 import { installHomeTemplate } from './setup.js';
@@ -395,8 +395,8 @@ export class Fleet extends EventEmitter<Events> {
     const cwd = path.join(paths.home, 'scribe');
     // a worker passes its robots for its home, on the home's model
     const model = this.deps.remote?.onWorker ? store.state.scribeModel : this.model('scribe', agent);
-    if (agent === 'claude') return claudeRunner({ model: model!, cwd, envFile: paths.env });
-    return agent === 'codex' ? codexRunner({ model, cwd }) : opencodeRunner({ model, cwd });
+    const runner = agent === 'claude' ? claudeRunner({ cwd, envFile: paths.env }) : agent === 'codex' ? codexRunner({ cwd }) : opencodeRunner({ cwd });
+    return scribeOf(runner, { model });
   }
 
   // fleet.json's model for `agent`'s CLI, else the CLI's default
