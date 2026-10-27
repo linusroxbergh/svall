@@ -5,7 +5,7 @@ import type { SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../handover/hash.js';
-import { configNeeds, configPlace, configRedacted, fieldPlace, getAt, relocatedServer } from './mirror-config.js';
+import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
 import {
   DOC_NAMES, docWithOverride, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
@@ -67,12 +67,9 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
     const at = where(s);
     if (!at) continue;
     if (s.known && s.secretFields.length) {
-      const fields = s.secretFields.flatMap((field) => {
-        const leaf = fieldPlace(s.agent, s.entry, field);
-        return leaf ? [{ field, leaf }] : [];
-      });
+      const fields = s.secretFields.flatMap((field) => fieldPlace(s.agent, s.entry, field).map((leaf) => ({ field, leaf })));
       secrets.push({ item: s.key, ...at, place: s.place, bare: s.bare, fields });
-    } else if (!s.known && Object.keys(s.entry).length) {
+    } else if (!s.known) {
       // an unknown server's preview names its fields
       whole.push({ item: s.key, ...at, place: s.place, fields: s.preview });
     }
@@ -86,17 +83,16 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
   for (const c of plan.configs) {
     for (const f of files.filter((x) => x.item === c.key)) {
       const fields = f.fields ?? c.fields;
-      const leaves = fields.flatMap((field) => {
-        const leaf = f.doc === 'settings.json' && field.startsWith('env.') ? ['env', field.slice('env.'.length)] : configPlace(f.at, field);
-        return leaf ? [{ field, leaf }] : [];
-      });
+      const leaves = fields.flatMap((field) =>
+        (f.doc === 'settings.json' && field.startsWith('env.') ? [['env', field.slice('env.'.length)]] : configPlace(f.at, field)).map((leaf) => ({ field, leaf })));
       secrets.push({ item: c.key, doc: f.doc, place: [], bare: configRedacted(f.at, fields), fields: leaves });
     }
   }
-  // a plugin config travels as its file
-  for (const p of plan.plugins.filter((x) => x.ticked)) {
+  // an item carried whole travels as its files; one not ticked is asked about where the worker may hold it still
+  for (const p of plan.plugins) {
     for (const file of p.files) {
-      const to = plan.files.find((f) => f.from === file)?.to;
+      const rel = path.relative(plan.homes.claudeDir, file);
+      const to = p.ticked ? plan.files.find((f) => f.from === file)?.to : rel.startsWith('..') ? undefined : path.posix.join('claude', ...rel.split(path.sep));
       if (to !== undefined) whole.push({ item: p.key, file: to, place: [], fields: [] });
     }
   }
@@ -146,7 +142,8 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
       const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
       if (typeof value !== 'string' || value === '' || value === getAt(bare, leaf)) continue;
       const copied = k.doc ? isCopy(state.secrets[recordKey(k.doc, [...k.place, ...leaf])], value) : file?.copied === true;
-      secrets[fieldKey(k.item, field)] = copied ? 'copied' : 'own';
+      // a field at several places is copied while one holds the copy
+      secrets[fieldKey(k.item, field)] = copied || secrets[fieldKey(k.item, field)] === 'copied' ? 'copied' : 'own';
     }
   }
   const whole: ConfigReport['whole'] = {};
@@ -182,30 +179,38 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // a ticked item the worker does not hold yet, or was not asked about
   const notYet = (tick: NonNullable<SetupRow['tick']>): SetupRow =>
     ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : saved, tick });
+  // an unticked item whose copy the worker still holds
+  const stillOn = (tick: NonNullable<SetupRow['tick']>): SetupRow => ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick });
+  // the variables an unticked env key of server `s` reads on the worker: the references the mirror leaves in its place
+  const reads = (s: MirroredServer, f: string): string[] => {
+    const v = getAt(s.bare, [FIELD_PATHS[s.agent].env, f.slice('env.'.length)]);
+    return typeof v === 'string' ? [...v.matchAll(VAR_REF)].map((x) => x[1] ?? x[2]) : [f.slice('env.'.length)];
+  };
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
-  // a server's env key its own once the worker's daemon has that variable, and while it still holds a copy, not yet
-  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server = false): SetupRow => {
+  // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
+  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
-    const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && report?.vars[f.slice('env.'.length)] === true);
+    const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
-    if (!tick.on && fields.some((f) => held(f) === 'copied')) return { key: item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick };
+    if (!tick.on && fields.some((f) => held(f) === 'copied')) return stillOn(tick);
     if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
     if (tick.on) return notYet(tick);
-    const env = server ? fields.filter((f) => f.startsWith('env.')).map((f) => `svall ${o.fleetFlag}worker env ${f.slice('env.'.length)}`) : [];
+    const env = server ? [...new Set(fields.filter((f) => f.startsWith('env.')).flatMap((f) => reads(server, f)))].map((v) => `svall ${o.fleetFlag}worker env ${v}`) : [];
     const without = `mirrored without ${preview.join(', ')}; ${env.length ? `run ${env.join(', ')} there, ` : ''}or set them in ${o.overrides} on ${m}`;
     return { key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: report ? without : `${saved}: ${without}`, tick };
   };
   // a server or plugin config whose fields Svall does not know, which travels whole once each is ticked
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
+    if (!on && report?.whole[item]) return stillOn(tick);
     if (!on) return { key: item, status: 'warn', action: `copy ${name} whole to ${m}`, detail: `${name} has fields Svall does not know; it is not mirrored until you tick it`, tick };
     return report?.whole[item] ? { key: item, status: 'ok', detail: `copied whole to ${m}`, tick } : notYet(tick);
   };
   // an unknown server's preview names its fields
   for (const s of plan.servers) {
     if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
-    else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, true));
+    else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, s));
   }
 
   const servers = carried(plan);

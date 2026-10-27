@@ -3,8 +3,8 @@ import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  configNeeds, configPlace, configRedacted, configSecrets, FIELD_PATHS, fieldPlace, isMacOnly, isOAuth, needsOf, oauthLogin, readMirrorVars, readPluginConfigs, readPlugins,
-  readServers, redacted, relocatedServer, runtimesOf, secretsOf, withoutCredentials, type McpServer,
+  agentKeys, configNeeds, configPlace, configRedacted, configSecrets, FIELD_PATHS, fieldPlace, isMacOnly, isOAuth, keyedLsp, marketplaceList, needsOf, oauthLogin,
+  readMirrorVars, readPluginConfigs, readPlugins, readServers, redacted, relocatedServer, runtimesOf, secretsOf, withoutCredentials, type McpServer,
 } from '../../src/placement/mirror-config.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { macHome, put } from './mirror-homes.js';
@@ -318,11 +318,32 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(needsOf(server('codex', { raw: { bearer_token_env_var: 'not a var', env_vars: ['GOOD'] } }))).toEqual(['GOOD']);
   });
 
-  it('a reference is ${NAME} of any case, ${NAME:-default} or {env:NAME}: a need, never a secret; KEY=value of any case is a key', () => {
-    const s = server('claude', { env: { A: '${my_key}', B: '${API_KEY:-fallback}', C: '{env:oc_key}' }, args: ['db_url=postgres://h/db', '--env=Api_Token=tok_fake_1'] });
-    expect(secretsOf(s).map((f) => f.value)).toEqual(['postgres://h/db', 'tok_fake_1']);
-    expect(needsOf(s)).toEqual(['API_KEY', 'my_key', 'oc_key']);
-    expect(redacted(s, new Set()).env).toEqual({ A: '${my_key}', B: '${API_KEY:-fallback}', C: '{env:oc_key}' });
+  it('a reference is ${NAME} of any case, ${NAME:-} or {env:NAME}: a need, never a secret; a default in one is a value, a secret its reference is left for, its name still a need', () => {
+    const s = server('claude', {
+      env: { A: '${my_key}', B: '${API_KEY:-fb_fake_1}', C: '{env:oc_key}', D: '${EMPTY:-}' }, headers: { Authorization: 'Bearer ${TOK:-hd_fake_2}' },
+      url: 'https://u:${PW:-pw_fake_3}@h.test/mcp?key=${QK:-qk_fake_4}', args: ['--api-key', '${AK:-ak_fake_5}'],
+    });
+    expect(secretsOf(s).map((f) => [f.field, f.value])).toEqual([
+      ['env.B', '${API_KEY:-fb_fake_1}'], ['headers.Authorization', 'Bearer ${TOK:-hd_fake_2}'], ['url.key', '${QK:-qk_fake_4}'], ['url.userinfo', 'u:${PW:-pw_fake_3}'],
+      ['args[--api-key]', '${AK:-ak_fake_5}'],
+    ]);
+    expect(needsOf(s)).toEqual(['AK', 'API_KEY', 'EMPTY', 'PW', 'QK', 'TOK', 'my_key', 'oc_key']);
+    expect(redacted(s, new Set())).toMatchObject({
+      env: { A: '${my_key}', B: '${API_KEY}', C: '{env:oc_key}', D: '${EMPTY:-}' }, headers: { Authorization: 'Bearer ${TOK}' },
+      url: 'https://u:${PW}@h.test/mcp?key=${QK}', args: ['--api-key', '${AK}'],
+    });
+    const doc = { model_providers: { g: { http_headers: { 'X-Key': '${CX:-cx_fake_6}' } } } };
+    expect(configSecrets('codex', doc).map((f) => f.field)).toEqual(['model_providers.g.http_headers.X-Key']);
+    expect(configRedacted(doc, ['model_providers.g.http_headers.X-Key'])).toEqual({ model_providers: { g: { http_headers: { 'X-Key': '${CX}' } } } });
+    const list = { x: { source: { source: 'url', url: 'https://x.test/m.json', headers: { Authorization: 'Bearer ${GH:-mh_fake_7}' } } } };
+    expect(marketplaceList(list, new Set())).toEqual({ doc: { x: { source: { ...list.x.source, headers: { Authorization: 'Bearer ${GH}' } } } }, kept: false });
+    expect(keyedLsp({ go: { command: 'gopls', env: { T: '${T:-lsp_fake_8}' } }, ts: { command: 'tsls', env: { T: '${T:-}' } } })).toEqual(['go']);
+  });
+
+  it('KEY=value in an arg holds a key where KEY is upper case or names one; another name=value does not', () => {
+    const s = server('claude', { args: ['mode=fast', '--log=level=debug', 'db_url=postgres://h/db', 'api_token=tk_fake_1', '--env=Api_Token=tk_fake_2', 'DB_URL=postgres://h/db'] });
+    expect(secretsOf(s).map((f) => [f.field, f.value])).toEqual([['args[api_token]', 'tk_fake_1'], ['args[Api_Token]', 'tk_fake_2'], ['args[DB_URL]', 'postgres://h/db']]);
+    expect(redacted(s, new Set()).args).toEqual(['mode=fast', '--log=level=debug', 'db_url=postgres://h/db', 'api_token=', '--env=Api_Token=', 'DB_URL=']);
   });
 
   it('a URL\'s userinfo runs to its last @ before the host, and a password with no user is a credential: in a server url, an arg and a config string, all emptied', () => {
@@ -349,6 +370,11 @@ describe('reading agent configs and finding secrets by field', () => {
     ['agents.*.request.body.**', { agents: { a: { request: { body: { secret: 'oc_fake_7' } } } } }, 'agents.a.request.body.secret'],
     ['agent.*.options.** by name', { agent: { a: { options: { apiKey: 'oc_fake_8', mode: 'fast' } } } }, 'agent.a.options.apiKey'],
     ['agents.*.options.** by name', { agents: { a: { options: { auth: { token: 'oc_fake_9' }, mode: 'fast' } } } }, 'agents.a.options.auth.token'],
+    ['providers.*.models.*.variants.*.headers.*', { providers: { p: { models: { m: { variants: [{ id: 'v', headers: { Authorization: 'Bearer oc_fake_10' } }] } } } } }, 'providers.p.models.m.variants.0.headers.Authorization'],
+    ['providers.*.models.*.variants.*.body.**', { providers: { p: { models: { m: { variants: [{ id: 'v', body: { auth: { key: 'oc_fake_11' } } }] } } } } }, 'providers.p.models.m.variants.0.body.auth.key'],
+    ['providers.*.settings.** by name', { providers: { p: { settings: { apiKey: 'oc_fake_12', region: 'eu' } } } }, 'providers.p.settings.apiKey'],
+    ['providers.*.models.*.settings.** by name', { providers: { p: { models: { m: { settings: { token: 'oc_fake_13', temperature: 'low' } } } } } }, 'providers.p.models.m.settings.token'],
+    ['providers.*.models.*.variants.*.settings.** by name', { providers: { p: { models: { m: { variants: [{ id: 'v', settings: { secret: 'oc_fake_14' } }] } } } } }, 'providers.p.models.m.variants.0.settings.secret'],
   ])('an OpenCode key at %s is a secret field of opencode:config, emptied unless ticked', (_, doc, field) => {
     expect(configSecrets('opencode', doc).map((f) => f.field)).toEqual([field]);
     expect(JSON.stringify(configRedacted(doc, [field]))).not.toContain('oc_fake');
@@ -368,25 +394,55 @@ describe('reading agent configs and finding secrets by field', () => {
       model_providers: { g: { base_url: 'https://g.test/v1?key=', auth: { command: 'helper', args: ['--secret', '', '--org=acme', 'https://x.test/t?token='] } } },
       otel: { exporter: { 'otlp-http': { endpoint: 'https://o.test/v1?api_key=' } } },
     });
-    expect(configPlace(doc, 'model_providers.g.auth.args[--secret]')).toEqual(['model_providers', 'g', 'auth', 'args', '1']);
+    expect(configPlace(doc, 'model_providers.g.auth.args[--secret]')).toEqual([['model_providers', 'g', 'auth', 'args', '1']]);
   });
 
-  it('an arg field is named by the secret flag or header before it, its own --flag= or KEY=, or its URL\'s scheme and host; by its index only where nothing names it or a name repeats', () => {
+  it('an arg field is named by the secret flag or header before it, its own --flag= or KEY=, or its URL\'s scheme and host; by its index only where nothing names it', () => {
     const s = server('claude', { args: [
       '--db-password', 'db_fake_1', '--api-key=ak_fake_2', 'DB_URL=postgres://u:p@h/db', '-H', 'X-Key: hk_fake_3', 'https://u:uk_fake_4@x.test/mcp?key=qk_fake_5',
       '--header=Authorization: Bearer hb_fake_6', 'run.sh', '--db-password', 'db_fake_7',
     ] });
     expect(secretsOf(s).map((f) => f.field)).toEqual([
-      'args[--db-password]', 'args[--api-key]', 'args[DB_URL]', 'args[-H X-Key]', 'args[https://x.test].key', 'args[https://x.test].userinfo', 'args[--header Authorization]', 'args[10]',
+      'args[--db-password]', 'args[--api-key]', 'args[DB_URL]', 'args[-H X-Key]', 'args[https://x.test].key', 'args[https://x.test].userinfo', 'args[--header Authorization]', 'args[--db-password]',
     ]);
-    expect(fieldPlace('claude', s.raw, 'args[https://x.test].key')).toEqual(['args', 6]);
-    expect(fieldPlace('opencode', { command: ['cmd', '--token', 'tk_fake_1'] }, 'args[--token]')).toEqual(['command', 2]);
+    expect(fieldPlace('claude', s.raw, 'args[https://x.test].key')).toEqual([['args', 6]]);
+    expect(fieldPlace('opencode', { command: ['cmd', '--token', 'tk_fake_1'] }, 'args[--token]')).toEqual([['command', 2]]);
+    expect(secretsOf(server('claude', { args: ['run.sh', 'x'] }))).toEqual([]);
   });
 
   it('a tick follows its arg\'s name: an arg ticked by name keeps its tick after the Mac reorders its args, and a value now at a ticked arg\'s old index stays unticked', () => {
     const after = server('claude', { args: ['--db-password', 'db_fake_1', '--token', 'tk_fake_2'] });
     expect(redacted(after, new Set(['args[--token]'])).args).toEqual(['--db-password', '', '--token', 'tk_fake_2']);
     expect(redacted(after, new Set(['args[1]'])).args).toEqual(['--db-password', '', '--token', '']);
+  });
+
+  it('every arg of one name is one field, ticked or not as a whole as an env key is, in a server and in a config\'s args', () => {
+    const s = server('claude', { args: ['--token', 'tk_fake_1', '--token', 'tk_fake_2', '--key', 'k_fake_3'] });
+    expect(secretsOf(s).map((f) => f.field)).toEqual(['args[--token]', 'args[--token]', 'args[--key]']);
+    expect(redacted(s, new Set(['args[--token]'])).args).toEqual(['--token', 'tk_fake_1', '--token', 'tk_fake_2', '--key', '']);
+    expect(redacted(s, new Set()).args).toEqual(['--token', '', '--token', '', '--key', '']);
+    expect(fieldPlace('claude', s.raw, 'args[--token]')).toEqual([['args', 1], ['args', 3]]);
+    const doc = { model_providers: { g: { auth: { command: 'helper', args: ['--secret', 'cx_fake_1', '--secret', 'cx_fake_2'] } } } };
+    expect(configPlace(doc, 'model_providers.g.auth.args[--secret]')).toEqual([['model_providers', 'g', 'auth', 'args', '1'], ['model_providers', 'g', 'auth', 'args', '3']]);
+    expect(configRedacted(doc, ['model_providers.g.auth.args[--secret]']).model_providers).toEqual({ g: { auth: { command: 'helper', args: ['--secret', '', '--secret', ''] } } });
+  });
+
+  it('a marketplace url\'s query values in settings.json are key fields of claude:settings, emptied there and in the marketplace list unless ticked', () => {
+    const url = 'https://gl.test/api/v4/raw/marketplace.json?private_token=glpat_fake_1234567890';
+    const doc = { extraKnownMarketplaces: { gl: { source: { source: 'url', url } } } };
+    const field = 'extraKnownMarketplaces.gl.source.url.private_token';
+    expect(configSecrets('claude', doc)).toEqual([{ field, value: 'glpat_fake_1234567890' }]);
+    expect(configRedacted(doc, [field]).extraKnownMarketplaces).toEqual({ gl: { source: { source: 'url', url: 'https://gl.test/api/v4/raw/marketplace.json?private_token=' } } });
+    const list = { gl: { source: { source: 'url', url }, installLocation: '/x' } };
+    expect(marketplaceList(list, new Set()).doc.gl).toEqual({ source: { source: 'url', url: 'https://gl.test/api/v4/raw/marketplace.json?private_token=' }, installLocation: '/x' });
+    expect(marketplaceList(list, new Set([field]))).toEqual({ doc: list, kept: true });
+  });
+
+  it('a subagent\'s frontmatter naming mcpServers anywhere the mirror does not read, a quoted or a second key, lists the file whole', () => {
+    const md = (...l: string[]) => ['---', ...l, '---', 'b', ''].join('\n');
+    expect(agentKeys(md('"mcpServers":', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: quoted_fake_1'))).toEqual(['mcpServers']);
+    expect(agentKeys(md('mcpServers: [github]', 'name: d', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: dup_fake_2'))).toEqual(['mcpServers']);
+    expect(agentKeys(md('name: d', 'mcpServers: [github]'))).toEqual([]);
   });
 });
 

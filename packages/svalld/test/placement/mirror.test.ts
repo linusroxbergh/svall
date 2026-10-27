@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { sha256Hex } from '../../src/handover/hash.js';
 import { realPath } from '../../src/handover/portable-path.js';
 import { claudeAdapter } from '../../src/handover/sessions/claude.js';
 import { clearConsent, mask, readConsent, setConsent, tickedFields } from '../../src/placement/mirror-consent.js';
 import { silentLogger } from '../../src/log.js';
+import { agentServers } from '../../src/placement/mirror-config.js';
 import { applyMirror, lockAgentFiles, MIRROR_FILE_MAX, mirrorCalls, mirrorPlan, packMirror, takeBackCopies } from '../../src/placement/mirror.js';
 import { fileSha, unpack } from '../../src/placement/move.js';
 import { seedTrust } from '../../src/placement/trust.js';
@@ -262,6 +264,66 @@ describe('the agent configuration mirror', () => {
     expect([ticked.files.find((f) => f.to === 'claude/agents/db.md')?.mode, ticked.keyed]).toEqual([0o600, ['claude/agents/db.md']]);
   });
 
+  it('a marketplace entry naming its LSP config by path lists that file whole in its plugin\'s install, and holds it in the marketplace, while it holds a key', () => {
+    const mac = macHome();
+    const market = path.join(mac.claudeDir, 'plugins/marketplaces/mp');
+    const named = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/lsp/servers.json');
+    put(path.join(market, '.claude-plugin/marketplace.json'), JSON.stringify({ name: 'mp', plugins: [{ name: 'acme', source: './acme', strict: false, lspServers: './lsp/servers.json' }] }));
+    const lsp = JSON.stringify({ go: { command: 'gopls', env: { GO_TOKEN: 'lsp_named_fake_1234567890' } } });
+    put(path.join(market, 'acme/lsp/servers.json'), lsp);
+    put(named, lsp);
+    const plan = mirrorPlan(mac);
+    expect(plan.plugins).toEqual([{ key: 'claude:plugin:acme', name: "acme's config", fields: ['lspServers.go'], ticked: false, files: [named] }]);
+    expect(plan.files.filter((f) => f.from.endsWith('lsp/servers.json'))).toEqual([]);
+    expect(plan.skipped).toEqual(expect.arrayContaining([`${path.join(market, 'acme/lsp/servers.json')} holds a key`, `${named} is not ticked`]));
+  });
+
+  it('a marketplace url\'s query values in settings.json are key fields of claude:settings, emptied there and in known_marketplaces.json unless ticked', () => {
+    const mac = macHome();
+    const url = 'https://gl.test/api/v4/raw/marketplace.json?private_token=glpat_fake_1234567890';
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.extraKnownMarketplaces = { gl: { source: { source: 'url', url } } }; });
+    editJson(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), (j) => { j.gl = { source: { source: 'url', url }, installLocation: path.join(mac.claudeDir, 'plugins/marketplaces/gl') }; });
+    const listOf = (plan: ReturnType<typeof mirrorPlan>) => JSON.parse(plan.files.find((f) => f.to === 'claude/plugins/known_marketplaces.json')!.data!);
+    const plan = mirrorPlan(mac);
+    expect(plan.configs.find((c) => c.key === 'claude:settings')!.fields).toEqual(['extraKnownMarketplaces.gl.source.url.private_token', 'env.ANTHROPIC_API_KEY']);
+    expect(JSON.stringify([plan.settings, listOf(plan)])).not.toContain('glpat_fake');
+    const ticked = mirrorPlan(mac, new Set(['claude:settings#extraKnownMarketplaces.gl.source.url.private_token']));
+    expect([listOf(ticked).gl.source.url, (ticked.settings as any).extraKnownMarketplaces.gl.source.url, ticked.keyed]).toEqual([url, url, ['claude/plugins/known_marketplaces.json']]);
+  });
+
+  it('a plugin\'s own subagent defining a server holding a key, in its install or its marketplace, is listed whole by its path under Claude\'s folder and stays on the Mac until ticked', () => {
+    const mac = macHome();
+    const md = ['---', 'name: db', 'mcpServers:', '  pg:', '    command: npx', '    env:', '      PG_PASSWORD: plugin_agent_fake_1234567890', '---', 'body', ''].join('\n');
+    const rels = ['plugins/marketplaces/mp/acme/agents/db.md', 'plugins/cache/mp/acme/1.0.0/agents/db.md'];
+    for (const rel of rels) put(path.join(mac.claudeDir, rel), md);
+    const plan = mirrorPlan(mac);
+    expect(plan.plugins).toEqual(rels.map((rel) => ({ key: `claude:agent:${rel}`, name: rel, fields: ['mcpServers.pg'], ticked: false, files: [path.join(mac.claudeDir, rel)] })));
+    expect(plan.files.filter((f) => f.from.endsWith('agents/db.md'))).toEqual([]);
+    const ticked = mirrorPlan(mac, new Set(rels.map((rel) => `claude:agent:${rel}#mcpServers.pg`)));
+    expect(ticked.files.filter((f) => f.from.endsWith('agents/db.md')).map((f) => [f.to, f.mode])).toEqual(rels.map((rel) => [`claude/${rel}`, 0o600]));
+    // a marketplace whose list cannot be read keeps all of it here, rows of its own none
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), '{ "plugins": ');
+    expect(mirrorPlan(mac).plugins.map((p) => p.key)).toEqual([`claude:agent:${rels[1]}`]);
+  });
+
+  it('a marketplace list ticked whole that only runs a headersHelper travels as a file with no key in it', () => {
+    const mac = macHome();
+    const list = path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json');
+    put(list, JSON.stringify({ name: 'mp', plugins: [{ name: 'zip', source: { source: 'url', url: 'https://z.test/z.zip' }, headersHelper: 'z-headers' }] }));
+    const ticked = mirrorPlan(mac, new Set(['claude:marketplace:mp#plugins.zip']));
+    expect([ticked.files.find((f) => f.from === list)?.mode, ticked.keyed, ticked.inPlace]).toEqual([fs.statSync(list).mode & 0o777, [], []]);
+  });
+
+  it('the variables a plan names come only from servers it carries: one in a plugin file it does not carry names none', () => {
+    const mac = macHome();
+    editJson(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), (j) => { j.plugins = { 'acme@mp': j.plugins.acme }; });
+    editJson(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json'), (j) => { j.mcpServers.pdf.env.HELD = '${HELD_PLUGIN_VAR}'; });
+    expect(mirrorPlan(mac).vars).toContain('HELD_PLUGIN_VAR');
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), '{ "plugins": ');
+    const plan = mirrorPlan(mac);
+    expect([plan.unreadInstalls.length, plan.vars.filter((v) => v === 'HELD_PLUGIN_VAR' || v === 'PDF_KEY')]).toEqual([1, []]);
+  });
+
   it('a file the mirror writes itself is left out over 5 MB too', () => {
     const mac = macHome();
     const mcp = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
@@ -432,6 +494,59 @@ describe('the agent configuration mirror', () => {
     expect(docs(taken)).toEqual(docs(untick));
     expect(json(taken.claudeJson).mcpServers.env).toEqual({ type: 'http', url: 'https://x.test/mcp?token=&mode=', headers: { 'X-Key': '' } });
     expect((parseToml(read(path.join(taken.codexDir, 'config.toml'))) as any).mcp_servers.env).toEqual({ url: 'https://c.test/mcp?key=&v=' });
+  });
+
+  it('takeBackCopies empties a ticked key in place in a file the agent needs, where it lies there: a marketplace list the worker moved and updated keeps its marketplaces, a subagent its servers and prompt', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const source = { source: 'url', url: 'https://x.test/m.json', headers: { Authorization: 'Bearer mh_fake_1234567890' } };
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.extraKnownMarketplaces = { x: { source } }; });
+    editJson(path.join(mac.claudeDir, 'plugins/known_marketplaces.json'), (j) => { j.x = { source, installLocation: path.join(mac.claudeDir, 'plugins/marketplaces/x') }; });
+    put(path.join(mac.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'), JSON.stringify({
+      name: 'mp', plugins: [{ name: 'acme', source: './acme' }, { name: 'zip', source: { source: 'url', url: 'https://z.test/z.zip' }, headers: { Authorization: 'Bearer mk_fake_1234567890' } }],
+    }));
+    put(path.join(mac.claudeDir, 'agents/db.md'), ['---', 'name: db', 'mcpServers:', '  - github', '  - pg:', '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890', '---', 'the agent', ''].join('\n'));
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    const consent = new Set(['claude:settings#extraKnownMarketplaces.x.source.headers.Authorization', 'claude:marketplace:mp#plugins.zip', 'claude:agent:db.md#mcpServers.pg']);
+    await packMirror(mirrorPlan(mac, consent), path.join(scratch, 'mirror.tar'));
+    await unpack(path.join(scratch, 'mirror.tar'), path.join(scratch, 'blob'));
+    applyMirror(path.join(scratch, 'blob'), o);
+    const list = path.join(worker.claudeDir, 'plugins/known_marketplaces.json');
+    const market = path.join(worker.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json');
+    const agent = path.join(worker.claudeDir, 'agents/db.md');
+    expect([read(list), read(market), read(agent)].map((t) => /mh_fake|mk_fake|pg_fake/.test(t))).toEqual([true, true, true]);
+    // Claude on the worker updates its list itself
+    editJson(list, (j) => { j.x.lastUpdated = '2026-10-27T00:00:00.000Z'; });
+    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.endsWith(f))).sort()).toEqual([agent, list, market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
+    expect(json(list)).toEqual({
+      mp: expect.objectContaining({ installLocation: path.join(worker.claudeDir, 'plugins/marketplaces/mp') }),
+      x: { source: { ...source, headers: { Authorization: '' } }, installLocation: path.join(worker.claudeDir, 'plugins/marketplaces/x'), lastUpdated: '2026-10-27T00:00:00.000Z' },
+    });
+    expect(json(market).plugins[1].headers).toEqual({ Authorization: '' });
+    expect([agentServers(read(agent)), read(agent).startsWith('---\nname: db\n'), read(agent).endsWith('---\nthe agent\n')])
+      .toEqual([[['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }]], true, true]);
+    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.endsWith(f)))).toEqual([]);
+  });
+
+  it('takeBackCopies says nothing of a key the worker set itself where the user unticked the copy, nor of a record without the bare form of its value', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const o = { ...worker, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json') };
+    const apply = async (name: string, consent: Set<string>) => {
+      await packMirror(mirrorPlan(mac, consent), path.join(scratch, `${name}.tar`));
+      await unpack(path.join(scratch, `${name}.tar`), path.join(scratch, name));
+      applyMirror(path.join(scratch, name), o);
+    };
+    await apply('ticked', new Set(['claude:mcp:linear#env.LINEAR_API_KEY']));
+    editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
+    await apply('unticked', new Set());
+    expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('worker-own');
+    expect(takeBackCopies(o)).toEqual([]);
+    editJson(worker.claudeJson, (j) => { j.mcpServers.cli = { command: 'cli', args: ['--api-key='] }; });
+    put(o.stateFile, JSON.stringify({ files: {}, docs: {}, servers: {}, secrets: { [JSON.stringify(['.claude.json', 'mcpServers', 'cli', 'args', 0])]: sha256Hex('--api-key=ak_fake_1234567890') } }));
+    expect(takeBackCopies(o)).toEqual([]);
   });
 
   it('an apply older than the last one applied is refused once it takes the agent files, its blob dropped, so an untick pushed after it stays', async () => {
