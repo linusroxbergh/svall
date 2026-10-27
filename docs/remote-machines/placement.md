@@ -43,9 +43,10 @@ with the one thing to do, as `svall host doctor` lists them; `--json` gives them
   notion  not logged in                         → ssh -L 3118:localhost:3118 ada@vault, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
 ```
 
-In the app, once the robot lands a toast says "kanban is on linus-vault. 2 parts of its agent setup will not work
-there.", and **Show** opens its card, whose **On linus-vault** section lists them with **Copy keys** or **Open
-terminal** while it runs there. `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that
+In the app, once the robot lands the move sheet's done line says "kanban runs on linus-vault. 2 parts of its agent
+setup will not work there." With the sheet closed, or for a move from elsewhere, a toast says "kanban is on
+linus-vault. 2 parts of its agent setup will not work there.", and **Show** opens its card. The card's **On
+linus-vault** section lists them with **Copy keys** or **Open terminal** while it runs there. `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that
 long, `--carry <file>` takes a credential file such as `.env` along, `--own-worktree` gives a robot on a main checkout
 its own worktree (check 3), and `--retry` runs the robot's current move again from the step it stopped at.
 
