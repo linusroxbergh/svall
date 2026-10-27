@@ -2590,6 +2590,26 @@ runIf('Fleet', () => {
     expect(store.state.robots[c.id].tmux).toBeDefined();
   });
 
+  it('lays a revived terminal whose agent never comes up dormant again with its session once the wait for it runs out', async () => {
+    const { fleet, store, tmux } = await boot({ resumeMs: 1000 });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: SID, transcriptPath: '/nope' } });
+    await tmux.killWindow(c.tmux!.windowId);
+    await waitFor(() => store.state.robots[c.id].tmux === undefined);
+    // a builtin, so the pane is back at its shell at once and the resume never runs
+    const revive = { command: `: --resume ${SID}` };
+    store.update((d) => { d.robots[c.id].revive = revive; d.robots[c.id].resumeError = 'it did not come up'; });
+
+    await fleet.reviveRobot(c.id);
+    await waitForPolls(fleet, 3);
+    expect(store.state.robots[c.id]).toMatchObject({ tmux: expect.anything(), agent: { sessionId: SID } });
+    await waitFor(() => store.state.robots[c.id].tmux === undefined, 5000);
+    expect(store.state.robots[c.id]).toMatchObject({
+      agent: { sessionId: SID }, revive,
+      resumeError: `${c.name}'s terminal resumed claude session ${SID}, but claude did not come up within 1 s before that session started, so it is dormant again with that session; revive it to see`,
+    });
+  });
+
   it('creates the home island on start, copies config into state, and protects it', async () => {
     const { fleet, store, home: svallHome } = await boot();
     // a robot is refused a cwd that is not a directory, so the folder must exist
