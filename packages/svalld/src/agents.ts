@@ -15,8 +15,8 @@ type AgentAdapter = {
   // the CLI's own update to its latest release, whichever way it was installed
   updateCommand: string;
   minVersion?: Version;
-  // minVersion is only what a handover needs, so a fleet that never hands over runs on older
-  handoverFloor?: true;
+  // minVersion is only what a move needs, so a Mac whose robots never move runs on older
+  moveFloor?: true;
   // argv that reports the login; exit 1 means not logged in
   loginArgs: string[];
   loggedIn(stdout: string): boolean;
@@ -34,8 +34,8 @@ const withModel = (bin: string, flag: string) => (model?: string): string =>
 
 export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
-    // the oldest release whose sessions a handover carries, which a fixture holds
-    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251], handoverFloor: true,
+    // the oldest release whose sessions a move carries, which a fixture holds
+    label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251], moveFloor: true,
     installCommand: 'curl -fsSL https://claude.ai/install.sh | bash', updateCommand: 'claude update',
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },

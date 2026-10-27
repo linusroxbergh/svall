@@ -401,7 +401,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await hookReceiver(t, d),
     ...(linux
       ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
-      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.handover ? [await rsync(d)] : [])]),
+      : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d), ...(d.moves ? [await rsync(d)] : [])]),
     hooks(d),
     await codexCheck(d),
     ...(linux ? [await codexSandbox(d)] : []),

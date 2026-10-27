@@ -46,7 +46,7 @@ function fake(o: {
   shimsCurrent?: boolean;
   platform?: NodeJS.Platform;
   agentPath?: string;
-  handover?: boolean;
+  moves?: boolean;
   hardwareId?: string;
 } = {}) {
   const calls: string[] = [];
@@ -105,7 +105,7 @@ function fake(o: {
     shimsCurrent: o.shimsCurrent ?? true,
     daemon: DAEMON,
     platform: o.platform ?? 'darwin',
-    handover: o.handover ?? true,
+    moves: o.moves ?? true,
     user: 'linus',
     rsync: { bundled: RSYNC, fix: 'build it with node scripts/build-controller.mjs' },
     machine: { file: MACHINE, hardwareId: o.hardwareId ?? 'HW-1' },
@@ -371,8 +371,8 @@ describe('doctor', () => {
     expect(c.launchd.detail).toBe(`${LAUNCHD_LABEL}: state = running, runs = 4, last exit code = 0`);
   });
 
-  it('checks neither the bundled rsync nor Claude Code against a handover\'s floor for a fleet that never hands over', async () => {
-    const c = byName(await doctor(priv, fake({ handover: false, commands: { [`${RSYNC} --version`]: undefined as never, 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
+  it('checks neither the bundled rsync nor Claude Code against a move\'s floor where no robot moves', async () => {
+    const c = byName(await doctor(priv, fake({ moves: false, commands: { [`${RSYNC} --version`]: undefined as never, 'claude --version': '2.1.250 (Claude Code)\n' } }).deps));
     expect(c.rsync).toBeUndefined();
     expect(c.claude).toEqual({ name: 'claude', status: 'ok', detail: '2.1.250 (Claude Code), signed in' });
   });
