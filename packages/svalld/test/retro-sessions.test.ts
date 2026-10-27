@@ -36,9 +36,20 @@ describe('sessionLines', () => {
     expect(sessionLines(robot({ agent: agent(A) }), robot(), 9)).toEqual([{ at: 9, session: A, end: 9 }]);
   });
 
-  it('records the second terminal too', () => {
+  it('records the second terminal too, where only its cwd says which repo it ran in', () => {
     const second = { cwd: '/elsewhere', unread: false, agent: agent(B, { kind: 'codex' }) };
-    expect(sessionLines(robot(), robot({ second }), 3)).toEqual([expect.objectContaining({ session: B, cwd: '/elsewhere', agent: 'codex' })]);
+    expect(sessionLines(robot(), robot({ second }), 3)).toEqual([{ at: 3, session: B, robot: 'c_a', island: 'i_x', cwd: '/elsewhere', agent: 'codex' }]);
+  });
+
+  it('writes a session the record has not named in full, whatever changed', () => {
+    const named = (s: string) => s === A;
+    const held = robot({ agent: agent(B, { model: 'opus' }) });
+    const full = { session: B, robot: 'c_a', island: 'i_x', cwd: '/r/wt', repo: '/r', branch: 'b', agent: 'claude', model: 'opus' };
+    // a resume of a session a move brought changes nothing the slot shows
+    expect(sessionLines(held, held, 4, named)).toEqual([{ at: 4, ...full }]);
+    expect(sessionLines(robot({ agent: agent(B) }), held, 5, named)).toEqual([{ at: 5, ...full }]);
+    expect(sessionLines(held, robot(), 6, named)).toEqual([{ at: 6, ...full, end: 6 }]);
+    expect(sessionLines(robot({ agent: agent(A) }), robot(), 7, named)).toEqual([{ at: 7, session: A, end: 7 }]);
   });
 });
 

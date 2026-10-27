@@ -12,7 +12,7 @@ import type { RefreshLinks } from '../fleet.js';
 import type { SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
-import { appendSessions, currentLines, sessionLines, type SessionLine } from '../retro/sessions.js';
+import { appendSessions, currentLines, readSessions, sessionLines, type SessionLine } from '../retro/sessions.js';
 import type { Store } from '../store.js';
 
 type Deps = {
@@ -33,6 +33,7 @@ export class AgentEvents {
   private servers = new Map<number, { server: Promise<boolean>; at: number }>();
   private listing?: Promise<Proc[]>;
   private chains = new Map<string, Promise<unknown>>();
+  private named?: Set<string>;
 
   constructor(private deps: Deps) {}
 
@@ -84,7 +85,7 @@ export class AgentEvents {
         d.robots[ev.robotId] = next;
       }
     });
-    this.record(sessionLines(before, this.deps.store.state.robots[ev.robotId], Date.now()));
+    this.record(sessionLines(before, this.deps.store.state.robots[ev.robotId], Date.now(), (s) => this.recorded().has(s)));
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the robot
     const agent = this.deps.store.state.robots[ev.robotId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
@@ -95,16 +96,24 @@ export class AgentEvents {
     return reply;
   }
 
-  /** Records the session each robot holds now, once: the first start that keeps the record has seen none of them begin. */
+  /** Records each session a robot holds now that the record doesn't name yet, such as one held before the record was kept. */
   recordCurrent(): void {
-    if (!this.deps.sessions || fs.existsSync(this.deps.sessions)) return;
-    this.record(currentLines(Object.values(this.deps.store.state.robots), Date.now()));
+    if (!this.deps.sessions) return;
+    this.record(currentLines(Object.values(this.deps.store.state.robots), Date.now()).filter((l) => !this.recorded().has(l.session)));
+  }
+
+  // the sessions the record names, read off it once
+  private recorded(): Set<string> {
+    return this.named ??= new Set(this.deps.sessions ? readSessions(this.deps.sessions).keys() : []);
   }
 
   // a record that can't be written loses the retro a session's attribution, never the hook
   private record(lines: SessionLine[]): void {
     if (!this.deps.sessions || !lines.length) return;
-    try { appendSessions(this.deps.sessions, lines); } catch (e) { this.deps.log.error(`retro sessions: ${String(e)}`); }
+    try {
+      appendSessions(this.deps.sessions, lines);
+      for (const l of lines) this.recorded().add(l.session);
+    } catch (e) { this.deps.log.error(`retro sessions: ${String(e)}`); }
   }
 
   forget(id: string): void {

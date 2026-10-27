@@ -7,6 +7,7 @@ import type { Proc } from '../src/dormancy.js';
 import { AgentEvents } from '../src/fleet/agent-events.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
 import { resolvePaths } from '../src/paths.js';
+import { appendSessions } from '../src/retro/sessions.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -113,12 +114,34 @@ describe('AgentEvents and the retro\'s record of sessions', () => {
     ]);
   });
 
-  it('records each session held now once, on the first start that keeps the record', async () => {
+  it('records each session held now that the record doesn\'t name, in either terminal', async () => {
     const { store, ev, sessions, paths } = events([]);
-    store.update((d) => { d.robots.c_a.agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 1 }; });
+    const [named, second] = ['3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d', '5a6b7c8d-1e2f-4a3b-8c4d-9e0f1a2b3c4d'];
+    appendSessions(paths.retroSessions, [{ at: 1, session: named, robot: 'c_b' }]);
+    store.update((d) => {
+      d.robots.c_a.agent = { kind: 'claude', sessionId: SID, status: 'idle', lastActivityAt: 1 };
+      d.robots.c_a.second = { cwd: '/elsewhere', unread: false, agent: { kind: 'codex', sessionId: second, status: 'idle', lastActivityAt: 1 } };
+      d.robots.c_b = { ...d.robots.c_a, id: 'c_b', agent: { kind: 'claude', sessionId: named, status: 'idle', lastActivityAt: 1 } };
+      delete d.robots.c_b.second;
+    });
     ev.recordCurrent();
     ev.recordCurrent();
-    expect(sessions()).toEqual([expect.objectContaining({ session: SID, robot: 'c_a', agent: 'claude' })]);
+    expect(sessions().slice(1)).toEqual([
+      expect.objectContaining({ session: SID, robot: 'c_a', cwd: '/tmp', agent: 'claude' }),
+      expect.objectContaining({ session: second, robot: 'c_a', cwd: '/elsewhere', agent: 'codex' }),
+    ]);
     expect(path.dirname(paths.retroSessions)).toBe(paths.retro);
+  });
+
+  it('writes a session a move brought in full on its first hook, though the hook changes nothing the slot shows', async () => {
+    const { store, hook, sessions, paths } = events([]);
+    appendSessions(paths.retroSessions, [{ at: 1, session: 'elsewhere', robot: 'c_b' }]);
+    store.update((d) => {
+      d.robots.c_a.tmux = { windowId: '@1', paneId: '%1' };
+      d.robots.c_a.agent = { kind: 'codex', sessionId: SID, status: 'idle', lastActivityAt: 1 };
+    });
+    await hook('SessionStart', 0);
+    await hook('UserPromptSubmit', 0);
+    expect(sessions().slice(1)).toEqual([{ at: expect.any(Number), session: SID, robot: 'c_a', island: 'home', cwd: '/tmp', agent: 'codex' }]);
   });
 });

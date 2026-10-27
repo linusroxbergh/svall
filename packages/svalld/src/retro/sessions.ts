@@ -18,7 +18,8 @@ const started = (c: Robot, slot: TerminalSlot, at: number): SessionLine => {
   const a = slot.agent!;
   return {
     at, session: a.sessionId, robot: c.id, island: c.islandId, cwd: slot.cwd,
-    ...(c.repo && { repo: c.repo.mainRoot, branch: c.repo.branch }),
+    // the robot's repo is its main terminal's: the second's is known by its cwd alone
+    ...(slot === c && c.repo && { repo: c.repo.mainRoot, branch: c.repo.branch }),
     agent: a.kind, ...(a.model && { model: a.model }), ...(a.transcriptPath && { transcript: a.transcriptPath }),
   };
 };
@@ -34,9 +35,17 @@ function slotLines(c: Robot | undefined, was: TerminalSlot | undefined, now: Ter
   return [...(a ? [{ at, session: a.sessionId, end: at }] : []), ...(b && c && now ? [started(c, now, at)] : [])];
 }
 
-/** The lines a robot's change from `before` to `after` adds, for its main terminal and its second. */
-export const sessionLines = (before: Robot | undefined, after: Robot | undefined, at: number): SessionLine[] =>
-  [...slotLines(after, before, after, at), ...slotLines(after, before?.second, after?.second, at)];
+/** The lines a robot's change from `before` to `after` adds, for its main terminal and its second. A session the record
+ *  has not `named`, as a move brings one, is written in full whether or not it changed, as a first line is. */
+export function sessionLines(before: Robot | undefined, after: Robot | undefined, at: number, named: (session: string) => boolean = () => true): SessionLine[] {
+  const held = (c: Robot | undefined) => currentLines(c ? [c] : [], at);
+  const lines = [...slotLines(after, before, after, at), ...slotLines(after, before?.second, after?.second, at)].flatMap((l) => {
+    if (l.robot || named(l.session)) return [l];
+    // an unnamed session's end says where it ran; a change to one still held is in its full line below
+    return l.end === undefined ? [] : held(before).filter((h) => h.session === l.session).map((h) => ({ ...h, end: l.end }));
+  });
+  return [...lines, ...held(after).filter((h) => !named(h.session) && !lines.some((l) => l.session === h.session))];
+}
 
 /** A line for each session a robot holds now. */
 export const currentLines = (robots: Robot[], at: number): SessionLine[] =>
