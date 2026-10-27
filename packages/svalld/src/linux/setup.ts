@@ -237,12 +237,12 @@ export async function setupLinuxRelease(o: LinuxSetup & {
 }
 
 /**
- * Every fleet's daemon and the machine's gateway, started again from the release `current` now names. A unit that does
- * not start is said, not thrown.
+ * Every fleet's daemon, started again from the release `current` now names, and never the gateway unit an older release
+ * left, which the enrol of `host add` and `host upgrade` stops and removes. A unit that does not start is said, not thrown.
  */
 export async function restartUnits(run: Run, unitDir: string): Promise<string[]> {
   const done: string[] = [];
-  for (const unit of ourUnits(unitDir)) {
+  for (const unit of ourUnits(unitDir).filter((u) => u !== GATEWAY_UNIT)) {
     try {
       await restartUnit(run, unit);
       done.push(`systemctl --user restart ${unit}`);
