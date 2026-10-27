@@ -23,22 +23,22 @@ const ROLLOUT = /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0
 // the fields an agent's sessions never record, which the plan counts against the sessions in scope
 const LACKS: Record<AgentKind, string[]> = { claude: [], codex: ['cost'], opencode: [] };
 
-const names = (dir: string, recursive = false): string[] => {
-  try { return fs.readdirSync(dir, { encoding: 'utf8', recursive }); } catch { return []; }
-};
+// discovery stats and reads the heads of every transcript on disk, so it waits on each rather than hold svalld up
+const names = (dir: string, recursive = false): Promise<string[]> => fs.promises.readdir(dir, { encoding: 'utf8', recursive }).catch(() => []);
 
-const mtimeOf = (file: string): number | undefined => orSkip(() => fs.statSync(file).mtimeMs);
+const mtimeOf = (file: string): Promise<number | undefined> => fs.promises.stat(file).then((s) => s.mtimeMs, () => undefined);
 
 // the folder a session started in: Claude's lines carry it, and a Codex rollout's first session_meta holds it with the
 // parent a sub-agent's rollout names, as a later one is its parent's
-function head(agent: 'claude' | 'codex', file: string): { cwd?: string; parent?: string } {
-  let fd: number | undefined;
+async function head(agent: 'claude' | 'codex', file: string): Promise<{ cwd?: string; parent?: string }> {
   let text = '';
   try {
-    fd = fs.openSync(file, 'r');
-    const buf = Buffer.alloc(HEAD);
-    text = buf.toString('utf8', 0, fs.readSync(fd, buf, 0, HEAD, 0));
-  } catch { return {}; } finally { if (fd !== undefined) fs.closeSync(fd); }
+    const fh = await fs.promises.open(file, 'r');
+    try {
+      const buf = Buffer.alloc(HEAD);
+      text = buf.toString('utf8', 0, (await fh.read(buf, 0, HEAD, 0)).bytesRead);
+    } finally { await fh.close(); }
+  } catch { return {}; }
   for (const line of text.split('\n')) {
     if (agent === 'claude') {
       const cwd = line.includes('"cwd"') ? orSkip(() => (JSON.parse(line) as { cwd?: unknown }).cwd) : undefined;
@@ -56,29 +56,30 @@ function head(agent: 'claude' | 'codex', file: string): { cwd?: string; parent?:
 
 /** Every Claude and Codex session file on this machine touched since the span began, and the OpenCode sessions `opencode` lists. */
 export async function discover(o: { span: { from: number; to: number }; claudeDir: string; codexDir: string; opencode?: () => Promise<Candidate[]> }): Promise<Candidate[]> {
-  const touched = (file: string): number | undefined => {
-    const t = mtimeOf(file);
+  const touched = async (file: string): Promise<number | undefined> => {
+    const t = await mtimeOf(file);
     return t !== undefined && t >= o.span.from ? t : undefined;
   };
   const out: Candidate[] = [];
   const projects = path.join(o.claudeDir, 'projects');
-  for (const project of names(projects)) {
-    for (const f of names(path.join(projects, project)).filter((f) => f.endsWith('.jsonl'))) {
+  for (const project of await names(projects)) {
+    for (const f of (await names(path.join(projects, project))).filter((f) => f.endsWith('.jsonl'))) {
       const file = path.join(projects, project, f);
-      const mtime = touched(file);
+      const mtime = await touched(file);
       if (mtime === undefined) continue;
       const session = f.slice(0, -'.jsonl'.length);
       const dir = path.join(projects, project, session, 'subagents');
-      const subagents = names(dir).filter((s) => s.endsWith('.jsonl')).map((s) => path.join(dir, s)).filter((s) => touched(s) !== undefined);
-      out.push({ agent: 'claude', session, file, cwd: head('claude', file).cwd, mtime, ...(subagents.length > 0 && { subagents }) });
+      const subagents: string[] = [];
+      for (const s of (await names(dir)).filter((s) => s.endsWith('.jsonl'))) if (await touched(path.join(dir, s)) !== undefined) subagents.push(path.join(dir, s));
+      out.push({ agent: 'claude', session, file, cwd: (await head('claude', file)).cwd, mtime, ...(subagents.length > 0 && { subagents }) });
     }
   }
   const rollouts = path.join(o.codexDir, 'sessions');
-  for (const rel of names(rollouts, true)) {
+  for (const rel of await names(rollouts, true)) {
     const session = ROLLOUT.exec(path.basename(rel))?.[1];
     const file = path.join(rollouts, rel);
-    const mtime = session ? touched(file) : undefined;
-    if (session && mtime !== undefined) out.push({ agent: 'codex', session, file, mtime, ...head('codex', file) });
+    const mtime = session ? await touched(file) : undefined;
+    if (session && mtime !== undefined) out.push({ agent: 'codex', session, file, mtime, ...(await head('codex', file)) });
   }
   const opencode = (await o.opencode?.()) ?? [];
   return [...out, ...opencode.filter((c) => c.mtime >= o.span.from)];

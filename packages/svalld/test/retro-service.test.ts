@@ -110,6 +110,17 @@ describe('the retro service', () => {
     expect(w.retro.status(a.id)).toMatchObject({ stage: 'planned' });
   });
 
+  it('runs under the budget the user gave, and plans again a plan whose exclusions changed since', async () => {
+    const w = world({ runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
+    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+    await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { islands: ['i_x'] } });
+    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced', budget: 123_456 });
+    await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
+    const dir = path.join(w.paths.retro, 'runs', run);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ budget: 123_456 });
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'))).toMatchObject({ scope: { exclude: { islands: ['i_x'] } }, counts: { inScope: 0, excluded: 1 } });
+  });
+
   it('keeps the batches of a plan that has not run across a restart, and runs it', async () => {
     const w = world({ runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
     const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });

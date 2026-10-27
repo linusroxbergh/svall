@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -54,9 +54,9 @@ const sha256 = (b: Buffer): string => crypto.createHash('sha256').update(b).dige
  * the repos'. The first of a real path is kept; a repo's or mission control's file whose real path leaves its folder, as a
  * committed link may, is none, and skills of one name under different folders each have their folder in their id.
  */
-export function inventory(o: {
-  homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean;
-}): Target[] {
+export async function inventory(o: {
+  homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean | Promise<boolean>;
+}): Promise<Target[]> {
   const claude = o.claudeDir, codex = o.codexDir;
   const folders = [o.homeCwd, ...o.repos];
   const rule = (p: string): Found => ({ kind: 'rule', name: tilde(p, o.homedir), path: p, root: path.dirname(p) });
@@ -76,11 +76,11 @@ export function inventory(o: {
   // a local edit to a plugin's or claude.ai's skill is overwritten at the next sync
   const synced = [path.join(claude, 'plugins'), path.join(claude, 'skills/synced')].map(realPath);
   const svall = [o.homeCwd, ...fleetHomes(o.homedir)].map(realPath);
-  const classOf = (real: string): TargetClass =>
+  const classOf = async (real: string): Promise<TargetClass> =>
     synced.some((d) => within(real, d)) ? 'synced'
     : svall.some((d) => within(real, d)) ? 'svall'
     : SETTINGS.test(path.basename(real)) ? 'agent-settings'
-    : o.isGitWithRemote(real) ? 'repo' : 'local';
+    : (await o.isGitWithRemote(real)) ? 'repo' : 'local';
 
   const review = new Set(o.reviewSkills);
   const reals = new Set<string>();
@@ -95,16 +95,18 @@ export function inventory(o: {
   const roots = new Map<string, Set<string>>();
   for (const { f } of read) roots.set(`${f.kind}:${f.name}`, (roots.get(`${f.kind}:${f.name}`) ?? new Set()).add(f.root));
   const ids = new Set<string>();
-  return read.flatMap(({ f, real, bytes }): Target[] => {
+  const out: Target[] = [];
+  for (const { f, real, bytes } of read) {
     const id = roots.get(`${f.kind}:${f.name}`)!.size > 1 ? `${f.kind}:${f.name}@${tilde(f.root, o.homedir)}` : `${f.kind}:${f.name}`;
-    if (ids.has(id)) return [];
+    if (ids.has(id)) continue;
     ids.add(id);
     const { description } = f.kind === 'skill' ? frontmatter(bytes.toString('utf8')) : {};
-    return [{
-      id, kind: f.kind, name: f.name, ...(description && { description }), path: f.path, realPath: real, class: classOf(real), hash: sha256(bytes),
+    out.push({
+      id, kind: f.kind, name: f.name, ...(description && { description }), path: f.path, realPath: real, class: await classOf(real), hash: sha256(bytes),
       review: f.kind === 'skill' && (f.name.includes('review') || review.has(f.name)),
-    }];
-  });
+    });
+  }
+  return out;
 }
 
 /** The target's file as the judge reads it, its secrets masked, and the hash of the bytes read. */
@@ -126,18 +128,18 @@ export function fitTargets(ts: Target[], maxTokens = 40_000, ratio: number): Tar
   });
 }
 
-const remotes = new Map<string, boolean>();
+const remotes = new Map<string, Promise<boolean>>();
 
 /** Whether `file` is in a git repository with a remote, asked of git once per repository. */
-export function isGitWithRemote(file: string): boolean {
+export function isGitWithRemote(file: string): Promise<boolean> {
   let root = path.dirname(file);
   while (!fs.existsSync(path.join(root, '.git'))) {
-    if (root === path.dirname(root)) return false;
+    if (root === path.dirname(root)) return Promise.resolve(false);
     root = path.dirname(root);
   }
   let has = remotes.get(root);
-  if (has === undefined) {
-    try { has = execFileSync('git', ['-C', root, 'remote'], { encoding: 'utf8', timeout: 5_000, stdio: ['ignore', 'pipe', 'ignore'] }).trim() !== ''; } catch { has = false; }
+  if (!has) {
+    has = new Promise((resolve) => execFile('git', ['-C', root, 'remote'], { encoding: 'utf8', timeout: 5_000 }, (e, out) => resolve(!e && out.trim() !== '')));
     remotes.set(root, has);
   }
   return has;

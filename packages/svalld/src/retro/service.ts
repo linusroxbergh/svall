@@ -257,10 +257,10 @@ export class Retro {
       islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
     const repos = [...new Set(inScope.flatMap((c) => (c.repo ? [c.repo] : [])))];
-    const targets = this.inventory(repos, retro);
+    const targets = await this.inventory(repos, retro);
     const { outlines, skillsSeen } = await indexSessions({
       files: inScope.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
-      span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: this.onDisk(),
+      span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: await this.onDisk(),
     }, this.d.inline && { inline: true });
     const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string) => prThread(url), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
     const ready = FOCUS_OF[focus].includes('review-tweaks') && await gh.ready();
@@ -268,7 +268,7 @@ export class Retro {
     return { counts, repos, targets, outlines, skillsSeen, ready, prOf, comments };
   }
 
-  private inventory(repos: string[], retro: FleetConfig['retro']): Target[] {
+  private inventory(repos: string[], retro: FleetConfig['retro']): Promise<Target[]> {
     return inventory({ homedir: this.d.homedir, claudeDir: this.d.claudeDir, codexDir: this.d.codexDir, repos, homeCwd: expandHome(this.d.store.state.home.cwd, this.d.homedir), reviewSkills: retro.reviewSkills, isGitWithRemote });
   }
 
@@ -336,7 +336,7 @@ export class Retro {
       const picked = this.readJson<{ runs: Record<string, number>; unused?: string[]; mechanical: string[]; thin: string[] }>(path.join(dir, 'select.json')) ?? { runs: {}, mechanical: [], thin: [] };
       const report = await runPlan({
         plan, preset, budget, runner: this.d.runner ?? ((agent) => this.runner(agent)), dir, ledgerFile: this.ledgerFile,
-        targets: this.inventory(gathered.repos, retro),
+        targets: await this.inventory(gathered.repos, retro),
         measure: { outlines: gathered.outlines, span: plan.span, prOf: gathered.prOf, comments: gathered.comments },
         // runs are counted for the skill focuses alone; another plan read none of them
         runs: FOCUS_OF[plan.focus].some((f) => f === 'skill-tweaks' || f === 'review-tweaks') ? picked.runs : {}, unused: picked.unused ?? [],
@@ -382,11 +382,10 @@ export class Retro {
   }
 
   // every Claude and Codex transcript on disk, in the span or not, for the skills any of them ran
-  private onDisk(): string[] {
-    const list = (dir: string) => {
-      try { return (fs.readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f)); } catch { return []; }
-    };
-    return [...list(path.join(this.d.claudeDir, 'projects')), ...list(path.join(this.d.codexDir, 'sessions'))];
+  private async onDisk(): Promise<string[]> {
+    const list = (dir: string) => fs.promises.readdir(dir, { encoding: 'utf8', recursive: true })
+      .then((names) => names.filter((f) => f.endsWith('.jsonl')).map((f) => path.join(dir, f)), () => []);
+    return [...(await list(path.join(this.d.claudeDir, 'projects'))), ...(await list(path.join(this.d.codexDir, 'sessions')))];
   }
 
   private async fixRobot(run: string, id: string, shown: string, cwd: string, diff: string, evidence: { source: { session?: string } | { pr: string } }[]): Promise<Robot> {

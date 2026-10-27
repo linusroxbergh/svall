@@ -329,6 +329,13 @@ describe('runPlan', () => {
     expect(report.findings.map((f) => [f.title, f.rank])).toEqual([['first', 1]]);
   });
 
+  it('gives a target the judge was not shown no hash, as no diff was made against it', async () => {
+    const other: Target = { id: 'skill:other', kind: 'skill', name: 'other', path: '/s/other/SKILL.md', realPath: '/s/other/SKILL.md', class: 'local', hash: 'inventory', review: false };
+    const { input } = setup(THREE, (side) => threeNotes(side, findings(judged(['s1', 's2', 's3'], { target: 'skill:other', subject: 'other' }))));
+    const report = await runPlan({ ...input, targets: [...input.targets, other] });
+    expect(report.findings[0].target).toMatchObject({ id: 'skill:other', hash: null });
+  });
+
   it('keeps the seven top-ranked findings with their targets, ids and measures', async () => {
     const draft = '~/.claude/skills/changelog/SKILL.md';
     const outlines = [session('s1', T0 - DAY, 'interrupt'), session('s2', T0 - DAY), session('s3', T0 - DAY, 'reply')];

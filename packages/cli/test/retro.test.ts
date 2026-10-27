@@ -72,6 +72,16 @@ describe('svall retro', () => {
     expect(f.out.join('')).toContain(`   https://github.com/o/r/pull/1:\n   \`\`\`\`\`\n${quote.split('\n').map((l) => `   ${l}`).join('\n')}\n   \`\`\`\`\`\n`);
   });
 
+  it('prints what a model wrote without control bytes, a title or claim on one line, and the change fenced', async () => {
+    const forged = { ...finding('aaa'), title: 'real\x1b]0;pwned\x07\n2. forged', claim: 'c\r\n   Lands in: ~/x', change: { kind: 'diff' as const, summary: 's\x9b31m', text: '@@ -1 +1 @@\n-a\n+b\x1b[2J' } };
+    const f = fake({ 'retro.findings': { run: 'r_1', findings: [forged], previous: [], mechanical: ['m\x1b[31m'], thin: [], skipped: [], usage: { budget: 1, used: 1 } } satisfies RetroReport });
+    await f.run('findings');
+    const text = f.out.join('');
+    expect(text).not.toMatch(/[\x00-\x08\x0b-\x1f\x7f-\x9f]/);
+    expect(text).toContain('1. real]0;pwned 2. forged\n   c Lands in: ~/x\n   Change: s31m\n');
+    expect(text).toContain('      ```\n      @@ -1 +1 @@\n      -a\n      +b[2J\n      ```');
+  });
+
   it('shows a subscription tokens, not money', () => {
     const text = formatPlan({ ...plan, billing: 'subscription' });
     expect(text).toContain("subscription: tokens count toward your plan's limits");
@@ -94,6 +104,13 @@ describe('svall retro', () => {
     await f.run('run', 'r_1');
     await f.run('run', 'r_1', '--preset', 'default');
     expect(f.calls.map(([, p]) => (p as { preset?: string }).preset)).toEqual([undefined, 'default']);
+  });
+
+  it('run passes the budget the user gave, and refuses one that is not a whole number of tokens', async () => {
+    const f = fake({ 'retro.run': { run: 'r_1' } });
+    await f.run('run', 'r_1', '--preset', 'thrifty', '--budget', '500000');
+    expect(f.calls).toEqual([['retro.run', { plan: 'r_1', preset: 'thrifty', budget: 500_000, robot: process.env.SVALL_ROBOT_ID }]]);
+    await expect(f.run('run', 'r_1', '--budget', '5e5x')).rejects.toThrow('bad --budget');
   });
 
   it('wait follows the stages and exits 1 on an interrupted run', async () => {

@@ -28,7 +28,16 @@ const collectPath = (v: string, all: string[] = []): string[] => [...all, path.r
 // the unrecorded repos the plan lists by name; the rest are counted, and --json lists them all
 const SHOWN = 8;
 const indent = (text: string, by: string): string => text.split('\n').map((l) => `${by}${l}`).join('\n');
-const source = (s: Finding['evidence'][number]['source']): string => ('pr' in s ? s.pr : `${s.agent} ${s.session} line ${s.line}`);
+// what a model wrote keeps no control bytes but newlines and tabs, so it can't move the cursor, recolour or retitle the
+// terminal, and a line of it stays one line
+const clean = (s: string): string => s.replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g, '');
+const flat = (s: string): string => clean(s).replace(/\s+/g, ' ').trim();
+// a fence longer than any run of backticks in the text, which so cannot close it
+const fenced = (text: string, by: string): string => {
+  const fence = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
+  return [`${by}${fence}`, indent(clean(text), by), `${by}${fence}`].join('\n');
+};
+const source = (s: Finding['evidence'][number]['source']): string => flat('pr' in s ? s.pr : `${s.agent} ${s.session} line ${s.line}`);
 const rate = (r: { count: number; of: number } | null): string => (r ? `${r.count} of ${r.of}` : '–');
 
 const BILLING: Record<RetroPlan['billing'], string> = {
@@ -67,14 +76,10 @@ export function formatPlan(p: RetroPlan): string {
 
 function formatFinding(f: Finding, n: number): string {
   const t = f.target;
-  const lines = [`${n}. ${f.title}`, `   ${f.claim}`, `   Change: ${f.change.summary}`];
-  if (t) lines.push(`   Lands in: ${short(t.path)} (${LANDS[t.class]}${f.change.kind === 'diff' ? ', diff below' : ''})`);
-  for (const e of f.evidence) {
-    // longer than any run of backticks in the quote, which so cannot close it
-    const fence = '`'.repeat(Math.max(3, ...[...e.quote.matchAll(/`+/g)].map((m) => m[0].length + 1)));
-    lines.push(`   ${source(e.source)}:`, `   ${fence}`, indent(e.quote, '   '), `   ${fence}`);
-  }
-  if (f.change.text) lines.push(indent(f.change.text, '      '));
+  const lines = [`${n}. ${flat(f.title)}`, `   ${flat(f.claim)}`, `   Change: ${flat(f.change.summary)}`];
+  if (t) lines.push(`   Lands in: ${flat(short(t.path))} (${LANDS[t.class]}${f.change.kind === 'diff' ? ', diff below' : ''})`);
+  for (const e of f.evidence) lines.push(`   ${source(e.source)}:`, fenced(e.quote, '   '));
+  if (f.change.text) lines.push(fenced(f.change.text, '      '));
   return lines.join('\n');
 }
 
@@ -82,12 +87,12 @@ function formatFinding(f: Finding, n: number): string {
 function formatFindings(r: RetroReport): string {
   const out: string[] = [];
   if (r.previous.length) {
-    out.push('Fixed since the last retro:', ...r.previous.map((f) => `  ${f.measure.name}: ${rate(f.measure.before)} → ${rate(f.measure.after)}`), '');
+    out.push('Fixed since the last retro:', ...r.previous.map((f) => `  ${flat(f.measure.name)}: ${rate(f.measure.before)} → ${rate(f.measure.after)}`), '');
   }
   out.push(r.findings.length ? r.findings.map((f, i) => formatFinding(f, i + 1)).join('\n\n') : 'No finding recurs often enough to report.');
-  if (r.mechanical.length) out.push('', 'Also found:', ...r.mechanical.map((m) => `  ${m}`));
-  if (r.thin.length) out.push('', 'Too little to judge:', ...r.thin.map((t) => `  ${t}`));
-  if (r.skipped.length) out.push('', 'Read:', ...r.skipped.map((s) => `  ${s}`));
+  if (r.mechanical.length) out.push('', 'Also found:', ...r.mechanical.map((m) => `  ${flat(m)}`));
+  if (r.thin.length) out.push('', 'Too little to judge:', ...r.thin.map((t) => `  ${flat(t)}`));
+  if (r.skipped.length) out.push('', 'Read:', ...r.skipped.map((s) => `  ${flat(s)}`));
   out.push('', `used ${tokens(r.usage.used)} of ${tokens(r.usage.budget)} tokens`);
   return out.join('\n');
 }
@@ -159,10 +164,11 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
         return c.call('retro.mark', { marks: ids.map((id) => ({ id, action, ...(o.reason && { reason: o.reason }) })) });
       });
       printResult(r, json(), () => r.results.map((x) => {
-        if (x.outcome === 'robot') return `${x.id}: robot ${x.robot} opens a PR for ${short(x.path ?? '')}`;
-        if (x.outcome === 'apply') return `${x.id}: show the user this diff for ${short(x.path ?? '')}; on their OK, svall retro apply ${x.id}\n${indent(x.diff ?? '', '   ')}`;
-        if (x.outcome === 'proposal') return `${x.id}: a proposal; make the change by hand${x.path ? ` in ${short(x.path)}` : ''}\n${indent(x.diff ?? '', '   ')}`;
-        if (x.outcome === 'fixed') return `${x.id}: a robot already took this fix for ${short(x.path ?? '')}`;
+        const at = flat(short(x.path ?? ''));
+        if (x.outcome === 'robot') return `${x.id}: robot ${x.robot} opens a PR for ${at}`;
+        if (x.outcome === 'apply') return `${x.id}: show the user this diff for ${at}; on their OK, svall retro apply ${x.id}\n${fenced(x.diff ?? '', '   ')}`;
+        if (x.outcome === 'proposal') return `${x.id}: a proposal; make the change by hand${x.path ? ` in ${at}` : ''}\n${fenced(x.diff ?? '', '   ')}`;
+        if (x.outcome === 'fixed') return `${x.id}: a robot already took this fix for ${at}`;
         return `${x.id}: ${x.outcome}`;
       }).join('\n'));
     });
