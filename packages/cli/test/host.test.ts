@@ -914,13 +914,6 @@ describe('host add', () => {
     expect(ssh.calls()).toEqual([]);
   });
 
-  it('refuses a name svall handover takes as its own word before it reaches the machine', async () => {
-    const out = await addHost({ name: 'status', ssh: 'trift.test', release: archive() }, deps());
-    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('status is a word svall handover') });
-    expect(out.result).toBe('actions');
-    expect(ssh.calls()).toEqual([]);
-  });
-
   describe('again for a name in the registry', () => {
     const gateway = (registry: MachineRegistry, home = HOME): void => {
       registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall`, gateway: true }, REMOTE);

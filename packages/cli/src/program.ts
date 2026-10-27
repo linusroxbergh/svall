@@ -4,12 +4,8 @@ import { SHIM } from '@svall/svalld/profile';
 import { agentCommand } from './commands/agent.js';
 import { browserCommands } from './commands/browser.js';
 import { robotCommands } from './commands/robot.js';
-import { connectCommand } from './commands/connect.js';
 import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
-import { fleetCommands } from './commands/fleet-recover.js';
-import { gatewayCommands } from './commands/gateway.js';
-import { handoverCommand } from './commands/handover.js';
 import { hostCommands } from './commands/host.js';
 import { islandCommands } from './commands/island.js';
 import { mobileCommand } from './commands/mobile.js';
@@ -25,6 +21,14 @@ import { launch, realDeps } from './launch.js';
 import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
+/** What `svall <word>` answers for a command that is gone. */
+export const RETIRED: Record<'handover' | 'gateway' | 'fleet' | 'connect', string> = {
+  handover: 'svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine',
+  gateway: 'svall gateway is gone with the fleet handover',
+  fleet: 'svall fleet is gone with the fleet handover',
+  connect: 'svall connect is gone with the fleet handover',
+};
+
 /** Whether `word` is `name` with one letter added, dropped, changed, or two neighbours swapped. */
 export function typo(word: string, name: string): boolean {
   if (word === name || Math.abs(word.length - name.length) > 1) return false;
@@ -39,7 +43,7 @@ export function buildProgram(): Command {
     .description('Svall fleet control; with no command it opens the app')
     .option('--json', 'machine-readable output')
     .option('-p, --profile <name>', 'the fleet to work on (default: $SVALL_HOME, else private)')
-    .option('--host <name|local>', 'the machine to reach (default: the one that owns the fleet)')
+    .option('--host <name|local>', 'the machine to reach (default: this one)')
     // commander's own .version() wants the string up front, which would run git on every command
     .option('-V, --version', 'print the app version, the release installed, or the commit a checkout is on')
     .on('option:version', () => {
@@ -61,6 +65,7 @@ export function buildProgram(): Command {
   };
 
   program.action(async (profile?: string) => {
+    if (profile !== undefined && Object.hasOwn(RETIRED, profile)) throw new Error(RETIRED[profile as keyof typeof RETIRED]);
     const t = profile === undefined ? target() : targetFor(profile);
     // a mistyped command arrives as a profile name, and must not be offered as a new fleet
     const meant = profile !== undefined && !fs.existsSync(t.home)
@@ -79,11 +84,7 @@ export function buildProgram(): Command {
   program.addCommand(doctorCommand(target, json));
   program.addCommand(hostCommands(json, target));
   program.addCommand(workerCommands(target));
-  program.addCommand(handoverCommand({ target, profile, json }));
-  program.addCommand(gatewayCommands());
-  program.addCommand(fleetCommands(home, json, profile, target));
   program.addCommand(uninstallCommand(json));
-  program.addCommand(connectCommand(home, profile));
   program.addCommand(connectionInfoCommand(home, json));
   program.addCommand(versionCommand(json, home));
 

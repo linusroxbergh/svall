@@ -126,6 +126,11 @@ export function rebindMachine(hardwareId: string, dir: string = configDir()): vo
   writeDurable(file, { ...read(file), hardwareId }, { mode: 0o600 });
 }
 
+/** The machine id `svall version --json` names in `stdout`, past whatever a login shell printed around it; undefined when it names none. */
+export function versionMachineId(stdout: string): string | undefined {
+  return /^\s*"machineId":\s*"([^"]+)"/m.exec(stdout)?.[1];
+}
+
 /** What a machine that shares another's id does to get its own. */
 export const copiedRemedy = (file: string): string =>
-  `this machine shares another machine's id; move ${file} aside and restart svalld so this machine mints its own id, then \`svall host add\` it again from the controller, or on the controller \`svall fleet recover --force-owner local\` runs the fleet here; if it is the machine the file was made on, with new hardware, \`svall doctor --rebind\` keeps its id`;
+  `this machine shares another machine's id; move ${file} aside and restart svalld so this machine mints its own id, then \`svall host add\` each worker again; if it is the machine the file was made on, with new hardware, \`svall doctor --rebind\` keeps its id`;

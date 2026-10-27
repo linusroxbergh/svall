@@ -12,13 +12,9 @@ export type MachineEntry = { id: MachineId; record: MachineRecord };
 /** The alias for the machine the command runs on; ownership is written with ids, so it is never stored. */
 export const LOCAL = 'local';
 
-// `svall handover` reads these as its own words before a machine's name
-const HANDOVER_WORDS = ['on', 'off', 'status', 'attach'];
-
-/** Why `name` can never be a machine's: it is `local` or a word of `svall handover`'s. */
+/** Why `name` can never be a machine's: it is `local`. */
 export function reservedName(name: string): string | undefined {
   if (name === LOCAL) return 'local is an alias for the machine in hand, not a name';
-  if (HANDOVER_WORDS.includes(name)) return `${name} is a word svall handover takes as its own, not a name`;
   return undefined;
 }
 

@@ -29,7 +29,6 @@ import { bundledRsync, rsyncVersion } from '../controller/rsync.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
-import { unattended } from './fleet-recover.js';
 import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
 // daemonEnv: the agent homes setup hands a fleet's daemon from this account, which the agent checks ran with
@@ -112,6 +111,18 @@ function machine(d: DoctorDeps): Check {
   return stored === actual
     ? { name: 'machine id', status: 'ok', detail: `${file} was made on this machine` }
     : { name: 'machine id', status: 'warn', detail: `${file} was made on hardware ${stored}, and this machine is ${actual}: ${copiedRemedy(file)}` };
+}
+
+/** Why this run is not a person's at a terminal outside the fleets, or undefined when it is. */
+export function unattended(env: NodeJS.ProcessEnv, tty: boolean): string | undefined {
+  if (!tty) return 'has no terminal';
+  // a session an older svalld started carries SVALL_CHAR_ID
+  if (env.SVALL_ROBOT_ID || env.SVALL_CHAR_ID) return 'is a robot\'s';
+  // $TMUX names the server the terminal runs in, and a fleet's is the tmux.sock in its home
+  const sock = env.TMUX?.split(',')[0];
+  const home = sock && path.dirname(sock);
+  if (home && sock === resolvePaths(home).tmuxSock && fs.existsSync(resolvePaths(home).fleetConfig)) return 'is in a fleet\'s tmux pane';
+  return undefined;
 }
 
 /**

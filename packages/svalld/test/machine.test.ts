@@ -125,7 +125,7 @@ describe('the hardware a machine id was made on', () => {
 
   it('tells a machine that shares another one\'s id how to get its own', () => {
     expect(copiedRemedy('/c/machine.json')).toBe(
-      "this machine shares another machine's id; move /c/machine.json aside and restart svalld so this machine mints its own id, then `svall host add` it again from the controller, or on the controller `svall fleet recover --force-owner local` runs the fleet here; if it is the machine the file was made on, with new hardware, `svall doctor --rebind` keeps its id",
+      "this machine shares another machine's id; move /c/machine.json aside and restart svalld so this machine mints its own id, then `svall host add` each worker again; if it is the machine the file was made on, with new hardware, `svall doctor --rebind` keeps its id",
     );
   });
 });

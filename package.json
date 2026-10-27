@@ -7,7 +7,6 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "test": "vitest run",
-    "test:faults": "vitest run --project svalld --project cli --sequence.shuffle packages/svalld/test/handover/faults.test.ts packages/cli/test/controller/faults.test.ts",
     "integration:placement": "node scripts/integration/robot-placement.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json",
     "svalld": "tsx packages/svalld/src/bin.ts",

@@ -5,13 +5,15 @@ import net from 'node:net';
 import path from 'node:path';
 import { z } from 'zod';
 import { MachineRecord, OwnerRecord, type FleetId, type MachineId } from '@svall/protocol';
-import { Registry, registryFile } from '../machine.js';
+import { Registry, registryFile, versionMachineId } from '../machine.js';
 import { SSH_APPROVAL, SSH_AUTH, SSH_HOST_KEY } from '../link/ssh.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import { AuthorityFailure, gatewayPaths, type OwnerOp, type OwnerParamsOf } from './authority.js';
 import { gatewayPrefix } from './bin.js';
 import { MAX_LINE } from './server.js';
+
+export { versionMachineId };
 
 export type AuthorityClientOptions = { timeoutMs?: number };
 
@@ -37,11 +39,6 @@ export function ownerAnswer(stdout: string): OwnerAnswer | undefined {
   const frame = Frame.safeParse(lastLine(stdout));
   if (!frame.success) return undefined;
   return 'result' in frame.data ? { record: frame.data.result.record } : { error: frame.data.error };
-}
-
-/** The machine id `svall version --json` names in `stdout`, past whatever a login shell printed around it; undefined when it names none. */
-export function versionMachineId(stdout: string): string | undefined {
-  return /^\s*"machineId":\s*"([^"]+)"/m.exec(stdout)?.[1];
 }
 
 type Pending = { resolve(record: OwnerRecord): void; reject(err: Error): void; timer: NodeJS.Timeout };

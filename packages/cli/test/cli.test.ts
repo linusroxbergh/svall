@@ -1,4 +1,4 @@
-import { execFile, spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { mergeHooks } from '@svall/svalld/agent-hooks';
-import { startAuthorityServer } from '@svall/svalld/gateway/server';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
@@ -104,6 +103,14 @@ describe('svall argument parsing', () => {
     expect(['setp', 'stats', 'hlep', 'doctr', 'islands'].map((w) => buildProgram().commands.map((c) => c.name()).concat('help').find((c) => typo(w, c))))
       .toEqual(['setup', 'status', 'help', 'doctor', 'island']);
     expect(['work', 'dev', 'client'].some((w) => buildProgram().commands.some((c) => typo(w, c.name())))).toBe(false);
+  });
+
+  it('answers a retired command with where its work went, and opens no fleet by its name', async () => {
+    const r = await run({}, 'handover');
+    expect(r.code).toBe(1);
+    expect(r.stderr).toContain('svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine');
+    for (const w of ['gateway', 'fleet', 'connect']) expect((await run({}, w)).stderr).toContain(`svall ${w} is gone with the fleet handover`);
+    expect(isProfileName('handover')).toBe(false);
   });
 
   it('keeps every command name out of the profile names', () => {
@@ -202,24 +209,6 @@ describe('svall argument parsing', () => {
     expect((await run({ SVALL_RELEASE_ROOT: root }, 'version')).stdout).toContain('release          1.2.3 (signed)\n');
     fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version: '1.2.3', unsigned: true }));
     expect(await signed()).toBe(false);
-  });
-
-  it('answers an ownership question on the gateway socket under the prefix it was given', async () => {
-    const prefix = makeHome();
-    const server = await startAuthorityServer({ prefix });
-    const env = { SVALL_GATEWAY_PREFIX: prefix };
-    const fleet = '3f1a0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-    const owner = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-    try {
-      const created = await run(env, 'gateway', 'owner', 'create', '--fleet', fleet, '--params', JSON.stringify({ initialOwnerMachineId: owner }));
-      expect(created.code).toBe(0);
-      expect(JSON.parse(created.stdout)).toEqual({ result: { record: { fleetId: fleet, generation: 0, ownerMachineId: owner } } });
-      const missing = await run(env, 'gateway', 'owner', 'get', '--fleet', '7c2b0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
-      expect(missing.code).not.toBe(0);
-      expect(JSON.parse(missing.stdout)).toMatchObject({ error: { code: 'not_found' } });
-    } finally {
-      await server.close();
-    }
   });
 
   it('mints the machine id a controller registers this installation under', async () => {
@@ -564,31 +553,6 @@ describe('svall setup --if-needed --login-shell', () => {
     } finally {
       cleanHomes();
     }
-  });
-});
-
-describe('svall connect', () => {
-  afterEach(() => cleanHomes());
-
-  it('streams the local connection as NDJSON and lets go when its input ends', async () => {
-    const home = makeHome();
-    fs.writeFileSync(path.join(home, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
-    fs.writeFileSync(path.join(home, 'node.json'), JSON.stringify({}));
-    fs.writeFileSync(path.join(home, 'port'), '4711');
-    fs.writeFileSync(path.join(home, 'token'), 'local-token\n');
-
-    // the helper sweeps the ssh sockets of its temp folder as it starts, so it gets one of its own
-    const child = spawn(tsx, [main, 'connect', '--json'], { env: { ...process.env, SVALL_HOME: home, TMPDIR: home } });
-    let out = '';
-    child.stdout.on('data', (chunk: Buffer) => { out += chunk.toString(); });
-    child.stdin.end();
-    const code = await new Promise((resolve) => child.on('close', resolve));
-
-    expect(code).toBe(0);
-    expect(out.trim().split('\n').map((line) => JSON.parse(line))).toEqual([
-      { type: 'connecting', owner: 'local' },
-      { type: 'online', host: '127.0.0.1', port: 4711, token: 'local-token' },
-    ]);
   });
 });
 

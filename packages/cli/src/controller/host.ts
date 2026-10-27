@@ -888,6 +888,3 @@ function readFleet(file: string): FleetConfig {
     throw new StepError(`${file} is not a fleet config: ${(err as Error).message}`);
   }
 }
-
-/** The exit code of a refusal only the user can settle: `svall fleet provision` finding a fleet home in use. */
-export const REFUSED = 3;

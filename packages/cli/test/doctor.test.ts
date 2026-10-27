@@ -15,7 +15,7 @@ import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '@svall/svalld/codex/trust';
-import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, type DoctorDeps, type Report } from '../src/commands/doctor.js';
+import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, unattended, type DoctorDeps, type Report } from '../src/commands/doctor.js';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -168,6 +168,21 @@ describe('doctor', () => {
     expect(bound).toEqual([]);
     expect(run({ stored: 'HW-1', actual: 'HW-2' })).toEqual({ ok: true, message: expect.stringContaining(`${MACHINE} is bound to this machine's hardware`) });
     expect(bound).toEqual(['HW-2']);
+  });
+
+  it('refuses to rebind machine.json from a robot pane or with no terminal', () => {
+    expect(unattended({ SVALL_ROBOT_ID: 'c_1' }, true)).toBe("is a robot's");
+    expect(unattended({}, false)).toBe('has no terminal');
+  });
+
+  it("takes a run at a terminal, in a tmux of its own too, for a person's, and not one in a fleet's tmux pane", () => {
+    const fleet = makeHome();
+    expect(unattended({}, true)).toBeUndefined();
+    expect(unattended({ TMUX: '/private/tmp/tmux-501/default,4242,0' }, true)).toBeUndefined();
+    // a tmux.sock beside no fleet.json is no fleet's
+    expect(unattended({ TMUX: `${path.join(fleet, 'tmux.sock')},4242,0` }, true)).toBeUndefined();
+    fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
+    expect(unattended({ TMUX: `${path.join(fleet, 'tmux.sock')},4242,0` }, true)).toBe("is in a fleet's tmux pane");
   });
 
   it('warns about shims setup would write differently now, and a plist that is missing or runs another build', async () => {
