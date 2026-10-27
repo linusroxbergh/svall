@@ -12,7 +12,7 @@ export const OVERHEAD: Record<AgentKind, { min: number; max: number; cached: boo
 export const READ_OUT = 2_000, READ_REASONING = 4_000, JUDGE_OUT = 12_000, JUDGE_REASONING = 16_000, JUDGE_IN_MAX = 140_000;
 
 const PACKED = Math.min(...Object.values(RATIO));
-const FAMILY: Record<AgentKind, keyof typeof RATIO> = { claude: 'claude', codex: 'openai', opencode: 'other' };
+export const FAMILY: Record<AgentKind, keyof typeof RATIO> = { claude: 'claude', codex: 'openai', opencode: 'other' };
 
 /** A preset before it is estimated: the models that read and judge, undefined for the CLI's own. */
 export type PresetPick = { name: string; label: string; read: string | undefined; judge: string | undefined };
