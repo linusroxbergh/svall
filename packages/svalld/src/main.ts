@@ -9,18 +9,12 @@ import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { codexPaths } from './codex/install.js';
-import { recordedTrust } from './codex/trust.js';
-import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig, setGateway } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, namedGateway, peekConfig, saveConfig } from './config.js';
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
-import { fleetAuthority } from './gateway/client.js';
-import { openJournal } from './handover/journal.js';
 import { bootId } from './processes.js';
-import { HandoverService } from './handover/service.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
-import type { Authority } from './handover/source.js';
-import { adoptAtStart, enterStartupMode, startupMode, watchGateway } from './handover/startup.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
 import { HomeConnection } from './link/worker.js';
@@ -41,7 +35,7 @@ import { PrepareService } from './placement/prepare.js';
 import { homeRootOf } from './placement/repo-key.js';
 import { Replay } from './placement/replay.js';
 import { Router, fileCalls, forgetRobot, workerCalls } from './placement/router.js';
-import { DEFAULT_PORT, isProfileName, PRIVATE, profileHome, profileOf, variantOf } from './profile.js';
+import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './profile.js';
 import { releaseVersion } from './release.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender } from './push/pusher.js';
@@ -116,12 +110,8 @@ function lockSocket(home: string): Promise<() => void> {
   });
 }
 
-/**
- * `authority` stands in for the fleet's gateway, which is otherwise asked over its socket or ssh; `gatewayEveryMs`, how
- * often a running daemon asks it again; `hardware`, for the reader of this machine's hardware id; `worker`, to run as a
- * worker of the home worker.json names.
- */
-type Options = { home: string; port?: number; host?: string; log?: Logger; authority?: Authority; gatewayEveryMs?: number; hardware?: HardwareReader; worker?: true };
+/** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names. */
+type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true };
 
 export class OtherBuildHome extends Error {}
 
@@ -309,7 +299,7 @@ async function start(opts: Options): Promise<Daemon> {
   const agents = agentProber(realProbeDeps(paths.env));
   if (connection && worker && workerDocs && farViewers) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, fleetId: config.id, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
+      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: handoverGit, agents, log,
     });
     const mirror = mirrorCalls({
       claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
@@ -322,34 +312,13 @@ async function start(opts: Options): Promise<Daemon> {
     try { return namedGateway(paths); } catch { return config.gatewayMachineId; }
   };
   const placement = links && new Placement({
-    store, fleet, links, me, fleetId: config.id, paths, git: handoverGit, agents, gateway: gatewayNow, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
+    store, fleet, links, me, paths, git: handoverGit, agents, gateway: gatewayNow, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
   });
-  const authority = (): Authority | undefined => {
-    if (off.has('gateway')) return undefined;
-    const named = gatewayNow();
-    return named ? opts.authority ?? { get: (id) => fleetAuthority({ gatewayMachineId: named, machineId: me }).get(id) } : undefined;
-  };
-  const handover = new HandoverService({
-    ownership, journal: openJournal(paths), agents, fleet, setGateway: (id) => setGateway(paths, config, id),
-    ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
-    authorityFor: (id) => opts.authority ?? { get: (fleetId) => fleetAuthority({ gatewayMachineId: id, machineId: me }).get(fleetId) },
-    source: {
-      paths, store, fleet, tmux, viewers: terminals, log,
-      authority,
-    },
-    destination: {
-      paths, config, store, fleet, tmux, log, authority,
-      // Svall's hooks run the private fleet's script, whichever fleet sets them up
-      codexTrust: (codexHome) => recordedTrust(codexHome, resolvePaths(profileHome(PRIVATE)).hookScript),
-    },
+  const info = () => systemInfo({
+    machineId: me, agents, ...(process.platform === 'linux' && { linger: () => lingerState(realRun, os.userInfo().username).then((l) => ({ user: l.user, on: l.linger })) }),
   });
   // what a worker's agent CLIs are, which the home reads before it moves a robot there
-  if (connection) calls['system.info'] = () => systemInfo({ ownership, handover });
-  const journal = handover.journalState();
-  await enterStartupMode(startupMode({ ownership, journal, config }), { ownership, journal, log, standalone: !gateway });
-  // a machine that shares another's id takes no record from the gateway: one naming that id may mean the other machine
-  const asked = (): Authority | undefined => (copied ? undefined : authority());
-  const answered = await adoptAtStart({ handover, authority: asked(), fleetId: config.id, log });
+  if (connection) calls['system.info'] = info;
   const claude = claudePaths();
   const codex = codexPaths();
   // looked up on every call, so a fleet made while this one runs is kept out too; any folder named like a fleet home
@@ -394,7 +363,7 @@ async function start(opts: Options): Promise<Daemon> {
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
-      origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, handover,
+      origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, ownership, systemInfo: info,
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       ...(mutations && { mutations }),
     });
@@ -409,8 +378,6 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
-    // a record the gateway took while this daemon ran that names another owner, as a recovery that could not reach it writes, lets the fleet go here
-    if (!off.has('gateway')) teardown.push(watchGateway({ handover, authority: asked, fleetId: config.id, machineId: me, log, everyMs: opts.gatewayEveryMs, answered }));
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

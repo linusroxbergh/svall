@@ -61,8 +61,8 @@ describe('migrateState', () => {
   });
 
   it('lifts a version 8 file a handover wrote, with a dormant second and what a handover keeps on a robot, as it is', () => {
-    const second = { cwd: '/work/sub', unread: false, agent, revive: { command: 'claude --resume s' }, restedBy: 'tx-1', resumeError: 'it did not come up' };
-    const c = { ...robot('c_a', 'i_a'), restedBy: 'tx-1', resumeError: 'it did not come up', revive: { command: '' }, second };
+    const second = { cwd: '/work/sub', unread: false, agent, revive: { command: 'claude --resume s' }, resumeError: 'it did not come up' };
+    const c = { ...robot('c_a', 'i_a'), resumeError: 'it did not come up', revive: { command: '' }, second };
     const raw = older(8, { islands: { i_a: island('i_a') }, characters: { c_a: c } });
     const { state, migrated, dropped } = migrateState(raw);
     expect(migrated).toBe(true);

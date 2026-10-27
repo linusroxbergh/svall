@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type FleetId, type MachineId } from '@svall/protocol';
+import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type MachineId } from '@svall/protocol';
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../failpoints.js';
@@ -32,7 +32,6 @@ export type PrepareDeps = {
   viewers: RestDeps['viewers'];
   connection: Pick<HomeConnection, 'sendBlob' | 'receiveBlob'>;
   me: MachineId;
-  fleetId: FleetId;
   /** The home's name, as worker.json gives it. */
   homeName: string;
   paths: Pick<Paths, 'moves'>;
@@ -344,7 +343,7 @@ export class PrepareService {
     const { store, tmux, viewers, processes, kill, clock } = this.d;
     const { interruptAfterMs } = j.plan;
     try {
-      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x), this.d.fleetId,
+      const rested = await restRobot({ store, tmux, viewers, ...(processes && { processes }), ...(kill && { kill }), ...(clock && { clock }) }, j, (x) => this.save(x),
         interruptAfterMs === undefined ? {} : { interruptAfterMs, terminate: true });
       this.save({ ...rested, phase: 'bundle' });
       return { ok: true };

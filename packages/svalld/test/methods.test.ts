@@ -1,13 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { dispatch, type Ctx } from '../src/api/methods.js';
+import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
+import { machineId } from '../src/machine.js';
 import { resolvePaths } from '../src/paths.js';
+import { PRIVATE, profileHome } from '../src/profile.js';
 import { workspaceRoot } from '../src/resources/scan.js';
+import { agentProber, type AgentRun } from '../src/sessions/registry.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
@@ -253,5 +256,46 @@ describe('term.attach for a robot on another machine', () => {
     const remote = { router: { placedAt: () => W, forward: async () => ({ socket: '/s', session: 'v-c_1', tmux: '/t' }) }, links: { for: () => undefined } };
     const terminals = new TerminalHub({ on() {} } as unknown as Fleet, {} as Tmux, store, silentLogger, remote as unknown as ConstructorParameters<typeof TerminalHub>[4]);
     await expect(terminals.attach('c_1')).rejects.toMatchObject({ code: 'not_reachable', message: 'w1 is not reachable' });
+  });
+});
+
+describe('system.info', () => {
+  it("asks this machine's agent CLIs afresh, which are otherwise probed once a minute at most and shared between callers", async () => {
+    let calls = 0;
+    const run: AgentRun = async (cmd, args) => {
+      calls++;
+      const line = [cmd, ...args].join(' ');
+      if (line === 'claude --version') return { code: 0, stdout: '2.1.280 (Claude Code)\n' };
+      if (line === 'claude auth status') return { code: 0, stdout: JSON.stringify({ loggedIn: true, configDirectory: '/cfg/claude' }) };
+      throw Object.assign(new Error(`spawn ${cmd} ENOENT`), { code: 'ENOENT' });
+    };
+    let now = 0;
+    const probe = agentProber({ run, read: async () => undefined, env: {}, homedir: '/home/t' }, 60_000, () => now);
+    const [a, b] = await Promise.all([probe(), probe()]);
+    expect(a).toBe(b);
+    const once = calls;
+    now = 59_999;
+    await probe();
+    expect(calls).toBe(once);
+    now = 60_000;
+    await probe();
+    expect(calls).toBe(once * 2);
+
+    const before = calls;
+    const info = await systemInfo({ machineId: machineId(), agents: probe });
+    // a login fixed a moment ago counts at the next move check
+    expect(calls).toBe(before + once);
+    expect(info.agentAdapters).toEqual([
+      { kind: 'claude', version: '2.1.280', adapter: 1, home: '/cfg/claude', loggedIn: true, hooks: false },
+      { kind: 'codex', adapter: 0, home: '/home/t/.codex', loggedIn: false, hooks: false },
+      { kind: 'opencode', adapter: 0, home: path.join(profileHome(PRIVATE, '/home/t'), 'transcripts/opencode'), loggedIn: false, hooks: false },
+    ]);
+  });
+
+  it("says this machine's lingering where loginctl answers, and nothing on a Mac or where it does not", async () => {
+    const info = (linger?: () => Promise<{ user: string; on: boolean }>) => systemInfo({ machineId: machineId(), agents: async () => [], ...(linger && { linger }) });
+    expect((await info(async () => ({ user: 'linus', on: false }))).linger).toEqual({ user: 'linus', on: false });
+    expect((await info(async () => { throw new Error('loginctl is not installed'); })).linger).toBeUndefined();
+    expect((await info()).linger).toBeUndefined();
   });
 });

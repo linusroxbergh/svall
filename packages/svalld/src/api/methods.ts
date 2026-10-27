@@ -1,11 +1,9 @@
 import os from 'node:os';
-import v8 from 'node:v8';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
-import type { HandoverService } from '../handover/service.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
@@ -20,6 +18,7 @@ import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Placement } from '../placement/move.js';
 import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
+import { agentAdapters, type AgentProber } from '../sessions/registry.js';
 import type { Store } from '../store.js';
 import type { TerminalHub, Viewer } from '../terminals.js';
 import { mergeUsage } from '../usage/merge.js';
@@ -28,7 +27,7 @@ import type { WorkerMutations } from '../worker/mutations.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop'] satisfies MethodName[]);
@@ -179,29 +178,16 @@ export const handlers: Handlers = {
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
-  'system.info': (_p, ctx) => systemInfo(ctx),
-  'ownership.get': (_p, { handover }) => handover.ownershipInfo(),
-  'ownership.adopt': (p, { handover }) => handover.relay(p),
-  'handover.preflight': (p, { handover }) => handover.preflight(p),
-  'handover.inspect': (p, { handover }) => handover.inspect(p),
-  'handover.freeze': (p, { handover }) => handover.freeze(p),
-  'handover.claim': (p, { handover }) => handover.claim(p),
-  'handover.prepare': (p, { handover }) => handover.prepare(p),
-  'handover.activate': (p, { handover }) => handover.activate(p),
-  'handover.complete': (p, { handover }) => handover.complete(p),
-  'handover.abort': (p, { handover }) => handover.abort(p),
-  'handover.status': (_p, { handover }) => handover.status(),
-  'handover.reaches': (p, { handover }) => handover.reaches(p),
+  'system.info': (_p, { systemInfo }) => systemInfo(),
 };
 
 /** What this machine is and runs, as system.info answers here and a worker answers its home. */
-export async function systemInfo({ ownership, handover }: Pick<Ctx, 'ownership' | 'handover'>): Promise<SystemInfo> {
+export async function systemInfo(o: { machineId: MachineId; agents: AgentProber; linger?: () => Promise<NonNullable<SystemInfo['linger']>> }): Promise<SystemInfo> {
   const git = await gitVersion();
-  const linger = await handover.linger();
+  const linger = await o.linger?.().catch(() => undefined);
   return {
-    machineId: ownership.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
-    transferSchema: TRANSFER_SCHEMA_VERSION, platform: platform(), arch: process.arch, agentAdapters: await handover.agentAdapters(), ...(git && { git }),
-    heapLimit: v8.getHeapStatistics().heap_size_limit, ...(linger && { linger }),
+    machineId: o.machineId, release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
+    platform: platform(), arch: process.arch, agentAdapters: agentAdapters(await o.agents(true)), ...(git && { git }), ...(linger && { linger }),
   };
 }
 
@@ -219,7 +205,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
   try {
     // ahead of parsing: what this machine may not do, it may not do with any parameters
-    guardMethod(ctx.ownership, req.method as MethodName, ctx.viewer?.kind, ctx.router?.onWorker);
+    guardMethod(ctx.ownership, req.method as MethodName, ctx.router?.onWorker);
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
     if (ctx.mutations?.serves(req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };

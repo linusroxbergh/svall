@@ -4,7 +4,6 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, UNPAIRED, type Event, type HelloReply } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
-import type { HandoverService } from '../handover/service.js';
 import type { HomeLinks } from '../link/home.js';
 import type { Logger } from '../log.js';
 import type { Mobile } from '../mobile.js';
@@ -27,7 +26,7 @@ import { serveBundle } from './static.js';
 
 type Opts = {
   host: string; port: number; token: string;
-  store: Store; fleet: Fleet; fleets: Fleets; handover: HandoverService; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
+  store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; ownership: OwnershipState; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers'>; mutations?: WorkerMutations;
   remoteWatches?: RemoteWatches;
   // read on every request: activating a handover replaces them in the config they come from
@@ -111,7 +110,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 
 /** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
-  const { host, port, token, store, fleet, fleets, handover, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router, placement, links, mutations, remoteWatches } = opts;
+  const { host, port, token, store, fleet, fleets, systemInfo, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, ownership, router, placement, links, mutations, remoteWatches } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? (() => []);
   const dist = opts.dist ?? mobileDist();
@@ -129,13 +128,9 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, handover, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership, router, placement, links, mutations, remoteWatches };
-  // how far a handover has come reaches every screen watching it
-  const viewers = new Set<Viewer>();
-  const broadcast = (ev: Event): void => { for (const v of viewers) v.send(ev); };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, ownership, router, placement, links, mutations, remoteWatches };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
-    handover.onEvent(broadcast),
   ];
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   // a phone that drops off the network sends no FIN: a socket that misses a whole beat without a pong is ended
@@ -259,7 +254,6 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     };
     const admit = () => {
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
-      viewers.add(viewer);
       if (login) { left = phones.add(login); phoneSockets.add(ws); } else desktops.add(viewer);
       ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } } satisfies HelloReply));
     };
@@ -297,7 +291,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 
-    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); viewers.delete(viewer); desktops.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
+    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); desktops.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
     ws.on('error', (e) => log.error(`ws: ${String(e)}`));
   }
 

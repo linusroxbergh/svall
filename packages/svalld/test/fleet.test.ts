@@ -1080,22 +1080,14 @@ runIf('Fleet', () => {
     expect(plain).toMatch(new RegExp(`^codex resume .*-c tui\\.resume_cwd=session ${SID}$`));
   });
 
-  it('resumes an interrupted agent a closed handover once rested, and leaves one an open handover carries', async () => {
+  it('resumes an interrupted agent once the fleet starts again', async () => {
     const b = await boot();
     const { c } = await withAgent(b);
     await b.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
     await b.fleet.stopAll();
     const state = structuredClone(b.store.state);
-    state.robots[c.id].restedBy = 'tx-old';
 
-    const carried = await boot({ opening: true, state: structuredClone(state) });
-    carried.fleet.carries((id) => id === c.id);
     const typed: string[] = [];
-    vi.spyOn(carried.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
-    await carried.fleet.resumeInterrupted();
-    expect(carried.store.state.robots[c.id].tmux).toBeUndefined();
-    expect(typed).toEqual([]);
-
     const again = await boot({ opening: true, state });
     vi.spyOn(again.tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
     await again.fleet.resumeInterrupted();

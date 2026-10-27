@@ -1,4 +1,5 @@
-import type { Agent, Blocker, FleetState, HandoverChoices, HandoverIssueCode, TerminalSlot } from '@svall/protocol';
+import { z } from 'zod';
+import { Term, type Agent, type FleetState, type TerminalSlot } from '@svall/protocol';
 import { markDormant, markSlotDormant, runsAgent, startFlags } from '../dormancy.js';
 import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
@@ -6,9 +7,23 @@ import type { TerminalHub } from '../terminals.js';
 import { noServer, type LiveWindow, type Tmux } from '../tmux/tmux.js';
 import { boundary } from '../failpoints.js';
 import { ProcessTable, bootId, killGroup, suspended, type PaneProcesses, type Proc } from '../processes.js';
-import type { JournalState, SourceJournal } from '../handover/journal.js';
 
 export type TerminalRef = { robotId: string; term?: 2 };
+
+const Terminal = z.object({ robotId: z.string().min(1), term: Term });
+const Process = z.object({ pid: z.number().int(), pgid: z.number().int(), args: z.string() });
+
+/** What a rest stopped, each entry written before the window closes or the signal goes out. */
+export const RestJournal = z.object({
+  // with the launch flags its agent resumes with, where it has any, and its OpenCode's private server with the boot it ran under
+  stoppedTerminals: z.array(Terminal.extend({ flags: z.array(z.string()).optional(), server: Process.extend({ boot: z.string().optional() }).optional() })).default([]),
+  // foreground jobs the user chose to end, each written before its signal was sent
+  terminated: z.array(Terminal.extend({ processes: z.array(z.string()) })).default([]),
+  // what a private OpenCode server that outlasted its closed window ran, and under which boot, each written before it was killed
+  serverKills: z.array(Terminal.extend({ boot: z.string().optional(), processes: z.array(Process) })).default([]),
+  error: z.string().optional(),
+});
+export type RestJournal = z.infer<typeof RestJournal>;
 
 /** A live terminal as its agent's hooks and its process tree show it together. */
 export type TerminalClass = 'agent-ready' | 'agent-working' | 'agent-blocked' | 'shell-ready' | 'foreground';
@@ -21,10 +36,13 @@ export type Classified = TerminalRef & { class: TerminalClass; window: LiveWindo
  */
 export type RestChoices = { interruptAfterMs?: number; terminate?: boolean | TerminalRef[] };
 
+/** Why a terminal is not at rest, for the robot it belongs to. */
+export type RestBlocker = { code: 'shell_busy' | 'agent_working' | 'agent_blocked' | 'agent_unsettled'; message: string; robotId: string };
+
 /** Every terminal at rest and the ones whose window it closed, or why none was closed. */
 export type SettleResult =
   | { ok: true; terminals: TerminalRef[] }
-  | { ok: false; blockers: Blocker[] };
+  | { ok: false; blockers: RestBlocker[] };
 
 /** `sleep` clears its timer when `signal` aborts, and then never resolves. */
 export type Clock = { now(): number; sleep(ms: number, signal?: AbortSignal): Promise<void> };
@@ -40,8 +58,8 @@ export type RestDeps = {
   store: Pick<Store, 'state' | 'update' | 'subscribe'>;
   tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'killWindow'>;
   viewers: Pick<TerminalHub, 'detach'>;
-  /** The open source journal the rest records what it stops in: a handover's, or a move's. */
-  journal: { journalState(): JournalState; write(j: SourceJournal): void };
+  /** The journal the rest records what it stops in. */
+  journal: { read(): RestJournal; write(j: RestJournal): void };
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
   kill?: (group: number, signal: NodeJS.Signals) => void;
   clock?: Clock;
@@ -73,14 +91,6 @@ const CALL_TIMEOUT_MS = 10_000;
 const ESCAPE = Buffer.from('\x1b');
 // OpenCode interrupts on a second Escape within 5 s, and reads two in one write as one
 const ESCAPE_GAP_MS = 200;
-
-/** A protocol choice that names a robot covers both of its terminals. */
-export function restChoices(c: HandoverChoices): RestChoices {
-  const terminate = Array.isArray(c.terminateShells)
-    ? c.terminateShells.flatMap((robotId) => [{ robotId }, { robotId, term: 2 as const }])
-    : c.terminateShells;
-  return { ...(c.interruptAfterMs !== undefined && { interruptAfterMs: c.interruptAfterMs }), ...(terminate !== undefined && { terminate }) };
-}
 
 const slotOf = (state: FleetState, t: TerminalRef): TerminalSlot | undefined => {
   const c = state.robots[t.robotId];
@@ -123,14 +133,14 @@ type Track = TerminalRef & {
 
 // the launch flags the idle close would resume this terminal's agent with; none when its launch cannot be repeated.
 // An agent ctrl+z stopped does not hold the terminal, so it is found among the stopped jobs by what it runs
-export function launchFlags(c: Classified): string[] | undefined {
+function launchFlags(c: Classified): string[] | undefined {
   const kind = c.agent?.kind;
   const p = c.processes.agent;
   if (!kind || (p && p.kind !== kind)) return undefined;
   const args = c.processes.foreground.find(p ? (x) => x.pid === p.pid : (x) => suspended(x) && runsAgent(x.args, kind))?.args;
   return args === undefined ? undefined : startFlags(args, kind);
 }
-type Step = 'rest' | 'wait' | 'interrupt' | 'terminate' | 'kill' | { blocker: Blocker };
+type Step = 'rest' | 'wait' | 'interrupt' | 'terminate' | 'kill' | { blocker: RestBlocker };
 type Moment = {
   choices: RestChoices; start: number; now: number; waitMs: number; settleMs: number; pollMs: number; state: FleetState;
   alive: (group: number) => boolean;
@@ -139,10 +149,10 @@ type Moment = {
 const terminates = (t: TerminalRef, choices: RestChoices): boolean =>
   choices.terminate === true || (Array.isArray(choices.terminate) && choices.terminate.some((r) => keyOf(r) === keyOf(t)));
 
-function blocker(code: HandoverIssueCode, c: TerminalRef, state: FleetState, what: string): { blocker: Blocker } {
+function blocker(code: RestBlocker['code'], c: TerminalRef, state: FleetState, what: string): { blocker: RestBlocker } {
   const name = state.robots[c.robotId]?.name ?? c.robotId;
   const where = c.term === 2 ? `${name}'s second terminal` : `${name}'s terminal`;
-  return { blocker: { code, message: `${where} ${what}`, entity: { kind: 'robot', id: c.robotId } } };
+  return { blocker: { code, message: `${where} ${what}`, robotId: c.robotId } };
 }
 
 const job = (c: Classified): string =>
@@ -198,7 +208,7 @@ function step(t: Track, c: Classified | undefined, x: Moment): Step {
 }
 
 /** What would stop resting before any terminal is touched, for a check that must not change anything. */
-export function unapproved(state: FleetState, terminals: Classified[], choices: RestChoices): Blocker[] {
+export function unapproved(state: FleetState, terminals: Classified[], choices: RestChoices): RestBlocker[] {
   const x: Moment = { choices, start: 0, now: 0, waitMs: Infinity, settleMs: SETTLE_MS, pollMs: POLL_MS, state, alive: () => false };
   return terminals.flatMap((c) => {
     const s = step({ ...refOf(c), key: keyOf(c) }, c, x);
@@ -206,15 +216,9 @@ export function unapproved(state: FleetState, terminals: Classified[], choices: 
   });
 }
 
-function sourceJournal(journal: RestDeps['journal']): SourceJournal {
-  const s = journal.journalState();
-  if (s.kind !== 'open' || s.journal.role !== 'source') throw new Error('resting terminals needs the source journal of an open handover');
-  return s.journal;
-}
-
-function recordJournal(journal: RestDeps['journal'], now: number, change: (j: SourceJournal) => Partial<SourceJournal>): void {
-  const j = sourceJournal(journal);
-  journal.write({ ...j, ...change(j), updatedAt: now });
+function recordJournal(journal: RestDeps['journal'], change: (j: RestJournal) => Partial<RestJournal>): void {
+  const j = journal.read();
+  journal.write({ ...j, ...change(j) });
 }
 
 /**
@@ -227,7 +231,6 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
   const processes = tableOf(deps);
   const kill = deps.kill ?? killGroup;
   const bounded = boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS);
-  sourceJournal(deps.journal);
   // an interrupt chosen for later than the wait lasts extends the wait to it
   const waitMs = Math.max(o.waitMs ?? WAIT_MS, o.choices.interruptAfterMs ?? 0);
   const x: Moment = {
@@ -266,7 +269,7 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
     }
     if (blockers.length) return { ok: false, blockers };
     for (const { t, c } of steps) if (c && t.terminatedAt === undefined) { t.agent = c.agent; t.flags = launchFlags(c); }
-    if (settled) return layToRest(deps, o, bounded, tracks, current, clock.now(), () => serversGone(deps, o, o.only));
+    if (settled) return layToRest(deps, o, bounded, tracks, current, () => serversGone(deps, o, o.only));
     for (const { t, c, s } of steps) {
       if (s === 'interrupt' && c) {
         const escape = () => bounded('tmux send-keys', (signal) => deps.tmux.sendBytes(c.window.paneId, ESCAPE, signal));
@@ -280,11 +283,11 @@ export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<Set
         const processes = tree.map((p) => p.args);
         // a stopped job takes its SIGTERM once continued
         const stopped = new Set(tree.filter(suspended).map((p) => p.pgid));
-        boundary('source.rest.terminated', () => recordJournal(deps.journal, x.now, (j) => ({ terminated: [...j.terminated, { ...refOf(t), processes }] })));
-        boundary('source.rest.terminate', () => { for (const g of groups) { kill(g, 'SIGTERM'); if (stopped.has(g)) kill(g, 'SIGCONT'); } });
+        boundary('move.rest.terminated', () => recordJournal(deps.journal, (j) => ({ terminated: [...j.terminated, { ...refOf(t), processes }] })));
+        boundary('move.rest.terminate', () => { for (const g of groups) { kill(g, 'SIGTERM'); if (stopped.has(g)) kill(g, 'SIGCONT'); } });
         t.terminatedAt = x.now;
       } else if (s === 'kill') {
-        boundary('source.rest.forcekill', () => { for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL'); });
+        boundary('move.rest.forcekill', () => { for (const g of (t.groups ?? []).filter(x.alive)) kill(g, 'SIGKILL'); });
         t.killedAt = x.now;
       }
     }
@@ -312,7 +315,7 @@ export async function serversGone(
   const clock = deps.clock ?? realClock;
   const kill = deps.kill ?? killGroup;
   const read = () => boundBy(clock, o.callTimeoutMs ?? CALL_TIMEOUT_MS)('ps', tableOf(deps));
-  const j = sourceJournal(deps.journal);
+  const j = deps.journal.read();
   // a pid this boot reuses may run OpenCode's same generic command line; with a boot unknown, pid and command line decide
   const boot = (deps.bootId ?? bootId)();
   const ours = (b?: string) => !b || !boot || b === boot;
@@ -331,14 +334,14 @@ export async function serversGone(
   const table = await until((t) => !running(t, servers).length);
   const trees = running(table, servers).map(({ t, p }) => ({ t, tree: table.tree([p]) }));
   if (trees.length) {
-    boundary('source.rest.server.journal', () => recordJournal(deps.journal, clock.now(), (j) => ({
+    boundary('move.rest.server.journal', () => recordJournal(deps.journal, (j) => ({
       serverKills: [...j.serverKills, ...trees.map(({ t, tree }) => ({ ...t, ...(boot && { boot }), processes: tree.map(({ pid, pgid, args }) => ({ pid, pgid, args })) }))],
     })));
   }
   const doomed = [...new Map([...trees.flatMap(({ t, tree }) => tree.map((p) => ({ t, p }))), ...running(table, killed)].map((x) => [x.p.pid, x])).values()];
   if (!doomed.length) return;
   const groups = [...new Set(doomed.map(({ p }) => p.pgid))];
-  boundary('source.rest.server.kill', () => { for (const g of groups) kill(g, 'SIGKILL'); });
+  boundary('move.rest.server.kill', () => { for (const g of groups) kill(g, 'SIGKILL'); });
   const after = await until((t) => !groups.some((g) => t.alive(g)));
   const stuck = doomed.filter(({ p }) => after.alive(p.pgid));
   if (!stuck.length) return;
@@ -380,13 +383,13 @@ function wake(store: RestDeps['store'], clock: Clock, ms: number, cancel?: Abort
 }
 
 async function layToRest(
-  deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, now: number, gone: () => Promise<void>,
+  deps: RestDeps, o: RestOptions, bounded: Bounded, tracks: Track[], current: Map<string, Classified>, gone: () => Promise<void>,
 ): Promise<SettleResult> {
   o.cancel?.throwIfAborted();
   const open = tracks.flatMap((t) => { const c = current.get(t.key); return c ? [{ t, c }] : []; });
   // before any window closes, so an abort knows which terminals the handover stopped and which servers to wait for
   const boot = (deps.bootId ?? bootId)();
-  boundary('source.rest.stopped', () => recordJournal(deps.journal, now, (j) => {
+  boundary('move.rest.stopped', () => recordJournal(deps.journal, (j) => {
     const live = new Map(open.map(({ t, c }) => [t.key, c.processes.agent?.server]));
     const server = (s?: Proc) => s && { server: { pid: s.pid, pgid: s.pgid, args: s.args, ...(boot && { boot }) } };
     // a terminal journaled before is live again only once the revive that reopened it waited for the server it had
@@ -401,20 +404,19 @@ async function layToRest(
   }));
   for (const id of new Set(open.map(({ t }) => t.robotId))) await bounded('tmux detach-client', (signal) => deps.viewers.detach(id, signal));
   const byKey = new Map(tracks.map((t) => [t.key, t]));
-  const { transactionId, stoppedTerminals, terminated } = sourceJournal(deps.journal);
+  const { stoppedTerminals, terminated } = deps.journal.read();
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
   const ended = new Set(terminated.map(keyOf));
   // the agent each terminal carried before the handover stopped it: its exit hook may have taken it since; one whose
   // window a rest that died closed has no track, and keeps the launch flags that rest recorded. One whose window this rest
   // has just closed is laid even when an unfrozen fleet saw the close first and marked it dormant without its agent
-  const lay = (d: FleetState, t: TerminalRef, closed = false, closing = false) => {
+  const lay = (d: FleetState, t: TerminalRef, closing = false) => {
     const c = d.robots[t.robotId];
     const slot = c && (t.term === 2 ? c.second : c);
     if (!c || !slot || (!slot.tmux && !closing)) return;
     const track = byKey.get(keyOf(t));
     const { agent, flags } = track ?? { agent: undefined, flags: stopped.get(keyOf(t))?.flags };
     if (agent) slot.agent = agent;
-    if (closed) slot.restedBy = transactionId;
     // only a rest that interrupted or ended the agent cut short its turn and what it ran in the background, which its revive tells it
     const cut = track?.interruptedAt !== undefined || track?.terminatedAt !== undefined || ended.has(keyOf(t));
     if (t.term !== 2) {
@@ -428,18 +430,18 @@ async function layToRest(
   };
   // each slot goes dormant as its own window closes, so a later window that will not close strands none of them
   for (const { t, c } of open) {
-    await boundary('source.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
+    await boundary('move.rest.kill', () => bounded('tmux kill-window', (signal) => deps.tmux.killWindow(c.window.windowId, signal)));
     // a kill tmux refused leaves the terminal running: the rest stops there, and an abort or a resume finds it live
     if ((await bounded('tmux list-panes', windows(deps))).some((w) => w.windowId === c.window.windowId && !w.dead)) {
       const name = deps.store.state.robots[t.robotId]?.name ?? t.robotId;
       throw new Error(`${name}'s ${t.term === 2 ? 'second ' : ''}terminal is still open after tmux was asked to close its window ${c.window.windowId}`);
     }
-    deps.store.update((d) => lay(d, t, true, true));
+    deps.store.update((d) => lay(d, t, true));
   }
   // and the terminals whose window had already gone, among them any whose window a rest that died closed for this handover
   deps.store.update((d) => {
     for (const id of Object.keys(d.robots)) {
-      for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) if (o.only?.(t) ?? true) lay(d, t, stopped.has(keyOf(t)));
+      for (const t of [{ robotId: id }, { robotId: id, term: 2 as const }]) if (o.only?.(t) ?? true) lay(d, t);
     }
   });
   await gone();

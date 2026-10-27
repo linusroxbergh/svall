@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ACTIVATE_TIMEOUT_MS, Blocker, CLAIM_TIMEOUT_MS, COMPLETE_TIMEOUT_MS, BrowserTab, ErrorFrame, FREEZE_TIMEOUT_MS, FleetConfig, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_MANIFEST_BYTES, MAX_REQUEST_BYTES, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
-  PREFLIGHT_TIMEOUT_MS, PREPARE_TIMEOUT_MS, PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, TRANSFER_SCHEMA_VERSION, TerminalSlot, emptyState, methods, serverWait, type Event,
+  Blocker, BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, SystemInfo, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -150,8 +150,13 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it("is 32 with a worker's outbox epoch and the home's user folder on the link, and each machine's user folder, last replayed event and last snapshot in the fleet", () => {
-    expect(PROTOCOL_VERSION).toBe(32);
+  it('is 34, with no ownership or handover method, and system.info without transferSchema and heapLimit', () => {
+    expect(PROTOCOL_VERSION).toBe(34);
+    expect(Object.keys(methods).filter((m) => /^(handover|ownership)\./.test(m))).toEqual([]);
+    expect(Object.keys(SystemInfo.shape).filter((k) => k === 'transferSchema' || k === 'heapLimit')).toEqual([]);
+  });
+
+  it("was 32 with a worker's outbox epoch and the home's user folder on the link, and each machine's user folder, last replayed event and last snapshot in the fleet", () => {
     const link = { name: 'linus-vault', reachable: false, since: 1, home: '/home/linus', replayed: { epoch: 'e', seq: 2 }, snapshot: { version: 7, at: 3 } };
     expect(FleetState.parse({ ...emptyState(), machines: { [UUID_A]: link } }).machines).toEqual({ [UUID_A]: link });
   });
@@ -252,185 +257,38 @@ describe('protocol version', () => {
 
 const UUID_A = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const UUID_B = '9b4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
-const DIGEST = 'b'.repeat(64);
 const MACHINES = {
   source: { home: '/Users/linus' },
   destination: {
     info: {
-      machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
+      machineId: UUID_B, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9,
       platform: 'linux', arch: 'x64', agentAdapters: [{ kind: 'claude', version: '2.1.280', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: true }],
-      heapLimit: 2 ** 32,
     },
     home: '/Users/linus',
     fleetHome: '/Users/linus/.svall',
   },
 };
-const MANIFEST = {
-  version: TRANSFER_SCHEMA_VERSION, transactionId: 't1', generation: 4, fromMachineId: UUID_A, toMachineId: UUID_B, home: '/Users/linus', destinationHome: '/Users/linus',
-  fleet: FleetConfig.parse({ id: UUID_A }), snapshot: emptyState(), excludes: [],
-  roots: [{ id: 'r_1', kind: 'cwd', entry: 'dir', path: '/Users/linus/p', files: [] }],
-  sessions: [],
-};
 
 // every event name the union carries; the compiler refuses a missing or a stray one
 const EVENT_NAMES = {
-  'state.patch': true, 'term.output': true, 'term.resync': true, 'repo.changed': true, 'mobile.phones': true, 'handover.entity': true,
+  'state.patch': true, 'term.output': true, 'term.resync': true, 'repo.changed': true, 'mobile.phones': true,
 } satisfies Record<Event['event'], true>;
 
-describe('ownership and handover methods', () => {
-  const HANDOVER_METHODS = [
-    'system.info', 'ownership.get', 'handover.preflight', 'handover.inspect', 'handover.freeze', 'handover.claim', 'handover.prepare', 'handover.activate',
-    'handover.complete', 'handover.abort', 'handover.status', 'handover.reaches',
-  ] as const;
-
-  it('takes empty params and answers every handover call', () => {
-    for (const method of HANDOVER_METHODS) expect(methods[method]).toBeDefined();
-    expect(methods['system.info'].params.parse({})).toEqual({});
-    expect(methods['ownership.get'].params.parse({})).toEqual({});
-    expect(methods['handover.status'].params.parse({})).toEqual({});
-  });
-
+describe('system.info and requests in parts', () => {
   it('says what a machine is and what it can run', () => {
     const info = {
-      machineId: UUID_A, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9, transferSchema: TRANSFER_SCHEMA_VERSION,
-      platform: 'darwin', arch: 'arm64', heapLimit: 2 ** 32,
+      machineId: UUID_A, release: '0.9.0', protocol: PROTOCOL_VERSION, stateSchema: 9,
+      platform: 'darwin', arch: 'arm64',
       agentAdapters: [{ kind: 'claude', version: '2.0.1', adapter: 1, home: '/Users/linus/.claude', loggedIn: true, hooks: false }, { kind: 'codex', adapter: 1 }],
     };
     expect(methods['system.info'].result.parse(info)).toEqual(info);
     expect(() => methods['system.info'].result.parse({ ...info, platform: 'windows' })).toThrow();
   });
 
-  it('says who owns the fleet and whether it is frozen', () => {
-    const owned = { fleetId: UUID_A, generation: 4, ownerMachineId: UUID_B, frozen: false };
-    expect(methods['ownership.get'].result.parse(owned)).toEqual(owned);
-    const transaction = { id: 't1', fromMachineId: UUID_B, toMachineId: UUID_A, phase: 'preparing', startedAt: 17 };
-    expect(methods['ownership.get'].result.parse({ ...owned, frozen: true, transaction }).transaction).toEqual(transaction);
-    expect(() => methods['ownership.get'].result.parse({ ...owned, generation: -1 })).toThrow();
-    expect(() => methods['ownership.get'].result.parse({ ...owned, generation: 1.5 })).toThrow();
-    expect(() => methods['ownership.get'].result.parse({ ...owned, ownerMachineId: 'trift' })).toThrow();
-  });
-
-  it('counts the transfer and lists what stops it, from the machines the controller describes', () => {
-    expect(methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES })).toEqual({ toMachineId: UUID_B, choices: {}, ...MACHINES });
-    expect(methods['handover.preflight'].params.parse({ toMachineId: UUID_B, choices: { terminateShells: true }, ...MACHINES }).choices).toEqual({ terminateShells: true });
-    expect(() => methods['handover.preflight'].params.parse({ toMachineId: 'trift', ...MACHINES })).toThrow();
-    // a daemon knows neither machine's home from the registry, nor the far machine's fleet home and agents
-    expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B })).toThrow();
-    expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES, destination: { ...MACHINES.destination, fleetHome: 'svall' } })).toThrow();
-    expect(() => methods['handover.preflight'].params.parse({ toMachineId: UUID_B, ...MACHINES, source: { home: '~' } })).toThrow();
-    const result = {
-      manifestSummary: { digest: DIGEST, roots: 2, files: 10, bytes: 2048, sessions: 1 },
-      blockers: [{ code: 'shell_busy', message: 'vite is still running', entity: { kind: 'robot', id: 'c_1' } }],
-      warnings: [{ code: 'platform_heuristic', message: 'an Xcode project' }],
-      manifest: { ...MANIFEST, transactionId: undefined },
-    };
-    const { transactionId: _t, ...preflight } = MANIFEST;
-    expect(methods['handover.preflight'].result.parse({ ...result, manifest: preflight })).toEqual({ ...result, manifest: preflight });
-    // the controller composes the destination's checks from the manifest preflight built
-    expect(() => methods['handover.preflight'].result.parse({ ...result, manifest: undefined })).toThrow();
-  });
-
-  it('reads the destination\'s roots before a handover, claims them for one, and completes it on each side', () => {
-    const roots = [{ id: 'r_1', kind: 'gitdir', entry: 'dir', path: '/Users/linus/p.git' }];
-    const inspect = { roots, excludes: ['node_modules/'], folders: ['/Users/linus', '/Volumes/work'] };
-    expect(methods['handover.inspect'].params.parse(inspect)).toEqual(inspect);
-    const files = [{ type: 'file', path: 'HEAD', mode: 0o644, size: 23, mtimeMs: 0, sha256: DIGEST }];
-    expect(methods['handover.inspect'].params.parse({ ...inspect, roots: [{ ...roots[0], files }] }).roots[0].files).toEqual(files);
-    expect(() => methods['handover.inspect'].params.parse({ ...inspect, roots: [{ ...roots[0], kind: 'folder' }] })).toThrow();
-    expect(() => methods['handover.inspect'].params.parse({ ...inspect, folders: ['work'] })).toThrow();
-    const probe = { exists: true, writable: true, caseInsensitive: false, freeBytes: 4096 };
-    const inspected = {
-      roots: [
-        { id: 'r_1', check: { ok: true, path: '/Users/linus/p.git', kind: 'replica' } },
-        { id: 'r_2', check: { ok: false, path: '/Users/linus/q', blocker: { code: 'destination_diverged', message: 'q changed', entity: { kind: 'root', id: 'r_2' } } } },
-      ],
-      folders: { '/Users/linus': probe },
-    };
-    expect(methods['handover.inspect'].result.parse(inspected)).toEqual(inspected);
-
-    const claim = { transactionId: 't1', generation: 5, manifest: MANIFEST, manifestDigest: DIGEST };
-    expect(methods['handover.claim'].params.parse(claim)).toEqual(claim);
-    expect(methods['handover.claim'].params.parse({ ...claim, archive: ['r_1'] }).archive).toEqual(['r_1']);
-    expect(methods['handover.claim'].params.parse({ ...claim, landed: [{ id: 'r_1', files: [] }] }).landed).toEqual([{ id: 'r_1', files: [] }]);
-    const { transactionId: _t, ...preflight } = MANIFEST;
-    expect(() => methods['handover.claim'].params.parse({ ...claim, manifest: preflight })).toThrow();
-    const claimed = { roots: [{ id: 'r_1', excludes: ['node_modules/'], check: { ok: true, path: '/home/linus/p', kind: 'absent' }, archivedTo: '/home/linus/p.archived-x' }] };
-    expect(methods['handover.claim'].result.parse(claimed)).toEqual(claimed);
-    expect(() => methods['handover.claim'].result.parse({ roots: [{ id: 'r_1', check: claimed.roots[0].check }] })).toThrow();
-
-    const landed = [{ id: 'r_1', files: [] }];
-    expect(methods['handover.complete'].params.parse({ transactionId: 't1', generation: 5 })).toEqual({ transactionId: 't1', generation: 5 });
-    expect(methods['handover.complete'].params.parse({ transactionId: 't1', generation: 4, landed }).landed).toEqual(landed);
-    expect(methods['handover.complete'].result.parse({})).toEqual({});
-  });
-
   it('says which git a machine runs, when it has one', () => {
     const info = { ...MACHINES.destination.info, git: '2.43.0' };
     expect(methods['system.info'].result.parse(info).git).toBe('2.43.0');
     expect(methods['system.info'].result.parse(MACHINES.destination.info).git).toBeUndefined();
-  });
-
-  it('freezes against a transaction and a generation and returns the manifest that names it', () => {
-    const params = methods['handover.freeze'].params.parse({ transactionId: 't1', generation: 4, choices: { interruptAfterMs: 30_000, terminateShells: ['c_1'] }, ...MACHINES });
-    expect(params.choices.terminateShells).toEqual(['c_1']);
-    expect(params.destination.info.machineId).toBe(UUID_B);
-    expect(methods['handover.freeze'].params.parse({ transactionId: 't1', generation: 4, ...MACHINES }).choices).toEqual({});
-    expect(() => methods['handover.freeze'].params.parse({ transactionId: 't1', generation: 4 })).toThrow();
-    expect(() => methods['handover.freeze'].params.parse({ transactionId: '', generation: 4, ...MACHINES })).toThrow();
-    expect(() => methods['handover.freeze'].params.parse({ transactionId: 't1', generation: -1, ...MACHINES })).toThrow();
-    expect(methods['handover.freeze'].result.parse({ manifest: MANIFEST }).manifest).toEqual(MANIFEST);
-    // a preflight's manifest names no transaction, and is no freeze's answer
-    const { transactionId: _t, ...preflight } = MANIFEST;
-    expect(() => methods['handover.freeze'].result.parse({ manifest: preflight })).toThrow();
-  });
-
-  it('prepares from the manifest its digest names and what the transfer verified in each root, and answers the proof ready takes', () => {
-    const landed = [{ id: 'r_1', files: [{ type: 'file', path: 'a.txt', mode: 0o644, size: 1, mtimeMs: 0, sha256: DIGEST }] }];
-    const params = { transactionId: 't1', generation: 5, manifest: MANIFEST, manifestDigest: DIGEST, landed };
-    expect(methods['handover.prepare'].params.parse(params)).toEqual(params);
-    // a relay secret belongs to the phone gateway of a later version, and no prepare carries one
-    expect(methods['handover.prepare'].params.parse({ ...params, relaySecret: 's3cret' })).toEqual(params);
-    expect(methods['handover.prepare'].result.parse({ preparedDigest: DIGEST })).toEqual({ preparedDigest: DIGEST });
-    expect(() => methods['handover.prepare'].result.parse({})).toThrow();
-    expect(() => methods['handover.prepare'].params.parse({ ...params, manifestDigest: 'abc' })).toThrow();
-    expect(() => methods['handover.prepare'].params.parse({ ...params, manifest: { ...MANIFEST, snapshot: { version: 6, islands: {}, robots: {} } } })).toThrow();
-    // a preflight's manifest names no transaction, and nothing can be prepared from it
-    const { transactionId: _t, ...preflight } = MANIFEST;
-    expect(() => methods['handover.prepare'].params.parse({ ...params, manifest: preflight })).toThrow();
-    expect(() => methods['handover.prepare'].params.parse({ ...params, landed: undefined })).toThrow();
-  });
-
-  it('reports every robot activation, failures included', () => {
-    const result = { robots: [{ id: 'c_1', ok: true }, { id: 'c_2', ok: false, error: 'tmux refused' }] };
-    expect(methods['handover.activate'].result.parse(result)).toEqual(result);
-    expect(methods['handover.activate'].params.parse({ transactionId: 't1', generation: 5 })).toEqual({ transactionId: 't1', generation: 5 });
-    expect(methods['handover.abort'].params.parse({ transactionId: 't1', generation: 4 })).toEqual({ transactionId: 't1', generation: 4 });
-    expect(methods['handover.abort'].result.parse({})).toEqual({});
-  });
-
-  it('rebuilds status from the journals: the open transaction, or where a journal it could not read went', () => {
-    const status = { transaction: { id: 't1', fromMachineId: UUID_B, toMachineId: UUID_A, phase: 'transfer', startedAt: 17 } };
-    expect(methods['handover.status'].result.parse(status)).toEqual(status);
-    expect(methods['handover.status'].result.parse({ robots: [], roots: [] })).toEqual({});
-    expect(methods['handover.status'].result.parse({ quarantined: '/h/journal.json.broken-1' })).toEqual({ quarantined: '/h/journal.json.broken-1' });
-    expect(() => methods['handover.status'].result.parse({ transaction: { ...status.transaction, phase: 'rsyncing' } })).toThrow();
-  });
-
-  it('gives every call that hashes, rests or starts a fleet a budget of its own, and nothing else', () => {
-    expect(serverWait('handover.preflight', {})).toBe(PREFLIGHT_TIMEOUT_MS);
-    expect(serverWait('handover.inspect', {})).toBe(PREFLIGHT_TIMEOUT_MS);
-    expect(serverWait('handover.freeze', {})).toBe(FREEZE_TIMEOUT_MS);
-    // an interrupt chosen for later than the rest would wait extends the rest, and the freeze's budget with it
-    expect(serverWait('handover.freeze', { choices: { interruptAfterMs: 20 * 60_000 } })).toBe(FREEZE_TIMEOUT_MS + 20 * 60_000);
-    expect(serverWait('handover.claim', {})).toBe(CLAIM_TIMEOUT_MS);
-    expect(serverWait('handover.prepare', {})).toBe(PREPARE_TIMEOUT_MS);
-    expect(serverWait('handover.activate', {})).toBe(ACTIVATE_TIMEOUT_MS);
-    expect(serverWait('handover.complete', {})).toBe(COMPLETE_TIMEOUT_MS);
-    // a freeze may wait out a three-minute rest, ask the gateway over ssh and hash the fleet twice
-    expect(FREEZE_TIMEOUT_MS).toBeGreaterThanOrEqual(10 * 60_000);
-    for (const method of ['system.info', 'ownership.get', 'handover.abort', 'handover.status'] as const) {
-      expect(serverWait(method, {})).toBe(0);
-    }
   });
 
   it('sends a request too large for one socket message as parts of it, in order', () => {
@@ -442,19 +300,11 @@ describe('ownership and handover methods', () => {
     // a part in base64 stays under the daemon's 8 MiB message cap
     expect(Math.ceil(PART_BYTES / 3) * 4 + 200).toBeLessThan(8 * 1024 * 1024);
   });
-
-  it('caps a manifest at half a request: prepare carries it, and its carried roots\' files again as what landed', () => {
-    expect(2 * MAX_MANIFEST_BYTES).toBeLessThanOrEqual(MAX_REQUEST_BYTES);
-  });
 });
 
-describe('handover events', () => {
-  it('carries ids, phases and counts, never a manifest', () => {
-    const events: Event[] = [
-      { event: 'handover.entity', data: { transactionId: 't1', kind: 'root', id: 'r_1', phase: 'transfer', done: 1, total: 2 } },
-    ];
-    expect(events.map((e) => e.event)).toEqual(['handover.entity']);
-    expect(Object.keys(EVENT_NAMES)).toEqual(['state.patch', 'term.output', 'term.resync', 'repo.changed', 'mobile.phones', 'handover.entity']);
+describe('events', () => {
+  it('names every event the union carries', () => {
+    expect(Object.keys(EVENT_NAMES)).toEqual(['state.patch', 'term.output', 'term.resync', 'repo.changed', 'mobile.phones']);
   });
 });
 

@@ -50,8 +50,6 @@ describe('routing calls for placed robots', () => {
     expect(await dispatch({ id: 4, method: 'robot.prompts', params: { id: 'c_home' } }, w.worker.ctx)).toEqual({ id: 4, error: { code: 'not_reachable', message: UNREACHABLE } });
     expect(captured).toEqual(['%1']);
     expect(await dispatch({ id: 5, method: 'island.create', params: { name: 'x' } }, w.worker.ctx)).toEqual({ id: 5, error: { code: 'not_reachable', message: UNREACHABLE } });
-    expect(await dispatch({ id: 6, method: 'handover.abort', params: {} }, w.worker.ctx))
-      .toEqual({ id: 6, error: { code: 'not_on_worker', message: 'handover.abort does not answer on a worker' } });
   });
 
   it('on the worker, a call its mirror cannot answer is the home\'s, and the change comes back in the next snapshot', async () => {
@@ -100,7 +98,7 @@ describe('routing calls for placed robots', () => {
     const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
     await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
-    for (const method of ['handover.abort', 'ownership.adopt', 'fleets.create', 'fleet.stop', 'mobile.set', 'fs.write', 'column.add', 'placing.set']) {
+    for (const method of ['fleets.create', 'fleet.stop', 'mobile.set', 'fs.write', 'column.add', 'placing.set']) {
       await expect(w.worker.connection.call(method, {})).rejects.toMatchObject({ code: 'unauthorized', message: `${method} is not taken from a worker` });
     }
     await expect(w.home.links.call(W, 'robot.run', { id: 'c_1' })).rejects.toMatchObject({ code: 'invalid_params' });

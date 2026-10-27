@@ -9,8 +9,7 @@ import { cookieOf, identityOf, originAllowed, startApi, stripKey } from '../src/
 import { brand, resolveFile, serveBundle } from '../src/api/static.js';
 import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
-import { openJournal } from '../src/handover/journal.js';
-import { HandoverService } from '../src/handover/service.js';
+
 import type { Mobile } from '../src/mobile.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
@@ -21,7 +20,7 @@ import { TerminalHub } from '../src/terminals.js';
 import { tmuxConfText } from '../src/tmux/conf.js';
 import { Tmux } from '../src/tmux/tmux.js';
 import { Workspace } from '../src/workspace/workspace.js';
-import { cleanHomes, hasTmux, idleSides, makeHome, ownerOf, stubFleets, stubLoad, stubMobile, stubUsage, waitFor, waitForPolls } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, ownerOf, stubFleets, stubLoad, stubMobile, stubSystemInfo, stubUsage, waitFor, waitForPolls } from './helpers.js';
 
 const req = (headers: Record<string, string>) => ({ headers }) as unknown as IncomingMessage;
 
@@ -167,11 +166,10 @@ runIf('phone sockets', () => {
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const workspace = new Workspace((id) => { const c = store.state.robots[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
     const current = { key, logins: ['me@example.com'] };
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl, log,
       origins: () => [], logins: () => current.logins, dist, key: () => current.key, pass, fleetName,
-      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), ownership, handover,
+      push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), ownership, systemInfo: stubSystemInfo,
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
     cleanup.unshift(async () => { await api.close(); });

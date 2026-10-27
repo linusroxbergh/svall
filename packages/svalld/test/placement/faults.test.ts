@@ -13,19 +13,18 @@ type Scenario = 'out' | 'back' | 'abort' | 'journal';
 type Side = 'home' | 'worker';
 type Case = { name: Failpoint; edge: Edge; scenario: Scenario; dies: Side };
 
-const POINTS: Failpoint[] = (Object.keys(FAILPOINTS) as Failpoint[]).filter((n) => /^(move|worker|home|source\.rest)\./.test(n));
-type Point = Extract<Failpoint, `move.${string}` | `worker.${string}` | `home.${string}` | `source.rest.${string}`>;
+const POINTS: readonly Failpoint[] = FAILPOINTS;
 
 // the side whose daemon reaches each point in each scenario's clean run; a point without an entry does not typecheck
-const REACH: Record<Point, Partial<Record<Scenario, Side>>> = {
-  'source.rest.terminated': { out: 'home' },
-  'source.rest.terminate': { out: 'home' },
-  'source.rest.forcekill': { out: 'home' },
-  'source.rest.stopped': { out: 'home', back: 'worker', abort: 'home' },
-  'source.rest.kill': { out: 'home', back: 'worker', abort: 'home' },
-  'source.rest.server.journal': { out: 'home', back: 'worker' },
-  'source.rest.server.kill': { out: 'home', back: 'worker' },
+const REACH: Record<Failpoint, Partial<Record<Scenario, Side>>> = {
   'move.rest': { out: 'home', back: 'worker', abort: 'home' },
+  'move.rest.terminated': { out: 'home' },
+  'move.rest.terminate': { out: 'home' },
+  'move.rest.forcekill': { out: 'home' },
+  'move.rest.stopped': { out: 'home', back: 'worker', abort: 'home' },
+  'move.rest.kill': { out: 'home', back: 'worker', abort: 'home' },
+  'move.rest.server.journal': { out: 'home', back: 'worker' },
+  'move.rest.server.kill': { out: 'home', back: 'worker' },
   'move.bundle': { out: 'home', back: 'worker', abort: 'home' },
   'move.journal.rest': { out: 'home', back: 'home', abort: 'home' },
   'move.journal.bundle': { out: 'home', back: 'home', abort: 'home' },
@@ -50,7 +49,7 @@ const REACH: Record<Point, Partial<Record<Scenario, Side>>> = {
   'home.event.applied': { out: 'home', back: 'home', journal: 'home' },
 };
 
-const CASES: Case[] = POINTS.flatMap((name) => (Object.entries(REACH[name as Point]) as [Scenario, Side][])
+const CASES: Case[] = POINTS.flatMap((name) => (Object.entries(REACH[name]) as [Scenario, Side][])
   .flatMap(([scenario, dies]) => (['before', 'after'] as const).map((edge) => ({ name, edge, scenario, dies }))));
 
 const WORLDS: Record<Scenario, Parameters<typeof moveWorld>[0]> = {

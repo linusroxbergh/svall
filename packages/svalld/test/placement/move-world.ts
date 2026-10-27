@@ -350,7 +350,7 @@ export function moveWorld(o: {
     vault.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const box = mortal(vault, life);
     const prepare = new PrepareService({
-      store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, fleetId: config.id, homeName: 'mac', paths: workerPaths,
+      store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, homeName: 'mac', paths: workerPaths,
       git: mortalGit(handoverGit, life), cloneGit: mortalGit(handoverGit, life), agents: async () => [{ ...macProbe, home: farHome }], processes: box.processes, kill: box.kill, clock,
       agentRunning: async () => !!o.agentRunsThere, log: silentLogger, moves: mortal(new MoveFiles(workerPaths.moves), life), watchMs: 5000, cli: opencode.far.run,
     });
@@ -399,7 +399,7 @@ export function moveWorld(o: {
     ctx = { store, fleet, ownership, router, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } } as unknown as Ctx;
     mac1.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const placement = new Placement({
-      store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, fleetId: config.id, paths: homePaths,
+      store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, paths: homePaths,
       git: mortalGit(handoverGit, life), agents: async () => [macProbe], gateway: () => undefined, release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, kill: mortal(mac1, life).kill, clock, log: silentLogger,
       moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,

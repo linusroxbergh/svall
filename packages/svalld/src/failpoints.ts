@@ -1,116 +1,45 @@
 import { isRelease } from './release.js';
 
-/** The party a failpoint's step runs on. */
-export type FailSide = 'controller' | 'source' | 'destination' | 'gateway';
-
 /**
- * Every step of a handover a crash can fall before or after, by the party that takes it: each authority, journal and
- * ownership write, removal of a handover's files, terminal kill and start, verification, prepared-state write, promotion
- * and commit answer. A step runs inside `boundary`, which gives it both edges; the fault suite fails on a name here that
- * no case crashes at.
+ * Every step of a robot move a crash can fall before or after. A step runs inside `boundary`, which gives it both edges;
+ * the fault suite fails on a name here that no case crashes at.
  */
-export const FAILPOINTS = {
-  'source.freeze.journal': 'source',
-  'source.freeze.surrender': 'source',
-  'source.rest.terminated': 'source',
-  'source.rest.terminate': 'source',
-  'source.rest.forcekill': 'source',
-  'source.rest.stopped': 'source',
-  'source.rest.kill': 'source',
-  'source.rest.server.journal': 'source',
-  'source.rest.server.kill': 'source',
-  'source.freeze.export': 'source',
-  'source.freeze.manifest': 'source',
-  'source.freeze.digest': 'source',
-  'source.startup.surrender': 'source',
-  'source.abort.journal': 'source',
-  'source.revive': 'source',
-  'source.release.manifest': 'source',
-  'source.release.journal': 'source',
-  'source.release.unfreeze': 'source',
-  'source.release.activate': 'source',
-  'source.complete.seal': 'source',
-  'source.complete.install': 'source',
-  'source.complete.deactivate': 'source',
-  'source.complete.manifest': 'source',
-  'source.complete.journal': 'source',
-
-  'destination.claim.seal': 'destination',
-  'destination.claim.root': 'destination',
-  'destination.claim.archive': 'destination',
-  'destination.archive.moveout': 'destination',
-  'destination.archive.aside': 'destination',
-  'destination.verify.journal': 'destination',
-  'destination.verify.landed': 'destination',
-  'destination.verify.sync': 'destination',
-  'destination.verify.record': 'destination',
-  'destination.prepare.seal': 'destination',
-  'destination.prepare.delete': 'destination',
-  'destination.prepare.import': 'destination',
-  'destination.prepare.sync': 'destination',
-  'destination.prepare.state': 'destination',
-  'destination.prepare.journal': 'destination',
-  'destination.prepare.stage': 'destination',
-  'destination.activate.install': 'destination',
-  'destination.commit.journal': 'destination',
-  'destination.promote.fleet': 'destination',
-  'destination.promote.state': 'destination',
-  'destination.activate.journal': 'destination',
-  'destination.activate.fleet': 'destination',
-  'destination.activate.kill': 'destination',
-  'destination.activate.open': 'destination',
-  'destination.activate.record': 'destination',
-  'destination.complete.seal': 'destination',
-  'destination.complete.clear': 'destination',
-  'destination.complete.journal': 'destination',
-  'destination.abort.stage': 'destination',
-  'destination.abort.seal': 'destination',
-  'destination.abort.clear': 'destination',
-  'destination.abort.journal': 'destination',
-
-  'gateway.begin.write': 'gateway',
-  'gateway.ready.write': 'gateway',
-  'gateway.commit.write': 'gateway',
-  'gateway.abort.write': 'gateway',
-  'gateway.complete.write': 'gateway',
-  'gateway.commit.respond': 'gateway',
-
-  'controller.journal': 'controller',
-  'controller.manifest': 'controller',
-  'controller.landed': 'controller',
-  'controller.clear': 'controller',
-  'controller.rsync': 'controller',
-  'controller.verify': 'controller',
-  'controller.commit': 'controller',
-
+export const FAILPOINTS = [
   // a move's steps, on the machine it leaves and the one it goes to
-  'move.rest': 'source',
-  'move.bundle': 'source',
-  'move.journal.rest': 'source',
-  'move.journal.bundle': 'source',
-  'move.journal.prepare': 'source',
-  'move.journal.commit': 'source',
-  'move.journal.activate': 'source',
-  'move.journal.release': 'source',
-  'move.journal.done': 'source',
-  'move.journal.aborted': 'source',
-  'move.commit.state': 'source',
-  'move.release.lock': 'source',
-  'worker.prepare.worktree': 'destination',
-  'worker.prepare.apply': 'destination',
-  'worker.prepare.session': 'destination',
-  'worker.prepare.journal': 'destination',
-  'worker.activate.open': 'destination',
-  'worker.activate.trust': 'destination',
-  'worker.abort.remove': 'destination',
+  'move.rest',
+  'move.rest.terminated',
+  'move.rest.terminate',
+  'move.rest.forcekill',
+  'move.rest.stopped',
+  'move.rest.kill',
+  'move.rest.server.journal',
+  'move.rest.server.kill',
+  'move.bundle',
+  'move.journal.rest',
+  'move.journal.bundle',
+  'move.journal.prepare',
+  'move.journal.commit',
+  'move.journal.activate',
+  'move.journal.release',
+  'move.journal.done',
+  'move.journal.aborted',
+  'move.commit.state',
+  'move.release.lock',
+  'worker.prepare.worktree',
+  'worker.prepare.apply',
+  'worker.prepare.session',
+  'worker.prepare.journal',
+  'worker.activate.open',
+  'worker.activate.trust',
+  'worker.abort.remove',
   // the worker's outbox, and the home's write of each event it applies from it
-  'worker.outbox.append': 'destination',
-  'worker.outbox.acked': 'destination',
-  'worker.outbox.trim': 'destination',
-  'home.event.applied': 'source',
-} as const satisfies Record<string, FailSide>;
+  'worker.outbox.append',
+  'worker.outbox.acked',
+  'worker.outbox.trim',
+  'home.event.applied',
+] as const;
 
-export type Failpoint = keyof typeof FAILPOINTS;
+export type Failpoint = (typeof FAILPOINTS)[number];
 export type Edge = 'before' | 'after';
 /** `threw` is no failpoint: it tells the hook that a step ended by throwing, and so reaches no `after`. */
 export type FailpointHook = (name: Failpoint, edge: Edge | 'threw') => void;

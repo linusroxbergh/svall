@@ -370,14 +370,11 @@ export const SystemInfo = z.object({
   release: z.string(),
   protocol: z.number().int(),
   stateSchema: z.number().int(),
-  transferSchema: z.number().int(),
   platform: z.enum(['darwin', 'linux']),
   arch: z.string(),
   agentAdapters: z.array(AgentAdapter),
   // `git --version`'s number; absent where git cannot run
   git: z.string().optional(),
-  // the daemon's V8 heap_size_limit in bytes, which bounds the files a handover may carry
-  heapLimit: z.number().int().positive(),
   // whether a Linux account's services run while no one is logged in; absent on a Mac, or where loginctl cannot say
   linger: z.object({ user: z.string(), on: z.boolean() }).optional(),
 });

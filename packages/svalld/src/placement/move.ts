@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
   ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, WORKER_OWNED,
-  type FleetId, type LeftBehind, type MoveSheet, type Refusal, type SystemInfo,
+  type LeftBehind, type MoveSheet, type Refusal, type SystemInfo,
 } from '@svall/protocol';
 import { AGENTS } from '../agents.js';
 import { Invalid, NotFound } from '../errors.js';
@@ -14,11 +14,10 @@ import type { Fleet } from '../fleet.js';
 import { DurableJson } from '../durable.js';
 import { boundary, type Failpoint } from '../failpoints.js';
 import { hashStream, sha256Hex } from '../hash.js';
-import { SourceJournal, type JournalState } from '../handover/journal.js';
 import { clean } from '../path-tools.js';
 import { ProcessTable } from '../processes.js';
 import { relocate } from './relocate.js';
-import { classifyTerminals, restTerminals, serversGone, type Classified, type RestChoices, type RestDeps } from './rest.js';
+import { classifyTerminals, RestJournal, restTerminals, serversGone, type Classified, type RestChoices, type RestDeps } from './rest.js';
 import { cliRunner, installSession, sessionAdapter, type AgentProber } from '../sessions/registry.js';
 import { SessionError, type CliRun, type SessionAdapter } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
@@ -50,8 +49,8 @@ export const MoveJournal = z.object({
   manifest: BundleManifest.optional(),
   // each terminal's session, as the session blob carries its files
   sessions: z.array(TransferSession).optional(),
-  // what the rest stopped, as a handover's source journal records it
-  rest: SourceJournal.optional(),
+  // what the rest stopped
+  rest: RestJournal.optional(),
   branchSha: ObjectName.optional(),
   // what this machine changed for the move, each journaled before it is made, so an abort undoes only that
   made: z.object({
@@ -237,7 +236,7 @@ export async function importSessions(sessions: readonly TransferSession[], stage
 export function landed(c: Robot, j: Pick<MoveJournal, 'plan' | 'generation'>, machine: MachineId | undefined): Robot {
   const p = j.plan.paths;
   const r = structuredClone(c);
-  for (const k of ['tmux', 'hint', 'codexDaemon', 'resumeError', 'restedBy', 'panePath', 'repo', 'machine'] as const) delete r[k];
+  for (const k of ['tmux', 'hint', 'codexDaemon', 'resumeError', 'panePath', 'repo', 'machine'] as const) delete r[k];
   if (machine) r.machine = machine;
   r.placement = { generation: j.generation };
   r.cwd = p.cwd;
@@ -248,7 +247,7 @@ export function landed(c: Robot, j: Pick<MoveJournal, 'plan' | 'generation'>, ma
     if (p.transcriptPath) r.agent.transcriptPath = p.transcriptPath;
   }
   if (r.second) {
-    for (const k of ['tmux', 'resumeError', 'restedBy'] as const) delete r.second[k];
+    for (const k of ['tmux', 'resumeError'] as const) delete r.second[k];
     if (p.second) r.second.cwd = p.second;
     if (r.second.agent) {
       delete r.second.agent.pid;
@@ -274,21 +273,15 @@ export type ReturnSheet = Carried & { terminals: Pick<Classified, 'term' | 'clas
 function restJournal(j: MoveJournal, save: (j: MoveJournal) => void): RestDeps['journal'] & { current(): MoveJournal } {
   let cur = j;
   return {
-    journalState: (): JournalState => ({ kind: 'open', journal: cur.rest! }),
-    write: (rest: SourceJournal) => { cur = { ...cur, rest }; save(cur); },
+    read: () => cur.rest!,
+    write: (rest) => { cur = { ...cur, rest }; save(cur); },
     current: () => cur,
   };
 }
 
 /** Rests the robot's terminals and closes their windows, recording what it stops as the journal's `rest`. */
-export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJournal) => void, fleetId: FleetId, choices: RestChoices): Promise<MoveJournal> {
-  const cur: MoveJournal = j.rest ? j : {
-    ...j,
-    rest: {
-      role: 'source', transactionId: j.id, generation: 0, fleetId, fromMachineId: j.from, toMachineId: j.to, phase: 'freeze',
-      updatedAt: Date.now(), stoppedTerminals: [], terminated: [], serverKills: [],
-    },
-  };
+export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJournal) => void, choices: RestChoices): Promise<MoveJournal> {
+  const cur: MoveJournal = j.rest ? j : { ...j, rest: RestJournal.parse({}) };
   save(cur);
   const journal = restJournal(cur, save);
   const r = await boundary('move.rest', () => restTerminals({ ...deps, journal }, { choices, only: (t) => t.robotId === j.robotId }));
@@ -428,7 +421,6 @@ export type PlacementDeps = {
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
   links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror'>;
   me: MachineId;
-  fleetId: FleetId;
   paths: Pick<Paths, 'moves'>;
   git: GitRunner;
   agents: AgentProber;
@@ -626,7 +618,7 @@ export class Placement {
         const { interruptAfterMs } = j.plan;
         // what a sheet's choice to interrupt or move anyway covers: an agent's turn and a command holding a shell
         const choices: RestChoices = interruptAfterMs === undefined ? {} : { interruptAfterMs, terminate: true };
-        j = this.enter(await restRobot(this.restDeps(), j, (x) => this.save(x), this.d.fleetId, choices), 'bundle');
+        j = this.enter(await restRobot(this.restDeps(), j, (x) => this.save(x), choices), 'bundle');
       }
       if (j.phase === 'bundle') {
         // the agent there is the one the user talks to here; a mirror that does not go is logged, and the move goes on
@@ -708,8 +700,6 @@ export class Placement {
       const c = d.robots[id];
       if (!c) return;
       if (c.moving?.id === j.id) delete c.moving;
-      delete c.restedBy;
-      if (c.second) delete c.second.restedBy;
     });
     await serversLeft(this.restDeps(), j, (x) => this.save(x));
     for (const t of j.rest?.stoppedTerminals ?? []) {

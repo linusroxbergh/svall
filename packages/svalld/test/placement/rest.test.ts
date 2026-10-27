@@ -8,19 +8,17 @@ import { hookCommand, statusWrapper } from '../../src/agent-hooks.js';
 import { Config } from '../../src/config.js';
 import { markDormant } from '../../src/dormancy.js';
 import { Fleet } from '../../src/fleet.js';
-import { SourceJournal, openJournal } from '../../src/handover/journal.js';
 import { ProcessTable, killGroup, type Proc } from '../../src/processes.js';
 import { armFailpoints } from '../../src/failpoints.js';
-import { classifyTerminals, restChoices, restTerminals, unapproved, type Clock, type RestDeps } from '../../src/placement/rest.js';
-import { HandoverService } from '../../src/handover/service.js';
+import { RestJournal, classifyTerminals, restTerminals, unapproved, type Clock, type RestDeps } from '../../src/placement/rest.js';
 import { silentLogger } from '../../src/log.js';
 import { OwnershipState } from '../../src/ownership/state.js';
-import { installedScripts, resolvePaths, type Paths } from '../../src/paths.js';
+import { installedScripts, resolvePaths } from '../../src/paths.js';
 import { Store } from '../../src/store.js';
 import { TerminalHub } from '../../src/terminals.js';
 import { tmuxConfText } from '../../src/tmux/conf.js';
 import { Tmux, type LiveWindow } from '../../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, idleSides, makeHome, waitFor } from '../helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
 const SID2 = '7a1d2e3f-4b5c-4d6e-8f70-81a2b3c4d5e6';
@@ -176,10 +174,10 @@ class World {
   }
 }
 
-const journalOf = (paths: Paths): SourceJournal => {
-  const s = openJournal(paths).load();
-  if (s.kind !== 'open' || s.journal.role !== 'source') throw new Error(`no source journal: ${s.kind}`);
-  return s.journal;
+// the rest's journal, held as a move holds it in its own
+const restJournal = (): RestDeps['journal'] => {
+  let j = RestJournal.parse({});
+  return { read: () => j, write: (next) => { j = next; } };
 };
 
 afterEach(cleanHomes);
@@ -189,20 +187,16 @@ function boot(robots: Robot[]) {
   const store = Store.load(paths.state, () => {});
   store.update((d) => { for (const c of robots) d.robots[c.id] = c; });
   const ownership = OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger });
-  const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
-  handover.write(SourceJournal.parse({
-    role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
-  }));
   const world = new World();
   const deps: RestDeps = {
-    store, tmux: world.tmux, viewers: world.viewers, journal: handover, processes: world.processes, kill: world.kill, clock: world.clock, bootId: () => 'boot-1',
+    store, tmux: world.tmux, viewers: world.viewers, journal: restJournal(), processes: world.processes, kill: world.kill, clock: world.clock, bootId: () => 'boot-1',
   };
   return { store, world, deps, paths, ownership };
 }
 
 describe('restTerminals', () => {
   it('rests idle agents and shells at their prompt, detaching viewers before a window closes, and leaves both slots dormant with resume commands', async () => {
-    const { store, world, deps, paths } = boot([
+    const { store, world, deps } = boot([
       robot('c_ada', { tmux: win(1), agent: agent('claude', 'idle'), second: { cwd: '/side', unread: false, tmux: win(2) } }),
       robot('c_bo', { tmux: win(3), agent: agent('codex', 'done', SID2) }),
     ]);
@@ -210,7 +204,7 @@ describe('restTerminals', () => {
     world.pane(2, { path: '/side/moved' });
     world.pane(3, { job: ['codex'] });
     let stoppedBeforeKill: unknown;
-    world.onKill = () => { stoppedBeforeKill ??= journalOf(paths).stoppedTerminals; };
+    world.onKill = () => { stoppedBeforeKill ??= deps.journal.read().stoppedTerminals; };
 
     const result = await restTerminals(deps, { choices: {} });
 
@@ -225,15 +219,13 @@ describe('restTerminals', () => {
     expect(world.log).toEqual(['detach c_ada', 'detach c_bo', 'kill @1', 'kill @2', 'kill @3']);
     const stopped = [{ robotId: 'c_ada' }, { robotId: 'c_ada', term: 2 }, { robotId: 'c_bo' }];
     expect(stoppedBeforeKill).toEqual(stopped);
-    expect(journalOf(paths).stoppedTerminals).toEqual(stopped);
+    expect(deps.journal.read().stoppedTerminals).toEqual(stopped);
     const ada = store.state.robots.c_ada;
     expect(ada.tmux).toBeUndefined();
     expect(ada.cwd).toBe('/work/c_ada');
     expect(ada.revive).toEqual({ command: `claude --resume ${SID}` });
-    // each terminal names the handover that closed it, which is what the destination opens again
-    expect(ada.restedBy).toBe(tx.id);
-    expect(ada.second).toEqual({ cwd: '/side/moved', unread: false, revive: { command: '' }, restedBy: tx.id });
-    expect(store.state.robots.c_bo).toMatchObject({ revive: { command: `codex resume -c tui.resume_cwd=session ${SID2}` }, restedBy: tx.id });
+    expect(ada.second).toEqual({ cwd: '/side/moved', unread: false, revive: { command: '' } });
+    expect(store.state.robots.c_bo).toMatchObject({ revive: { command: `codex resume -c tui.resume_cwd=session ${SID2}` } });
     expect(world.timers()).toBe(0);
   });
 
@@ -243,7 +235,7 @@ describe('restTerminals', () => {
     world.onKill = () => store.update((d) => { delete d.robots.c_ada.agent; markDormant(d.robots.c_ada); });
 
     expect((await restTerminals(deps, { choices: {} })).ok).toBe(true);
-    expect(store.state.robots.c_ada).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` }, restedBy: tx.id });
+    expect(store.state.robots.c_ada).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` } });
   });
 
   it('leaves a robot put to sleep alone while its window still closes and its agent still exits', async () => {
@@ -276,7 +268,7 @@ describe('restTerminals', () => {
   });
 
   it('refuses a foreground job nobody chose to end at the recheck, before it interrupts, signals or closes anything', async () => {
-    const { store, world, deps, paths } = boot([
+    const { store, world, deps } = boot([
       robot('c_ada', { tmux: win(1) }),
       robot('c_bo', { tmux: win(3), agent: agent('claude', 'working') }),
     ]);
@@ -289,11 +281,11 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({
       ok: false,
-      blockers: [{ code: 'shell_busy', message: "ada's terminal is running npm run dev", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'shell_busy', message: "ada's terminal is running npm run dev", robotId: 'c_ada' }],
     });
     expect(world.log).toEqual([]);
     expect(store.state).toEqual(before);
-    expect(journalOf(paths).terminated).toEqual([]);
+    expect(deps.journal.read().terminated).toEqual([]);
   });
 
   it('refuses a blocked agent unless the choices say it may be interrupted', async () => {
@@ -303,7 +295,7 @@ describe('restTerminals', () => {
 
     expect(await restTerminals(deps, { choices: { terminate: true } })).toEqual({
       ok: false,
-      blockers: [{ code: 'agent_blocked', message: "ada's second terminal is waiting on an answer: Allow rm -rf build?", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'agent_blocked', message: "ada's second terminal is waiting on an answer: Allow rm -rf build?", robotId: 'c_ada' }],
     });
     expect(world.log).toEqual([]);
   });
@@ -339,7 +331,7 @@ describe('restTerminals', () => {
     await run;
     expect(result).toEqual({
       ok: false,
-      blockers: [{ code: 'agent_working', message: "ada's terminal is still working", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'agent_working', message: "ada's terminal is still working", robotId: 'c_ada' }],
     });
     expect(world.log).toEqual([]);
   });
@@ -381,7 +373,7 @@ describe('restTerminals', () => {
     expect(result).toEqual({
       ok: false,
       // the command that keeps it from settling is named, for the sheet to show
-      blockers: [{ code: 'agent_unsettled', message: "ada's terminal did not come to rest after it was interrupted: /bin/zsh -c npm test still runs", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'agent_unsettled', message: "ada's terminal did not come to rest after it was interrupted: /bin/zsh -c npm test still runs", robotId: 'c_ada' }],
     });
     expect(world.log).toEqual(['keys %1 1b']);
   });
@@ -418,7 +410,7 @@ describe('restTerminals', () => {
     await run;
     expect(result).toEqual({
       ok: false,
-      blockers: [{ code: 'shell_busy', message: "ada's terminal has vim notes.md suspended", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'shell_busy', message: "ada's terminal has vim notes.md suspended", robotId: 'c_ada' }],
     });
     expect(world.log).toEqual(['keys %1 1b']);
   });
@@ -437,10 +429,10 @@ describe('restTerminals', () => {
   });
 
   it('terminates an interrupted agent that will not settle when its terminal may be terminated, journaling it first and keeping the session it carries', async () => {
-    const { store, world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
+    const { store, world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
     world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c npm test'] });
     let journaled: unknown;
-    world.onSignal = () => { journaled = journalOf(paths).terminated; };
+    world.onSignal = () => { journaled = deps.journal.read().terminated; };
     let result: unknown;
     const run = restTerminals(deps, {
       choices: { interruptAfterMs: 0, terminate: [{ robotId: 'c_ada' }] }, pollMs: 500, settleMs: 1000,
@@ -459,14 +451,14 @@ describe('restTerminals', () => {
     expect(result).toEqual({ ok: true, terminals: [{ robotId: 'c_ada' }] });
     expect(store.state.robots.c_ada.agent?.sessionId).toBe(SID);
     expect(store.state.robots.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
-    expect(journalOf(paths).terminated).toEqual([{ robotId: 'c_ada', processes: ['claude', '/bin/zsh -c npm test'] }]);
+    expect(deps.journal.read().terminated).toEqual([{ robotId: 'c_ada', processes: ['claude', '/bin/zsh -c npm test'] }]);
   });
 
   it("ends the tool commands of a terminal it terminates too, journaled first, and follows SIGTERM with SIGKILL for one that ignores it", async () => {
-    const { world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
+    const { world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('claude', 'working') })]);
     world.pane(1, { job: ['claude'], tools: ['/bin/zsh -c npm run dev'], stubbornTools: true });
     let journaled: unknown;
-    world.onSignal = () => { journaled ??= journalOf(paths).terminated; };
+    world.onSignal = () => { journaled ??= deps.journal.read().terminated; };
     let result: unknown;
     const run = restTerminals(deps, {
       choices: { interruptAfterMs: 0, terminate: [{ robotId: 'c_ada' }] }, pollMs: 500, settleMs: 1000,
@@ -489,13 +481,13 @@ describe('restTerminals', () => {
   });
 
   it("ends Codex's own-group helpers on the terminal with it when its terminal is terminated, and closes nothing until the last is gone", async () => {
-    const { store, world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('codex', 'working') })]);
+    const { store, world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('codex', 'working') })]);
     const pane = world.pane(1, {
       job: ['codex'], tools: ['/bin/zsh -lc npm test'], servers: ['node_repl', '/opt/codex/bin/codex-code-mode-host'],
       lingeringServers: true, stubbornServers: ['/opt/codex/bin/codex-code-mode-host'],
     });
     let journaled: unknown;
-    world.onSignal = () => { journaled ??= journalOf(paths).terminated; };
+    world.onSignal = () => { journaled ??= deps.journal.read().terminated; };
     let result: unknown;
     const run = restTerminals(deps, { choices: { interruptAfterMs: 0, terminate: true }, pollMs: 500, settleMs: 1000 })
       .then((r) => { result = r; });
@@ -527,7 +519,7 @@ describe('restTerminals', () => {
       ok: false,
       blockers: [{
         code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: /bin/zsh -c npm run dev still runs",
-        entity: { kind: 'robot', id: 'c_ada' },
+        robotId: 'c_ada',
       }],
     });
     expect(kept.world.log).toEqual([]);
@@ -541,7 +533,7 @@ describe('restTerminals', () => {
     await run;
     expect(result).toMatchObject({ ok: true });
     expect(ended.world.log).toEqual(['SIGTERM 1001', 'SIGTERM 1050', 'detach c_ada', 'kill @1']);
-    expect(journalOf(ended.paths).terminated).toEqual([{ robotId: 'c_ada', processes: ['claude', '/bin/zsh -c npm run dev'] }]);
+    expect(ended.deps.journal.read().terminated).toEqual([{ robotId: 'c_ada', processes: ['claude', '/bin/zsh -c npm run dev'] }]);
     // what it ran in the background is gone, which its revive tells it
     expect(ended.store.state.robots.c_ada.revive).toEqual({ command: `claude --resume ${SID}`, interrupted: true });
   });
@@ -554,7 +546,7 @@ describe('restTerminals', () => {
       ok: false,
       blockers: [{
         code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: /bin/zsh -c tail -f build.log still runs",
-        entity: { kind: 'robot', id: 'c_ada' },
+        robotId: 'c_ada',
       }],
     });
     expect(kept.world.log).toEqual([]);
@@ -609,12 +601,12 @@ describe('restTerminals', () => {
   });
 
   it('kills a private OpenCode server that outlasts its closed window by the settle time, with what it runs, journaled first, and sees them gone', async () => {
-    const { world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    const { world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
     world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000, lateChild: 'node /mcp/server.js' });
     let stopped: unknown;
-    world.onKill = () => { stopped ??= journalOf(paths).stoppedTerminals; };
+    world.onKill = () => { stopped ??= deps.journal.read().stoppedTerminals; };
     let journaled: unknown;
-    world.onSignal = () => { journaled ??= journalOf(paths).serverKills; };
+    world.onSignal = () => { journaled ??= deps.journal.read().serverKills; };
     let result: unknown;
     const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
 
@@ -631,15 +623,15 @@ describe('restTerminals', () => {
     expect(journaled).toEqual([{
       robotId: 'c_ada', boot: 'boot-1', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }, { pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }],
     }]);
-    expect(journalOf(paths).terminated).toEqual([]);
+    expect(deps.journal.read().terminated).toEqual([]);
     expect(world.orphans).toEqual([]);
   });
 
   it('waits for, and kills, a private OpenCode server a rest that died left running once it rests again, before it answers', async () => {
-    const { world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+    const { world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
     world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
     // the daemon dies as the wait for the server ends
-    const disarm = armFailpoints((name, edge) => { if (name === 'source.rest.server.journal' && edge === 'before') throw new Error('crashed'); });
+    const disarm = armFailpoints((name, edge) => { if (name === 'move.rest.server.journal' && edge === 'before') throw new Error('crashed'); });
     let failed: unknown;
     const first = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).catch((e: Error) => { failed = e.message; });
     await world.settle();
@@ -658,7 +650,7 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({ ok: true, terminals: [] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
-    expect(journalOf(paths).serverKills).toEqual([{ robotId: 'c_ada', boot: 'boot-1', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }] }]);
+    expect(deps.journal.read().serverKills).toEqual([{ robotId: 'c_ada', boot: 'boot-1', processes: [{ pid: 1060, pgid: 1060, args: OC_SERVER }] }]);
     expect(world.orphans).toEqual([]);
   });
 
@@ -667,8 +659,8 @@ describe('restTerminals', () => {
     ['with no server', { robotId: 'c_ada' }],
   ] as const) {
     it(`journals and waits for the live server of a terminal the journal already names ${what}`, async () => {
-      const { world, deps, paths } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
-      deps.journal.write({ ...journalOf(paths), stoppedTerminals: [stopped] });
+      const { world, deps } = boot([robot('c_ada', { tmux: win(1), agent: agent('opencode', 'done', OSID) })]);
+      deps.journal.write({ ...deps.journal.read(), stoppedTerminals: [stopped] });
       world.pane(1, { job: [`opencode --standalone -s ${OSID}`], server: OC_SERVER, serverLingersMs: 60_000 });
       let result: unknown;
       const run = restTerminals(deps, { choices: {}, pollMs: 500, settleMs: 1000 }).then((r) => { result = r; });
@@ -681,7 +673,7 @@ describe('restTerminals', () => {
 
       expect(result).toEqual({ ok: true, terminals: [{ robotId: 'c_ada' }] });
       expect(world.log).toEqual(['detach c_ada', 'kill @1', 'SIGKILL 1060']);
-      expect(journalOf(paths).stoppedTerminals).toEqual([{ robotId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-1' } }]);
+      expect(deps.journal.read().stoppedTerminals).toEqual([{ robotId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-1' } }]);
     });
   }
 
@@ -689,7 +681,7 @@ describe('restTerminals', () => {
   const rebooted = () => {
     const b = boot([robot('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
     b.deps.journal.write({
-      ...journalOf(b.paths),
+      ...b.deps.journal.read(),
       stoppedTerminals: [{ robotId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER, boot: 'boot-0' } }],
       serverKills: [{ robotId: 'c_ada', boot: 'boot-0', processes: [{ pid: 1080, pgid: 1080, args: 'node /mcp/server.js' }] }],
     });
@@ -725,8 +717,8 @@ describe('restTerminals', () => {
   });
 
   it('takes a journaled server whose pid now runs another command for gone, signalling nothing', async () => {
-    const { world, deps, paths } = boot([robot('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
-    deps.journal.write({ ...journalOf(paths), stoppedTerminals: [{ robotId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }] });
+    const { world, deps } = boot([robot('c_ada', { agent: agent('opencode', 'done', OSID), revive: { command: `opencode -s ${OSID}` } })]);
+    deps.journal.write({ ...deps.journal.read(), stoppedTerminals: [{ robotId: 'c_ada', server: { pid: 1060, pgid: 1060, args: OC_SERVER } }] });
     world.orphans.push({ row: { pid: 1060, ppid: 1, pgid: 1060, tpgid: 0, stat: 'Ss', args: 'vim notes.md' }, until: Infinity });
 
     expect(await restTerminals(deps, { choices: {} })).toEqual({ ok: true, terminals: [] });
@@ -788,7 +780,7 @@ describe('restTerminals', () => {
       ok: false,
       blockers: [{
         code: 'agent_unsettled', message: "ada's terminal is idle with work still running in the background: sleep 501 still runs",
-        entity: { kind: 'robot', id: 'c_ada' },
+        robotId: 'c_ada',
       }],
     });
     expect(kept.world.log).toEqual([]);
@@ -858,11 +850,11 @@ describe('restTerminals', () => {
   });
 
   it('ends a job only in the terminal the choice names, journaling it before the signal, and follows an ignored SIGTERM with SIGKILL', async () => {
-    const { store, world, deps, paths } = boot([robot('c_ada', { tmux: win(1), second: { cwd: '/s', unread: false, tmux: win(2) } })]);
+    const { store, world, deps } = boot([robot('c_ada', { tmux: win(1), second: { cwd: '/s', unread: false, tmux: win(2) } })]);
     world.pane(1);
     world.pane(2, { job: ['tail -f build.log'], ignoresTerm: true });
     let journaled: unknown;
-    world.onSignal = () => { journaled ??= journalOf(paths).terminated; };
+    world.onSignal = () => { journaled ??= deps.journal.read().terminated; };
     let result: unknown;
     const run = restTerminals(deps, { choices: { terminate: [{ robotId: 'c_ada', term: 2 }] }, pollMs: 500, settleMs: 1000 })
       .then((r) => { result = r; });
@@ -901,7 +893,7 @@ describe('restTerminals', () => {
 
     expect(result).toEqual({
       ok: false,
-      blockers: [{ code: 'shell_busy', message: "bo's terminal is running make release", entity: { kind: 'robot', id: 'c_bo' } }],
+      blockers: [{ code: 'shell_busy', message: "bo's terminal is running make release", robotId: 'c_bo' }],
     });
     expect(world.log).toEqual([]);
   });
@@ -954,8 +946,8 @@ describe('restTerminals', () => {
     expect(await restTerminals(deps, { choices: { interruptAfterMs: 0 } })).toEqual({
       ok: false,
       blockers: [
-        { code: 'shell_busy', message: "ada's terminal is running npm run dev", entity: { kind: 'robot', id: 'c_ada' } },
-        { code: 'shell_busy', message: "bo's terminal is running vim notes.md", entity: { kind: 'robot', id: 'c_bo' } },
+        { code: 'shell_busy', message: "ada's terminal is running npm run dev", robotId: 'c_ada' },
+        { code: 'shell_busy', message: "bo's terminal is running vim notes.md", robotId: 'c_bo' },
       ],
     });
     expect(world.log).toEqual([]);
@@ -1027,7 +1019,7 @@ describe('restTerminals', () => {
   });
 
   it('stops with the journal open and the slot live when a window is still open after its kill, laying only the ones closed before it dormant', async () => {
-    const { store, world, deps, paths } = boot([
+    const { store, world, deps } = boot([
       robot('c_ada', { tmux: win(1), agent: agent('claude', 'idle') }),
       robot('c_bo', { tmux: win(3), agent: agent('codex', 'idle', SID2) }),
     ]);
@@ -1037,11 +1029,11 @@ describe('restTerminals', () => {
 
     await expect(restTerminals(deps, { choices: {} })).rejects.toThrow(/bo's terminal is still open/);
 
-    expect(store.state.robots.c_ada).toMatchObject({ restedBy: tx.id, revive: { command: `claude --resume ${SID}` } });
+    expect(store.state.robots.c_ada).toMatchObject({ revive: { command: `claude --resume ${SID}` } });
     expect(store.state.robots.c_ada.tmux).toBeUndefined();
     expect(store.state.robots.c_bo.tmux).toEqual(win(3));
-    expect(store.state.robots.c_bo.restedBy).toBeUndefined();
-    expect(journalOf(paths).stoppedTerminals).toEqual([{ robotId: 'c_ada' }, { robotId: 'c_bo' }]);
+    expect(store.state.robots.c_bo.revive).toBeUndefined();
+    expect(deps.journal.read().stoppedTerminals).toEqual([{ robotId: 'c_ada' }, { robotId: 'c_bo' }]);
   });
 
   it('still waits on a background job of an interrupted Claude, but not on its Svall statusline and hook', async () => {
@@ -1081,7 +1073,7 @@ describe('restTerminals', () => {
     expect(world.log).toEqual(['SIGTERM 1001', 'SIGKILL 1001']);
     expect(result).toEqual({
       ok: false,
-      blockers: [{ code: 'shell_busy', message: "ada's terminal is still running tail -f build.log after it was terminated", entity: { kind: 'robot', id: 'c_ada' } }],
+      blockers: [{ code: 'shell_busy', message: "ada's terminal is still running tail -f build.log after it was terminated", robotId: 'c_ada' }],
     });
   });
 
@@ -1099,7 +1091,7 @@ describe('restTerminals', () => {
   });
 
   it('makes a terminal whose window already went dormant too', async () => {
-    const { store, world, deps, paths } = boot([
+    const { store, world, deps } = boot([
       robot('c_ada', { tmux: win(1), second: { cwd: '/s', unread: false, tmux: win(2), agent: agent('claude', 'idle', SID2) } }),
     ]);
     world.pane(1);
@@ -1109,8 +1101,7 @@ describe('restTerminals', () => {
     expect(result).toEqual({ ok: true, terminals: [{ robotId: 'c_ada' }] });
     expect(world.log).toEqual(['detach c_ada', 'kill @1']);
     // the handover did not stop the second, so an abort has nothing of it to bring back, nor a destination to open
-    expect(journalOf(paths).stoppedTerminals).toEqual([{ robotId: 'c_ada' }]);
-    expect(store.state.robots.c_ada.restedBy).toBe(tx.id);
+    expect(deps.journal.read().stoppedTerminals).toEqual([{ robotId: 'c_ada' }]);
     expect(store.state.robots.c_ada.second).toEqual({
       cwd: '/s', unread: false, agent: agent('claude', 'idle', SID2), revive: { command: `claude --resume ${SID2}` },
     });
@@ -1163,21 +1154,11 @@ describe('unapproved', () => {
     expect(terminals.map((t) => t.class)).toEqual(['foreground', 'agent-ready', 'agent-working', 'agent-blocked']);
     // the working agent is waited on, and the one waiting on an answer is answered or interrupted, before its stopped job counts
     expect(unapproved(state, terminals, {})).toEqual([
-      { code: 'shell_busy', message: "ada's terminal has claude --dangerously-skip-permissions --effort high suspended", entity: { kind: 'robot', id: 'c_ada' } },
-      { code: 'shell_busy', message: "bo's terminal has vim notes.md suspended", entity: { kind: 'robot', id: 'c_bo' } },
-      { code: 'agent_blocked', message: "dee's terminal is waiting on an answer: Bash: rm -rf build", entity: { kind: 'robot', id: 'c_dee' } },
+      { code: 'shell_busy', message: "ada's terminal has claude --dangerously-skip-permissions --effort high suspended", robotId: 'c_ada' },
+      { code: 'shell_busy', message: "bo's terminal has vim notes.md suspended", robotId: 'c_bo' },
+      { code: 'agent_blocked', message: "dee's terminal is waiting on an answer: Bash: rm -rf build", robotId: 'c_dee' },
     ]);
     expect(unapproved(state, terminals, { terminate: true }).map((b) => b.code)).toEqual(['agent_blocked']);
-  });
-});
-
-describe('restChoices', () => {
-  it('reads a robot the protocol names as both of its terminals', () => {
-    expect(restChoices({ interruptAfterMs: 30_000, terminateShells: ['c_ada'] })).toEqual({
-      interruptAfterMs: 30_000, terminate: [{ robotId: 'c_ada' }, { robotId: 'c_ada', term: 2 }],
-    });
-    expect(restChoices({ terminateShells: true })).toEqual({ terminate: true });
-    expect(restChoices({})).toEqual({});
   });
 });
 
@@ -1263,13 +1244,10 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
 
     await ownership.freeze(tx);
     await fleet.settle();
-    const handover = new HandoverService({ ownership, journal: openJournal(paths), ...idleSides(paths, { store }) });
-    handover.write(SourceJournal.parse({
-      role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
-    }));
+    const journal = restJournal();
 
     const result = await restTerminals(
-      { store, tmux, viewers: hub, journal: handover },
+      { store, tmux, viewers: hub, journal },
       { choices: { terminate: [{ robotId: c.id, term: 2 }] }, pollMs: 50, settleMs: 3000 },
     );
 
@@ -1278,8 +1256,8 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     await waitFor(() => screen.includes('detached'));
     const rested = store.state.robots[c.id];
     expect(rested.tmux).toBeUndefined();
-    expect(rested.second).toEqual({ cwd: fs.realpathSync(home), unread: false, revive: { command: '' }, restedBy: tx.id });
-    expect(journalOf(paths).terminated).toEqual([{ robotId: c.id, term: 2, processes: ['sleep 300'] }]);
+    expect(rested.second).toEqual({ cwd: fs.realpathSync(home), unread: false, revive: { command: '' } });
+    expect(journal.read().terminated).toEqual([{ robotId: c.id, term: 2, processes: ['sleep 300'] }]);
   }, 20_000);
 
   it('rests a fleet whose tmux server died with its windows, or left no socket at all, as one with no window, closing none', async () => {
@@ -1291,12 +1269,9 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     const store = Store.load(paths.state, () => {});
     const w = await tmux.newWindow('c_ada', paths.home, {});
     store.update((d) => { d.robots.c_ada = robot('c_ada', { tmux: w, agent: agent('claude', 'idle') }); });
-    const handover = new HandoverService({ ownership: OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger }), journal: openJournal(paths), ...idleSides(paths, { store }) });
-    handover.write(SourceJournal.parse({
-      role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
-    }));
+    const journal = restJournal();
     const detached: string[] = [];
-    const rest = () => restTerminals({ store, tmux, viewers: { detach: async (id) => { detached.push(id); } }, journal: handover }, { choices: {} });
+    const rest = () => restTerminals({ store, tmux, viewers: { detach: async (id) => { detached.push(id); } }, journal }, { choices: {} });
 
     // the whole unit went down: the server, every window and every agent in it, and its socket file stays behind
     const pid = Number((await tmux.run('display-message', '-p', '#{pid}')).trim());
@@ -1307,9 +1282,8 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
     const ada = store.state.robots.c_ada;
     expect(ada.tmux).toBeUndefined();
     expect(ada).toMatchObject({ agent: { sessionId: SID }, revive: { command: `claude --resume ${SID}` } });
-    // the handover closed no window, so neither an abort nor the destination opens one
-    expect(ada.restedBy).toBeUndefined();
-    expect(journalOf(paths).stoppedTerminals).toEqual([]);
+    // the rest closed no window, so neither an abort nor the destination opens one
+    expect(journal.read().stoppedTerminals).toEqual([]);
 
     fs.rmSync(paths.tmuxSock);
     expect(await rest()).toEqual({ ok: true, terminals: [] });
@@ -1339,16 +1313,12 @@ runIf(`resting real terminals${hasTmux() ? '' : ' (skipped: tmux is not on PATH)
 
     const classified = classifyTerminals(store.state, await tmux.listWindows(), await ProcessTable.read());
     expect(unapproved(store.state, classified, {})).toEqual([
-      { code: 'shell_busy', message: `ada's terminal has ${claude} 300 suspended`, entity: { kind: 'robot', id: 'c_ada' } },
+      { code: 'shell_busy', message: `ada's terminal has ${claude} 300 suspended`, robotId: 'c_ada' },
     ]);
 
-    const handover = new HandoverService({ ownership: OwnershipState.load({ paths, fleetId, machineId: me, log: silentLogger }), journal: openJournal(paths), ...idleSides(paths, { store }) });
-    handover.write(SourceJournal.parse({
-      role: 'source', transactionId: tx.id, generation: 0, fleetId, fromMachineId: me, toMachineId: other, phase: 'freeze', updatedAt: 0,
-    }));
     const signals: string[] = [];
     const result = await restTerminals(
-      { store, tmux, viewers: { detach: async () => {} }, journal: handover, kill: (group, signal) => { signals.push(signal); killGroup(group, signal); } },
+      { store, tmux, viewers: { detach: async () => {} }, journal: restJournal(), kill: (group, signal) => { signals.push(signal); killGroup(group, signal); } },
       { choices: { terminate: true }, pollMs: 50, settleMs: 10_000 },
     );
 

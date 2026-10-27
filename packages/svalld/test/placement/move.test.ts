@@ -132,6 +132,24 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
   });
 
+  it('recovers a move whose journal holds the rest 0.19.0 writes, with role, transactionId, generation and phase', async () => {
+    const w = open();
+    const first = await w.start();
+    at('move.journal.activate', 'before', () => { first.life.dead = true; throw new Crash('svalld died'); });
+    await expect(first.placement.start('c_1', W)).rejects.toThrow(Crash);
+    first.links.stop();
+    const [file] = fs.readdirSync(w.homePaths.moves).filter((f) => f.endsWith('.json'));
+    const journal = JSON.parse(fs.readFileSync(path.join(w.homePaths.moves, file), 'utf8'));
+    fs.writeFileSync(path.join(w.homePaths.moves, file), JSON.stringify({
+      ...journal, rest: { role: 'source', transactionId: journal.id, generation: 0, phase: 'freeze', stoppedTerminals: [], terminated: [], serverKills: [] },
+    }));
+
+    const again = await w.bootHome();
+    await again.placement.recoverMoves();
+
+    expect(['done', 'aborted']).toContain(again.placement.status(journal.id).phase);
+  });
+
   it('returns a robot whose Mac worktree is unchanged: reset to the recorded base, bundle applied, badge gone', async () => {
     const w = open();
     const home = await w.start();
