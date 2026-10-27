@@ -72,12 +72,13 @@ written, until you keep one of the two; the daemon's log and `svall doctor` both
 
 - Each fleet home is split and migrated by its own daemon, on its next start, and gets its own `fleet.json`,
   `node.json` and id.
-- Remote machines are set up per fleet: `svall -p <name> host add <host>` makes the machine that fleet's worker, and
-  `svall -p <name> robot move …` moves its robots. On Linux each fleet runs as `svall-svalld@<name>.service`.
-- A fleet can no longer be named for a command `svall` keeps, such as `host`, `connection-info` or `version`, even
-  with `-p`. `svall setup` names each fleet home made under one of them, such as `~/.svall-host`, and the `mv` to a
-  name that reaches it again. A `config.json` whose `name` is one of them splits
-  without it, so the fleet goes by its default name until you name it in Settings; `svall setup` lists each one.
+- Remote machines are set up per fleet: `svall -p <name> host add <machine> --ssh <destination>` makes the machine
+  that fleet's worker, and `svall -p <name> robot move …` moves its robots. On Linux each fleet runs as
+  `svall-svalld@<name>.service`.
+- A fleet cannot be named for a command `svall` keeps, such as `host`, `connection-info` or `version`, even with
+  `-p`. `svall setup` names each fleet home made under one of them, such as `~/.svall-host`, and the `mv` to a name
+  that reaches it again. A `config.json` whose `name` is one of them splits without it, so the fleet goes by its
+  default name until you name it in Settings; `svall setup` lists each one.
 
 ## Going back to 0.14 or earlier
 
@@ -88,7 +89,7 @@ field to 0.9.0's.
 What follows was checked by running Svall 0.5.1 (protocol 19) and Svall 0.3.2 (protocol 18, state schema 7) against a
 fleet this release had migrated, in a temporary home:
 
-- **The older daemon does not start.** Svall 0.5.1's log says `state.json is version 9, newer than this svalld reads
+- **The older daemon does not start.** Svall 0.5.1's log says `state.json is version 12, newer than this svalld reads
   (8): …; or, to go back to the fleet as this version last saw it, move ~/.svall/state.json.v8-<time> to
   ~/.svall/state.json; svalld starts once it is fixed`, the message 0.9.0 to 0.14.0 print too, and it waits without
   touching the state. A release before OpenCode support says `newer than this svalld reads (7)`, and names a
@@ -131,20 +132,6 @@ and configuration code differs from 0.5.1's only by optional state fields.
 
 A Linux machine you set up can stay as it is; the older build never contacts it. To remove it, run `svall host remove
 <name>` before step 2.
-
-To keep what changed since the upgrade instead of going back to the kept copy, set `"version": 9` at the top of
-`state.json` to `8` in step 3 rather than copying a kept one. Svall 0.5.1 read this release's state that way in the
-same test; 0.12.0's schema has stars and robots as well. The older build leaves out any island or robot it cannot
-read, and keeps the file as it read it beside `state.json` as `state.json.broken-<time>`. A robot whose second
-terminal is dormant (a `second` with no `tmux`) is one, since the older build has no dormant second terminal; remove
-each such `second` as you relabel, and the robot comes back without it:
-
-```sh
-jq '.version = 8 | del(.robots[].second | select(.tmux == null))' state.json > state.json.8 && mv state.json.8 state.json
-```
-
-For a release before OpenCode support, relabel to `7` instead. That release also leaves out every OpenCode robot,
-which it cannot read; Svall 0.3.2 started the rest of the fleet that way.
 
 ### Upgrading again
 

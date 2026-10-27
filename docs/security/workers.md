@@ -28,7 +28,8 @@ carries and under which licences, and which risks are accepted. Tests are named 
   - A host command reaches a far daemon through `ssh -L 127.0.0.1:<local>:127.0.0.1:<remote>` on its master.
   - The worker's end of the link (`link.sock`) and the hook receiver (`hooks.sock`) are Unix sockets at 0600 in the
     0700 fleet home.
-  - A terminal the Machines panel opens for `codex login` forwards `127.0.0.1:1455` to the machine while it is open.
+  - A terminal the Machines panel opens for `codex login` or an MCP server's login forwards `127.0.0.1:1455`, or
+    3118 or the server's own callback port, to the machine while it is open.
   - The phone link is the only thing served past loopback: `tailscale serve`, and only when the user turns it on.
     A move never turns it on, on either machine.
 

@@ -205,7 +205,7 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - Context items of kind file or folder outside the worktree do not exist on the other machine.
 - No platform or filter checks: a robot whose work needs Xcode moves and finds out.
 - A second terminal moves as a shell in the same worktree; a command running in it ends.
-- The phone cannot see the server's robots while the Mac sleeps.
+- The phone cannot see a worker's robots while the Mac sleeps.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while this Mac is awake to ask for it.
 - A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.

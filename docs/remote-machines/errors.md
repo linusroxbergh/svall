@@ -2,7 +2,7 @@
 
 Every code `svall host`, `svall doctor` and a command run with `--host` can report: what it means and the safe way
 on. The test `packages/cli/test/error-catalogue.test.ts` reads each list below from the code, and fails when the code
-has one this page lacks or this page names one the code no longer has. What stops a move is in [the
+has one this page lacks or this page names one the code does not have. What stops a move is in [the
 checks](placement.md#the-checks).
 
 `svall host …` prints one line per step, and `--json` one object per step with `step`, `status`, `detail`, `action`
@@ -27,7 +27,7 @@ tries five times, waiting up to 8 seconds between tries. The others wait for the
 
 `svall host add`, `upgrade` (and `upgrade --rollback`) and `remove` run their steps in order and stop at the first that
 fails. Each step's `action` is something for you to do. An add or an upgrade ends in one line, "<name> is ready. Robots
-you move there keep working while this Mac sleeps." or "<name> needs <N> things before robots can move there." with
+you move there keep working while this Mac sleeps." or "<name> needs <N> things before robots can move there:" with
 the list; the others say what they did or what is still to do. Each exits 1 unless nothing is left.
 
 ### Step statuses

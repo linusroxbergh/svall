@@ -41,7 +41,7 @@ each machine's daemon and unit logs.
 | | `svall-local` | `svall-remote` |
 | --- | --- | --- |
 | Plays | the home, as a Mac | the worker |
-| Installed by | `svall setup --release <archive>` | `svall host add remote --release <archive>` from local |
+| Installed by | `svall setup --release <archive> --allow-unsigned` | `svall host add remote --ssh svall@svall-remote --release <archive> --allow-unsigned` from local |
 | Runs | the fleet's svalld as a systemd user unit, and every `svall` the run types | `svalld --worker` as a systemd user unit with linger, and the bare repository both machines fetch from |
 
 - **Two homes.** The account is `svall` on both, at `/Users/svall` on local, as on a Mac, and `/home/svall` on remote,
@@ -91,7 +91,7 @@ each machine's daemon and unit logs.
     key is ticked for remote and the variable set there with `svall worker env`; a robot moves there; the key is
     unticked while it runs. No file on remote ever holds a key not ticked.
 
-Every step that moves a robot also checks that the bare repository on remote is untouched: a move never pushes.
+Steps 1, 2, 5 and 6 also check that the bare repository on remote is untouched: a move never pushes.
 
 ### The fault matrix
 
@@ -177,7 +177,7 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
 2. **A clean machine.** It is the `machine` stage of `scripts/integration/Dockerfile`: systemd, polkit, sshd, tmux
    3.4, Git and the `tailscale` double, and no Node.
    - The run makes one account whose home is the controller's home, a folder of its own under `/var/tmp` on both. It
-     is short enough for the fleet's socket paths, which hold at most 108 bytes, and outside `/tmp`, which the
+     is short enough for the fleet's socket paths, which hold at most 107 bytes, and outside `/tmp`, which the
      machine empties when it starts again.
    - The account logs in with a key made for the run, and lingering is off.
    - No `node` exists anywhere on the machine, and the home holds only Ubuntu's skeleton.
@@ -191,12 +191,14 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
      names the companion's `file:` URL inside it.
    - Any other release is installed by path, with `--release` and `--allow-unsigned` only for an unsigned build.
    - Whichever route, the release step says whether the release is signed, as its manifest does.
-   - Every step is `ok`, except the advice a fresh machine gets: Claude Code, Codex and OpenCode not installed. The
+   - Every step is `ok` but the advice a fresh machine gets: Claude Code, Codex, OpenCode and `gh` not installed,
+     `versions` skipped with no agent to compare, and `mirror:unchecked`, as no daemon runs on the controller. The
      linger step turns lingering on, and the tmux step finds the release's own.
    - The enrol step makes the machine a worker of the controller's private fleet, whose `fleet.json` the run writes
      first, as Svall's first start does.
-   - The JSON result's `actions` are exactly the three installs, the things the text line `fresh needs 3 things
-     before robots can move there` counts.
+   - The JSON result's `actions` are exactly the three installs and `svall host doctor fresh once Svall is open`,
+     the things the text line `fresh needs 4 things before robots can move there` counts; `gh` is advice and counts
+     for none.
 4. **A restart with no login.**
    - The private fleet's svalld unit, which runs the worker, is active and enabled.
    - It runs the release's own Node (`/proc/<pid>/exe`), with `SVALL_RELEASE_ROOT` at `releases/<version>`.

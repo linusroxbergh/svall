@@ -370,8 +370,8 @@ needs (Ubuntu, at any account you reach with ssh), adding it with
 
 A fleet keeps everything in its home: `~/.svall` for the private fleet
 and `~/.svall-<name>` for the others, unless `SVALL_HOME` says otherwise.
-Its `fleet.json` holds what travels with the fleet wherever it runs, and
-`node.json` what belongs to this machine alone:
+Its `fleet.json` holds the fleet's own settings, and `node.json` what
+belongs to this machine alone:
 
 | Key | File | What it does |
 | --- | --- | --- |
