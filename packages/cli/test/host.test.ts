@@ -588,7 +588,7 @@ describe('host add', () => {
     expect(entry?.id).toBe(REMOTE);
     expect(entry?.record).toEqual({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     });
   });
 
@@ -992,7 +992,7 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'other.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(step('name').at(-1)).toMatchObject({ status: 'fail' });
@@ -1002,13 +1002,13 @@ describe('host add', () => {
   });
 
   describe('again for a name in the registry', () => {
-    const gateway = (registry: MachineRegistry, home = HOME): void => {
-      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall`, gateway: true }, REMOTE);
+    const listed = (registry: MachineRegistry, home = HOME): void => {
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: `${home}/.local/share/svall` }, REMOTE);
     };
 
     it('installs nothing on a machine that answers as another than the registry names, and keeps its record', async () => {
       const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
+      listed(registry);
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: OTHER_MAC }, null, 2) });
       healthy();
       const d = await daemon();
@@ -1021,7 +1021,7 @@ describe('host add', () => {
         action: 'point trift.test back at trift, or svall host remove trift --forget',
       });
       expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
 
     it('stops at identity on a machine with no svall to ask that installs as another, and keeps its record', async () => {
@@ -1035,7 +1035,7 @@ describe('host add', () => {
       saved.machines[localId].home = far;
       fs.writeFileSync(file, JSON.stringify(saved));
       const registry = MachineRegistry.load(config);
-      gateway(registry, far);
+      listed(registry, far);
       for (const [match, stdout] of [
         [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
         [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
@@ -1057,30 +1057,18 @@ esac
         step: 'identity', status: 'fail', detail: `trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`,
         action: 'point trift.test back at trift, or svall host remove trift --forget and add it again',
       });
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
 
     it('stops at identity when its setup went back to the release the machine ran, naming that release, and keeps its record', async () => {
       const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
+      listed(registry);
       const out = await wentBack(registry);
       const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then svall host upgrade trift, or add the machine again';
       expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
       expect(step('identity').at(-1)).toMatchObject({ status: 'fail', action });
       expect(step('registry')).toEqual([]);
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
-    });
-
-    it('keeps the gateway mark of the machine it reaches', async () => {
-      const registry = MachineRegistry.load(path.join(work, 'config'));
-      gateway(registry);
-      healthy();
-      const d = await daemon();
-      ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-      const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
-      await d.close();
-      expect(out.result).toBe('ready');
-      expect(registry.list().filter((m) => m.record.name === 'trift')).toEqual([{ id: REMOTE, record: expect.objectContaining({ gateway: true }) }]);
+      expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
   });
 });
@@ -1090,7 +1078,7 @@ describe('host doctor', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home, svallBase: BASE, gateway: false,
+      home, svallBase: BASE,
     }, REMOTE);
     return registry;
   };
@@ -1270,7 +1258,7 @@ describe('host doctor', () => {
   it("keeps a machine's check while host remove leaves it in the registry, and drops it with --forget", async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
     const check = { at: 1, failed: 0, warned: 0 };
     fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify({ [REMOTE]: check, [OTHER_MAC]: check }));
@@ -1287,7 +1275,7 @@ describe('host doctor', () => {
   it('keeps a check that could not reach the machine as failed, so host list never shows an older ready', async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     registry.save();
     const { hostCommands, lastChecks } = await import('../src/commands/host.js');
     await expect(hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift'], { from: 'user' })).rejects.toThrow();
@@ -1373,7 +1361,7 @@ describe('a host command told to stop', () => {
     const registry = MachineRegistry.load(config);
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     registry.save();
     // the far doctor is still running when the app's Stop arrives
@@ -1401,7 +1389,7 @@ describe('host upgrade', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     return registry;
   };
@@ -1412,7 +1400,7 @@ describe('host upgrade', () => {
    * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does; else it goes
    * back to the release it replaced, or after a reinstall under that name to the newest other kept, as a real setup does.
    */
-  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string; gateway?: boolean }) {
+  async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');
     const base = `${home}/.local/share/svall`;
     const now = () => path.basename(fs.readlinkSync(`${base}/current`));
@@ -1457,7 +1445,7 @@ esac
     fs.writeFileSync(path.join(units, 'svall-svalld@private.service'), `ExecStart="${base}/current/bin/svalld" "--worker"\n`);
     serves(SERVES);
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base, gateway: o.gateway ?? false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: base }, REMOTE);
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
     ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
     ssh.execute({});
@@ -1745,7 +1733,7 @@ esac
   };
 
   it('upgrade stops and removes a gateway unit it finds there and makes the provisioned unit the worker, with no other step', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const systemctl = farSystemctl();
     const home = path.join(work, 'far');
     const units = path.join(home, '.config', 'systemd', 'user');
@@ -1793,7 +1781,7 @@ esac
   };
 
   it('enrols nothing while the gateway unit there will not stop, and a run again makes the machine the worker', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const broken = path.join(work, 'systemctl-broken');
     fs.writeFileSync(broken, '');
     farSystemctl(broken);
@@ -1816,7 +1804,7 @@ esac
   });
 
   it('upgrade of a machine already the worker stops and removes a gateway unit it finds there, enrolling nothing', async () => {
-    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const systemctl = farSystemctl();
     const { units } = oldGateway();
     serves(SERVES);
@@ -1846,7 +1834,7 @@ esac
     for (const [worker, detail, action] of [
       [{ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET }, 'trift already serves bea-mbp as a worker; remove it from that Mac first', 'on bea-mbp, run svall host remove trift'],
     ] as const) {
-      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]], gateway: true });
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
       const systemctl = farSystemctl();
       const { units } = oldGateway();
       serves(worker);
@@ -2043,7 +2031,7 @@ esac
 
   it('names the ssh to try in Terminal when an upgrade or a rollback cannot connect', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: false }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     for (const run of [() => upgradeHost('trift', {}, deps({ registry })), () => rollbackHost('trift', {}, deps({ registry }))]) {
       events.length = 0;
       ssh.clearReplies();
@@ -2113,7 +2101,7 @@ describe('host list', () => {
   it('names each machine with its ssh and its last check, this Mac without an ssh', async () => {
     const config = path.join(work, 'config');
     const registry = MachineRegistry.load(config);
-    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE, gateway: true }, REMOTE);
+    registry.add({ name: 'trift', ssh: 'ada@trift', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     const { machineRows } = await import('../src/commands/host.js');
     const check = { at: 1, failed: 0, warned: 2, release: '1.2.3' };
     const rows = machineRows(registry, { [REMOTE]: check });
@@ -2129,7 +2117,7 @@ describe('host remove', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({
       name: 'trift', ssh: destination, platform: 'linux', arch: 'arm64',
-      home: HOME, svallBase: BASE, gateway: false,
+      home: HOME, svallBase: BASE,
     }, REMOTE);
     return registry;
   };

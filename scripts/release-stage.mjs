@@ -157,13 +157,13 @@ async function bundle(stage) {
   return { bundles, inputs };
 }
 
-/** The versions every machine in a handover has to agree on, read from the protocol rather than retyped. */
+/** The versions every machine of a fleet has to agree on, read from the protocol rather than retyped. */
 export async function schemaVersions(work) {
   const outfile = path.join(work, 'schema-versions.mjs');
   await build({
     absWorkingDir: REPO,
     stdin: {
-      contents: "export { AUTHORITY_SCHEMA_VERSION, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION, emptyState } from '@svall/protocol';",
+      contents: "export { PROTOCOL_VERSION, emptyState } from '@svall/protocol';",
       resolveDir: path.join(REPO, 'packages/svalld'),
       loader: 'ts',
     },
@@ -178,8 +178,6 @@ export async function schemaVersions(work) {
   return {
     protocol: v.PROTOCOL_VERSION,
     stateSchema: v.emptyState().version,
-    transferSchema: v.TRANSFER_SCHEMA_VERSION,
-    authoritySchema: v.AUTHORITY_SCHEMA_VERSION,
   };
 }
 

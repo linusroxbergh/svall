@@ -328,34 +328,6 @@ describe('terminal manager', () => {
     expect(store.getState().focusedId).toBe('c1');
   });
 
-  it('retries an attach the old owner refused once the connection to the new owner is online', async () => {
-    const f = fakes({ refuse: true, refuseCode: 'not_owner' });
-    const { calls, sent, store, manager } = f;
-    store.getState().focus('c0');
-    await expect(manager.show('c0', rect)).rejects.toThrow();
-    expect(store.getState().terminalErrors.c0).toBeUndefined();
-    f.opts.refuse = false;
-    store.getState().setStatus('offline');
-    store.getState().setStatus('online');
-    await flush();
-    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(2);
-    expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
-  });
-
-  it('retries an attach a frozen fleet refused, rather than holding it as the terminal\'s error', async () => {
-    const f = fakes({ refuse: true, refuseCode: 'frozen' });
-    const { calls, sent, store, manager } = f;
-    store.getState().focus('c0');
-    await expect(manager.show('c0', rect)).rejects.toThrow();
-    expect(store.getState().terminalErrors.c0).toBeUndefined();
-    f.opts.refuse = false;
-    store.getState().setStatus('offline');
-    store.getState().setStatus('online');
-    await flush();
-    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(2);
-    expect(sent).toContainEqual({ type: 'term.show', id: 'c0', rect, attach: { socket: '/tmp/s', session: 'v-c0' } });
-  });
-
   it('an attach refused with not_reachable is retried once the machine is reachable again', async () => {
     const f = fakes({ refuse: true, refuseCode: 'not_reachable' });
     const { calls, sent, store, manager } = f;

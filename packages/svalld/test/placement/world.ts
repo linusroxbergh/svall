@@ -34,7 +34,7 @@ import { makeHome } from '../helpers.js';
 
 export const W = MachineId.parse(crypto.randomUUID());
 export const H = MachineId.parse(crypto.randomUUID());
-const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
+const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } };
 const agentHomes = { claude: '/Users/ada/.claude', codex: '/Users/ada/.codex', opencode: '/Users/ada/.config/opencode' };
 const via = { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' };
 

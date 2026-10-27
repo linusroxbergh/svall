@@ -35,7 +35,6 @@ function localRecord(hostname: string, taken: string[]): MachineRecord {
     arch: process.arch,
     home: os.homedir(),
     svallBase: svallHome(),
-    gateway: false,
   };
 }
 

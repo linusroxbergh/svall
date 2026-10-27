@@ -5,7 +5,7 @@ export const PINS: {
 
 export function describeVersion(repo?: string): string;
 export function nodeRuntime(platform: string, o?: { vendor?: string; shasums?: string }): Promise<{ version: string; platform: string; tarball: string; name: string; sha256: string; verifiedAgainst: string }>;
-export function schemaVersions(work: string): Promise<{ protocol: number; stateSchema: number; transferSchema: number; authoritySchema: number }>;
+export function schemaVersions(work: string): Promise<{ protocol: number; stateSchema: number }>;
 export function shimText(name: string): string;
 export function companionAssets(o: { dir: string; version: string; urlBase: string }): Record<string, { url: string; sha256: string }>;
 export function carryCompanions(stage: string, companions: Record<string, { url: string; sha256: string }>, dir: string): void;

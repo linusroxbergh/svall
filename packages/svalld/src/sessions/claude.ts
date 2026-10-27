@@ -1,12 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ResumeFolder } from '@svall/protocol';
 import { AGENTS } from '../agents.js';
 import { claudePaths } from '../paths.js';
 import { byCodeUnit } from '../hash.js';
 import { holds, realPath } from '../path-tools.js';
 import { filesUnder, transcriptFile } from './records.js';
-import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
+import { SessionError, type ResumeFolder, type SessionAdapter, type SessionFs } from './types.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const TRANSCRIPT = /^projects\/[^/]+\/([^/]+)\.jsonl$/;
@@ -44,7 +43,7 @@ function readConfig(home: string): Record<string, unknown> | undefined {
  * As Claude 2.1.283 decides, by real paths composed to NFC: a folder is trusted through its repository's main checkout,
  * or through itself or a folder above it, up to the top of its checkout or, outside one, up to /.
  */
-function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
+function trusts(home: string, folder: ResumeFolder): boolean {
   const projects = readConfig(home)?.projects;
   if (!projects || typeof projects !== 'object') return false;
   const entries = projects as Record<string, { hasTrustDialogAccepted?: unknown } | undefined>;
@@ -66,7 +65,7 @@ const BYPASS = /(?:^| )(?:--dangerously-skip-permissions|--allow-dangerously-ski
  * As Claude 2.1.283 decides: bypass mode is accepted by its config, which a start moves into its settings, by its
  * settings, or by the local settings of the folder or of its repository's main checkout.
  */
-function acceptsBypass(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
+function acceptsBypass(home: string, folder: ResumeFolder): boolean {
   const skips = (file: string) => readJson(file)?.skipDangerousModePermissionPrompt === true;
   if (readConfig(home)?.bypassPermissionsModeAccepted === true || skips(path.join(home, 'settings.json'))) return true;
   return [folder.cwd, folder.repo].some((d) => d !== undefined && skips(path.join(d, '.claude', 'settings.local.json')));

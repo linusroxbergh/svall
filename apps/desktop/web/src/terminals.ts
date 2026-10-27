@@ -12,7 +12,7 @@ export type TerminalManager = {
 
 type Opts = { reshowDelayMs?: number };
 
-const RETRIED = new Set(['not_owner', 'frozen', 'not_reachable']);
+const RETRIED = new Set(['not_reachable']);
 
 // the robot whose terminal is up: the one in the card, on the map and on the board
 export const viewedId = (s: { card?: string }): string | undefined => s.card;

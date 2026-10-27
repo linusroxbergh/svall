@@ -20,7 +20,7 @@ import { cleanHomes, makeHome } from '../helpers.js';
 
 const W = MachineId.parse(crypto.randomUUID());
 const H = MachineId.parse(crypto.randomUUID());
-const entry: MachineEntry = { id: W, record: { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
+const entry: MachineEntry = { id: W, record: { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } };
 // in the registry, with no token of this fleet's
 const SPARE = MachineId.parse(crypto.randomUUID());
 const spare: MachineEntry = { id: SPARE, record: { ...entry.record, name: 'spare', ssh: 'spare' } };

@@ -1,6 +1,6 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
-import { MachineId, SystemInfo } from './handover.js';
+import { MachineId, SystemInfo } from './machines.js';
 import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 

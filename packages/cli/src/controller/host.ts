@@ -582,10 +582,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, homedir: d.homedir }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
-      const record: MachineRecord = {
-        name: o.name, ssh: o.ssh, platform: 'linux', arch, home,
-        svallBase: remote.svallBase, gateway: held?.record.gateway ?? false,
-      };
+      const record: MachineRecord = { name: o.name, ssh: o.ssh, platform: 'linux', arch, home, svallBase: remote.svallBase };
       await run.step('probe', () => addProbe(master, { id: machine, record }, { home, release: companion.version }, d));
       await run.step('registry', () => {
         if (held) d.registry.remove(held.id);

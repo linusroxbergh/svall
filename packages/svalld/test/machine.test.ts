@@ -143,7 +143,7 @@ describe('readRegistry', () => {
     const dir = makeHome();
     expect(readRegistry(dir)).toEqual([]);
     const id = crypto.randomUUID();
-    const record = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false };
+    const record = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' };
     fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [id]: record } }));
     expect(readRegistry(dir)).toEqual([{ id, record }]);
     fs.writeFileSync(path.join(dir, 'machines.json'), '{');

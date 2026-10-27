@@ -33,7 +33,7 @@ describe('remote connections', () => {
     registry = MachineRegistry.load(path.join(ssh.dir, 'config'), { hostname: 'kolvik' });
     remote = registry.add({
       name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64',
-      home: '/home/linus', svallBase: '/home/linus/.local/share/svall', gateway: false,
+      home: '/home/linus', svallBase: '/home/linus/.local/share/svall',
     }, REMOTE);
   });
 
@@ -183,7 +183,7 @@ describe('remote connections', () => {
   it('refuses a machine the registry has no ssh destination for', async () => {
     registry.add({
       name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/linus',
-      svallBase: '/Users/linus/.local/share/svall', gateway: false,
+      svallBase: '/Users/linus/.local/share/svall',
     });
     await expect(connectRemote({ registry, machine: 'mac', fleetHome: home })).rejects.toThrow(/no ssh destination/);
   });

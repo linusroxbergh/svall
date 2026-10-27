@@ -42,7 +42,7 @@ export const OSID = 'ses_0123456789abAbCdEfGhIjKlMn';
 const CLAUDE = '2.1.300';
 const OPENCODE = '2.1.4';
 const RELEASE = '1.2.3';
-const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false } };
+const entry: MachineEntry = { id: W, record: { name: 'w1', ssh: 'w1', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } };
 
 /** What a crash leaves of a daemon: nothing it does after counts. */
 export class Crash extends Error {}

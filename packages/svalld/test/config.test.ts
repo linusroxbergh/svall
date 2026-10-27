@@ -141,7 +141,6 @@ describe('saveMainAgent', () => {
 });
 
 describe('patchFleetConfig', () => {
-  const GATEWAY = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
   const linked = () => {
     const p = resolvePaths(makeHome());
     const real = path.join(p.home, 'dotfiles.json');
@@ -153,9 +152,9 @@ describe('patchFleetConfig', () => {
 
   it('sets and drops keys and keeps every other one as the file held it, through a link and with its mode', () => {
     const { p, real, id } = linked();
-    patchFleetConfig(p.fleetConfig, { gatewayMachineId: GATEWAY });
-    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, gatewayMachineId: GATEWAY });
-    patchFleetConfig(p.fleetConfig, { gatewayMachineId: undefined });
+    patchFleetConfig(p.fleetConfig, { name: 'home' });
+    expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1, name: 'home' });
+    patchFleetConfig(p.fleetConfig, { name: undefined });
     expect(JSON.parse(fs.readFileSync(real, 'utf8'))).toEqual({ id, scribe: { model: 'haiku' }, laterKey: 1 });
     expect(fs.lstatSync(p.fleetConfig).isSymbolicLink()).toBe(true);
     expect(fs.statSync(real).mode & 0o777).toBe(0o640);
@@ -164,7 +163,7 @@ describe('patchFleetConfig', () => {
   it('refuses a change that leaves no fleet config, and leaves the file as it was', () => {
     const { p, real } = linked();
     const before = fs.readFileSync(real, 'utf8');
-    expect(() => patchFleetConfig(p.fleetConfig, { gatewayMachineId: 'trift' })).toThrow(/invalid config .*gatewayMachineId/);
+    expect(() => patchFleetConfig(p.fleetConfig, { name: 'Home Base' })).toThrow(/invalid config .*name/);
     expect(fs.readFileSync(real, 'utf8')).toBe(before);
   });
 

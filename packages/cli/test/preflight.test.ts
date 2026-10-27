@@ -59,8 +59,8 @@ describe('preflight of OpenCode', () => {
 });
 
 describe('realPreflightDeps', () => {
-  const local = { id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', record: { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/linus', svallBase: '/Users/linus/.svall', gateway: false } };
-  const entry = { id: '66666666-7777-8888-9999-aaaaaaaaaaaa', record: { name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall', gateway: false } };
+  const local = { id: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', record: { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/linus', svallBase: '/Users/linus/.svall' } };
+  const entry = { id: '66666666-7777-8888-9999-aaaaaaaaaaaa', record: { name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: '/home/linus', svallBase: '/home/linus/.local/share/svall' } };
 
   /** The checks a fleet gets on `platform` while machines.json holds `machines`, or the text `registry` names, with Claude Code at `claude`. */
   async function rows(o: { platform: NodeJS.Platform; machines?: (typeof entry | typeof local)[]; registry?: string; claude: string }) {

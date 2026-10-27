@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  Blocker, BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
-  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Request, RequestPart, SystemInfo, TerminalSlot, emptyState, methods, serverWait, type Event,
+  BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, SystemInfo, TerminalSlot, emptyState, methods, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -160,7 +160,7 @@ describe('protocol version', () => {
     expect(Object.keys(SystemInfo.shape).filter((k) => k === 'transferSchema' || k === 'heapLimit')).toEqual([]);
   });
 
-  it('was 33 with machines.setup and machines.consent', () => {
+  it('machines.setup and machines.consent take and answer', () => {
     expect(methods['machines.consent'].params.parse({ machine: UUID_A, item: 'claude:mcp:linear', fields: ['env.K'], on: true }).on).toBe(true);
     expect(methods['machines.setup'].params.parse({ machine: UUID_A, waitMs: 5_000 }).waitMs).toBe(5_000);
     expect(methods['machines.setup'].params.safeParse({ machine: UUID_A, waitMs: 60_001 }).success).toBe(false);
@@ -213,12 +213,11 @@ describe('protocol version', () => {
     expect(methods['term.attach'].result.safeParse({ socket: '/s', session: 'v-c_a' }).success).toBe(false);
   });
 
-  it('was 25 with ownership, handover, the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
+  it('was 25 with the pairing link beside the phone address and the machine\'s cores in the load reading', () => {
     expect(MobileStatus.parse({ serving: true, url: 'https://m/', pair: 'https://m/#p', port: 443, logins: [], phones: [] }).pair).toBe('https://m/#p');
     const u = { cpu: 1, mem: 2, procs: 3 };
     expect(methods['load.get'].result.safeParse({ at: 1, total: u, app: u, robots: {} }).success).toBe(false);
     expect(methods['load.get'].result.parse({ at: 1, cores: 8, total: u, app: u, robots: {} }).cores).toBe(8);
-    for (const code of ['authority_unreachable', 'authority_corrupt']) expect(Blocker.parse({ code, message: 'm' }).code).toBe(code);
   });
 
   it('was 22 with the load reading', () => {
@@ -325,8 +324,8 @@ describe('handshake', () => {
 describe('error frame', () => {
   it('carries a code, a message and the structured rest', () => {
     expect(ErrorFrame.parse({ code: 'not_found', message: 'no such robot' }).data).toBeUndefined();
-    const blocked = ErrorFrame.parse({ code: 'blocked', message: 'one blocker', data: { blockers: [{ code: 'shell_busy', message: 'vite' }] } });
-    expect(Blocker.array().parse(blocked.data?.blockers)).toHaveLength(1);
-    expect(() => ErrorFrame.parse({ code: 'blocked', message: 'x', data: 'blockers' })).toThrow();
+    const refused = ErrorFrame.parse({ code: 'refused', message: 'r; a', data: { refusal: { reason: 'r', action: 'a', details: [] } } });
+    expect(Refusal.parse(refused.data?.refusal).reason).toBe('r');
+    expect(() => ErrorFrame.parse({ code: 'refused', message: 'x', data: 'refusal' })).toThrow();
   });
 });

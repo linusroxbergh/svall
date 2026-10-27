@@ -1,4 +1,4 @@
-import type { AgentKind, HandoverIssueCode, ResumeFolder } from '@svall/protocol';
+import type { AgentKind } from '@svall/protocol';
 import type { Version } from '../agents.js';
 
 /** One session as its source keeps it: the agent home, and each file under it with the transcript first. */
@@ -15,7 +15,13 @@ export type SessionFs = {
 /** Runs an agent CLI in `cwd` to its exit, its stdout into the file `stdout` names when it names one; rejects only when it cannot start. */
 export type CliRun = (cmd: string, args: string[], o?: { stdout?: string; cwd?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
 
-export type SessionIssueCode = Extract<HandoverIssueCode, 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing'>;
+/**
+ * The folder a carried session's agent resumes in on the destination, the main checkout of the repository holding it, the
+ * top of the checkout it is in, and whether its resume starts the agent in bypass mode.
+ */
+export type ResumeFolder = { cwd: string; repo?: string; root?: string; bypass?: boolean };
+
+export type SessionIssueCode = 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing';
 
 /** Why a session cannot move as it is, with the blocker code a handover reports it under. */
 export class SessionError extends Error {
@@ -41,7 +47,7 @@ export interface SessionAdapter {
   /** Whether `file`, relative to the agent home, is one of session `sessionId`'s files when its transcript is `transcript`. */
   carries(file: string, transcript: string, sessionId: string): boolean;
   /** Whether the CLI, keeping its files in `home`, resumes in `folder` without first asking whether to trust it; absent for one that never asks. */
-  trusts?(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean;
+  trusts?(home: string, folder: ResumeFolder): boolean;
   /** The CLI's own words on the row that asks that question. */
   readonly trustQuestion?: string;
   /** The choice at that question that goes on. */
@@ -49,7 +55,7 @@ export interface SessionAdapter {
   /** Whether a resume command, as a revive keeps it, starts the CLI in bypass mode; absent for a CLI with no such mode to warn about. */
   asksBypass?(command: string): boolean;
   /** Whether the CLI, keeping its files in `home`, starts in bypass mode in `folder` without first warning about it. */
-  acceptsBypass?(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean;
+  acceptsBypass?(home: string, folder: ResumeFolder): boolean;
   /**
    * For a CLI that keeps its sessions in a database of its own: the file under the agent home a handover writes the
    * session out to, which travels with its files and is read back in on the destination rather than placed.

@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { AUTHORITY_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
+import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION } from '@svall/protocol';
 import { machineId, machineIdFailure } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -28,7 +28,7 @@ function served(home: string): { worker?: { homeMachineId: string; homeName: str
 
 export function versionCommand(json: () => boolean, home: () => string): Command {
   return new Command('version')
-    .description('the release, the versions a handover has to agree on, and the runtime running them')
+    .description('the release, the versions every machine of a fleet has to agree on, and the runtime running them')
     .action(() => {
       const me = thisMachine(json());
       const v = {
@@ -37,8 +37,6 @@ export function versionCommand(json: () => boolean, home: () => string): Command
         machineId: me,
         protocol: PROTOCOL_VERSION,
         stateSchema: STATE_SCHEMA_VERSION,
-        transferSchema: TRANSFER_SCHEMA_VERSION,
-        authoritySchema: AUTHORITY_SCHEMA_VERSION,
         runtime: { node: process.version, platform: process.platform, arch: process.arch },
         ...served(home()),
       };
@@ -47,8 +45,6 @@ export function versionCommand(json: () => boolean, home: () => string): Command
         `machine          ${v.machineId}`,
         `protocol         ${v.protocol}`,
         `state schema     ${v.stateSchema}`,
-        `transfer schema  ${v.transferSchema}`,
-        `authority schema ${v.authoritySchema}`,
         `runtime          node ${v.runtime.node} ${v.runtime.platform}-${v.runtime.arch}`,
       ].join('\n'));
     });

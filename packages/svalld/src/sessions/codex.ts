@@ -1,17 +1,16 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ResumeFolder } from '@svall/protocol';
 import { parse as parseToml } from 'smol-toml';
 import { AGENTS } from '../agents.js';
 import { realPath } from '../path-tools.js';
 import { transcriptFile } from './records.js';
-import { SessionError, type SessionAdapter, type SessionFs } from './types.js';
+import { SessionError, type ResumeFolder, type SessionAdapter, type SessionFs } from './types.js';
 
 const ROLLOUT = /^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 const DATED = [/^\d{4}$/, /^\d{2}$/, /^\d{2}$/];
 
 // Codex keys the folders it trusts by real path in config.toml, and trusts a checkout by its repository's main one too
-function trusts(home: string, folder: Omit<ResumeFolder, 'kind'>): boolean {
+function trusts(home: string, folder: ResumeFolder): boolean {
   let projects: unknown;
   try { projects = (parseToml(fs.readFileSync(path.join(home, 'config.toml'), 'utf8')) as { projects?: unknown }).projects; } catch { return false; }
   if (!projects || typeof projects !== 'object') return false;

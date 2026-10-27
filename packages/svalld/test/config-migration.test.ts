@@ -306,7 +306,6 @@ describe('a fleet with nothing to split', () => {
     expect(config).toMatchObject({ host: '127.0.0.1', defaultCwd: '~' });
     // no port: the daemon takes its default, or a free one while that is held
     expect(config.port).toBeUndefined();
-    expect(config.handover).toEqual({ enabled: false, exclude: [], excludeDefaults: true, transferFleetEnv: false });
     expect(config.mobile).toEqual({ logins: [], origins: [] });
     // the defaults apply as the files are read, so a later release's defaults reach this fleet
     expect(read(p.fleetConfig)).toEqual({ id: config.id });

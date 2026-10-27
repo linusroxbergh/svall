@@ -1,5 +1,7 @@
+import { z } from 'zod';
+import { Sha256 } from './ids.js';
 import { PUSH_STATUSES, type PushStatus } from './messages.js';
-import type { Agent, AgentStatus, Robot, FleetState } from './state.js';
+import { AgentKind, type Agent, type AgentStatus, type Robot, type FleetState } from './state.js';
 
 // A robot's second terminal goes by its id and this suffix: its surface and its notification tag.
 // Notifier.swift and sw.js spell it out themselves; web test/bridge-swift.test.ts holds them to it
@@ -27,3 +29,35 @@ export const contextPctOf = (c: Robot): number | undefined => {
   const all = [c.agent?.contextPct, c.second?.agent?.contextPct].filter((n): n is number => n !== undefined);
   return all.length ? Math.max(...all) : undefined;
 };
+
+/** One file of a carried session as the source read it, by its path under its agent home. A link is carried as its text, never followed. */
+export const TransferFile = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('file'), path: z.string(),
+    mode: z.number().int().nonnegative(), size: z.number().int().nonnegative(), mtimeMs: z.number().int(), sha256: Sha256,
+    // a Git index by its staged entries alone, so a refresh of its stat data changes nothing
+    gitIndex: Sha256.optional(),
+    // a loose Git ref by the value it holds, and a packed-refs file by each ref it packs, so packing refs changes nothing
+    ref: z.string().optional(),
+    refs: z.record(z.string(), z.string()).optional(),
+  }),
+  z.object({ type: z.literal('symlink'), path: z.string(), target: z.string() }),
+]);
+export type TransferFile = z.infer<typeof TransferFile>;
+
+/** One agent session, copied exactly: the transcript its terminal recorded and the files its adapter found with it. */
+export const TransferSession = z.object({
+  robotId: z.string().min(1),
+  term: z.literal(2).optional(),
+  agent: AgentKind,
+  sessionId: z.string().min(1),
+  sourcePath: z.string(),
+  // the transcript on the destination: the same path under that machine's agent home
+  destinationPath: z.string().optional(),
+  // the agent home each machine keeps the session under, and the adapter that reads it; `files` are named under the source home
+  sourceHome: z.string().optional(),
+  destinationHome: z.string().optional(),
+  adapter: z.number().int().positive().optional(),
+  files: z.array(TransferFile),
+});
+export type TransferSession = z.infer<typeof TransferSession>;

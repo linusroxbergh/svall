@@ -16,9 +16,9 @@ const temp = (): string => {
 };
 
 describe('the versions a release records', () => {
-  it('names each version a handover has to agree on, and nothing a build leaves empty', async () => {
+  it('names each version every machine of a fleet has to agree on, and nothing a build leaves empty', async () => {
     const versions = await schemaVersions(temp());
-    expect(Object.keys(versions).sort()).toEqual(['authoritySchema', 'protocol', 'stateSchema', 'transferSchema']);
+    expect(Object.keys(versions).sort()).toEqual(['protocol', 'stateSchema']);
     for (const [name, v] of Object.entries(versions)) expect(Number.isInteger(v), name).toBe(true);
   });
 });

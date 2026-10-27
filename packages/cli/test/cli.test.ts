@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { AUTHORITY_SCHEMA_VERSION, emptyState, PROTOCOL_VERSION, TRANSFER_SCHEMA_VERSION } from '@svall/protocol';
+import { emptyState, PROTOCOL_VERSION } from '@svall/protocol';
 import { startDaemon, type Daemon } from '@svall/svalld';
 import { mergeHooks } from '@svall/svalld/agent-hooks';
 import { silentLogger } from '@svall/svalld/log';
@@ -82,7 +82,7 @@ describe('svall argument parsing', () => {
       fs.writeFileSync(path.join(fleet, 'fleet.json'), JSON.stringify({ id: '11111111-2222-3333-4444-555555555555' }));
       const config = path.join(home, 'config');
       const registry = MachineRegistry.load(config);
-      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall', gateway: false }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
+      registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home, svallBase: '/opt/svall' }, '66666666-7777-8888-9999-aaaaaaaaaaaa');
       registry.save();
       // a companion running another fleet refuses at once, so the command ends after one ask
       ssh.answer({ fleetId: '77777777-2222-3333-4444-555555555555', machineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', release: 'dev', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 1, token: 't', fleetHome: '/home/linus/.svall' });
@@ -166,11 +166,16 @@ describe('svall argument parsing', () => {
       signed: false,
       protocol: PROTOCOL_VERSION,
       stateSchema: emptyState().version,
-      transferSchema: TRANSFER_SCHEMA_VERSION,
-      authoritySchema: AUTHORITY_SCHEMA_VERSION,
       runtime: { node: process.version, platform: process.platform, arch: process.arch },
     });
     expect((await run({}, 'version')).stdout).toContain('protocol');
+  });
+
+  it('reports its release, machine, protocol and state schema, and no transfer or authority schema', async () => {
+    const v = JSON.parse((await run({}, 'version', '--json')).stdout);
+    expect(v.protocol).toBe(34);
+    expect(v).not.toHaveProperty('transferSchema');
+    expect(v).not.toHaveProperty('authoritySchema');
   });
 
   it("names the home whose fleet it serves as a worker, as its worker.json says, and never the token", async () => {

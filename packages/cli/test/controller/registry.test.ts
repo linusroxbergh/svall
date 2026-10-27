@@ -20,7 +20,6 @@ const trift: MachineRecord = {
   arch: 'arm64',
   home: '/home/linus',
   svallBase: '/home/linus/.local/share/svall',
-  gateway: true,
 };
 
 describe('machine registry', () => {
@@ -39,7 +38,6 @@ describe('machine registry', () => {
       arch: process.arch,
       home: os.homedir(),
       svallBase: svallHome(),
-      gateway: false,
     });
     expect(registry.localId).toBe(JSON.parse(fs.readFileSync(path.join(dir, 'machine.json'), 'utf8')).id);
     expect(read(dir)).toEqual({ machines: { [registry.localId]: registry.localMachine() } });

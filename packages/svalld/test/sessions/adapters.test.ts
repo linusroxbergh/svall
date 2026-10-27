@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { ResumeFolder } from '@svall/protocol';
 import { claudeAdapter } from '../../src/sessions/claude.js';
 import { codexAdapter } from '../../src/sessions/codex.js';
 import { opencodeAdapter } from '../../src/sessions/opencode.js';
@@ -10,7 +9,7 @@ import {
   HANDOVER_KINDS, adapterFor, agentAdapters, cliRunner, probeAgent, realProbeDeps, type AgentProbe, type AgentRun,
 } from '../../src/sessions/registry.js';
 import { repairBrief } from '../../src/sessions/repair.js';
-import { SessionError, type CliRun, type SessionFs } from '../../src/sessions/types.js';
+import { SessionError, type CliRun, type ResumeFolder, type SessionFs } from '../../src/sessions/types.js';
 import { mergeCodexHooks, mergeHooks, mergeStatusLine, statusWrapper } from '../../src/agent-hooks.js';
 import { codexHookCommand } from '../../src/codex/install.js';
 import { BWRAP_PROFILE, USERNS_RESTRICTED } from '../../src/codex/install.js';
@@ -164,7 +163,7 @@ describe('Claude Code folder trust', () => {
     const inRepo = (cwd: string) => ({ cwd, repo, root: repo });
     const inWt = (cwd: string) => ({ cwd, repo, root: wt });
     // each as the real binary answered it in a scratch HOME: false where it opened on its "Yes, I trust this folder" prompt
-    const cases: [string, Omit<ResumeFolder, 'kind'>, string[], boolean][] = [
+    const cases: [string, ResumeFolder, string[], boolean][] = [
       ['nothing trusted', { cwd: at('plain/a/b') }, [], false],
       ['the folder itself', { cwd: at('plain/a/b') }, [at('plain/a/b')], true],
       ['a folder above, outside any repository', { cwd: at('plain/a/b') }, [at('plain')], true],
@@ -283,7 +282,7 @@ describe('Claude Code bypass mode', () => {
     const inRepo = { cwd: at('repo/sub/deep'), repo: at('repo'), root: at('repo') };
     const inWt = { cwd: at('repo/.claude/worktrees/x/inner'), repo: at('repo'), root: at('repo/.claude/worktrees/x') };
     // each as the real binary answered it in a scratch HOME: false where it opened on its Bypass Permissions warning
-    const cases: [string, Omit<ResumeFolder, 'kind'>, [string, object][], boolean][] = [
+    const cases: [string, ResumeFolder, [string, object][], boolean][] = [
       ['nothing accepted', plain, [], false],
       ['its settings skip the warning', plain, [['cfg/settings.json', skip]], true],
       ['its settings do not', plain, [['cfg/settings.json', { skipDangerousModePermissionPrompt: false }]], false],

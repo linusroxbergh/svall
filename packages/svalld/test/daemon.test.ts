@@ -477,7 +477,7 @@ runIf('the machine id a daemon runs as', () => {
   it('does not start a home whose machine.json does not parse while machines.json lists a worker, and says to restore it', async () => {
     brokenConfig('holding a corrupt machine.json');
     const dir = process.env.SVALL_CONFIG_DIR!;
-    const vault = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall', gateway: false };
+    const vault = { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' };
     fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: vault } }));
     const home = makeHome();
     homes.push(home);
@@ -489,7 +489,7 @@ runIf('the machine id a daemon runs as', () => {
   it('starts a home with no worker whose machine.json cannot be read, as a fresh id it names', async () => {
     brokenConfig('holding a corrupt machine.json');
     // `svall host list` writes this Mac's own record, which is no worker
-    const mac = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall', gateway: false };
+    const mac = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall' };
     fs.writeFileSync(path.join(process.env.SVALL_CONFIG_DIR!, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: mac } }));
     const home = makeHome();
     homes.push(home);
