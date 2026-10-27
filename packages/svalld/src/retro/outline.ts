@@ -1,4 +1,5 @@
 import type { AgentKind } from '@svall/protocol';
+import { orSkip } from '../agent/jsonl.js';
 import { redact } from './redact.js';
 
 export type Span = { from: number; to: number };
@@ -15,7 +16,8 @@ export type Outline = {
 
 export const CLIP = { text: 1500, input: 300, error: 300 } as const;
 const REPLY_MS = 2 * 60_000;
-const PR = /https?:\/\/[^\s/"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/pull\/\d+/g;
+// a PR's link; the user:password@ a remote's URL can carry falls outside its groups
+const PR = /(https?:\/\/)(?:[^\s/@"'<>`\\]*@)?([^\s/@"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/[^\s/"'<>()[\]{}`\\]+\/pull\/\d+)/g;
 
 // a call that writes a PR's body or a comment on one, the output most rules govern, whose input is kept as agent text is
 export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
@@ -35,7 +37,7 @@ export function outliner() {
   const prs = new Set<string>();
   // the runs no prompt has ended yet
   let open: SkillRun[] = [];
-  const links = (text: string) => { for (const url of text.match(PR) ?? []) prs.add(url); };
+  const links = (text: string) => { for (const [, scheme, rest] of text.matchAll(PR)) prs.add(scheme + rest); };
   const turn = (role: Turn['role'], line: number, at: number, text: string): Turn => {
     if (!o.start || at < o.start) o.start = at;
     o.end = Math.max(o.end, at);
@@ -64,7 +66,9 @@ export function outliner() {
       turn('agent', line, at, masked(text, CLIP.text));
     },
     tool(line: number, at: number, name: string, input: unknown) {
-      const given = typeof input === 'string' ? input : JSON.stringify(leaves(input)) ?? '';
+      // JSON text, as a Codex call's arguments are, is read as the input it holds
+      const v = typeof input === 'string' ? orSkip(() => JSON.parse(input) as unknown) ?? input : input;
+      const given = typeof v === 'string' ? v : JSON.stringify(leaves(v)) ?? '';
       links(given);
       o.tools++;
       turn('tool', line, at, `${name} ${masked(given, GH_BODY.test(given) ? CLIP.text : CLIP.input)}`);

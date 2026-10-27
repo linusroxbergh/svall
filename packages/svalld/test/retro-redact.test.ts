@@ -11,12 +11,18 @@ const secrets = {
   githubPat: 'github' + '_pat_' + '11ABCDEFG0' + 'h'.repeat(40),
   slack: 'xo' + 'xb-' + '1234-5678-' + 'abcdEFGH',
   aws: 'AK' + 'IA' + 'IOSFODNN7EXAMPLE',
+  awsSession: 'AS' + 'IA' + 'IOSFODNN7EXAMPLE',
   google: 'AI' + 'za' + 'S'.repeat(35),
+  googleOauth: 'ya' + '29.' + 'a0AfH6SMB'.repeat(4),
   jwt: 'ey' + 'JhbGciOiJIUzI1NiJ9.' + 'ey' + 'JzdWIiOiIxIn0.' + 's1gn4tur3_-x'.repeat(2),
   stripe: 'sk' + '_live_' + 'Ab12'.repeat(6),
+  stripeTest: 'sk' + '_test_' + 'Ab12'.repeat(6),
   stripeRestricted: 'rk' + '_live_' + 'Cd34'.repeat(6),
+  webhook: 'wh' + 'sec_' + 'MfKQ9r8GKYqrTwjU'.repeat(2),
   npm: 'np' + 'm_' + 'E5f6'.repeat(9),
   gitlab: 'gl' + 'pat-' + 'G7h8'.repeat(5),
+  huggingface: 'hf' + '_' + 'Jk9L'.repeat(9),
+  slackWebhook: 'hooks' + '.slack.com/services/' + 'T0AB12CD3/B0EF45GH6/' + 'x'.repeat(24),
 };
 
 describe('redact', () => {
@@ -35,11 +41,16 @@ describe('redact', () => {
     expect(redact('{"command":"NPM_AUTH_TOKEN=\\"x y\\" npm publish"}')).toBe('{"command":"NPM_AUTH_TOKEN=[redacted] npm publish"}');
     const prose = 'Put the API key in settings and pass the token with --token; see https://github.com/acme/app/pull/4, the task-runner-for-everything-in-this-repo, AKIA alone, and eyJ.';
     expect(redact(prose)).toBe(prose);
+    const flags = 'mkdir -p dir && ssh -p 22 h && docker run -p 8080:80 x && git push -u origin main && mysql -u root -p\nset the Cookie: header';
+    expect(redact(flags)).toBe(flags);
   });
 
   it('masks credentials in headers, URLs, JSON and flags, whatever their case', () => {
     expect(redact('curl -H "Authorization: Bearer abcdef123456"')).toBe('curl -H "Authorization: Bearer [redacted]"');
     expect(redact("curl -H 'authorization: basic dXNlcjpwdw=='")).toBe("curl -H 'authorization: basic [redacted]'");
+    expect(redact('curl -H "Authorization: Token 9944b0919c62bcf9418ad846dd0e4bbd"')).toBe('curl -H "Authorization: Token [redacted]"');
+    expect(redact('Authorization: Bot MTk4NjIy.Cl2FMQ.ZnCjm1XV')).toBe('Authorization: Bot [redacted]');
+    expect(redact('Authorization: Digest a1b2c3')).toBe('Authorization: Digest [redacted]');
     expect(redact('postgres://admin:S3cretPassw0rd@db/x')).toBe('postgres://admin:[redacted]@db/x');
     expect(redact('api_key = "abc123"')).toBe('api_key = [redacted]');
     expect(redact('{"apiKey":"abc123","n":1}')).toBe('{"apiKey":[redacted],"n":1}');
@@ -48,6 +59,27 @@ describe('redact', () => {
     expect(redact('X-Auth-Token: t0k3n')).toBe('X-Auth-Token: [redacted]');
     // JSON text a Codex call's arguments arrive as, its newlines escaped
     expect(redact('{"cmd":"cat > .env <<EOF\\nPORT=1\\nSESSION_SECRET=zzz\\nEOF"}')).toBe('{"cmd":"cat > .env <<EOF\\nPORT=1\\nSESSION_SECRET=[redacted]\\nEOF"}');
+    expect(redact(`{"cmd":"cat > .npmrc <<EOF\\n${secrets.github}\\nEOF"}`)).toBe('{"cmd":"cat > .npmrc <<EOF\\n[redacted]\\nEOF"}');
+  });
+
+  it('masks a secret given after a space, to a flag, a client or a header', () => {
+    expect(redact('gh auth login --token s3cr3t')).toBe('gh auth login --token [redacted]');
+    expect(redact('deploy --password "hunter 2" --verbose')).toBe('deploy --password [redacted] --verbose');
+    expect(redact('mysql -u root -p hunter2 app')).toBe('mysql -u root -p [redacted] app');
+    expect(redact('mysqldump -uroot -phunter2 app')).toBe('mysqldump -uroot -p[redacted] app');
+    expect(redact('sshpass -p hunter2 ssh h')).toBe('sshpass -p [redacted] ssh h');
+    expect(redact('curl -u admin:hunter2 https://x')).toBe('curl -u admin:[redacted] https://x');
+    expect(redact('redis://:hunter2@cache:6379/0')).toBe('redis://:[redacted]@cache:6379/0');
+    expect(redact('curl -H "Cookie: session=abc; theme=dark" https://x')).toBe('curl -H "Cookie: [redacted]" https://x');
+    expect(redact(`curl https://${secrets.slackWebhook} -d x`)).toBe('curl https://[redacted] -d x');
+  });
+
+  it('redacts 200 KB of repeated word parts in well under a second', () => {
+    for (const part of ['a-', 'key_', 'eyJa-', '.-u', 'mysql-']) {
+      const t = performance.now();
+      redact(part.repeat(100_000).slice(0, 200_000));
+      expect(performance.now() - t, part).toBeLessThan(500);
+    }
   });
 });
 

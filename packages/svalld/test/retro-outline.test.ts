@@ -116,6 +116,10 @@ describe('outlineClaude', () => {
     expect(outlineClaude(claude, file, span).prs).toEqual(['https://github.com/acme/app/pull/42', 'https://github.com/acme/app/pull/43']);
     const said = assistant([{ type: 'text', text: 'see https://github.com/acme/app/pull/42#discussion_r1 and https://github.com/acme/app/pull/42.' }], '2026-10-26T09:00:01.000Z');
     expect(outlineClaude(said, file, span).prs).toEqual(['https://github.com/acme/app/pull/42']);
+    // without the user:password@ a remote's URL carries, said or in a tool input that is masked first
+    const remote = assistant([{ type: 'text', text: 'opened https://bot:t0ken@github.com/acme/app/pull/5' }], '2026-10-26T09:00:01.000Z')
+      + assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'gh pr view https://bot:t0ken@github.com/acme/app/pull/6' } }], '2026-10-26T09:00:02.000Z');
+    expect(outlineClaude(remote, file, span).prs).toEqual(['https://github.com/acme/app/pull/5', 'https://github.com/acme/app/pull/6']);
   });
 });
 
@@ -143,6 +147,15 @@ describe('outlineCodex', () => {
     const o = outlineCodex(text, rollout, { from: Date.parse('2026-10-26T10:00:30.000Z'), to: span.to });
     expect(o.prompts.map((t) => t.text)).toEqual(['stop, just open the PR']);
     expect([o.skills, o.commands, o.tools, o.interrupts]).toEqual([[], [], 0, 0]);
+  });
+
+  it("masks a call's JSON arguments line by line", () => {
+    const call = (cmd: string) => line({ timestamp: '2026-10-26T10:00:00.000Z', type: 'response_item', payload: { type: 'function_call', name: 'exec_command', arguments: JSON.stringify({ cmd }) } });
+    const github = 'gh' + 'p_' + 'Q'.repeat(36);
+    const o = outlineCodex(call(`cat > .npmrc <<EOF\n${github}\nEOF`) + call('curl https://x \\\n-u admin:hunter2'), rollout, span);
+    expect(o.turns.map((t) => t.text)).toEqual([
+      'exec_command {"cmd":"cat > .npmrc <<EOF\\n[redacted]\\nEOF"}', 'exec_command {"cmd":"curl https://x \\\\\\n-u admin:[redacted]"}',
+    ]);
   });
 
   it("names a sub-agent's rollout by its own session_meta, not its parent's after it", () => {
