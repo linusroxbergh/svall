@@ -13,6 +13,18 @@ import type { Drag, PointerHandlers } from './types.js';
 
 const PAD_CELLS = theme.pad / theme.cell;
 
+// what the shipped skills do, said by the button that runs one; a button of the user's own says its prompt
+const SKILLS: Record<string, string[]> = {
+  '/svall-status': ["Reads every robot's screen", "Lists who needs you, what's ready to review and what's working", 'Saves that report as its note; changes nothing else'],
+  '/svall-update-info': ["The scribe reads every agent's transcript", 'Updates robot names, notes and links, and island descriptions', 'Keeps notes and descriptions you wrote', 'Takes a few minutes'],
+  '/svall-rename': ["The scribe reads every agent's transcript", "Renames each robot for what it's doing", 'Takes a few minutes'],
+  '/svall-organise': ["Updates every robot's name, note and links", 'Moves robots onto islands that fit their work, making new islands as needed', 'Describes every island', "Leaves mission control's robots where they are"],
+  '/svall-retro': ['Reads what the agents did over a span you pick', "Asks before it runs, with the model's cost", 'Lists findings for skills, reviews and instructions', 'Changes a file only after you OK its diff'],
+};
+const actionTip = (a: HomeAction): string => (SKILLS[a.prompt]
+  ? [`Starts a mission control robot that runs ${a.prompt}`, ...SKILLS[a.prompt].map((l) => `• ${l}`)].join('\n')
+  : `Starts a mission control robot named ${a.label} and sends it:\n${a.prompt}`);
+
 // the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land
 // shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them
 export function Home({
@@ -103,7 +115,7 @@ export function Home({
       )}
       <div className="hrow" data-testid="home-row"
         style={{ bottom: collapsed ? theme.home.bar : theme.home.visible * scale + theme.home.rowGap, '--map-w': `${mapW}px`, '--home-shift': `${rowShift}px` } as React.CSSProperties}>
-        <button className="htog" data-testid="home-toggle" title={collapsed ? 'Show island' : 'Hide island'}
+        <button className="htog" data-testid="home-toggle" data-tip={collapsed ? 'Show island' : 'Hide island'}
           aria-label={collapsed ? 'Show island' : 'Hide island'} aria-expanded={!collapsed} onPointerDown={stop} onClick={onToggle}>
           <Chevron up={collapsed} />
         </button>
@@ -111,15 +123,16 @@ export function Home({
           <b>{island.name}</b>
           <span className="ct">{count || 'empty'}</span>
         </div>
-        <button className="hact" data-testid="home-arrange" title="Fit islands to their crews and pack them together"
+        <button className="hact" data-testid="home-arrange" data-tip="Fit islands to their crews and pack them together"
           onPointerDown={stop} onClick={onArrange}>arrange</button>
         {config.actions.map((a, i) => (
           <button key={`${a.label}-${i}`} className="hact" data-testid={`home-action-${a.label}`} disabled={busy !== undefined}
-            onPointerDown={stop} onClick={() => press(a)}>{a.label}</button>
+            data-tip={actionTip(a)} onPointerDown={stop} onClick={() => press(a)}>{a.label}</button>
         ))}
         <div className="home-create">
-          <button className="hact dim" data-testid="home-new-island" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
-          <button className="hact dim" data-testid="home-new" onPointerDown={stop} onClick={onNew}>+ New robot</button>
+          <button className="hact dim" data-testid="home-new-island" data-tip="Adds an empty island to the map" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
+          <button className="hact dim" data-testid="home-new" data-tip={"Starts a mission control robot for you to talk to\nIt looks after the fleet, not your code"}
+            onPointerDown={stop} onClick={onNew}>+ New robot</button>
         </div>
         {extra}
       </div>

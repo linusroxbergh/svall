@@ -38,7 +38,7 @@ export function Tree({ id, root, dir, depth, tick, onOpen }: Props) {
               onClick={() => (e.kind === 'dir' ? app.store.getState().toggleFolder(id, path) : onOpen(path))}>
               <span className="tree-caret">{e.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
               <span className="tree-name">{e.name}</span>
-              {path === '' && <span className="tree-robot" title="The robot's folder" />}
+              {path === '' && <span className="tree-robot" data-tip="The robot's folder" />}
             </button>
             {open && <Tree id={id} root={root} dir={path} depth={depth + 1} tick={tick} onOpen={onOpen} />}
           </div>

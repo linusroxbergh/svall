@@ -16,7 +16,7 @@ test('a token draws without an app store, and shows a failed resume only when to
   expect(screen.getByTestId('token-c0')).toBeTruthy();
   expect(screen.queryByTestId('token-resume-error-c0')).toBeNull();
   rerender(<Token {...props} failed="codex exited back to its shell" />);
-  expect(screen.getByTestId('token-resume-error-c0').getAttribute('title')).toBe('codex exited back to its shell');
+  expect(screen.getByTestId('token-resume-error-c0').getAttribute('data-tip')).toBe('codex exited back to its shell');
 });
 
 test('a token on a worker wears a band naming the machine across the top of its card', () => {
@@ -27,7 +27,7 @@ test('a token on a worker wears a band naming the machine across the top of its 
   rerender(<Token {...props} machine="linus-vault" />);
   const band = screen.getByTestId('token-machine-c0');
   expect(band.textContent).toBe('on linus-vault');
-  expect(band.title).toBe('Runs on linus-vault');
+  expect(band.getAttribute('data-tip')).toBe('Runs on linus-vault');
   expect(band.parentElement?.className).toBe('card');
   expect(band.nextElementSibling?.className).toBe('edge');
 });

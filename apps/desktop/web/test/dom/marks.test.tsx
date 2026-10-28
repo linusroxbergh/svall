@@ -23,14 +23,14 @@ const card = (c: Robot, { onLink = vi.fn(), status = 'idle' as DisplayStatus, li
   return onLink;
 };
 
-test('a sidebar row marks a PR in review and a monitor, and names both in its title', () => {
+test('a sidebar row marks a PR in review and a monitor, and names both in its tip', () => {
   render(<Sidebar />);
   act(() => store.getState().applyPatch([
     { op: 'replace', path: '/robots/c1/context', value: [pr(41, 'open')] },
     { op: 'add', path: '/robots/c1/agent', value: agent(['m1']) },
   ]));
   const marks = screen.getByTestId('sb-robot-c1').querySelector('.sb-ind')!;
-  expect(marks.getAttribute('title')).toBe('PR #41 in review · Monitoring');
+  expect(marks.getAttribute('data-tip')).toBe('PR #41 in review · Monitoring');
   expect([...marks.children].map((i) => i.getAttribute('data-kind'))).toEqual(['review', 'monitor']);
   expect(screen.getByTestId('sb-robot-c0').querySelector('.sb-ind')).toBeNull();
 });

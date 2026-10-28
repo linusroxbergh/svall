@@ -11,7 +11,7 @@ export function ContextPills({ items, ids, robotId, onChange }: { items: Context
       {items.map((it, i) => (
         <span key={`${it.ref}-${i}`} className="lp" data-pinned={Boolean(it.pinned)}>
           <i className="lg"><LinkIcon item={it} /></i>
-          <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} title={it.ref}
+          <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} data-tip={it.ref}
             onClick={(e) => { e.preventDefault(); followLink(it, robotId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
           <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i), it.ref)}>×</button>
         </span>

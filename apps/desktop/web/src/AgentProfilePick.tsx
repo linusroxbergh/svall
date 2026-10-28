@@ -95,7 +95,7 @@ export function AgentProfilePick({ id }: { id: string }) {
           <span>{opts[chosen].name}</span><Caret open />
         </button>
         {current?.open && (
-          <button className="btn sm res-open" data-testid="side-agent-profile-view" title={`Open ${current.reveal}`}
+          <button className="btn sm res-open" data-testid="side-agent-profile-view" data-tip={`Open ${current.reveal}`}
             onClick={() => { shelf(); void chooseResource(deps(), current); }}>View</button>
         )}
         {open && (

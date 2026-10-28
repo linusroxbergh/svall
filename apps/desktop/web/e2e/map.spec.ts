@@ -123,7 +123,7 @@ test('the subagents running stand counted on the card\'s top-left corner until t
   await svall.api.call('robot.run', { id: agent.id, text: 'subagent', enter: true });
   const mark = page.getByTestId(`token-subs-${agent.id}`);
   await expect(mark).toHaveText('1', { timeout: 15_000 });
-  await expect(mark).toHaveAttribute('title', '1 subagent running');
+  await expect(mark).toHaveAttribute('data-tip', '1 subagent running');
   const left = await tok.evaluate((el) => el.querySelector('.mark.subs')!.getBoundingClientRect().left - el.querySelector('.card')!.getBoundingClientRect().left);
   expect(left).toBeLessThan(0);
   await svall.api.call('robot.run', { id: agent.id, text: 'subagent done', enter: true });

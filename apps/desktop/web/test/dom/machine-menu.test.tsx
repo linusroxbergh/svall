@@ -53,13 +53,13 @@ test('Remove names how many robots hold it back; Forget is offered only for a ma
   setup(undefined, 1);
   fireEvent.click(more());
   expect((screen.getByTestId('machine-remove') as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByTestId('machine-remove').title).toBe('1 robot is placed there; move it back first');
+  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toBe('1 robot is placed there; move it back first');
   expect(screen.getByTestId('machine-forget')).toBeTruthy();
 });
 
 test('several robots, and a reachable machine', () => {
   setup(true, 2);
   fireEvent.click(more());
-  expect(screen.getByTestId('machine-remove').title).toBe('2 robots are placed there; move them back first');
+  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toBe('2 robots are placed there; move them back first');
   expect(screen.queryByTestId('machine-forget')).toBeNull();
 });

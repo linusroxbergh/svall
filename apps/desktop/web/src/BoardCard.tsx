@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { Robot } from '@svall/protocol';
 import { memoByValue, stop } from './hooks.js';
-import { EyeGlyph, HandGlyph, MachineLine, PrGlyph, reviewText } from './indicators.js';
+import { EyeGlyph, HandGlyph, MachineLine, MONITORING, PrGlyph, reviewText } from './indicators.js';
 import { figureOf, figureUrl } from './portraits.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, type DisplayStatus } from './selectors.js';
 
@@ -64,10 +64,10 @@ export const BoardCard = memoByValue(function BoardCard({ c, status, machine, is
         <span className="kc-st"><i />{status}</span>
         {unread && <span className="kc-un">unread</span>}
         <span className="kc-sp" />
-        {island && <span className="kc-isl" title={island} data-testid={`kc-island-${c.id}`}>{island}</span>}
-        {pr && <span className="kc-mk" data-kind="review" title={reviewText(pr)} data-testid={`kc-review-${c.id}`}><PrGlyph /></span>}
-        {isMonitoring(c) && <span className="kc-mk" data-kind="monitor" title="Monitoring" data-testid={`kc-monitor-${c.id}`}><EyeGlyph /></span>}
-        {c.columnSource === 'manual' && <span className="kc-hand" title="Placed by hand" data-testid={`kc-hand-${c.id}`}><HandGlyph /></span>}
+        {island && <span className="kc-isl" data-tip={island} data-testid={`kc-island-${c.id}`}>{island}</span>}
+        {pr && <span className="kc-mk" data-kind="review" data-tip={reviewText(pr)} data-testid={`kc-review-${c.id}`}><PrGlyph /></span>}
+        {isMonitoring(c) && <span className="kc-mk" data-kind="monitor" data-tip={MONITORING} data-testid={`kc-monitor-${c.id}`}><EyeGlyph /></span>}
+        {c.columnSource === 'manual' && <span className="kc-hand" data-tip={"Placed by hand\nThe scribe leaves it in this column"} data-testid={`kc-hand-${c.id}`}><HandGlyph /></span>}
         {pct !== undefined && (
           <span className="kc-ring tnum">
             <svg viewBox="0 0 14 14" aria-hidden="true">

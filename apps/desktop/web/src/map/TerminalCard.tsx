@@ -56,9 +56,9 @@ export function TerminalCard({ id, host }: Props) {
           lead={<span className="tname-row"><i className="sdot" data-status={status} /><span className="tname">{c.name}</span></span>}
           trail={
             <span className="tctl">
-              <button className="ticon" data-testid="card-size" title={size === 'half' ? 'Fill the window' : 'Back to the card'}
+              <button className="ticon" data-testid="card-size" data-tip={size === 'half' ? 'Fill the window' : 'Back to the card'}
                 aria-label={size === 'half' ? 'Fill the window' : 'Back to the card'} onClick={() => app.store.getState().toggleCardSize()}>{size === 'half' ? '⤢' : '⤡'}</button>
-              <button className="tx" data-testid="card-close" title="Close" aria-label="Close the card"
+              <button className="tx" data-testid="card-close" data-tip="Close" aria-label="Close the card"
                 onClick={() => app.store.getState().closeCard()}>×</button>
             </span>
           } />
@@ -66,7 +66,7 @@ export function TerminalCard({ id, host }: Props) {
       {size === 'half' && (
         // the native terminal fills the body and is drawn over the web page, so the grip needs a rail of its own
         <div className="card-foot">
-          <i className="card-grip" data-testid="card-grip" title="Drag to resize" {...grip} />
+          <i className="card-grip" data-testid="card-grip" data-tip="Drag to resize" {...grip} />
         </div>
       )}
     </div>

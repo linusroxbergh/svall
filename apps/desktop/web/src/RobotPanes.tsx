@@ -86,7 +86,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
         <span className="tseg" role="tablist">
           {KINDS.map(({ kind, label, action }) => (
             <button key={kind} className="tbtn" role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
-              title={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
+              data-tip={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
               {kind === 'terminal' && c.second && isTerminal(surface) && <i className="sdot" data-status={slotStatus(c, surface === 'terminal2' ? 2 : 1)} />}
               {kind === 'terminal' && surface === 'terminal2' ? 'Terminal 2' : label}
             </button>
@@ -94,8 +94,8 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
         </span>
         <span className="spacer" />
         {two
-          ? <button className="px" data-testid={`pane-${side}-close`} title="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><UnsplitGlyph side={side} /></button>
-          : <button className="tbtn psplit" data-testid="pane-split" title="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
+          ? <button className="px" data-testid={`pane-${side}-close`} data-tip="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><UnsplitGlyph side={side} /></button>
+          : <button className="tbtn psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
       {on && <MachineLine name={on} className="pon" testid={`pane-${side}-machine`} />}
@@ -108,7 +108,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
       {pane('left', panes.left)}
       {panes.right && (
         // the native surfaces are drawn over the page, so the divider is a strip of its own between them
-        <i className="pdivider" data-testid="pane-divider" title="Drag to resize" onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
+        <i className="pdivider" data-testid="pane-divider" data-tip="Drag to resize" onPointerDown={(e) => { e.stopPropagation(); e.currentTarget.setPointerCapture(e.pointerId); }}
           onPointerMove={dragTo} onDoubleClick={(e) => { e.stopPropagation(); app.store.getState().setRatio(id, 0.5); }} />
       )}
       {panes.right && pane('right', panes.right)}

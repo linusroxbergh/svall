@@ -114,7 +114,7 @@ test('the crew card shows the retro stage', () => {
   render(<Map />);
   const retro = (id: string) => screen.queryByTestId(`token-retro-${id}`)?.textContent;
   expect(retro('m0')).toBe('retro reading 7/18');
-  expect(screen.getByTestId('token-retro-m0').getAttribute('title')).toBe('retro reading 7/18');
+  expect(screen.getByTestId('token-retro-m0').getAttribute('data-tip')).toBe('retro reading 7/18');
   expect(retro('c0')).toBeUndefined();
   act(() => store.getState().applyPatch([{ op: 'replace', path: '/retro/stage', value: 'judging' }]));
   expect(retro('m0')).toBe('retro judging');

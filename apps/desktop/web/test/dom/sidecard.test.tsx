@@ -431,7 +431,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   await act(async () => { render(<Side />); });
   expect(screen.getByTestId('side-machine').textContent).toBe('Runs on linus-vault');
   expect(screen.getByTestId('side-machine').querySelector('b')?.textContent).toBe('linus-vault');
-  expect(screen.getByTestId('side-machine').title).toBe('');
+  expect(screen.getByTestId('side-machine').getAttribute('data-tip')).toBeNull();
   expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
   expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);
@@ -444,7 +444,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   act(() => store.getState().setResources([repo('r:/home/ada/svall'), repo(farRootId(VAULT, '/home/ada/svall'))]));
   fireEvent.click(screen.getByTestId('side-resources'));
   expect(store.getState().resourcesWhere).toBe(farRootId(VAULT, '/home/ada/svall'));
-  expect(screen.getByTestId('side-cwd').title).toBe('Copy linus-vault:/home/ada/svall');
+  expect(screen.getByTestId('side-cwd').getAttribute('data-tip')).toBe('Copy linus-vault:/home/ada/svall');
   bridge.present = true;
   try { fireEvent.click(screen.getByTestId('side-cwd')); } finally { bridge.present = false; }
   expect(sent).toContainEqual({ type: 'copy', text: 'linus-vault:/home/ada/svall' });
@@ -466,7 +466,7 @@ test('a robot on a worker the fleet no longer lists goes by the machine\'s id', 
   withVault(true, { machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
   render(<Side />);
   expect(screen.getByTestId('side-machine').textContent).toBe('Runs on 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f');
-  expect(screen.getByTestId('side-cwd').title).toBe('Copy 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f:/tmp');
+  expect(screen.getByTestId('side-cwd').getAttribute('data-tip')).toBe('Copy 0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f:/tmp');
 });
 
 test('a placed robot that is moving asks nothing of its machine and shows no section for it', async () => {

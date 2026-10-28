@@ -71,7 +71,7 @@ export function Changes({ id }: { id: string }) {
         </div>
         {status?.files.length === 0 && <div className="ide-root">Nothing changed</div>}
         {status?.files.map((f) => (
-          <button key={f.path} className="change-row" data-testid="change-row" data-status={f.status} data-active={f.path === selected} onClick={() => setSelected(f.path)} title={KIND[f.status]}>
+          <button key={f.path} className="change-row" data-testid="change-row" data-status={f.status} data-active={f.path === selected} onClick={() => setSelected(f.path)} data-tip={KIND[f.status]}>
             <span className="change-st">{f.status}</span>
             <span className="tree-name">{f.from ? `${f.from} → ${f.path}` : f.path}</span>
           </button>

@@ -21,7 +21,7 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
             {toTick(r) ? (
               <b><button className="btn set-open" data-testid={`side-gap-copy-${r.key}`} onClick={() => void copy(r.tick!)}>Copy keys</button></b>
             ) : r.run ? (
-              <b><button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} title={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
+              <b><button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
                 onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button></b>
             ) : r.action && <b>{r.action}</b>}
           </div>

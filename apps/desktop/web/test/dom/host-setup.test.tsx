@@ -233,7 +233,7 @@ test('agent setup that nothing here can set up asks for none, and a run started 
 test('a machine not yet in the list has its rows shown but nothing ticked, and the sheet keeps its title and outcome out of the scrolling rows', () => {
   checked([]);
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
-  expect([box.disabled, box.title]).toEqual([true, 'listed once the machine is added']);
+  expect([box.disabled, box.getAttribute('data-tip')]).toEqual([true, 'listed once the machine is added']);
   const body = document.querySelector('.host-body')!;
   expect(body.contains(screen.getByTestId('host-steps'))).toBe(true);
   expect(body.contains(screen.getByTestId('host-machine'))).toBe(false);

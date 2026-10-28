@@ -24,7 +24,7 @@ function TierNode({ tier, count, on, open }: { tier: Tier; count: number; on: bo
 function SourceNode({ s, count, on, qualifier }: { s: ResourceSource; count: number; on: boolean; qualifier: string }) {
   const t = tierOf(s.tier);
   return (
-    <button className="res-node" data-testid={`resources-where-${s.rootId}`} aria-pressed={on} title={`${qualifier}\n${s.root}`}
+    <button className="res-node" data-testid={`resources-where-${s.rootId}`} aria-pressed={on} data-tip={`${qualifier}\n${s.root}`}
       style={{ '--depth': 1 } as React.CSSProperties} onClick={() => pick(s.rootId)}>
       <i className="res-car" />
       <i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>

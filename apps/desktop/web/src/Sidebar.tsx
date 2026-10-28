@@ -84,7 +84,7 @@ export function StarIcon({ on }: { on: boolean }) {
 function StarButton({ c, testid }: { c: Robot; testid: string }) {
   const on = c.star !== undefined;
   return (
-    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} title={on ? 'Unstar' : 'Star'}
+    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'}
       onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><StarIcon on={on} /></button>
   );
 }
@@ -125,24 +125,24 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       <span className="sb-ct tnum">{robots.length || '—'}</span>
       <i className="sdot" data-status={status} data-empty={robots.length === 0} />
       {robots.length > 0 && <button className="sb-robot-add" data-testid={`sb-island-new-${i.id}`}
-        title={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
+        data-tip={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
         onClick={(e) => { stop(e); void newRobotOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
     </div>
   );
 });
 
-// a PR in review and a running monitor, marked without words; the title spells them out
+// a PR in review and a running monitor, marked without words; the tip spells them out
 function Marks({ c }: { c: Robot }) {
   const pr = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
   if (!pr && !monitor) return null;
   const title = [pr && reviewText(pr), monitor && 'Monitoring'].filter(Boolean).join(' · ');
-  return <span className="sb-ind" title={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
+  return <span className="sb-ind" data-tip={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
 }
 
 // a robot on a worker names the machine on a line under its name
 function RobotName({ c, machine, title }: { c: Robot; machine?: string; title?: string }) {
-  const name = <span className="sb-name" title={title}>{c.name}</span>;
+  const name = <span className="sb-name" data-tip={title}>{c.name}</span>;
   return machine ? <span className="sb-names">{name}<MachineLine name={machine} short className="sb-on" testid={`sb-machine-${c.id}`} /></span> : name;
 }
 
@@ -175,7 +175,7 @@ const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c
       ) : (
         <>
           <RobotName c={c} machine={machine} />
-          {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} title={failed}>resume failed</span>}
+          {failed && <span className="sb-sub mono" data-testid={`sb-resume-error-${c.id}`} data-tip={failed}>resume failed</span>}
         </>
       )}
       {!editing && <Marks c={c} />}
@@ -312,7 +312,7 @@ export function Sidebar() {
         islands
         <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}>+ New island</button>
       </div>
-      <button className="sb-collapse" data-testid="sidebar-hide" title="Hide the islands" aria-label="Hide the islands"
+      <button className="sb-collapse" data-testid="sidebar-hide" data-tip="Hide the islands" aria-label="Hide the islands"
         onClick={() => app.store.getState().toggleSidebar(false)}>‹</button>
       <div className="sb-list">
         <Starred />

@@ -20,6 +20,8 @@ export function PrGlyph() {
 
 export const subagentsText = (n: number): string => `${n} subagent${n === 1 ? '' : 's'} running`;
 
+export const MONITORING = 'Monitoring\nThe agent watches something in the background and acts when it changes';
+
 export function BotGlyph() {
   return (
     <svg className="ind-glyph" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
@@ -45,10 +47,10 @@ export function HandGlyph() {
   );
 }
 
-/** The machine a robot on a worker runs on, after its glyph: "Runs on NAME", or "on NAME" with the full words in its title. */
+/** The machine a robot on a worker runs on, after its glyph: "Runs on NAME", or "on NAME" with the full words in its tip. */
 export function MachineLine({ name, short, className, testid }: { name: string; short?: boolean; className: string; testid: string }) {
   return (
-    <span className={`mline ${className}`} data-testid={testid} title={short ? `Runs on ${name}` : undefined}>
+    <span className={`mline ${className}`} data-testid={testid} data-tip={short ? `Runs on ${name}` : undefined}>
       <MachineGlyph /><span>{short ? 'on' : 'Runs on'} <b>{name}</b></span>
     </span>
   );

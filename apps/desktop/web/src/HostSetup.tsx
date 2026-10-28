@@ -67,19 +67,19 @@ export function MachineActions({ name }: { name: string }) {
   const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
-      <button className="btn set-open" data-testid="machine-doctor" disabled={running} title="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
+      <button className="btn set-open" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
       <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
         <div ref={menu} className="machine-menu popover" role="menu" style={place}>
-          <button role="menuitem" data-testid="machine-upgrade" disabled={running} title="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
-          <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} title="A terminal on this machine, for what Svall leaves to you there"
+          <button role="menuitem" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
+          <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
           <button role="menuitem" className="dan" data-testid="machine-remove" disabled={running || placed > 0}
-            title={placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
+            data-tip={placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
             onClick={item(() => ask(false))}>Remove</button>
           {!up && (
             <button role="menuitem" className="dan" data-testid="machine-forget" disabled={running}
-              title="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={item(() => ask(true))}>Forget</button>
+              data-tip="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={item(() => ask(true))}>Forget</button>
           )}
         </div>
       )}
@@ -108,7 +108,7 @@ function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
       <span className="host-verdict">{o.text}</span>
       <div className="acts">
         {o.next === 'rollback' && (
-          <button className="btn" data-testid="host-rollback" title="Put back the release the machine ran before"
+          <button className="btn" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
             onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
         )}
         {narrow && run.steps.some((s) => s.gap && settable(s)) && <button className="btn" data-testid="host-set-up" onClick={narrow}>Set them up now</button>}
@@ -153,7 +153,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
       <span className="host-mark">{MARK[row.status]}</span>
-      <span className="host-name" title={stepLabel(row.step)}>{stepLabel(row.step)}</span>
+      <span className="host-name" data-tip={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
         {asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
@@ -163,10 +163,10 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       {row.tick ? (
         // a tick under way keeps the box, and focus on it, and takes no second change
         <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} aria-describedby={sentence} checked={asked ?? row.tick.on}
-          disabled={!id || !idle} aria-disabled={asked !== undefined || undefined} title={id ? undefined : 'listed once the machine is added'}
+          disabled={!id || !idle} aria-disabled={asked !== undefined || undefined} data-tip={id ? undefined : 'listed once the machine is added'}
           onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
       ) : row.run && terminal && idle ? (
-        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} title={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
       ) : !row.action && row.status === 'fail' && idle ? (
         <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>

@@ -47,7 +47,7 @@ export function Section({ name, title, head, testid, children }: { name: string;
       {open && <div className="sec-body">{children}</div>}
       {open && (
         <i className="sec-grip" data-testid={`sec-grip-${name}`} role="separator" aria-orientation="horizontal" aria-label={`Resize ${title}`}
-          title="Drag to resize, double-click to fit" {...grip} onDoubleClick={() => set({ ...fold, height: undefined })} />
+          data-tip="Drag to resize, double-click to fit" {...grip} onDoubleClick={() => set({ ...fold, height: undefined })} />
       )}
     </section>
   );

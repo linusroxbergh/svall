@@ -198,7 +198,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             </div>
             <div className="acts">
               {refusal.run ? (
-                <button className="btn pri" data-testid="move-action" title={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
+                <button className="btn pri" data-testid="move-action" data-tip={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
                   onClick={() => { close(); terminalOn(where, refusal.run); }}>Open terminal</button>
               ) : refusal.action === WORKTREE_ACTION ? (
                 <button className="btn pri" data-testid="move-action" onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>

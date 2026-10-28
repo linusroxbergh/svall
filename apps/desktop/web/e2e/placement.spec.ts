@@ -30,7 +30,7 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   expect([there.y, open.y]).toEqual([res.y, close.y]);
   expect(there.y < home.y && home.y < open.y).toBe(true);
   expect(home.width).toBeCloseTo(close.x + close.width - open.x, 0);
-  await expect(card.getByTestId('side-cwd')).toHaveAttribute('title', 'Copy linus-vault:/tmp');
+  await expect(card.getByTestId('side-cwd')).toHaveAttribute('data-tip', 'Copy linus-vault:/tmp');
   await expect(card.getByTestId('side-finder')).toHaveText('Terminal there');
 
   // the machine terminal, in the robot's folder, once the registry names the way there

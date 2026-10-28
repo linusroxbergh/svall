@@ -45,7 +45,7 @@ function Phone() {
           <>
             <div className="row">
               <span>link</span>
-              <b title={status.url}>{status.url}</b>
+              <b data-tip={status.url}>{status.url}</b>
             </div>
             <div className="row">
               <span>on your phone</span>
@@ -225,7 +225,7 @@ function Scribe() {
         {error && (
           <div className="row" data-testid="set-scribe-error">
             <span>last failure</span>
-            <b title={new Date(error.at).toLocaleString()}>{error.message}</b>
+            <b data-tip={new Date(error.at).toLocaleString()}>{error.message}</b>
           </div>
         )}
         <div className="row">
@@ -364,9 +364,9 @@ function Machine() {
         )}
       </div>
       <div className="opens">
-        <button className="btn" data-testid="settings-ghostty" disabled={!shell} title="Terminal font, colours and cursor"
+        <button className="btn" data-testid="settings-ghostty" disabled={!shell} data-tip="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn" data-testid="settings-fleet" disabled={!shell} title="Mission control, fleet defaults, scribe and phone logins"
+        <button className="btn" data-testid="settings-fleet" disabled={!shell} data-tip="Mission control, fleet defaults, scribe and phone logins"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
     </>
@@ -390,7 +390,7 @@ function Browser() {
       </div>
       {!op && <div className="desc">Run <code>brew install 1password-cli</code>, then turn on Integrate with 1Password CLI in 1Password's Developer settings.</div>}
       <div className="opens">
-        <button className="btn" data-testid="settings-cookies" disabled={!shell} title="Pick a Chrome profile to copy from"
+        <button className="btn" data-testid="settings-cookies" disabled={!shell} data-tip="Pick a Chrome profile to copy from"
           onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import Chrome cookies</button>
         <Info id="cookies">A one-time copy, so your Chrome sign-ins work here too.</Info>
       </div>
@@ -423,7 +423,7 @@ export function SettingsCard() {
     <div className="set-win" ref={box} data-testid="settings" role="dialog" aria-label="Settings">
       <div className="set-bar">
         <h2>Settings</h2>
-        <button className="side-x" data-testid="settings-close" title={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
+        <button className="side-x" data-testid="settings-close" data-tip={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
           onClick={() => app.store.getState().toggleSettings(false)}>×</button>
       </div>
       <nav className="set-nav" role="tablist" aria-orientation="vertical">

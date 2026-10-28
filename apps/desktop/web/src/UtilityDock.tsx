@@ -97,16 +97,16 @@ export function UtilityDock() {
       <div className="use-tabs" ref={tabs} style={width}>
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
-            title={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}
+            data-tip={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}
             onClick={() => app.store.getState().toggleMobile()}><Phone /><span className="use-tab-label">Phone</span><i className="use-status" data-on={serving} aria-hidden="true" /></button>
         )}
         {usageTab && (
           <button className="use-tab" data-testid="usage-tab" aria-expanded={usageOpen} aria-controls="corner-panel"
-            title="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
+            data-tip="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
         )}
         <button className="use-tab" data-testid="load-tab" aria-expanded={loadOpen} aria-controls="corner-panel"
-          title="Load" aria-label="Load" onClick={() => app.store.getState().toggleLoad()}><Pulse /><span className="use-tab-label">Load</span></button>
-        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} title={keyTip(settingsLabel, 'toggleSettings', bindings)} aria-label={settingsLabel}
+          data-tip="Load" aria-label="Load" onClick={() => app.store.getState().toggleLoad()}><Pulse /><span className="use-tab-label">Load</span></button>
+        <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} data-tip={keyTip(settingsLabel, 'toggleSettings', bindings)} aria-label={settingsLabel}
           onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span>
           {update && <i className="use-status" data-update data-testid="settings-update" aria-hidden="true" />}</button>
       </div>

@@ -16,7 +16,7 @@ function TreeGrip() {
     (el) => el.previousElementSibling!.getBoundingClientRect().width,
     (from, dx) => app.store.getState().setFilesTreeWidth(from + dx, false),
     () => { const { filesTree, setFilesTreeWidth } = app.store.getState(); if (filesTree.width !== undefined) setFilesTreeWidth(filesTree.width); });
-  return <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" title="Drag to resize" {...grip} />;
+  return <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" data-tip="Drag to resize" {...grip} />;
 }
 
 /** The folders from the home folder, or the disk's top, down to the tree's top; each takes the tree up to it. */
@@ -34,13 +34,13 @@ function Crumbs({ id, root, top }: { id: string; root: string; top: string }) {
         {chain.map((d, i) => (
           <Fragment key={d}>
             {i > 0 && <span className="ide-sep">›</span>}
-            <button className="ide-crumb" data-testid={`crumb-${d}`} title={d} aria-current={i === chain.length - 1 || undefined} onClick={() => go(d)}>
+            <button className="ide-crumb" data-testid={`crumb-${d}`} data-tip={d} aria-current={i === chain.length - 1 || undefined} onClick={() => go(d)}>
               {d === home ? '~' : basename(d) || '/'}
             </button>
           </Fragment>
         ))}
       </nav>
-      {top !== '' && <button className="ide-back" data-testid="files-back" title="Back to the robot's folder" onClick={() => go(root)}>↩ {basename(root)}</button>}
+      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}>↩ {basename(root)}</button>}
     </div>
   );
 }
@@ -75,8 +75,8 @@ export function FilesArea({ id }: { id: string }) {
       )}
       {tree.open && <TreeGrip />}
       {tree.open
-        ? <button className="ide-hide" data-testid="files-tree-hide" title="Hide the files" aria-label="Hide the files" onClick={() => app.store.getState().toggleFilesTree(false)}>‹</button>
-        : <button className="ide-show" data-testid="files-tree-show" title="Show the files" aria-label="Show the files" onClick={() => app.store.getState().toggleFilesTree(true)}>›</button>}
+        ? <button className="ide-hide" data-testid="files-tree-hide" data-tip="Hide the files" aria-label="Hide the files" onClick={() => app.store.getState().toggleFilesTree(false)}>‹</button>
+        : <button className="ide-show" data-testid="files-tree-show" data-tip="Show the files" aria-label="Show the files" onClick={() => app.store.getState().toggleFilesTree(true)}>›</button>}
       <div className="ide-main">
         <FileTabs id={id} />
         {active ? <Editor key={`${id}:${active}`} id={id} path={active} /> : <div className="ide-empty">Pick a file</div>}

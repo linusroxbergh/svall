@@ -82,13 +82,13 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
       <div className="btabs" data-testid="browser-tabs">
         {tabs.map((t) => (
           <span key={t.id} className="btab" data-testid={`btab-${t.id}`} data-active={t.id === active}
-            onClick={() => activateBrowserTab(deps(), id, t.id)} title={t.url}>
+            onClick={() => activateBrowserTab(deps(), id, t.id)} data-tip={t.url}>
             {ellipsis(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab', 24)}
             <button data-testid={`btab-close-${t.id}`} aria-label="Close tab"
               onClick={(e) => { e.stopPropagation(); closeBrowserTab(deps(), id, t.id); }}>×</button>
           </span>
         ))}
-        <button className="btab-new" data-testid="browser-new" title="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}>+</button>
+        <button className="btab-new" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}>+</button>
       </div>
       <div className="baddr">
         <button data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}>‹</button>
@@ -101,8 +101,8 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             // the page's own Escape would close the card around the field
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
-        {failure && <span className="baddr-err" data-testid="browser-error" title={failure}>{ellipsis(failure, 40)}</span>}
-        {fills && <button data-testid="browser-fill" disabled={!active} title={keyTip('Fill from 1Password', 'fillLogin', bindings)}
+        {failure && <span className="baddr-err" data-testid="browser-error" data-tip={failure}>{ellipsis(failure, 40)}</span>}
+        {fills && <button data-testid="browser-fill" disabled={!active} data-tip={keyTip('Fill from 1Password', 'fillLogin', bindings)} aria-label="Fill from 1Password"
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>
       {active ? (
