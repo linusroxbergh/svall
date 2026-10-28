@@ -7,7 +7,6 @@ node_modules/
 .claude/skills/
 .playwright-mcp/
 .swiftpm/
-apps/desktop/web/dist/
 apps/desktop/web/dist-mobile/
 site/map/
 site/shots-in/
@@ -17,8 +16,6 @@ site/robots/
 site/icon.svg
 site/icon-180.png
 site/lighthouse.svg
-# Flaticon art whose licence forbids committing it
-site/animals/
 # the tunnel's token
 site/deploy/
 apps/desktop/web/test-results/

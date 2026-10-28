@@ -43,7 +43,7 @@ Both run the same steps and show each as it finishes. The app shows them in thes
 1. **Reaching it.** One interactive ssh, so you can accept the host key and log in, then one control connection for
    the rest, which needs a key ssh can use without asking. From the app, ssh asks in a dialog.
 2. **What it needs.** Ubuntu (a release other than an LTS is a warning) and its architecture, the home path,
-   Tailscale, Git, systemd, free space (5 GiB or more) and lingering, which it turns on where it is off.
+   Tailscale, Git, systemd, free space (under 5 GiB is a warning) and lingering, which it turns on where it is off.
 3. **Svall there.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it

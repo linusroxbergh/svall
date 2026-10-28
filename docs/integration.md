@@ -238,7 +238,7 @@ only, as the controller build is:
   `svall-controller-<id>-darwin-<arch>.tar.gz`.
 
 With `SVALL_RELEASE_KEY` set, every manifest is signed; without it, every manifest is marked unsigned. A key
-`scripts/release/allowed_signers` does not list stops the build before anything is built. The script ends by scanning
+`scripts/release/allowed_signers` does not list stops the build before any archive is built. The script ends by scanning
 the three archives, and a hit fails it.
 
 `scripts/release-build.sh --sign <key> --out <dir>` signs, in place, the archives a build without the key left in

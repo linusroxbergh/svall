@@ -6,6 +6,6 @@
     "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}", "src/retro/index-worker.ts"] }
   },
   "ignoreFiles": ["**/*.d.mts"],
-  "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "mkfifo", "pmset", "script", "shasum", "sips", "ssh-keygen", "swiftc"],
+  "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "script", "sips", "ssh-keygen", "swiftc"],
   "ignoreExportsUsedInFile": { "type": true, "interface": true }
 }
