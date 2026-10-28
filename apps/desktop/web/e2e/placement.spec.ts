@@ -186,7 +186,7 @@ test('a move runs in its sheet, one line per step as it gets there, and a failur
 test('a robot that lands on a machine says what of its agent setup will not work there, and its card lists each with its way on', async ({ page, svall }) => {
   const rows: SetupRow[] = [
     {
-      key: 'claude:mcp:linear', status: 'warn', detail: 'mirrored without env.LINEAR_API_KEY lin…90', action: "copy linear's keys to linus-vault",
+      key: 'claude:mcp:linear', status: 'warn', detail: 'copied without its keys (env.LINEAR_API_KEY lin…90)', action: "copy linear's keys to linus-vault",
       tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
     },
     {

@@ -41,7 +41,7 @@ describe('the setup rows of the mirror', () => {
     expect(row('claude:mcp:linear', { ticked: false, secrets: {} }))
       .toMatchObject({
         status: 'warn', action: "copy linear's keys to w1",
-        detail: 'mirrored without env.LINEAR_API_KEY lin…90; run svall worker env LINEAR_API_KEY there, or set them in ~/.svall/mirror-overrides on w1',
+        detail: 'copied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, set LINEAR_API_KEY on w1 (svall worker env LINEAR_API_KEY), or set them in ~/.svall/mirror-overrides there',
       });
     expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
@@ -51,14 +51,14 @@ describe('the setup rows of the mirror', () => {
     const all = rows(report({ vars: { LINEAR_API_KEY: true } }), new Set(), { ...O, fleetFlag: '-p work ', overrides: '~/.svall-work/mirror-overrides' });
     expect(all.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
     expect(all.find(byKey('var:LINEAR_API_KEY'))).toBeUndefined();
-    expect(all.find(byKey('claude:mcp:hdr'))).toMatchObject({ status: 'warn', detail: 'mirrored without headers.X-Key hdr…90; or set them in ~/.svall-work/mirror-overrides on w1' });
+    expect(all.find(byKey('claude:mcp:hdr'))).toMatchObject({ status: 'warn', detail: 'copied without its keys (headers.X-Key hdr…90); tick to copy them, or set them on w1 in ~/.svall-work/mirror-overrides' });
     expect(rows(report({ vars: { LINEAR_API_KEY: false } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'warn', action: "copy linear's keys to w1" });
   });
 
   it('an unticked env key holding a reference with a default asks for the variable that reference reads, and is the worker\'s own once it has it', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = '${LIN_KEY:-lin_fake_1234567890}'; });
     expect(rows(report({ vars: { LINEAR_API_KEY: true } })).find(byKey('claude:mcp:linear'))).toMatchObject({
-      status: 'warn', detail: 'mirrored without env.LINEAR_API_KEY ${L…0}; run svall worker env LIN_KEY there, or set them in ~/.svall/mirror-overrides on w1',
+      status: 'warn', detail: 'copied without its keys (env.LINEAR_API_KEY ${L…0}); tick to copy them, set LIN_KEY on w1 (svall worker env LIN_KEY), or set them in ~/.svall/mirror-overrides there',
     });
     expect(rows(report({ vars: { LIN_KEY: true } })).find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
@@ -71,13 +71,13 @@ describe('the setup rows of the mirror', () => {
   });
 
   it('a ticked server not yet copied says pushed, not yet on w1; one whose keys the worker holds as its own is ok', () => {
-    expect(row('claude:mcp:linear', { ticked: true, secrets: {} })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
+    expect(row('claude:mcp:linear', { ticked: true, secrets: {} })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'sent; not on w1 yet' });
     expect(row('claude:mcp:linear', { ticked: true, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
   });
 
   it('a ${VAR} the worker lacks is "set VAR on w1" with svall worker env VAR, under the fleet\'s flag; one it has is ok', () => {
     expect(rows(report({ vars: { REMOTE_TOKEN: false } })).find(byKey('var:REMOTE_TOKEN')))
-      .toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN', detail: "remote read REMOTE_TOKEN, which w1's daemon does not have" });
+      .toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN', detail: "remote reads REMOTE_TOKEN, which is not set on w1" });
     expect(rows(report({ vars: {} }), new Set(), { ...O, fleetFlag: '-p work ' }).find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ run: 'svall -p work worker env REMOTE_TOKEN' });
     expect(rows(report({ vars: { REMOTE_TOKEN: true } })).find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'REMOTE_TOKEN is set on w1' });
   });
@@ -98,38 +98,38 @@ describe('the setup rows of the mirror', () => {
     put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ mcp: { servers: { sentry: { type: 'remote', url: 'https://mcp.sentry.dev/mcp' } } } }));
     const all = rows(report({ commands: { [db]: false, bun: false }, vars: { REMOTE_TOKEN: true } }));
     expect(all.find(byKey(`runtime:${db}`))).toEqual({
-      key: `runtime:${db}`, status: 'warn', action: 'install db-mcp on w1', detail: `db run ${db}, which w1 lacks (a path under this Mac's home is looked for under w1's)`,
+      key: `runtime:${db}`, status: 'warn', action: 'install db-mcp on w1', detail: `db runs ${db}, which w1 does not have; a path under this Mac's home is looked for under w1's`,
       gap: { name: 'db-mcp', what: 'not installed; db needs it' },
     });
     expect(all.find(byKey('oauth:opencode:mcp:sentry')))
       .toEqual({
-        key: 'oauth:opencode:mcp:sentry', status: 'skip', run: 'opencode mcp auth sentry', detail: 'log in once on w1 with opencode mcp auth sentry; Svall cannot see whether you did',
-        gap: { name: 'sentry', what: 'log in once; Svall cannot check' },
+        key: 'oauth:opencode:mcp:sentry', status: 'skip', run: 'opencode mcp auth sentry', detail: 'log in once on w1; the row stays either way: opencode mcp auth sentry',
+        gap: { name: 'sentry', what: 'log in once there; the row stays' },
       });
     const kinds = all.map((r) => r.key.replace(/^(var|oauth|runtime|maconly|unreadable):.*$/, '$1').replace(/^.*:mcp:.*$/, 'server').replace(/^.*:(config|settings)$/, 'config'));
     expect(kinds.filter((k, i) => k !== kinds[i - 1])).toEqual(['server', 'var', 'oauth', 'runtime', 'maconly', 'config']);
   });
 
-  it('a server whose fields Svall does not know is one row to copy it whole, and the only one; a plugin\'s config too; a file that cannot be read is to set up by hand', () => {
+  it('a server with settings Svall cannot copy one by one is one row to copy it as it is, and the only one; a plugin\'s config too; a file that cannot be read is to set up by hand', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', env: { K: '${ODD_VAR}' }, sandbox: { token: 'odd_token_1234567890' } }; });
     put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
     const toml = path.join(mac.codexDir, 'config.toml');
     put(toml, 'model = [');
     const all = rows(report({ commands: { odd: false } }));
     expect(all.filter((r) => /(^|:)(odd|ODD_VAR)$/.test(r.key))).toEqual([{
-      key: 'claude:mcp:odd', status: 'warn', action: 'copy odd whole to w1', detail: 'odd has fields Svall does not know; it is not mirrored until you tick it',
+      key: 'claude:mcp:odd', status: 'warn', action: 'copy odd to w1 as it is', detail: 'odd has settings Svall cannot copy one by one; tick to copy its file as it is, keys included',
       tick: { item: 'claude:mcp:odd', fields: ['command', 'env', 'sandbox'], on: false, preview: ['command', 'env', 'sandbox'] },
-      gap: { name: 'odd', what: 'not copied (fields Svall does not know)' },
+      gap: { name: 'odd', what: 'not copied; tick to copy it as it is' },
     }]);
-    expect(row('claude:mcp:odd', { ticked: true, whole: { 'claude:mcp:odd': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1', tick: { on: true } });
-    expect(row('claude:mcp:odd', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1', tick: { on: true } });
+    expect(row('claude:mcp:odd', { ticked: true, whole: { 'claude:mcp:odd': true } })).toMatchObject({ status: 'ok', detail: 'copied to w1 as it is', tick: { on: true } });
+    expect(row('claude:mcp:odd', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'sent; not on w1 yet', tick: { on: true } });
     expect(row('claude:mcp:odd', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.find(byKey('claude:plugin:acme'))).toEqual({
-      key: 'claude:plugin:acme', status: 'warn', action: "copy acme's config whole to w1", detail: "acme's config has fields Svall does not know; it is not mirrored until you tick it",
-      tick: { item: 'claude:plugin:acme', fields: ['env'], on: false, preview: ['env'] }, gap: { name: "acme's config", what: 'not copied (fields Svall does not know)' },
+      key: 'claude:plugin:acme', status: 'warn', action: "copy acme's config to w1 as it is", detail: "acme's config has settings Svall cannot copy one by one; tick to copy its file as it is, keys included",
+      tick: { item: 'claude:plugin:acme', fields: ['env'], on: false, preview: ['env'] }, gap: { name: "acme's config", what: 'not copied; tick to copy it as it is' },
     });
-    expect(row('claude:plugin:acme', { ticked: true, whole: { 'claude:plugin:acme': true } })).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
-    expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'pushed; not yet on w1' });
+    expect(row('claude:plugin:acme', { ticked: true, whole: { 'claude:plugin:acme': true } })).toMatchObject({ status: 'ok', detail: 'copied to w1 as it is' });
+    expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'sent; not on w1 yet' });
     expect(row('claude:plugin:acme', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.filter((r) => r.key.startsWith('unreadable:')))
       .toEqual([{
@@ -148,12 +148,22 @@ describe('the setup rows of the mirror', () => {
     expect(all.find(byKey('oauth:claude:mcp:notion'))?.gap).toBeUndefined();
     expect(all.find(byKey('codex:mcp:github'))).toMatchObject({
       status: 'warn', action: "copy github's keys to w1",
-      detail: `${SAVED}: mirrored without env.GITHUB_TOKEN ghp…ef; run svall worker env GITHUB_TOKEN there, or set them in ~/.svall/mirror-overrides on w1`,
+      detail: `${SAVED}: copied without its keys (env.GITHUB_TOKEN ghp…ef); tick to copy them, set GITHUB_TOKEN on w1 (svall worker env GITHUB_TOKEN), or set them in ~/.svall/mirror-overrides there`,
     });
     expect(all.filter((r) => r.key.startsWith('runtime:'))).toEqual([]);
     const odd = rows(undefined, linear, { ...O, unchecked: 'not checked: w1 runs another release; upgrade it' });
     expect(odd.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it; saved, and takes effect when w1 links' });
     expect(odd.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
+  });
+
+  it('two plugins\' servers of one name are told apart by their plugin in the gap name; a name no other row shares stays bare', () => {
+    const beta = path.join(mac.claudeDir, 'plugins/cache/mp/beta/1.0.0');
+    editJson(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), (j) => { j.plugins.beta = [{ scope: 'user', installPath: beta, version: '1.0.0' }]; });
+    put(path.join(beta, '.mcp.json'), JSON.stringify({ mcpServers: { pdf: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/pdf.js'], env: { PDF_KEY: 'pdf_key_0987654321' } } } }));
+    const gaps = Object.fromEntries(rows(report()).map((r) => [r.key, r.gap?.name]));
+    expect(gaps['claude:plugin:acme:mcp:pdf']).toBe('pdf (plugin acme)');
+    expect(gaps['claude:plugin:beta:mcp:pdf']).toBe('pdf (plugin beta)');
+    expect(gaps['claude:mcp:linear']).toBe('linear');
   });
 
   it('a row of what will not work on w1 yet names it and what it lacks; one that is there or a row not checked names none', () => {
@@ -262,7 +272,7 @@ describe('the worker\'s report over the link', () => {
     const again = await setup();
     expect(again.filter((r) => r.key.startsWith('runtime:'))).toEqual([
       {
-        key: 'runtime:bun', status: 'warn', action: 'install bun on w1', run: 'curl -fsSL https://bun.sh/install | bash', detail: 'ctx need it',
+        key: 'runtime:bun', status: 'warn', action: 'install bun on w1', run: 'curl -fsSL https://bun.sh/install | bash', detail: 'ctx needs it',
         gap: { name: 'bun', what: 'not installed; ctx needs it' },
       },
     ]);
@@ -278,7 +288,7 @@ describe('the worker\'s report over the link', () => {
     expect((await setup()).filter((r) => r.key.includes('db-mcp') || r.key === item)).toEqual([]);
     fs.mkdirSync(path.join(worker.homedir, 'code/app'), { recursive: true });
     expect(await rowOf(`runtime:${db}`)).toMatchObject({ status: 'warn', action: 'install db-mcp on w1' });
-    expect(await rowOf(item)).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
+    expect(await rowOf(item)).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
     await push();
     expect(await rowOf(item)).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.DB_PASSWORD db_…90' });
     executable(path.join(worker.homedir, '.local/bin/db-mcp'));
@@ -288,7 +298,7 @@ describe('the worker\'s report over the link', () => {
   it('a ticked key is ok once the worker holds the copy, a plugin server\'s too; unticked, the reference the mirror leaves is not the worker\'s own, a value it set itself is', async () => {
     tick('claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
     tick('claude:plugin:acme:mcp:pdf', ['env.PDF_KEY'], true);
-    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
+    expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
     await push();
     expect(await rowOf('claude:mcp:linear')).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90' });
     expect(await rowOf('claude:plugin:acme:mcp:pdf')).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.PDF_KEY pdf…90' });
@@ -324,10 +334,10 @@ describe('the worker\'s report over the link', () => {
 
   it('a subagent file listed whole asks to be copied whole and reads as copied once the worker holds it', async () => {
     put(path.join(mac.claudeDir, 'agents/db.md'), ['---', 'mcpServers:', '  - pg:', '      command: npx', '      env:', '        PG_PASSWORD: pg_fake_1234567890', '---', ''].join('\n'));
-    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md whole to w1', tick: { fields: ['mcpServers.pg'], on: false } });
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md to w1 as it is', tick: { fields: ['mcpServers.pg'], on: false } });
     tick('claude:agent:db.md', ['mcpServers.pg'], true);
     await push();
-    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'ok', detail: 'copied whole to w1' });
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'ok', detail: 'copied to w1 as it is' });
     expect(fs.statSync(path.join(worker.claudeDir, 'agents/db.md')).mode & 0o777).toBe(0o600);
   });
 
@@ -343,8 +353,8 @@ describe('the worker\'s report over the link', () => {
       expect(await rowOf(item)).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'still on w1; check w1 again', tick: { on: false } });
     }
     await push();
-    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md whole to w1' });
-    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'copy odd whole to w1' });
+    expect(await rowOf('claude:agent:db.md')).toMatchObject({ status: 'warn', action: 'copy agents/db.md to w1 as it is' });
+    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'copy odd to w1 as it is' });
   });
 
   it('a key in an arg under the Mac\'s home, unticked, reads as the mirror left it there, moved, and not as the worker\'s own', async () => {
@@ -361,12 +371,12 @@ describe('the worker\'s report over the link', () => {
       'claude:mcp:linear', 'claude:mcp:odd', 'claude:plugin:acme', 'claude:plugin:acme:mcp:pdf', 'claude:settings', 'codex:config', 'codex:mcp:github', 'opencode:config',
     ]);
     for (const t of ticks) tick(t.item, t.fields, true);
-    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
-    expect(await rowOf('claude:plugin:acme')).toMatchObject({ status: 'warn', detail: 'pushed; not yet on w1' });
+    expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
+    expect(await rowOf('claude:plugin:acme')).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
     await push();
     const rows = (await setup()).filter((r) => r.tick);
     const whole = ['claude:mcp:odd', 'claude:plugin:acme'];
-    expect(rows.map((r) => [r.key, r.status, r.detail.split(':')[0]])).toEqual(ticks.map((t) => [t.item, 'ok', whole.includes(t.item) ? 'copied whole to w1' : 'keys copied to w1']));
+    expect(rows.map((r) => [r.key, r.status, r.detail.split(':')[0]])).toEqual(ticks.map((t) => [t.item, 'ok', whole.includes(t.item) ? 'copied to w1 as it is' : 'keys copied to w1']));
     const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
     const ask = reportAsk(plan);
     const answer = configReport(ask, { ...worker, envFile: w.worker.paths.env, stateFile: w.worker.paths.mirrorState });

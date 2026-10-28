@@ -275,7 +275,7 @@ describe('robot move to a machine', () => {
 
   it('lists what of the robot\'s agent setup will not work on the machine yet, between the sheet and the move id, and gives it with --json', async () => {
     const linear: SetupRow = {
-      key: 'claude:mcp:linear', status: 'warn', action: "copy linear's keys to linus-vault", detail: 'mirrored without env.LINEAR_API_KEY lin…90',
+      key: 'claude:mcp:linear', status: 'warn', action: "copy linear's keys to linus-vault", detail: 'copied without its keys (env.LINEAR_API_KEY lin…90)',
       tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
     };
     const notion: SetupRow = {

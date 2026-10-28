@@ -441,7 +441,7 @@ describe('host add', () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const again = (key: string): SetupRow => ({ key, status: 'warn', action: 'check trift again', detail: 'pushed; not yet on trift' });
+    const again = (key: string): SetupRow => ({ key, status: 'warn', action: 'check trift again', detail: 'sent; not on trift yet' });
     const rows = [unticked('claude:mcp:github'), unticked('codex:mcp:github'), again('var:X'), again('var:Y')];
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.resolve(rows) }));
     await d.close();

@@ -82,7 +82,7 @@ When one of them is a key to copy or a command to run there, `svall host add` an
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
 yes, and prints each command to run on the machine once. In the app each such row has its box or button in the list.
 A run exits 1 while something is left to fix. In the app, a step that failed with nothing named to do offers
-**Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer and never
+**Try again**; after a check, **Check** at the top runs it once more. Svall never runs `sudo`, never runs an agent's installer and never
 copies a login, so these are yours.
 
 In the app a check shows the step under way, then what needs you, by phase; the checks that went fine and your agent
@@ -164,12 +164,12 @@ machine, ticking or unticking changes the copy there at once, whatever runs ther
 takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
 copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
 reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
-server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
-once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+server or plugin config with settings Svall cannot copy one by one is a row "copy notion to studio as it is", and is
+copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
 `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
-key or fields Svall does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
+key or settings Svall cannot copy one by one, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
 this Mac.
 From a terminal, `svall host doctor studio` lists what will not work there, and `svall host consent studio <item>
 <on|off> [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
@@ -189,8 +189,8 @@ from a pipe, and keeps it in the fleet's `.env` on the machine. Robots that star
 terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
 `/mcp` and sign in. A server that names its own callback port gets plain `claude` and that port forwarded instead,
 and an `mcp-remote` server the port that follows its URL. Over your own ssh, forward the port with
-`ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, since Svall
-cannot see whether you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
+`ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, and the row stays
+whether or not you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
 port the login names. A server whose program the machine lacks is a
 row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension, is listed and not copied.
 
@@ -259,10 +259,10 @@ On the Linux machine itself:
 - `svall uninstall` ends the robots that run there, so move them back first. Before it removes Svall, it takes back
   what each fleet's mirror copied there with keys, each while it is as the mirror wrote it: a copied key becomes what
   an untick leaves (an `env` key the agent's reference to its variable, a key in a URL or argument the rest of it, any
-  other key emptied), a server copied whole leaves its config file, a key in `known_marketplaces.json`, a
+  other key emptied), a server copied as it is leaves its config file, a key in `known_marketplaces.json`, a
   `marketplace.json` or a subagent is taken out where it lies there, even where an entry added above it moved it, and
   the file stays, another file the mirror wrote holding a ticked key, such as a plugin's server file or a subagent
-  whose `mcpServers` Svall cannot read or whose server has fields Svall does not know, is deleted, and a copy a daemon
+  whose `mcpServers` Svall cannot read or whose server has settings Svall cannot copy one by one, is deleted, and a copy a daemon
   left unapplied in the fleet's `cache` goes. A key, server or file changed on the machine since the mirror wrote it
   stays, named in what it prints, and so does every key in a config file there that no longer parses, as do the
   fleet's `.env` and its `mirror-overrides/`, which are the machine's own.

@@ -157,7 +157,7 @@ describe('a step by name', () => {
       'mirror:claude:agent:team/db.md', 'mirror:claude:marketplace:market',
     ].map(stepLabel)).toEqual([
       'Codex MCP github', 'OpenCode MCP sentry', 'db (plugin acme)', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
-      'OpenCode opencode.json', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked', 'subagent team/db.md', 'marketplace market',
+      'OpenCode config', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked', 'subagent team/db.md', 'marketplace market',
     ]);
   });
 

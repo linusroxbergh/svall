@@ -568,7 +568,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
         }
-        if (v.protocol !== d.controller.protocol) throw new StepError(`the companion speaks protocol ${v.protocol}, not this controller's ${d.controller.protocol}`);
+        if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
       await run.step('enrol', async () => {
@@ -658,16 +658,20 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const v = await farHome(master, base, d);
       release = v.release;
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
+      const talks = v.protocol === d.controller.protocol;
+      // an upgrade there would go back to this Mac's older release
+      const newer = !same && compareVersions(v.release, d.controller.release) === 1;
       found({
-        name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
-        detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
-        // an upgrade there would go back to this Mac's older release
-        ...(!same && compareVersions(v.release, d.controller.release) === 1 && { action: 'update svall on this Mac' }),
+        name: 'release', status: same && talks ? 'ok' : 'fail',
+        detail: same && talks ? `${v.release}, as on this Mac`
+          : newer ? `${v.release} there, newer than this Mac's ${d.controller.release}`
+            : same ? `${v.release} there, a build that cannot talk to this Mac's` : `${v.release} there; this Mac runs ${d.controller.release}`,
+        ...(newer && { action: 'update svall on this Mac' }),
       });
       const refused = notOurs(v, entry.record.name, d);
       found(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
-        : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' }
-          : { name: 'worker', status: 'fail', detail: `this fleet does not run there as a worker: svall host upgrade ${entry.record.name} makes it one` });
+        : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
+          : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: svall host upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
     start('versions');
     try {

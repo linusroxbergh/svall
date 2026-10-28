@@ -40,7 +40,7 @@ test('opened on a machine, the panel names it once and acts on it without asking
   // one run at a time
   expect((screen.getByTestId('machine-doctor') as HTMLButtonElement).disabled).toBe(true);
 });
-test('every step that failed offers a way on: what the step said to do, or the run again', () => {
+test('a step that failed shows what to do; a step of a run other than a check offers the run again, a check row leaves that to Check', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().toggleHost(true, 'trift');
@@ -51,9 +51,15 @@ test('every step that failed offers a way on: what the step said to do, or the r
   });
   expect(screen.getByTestId('host-action-linger').textContent).toBe('ssh ada@trift, then loginctl enable-linger ada');
   expect(screen.queryByTestId('host-again-linger')).toBeNull();
+  expect(screen.queryByTestId('host-again-tmux')).toBeNull();
+  act(() => {
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'install', status: 'fail', detail: 'install exited 1' });
+    store.getState().hostDone('upgrade', 1);
+  });
   sent.length = 0;
-  fireEvent.click(screen.getByTestId('host-again-tmux'));
-  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
+  fireEvent.click(screen.getByTestId('host-again-install'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'trift' } }]);
 });
 
 test('a running check shows the step under way and what needs the user as found, the fine checks and the agent setup each folded behind one line', () => {
@@ -89,7 +95,7 @@ test('a running check shows the step under way and what needs the user as found,
   expect(rows()).toContain('host-step-mirror:var:X');
 });
 
-test('a run ends in one line, with Done once nothing is left and Check again while something is', () => {
+test('a run ends in one line and Done, whether or not something is left', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
@@ -110,10 +116,10 @@ test('a run ends in one line, with Done once nothing is left and Check again whi
     store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'inactive' });
     store.getState().hostDone('doctor', 1);
   });
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 2 things to fix.Check again');
-  expect(screen.queryByTestId('host-done')).toBeNull();
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 2 things to fix.Done');
+  expect(screen.queryByTestId('host-again-systemd')).toBeNull();
   sent.length = 0;
-  fireEvent.click(screen.getByTestId('host-check-again'));
+  fireEvent.click(screen.getByTestId('machine-doctor'));
   expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
 });
 
@@ -121,7 +127,7 @@ const MACHINE = '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f';
 const tick = (on: boolean) => ({ item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on, preview: ['env.LINEAR_API_KEY lin…90'] });
 const unticked = {
   step: 'mirror:claude:mcp:linear', status: 'warn' as const, action: "copy linear's keys to trift", tick: tick(false),
-  detail: 'mirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on trift', gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
+  detail: 'copied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides', gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
 };
 // a check of trift whose report has one server to copy the keys of, a variable and the check after it
 function checked(machines = [{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]) {
@@ -148,7 +154,7 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
   expect(row.querySelector('.host-name')?.textContent).toBe('Claude MCP linear');
   expect(screen.getByTestId('host-action-mirror:claude:mcp:linear').textContent).toBe("copy linear's keys to trift");
   expect(screen.getByTestId('host-details-mirror:claude:mcp:linear').textContent)
-    .toBe('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on trift');
+    .toBe('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides');
   expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. 1 part of your agent setup will not work there yet.Done');
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
   expect([box.type, box.checked, box.disabled]).toEqual(['checkbox', false, false]);
@@ -167,7 +173,7 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
 test('a tick the worker did not take says why on its row, and the rows are read again as svalld kept them', async () => {
   call.mockImplementation(async (method: string) => {
     if (method === 'machines.consent') throw new ApiError('not_mirrored', `the change is saved, but machine ${MACHINE} did not take it: token=s3cr3t`);
-    return { rows: [{ key: 'claude:mcp:linear', status: 'warn', action: 'check trift again', detail: 'pushed; not yet on trift', tick: tick(true) }] };
+    return { rows: [{ key: 'claude:mcp:linear', status: 'warn', action: 'check trift again', detail: 'sent; not on trift yet', tick: tick(true) }] };
   });
   checked();
   await act(async () => { fireEvent.click(screen.getByTestId('host-tick-mirror:claude:mcp:linear')); });
@@ -258,7 +264,7 @@ test('a check that finds the machine on another release offers its upgrade on th
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('doctor', { name: 'trift' });
-    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.20.0 (signed), protocol 3; this controller runs 0.21.0 (signed), protocol 3' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.20.0 there; this Mac runs 0.21.0' });
     store.getState().hostDone('doctor', 1);
   });
   expect(screen.queryByTestId('host-again-release')).toBeNull();
@@ -287,7 +293,7 @@ test('a machine on a newer release than this Mac is not offered an upgrade there
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('doctor', { name: 'trift' });
-    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.22.0 (signed), protocol 3; this controller runs 0.21.0 (signed), protocol 3', action: 'update svall on this Mac' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: "0.22.0 there, newer than this Mac's 0.21.0", action: 'update svall on this Mac' });
     store.getState().hostDone('doctor', 1);
   });
   expect(screen.queryByTestId('host-upgrade')).toBeNull();

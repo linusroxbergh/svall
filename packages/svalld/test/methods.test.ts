@@ -290,7 +290,7 @@ describe('machines.setup and machines.consent', () => {
     });
     const { rows } = await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
     expect(rows.find(byKey('claude:mcp:linear'))).toMatchObject({ detail: 'not checked: w1 is not reachable; saved, and takes effect when w1 links', tick: { on: true } });
-    expect(rows.find(byKey('codex:mcp:github'))?.detail).toMatch(/^not checked: w1 is not reachable; saved, and takes effect when w1 links: mirrored without env\.GITHUB_TOKEN/);
+    expect(rows.find(byKey('codex:mcp:github'))?.detail).toMatch(/^not checked: w1 is not reachable; saved, and takes effect when w1 links: copied without its keys \(env\.GITHUB_TOKEN/);
   });
 
   it('machines.consent refuses a machine not in the fleet before it saves anything', async () => {

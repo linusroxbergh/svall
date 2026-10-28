@@ -85,7 +85,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-setup')).toHaveCount(0);
 });
 
-test('a check says ready, or how many things are left, and Check again runs it once more', async ({ page, svall }) => {
+test('a check says ready, or how many things are left, and Check runs it once more', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
@@ -111,7 +111,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
   await expect(page.getByTestId('host-outcome')).toContainText('studio has 1 thing to fix.');
-  await page.getByTestId('host-check-again').click();
+  await panel.getByTestId('machine-doctor').click();
   expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
@@ -217,7 +217,7 @@ const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'li
 const tick = (item: string, field: string, on: boolean) => ({ item, fields: [field], on, preview: [`${field} lin…90`] });
 const unticked = (server: string, agent: string, field: string): HostStep => ({
   step: `mirror:${agent}:mcp:${server}`, status: 'warn', action: `copy ${server}'s keys to studio`, tick: tick(`${agent}:mcp:${server}`, field, false),
-  detail: `mirrored without ${field} lin…90; or set them in ~/.svall/mirror-overrides on studio`, gap: { name: server, what: `keys not copied (${field})` },
+  detail: `copied without its keys (${field} lin…90); tick to copy them, or set them on studio in ~/.svall/mirror-overrides`, gap: { name: server, what: `keys not copied (${field})` },
 });
 // what a check of studio says before its report: every step there passed
 const PASSED: HostStep[] = [
@@ -273,7 +273,7 @@ test('the setup page ends in one line: ready, parts of the agent setup that will
   await page.getByTestId('host-confirm-yes').click();
   await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'svall uninstall exited 1' } });
   await receive(page, { type: 'host.done', op: 'remove', code: 1 });
-  await expect(panel.getByTestId('host-outcome')).toHaveText('Remove stopped at Uninstall: svall uninstall exited 1Check again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('Remove stopped at Uninstall: svall uninstall exited 1Done');
 });
 
 test('a mirror row shows one sentence, a checkbox and details; ticking calls machines.consent with item and fields and the rows come back in place', async ({ page, svall }) => {
@@ -304,7 +304,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   await expect(details).toHaveJSProperty('open', false);
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
-  await expect(details).toHaveText('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on studio');
+  await expect(details).toHaveText('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on studio in ~/.svall/mirror-overrides');
   await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Done');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();

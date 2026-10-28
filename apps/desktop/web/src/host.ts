@@ -129,7 +129,7 @@ const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^claude:marketplace:(.+)$/, (market) => `marketplace ${market}`],
 ];
 const MIRROR_NAME: Record<string, string> = {
-  'claude:settings': 'settings.json', 'codex:config': 'Codex config.toml', 'opencode:config': 'OpenCode opencode.json', unchecked: 'Not checked',
+  'claude:settings': 'settings.json', 'codex:config': 'Codex config.toml', 'opencode:config': 'OpenCode config', unchecked: 'Not checked',
 };
 
 function mirrorLabel(key: string): string {
