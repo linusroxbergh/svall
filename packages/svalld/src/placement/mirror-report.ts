@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { AgentKind, SetupRow } from '@svall/protocol';
+import { NOT_NEEDED, type AgentKind, type SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../hash.js';
@@ -266,10 +266,18 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const users = named.join(', ');
     const one = named.length === 1;
     const key = `runtime:${bin}`;
-    const gap = { name: path.posix.basename(bin), what: `not installed; ${users} ${one ? 'needs' : 'need'} it` };
+    const name = path.posix.basename(bin);
+    // the row's tick says the machine does not need the program; ticked, the row stands aside
+    const tick = { item: key, fields: [NOT_NEEDED], on: plan.notNeeded.includes(bin), preview: [] };
+    if (tick.on) {
+      rows.push({ key, status: 'skip', detail: `not needed on ${m}, you ticked; untick to list it again`, tick, gap: { name, what: 'not needed there, you ticked' } });
+      continue;
+    }
+    const gap = { name, what: `not installed; ${users} ${one ? 'needs' : 'need'} it` };
+    const need = `${users} ${one ? 'needs' : 'need'} it; tick if ${m} does not`;
     if (path.posix.isAbsolute(bin)) {
-      rows.push({ key, status: 'warn', action: `install ${path.posix.basename(bin)} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under this Mac's home is looked for under ${m}'s`, gap });
-    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: `${users} ${one ? 'needs' : 'need'} it`, gap });
+      rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under this Mac's home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
+    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;

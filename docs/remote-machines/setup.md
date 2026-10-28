@@ -75,8 +75,10 @@ studio is ready. 3 parts of your agent setup will not work there yet:
 Set them up now? [Y/n]
 ```
 
-A list with nothing to do about any of it, such as servers that only run on a Mac, says "will not work there" without
-"yet"; so do a move's list and the app's footer.
+A server that runs only on a Mac, or a program you ticked as one the machine does not need, stands aside: the list ends
+in one line naming them, "chrome runs only on a Mac, and adlc is not needed there", and the count leaves them out; so do a
+move's list and the app's footer, whose line reads "…will not work there yet, and 1 runs only on a Mac". A list with
+nothing to do about any of it, such as a file this Mac cannot read, says "will not work there" without "yet".
 
 When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
@@ -192,7 +194,9 @@ and an `mcp-remote` server the port that follows its URL. Over your own ssh, for
 `ssh -L 3118:localhost:3118`. A Codex or OpenCode server's login is listed with the command to run there, and the row stays
 whether or not you did; those logins pick their own port, so sign in there over an ssh tunnel of your own to the
 port the login names. A server whose program the machine lacks is a
-row "install uvx on studio". A server that runs only on a Mac, such as the Chrome extension, is listed and not copied.
+row "install uvx on studio"; its tick says the machine does not need the program (`svall host consent studio runtime:uvx
+on` from a terminal), and the row then stands aside. A server that runs only on a Mac, such as the Chrome extension or
+one that runs `xcrun`, is listed and not copied.
 
 **The machine's own settings.** Files under `mirror-overrides/` in the fleet's home on the machine (`~/.svall` for the
 private fleet, `~/.svall-<fleet>` for another) are merged over Svall's copy, last, and Svall never changes them. Their

@@ -112,10 +112,15 @@ describe('the end of a run', () => {
       .toEqual({ text: 'box is ready. 1 part of your agent setup will not work there yet.', done: true, setup: 1 });
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok'), gap('claude:mcp:linear', 'linear')])))
       .toEqual({ text: 'box has 1 thing to fix, and 1 part of your agent setup will not work there yet.', setup: 1 });
-    // a part with nothing to do about it, as a server that only runs on a Mac, will not work there, not yet
+    // a part with nothing to do about it, as a file this Mac cannot read, will not work there, not yet
+    const unread = step('mirror:unreadable:/Users/ada/.claude.json', 'warn', { gap: { name: '.claude.json', what: 'not copied: this Mac cannot read it' } });
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), unread]))).toEqual({ text: 'box is ready. 1 part of your agent setup will not work there.', done: true, setup: 1 });
+    // a server that runs only on a Mac, or a program ticked as not needed there, stands aside: counted after the parts, named when alone
     const macOnly = step('mirror:maconly:claude:chrome', 'skip', { gap: { name: 'chrome', what: 'runs only on a Mac' } });
-    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly]))).toEqual({ text: 'box is ready. 1 part of your agent setup will not work there.', done: true, setup: 1 });
-    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready. 2 parts of your agent setup will not work there yet.');
+    const skipped = step('mirror:runtime:adlc', 'skip', { tick: { item: 'runtime:adlc', fields: ['skip'], on: true, preview: [] }, gap: { name: 'adlc', what: 'not needed there, you ticked' } });
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly, skipped]))).toEqual({ text: 'box is ready. chrome runs only on a Mac, and adlc is not needed there.', done: true });
+    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready. 1 part of your agent setup will not work there yet, and 1 runs only on a Mac.');
+    expect(outcomeOf(ended('doctor', 1, [step('systemd', 'fail'), macOnly])).text).toBe('box has 1 thing to fix. chrome runs only on a Mac.');
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
     expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box has 1 thing to fix.' });

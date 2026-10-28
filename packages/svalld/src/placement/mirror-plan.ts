@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
-import type { AgentKind } from '@svall/protocol';
+import { NOT_NEEDED, type AgentKind } from '@svall/protocol';
 import { VAR_NAME } from '../claude.js';
 import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
@@ -39,6 +39,8 @@ export type MirrorPlan = {
   files: { from: string; to: string; mode: number; data?: string }[];
   servers: MirroredServer[];
   macOnly: { agent: AgentKind; name: string; scope: Scope }[];
+  /** Each program ticked as one the worker does not need, by its command. */
+  notNeeded: string[];
   /** Each config file with a secret field, by its consent item. */
   configs: { key: string; agent: AgentKind; file: string; fields: string[]; preview: string[]; ticked: string[] }[];
   settingsEnv: Record<string, string>;
@@ -476,7 +478,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const vars = [...going.flatMap((s) => s.needs), ...envKeys, ...(codexDoc ? configNeeds('codex', codexDoc) : []), ...ocDocs.flatMap((d) => configNeeds('opencode', d.doc))]
     .filter((v) => VAR_NAME.test(v));
   return {
-    files: carried, servers, macOnly, configs,
+    files: carried, servers, macOnly, configs, notNeeded: [...consent].flatMap((k) => (k.startsWith('runtime:') && k.endsWith(`#${NOT_NEEDED}`) ? [k.slice('runtime:'.length, -NOT_NEEDED.length - 1)] : [])),
     settingsEnv: Object.fromEntries(Object.entries(env).filter(([k]) => !settingsOff.includes(`env.${k}`))),
     settings: configRedacted(settingsDoc, settingsOff), plugins: pluginRows,
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),

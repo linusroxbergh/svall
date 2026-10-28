@@ -293,7 +293,9 @@ describe('robot move to a machine', () => {
     expect(JSON.parse((await run(daemon({ setup: [linear, notion] }), ['c_1', '--machine', 'linus-vault'], true)).out)).toEqual({ ok: true, sheet, moveId: 'mv_0123456789', setup: [linear, notion] });
 
     const chrome: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
-    expect((await run(daemon({ setup: [chrome] }), ['c_1', '--machine', 'linus-vault'])).out.split('\n')[1]).toBe("1 part of kanban's agent setup will not work on linus-vault:");
+    expect((await run(daemon({ setup: [chrome] }), ['c_1', '--machine', 'linus-vault'])).out.split('\n')[1]).toBe('chrome runs only on a Mac.');
+    expect((await run(daemon({ setup: [linear, chrome] }), ['c_1', '--machine', 'linus-vault'])).out.split('\n').slice(1, 4))
+      .toEqual(["1 part of kanban's agent setup will not work on linus-vault yet:", '  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent linus-vault claude:mcp:linear on', '  chrome runs only on a Mac']);
 
     // the way back asks nothing, and a refused move lists nothing
     const back = daemon({ setup: [linear] });

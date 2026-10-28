@@ -26,11 +26,12 @@ describe('a robot landing on a worker', () => {
   };
 
   it('says how many parts of its agent setup will not work there, and Show opens its card', async () => {
-    const { store, call } = setup([linear, notion, { key: 'var:X', status: 'ok', detail: 'X is set on vault' }]);
+    const chrome: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
+    const { store, call } = setup([linear, notion, { key: 'var:X', status: 'ok', detail: 'X is set on vault' }, chrome]);
     store.getState().setFleet(landed);
     await vi.waitFor(() => expect(store.getState().toast).toBeDefined());
     expect(call).toHaveBeenCalledWith('machines.setup', { machine: VAULT, robot: 'c1' });
-    expect(store.getState().toast).toMatchObject({ text: 'c1 is on vault. 2 parts of its agent setup will not work there.', tone: 'ok', action: { label: 'Show' } });
+    expect(store.getState().toast).toMatchObject({ text: 'c1 is on vault. 2 parts of its agent setup will not work there, and 1 runs only on a Mac.', tone: 'ok', action: { label: 'Show' } });
     store.getState().toast!.action!.run();
     expect([store.getState().selectedId, store.getState().sideCardOpen]).toEqual(['c1', true]);
   });
@@ -45,7 +46,7 @@ describe('a robot landing on a worker', () => {
   });
 
   it('says nothing when nothing of what will not work there has a way on', async () => {
-    const { store, call } = setup([{ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } }]);
+    const { store, call } = setup([{ key: 'unreadable:/Users/ada/x.json', status: 'warn', detail: 'd', gap: { name: 'x.json', what: 'not copied: this Mac cannot read it' } }]);
     store.getState().setFleet(landed);
     await vi.waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     await Promise.resolve();

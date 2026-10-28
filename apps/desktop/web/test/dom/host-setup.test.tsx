@@ -321,3 +321,21 @@ test('an agent update keeps its row through the fine checks opening, and leaves 
   expect(store.getState().host?.op).toBe('upgrade');
   expect(sent.filter((m) => m.type === 'host.start')).toEqual([]);
 });
+
+test('the agent setup fold lists what runs only on a Mac, or is ticked as not needed there, last under its own line', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'mirror:maconly:claude:chrome', status: 'skip', detail: 'chrome only runs on a Mac; not mirrored', gap: { name: 'chrome', what: 'runs only on a Mac' } });
+    store.getState().hostStep('doctor', { step: 'mirror:runtime:adlc', status: 'warn', action: 'install adlc on trift', detail: 'ad needs it; tick if trift does not', tick: { item: 'runtime:adlc', fields: ['skip'], on: false, preview: [] }, gap: { name: 'adlc', what: 'not installed; ad needs it' } });
+    store.getState().hostStep('doctor', { step: 'mirror:var:X', status: 'warn', action: 'set X on trift', run: 'svall worker env X', detail: 'ad reads X, which is not set on trift', gap: { name: 'X', what: 'not set; ad reads it' } });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. 2 parts of your agent setup will not work there yet, and 1 runs only on a Mac.Done');
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  const steps = () => [...document.querySelectorAll('[data-testid^="host-step-mirror"], [data-testid="host-aside"]')].map((e) => e.getAttribute('data-testid'));
+  expect(steps()).toEqual(['host-step-mirror:runtime:adlc', 'host-step-mirror:var:X', 'host-aside', 'host-step-mirror:maconly:claude:chrome']);
+  expect(screen.getByTestId('host-tick-mirror:runtime:adlc').getAttribute('aria-label')).toBe('adlc is not needed on trift');
+});

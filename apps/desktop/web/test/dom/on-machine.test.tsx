@@ -37,6 +37,7 @@ test('a placed robot\'s card lists what of its agent setup will not work on its 
   expect(shown()).toEqual([]);
   unfold();
   expect(shown()).toEqual(['linear keys not copied (env.LINEAR_API_KEY)Copy keys', 'notion not logged inOpen terminal', 'chrome runs only on a Mac']);
+  expect(screen.getByTestId('side-gap-aside').textContent).toBe('chrome runs only on a Mac');
 
   rows = [notion, chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
@@ -70,4 +71,19 @@ test('a row whose way on is its action says it, and one whose copy is still ther
   unfold();
   expect(shown()).toEqual(['jira unticked; still on vaultcheck vault again', 'db-mcp not installed; db needs itinstall db-mcp on vault']);
   expect(screen.queryByTestId('side-gap-copy-claude:mcp:jira')).toBeNull();
+});
+
+test('a program row offers Not needed, which ticks it; ticked, it joins the one line of what stands aside', async () => {
+  const skip = (on: boolean): SetupRow => ({
+    key: 'runtime:adlc', status: on ? 'skip' : 'warn', detail: 'd', ...(!on && { action: 'install adlc on vault' }),
+    tick: { item: 'runtime:adlc', fields: ['skip'], on, preview: [] }, gap: on ? { name: 'adlc', what: 'not needed there, you ticked' } : { name: 'adlc', what: 'not installed; ad needs it' },
+  });
+  rows = [skip(false), chrome];
+  await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  unfold();
+  expect(shown()).toEqual(['adlc not installed; ad needs itinstall adlc on vaultNot needed', 'chrome runs only on a Mac']);
+  rows = [skip(true), chrome];
+  await act(async () => { fireEvent.click(screen.getByTestId('side-gap-skip-runtime:adlc')); });
+  expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'runtime:adlc', fields: ['skip'], on: true });
+  expect(shown()).toEqual(['chrome runs only on a Mac, and adlc is not needed there']);
 });

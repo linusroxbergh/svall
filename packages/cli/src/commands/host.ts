@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
-import { ApiError, checksAgain, PROTOCOL_VERSION, settable, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, aside, asideLine, checksAgain, notNeeded, PROTOCOL_VERSION, settable, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -88,11 +88,15 @@ export function doneLine(op: Op, name: string, o: { forget?: boolean } = {}): st
 const readyLine = (name: string): string => `${name} is ready. Robots you move there keep working while this Mac sleeps.`;
 const fixLine = (name: string, n: number): string => `${name} has ${plural(n, 'thing')} to fix`;
 const parts = (n: number, whose = 'your'): string => `${plural(n, 'part')} of ${whose} agent setup`;
-// the list of `rows` under its line: after ready, or after the things to fix there; yet while one has a way on
+// the list of `rows` under its line: after ready, or after the things to fix there; yet while one has a way on; the rows that stand
+// aside end it in one line, which stands alone when no other is listed
 const withList = (rows: Gapped[], name: string, there: There, ready: boolean): string[] => {
-  const list = setupList(rows, name, there);
-  const yet = rows.some(wayOn) ? ' yet' : '';
-  return !list.length ? [] : [ready ? `${name} is ready. ${parts(list.length)} will not work there${yet}:` : `${parts(list.length)} will not work on ${name}${yet}:`, ...list];
+  const live = rows.filter((r) => !aside(r));
+  const list = setupList(live, name, there);
+  const apart = asideLine(rows.filter(aside), true);
+  const yet = live.some(wayOn) ? ' yet' : '';
+  if (!list.length) return apart ? [ready ? `${name} is ready. ${apart}.` : `${apart}.`] : [];
+  return [ready ? `${name} is ready. ${parts(list.length)} will not work there${yet}:` : `${parts(list.length)} will not work on ${name}${yet}:`, ...list, ...(apart ? [`  ${apart}`] : [])];
 };
 
 /** How a line of the list reaches the machine from this Mac's terminal: its ssh destination, and the svall that names this fleet. */
@@ -105,7 +109,7 @@ const asRow = <T extends { step: string } | { name: string }>(e: T): T & { key: 
 
 /** The one thing to do about a row from this Mac's terminal: tick it from here, or run its command there; Claude Code signs in with /mcp. */
 function gapAction(r: Gapped, machine: string, there: There): string | undefined {
-  if (toTick(r)) return `${there.svall} host consent ${machine} ${r.tick!.item} on`;
+  if (toTick(r) && !notNeeded(r)) return `${there.svall} host consent ${machine} ${r.tick!.item} on`;
   if (r.run) return `ssh ${r.forward ? `-L ${r.forward}:localhost:${r.forward} ` : ''}${there.ssh}, then ${r.run}${r.key.startsWith('oauth:claude:') ? ', /mcp' : ''}`;
   if (checksAgain(r)) return `${there.svall} host doctor ${machine}`;
   return r.action;
@@ -139,18 +143,21 @@ export function doctorVerdict(checks: Check[], name: string, there: There): stri
   return [`${fixLine(name, left.length)}: ${left.map((c) => c.name).join(', ')}`, ...withList(rows, name, there, false)].join('\n');
 }
 
-/** What of a robot's agent setup will not work on `machine` yet, as a move prints its rows that name a gap. */
+/** What of a robot's agent setup will not work on `machine` yet, as a move prints its rows that name a gap; the rows that stand aside in one line. */
 export function robotSetupText(rows: SetupRow[], robot: string, machine: string, there: There): string {
-  return [`${parts(rows.length, `${robot}'s`)} will not work on ${machine}${rows.some(wayOn) ? ' yet' : ''}:`, ...setupList(rows, machine, there)].join('\n');
+  const live = rows.filter((r) => !aside(r));
+  const apart = asideLine(rows.filter(aside), true);
+  if (!live.length) return `${apart}.`;
+  return [`${parts(live.length, `${robot}'s`)} will not work on ${machine}${live.some(wayOn) ? ' yet' : ''}:`, ...setupList(live, machine, there), ...(apart ? [`  ${apart}`] : [])].join('\n');
 }
 
 type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; consent: HostDeps['consent'] };
 
 /** Asks to set up what of the machine's agent setup can be from here: each key to copy there, one at a time, then the commands to run there. */
 export async function setUpNow(steps: StepEvent[], o: { name: string; machine: MachineId; there: There }, io: SetUpIo): Promise<void> {
-  if (!steps.some(settable) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
+  if (!steps.some((s) => settable(s) && !notNeeded(s)) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
   const rows = steps.map(asRow);
-  for (const r of rows.filter(toTick)) {
+  for (const r of rows.filter((x) => toTick(x) && !notNeeded(x))) {
     const { item, fields, preview } = r.tick!;
     if (!/^y(es)?$/i.test((await io.ask(`${r.action![0].toUpperCase()}${r.action!.slice(1)}? ${preview.join(', ')} [y/N] `)).trim())) continue;
     try {

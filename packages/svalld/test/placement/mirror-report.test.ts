@@ -85,7 +85,10 @@ describe('the setup rows of the mirror', () => {
   it('a missing npx is "install npx on w1"; a Mac-only server is skipped and listed; a known-host remote is a login row running claude on its fixed sign-in port; config.toml is one row for its key fields', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.notion = { type: 'http', url: 'https://mcp.notion.com/mcp' }; });
     const all = rows(report({ commands: { node: true, npx: false } }));
-    expect(all.find(byKey('runtime:npx'))).toMatchObject({ status: 'warn', action: 'install npx on w1', run: 'sudo apt install nodejs npm', detail: 'linear, empty, github need it' });
+    expect(all.find(byKey('runtime:npx'))).toMatchObject({
+      status: 'warn', action: 'install npx on w1', run: 'sudo apt install nodejs npm', detail: 'linear, empty, github need it; tick if w1 does not',
+      tick: { item: 'runtime:npx', fields: ['skip'], on: false, preview: [] },
+    });
     expect(all.find(byKey('runtime:node'))).toBeUndefined();
     expect(all.find(byKey('maconly:claude:chrome'))).toMatchObject({ status: 'skip', detail: 'chrome only runs on a Mac; not mirrored' });
     expect(all.find(byKey('oauth:claude:mcp:notion'))).toMatchObject({ status: 'warn', action: 'log in once on w1', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'then /mcp and sign in to notion' });
@@ -93,13 +96,25 @@ describe('the setup rows of the mirror', () => {
     expect(all.filter(byKey('codex:config'))).toMatchObject([{ status: 'warn', action: "copy config.toml's keys to w1", tick: { item: 'codex:config', on: false } }]);
   });
 
+  it('a server that runs xcrun is Mac-only, with no program row; a program ticked not needed is a skip row that stands aside', () => {
+    editJson(mac.claudeJson, (j) => { j.mcpServers.xcode = { command: 'xcrun', args: ['mcp-server'] }; j.mcpServers.ad = { command: 'adlc', args: ['mcp'] }; });
+    const all = rows(report({ commands: { xcrun: false, adlc: false } }));
+    expect(all.find(byKey('maconly:claude:xcode'))).toMatchObject({ status: 'skip', gap: { name: 'xcode', what: 'runs only on a Mac' } });
+    expect(all.find(byKey('runtime:xcrun'))).toBeUndefined();
+    expect(all.find(byKey('runtime:adlc'))).toMatchObject({ status: 'warn', action: 'install adlc on w1', tick: { item: 'runtime:adlc', fields: ['skip'], on: false } });
+    expect(rows(report({ commands: { adlc: false } }), new Set([fieldKey('runtime:adlc', 'skip')])).find(byKey('runtime:adlc'))).toEqual({
+      key: 'runtime:adlc', status: 'skip', detail: 'not needed on w1, you ticked; untick to list it again',
+      tick: { item: 'runtime:adlc', fields: ['skip'], on: true, preview: [] }, gap: { name: 'adlc', what: 'not needed there, you ticked' },
+    });
+  });
+
   it('a command under the Mac\'s home is "install <name> on w1" naming its path; an OpenCode login is skipped with its command; the rows come in their order', () => {
     const db = path.join(mac.homedir, '.local/bin/db-mcp');
     put(path.join(mac.opencodeDir, 'opencode.json'), JSON.stringify({ mcp: { servers: { sentry: { type: 'remote', url: 'https://mcp.sentry.dev/mcp' } } } }));
     const all = rows(report({ commands: { [db]: false, bun: false }, vars: { REMOTE_TOKEN: true } }));
     expect(all.find(byKey(`runtime:${db}`))).toEqual({
-      key: `runtime:${db}`, status: 'warn', action: 'install db-mcp on w1', detail: `db runs ${db}, which w1 does not have; a path under this Mac's home is looked for under w1's`,
-      gap: { name: 'db-mcp', what: 'not installed; db needs it' },
+      key: `runtime:${db}`, status: 'warn', action: 'install db-mcp on w1', detail: `db runs ${db}, which w1 does not have; a path under this Mac's home is looked for under w1's. Tick if w1 does not need it`,
+      tick: { item: `runtime:${db}`, fields: ['skip'], on: false, preview: [] }, gap: { name: 'db-mcp', what: 'not installed; db needs it' },
     });
     expect(all.find(byKey('oauth:opencode:mcp:sentry')))
       .toEqual({
@@ -272,8 +287,8 @@ describe('the worker\'s report over the link', () => {
     const again = await setup();
     expect(again.filter((r) => r.key.startsWith('runtime:'))).toEqual([
       {
-        key: 'runtime:bun', status: 'warn', action: 'install bun on w1', run: 'curl -fsSL https://bun.sh/install | bash', detail: 'ctx needs it',
-        gap: { name: 'bun', what: 'not installed; ctx needs it' },
+        key: 'runtime:bun', status: 'warn', action: 'install bun on w1', run: 'curl -fsSL https://bun.sh/install | bash', detail: 'ctx needs it; tick if w1 does not',
+        tick: { item: 'runtime:bun', fields: ['skip'], on: false, preview: [] }, gap: { name: 'bun', what: 'not installed; ctx needs it' },
       },
     ]);
     expect(again.find(byKey('var:E'))).toMatchObject({ status: 'ok' });
@@ -366,7 +381,7 @@ describe('the worker\'s report over the link', () => {
   it('with every item ticked no secret value is in the ask, the answer or the rows; once pushed, each item reads as the worker holds it', async () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } }; });
     put(path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/settings.json'), JSON.stringify({ env: { ACME_KEY: 'acme_1234567890abcd' } }));
-    const ticks = setupRows(mirrorPlan(mac), undefined, O).flatMap((r) => (r.tick ? [r.tick] : []));
+    const ticks = setupRows(mirrorPlan(mac), undefined, O).flatMap((r) => (r.tick && !r.key.startsWith('runtime:') ? [r.tick] : []));
     expect(ticks.map((t) => t.item).sort()).toEqual([
       'claude:mcp:linear', 'claude:mcp:odd', 'claude:plugin:acme', 'claude:plugin:acme:mcp:pdf', 'claude:settings', 'codex:config', 'codex:mcp:github', 'opencode:config',
     ]);
@@ -374,7 +389,7 @@ describe('the worker\'s report over the link', () => {
     expect(await rowOf('claude:mcp:odd')).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
     expect(await rowOf('claude:plugin:acme')).toMatchObject({ status: 'warn', detail: 'sent; not on w1 yet' });
     await push();
-    const rows = (await setup()).filter((r) => r.tick);
+    const rows = (await setup()).filter((r) => r.tick && !r.key.startsWith('runtime:'));
     const whole = ['claude:mcp:odd', 'claude:plugin:acme'];
     expect(rows.map((r) => [r.key, r.status, r.detail.split(':')[0]])).toEqual(ticks.map((t) => [t.item, 'ok', whole.includes(t.item) ? 'copied to w1 as it is' : 'keys copied to w1']));
     const plan = mirrorPlan(mac, readConsent(w.home.paths.mirrorConsent, W));
