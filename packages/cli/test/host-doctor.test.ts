@@ -86,7 +86,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
     expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({
-      name: 'worker', status: 'fail', detail: 'this fleet does not run there as a worker: svall host upgrade trift makes it one',
+      name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up",
     });
     ssh.clearReplies();
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -94,14 +94,14 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     const named = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' } }));
-    expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' });
+    expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
   });
 
   it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {
     for (const [far, detail] of [
       [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first; on bea-mbp, run svall host remove trift'],
-      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, 'this fleet does not run there as a worker: svall host upgrade trift makes it one'],
+      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, "does not run this fleet's robots yet: svall host upgrade trift sets it up"],
     ] as const) {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
@@ -131,17 +131,20 @@ describe('host doctor', () => {
     expect(ssh.remoteCalls().filter((w) => w.includes('claude')).map((w) => w.slice(-1))).toEqual([['--version']]);
   });
 
-  it('says whether the machine\'s release and this controller\'s are signed, taking a release that does not say as unsigned', async () => {
-    const release = async (version: Record<string, unknown>, signed: boolean) => {
+  it('the release row says the release there as on this Mac, older than it, newer than it, or one that cannot talk to it', async () => {
+    const release = async (version: Record<string, unknown>) => {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...version }) });
       ssh.reply(['svall-space'], { stdout: DF });
-      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: work, signed } }));
-      return report.checks.find((c) => c.name === 'release')?.detail;
+      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: work, signed: true } }));
+      const { name: _, ...row } = report.checks.find((c) => c.name === 'release')!;
+      return row;
     };
-    expect(await release({ signed: true }, true)).toBe(`1.2.3 (signed), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (signed), protocol ${PROTOCOL_VERSION}`);
-    expect(await release({}, false)).toBe(`1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}; this controller runs 1.2.3 (unsigned), protocol ${PROTOCOL_VERSION}`);
+    expect(await release({})).toEqual({ status: 'ok', detail: '1.2.3, as on this Mac' });
+    expect(await release({ release: '1.2.2' })).toEqual({ status: 'fail', detail: '1.2.2 there; this Mac runs 1.2.3' });
+    expect(await release({ release: '1.2.4' })).toEqual({ status: 'fail', detail: "1.2.4 there, newer than this Mac's 1.2.3", action: 'update svall on this Mac' });
+    expect(await release({ protocol: PROTOCOL_VERSION - 1 })).toEqual({ status: 'fail', detail: "1.2.3 there, a build that cannot talk to this Mac's" });
   });
 
   it('host doctor lists the rows as checks with action, tick and forward; the verdict counts each warn row with an action', async () => {
@@ -151,8 +154,8 @@ describe('host doctor', () => {
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     const login: SetupRow = {
-      key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift with codex mcp login figma; Svall cannot see whether you did',
-      gap: { name: 'figma', what: 'log in once; Svall cannot check' },
+      key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift; the row stays either way: codex mcp login figma',
+      gap: { name: 'figma', what: 'log in once there; the row stays' },
     };
     const asked: [MachineId, number][] = [];
     const report = await doctorHost('trift', deps({
@@ -171,7 +174,7 @@ describe('host doctor', () => {
       'trift is ready. 3 parts of your agent setup will not work there yet:',
       '  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent trift claude:mcp:linear on',
       '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift codex:mcp:github on',
-      '  figma   log in once; Svall cannot check       → ssh -L 1455:localhost:1455 trift.test, then codex mcp login figma',
+      '  figma   log in once there; the row stays      → ssh -L 1455:localhost:1455 trift.test, then codex mcp login figma',
     ].join('\n'));
   });
 

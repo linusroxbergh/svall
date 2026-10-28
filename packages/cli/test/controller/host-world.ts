@@ -101,7 +101,7 @@ export const unticked = (item: string): SetupRow => {
   const field = `env.${name.toUpperCase()}_API_KEY`;
   return {
     key: item, status: 'warn', action: `copy ${name}'s keys to trift`,
-    detail: `mirrored without ${field} ${name.slice(0, 3)}…90; or set them in ~/.svall/mirror-overrides on trift`,
+    detail: `copied without its keys (${field} ${name.slice(0, 3)}…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides`,
     tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] }, gap: { name, what: `keys not copied (${field})` },
   };
 };
@@ -110,7 +110,7 @@ export const ticked = (item: string): SetupRow => {
   return { key: item, status: 'ok', detail: `keys copied to trift`, tick: { ...row.tick!, on: true } };
 };
 export const varRow = (v: string): SetupRow => ({
-  key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which trift's daemon does not have`,
+  key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which is not set on trift`,
   gap: { name: v, what: 'not set; gamma reads it' },
 });
 export const THERE = { ssh: 'trift.test', svall: 'svall' };

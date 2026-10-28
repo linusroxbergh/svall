@@ -230,7 +230,7 @@ describe('the last line a run prints', () => {
     const { stepLine } = await import('../src/commands/host.js');
     const { checkLines } = await import('../src/commands/doctor.js');
     const row = unticked('claude:mcp:linear');
-    expect(stepLine(rowStep(row))).toMatch(/^! mirror:claude:mcp:linear  \[ \] mirrored without .* -> copy linear's keys to trift$/);
+    expect(stepLine(rowStep(row))).toMatch(/^! mirror:claude:mcp:linear  \[ \] copied without its keys .* -> copy linear's keys to trift$/);
     expect(stepLine(rowStep({ ...row, status: 'ok', detail: 'keys copied to trift', action: undefined, tick: { ...row.tick!, on: true } })))
       .toBe('✓ mirror:claude:mcp:linear  [x] keys copied to trift');
     expect(stepLine(rowStep(varRow('X')))).toMatch(/^! mirror:var:X  gamma reads X/);

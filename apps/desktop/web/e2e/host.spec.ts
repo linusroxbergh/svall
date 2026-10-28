@@ -217,7 +217,7 @@ const STUDIO = { name: 'studio', id: MACHINE, ssh: 'linus@studio', platform: 'li
 const tick = (item: string, field: string, on: boolean) => ({ item, fields: [field], on, preview: [`${field} lin…90`] });
 const unticked = (server: string, agent: string, field: string): HostStep => ({
   step: `mirror:${agent}:mcp:${server}`, status: 'warn', action: `copy ${server}'s keys to studio`, tick: tick(`${agent}:mcp:${server}`, field, false),
-  detail: `mirrored without ${field} lin…90; or set them in ~/.svall/mirror-overrides on studio`, gap: { name: server, what: `keys not copied (${field})` },
+  detail: `copied without its keys (${field} lin…90); tick to copy them, or set them on studio in ~/.svall/mirror-overrides`, gap: { name: server, what: `keys not copied (${field})` },
 });
 // what a check of studio says before its report: every step there passed
 const PASSED: HostStep[] = [
@@ -304,7 +304,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   await expect(details).toHaveJSProperty('open', false);
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
-  await expect(details).toHaveText('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on studio');
+  await expect(details).toHaveText('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on studio in ~/.svall/mirror-overrides');
   await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Done');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
