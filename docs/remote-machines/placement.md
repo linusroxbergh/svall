@@ -224,7 +224,9 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - **After it is**, a crash on either machine resumes the move from its journal; the robot never reopens on the machine
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.
-- **A worker this Mac cannot reach**: its robots show the status unknown, and their terminals "linus-vault is not
+- **A worker this Mac cannot reach**: its robots show the status unreachable, their cards "linus-vault is not reachable"
+  (or "runs a different build; upgrade it under Machines") under the machine line with **Check linus-vault**, which opens
+  the Machines panel on a check of it, and their terminals "linus-vault is not
   reachable" with the screen the worker last sent after the robot's turn under it; a worker on another build shows
   that screen under its own sentence. The phone reaches a robot on a worker through this Mac, its terminal and
   questions included; while this Mac has lost the worker, the phone shows that screen under the same sentence:
