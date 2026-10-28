@@ -200,7 +200,7 @@ export async function runUninstall(o: {
   }
   // the keys a home's mirror copied into the agent files its daemons wrote, now that nothing runs to write them back; the
   // mirror is loaded here, as it leads through docs-sync to the fleet, which loads this one
-  const { takeBackCopies } = await import('./placement/mirror.js');
+  const { takeBackCopies } = await import('./placement/mirror-apply.js');
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
   for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));

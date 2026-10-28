@@ -9,14 +9,10 @@ import { hooklessGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
 import { moveChecks, probeRepo, type CheckDeps, type RepoProbe } from '../../src/placement/checks.js';
 import { git, hasGit } from '../git-fixture.js';
-import { cleanHomes, makeHome } from '../helpers.js';
-import { H, W, island, robot, world } from './world.js';
+import { makeHome } from '../helpers.js';
+import { H, W, island, robot, stopWorlds, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
-afterEach(async () => {
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
-});
+afterEach(stopWorlds);
 
 const VAULT = 'linus-vault';
 const CLAUDE = '2.1.300';
@@ -598,7 +594,6 @@ describe.skipIf(!hasGit)('repo.probe', () => {
 
   it('the worker answers repo.probe over the link, and refuses params it cannot read', async () => {
     const w = world({});
-    worlds.push(w);
     await w.link();
     expect(await w.home.links.call(W, 'repo.probe', { path: '/nonexistent/svall' })).toEqual({ state: 'none', refs: [] });
     await expect(w.home.links.call(W, 'repo.probe', { path: 'svall' })).rejects.toSatisfy((e) => e instanceof ApiError && e.code === 'invalid_params');

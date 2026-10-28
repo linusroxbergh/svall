@@ -8,9 +8,9 @@ import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import {
-  DOC_NAMES, docWithOverride, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
-} from './mirror.js';
+import { docWithOverride } from './mirror-apply.js';
+import type { MirroredServer, MirrorPlan } from './mirror-plan.js';
+import { DOC_NAMES, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirrorHomes } from './mirror-state.js';
 
 // how a Linux worker gets the runtime a server's command names
 const INSTALL_RUN: Record<string, string> = {
@@ -20,8 +20,8 @@ const INSTALL_RUN: Record<string, string> = {
 
 const Place = z.array(z.union([z.string(), z.number()]));
 // where an item lies on the worker: in config file `doc`, or in the file the mirror writes whole landing at `file`, at
-// `place` as the Mac holds it; lazy, as mirror.ts, which names the docs, imports this module
-const Where = { doc: z.lazy(() => z.enum(DOC_NAMES)).optional(), file: z.string().optional(), place: Place };
+// `place` as the Mac holds it
+const Where = { doc: z.enum(DOC_NAMES).optional(), file: z.string().optional(), place: Place };
 /** An item with keys: `bare` what the mirror carries at its place with every key emptied, and each secret field's leaf under it. */
 const Keyed = z.object({ item: z.string(), ...Where, bare: z.record(z.string(), z.unknown()), fields: z.array(z.object({ field: z.string(), leaf: Place })) });
 /** An item the mirror carries whole once ticked, and the fields it holds at its place. */

@@ -16,14 +16,10 @@ import { Router } from '../../src/placement/router.js';
 import { mergeSources } from '../../src/resources/merge.js';
 import { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
-import { cleanHomes, makeHome } from '../helpers.js';
-import { H, W, placed, until, world } from './world.js';
+import { makeHome } from '../helpers.js';
+import { H, W, placed, stopWorlds, until, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
-afterEach(async () => {
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
-});
+afterEach(stopWorlds);
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' });
 
@@ -56,7 +52,6 @@ async function linked() {
       return { stream: s, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } };
     },
   });
-  worlds.push(w);
   await w.link();
   await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
   return { w, dir, main, tree, sockets };

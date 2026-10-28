@@ -40,7 +40,7 @@ const PATCH = ['--binary', '--no-color', '--no-ext-diff', '--no-textconv', '--sr
 // diff.orderFile may write otherwise
 const RAW = ['--raw', '-z', '--no-renames', '--no-abbrev', '--ignore-submodules=dirty', '-O/dev/null'];
 
-const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
+export const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
 
 const contentSha = async (file: string, st: fs.Stats): Promise<string> =>
   (st.isSymbolicLink() ? sha256Hex(fs.readlinkSync(file, { encoding: 'buffer' })) : fileSha(file));

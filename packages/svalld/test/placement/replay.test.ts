@@ -13,14 +13,11 @@ import { docsDir } from '../../src/docs.js';
 import { blockedCells } from '../../src/layout.js';
 import type { Transport } from '../../src/link/home.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
-import { cleanHomes } from '../helpers.js';
-import { W, island, placed, robot, until, world } from './world.js';
+import { W, island, placed, robot, stopWorlds, until, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
+  await stopWorlds();
 });
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
@@ -66,7 +63,6 @@ function setup(o: { home?: Partial<FleetState>; lose?: () => number } = {}) {
     ...(o.lose && { connect: losing(() => sock, o.lose) }),
   });
   sock = w.worker.paths.linkSock;
-  worlds.push(w);
   const clone = path.join(w.worker.paths.home, 'clone');
   fs.mkdirSync(clone);
   git(clone, 'init', '-q', '-b', 'main');

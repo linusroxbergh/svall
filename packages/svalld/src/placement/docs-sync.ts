@@ -15,7 +15,7 @@ import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 import { packTar } from './bundle.js';
-import { unpack } from './move.js';
+import { unpack } from './move-steps.js';
 import { homeRootOf } from './repo-key.js';
 import { withLine } from './replay.js';
 

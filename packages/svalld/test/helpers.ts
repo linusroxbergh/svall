@@ -6,6 +6,7 @@ import { onTestFinished, vi } from 'vitest';
 import type { LoadSnapshot, MobileStatus, SystemInfo, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
+import type { Daemon, startDaemon } from '../src/main.js';
 import type { Mobile } from '../src/mobile.js';
 
 // the root config's test/isolate.ts moves HOME; a run without it would reach the real HOME and the live fleet
@@ -46,6 +47,15 @@ export function diskLog(o: { syncMs?: number } = {}): string[] {
   });
   onTestFinished(() => { opens.mockRestore(); renames.mockRestore(); });
   return events;
+}
+
+// a start still under way when its test ends is stopped once it lands, before its tmux server is killed
+export function daemonStarts(run: typeof startDaemon): { start: typeof startDaemon; stopStarts: () => Promise<void> } {
+  const starts: Promise<Daemon>[] = [];
+  return {
+    start: (o) => { const d = run(o); starts.push(d); return d; },
+    stopStarts: async () => { for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {}); },
+  };
 }
 
 export function hasTmux(): boolean {

@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { agentKeys } from '../../src/placement/mirror-agents.js';
 import {
-  agentKeys, configNeeds, configPlace, configRedacted, configSecrets, FIELD_PATHS, fieldPlace, isMacOnly, isOAuth, keyedLsp, marketplaceList, needsOf, oauthLogin,
+  configNeeds, configPlace, configRedacted, configSecrets, FIELD_PATHS, fieldPlace, isMacOnly, isOAuth, keyedLsp, marketplaceList, needsOf, oauthLogin,
   readMirrorVars, readPluginConfigs, readPlugins, readServers, redacted, relocatedServer, runtimesOf, secretsOf, withoutCredentials, type McpServer,
 } from '../../src/placement/mirror-config.js';
 import { cleanHomes, makeHome } from '../helpers.js';

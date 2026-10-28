@@ -2,11 +2,12 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, columnOf, defaultHome, fleetNameProblem, homeSizeFor, isHomeSlot, isLand, randomPortrait, starredOf, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type FleetState, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
 import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
+import { addColumn, checkCell, deleteColumn, moveRobot, placeOn, placeRobot, releaseRobot, renameColumn, reorderColumn, reorderRobot, starRobot, unstarRobot } from './arrange.js';
 import { robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
 import { codexZshEnv } from './codex/zsh.js';
@@ -29,7 +30,7 @@ import { repairBrief } from './sessions/repair.js';
 import type { SocketEvent } from './hooks/receiver.js';
 import { newId } from './ids.js';
 import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland, type IslandPatch, type NewIsland } from './islands.js';
-import { blockedCells, crewOf, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
+import { blockedCells, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
@@ -76,6 +77,7 @@ type Deps = {
 // a note given at the start is the user's
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string };
 const STALE_SNAPSHOT_MS = 3_600_000;
+const TRANSCRIPT_TAIL = 4 * 1024 * 1024;
 type LiveRobot = Robot & { tmux: NonNullable<Robot['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
 type Revived = Robot & { delivery?: Delivery };
@@ -509,7 +511,7 @@ export class Fleet extends EventEmitter<Events> {
     this.island(p.islandId);
     if (p.agentProfile) this.checkAgentProfile(p.agentProfile);
     if (p.cell) {
-      this.checkCell(this.island(p.islandId), p.cell);
+      checkCell(this.island(p.islandId), p.cell);
       if (occupiedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} is occupied`);
       if (blockedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} touches another robot`);
     } else {
@@ -626,13 +628,6 @@ export class Fleet extends EventEmitter<Events> {
     return withPromptFile(command, this.promptFile(id));
   }
 
-  // the cell before the islandId, or the robot's stale cell would count as occupied on the target island
-  private placeOn(d: FleetState, id: string, islandId: string): void {
-    const cell = placeOnIsland(d, islandId, id, this.deps.log);
-    d.robots[id].islandId = islandId;
-    d.robots[id].cell = cell;
-  }
-
   renameAgentProfile(from: string, to: string): void {
     this.deps.store.update((d) => { for (const c of Object.values(d.robots)) if (c.agentProfile === from) c.agentProfile = to; });
   }
@@ -657,151 +652,49 @@ export class Fleet extends EventEmitter<Events> {
       if (patch.agentProfile) c.agentProfile = patch.agentProfile;
       else if (patch.agentProfile === '') delete c.agentProfile;
       if (context) setContext(c, context, patch.removed);
-      if (patch.islandId && patch.islandId !== c.islandId) this.placeOn(d, id, patch.islandId);
+      if (patch.islandId && patch.islandId !== c.islandId) placeOn(d, id, patch.islandId, this.deps.log);
     });
     return this.robot(id);
   }
 
-  // one store update: a swap must never be observed half done
   moveRobot(id: string, islandId: string, cell?: Cell): Robot {
-    this.robot(id);
-    const island = this.island(islandId);
-    // without a cell the fleet picks one and grows the island to fit, even on the island the robot already stands on
-    if (!cell) {
-      this.deps.store.update((d) => this.placeOn(d, id, islandId));
-      return this.robot(id);
-    }
-    this.checkCell(island, cell);
-    const state = this.deps.store.state;
-    const occupant = Object.values(state.robots).find((o) => o.id !== id && o.islandId === islandId && cellKey(o.cell) === cellKey(cell));
-    if (!occupant && blockedCells(state, islandId, id).has(cellKey(cell))) throw new Invalid(`cell ${cellKey(cell)} touches another robot`);
-    this.deps.store.update((d) => {
-      const c = d.robots[id];
-      const other = occupant ? d.robots[occupant.id] : undefined;
-      if (other) { other.islandId = c.islandId; other.cell = c.cell; }
-      c.islandId = islandId;
-      c.cell = cell;
-      if (d.islands[islandId].collapsed) unfold(d, islandId, this.deps.log);
-    });
-    return this.robot(id);
+    return moveRobot(this.deps, id, islandId, cell);
   }
 
-  private checkCell(island: Island, cell: Cell): void {
-    if (island.kind === 'home' && !isHomeSlot(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not a home slot`);
-    if (!isLand(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not land`);
-  }
-
-  // a sidebar drop, in one update: the crew's occupied cells stay put and its robots rotate through them
   reorderRobot(id: string, targetId: string, after: boolean): Robot {
-    const moving = this.robot(id);
-    const target = this.robot(targetId);
-    if (id === targetId) return moving;
-    this.deps.store.update((d) => {
-      if (moving.islandId !== target.islandId) this.placeOn(d, id, target.islandId);
-      const crew = crewOf(d, target.islandId).map((robotId) => d.robots[robotId]);
-      const cells = crew.map((c) => c.cell);
-      const order = crew.map((c) => c.id).filter((c) => c !== id);
-      order.splice(order.indexOf(targetId) + Number(after), 0, id);
-      order.forEach((robotId, index) => { d.robots[robotId].cell = cells[index]; });
-    });
-    return this.robot(id);
+    return reorderRobot(this.deps, id, targetId, after);
   }
 
-  // without a target the star goes first; every starred robot is numbered anew in one update
   starRobot(id: string, targetId?: string, after = false): Robot {
-    this.robot(id);
-    if (targetId !== undefined && this.robot(targetId).star === undefined) throw new Invalid(`${this.robot(targetId).name} is not starred`);
-    if (id === targetId) return this.robot(id);
-    const order = starredOf(this.deps.store.state).map((c) => c.id).filter((x) => x !== id);
-    order.splice(targetId === undefined ? 0 : order.indexOf(targetId) + Number(after), 0, id);
-    this.deps.store.update((d) => { order.forEach((x, n) => { d.robots[x].star = n; }); });
-    return this.robot(id);
+    return starRobot(this.deps, id, targetId, after);
   }
 
   unstarRobot(id: string): Robot {
-    this.robot(id);
-    this.deps.store.update((d) => { delete d.robots[id].star; });
-    return this.robot(id);
+    return unstarRobot(this.deps, id);
   }
 
-  // a hand move holds until releaseRobot; the agent is told nothing of either
   placeRobot(id: string, columnId: string): Robot {
-    this.robot(id);
-    this.column(columnId);
-    this.deps.store.update((d) => {
-      const c = d.robots[id];
-      c.column = columnId;
-      c.columnSource = 'manual';
-    });
-    return this.robot(id);
+    return placeRobot(this.deps, id, columnId);
   }
 
   releaseRobot(id: string): Robot {
-    this.robot(id);
-    this.deps.store.update((d) => { delete d.robots[id].columnSource; });
-    return this.robot(id);
-  }
-
-  private column(id: string): Column {
-    const k = this.deps.store.state.columns.find((x) => x.id === id);
-    if (!k) throw new NotFound(`no column ${id}`);
-    return k;
-  }
-
-  // the scribe matches a column by name in any case, so a twin would leave it unable to tell them apart
-  private columnName(name: string, id?: string): string {
-    const n = name.trim();
-    if (!n) throw new Invalid('a column needs a name');
-    const clash = this.deps.store.state.columns.find((k) => k.id !== id && k.name.toLowerCase() === n.toLowerCase());
-    if (clash) throw new Invalid(`another column is already called ${clash.name}`);
-    return n;
+    return releaseRobot(this.deps, id);
   }
 
   addColumn(name: string, afterId?: string): Column[] {
-    const n = this.columnName(name);
-    if (afterId !== undefined) this.column(afterId);
-    this.deps.store.update((d) => {
-      const at = afterId === undefined ? d.columns.length : d.columns.findIndex((k) => k.id === afterId) + 1;
-      d.columns.splice(at, 0, { id: newId('k'), name: n });
-    });
-    return this.deps.store.state.columns;
+    return addColumn(this.deps, name, afterId);
   }
 
   renameColumn(id: string, name: string): Column[] {
-    this.column(id);
-    const n = this.columnName(name, id);
-    this.deps.store.update((d) => { d.columns.find((k) => k.id === id)!.name = n; });
-    return this.deps.store.state.columns;
+    return renameColumn(this.deps, id, name);
   }
 
-  // a robot with no column of its own sits in the first, so each one is given the column it sits in before another can become first
   reorderColumn(id: string, targetId: string, after: boolean): Column[] {
-    const moving = this.column(id);
-    this.column(targetId);
-    if (id === targetId) return this.deps.store.state.columns;
-    this.deps.store.update((d) => {
-      for (const c of Object.values(d.robots)) c.column = columnOf(d, c).id;
-      const order = d.columns.filter((k) => k.id !== id);
-      order.splice(order.findIndex((k) => k.id === targetId) + Number(after), 0, moving);
-      d.columns = order;
-    });
-    return this.deps.store.state.columns;
+    return reorderColumn(this.deps, id, targetId, after);
   }
 
   deleteColumn(id: string, moveTo: string): Column[] {
-    if (this.deps.store.state.columns.length === 1) throw new Invalid('the board keeps its last column');
-    this.column(id);
-    this.column(moveTo);
-    if (id === moveTo) throw new Invalid("a column's robots have to move to another column");
-    // as in reorderColumn, every other robot is given the column it sits in
-    this.deps.store.update((d) => {
-      for (const c of Object.values(d.robots)) {
-        const k = columnOf(d, c).id;
-        c.column = k === id ? moveTo : k;
-      }
-      d.columns = d.columns.filter((k) => k.id !== id);
-    });
-    return this.deps.store.state.columns;
+    return deleteColumn(this.deps, id, moveTo);
   }
 
   async closeRobot(id: string): Promise<void> {
@@ -977,7 +870,7 @@ export class Fleet extends EventEmitter<Events> {
     if (!slot?.agent || slot.tmux) throw new Invalid(`${which} has no dormant session to start afresh from`);
     if (!slot.resumeError) throw new Invalid(`${which} has no failed resume to start afresh from; revive it`);
     const { kind, sessionId, transcriptPath } = slot.agent;
-    const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, 4 * 1024 * 1024) : '', { sessionId });
+    const prompt = repairBrief(kind, transcriptPath ? readTail(transcriptPath, TRANSCRIPT_TAIL) : '', { sessionId });
     const command = freshCommand(slot.revive?.command ?? '', kind, sessionId);
     return term === 2 ? this.openSecond(id, { command, prompt }) : this.reviveRobot(id, prompt, command);
   }
@@ -1124,13 +1017,13 @@ export class Fleet extends EventEmitter<Events> {
     const agent = term === 2 ? c.second?.agent : c.agent;
     if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
     if (!agent.transcriptPath) return '';
-    return condenseTurns(agent.kind, readTail(agent.transcriptPath, 4 * 1024 * 1024), turns);
+    return condenseTurns(agent.kind, readTail(agent.transcriptPath, TRANSCRIPT_TAIL), turns);
   }
 
   readPrompts(id: string, limit: number): string[] {
     const c = this.robot(id);
     if (!c.agent) return [];
-    const text = c.agent.transcriptPath ? readTail(c.agent.transcriptPath, 4 * 1024 * 1024) : '';
+    const text = c.agent.transcriptPath ? readTail(c.agent.transcriptPath, TRANSCRIPT_TAIL) : '';
     return userPrompts(c.agent.kind, text, limit, c.agent.lastPrompt);
   }
 

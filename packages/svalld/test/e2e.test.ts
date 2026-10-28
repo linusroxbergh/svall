@@ -6,7 +6,7 @@ import { silentLogger } from '../src/log.js';
 import { startDaemon, type Daemon } from '../src/main.js';
 import { resolvePaths } from '../src/paths.js';
 import { Tmux } from '../src/tmux/tmux.js';
-import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
+import { cleanHomes, daemonStarts, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 const fake = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixtures/fake-claude.mjs');
@@ -14,11 +14,9 @@ const fake = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'fixture
 runIf('fleet loop', () => {
   let daemon: Daemon | undefined;
   let home = '';
-  // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
-  const starts: Promise<Daemon>[] = [];
-  const start = (o: Parameters<typeof startDaemon>[0]): Promise<Daemon> => { const d = startDaemon(o); starts.push(d); return d; };
+  const { start, stopStarts } = daemonStarts(startDaemon);
   afterEach(async () => {
-    for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {});
+    await stopStarts();
     const p = resolvePaths(home);
     await new Tmux(p.tmuxSock, p.tmuxConf).killServer();
     cleanHomes();

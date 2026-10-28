@@ -2,15 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentKind, Robot, UsageSnapshot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { mergeUsage } from '../../src/usage/merge.js';
-import { cleanHomes } from '../helpers.js';
-import { placed, robot, until, world } from '../placement/world.js';
+import { placed, robot, stopWorlds, until, world } from '../placement/world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
-afterEach(async () => {
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
-});
-const open = (o: Parameters<typeof world>[0]) => { const w = world(o); worlds.push(w); return w; };
+afterEach(stopWorlds);
 
 // a robot whose agent runs in its pane, its transcript at `file`
 const running = (make: typeof robot, id: string, kind: AgentKind, file: string): Robot =>
@@ -34,7 +28,7 @@ const linked = async (w: ReturnType<typeof world>): Promise<void> => {
 
 describe('usage across machines', () => {
   it('a worker reads codex windows off its own robots\' rollouts and leaves the home\'s robots alone', async () => {
-    const w = open({ worker: { robots: { c_1: running(placed, 'c_1', 'codex', '/w1/c_1.jsonl'), c_h: running(robot, 'c_h', 'codex', '/mac/c_h.jsonl') } }, usage: { tails } });
+    const w = world({ worker: { robots: { c_1: running(placed, 'c_1', 'codex', '/w1/c_1.jsonl'), c_h: running(robot, 'c_h', 'codex', '/mac/c_h.jsonl') } }, usage: { tails } });
     const usage = w.worker.usage;
     expect(await usage()).toMatchObject({ available: true, windows: [{ key: 'codex:primary', pct: 40, at: Date.parse('2026-10-25T12:00:00.000Z') }] });
   });
@@ -53,7 +47,7 @@ describe('usage across machines', () => {
     expect(mergeUsage({ available: true, windows: [{ key: 'session', label: 'Session', pct: 10 }, { key: 'codex:primary', label: 'Codex', pct: 5 }] }, [{ available: true, windows: [{ key: 'codex:primary', label: 'Codex', pct: 40 }, { key: 'codex:secondary', label: 'Codex 7 days', pct: 3 }] }]).windows.map((w) => [w.key, w.pct]))
       .toEqual([['session', 10], ['codex:primary', 5], ['codex:secondary', 3]]);
     const claude = vi.fn(async () => session);
-    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, usage: { claude, tails } });
+    const w = world({ home: { robots: fleet }, worker: { robots: fleet }, usage: { claude, tails } });
     await linked(w);
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx))
       .toMatchObject({ result: { available: true, windows: [{ key: 'session', pct: 10 }, { key: 'codex:primary', pct: 40 }] } });
@@ -73,7 +67,7 @@ describe('usage across machines', () => {
   });
 
   it('a worker that does not answer leaves the home\'s windows standing', async () => {
-    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': () => new Promise(() => {}) }, usage: { claude: async () => session, tails } });
+    const w = world({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': () => new Promise(() => {}) }, usage: { claude: async () => session, tails } });
     await linked(w);
     const asked = Date.now();
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx)).toEqual({ id: 1, result: session });
@@ -82,7 +76,7 @@ describe('usage across machines', () => {
   }, 25_000);
 
   it('a worker whose answer is not a usage reading is left out, and the home\'s windows answer', async () => {
-    const w = open({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': async () => ({ available: true }) }, usage: { claude: async () => session, tails } });
+    const w = world({ home: { robots: fleet }, worker: { robots: fleet }, far: { 'usage.get': async () => ({ available: true }) }, usage: { claude: async () => session, tails } });
     await linked(w);
     expect(await dispatch({ id: 1, method: 'usage.get', params: {} }, w.home.ctx)).toEqual({ id: 1, result: session });
   });

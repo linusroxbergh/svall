@@ -12,7 +12,7 @@ import { mergeHooks } from '@svall/svalld/agent-hooks';
 import { silentLogger } from '@svall/svalld/log';
 import { resolvePaths } from '@svall/svalld/paths';
 import { BUNDLE_ID, isProfileName, LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
-import { cleanHomes, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
+import { cleanHomes, daemonStarts, hasTmux, makeHome, waitFor } from '@svall/svalld/test-helpers';
 import { Tmux } from '@svall/svalld/tmux';
 import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { setupCommand } from '../src/commands/setup.js';
@@ -548,11 +548,9 @@ describe('svall setup --if-needed --login-shell', () => {
 runIf('svall CLI', () => {
   let daemon: Daemon | undefined;
   let home = '';
-  // a start still under way when its test ends is stopped once it lands, before its tmux server is killed
-  const starts: Promise<Daemon>[] = [];
-  const start = (o: Parameters<typeof startDaemon>[0]): Promise<Daemon> => { const d = startDaemon(o); starts.push(d); return d; };
+  const { start, stopStarts } = daemonStarts(startDaemon);
   afterEach(async () => {
-    for (const d of starts.splice(0)) await d.then((x) => x.stop(), () => {});
+    await stopStarts();
     const p = resolvePaths(home);
     await new Tmux(p.tmuxSock, p.tmuxConf).killServer();
     cleanHomes();

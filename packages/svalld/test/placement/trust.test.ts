@@ -7,7 +7,7 @@ import { claudeAdapter } from '../../src/sessions/claude.js';
 import { codexAdapter } from '../../src/sessions/codex.js';
 import { opencodeAdapter } from '../../src/sessions/opencode.js';
 import { silentLogger } from '../../src/log.js';
-import { wake, type MoveJournal } from '../../src/placement/move.js';
+import { wake, type MoveJournal } from '../../src/placement/move-steps.js';
 import { lockAgentFiles } from '../../src/kernel-lock.js';
 import { answerTrustPrompt, seedTrust } from '../../src/placement/trust.js';
 import type { Screen } from '../../src/tmux/tmux.js';
