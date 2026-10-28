@@ -89,6 +89,16 @@ test('deny answers the daemon for that robot', () => {
   expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c2', answer: 'deny', promptId: 'q1' });
 });
 
+test('a question dialog offers select and cancel, since Enter picks the highlighted option', () => {
+  const f = blockedFleet('Claude needs your permission');
+  f.robots.c2.agent!.askedTool = 'AskUserQuestion';
+  store.getState().setFleet(f);
+  render(<RobotView id="c2" onBack={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'select' }));
+  expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c2', answer: 'approve', promptId: 'q1' });
+  expect(screen.getByRole('button', { name: 'cancel' })).toBeTruthy();
+});
+
 test('an answer in flight refuses a second tap', () => {
   store.getState().setFleet(blockedFleet());
   render(<RobotView id="c2" onBack={() => {}} />);
@@ -317,15 +327,21 @@ test('the key row and the terminal\'s size go nowhere while its worker is away, 
   store.getState().setFleet(onVault(false));
   render(<RobotView id="c2" onBack={() => {}} />);
   const esc = screen.getByRole('button', { name: 'esc' }) as HTMLButtonElement;
+  const more = screen.getByRole('button', { name: 'More keys' }) as HTMLButtonElement;
   expect(esc.disabled).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'A+' }));
-  expect(resize).not.toHaveBeenCalled();
+  expect(more.disabled).toBe(true);
   act(() => store.getState().setFleet(onVault(true)));
   expect(esc.disabled).toBe(false);
   fireEvent.click(esc);
   expect(input).toHaveBeenCalledWith('\x1b');
-  fireEvent.click(screen.getByRole('button', { name: 'A−' }));
+  fireEvent.click(more);
+  fireEvent.click(screen.getByRole('button', { name: 'Larger text' }));
   expect(resize).toHaveBeenCalledTimes(1);
+  // a shell's sheet has the terminal keys alone; one sends and the sheet goes
+  expect(screen.queryByText('Claude Code')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: /clear the screen/ }));
+  expect(input).toHaveBeenCalledWith('\x0c');
+  expect(screen.queryByRole('dialog', { name: 'Keys' })).toBeNull();
 });
 
 test('the phone names the upgrade over a placed robot\'s terminal while its worker runs another build', () => {

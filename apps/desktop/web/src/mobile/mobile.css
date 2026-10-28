@@ -37,7 +37,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 
 /* ---- fleet list */
 
-.fleet { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: calc(var(--sp-3xl) + var(--safe-b)); }
+.fleet { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding-bottom: var(--sp-3xl); }
 .fleet section { padding-top: var(--sp-sm); }
 .fleet h2 {
   display: flex; align-items: center; gap: var(--sp-2xs); margin: 0; padding: var(--sp-sm) var(--sp-md) 0 var(--sp-2xl);
@@ -126,15 +126,20 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 }
 
 .keys {
-  display: flex; gap: var(--sp-sm); padding: var(--sp-md) var(--sp-md);
+  display: flex; gap: var(--sp-sm); padding: var(--sp-md) var(--sp-lg);
   border-top: 1px solid var(--line); background: var(--surface-2);
 }
 .keys button {
-  flex: 1; padding: var(--sp-lg) 0; border-radius: var(--r-sm);
-  font: var(--w-medium) var(--text-md)/1 var(--mono);
+  flex: 1; min-width: 0; min-height: 40px; padding: 0; border-radius: var(--r-md);
+  font: var(--w-medium) var(--text-md)/1 var(--mono); color: var(--ink-2);
   background: var(--fill-1); border: 1px solid var(--line);
 }
-.keys button:active { background: var(--fill-2); }
+.keys .glyph { font-size: var(--text-xl); color: var(--ink); }
+/* the arrows and return stand apart from the word keys, and the sheet's button from them all */
+.keys .glyph:first-of-type, .keys .more { margin-left: var(--sp-sm); }
+.keys .more { flex: 0 0 40px; font-size: var(--text-2xl); color: var(--ink-3); }
+.keys button:active { background: var(--fill-3); color: var(--ink); }
+.keys button:disabled { opacity: var(--disabled); }
 
 .composer {
   display: flex; flex-wrap: wrap; gap: var(--sp-md); align-items: flex-end;
@@ -146,8 +151,9 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   color: var(--ink); background: var(--surface-0); border: 1px solid var(--line);
 }
 .composer textarea { flex: 1; min-width: 0; max-height: 144px; padding: var(--sp-lg) var(--sp-xl); resize: none; }
-.composer button { padding: var(--sp-lg) var(--sp-xl); border-radius: var(--r-md); background: var(--fill-1); border: 1px solid var(--line); }
-.composer button:disabled { opacity: var(--disabled); }
+.composer button { padding: var(--sp-lg) var(--sp-xl); border-radius: var(--r-md); border: 1px solid var(--line); background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold); }
+.composer button:disabled { background: var(--fill-1); color: inherit; font-weight: var(--w-regular); opacity: var(--disabled); }
+.composer.mission textarea { max-height: 96px; }
 .composer .sheet-error { flex-basis: 100%; }
 
 /* ---- sheets */
@@ -220,6 +226,20 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .m-rows b { min-width: 0; font-weight: var(--w-regular); text-align: right; overflow-wrap: anywhere; }
 .m-rows .mono { font: var(--text-md)/var(--lh) var(--mono); }
 .m-acts { margin-top: var(--sp-3xl); }
+
+/* a key in the sheet: the cap, then what it does */
+.m-key {
+  display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; column-gap: var(--sp-lg);
+  min-height: 44px; padding: var(--sp-xs) 0; text-align: left; border-bottom: 1px solid var(--line-soft);
+  font-size: var(--text-lg); color: var(--ink-2);
+}
+.m-key:active { background: var(--fill-1); }
+.m-key kbd {
+  justify-self: start; padding: var(--sp-xs) var(--sp-md); border-radius: var(--r-sm);
+  font: var(--w-medium) var(--text-md)/1.3 var(--mono); color: var(--ink); background: var(--fill-1); border: 1px solid var(--line);
+}
+.m-shortcuts { flex-direction: row; flex-wrap: wrap; gap: var(--sp-sm); }
+.m-shortcuts > button { flex: 1 1 auto; text-align: center; }
 
 .ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-lg); padding: var(--sp-lg) var(--sp-xl); background: var(--surface-2); border-top: 1px solid var(--blocked); }
 .ask p { flex: 1; min-width: 0; margin: 0; font-size: var(--text-md); color: var(--ink-2); }

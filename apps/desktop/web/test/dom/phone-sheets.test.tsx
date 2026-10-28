@@ -97,14 +97,14 @@ test('a refusal to notify is told in the sheet', async () => {
 });
 
 test('an island with crew on it is not deleted until they move', async () => {
-  await act(async () => { render(<IslandSheet islandId="i_b" onClose={() => {}} onNewRobot={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="i_b" onClose={() => {}} onNewRobot={() => {}} onOpen={() => {}} />); });
   expect(screen.getByText('Move its crew away before deleting it.')).toBeTruthy();
   expect((screen.getByRole('button', { name: 'Delete island' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 test('an empty island is deleted on a second tap', async () => {
   const onClose = vi.fn();
-  await act(async () => { render(<IslandSheet islandId="i_e" onClose={onClose} onNewRobot={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="i_e" onClose={onClose} onNewRobot={() => {}} onOpen={() => {}} />); });
   fireEvent.click(screen.getByRole('button', { name: 'Delete island' }));
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Delete empty and its docs?' })); });
   expect(calls.filter(([m]) => m === 'island.delete')).toEqual([['island.delete', { id: 'i_e' }]]);
@@ -112,7 +112,7 @@ test('an empty island is deleted on a second tap', async () => {
 });
 
 test('mission control is never offered for deleting', async () => {
-  await act(async () => { render(<IslandSheet islandId="home" onClose={() => {}} onNewRobot={() => {}} />); });
+  await act(async () => { render(<IslandSheet islandId="home" onClose={() => {}} onNewRobot={() => {}} onOpen={() => {}} />); });
   expect(screen.queryByRole('button', { name: 'Delete island' })).toBeNull();
 });
 

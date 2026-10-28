@@ -3,6 +3,7 @@ import { commitFocused } from '../Field.js';
 import { useApp } from '../hooks.js';
 import { RobotView } from './RobotView.js';
 import { Fleet } from './Fleet.js';
+import { MissionBar } from './MissionBar.js';
 import { parseRoute, routePath, type Route } from './route.js';
 
 export function App(): JSX.Element {
@@ -33,5 +34,6 @@ export function App(): JSX.Element {
   };
 
   if (openId && !gone) return <RobotView id={openId} onBack={back} />;
-  return <Fleet onOpen={(id) => go({ view: 'robot', id })} />;
+  const open = (id: string) => go({ view: 'robot', id });
+  return <><Fleet onOpen={open} /><MissionBar onOpen={open} /></>;
 }

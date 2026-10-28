@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { Agent, AgentStatus, Delivery } from '@svall/protocol';
 import { agentInFront, readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
@@ -225,6 +226,9 @@ export class Prompts {
     this.deps.store.update((d) => {
       const a = d.robots[id]?.agent;
       if (a?.status !== 'blocked' || a.promptId !== asked || a.kind === 'opencode') return;
+      // Claude Code's question dialog takes an Enter per question and one to submit, with no hook between: each Enter
+      // moves it to a question of its own id, and the tool's run ends it
+      if (answer === 'approve' && a.kind === 'claude' && a.askedTool === 'AskUserQuestion') { a.promptId = crypto.randomUUID(); return; }
       a.status = answer === 'approve' || a.background ? 'working' : 'idle';
       delete a.prompt;
       delete a.promptId;
