@@ -3,6 +3,7 @@ import { aside, asideLine, notNeeded, toTick, type MachineId, type SetupRow } fr
 import { app } from './boot.js';
 import { terminalOn } from './MoveSheet.js';
 import { Section } from './Section.js';
+import { VarField } from './VarField.js';
 
 /**
  * What of a placed robot's agent setup will not work on its machine, each with its one way on: copy its keys, a terminal
@@ -24,6 +25,9 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
             <span><b>{r.gap!.name}</b> {r.gap!.what}{(!toTick(r) || notNeeded(r)) && !r.run && r.action && <em>{r.action}</em>}</span>
             {toTick(r) && !notNeeded(r) ? (
               <button className="btn set-open" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy keys</button>
+            ) : r.key.startsWith('var:') && r.action ? (
+              <VarField machine={machine} name={name} varName={r.key.slice('var:'.length)} here={r.here} testid={`side-gap-var-${r.key}`}
+                take={() => () => void read()} failed={(m) => app.store.getState().showToast(m, 'error')} />
             ) : (
               <>
                 {r.run && (

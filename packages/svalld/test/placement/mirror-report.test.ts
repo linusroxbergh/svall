@@ -27,7 +27,7 @@ const executable = (file: string) => { put(file, '#!/bin/sh\n'); fs.chmodSync(fi
 describe('the setup rows of the mirror', () => {
   let mac: ReturnType<typeof macHome>;
   beforeEach(() => { mac = macHome(); });
-  const rows = (r: ConfigReport | undefined, consent = new Set<string>(), o = O) => setupRows(mirrorPlan(mac, consent), r, o);
+  const rows = (r: ConfigReport | undefined, consent = new Set<string>(), o: Parameters<typeof setupRows>[2] = O) => setupRows(mirrorPlan(mac, consent), r, o);
   // the row of `key` with every field of its item ticked, or none, by a report or, `unchecked`, none
   const row = (key: string, o: { ticked: boolean; secrets?: ConfigReport['secrets']; whole?: ConfigReport['whole']; unchecked?: true }) => {
     const fields = rows(undefined).find(byKey(key))!.tick!.fields;
@@ -80,6 +80,10 @@ describe('the setup rows of the mirror', () => {
       .toMatchObject({ status: 'warn', action: 'set REMOTE_TOKEN on w1', run: 'svall worker env REMOTE_TOKEN', detail: "remote reads REMOTE_TOKEN, which is not set on w1" });
     expect(rows(report({ vars: {} }), new Set(), { ...O, fleetFlag: '-p work ' }).find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ run: 'svall -p work worker env REMOTE_TOKEN' });
     expect(rows(report({ vars: { REMOTE_TOKEN: true } })).find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'REMOTE_TOKEN is set on w1' });
+    // a variable this Mac has is marked, for the row to offer a copy from here
+    const here = rows(report({ vars: { REMOTE_TOKEN: false } }), new Set(), { ...O, here: (v) => v === 'REMOTE_TOKEN' });
+    expect(here.find(byKey('var:REMOTE_TOKEN'))?.here).toBe(true);
+    expect(here.find(byKey('var:E'))?.here).toBeUndefined();
   });
 
   it('a missing npx is "install npx on w1"; a Mac-only server is skipped and listed; a known-host remote is a login row running claude on its fixed sign-in port; config.toml is one row for its key fields', () => {

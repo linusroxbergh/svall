@@ -210,7 +210,7 @@ async function start(opts: Options): Promise<Daemon> {
   // the home's agent configuration, which each worker takes
   const homeMirror = worker ? undefined : new Mirror({
     claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
-    consent: paths.mirrorConsent, log,
+    consent: paths.mirrorConsent, log, envFile: paths.env,
     // a worker runs the release, whose fleet homes are ~/.svall and ~/.svall-<name>
     overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
   });

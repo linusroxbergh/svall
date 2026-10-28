@@ -40,6 +40,7 @@ const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   ...(event.forward ? { forward: event.forward } : {}),
   ...(event.tick ? { tick: event.tick } : {}),
   ...(event.gap ? { gap: event.gap } : {}),
+  ...(event.here ? { here: event.here } : {}),
 });
 
 /** The phases the setup page shows, in its order, and the steps `svall host …` and a machine's own doctor emit inside each. */

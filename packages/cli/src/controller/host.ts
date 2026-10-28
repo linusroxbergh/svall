@@ -30,8 +30,11 @@ const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
-// port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet
-export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'] };
+// port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet;
+// here: that this Mac has the variable a row is about
+export type StepEvent = {
+  step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'];
+};
 // actions: the things to fix there; stopped: the step a run failed at, past which nothing ran; setup: the mirror rows of
 // what will not work there yet, which never stop a robot moving there
 export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string; setup?: StepEvent[] };
@@ -68,7 +71,7 @@ class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'] };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 
 /** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
 class Runner {
@@ -98,7 +101,7 @@ class Runner {
     const event: StepEvent = {
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
-      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}),
+      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}), ...(r.here ? { here: r.here } : {}),
     };
     if (step.startsWith('mirror:')) {
       if (r.gap) this.setup.push(event);

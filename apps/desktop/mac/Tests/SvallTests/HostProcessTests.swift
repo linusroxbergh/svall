@@ -183,6 +183,16 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(event?["gap"] as? NSDictionary, ["name": "linear", "what": "keys not copied (env.LINEAR_API_KEY)"])
     }
 
+    func testAVariableRowCarriesThatThisMacHasItToThePage() throws {
+        let row = #"{"step":"mirror:var:X","status":"warn","detail":"ad reads X, which is not set on studio","action":"set X on studio","run":"svall worker env X","gap":{"name":"X","what":"not set; ad reads it"},"here":true}"#
+        let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
+        XCTAssertEqual(step.here, true)
+        let event = FromShell.hostStep(op: "doctor", step: step).json["event"] as? [String: Any]
+        XCTAssertEqual(event?["here"] as? Bool, true)
+        let plain = try JSONDecoder().decode(HostProcess.Step.self, from: Data(#"{"step":"ssh","status":"ok"}"#.utf8))
+        XCTAssertNil((FromShell.hostStep(op: "doctor", step: plain).json["event"] as? [String: Any])?["here"])
+    }
+
     func testStderrIsKeptInWholeLinesAcrossChunksAndUpToTheLastByte() throws {
         let tail = [
             "printf 'Warning: Permanently added studio to the list of known hosts.\\n' >&2",

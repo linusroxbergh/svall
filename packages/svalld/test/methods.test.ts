@@ -222,7 +222,7 @@ describe('machines.setup and machines.consent', () => {
   let w: ReturnType<typeof world>;
   afterEach(() => w.stop());
   const byKey = (key: string) => (r: SetupRow) => r.key === key;
-  const call = async (ctx: Ctx, method: 'machines.setup' | 'machines.consent', params: object): Promise<{ rows: SetupRow[] }> => {
+  const call = async (ctx: Ctx, method: 'machines.setup' | 'machines.consent' | 'machines.setVar', params: object): Promise<{ rows: SetupRow[] }> => {
     const res = await dispatch({ id: 1, method, params }, ctx);
     if ('error' in res) throw new Error(`${res.error.code}: ${res.error.message}`);
     return res.result as { rows: SetupRow[] };
@@ -314,6 +314,38 @@ describe('machines.setup and machines.consent', () => {
     const other = MachineId.parse(crypto.randomUUID());
     expect(await dispatch({ id: 3, method: 'machines.updateAgents', params: { machine: other, kinds: ['claude'] } }, w.home.ctx))
       .toEqual({ id: 3, error: { code: 'not_found', message: `no machine ${other}` } });
+  });
+
+  it('machines.setVar writes the value into the worker\'s .env and answers the rows with the variable set; from this Mac, the value this Mac has; a bad value is refused without naming it', async () => {
+    await linked();
+    const r = await call(w.home.ctx, 'machines.setVar', { machine: W, name: 'REMOTE_TOKEN', value: 'rt_1234567890abcdef' });
+    expect(fs.readFileSync(w.worker.paths.env, 'utf8')).toBe('REMOTE_TOKEN=rt_1234567890abcdef\n');
+    expect(fs.statSync(w.worker.paths.env).mode & 0o777).toBe(0o600);
+    expect(r.rows.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ status: 'ok', detail: 'REMOTE_TOKEN is set on w1' });
+
+    fs.writeFileSync(w.home.paths.env, 'E=from_mac_1234\n');
+    const copied = await call(w.home.ctx, 'machines.setVar', { machine: W, name: 'E', fromMac: true });
+    expect(fs.readFileSync(w.worker.paths.env, 'utf8')).toBe('REMOTE_TOKEN=rt_1234567890abcdef\nE=from_mac_1234\n');
+    expect(copied.rows.find(byKey('var:E'))).toMatchObject({ status: 'ok' });
+    // the rows say which variables this Mac has, for the row's Copy from this Mac
+    expect(copied.rows.find(byKey('var:REMOTE_TOKEN'))?.here).toBeUndefined();
+
+    expect(await dispatch({ id: 1, method: 'machines.setVar', params: { machine: W, name: 'NOPE', fromMac: true } }, w.home.ctx))
+      .toMatchObject({ id: 1, error: { code: 'invalid_params', message: 'this Mac has no NOPE' } });
+    const bad = await dispatch({ id: 2, method: 'machines.setVar', params: { machine: W, name: 'REMOTE_TOKEN', value: ' SECRETVAL' } }, w.home.ctx);
+    expect(bad).toMatchObject({ id: 2, error: { code: 'invalid_params', message: expect.stringContaining('cannot be stored') } });
+    expect(JSON.stringify(bad)).not.toContain('SECRETVAL');
+    expect(fs.readFileSync(w.worker.paths.env, 'utf8')).not.toContain('SECRETVAL');
+  });
+
+  it('machines.setVar names the upgrade when the worker runs a release without env.set, and the machine when it is not in the fleet', async () => {
+    await linked();
+    delete w.worker.handlers['env.set'];
+    expect(await dispatch({ id: 1, method: 'machines.setVar', params: { machine: W, name: 'X', value: 'v' } }, w.home.ctx))
+      .toMatchObject({ id: 1, error: { code: 'not_mirrored', message: 'w1 runs a release that cannot take a variable from here; upgrade it under Machines' } });
+    const other = MachineId.parse(crypto.randomUUID());
+    expect(await dispatch({ id: 2, method: 'machines.setVar', params: { machine: other, name: 'X', value: 'v' } }, w.home.ctx))
+      .toEqual({ id: 2, error: { code: 'not_found', message: `no machine ${other}` } });
   });
 
   it('machines.setup with the link down answers the plan rows, the probe-dependent ones saying not checked, within waitMs', async () => {

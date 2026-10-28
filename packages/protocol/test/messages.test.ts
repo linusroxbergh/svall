@@ -7,6 +7,7 @@ import {
 describe('serverWait', () => {
   it('extends the deadline for the calls the daemon holds open', () => {
     expect(serverWait('state.get', {})).toBe(0);
+    expect(serverWait('machines.setVar', { machine: 'm', name: 'X', value: 'v' })).toBe(15 * 60_000);
     expect(serverWait('robot.wait', { id: 'c', until: ['idle'] })).toBe(600_000);
     expect(serverWait('robot.wait', { id: 'c', until: ['idle'], timeoutMs: 5_000 })).toBe(5_000);
     expect(serverWait('robot.create', { islandId: 'home', cwd: '/tmp' })).toBe(0);

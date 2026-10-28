@@ -120,6 +120,8 @@ final class HostProcess {
         var forward: Int? = nil
         var tick: Tick? = nil
         var gap: Gap? = nil
+        // that this Mac has the variable the row is about, to copy from
+        var here: Bool? = nil
     }
 
     private let child: LineChild

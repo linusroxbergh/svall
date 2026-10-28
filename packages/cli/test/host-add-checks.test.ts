@@ -426,14 +426,15 @@ describe('host add', () => {
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     const asked: [MachineId, number][] = [];
-    const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), varRow('GAMMA_TOKEN')];
+    const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), { ...varRow('GAMMA_TOKEN'), here: true as const }];
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: (m, wait) => { asked.push([m, wait]); return Promise.resolve(rows); } }));
     await d.close();
     // a machine just linked has 30 s to come up
     expect(asked).toEqual([[REMOTE, 30_000]]);
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-4)).toEqual(['registry', 'mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN']);
     expect(step('mirror:claude:mcp:linear').at(-1)).toMatchObject({ status: 'warn', action: "copy linear's keys to trift", tick: { item: 'claude:mcp:linear', on: false } });
-    expect(step('mirror:var:GAMMA_TOKEN').at(-1)).toMatchObject({ status: 'warn', action: 'set GAMMA_TOKEN on trift', run: 'svall worker env GAMMA_TOKEN' });
+    // a variable this Mac has says so on its step, for the row's Copy from this Mac
+    expect(step('mirror:var:GAMMA_TOKEN').at(-1)).toMatchObject({ status: 'warn', action: 'set GAMMA_TOKEN on trift', run: 'svall worker env GAMMA_TOKEN', here: true });
     expect(out).toEqual({ result: 'ready', actions: [], setup: ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN'].map((k) => step(k).at(-1)) });
   });
 

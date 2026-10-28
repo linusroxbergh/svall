@@ -88,3 +88,26 @@ test('a program row offers Not needed, which ticks it; ticked, it joins the one 
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'runtime:adlc', fields: ['skip'], on: true });
   expect(shown()).toEqual(['chrome runs only on a Mac, and adlc is not needed there']);
 });
+
+test('a variable row on the card takes its value in a field and sends it, or copies this Mac\'s, and the rows come back as the machine has them', async () => {
+  const x: SetupRow = { key: 'var:X', status: 'warn', detail: 'd', action: 'set X on vault', run: 'svall worker env X', gap: { name: 'X', what: 'not set; ad reads it' }, here: true };
+  rows = [x, chrome];
+  // the set answers the whole machine's rows; the card reads this robot's own again
+  call.mockImplementation((method: string) => Promise.resolve(method === 'machines.setVar' ? { rows: [{ key: 'var:X', status: 'ok', detail: 'X is set on vault' }, linear, chrome] } : { rows }));
+  await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  unfold();
+  expect(screen.queryByTestId('side-gap-terminal-var:X')).toBeNull();
+  fireEvent.change(screen.getByTestId('side-gap-var-var:X-value'), { target: { value: 'v1' } });
+  rows = [chrome];
+  await act(async () => { fireEvent.click(screen.getByTestId('side-gap-var-var:X-set')); });
+  expect(call).toHaveBeenCalledWith('machines.setVar', { machine: VAULT, name: 'X', value: 'v1' });
+  expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(2);
+  expect(shown()).toEqual(['chrome runs only on a Mac']);
+
+  rows = [x];
+  call.mockImplementation((method: string) => (method === 'machines.setVar' ? Promise.reject(new Error('this Mac has no X')) : Promise.resolve({ rows })));
+  await act(async () => { render(<OnMachine id="c2" machine={VAULT} name="vault" />); });
+  await act(async () => { fireEvent.click(screen.getAllByTestId('side-gap-var-var:X-copy').at(-1)!); });
+  expect(call).toHaveBeenCalledWith('machines.setVar', { machine: VAULT, name: 'X', fromMac: true });
+  expect(store.getState().toast).toMatchObject({ text: 'this Mac has no X', tone: 'error' });
+});

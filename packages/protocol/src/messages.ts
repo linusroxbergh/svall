@@ -118,7 +118,7 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.moveCheck') return MOVE_CHECK_TIMEOUT_MS;
   if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
   if (method === 'machines.setup') return ((params as { waitMs?: number }).waitMs ?? 0) + SETUP_REPORT_MS;
-  if (method === 'machines.consent') return CONSENT_TIMEOUT_MS;
+  if (method === 'machines.consent' || method === 'machines.setVar') return CONSENT_TIMEOUT_MS;
   // the worker runs each update in turn, and the link takes 30 s beside them
   if (method === 'machines.updateAgents') return ((params as { kinds?: unknown[] }).kinds ?? []).length * AGENT_UPDATE_MS + 30_000;
   return 0;
@@ -277,6 +277,11 @@ export const methods = {
   },
   // runs each agent's own update on `machine`, one after another, and answers once all have ended
   'machines.updateAgents': { params: z.object({ machine: MachineId, kinds: z.array(AgentKind).min(1) }), result: z.object({}) },
+  // sets a variable for the fleet's robots on `machine`, from `value` or, with fromMac, from this Mac's own; answers the setup rows
+  'machines.setVar': {
+    params: z.object({ machine: MachineId, name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), value: z.string().min(1).max(4096).optional(), fromMac: z.literal(true).optional() }),
+    result: z.object({ rows: z.array(SetupRow) }),
+  },
   // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
   // without afterId the column goes last, and a deleted column's robots go to moveTo
   'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },

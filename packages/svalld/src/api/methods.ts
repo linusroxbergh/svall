@@ -8,6 +8,7 @@ import { askWorkers, type HomeLinks } from '../link/home.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
+import { envValueFault } from '../env-file.js';
 import { errorFrame } from '../errors.js';
 import type { ClaudePaths } from '../paths.js';
 import { mergeSources } from '../resources/merge.js';
@@ -31,7 +32,7 @@ import { classification } from './classify.js';
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -151,6 +152,21 @@ const handlers: Handlers = {
     if (!links) throw new ApiError('not_on_worker', 'not on a worker');
     await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: serverWait('machines.updateAgents', p) });
     return {};
+  },
+  // the value goes to the worker's .env and nowhere on this Mac; no error names it
+  'machines.setVar': async (p, ctx) => {
+    const name = ctx.store.state.machines?.[p.machine]?.name;
+    if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
+    if (!ctx.links) throw new ApiError('not_on_worker', 'not on a worker');
+    const value = p.fromMac ? mirrorOf(ctx).hereValue(p.name) : p.value;
+    if (!value) throw new ApiError('invalid_params', p.fromMac ? `this Mac has no ${p.name}` : 'no value given');
+    const fault = envValueFault(value);
+    if (fault) throw new ApiError('invalid_params', fault);
+    await ctx.links.call(p.machine, 'env.set', { name: p.name, value }, { timeoutMs: serverWait('machines.setVar', p) }).catch((e: Error) => {
+      if (e instanceof ApiError && e.code === 'unknown_method') throw new ApiError('not_mirrored', `${name} runs a release that cannot take a variable from here; upgrade it under Machines`);
+      throw e;
+    });
+    return setupOf(ctx, p.machine, 0);
   },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),
   'column.rename': (p, { fleet }) => fleet.renameColumn(p.id, p.name),

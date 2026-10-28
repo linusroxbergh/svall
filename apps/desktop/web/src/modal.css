@@ -94,6 +94,10 @@
 .host-step[data-status="fail"] .host-mark { color: var(--blocked); }
 .host-name { flex: none; width: 120px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .host-said { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+/* a variable's value, typed for one machine: the field, Set, and a copy from this Mac when it has one */
+.var-field { display: flex; flex: none; align-items: center; gap: var(--sp-xs); }
+.var-field .fld { width: 12em; padding: var(--sp-xs) var(--sp-sm); font-family: var(--mono); font-size: var(--text-sm); }
+.var-field .btn { white-space: nowrap; }
 /* what the user has to go and do about this step, which the checklist never hides */
 .host-said em { display: block; font-style: normal; color: var(--sand); }
 /* a setup row is one line: its name, one sentence with details folded beside it, and its one control at the end */
