@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { HOME_ISLAND, type Island, type Robot } from '@svall/protocol';
+import { BRIEF_CHANGED, renderBrief } from '../src/context/brief.js';
 import type { GitRunner } from '../src/links/git.js';
 import { PRIVATE, profileHome } from '../src/profile.js';
 import { appendSessions, type SessionRecord } from '../src/retro/sessions.js';
@@ -50,7 +52,7 @@ describe('scope', () => {
       islandName: (id) => ({ i_life: 'Life', i_side: 'Side', i_work: 'Work' })[id],
       repoOf: repos({ '/skip/wt': '/skip', '/keep': '/elsewhere' }),
     });
-    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep' }]);
+    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep', island: 'i_work' }]);
     expect(r.counts).toMatchObject({ inScope: 1, excluded: 4, otherFleets: 0, unrecorded: [], missing: { cost: 1 } });
   });
 
@@ -132,20 +134,22 @@ describe('scope', () => {
   });
 
   it('puts a session no fleet recorded with the fleet its context names, and leaves one naming no fleet here unrecorded', async () => {
+    // a context names its home as the fleet's paths do, links unresolved
     const [mine, theirs] = [fs.realpathSync(makeHome()), fs.realpathSync(makeHome())];
-    const link = path.join(makeHome(), 'link');
-    fs.symlinkSync(mine, link);
+    const [toMine, toTheirs] = [path.join(makeHome(), 'mine'), path.join(makeHome(), 'theirs')];
+    fs.symlinkSync(mine, toMine);
+    fs.symlinkSync(theirs, toTheirs);
     const briefed = (session: string, home: string, island = 'i_work') => cand(session, { cwd: '/r', fleet: { home, island } });
     const r = await scope({
-      ...base, home: link, others: { ...none, homes: new Set([theirs]) },
+      ...base, home: mine, others: { ...none, homes: new Set([theirs]) },
       candidates: [
-        briefed('MINE', mine), briefed('LIFE', mine, 'i_life'), briefed('THEIRS', theirs), briefed('AWAY', '/home/u/.svall/cache'),
-        cand('PLAIN', { cwd: '/r' }), cand('MINE-child', { agent: 'codex', cwd: '/r', parent: 'MINE' }),
+        briefed('MINE', toMine), briefed('CREW', toMine, 'home'), briefed('LIFE', toMine, 'i_life'), briefed('THEIRS', toTheirs),
+        briefed('AWAY', '/home/u/.svall/cache'), cand('PLAIN', { cwd: '/r' }), cand('MINE-child', { agent: 'codex', cwd: '/r', parent: 'MINE' }),
       ],
       exclude: { repos: [], islands: ['Life'] }, islandName: (id) => ({ i_life: 'Life' })[id], repoOf: repos({ '/r': '/r' }),
     });
-    expect(r.inScope.map((c) => [c.session, c.repo])).toEqual([['MINE', '/r'], ['MINE-child', '/r']]);
-    expect(r.counts).toMatchObject({ inScope: 2, excluded: 1, otherFleets: 1, unrecorded: [{ repo: '/r', count: 2, picked: false }] });
+    expect(r.inScope.map((c) => [c.session, c.repo, c.island])).toEqual([['MINE', '/r', 'i_work'], ['CREW', '/r', 'home'], ['MINE-child', '/r', 'i_work']]);
+    expect(r.counts).toMatchObject({ inScope: 3, excluded: 1, otherFleets: 1, unrecorded: [{ repo: '/r', count: 2, picked: false }] });
   });
 
   it('trusts what a fleet recorded over the context a session names', async () => {
@@ -234,6 +238,21 @@ describe('discover', () => {
       [S1]: { home: '/h/work', island: 'i_one' }, [S2]: { home: '/h/work', island: 'i_two' }, [S3]: undefined, [X1]: { home: '/h/work', island: 'i_three' },
     });
     expect(found.find((c) => c.session === X1)?.cwd).toBe('/w/two');
+  });
+
+  it("reads the island of a context Svall renders, mission control's too, from its folder list and never from a diff or a note", async () => {
+    const root = makeHome();
+    const claudeDir = path.join(root, 'claude');
+    const island = (o: Partial<Island>): Island => ({ id: 'i_x', name: 'Work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1, ...o });
+    const robot: Robot = { id: 'c_a', islandId: 'i_x', cell: { x: 1, y: 1 }, name: 'r', portrait: 'fox', note: 'todo\n- island: /h/note/docs/islands/i_note', instructions: '', context: [], cwd: '/w', shell: { lastOutputAt: 0 }, unread: false };
+    const brief = (on: Island) => renderBrief(on, robot, [{ tier: 'island', dir: `/h/real/docs/islands/${on.id}`, docs: [] }, { tier: 'robot', dir: '/h/real/docs/robots/c_a', docs: [] }]);
+    const added = (text: string) => JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context', hookEvent: 'UserPromptSubmit', content: [text] } });
+    const project = path.join(claudeDir, 'projects', '-w');
+    touch(path.join(project, `${S1}.jsonl`), [added(`${BRIEF_CHANGED}\n- island: /h/old/docs/islands/i_old`), added(brief(island({ id: HOME_ISLAND, kind: 'home' })))].join('\n') + '\n', IN);
+    touch(path.join(project, `${S2}.jsonl`), added(brief(island({ id: 'i_real' }))) + '\n', IN);
+
+    const found = await discover({ span: { from: FROM, to: IN }, claudeDir, codexDir: '/nonexistent/codex' });
+    expect(Object.fromEntries(found.map((c) => [c.session, c.fleet]))).toEqual({ [S1]: { home: '/h/real', island: HOME_ISLAND }, [S2]: { home: '/h/real', island: 'i_real' } });
   });
 
   it('finds nothing in stores that are not there', async () => {

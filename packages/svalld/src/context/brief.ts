@@ -59,6 +59,9 @@ function docLines(folders: DocFolder[], hidden: number[] = []): string[] {
   ];
 }
 
+export const BRIEF_HEADING = '# Svall context';
+export const BRIEF_CHANGED = `${BRIEF_HEADING} changed`;
+
 // Claude Code shows a session only the first 2,000 characters of a hook reply over 10,000
 const BRIEF_MAX = 9_000;
 
@@ -135,7 +138,7 @@ export function renderBrief(
   const foot = `${pinned ? 'Read pinned items before starting. ' : ''}${show} reprints this.`;
   const compose = (docs: string[]): string => {
     const body = [items(), docs, tabs()].filter((b) => b.length).flatMap((b, i) => (i ? ['', ...b] : b));
-    return ['# Svall context', ...head, '', ...(body.length ? [...body, ''] : []), foot].join('\n');
+    return [BRIEF_HEADING, ...head, '', ...(body.length ? [...body, ''] : []), foot].join('\n');
   };
   const fits = (docs: string[]) => compose(docs).length <= BRIEF_MAX;
   let docs = fitDocs(folders, fits, false);
@@ -193,7 +196,7 @@ export function briefDiff(prev: string, next: string): string {
   // a reorder leaves the same lines in a different order: nothing to say
   if (!removed.length && !added.length && !profile.length) return '';
   // a fleet doc taken away is named by its first line; its text would read as still in force
-  return ['# Svall context changed', ...profile, ...removed.map((l) => `- ${l.split('\n')[0]}`), ...added.map((l) => `+ ${l}`)].join('\n');
+  return [BRIEF_CHANGED, ...profile, ...removed.map((l) => `- ${l.split('\n')[0]}`), ...added.map((l) => `+ ${l}`)].join('\n');
 }
 
 // the delivered brief as if the change from before to after had reached the session too, so the next diff
@@ -216,6 +219,6 @@ export function briefReply(name: HookName, brief: string, delivered: string | un
   if (delivered === brief) return {};
   const diff = briefDiff(delivered, brief);
   // two briefs under the cap can differ by nearly twice it, so a change past the cap goes out as the brief whole
-  const reply = brief && diff.length > BRIEF_MAX ? ['# Svall context, in place of the one before', ...brief.split('\n').slice(1)].join('\n') : diff;
+  const reply = brief && diff.length > BRIEF_MAX ? [`${BRIEF_HEADING}, in place of the one before`, ...brief.split('\n').slice(1)].join('\n') : diff;
   return { reply, delivered: brief };
 }
