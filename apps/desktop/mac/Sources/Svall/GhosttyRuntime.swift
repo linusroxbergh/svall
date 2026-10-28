@@ -76,6 +76,8 @@ final class GhosttyRuntime {
         switch action.tag {
         case GHOSTTY_ACTION_MOUSE_SHAPE:
             let shape = action.action.mouse_shape
+            // at once, as a click reads it right after stating its position
+            view?.overLink = shape == GHOSTTY_MOUSE_SHAPE_POINTER
             DispatchQueue.main.async { view?.setCursorShape(shape) }
             return true
         case GHOSTTY_ACTION_MOUSE_VISIBILITY:

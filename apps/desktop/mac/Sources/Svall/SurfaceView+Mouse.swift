@@ -2,13 +2,17 @@ import AppKit
 import GhosttyKit
 
 extension SurfaceView {
-    /// Ctrl is the link modifier here, where libghostty's is cmd. Shift comes along while the pane's program reads the mouse:
-    /// it is how Ghostty takes the events back, and Ghostty drops it again before matching a link.
+    /// The modifiers libghostty follows a link with: cmd, and shift while the pane's program reads the mouse,
+    /// as that is how Ghostty takes the events back; Ghostty drops it again before matching a link.
+    private func followMods(_ surface: ghostty_surface_t) -> NSEvent.ModifierFlags {
+        ghostty_surface_mouse_captured(surface) ? [.command, .shift] : .command
+    }
+
+    /// Ctrl is the link modifier here, where libghostty's is cmd; a plain click on a link holds them until its release.
     private func linkMods(_ flags: NSEvent.ModifierFlags) -> NSEvent.ModifierFlags {
+        if !linkClick.isEmpty { return flags.union(linkClick) }
         guard let surface, flags.contains(.control), !flags.contains(.command) else { return flags }
-        var mods = flags.subtracting(.control).union(.command)
-        if ghostty_surface_mouse_captured(surface) { mods.insert(.shift) }
-        return mods
+        return flags.subtracting(.control).union(followMods(surface))
     }
 
     private func mousePos(_ event: NSEvent, mods: NSEvent.ModifierFlags? = nil) {
@@ -26,12 +30,17 @@ extension SurfaceView {
             onFocused?()
             return
         }
-        let mods = linkMods(event.modifierFlags)
+        let flags = event.modifierFlags
+        if event.clickCount == 1, flags.isDisjoint(with: [.shift, .control, .option, .command]) { linkClick = followMods(surface) }
+        var mods = linkMods(flags)
         // libghostty looks a link up when the pointer moves onto a cell, so a modifier pressed over a
         // resting pointer needs the position stated again; clearing it first is what makes it a move
-        if mods != event.modifierFlags {
+        if mods != flags {
+            overLink = false
             ghostty_surface_mouse_pos(surface, -1, -1, Ghostty.ghosttyMods(mods))
             mousePos(event, mods: mods)
+            // a plain click with no link under it goes on as one, to the pane's program too
+            if !linkClick.isEmpty, !overLink { linkClick = []; mods = flags }
         }
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_PRESS, GHOSTTY_MOUSE_LEFT, Ghostty.ghosttyMods(mods))
     }
@@ -41,6 +50,12 @@ extension SurfaceView {
         guard let surface else { return }
         ghostty_surface_mouse_button(surface, GHOSTTY_MOUSE_RELEASE, GHOSTTY_MOUSE_LEFT, Ghostty.ghosttyMods(linkMods(event.modifierFlags)))
         ghostty_surface_mouse_pressure(surface, 0, 0)
+        // stated again without them, so the link under the pointer stops showing as one
+        if !linkClick.isEmpty {
+            linkClick = []
+            ghostty_surface_mouse_pos(surface, -1, -1, Ghostty.ghosttyMods(event.modifierFlags))
+            mousePos(event)
+        }
     }
 
     override func rightMouseDown(with event: NSEvent) {
