@@ -5,7 +5,11 @@ export const MoveId = z.string().regex(/^mv_[0-9a-z]{10}$/);
 export const MovePhase = z.enum(['rest', 'bundle', 'prepare', 'commit', 'activate', 'release', 'done', 'aborted']);
 export type MovePhase = z.infer<typeof MovePhase>;
 
-export const Refusal = z.object({ reason: z.string(), action: z.string(), run: z.string().optional(), details: z.array(z.string()) });
+/** One check a move fails: its sentence, its action and the command the action runs there. */
+export const Blocker = z.object({ reason: z.string(), action: z.string(), run: z.string().optional() });
+export type Blocker = z.infer<typeof Blocker>;
+/** Why a move cannot happen: the first check that failed, with `more` every other, each with its own action. */
+export const Refusal = Blocker.extend({ details: z.array(z.string()), more: z.array(Blocker).optional() });
 export type Refusal = z.infer<typeof Refusal>;
 
 /** The actions of the refusals a move clears by interrupting: an agent at work, and a command running in a shell. */

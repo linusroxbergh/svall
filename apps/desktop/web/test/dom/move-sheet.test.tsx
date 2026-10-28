@@ -279,7 +279,7 @@ test('a robot on main says its changes move to a new branch, and one asking a qu
   expect(screen.getByTestId('move-question').textContent).toBe('its open question is dropped; it asks again');
 });
 
-test('a refusal is one sentence, what to do and one button, with the rest behind details', async () => {
+test('a refusal is one sentence, what to do and one button, with its details behind it', async () => {
   answers = [
     { ok: false, refusal: { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['svall-notes has no remote; push svall-notes to a remote first'] } },
     { ok: true, sheet: sheet() },
@@ -289,6 +289,38 @@ test('a refusal is one sentence, what to do and one button, with the rest behind
   expect(screen.queryByTestId('move-summary')).toBeNull();
   expect(screen.getByTestId('move-details').textContent).toContain('push svall-notes to a remote first');
   expect(screen.getAllByRole('button').filter((b) => b.closest('.acts')).map((b) => b.textContent)).toEqual(['Check again']);
+});
+
+test('every check a move failed shows at once, each with its own button, and one Check again for the ones without', async () => {
+  answers = [{
+    ok: false,
+    refusal: {
+      reason: 'linus-vault runs 0.20.0, this Mac 0.21.0', action: UPGRADE_ACTION, details: ['wait for it'],
+      more: [{ reason: 'linus-vault runs claude 1.2.3, this Mac 1.2.4', action: 'update claude on linus-vault', run: 'claude update' }, { reason: 'ada is on a detached HEAD', action: 'check out a branch first' }],
+    },
+  }];
+  await open(VAULT);
+  expect(screen.getByTestId('move-refusal').textContent).toBe('linus-vault runs 0.20.0, this Mac 0.21.0detailswait for it');
+  expect(screen.getByTestId('move-refusal-1').textContent).toBe('linus-vault runs claude 1.2.3, this Mac 1.2.4');
+  expect(screen.getByTestId('move-refusal-2').textContent).toBe('ada is on a detached HEADcheck out a branch first');
+  expect([...document.querySelectorAll('.modal button.btn')].map((b) => b.textContent)).toEqual(['Upgrade linus-vault', 'Update Claude Code', 'Check again']);
+  await act(async () => fireEvent.click(screen.getByTestId('move-action-1')));
+  expect(call).toHaveBeenCalledWith('machines.updateAgents', { machine: VAULT, kinds: ['claude'] });
+  // the update done, the checks run again
+  expect(checks()).toHaveLength(2);
+});
+
+test('a shared main checkout second in the list still takes its own worktree in the one sheet', async () => {
+  answers = [
+    { ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [], more: [{ reason: "two robots share svall's main checkout", action: WORKTREE_ACTION }] } },
+    { ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } },
+    { ok: true, sheet: sheet({ interrupts: true, converts: { main: '/Users/ada/svall', branch: 'ada', changed: 0, keep: true } }) },
+  ];
+  await open(VAULT);
+  expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }, { id: 'c0', machine: VAULT, interruptAfterMs: 0, ownWorktree: true }]);
+  expect(screen.queryByTestId('move-refusal')).toBeNull();
+  expect((screen.getByLabelText("Give it its own worktree: two robots share svall's main checkout") as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText('Interrupt after this turn: ada is working') as HTMLInputElement).checked).toBe(true);
 });
 
 test('a working robot is interrupted after its turn in the one sheet, whose box says why; unticked, the move refuses with the interrupt as its button', async () => {
@@ -411,8 +443,8 @@ test('an upgrade that fails says how it ended and offers the upgrade again', asy
 test('a refusal with nothing to run checks again', async () => {
   answers = [{ ok: false, refusal: { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: [] } }, { ok: true, sheet: sheet() }];
   await open(VAULT);
-  expect(screen.getByTestId('move-action').textContent).toBe('Check again');
-  await act(async () => fireEvent.click(screen.getByTestId('move-action')));
+  expect(screen.getByTestId('move-again').textContent).toBe('Check again');
+  await act(async () => fireEvent.click(screen.getByTestId('move-again')));
   expect(checks()).toHaveLength(2);
   expect(screen.getByTestId('move-summary')).toBeTruthy();
 });

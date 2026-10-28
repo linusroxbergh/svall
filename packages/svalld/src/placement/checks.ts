@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
+import {
+  AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type Blocker, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo,
+} from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { clean, holds } from '../path-tools.js';
@@ -204,9 +206,10 @@ export function restCheck(name: string, mine: Pick<Classified, 'class'>[], chose
   return { failures, interrupts: chosen && mine.some((t) => t.class !== 'agent-ready' && t.class !== 'shell-ready'), question: mine.some((t) => t.class === 'agent-blocked') };
 }
 
-/** The first failure's sentence and action, with every other behind its details. */
+/** The first failure's sentence and action, with every other in `more`, and every failure's details behind the first's. */
 export function refusalOf([first, ...rest]: Failure[]): Refusal {
-  return { reason: first.reason, action: first.action, ...(first.run && { run: first.run }), details: [...first.details ?? [], ...rest.flatMap((f) => [`${f.reason}; ${f.action}`, ...f.details ?? []])] };
+  const blocker = ({ reason, action, run }: Failure): Blocker => ({ reason, action, ...(run && { run }) });
+  return { ...blocker(first), details: [...first.details ?? [], ...rest.flatMap((f) => f.details ?? [])], ...(rest.length && { more: rest.map(blocker) }) };
 }
 
 /** What a move of robot `c` from this machine to one holding `have` carries, as its sheet counts it, or why it cannot. */
@@ -238,11 +241,11 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const failed: Failure[] = [];
   const fail = (f: Failure): void => { failed.push(f); };
   // a worker that does not answer is as one out of reach
-  const ask = async <T>(method: string, params: unknown): Promise<T | undefined> => {
+  const ask = async <T>(method: string, params: unknown, quiet = false): Promise<T | undefined> => {
     try {
       return await d.links.call<T>(to, method, params);
     } catch (e) {
-      fail({ reason: (e as Error).message, action: 'try again when it is awake' });
+      if (!quiet) fail({ reason: (e as Error).message, action: 'try again when it is awake' });
       return undefined;
     }
   };
@@ -254,13 +257,15 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const reached = reach(d.links.for(to), name, d.release);
   if ('failure' in reached) fail(reached.failure);
   else if (reached.hello.release !== d.release) fail(releaseFailure(name, reached.hello.release, d.release));
-  const linked = 'hello' in reached && reached.hello.release === d.release ? reached.hello : undefined;
+  const hello = 'hello' in reached ? reached.hello : undefined;
 
-  // 2: the robot's agents installed and logged in there, none older
+  // 2: the robot's agents installed and logged in there, none older; a worker on another release is asked too, so every
+  // blocker shows at once, and refused for nothing more when it cannot answer
   const local = await d.agents();
-  const info = linked && await ask<SystemInfo>('system.info', {});
-  if (info) for (const f of agentFailures(c, local, info.agentAdapters, name)) fail(f);
-  const homes = linked && info ? homesOf(d.homedir, linked.home, local, info.agentAdapters) : undefined;
+  const info = hello && await ask<SystemInfo>('system.info', {}, hello.release !== d.release);
+  const agents = info?.agentAdapters ?? [];
+  if (info) for (const f of agentFailures(c, local, agents, name)) fail(f);
+  const homes = hello && info ? homesOf(d.homedir, hello.home, local, agents) : undefined;
   let session = 0;
   try {
     session = await sessionBytes(c, d.cli ?? cliRunner());
