@@ -6,7 +6,7 @@ import {
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { machineNames, plainStep, stepLabel } from './host.js';
-import { startHost } from './HostSetup.js';
+import { startHost } from './hostRun.js';
 import { dialogKeys, useApp } from './hooks.js';
 import { setupNote } from './landings.js';
 import { machineName } from './placement.js';

@@ -6,6 +6,7 @@ import { copyText, openFolder } from './bridge.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
+import { startHost } from './hostRun.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
@@ -14,7 +15,7 @@ import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
-import { isPlaced, machineOf } from './placement.js';
+import { awayLine, isPlaced, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -78,6 +79,8 @@ export function SideCard({ id }: { id: string }) {
   const status = statusOf(c, fleet);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
   const placed = machineOf(fleet, c);
+  const away = awayLine(fleet, c);
+  const hostRunning = useApp((s) => !!s.host?.running);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
@@ -91,7 +94,7 @@ export function SideCard({ id }: { id: string }) {
   return (
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
-        <i className="sdot" data-status={status} />{status}{isUnread(c) ? ' · unread' : ''}
+        <i className="sdot" data-status={status} />{status === 'unknown' ? 'unreachable' : status}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-head">
         <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
@@ -101,6 +104,7 @@ export function SideCard({ id }: { id: string }) {
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
       {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
+      {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
       {c.repo && (
         <div className="side-branch" data-testid="side-branch">
           <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -180,5 +184,17 @@ export function SideCard({ id }: { id: string }) {
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>
+  );
+}
+
+// why the robot's machine is out of reach, and the one run on it that tells more: a check, or the upgrade a link in mismatch names
+function AwayLine({ name, line, running }: { name: string; line: string; running: boolean }) {
+  const op = line.endsWith('under Machines') ? 'upgrade' : 'doctor';
+  const run = () => { app.store.getState().toggleHost(true, name); startHost(op, { name }); };
+  return (
+    <div className="side-away" data-testid="side-away">
+      <span>{line}</span>
+      <button className="btn set-open" data-testid="side-away-run" disabled={running} onClick={run}>{op === 'upgrade' ? 'Upgrade' : 'Check'} {name}</button>
+    </div>
   );
 }

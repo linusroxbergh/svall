@@ -8,17 +8,14 @@ import {
   asideStep, groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
+import { startHost } from './hostRun.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { placeTip } from './settings.js';
 import { Caret } from './Sidebar.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
-export function startHost(op: HostOp, args: HostArgs): void {
-  app.store.getState().hostStarted(op, args);
-  app.bridge.send({ type: 'host.start', op, args });
-}
-
+/** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
 export function MachineActions({ name }: { name: string }) {
   const running = useApp((s) => !!s.host?.running);
   // a terminal needs the destination the registry has for it, which the page may not have read yet

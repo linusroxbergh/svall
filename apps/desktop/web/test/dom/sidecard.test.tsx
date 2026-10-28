@@ -456,6 +456,31 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(store.getState().moveSheet).toEqual({ id: 'c0' });
 });
 
+test('a robot on a worker this Mac cannot reach says so under its machine line, and Check opens the Machines panel on a check of it', () => {
+  withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
+  render(<Side />);
+  expect(document.querySelector('.side > .kicker')?.textContent).toBe('unreachable');
+  expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('side-away-run'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'linus-vault' } }]);
+  expect([store.getState().hostOpen, store.getState().hostMachine, store.getState().host?.running]).toEqual([true, 'linus-vault', true]);
+  // one run at a time
+  expect((screen.getByTestId('side-away-run') as HTMLButtonElement).disabled).toBe(true);
+
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } };
+  Object.assign(f.robots.c0, { machine: VAULT, cwd: '/home/ada/svall' });
+  act(() => { store.getState().hostDone('doctor', 0); store.getState().setFleet(f); });
+  expect(screen.getByTestId('side-away').textContent).toBe('linus-vault runs a different build; upgrade it under MachinesUpgrade linus-vault');
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('side-away-run'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'linus-vault' } }]);
+
+  withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
+  expect(screen.queryByTestId('side-away')).toBeNull();
+});
+
 test('a placed robot that landed on mission control can still move back to this Mac', () => {
   withVault(true, { machine: VAULT, islandId: 'home' });
   render(<Side />);
