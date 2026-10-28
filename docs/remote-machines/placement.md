@@ -23,8 +23,8 @@ robot that runs elsewhere. The sheet says in one line what travels, such as
 
 and **Move** runs it. Moving back, the line counts what comes back from the worker the same way. While the move runs,
 the sheet shows a line for each step as it happens: check, rest, pack, carry, land and start. A step that fails says so
-in one sentence, with **Try again** before the robot lands, when it is back where it was, or **Retry** after. From a
-terminal:
+in one sentence, with **Try again** before the robot lands, when it is back where it was, **Check again** when the move
+was refused, or **Retry** after. A move that went through ends with **Done**. From a terminal:
 
 ```sh
 svall robot move <id> --machine linus-vault    # to the worker
@@ -213,7 +213,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - **Before the robot is the destination's** (a failed check of the files, a lost connection, a crash), the robot
   reopens where it was, with its window, and the destination removes what it prepared, but for an OpenCode session it
   read in, which the next move there replaces. A main checkout the move converted stays converted, and the robot
-  reopens in its new worktree.
+  reopens in its new worktree. A link to the worker that drops before the carry is waited for up to a minute, and the
+  move goes on once it is back and the agent configuration the link sends then has gone or failed.
 - **After it is**, a crash on either machine resumes the move from its journal; the robot never reopens on the machine
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.

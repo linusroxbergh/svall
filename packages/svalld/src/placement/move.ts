@@ -423,7 +423,7 @@ export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWor
 export type PlacementDeps = {
   store: Store;
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
-  links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror'>;
+  links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror' | 'mirrorSettled'>;
   me: MachineId;
   paths: Pick<Paths, 'moves'>;
   git: GitRunner;
@@ -663,7 +663,10 @@ export class Placement {
   // as one to a worker too busy writing to answer a ping, is waited for
   private async prepareThere(j: MoveJournal): Promise<void> {
     const link = this.d.links.for(j.to);
+    const relinking = !link?.synced;
     if (!link || !(await link.linked(RELINK_MS))) throw new ApiError('not_reachable', `${this.name(j.to)} is not reachable`);
+    // a link that came back pushes the agent configuration without waiting; the move waits for that push to end
+    if (relinking) await this.d.links.mirrorSettled(j.to);
     const stage = this.files.stage(j.id);
     const ids = blobIds(j.id);
     const bundle = j.manifest ? path.join(stage, 'bundle.tar') : undefined;

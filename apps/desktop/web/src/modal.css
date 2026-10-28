@@ -47,8 +47,7 @@
 .move-mark { flex: none; width: 1em; text-align: center; }
 .move-steps > li[data-state="done"] > .move-mark { color: var(--done); }
 .move-steps > li[data-state="failed"] > .move-mark { color: var(--danger); }
-.move-spin { display: inline-block; width: .7em; height: .7em; box-sizing: border-box; border: 1.5px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: move-spin var(--pulse-fast) linear infinite; }
-@keyframes move-spin { to { transform: rotate(360deg); } }
+.move-spin { display: inline-block; width: .7em; height: .7em; box-sizing: border-box; border: 1.5px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin var(--pulse-fast) linear infinite; }
 @keyframes move-pulse { 50% { opacity: .45; } }
 .fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
 .fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }

@@ -101,8 +101,9 @@ export class DurableBatch {
   async write(file: string, data: Buffer, mode = 0o600): Promise<void> {
     await fsp.mkdir(path.dirname(file), { recursive: true });
     const tmp = tempOf(file);
+    // a temp that cannot be made is not this write's to remove
+    const h = await fsp.open(tmp, 'wx', mode);
     try {
-      const h = await fsp.open(tmp, 'wx', mode);
       try {
         await h.writeFile(data);
         await h.sync();

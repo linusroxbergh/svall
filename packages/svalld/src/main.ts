@@ -280,7 +280,7 @@ async function start(opts: Options): Promise<Daemon> {
   const agents = agentProber(realProbeDeps(paths.env));
   if (connection && worker && workerDocs && farViewers && workerMirror) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, log,
+      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers);
   }

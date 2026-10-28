@@ -1,6 +1,8 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import fsp from 'node:fs/promises';
 import path from 'node:path';
+import { onTestFinished, vi } from 'vitest';
 import type { LoadSnapshot, MobileStatus, SystemInfo, UsageSnapshot } from '@svall/protocol';
 import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
@@ -19,6 +21,31 @@ export function makeHome(): string {
 
 export function cleanHomes(): void {
   for (const h of homes.splice(0)) fs.rmSync(h, { recursive: true, force: true });
+}
+
+/**
+ * The async renames and fsyncs this test makes, in order: `rename <to>` as each starts, `sync <file or folder>` once each
+ * has ended, each fsync `syncMs` slower than the disk.
+ */
+export function diskLog(o: { syncMs?: number } = {}): string[] {
+  const events: string[] = [];
+  const [open, rename] = [fsp.open, fsp.rename];
+  const opens = vi.spyOn(fsp, 'open').mockImplementation(async (file, ...rest) => {
+    const h = await open(file, ...rest);
+    const sync = h.sync.bind(h);
+    h.sync = async () => {
+      if (o.syncMs) await new Promise((r) => setTimeout(r, o.syncMs));
+      await sync();
+      events.push(`sync ${String(file)}`);
+    };
+    return h;
+  });
+  const renames = vi.spyOn(fsp, 'rename').mockImplementation(async (from, to) => {
+    events.push(`rename ${String(to)}`);
+    return rename(from, to);
+  });
+  onTestFinished(() => { opens.mockRestore(); renames.mockRestore(); });
+  return events;
 }
 
 export function hasTmux(): boolean {
