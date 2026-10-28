@@ -108,6 +108,9 @@
 .side-gap b { font-weight: var(--w-medium); color: var(--ink); }
 .side-gap em { display: block; color: var(--ink-2); }
 .side-gap .btn { flex: none; white-space: nowrap; }
+.side-gap { flex-wrap: wrap; }
+.side-gap .var-field { flex-basis: 100%; }
+.side-gap .var-field .fld { flex: 1; width: auto; min-width: 0; }
 .side-docs-new { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-cool); cursor: pointer; }
 .side-doc { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-xs) var(--sp-md); border: 0; border-radius: var(--r-sm); background: var(--fill-1); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 .side-doc span { font-size: var(--text-xs); color: var(--ink-3); }

@@ -182,7 +182,7 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
  * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
  * says `o.unchecked`, and a key row that its change is saved for when the machine links.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
   const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
@@ -248,7 +248,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     else {
       rows.push({
         key, status: 'warn', action: `set ${v} on ${m}`, run: `svall ${o.fleetFlag}worker env ${v}`, detail: `${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} ${v}, which is not set on ${m}`,
-        gap: { name: v, what: `not set; ${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} it` },
+        gap: { name: v, what: `not set; ${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} it` }, ...(o.here?.(v) && { here: true }),
       });
     }
   }

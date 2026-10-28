@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import { ApiError, REPORT_MS, Sha256, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { readEnvFile, VAR_NAME } from '../claude.js';
+import { envValueFault, writeEnvVar } from '../env-file.js';
 import { lockAgentFiles } from '../kernel-lock.js';
 import { clean, holds } from '../path-tools.js';
 import { relocate } from './relocate.js';
@@ -24,6 +26,7 @@ import { unpack } from './move-steps.js';
 const APPLY_MS = 2 * 60_000;
 
 const Offer = z.object({ id: z.string(), sha256: Sha256 });
+const EnvSet = z.object({ name: z.string().regex(VAR_NAME), value: z.string().min(1).max(4096) });
 const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 
 /** The home's side: its agent configuration packed and sent to a worker, by what the consent file ticks for it. */
@@ -34,7 +37,8 @@ export class Mirror {
   private sent = new Map<MachineId, number>();
 
   /** `overridesThere`: the fleet's overrides folder on a worker, as its rows name it. */
-  constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string }) {}
+  /** `envFile`: the fleet's .env on this Mac, one place a variable may be copied to a worker from. */
+  constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string; envFile?: string }) {}
 
   /** Resolves once the worker has applied what `link` carried; pushes to one worker go one at a time, in order. */
   push(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
@@ -93,7 +97,18 @@ export class Mirror {
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides' });
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas() });
+  }
+
+  /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */
+  hereHas(): (name: string) => boolean {
+    const env = this.o.envFile ? readEnvFile(this.o.envFile) : {};
+    return (name) => Boolean(process.env[name] || env[name]);
+  }
+
+  /** The value this Mac has for a variable, from where `hereHas` looks; none when it has none. */
+  hereValue(name: string): string | undefined {
+    return process.env[name] || (this.o.envFile ? readEnvFile(this.o.envFile)[name] : undefined) || undefined;
   }
 
   // the Mac's project folders that hold servers
@@ -146,6 +161,14 @@ export function mirrorCalls(o: MirrorHomes & {
   const calls: Record<string, (raw: unknown) => Promise<unknown>> = {
     'config.state': async (raw) => configState(parse(StateAsk, raw), o),
     'config.report': async (raw) => configReport(parse(ReportAsk, raw), o),
+    // a variable for the fleet's robots here, into its .env as svall worker env writes it; the value is never logged
+    'env.set': async (raw) => {
+      const { name, value } = parse(EnvSet, raw);
+      const fault = envValueFault(value);
+      if (fault) throw new ApiError('invalid_params', fault);
+      writeEnvVar(o.envFile, name, value);
+      return {};
+    },
     'config.blob': async (raw) => {
       const { id, sha256 } = parse(Offer, raw);
       fs.mkdirSync(o.stage, { recursive: true });

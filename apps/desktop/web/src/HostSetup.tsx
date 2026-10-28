@@ -12,6 +12,7 @@ import { startHost } from './hostRun.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { placeTip } from './settings.js';
 import { Caret } from './Sidebar.js';
+import { VarField } from './VarField.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
@@ -129,22 +130,27 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const said = cut > 0 ? whole!.slice(0, cut) : whole;
   const more = cut > 0 ? whole!.slice(cut + 2) : row.action && whole;
   const idle = !run.running;
-  // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them; they go to the run the tick
-  // was made in, known by its args, which its rows keep, or to a check of the machine since
-  const tick = (machine: MachineId, on: boolean) => {
+  // the rows svalld answers a change with go to the run the change was made in, known by its args, which its rows keep,
+  // or to a check of the machine since
+  const take = () => {
     const shown = app.store.getState().host?.args;
-    const show = ({ rows }: { rows: SetupRow[] }) => {
+    return (rows: SetupRow[]) => {
       const now = app.store.getState().host;
       if (now && !now.running && (now.args === shown || (now.op === 'doctor' && now.args.name === name))) app.store.getState().hostRows(rows.map(rowToStep));
     };
+  };
+  const fail = (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines)));
+  // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them
+  const tick = (machine: MachineId, on: boolean) => {
+    const show = take();
     setAsked(on);
     setFailed(undefined);
     app.api().call('machines.consent', { machine, item: row.tick!.item, fields: row.tick!.fields, on })
       .catch((e: Error) => {
-        setFailed(plainStep(e.message, machineNames(app.store.getState().machines)));
+        fail(e);
         return app.api().call('machines.setup', { machine });
       })
-      .then(show, () => {})
+      .then(({ rows }) => show(rows), () => {})
       .finally(() => setAsked(undefined));
   };
   // the machine checked again once its agents are updated, unless a run started meanwhile holds the panel
@@ -183,6 +189,9 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           onClick={() => update(id as MachineId, updates)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
+      ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
+        <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}
+          take={() => { setFailed(undefined); return take(); }} failed={(m) => fail(new Error(m))} />
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>

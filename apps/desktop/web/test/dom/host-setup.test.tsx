@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
+import type { HostStep } from '../../src/bridge.js';
 import { call, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -356,4 +357,39 @@ test('a program row with an install command keeps Open terminal beside its not-n
   expect(screen.getByTestId('host-tick-mirror:runtime:npx')).toBeTruthy();
   fireEvent.click(screen.getByTestId('host-terminal-mirror:runtime:npx'));
   expect(store.getState().hostTerminal).toEqual({ run: 'sudo apt install nodejs npm' });
+
+test('a variable row takes its value in a field, shown to no one, and Set sends it to the machine; this Mac\'s own copies without it; a refusal says why', async () => {
+  const unset: HostStep = { step: 'mirror:var:X', status: 'warn', action: 'set X on trift', run: 'svall worker env X', detail: 'ad reads X, which is not set on trift', gap: { name: 'X', what: 'not set; ad reads it' }, here: true };
+  call.mockImplementation(async (method: string) => (method === 'machines.setVar' ? { rows: [{ key: 'var:X', status: 'ok', detail: 'X is set on trift' }] } : {}));
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', unset);
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  expect(screen.queryByTestId('host-terminal-mirror:var:X')).toBeNull();
+  const field = screen.getByTestId('host-var-mirror:var:X-value') as HTMLInputElement;
+  expect([field.type, field.getAttribute('autocomplete')]).toEqual(['password', 'off']);
+  expect((screen.getByTestId('host-var-mirror:var:X-set') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(field, { target: { value: 's3cr3t' } });
+  await act(async () => { fireEvent.click(screen.getByTestId('host-var-mirror:var:X-set')); });
+  expect(call).toHaveBeenCalledWith('machines.setVar', { machine: MACHINE, name: 'X', value: 's3cr3t' });
+  expect(screen.getByTestId('host-step-mirror:var:X').getAttribute('data-status')).toBe('ok');
+  expect(document.body.innerHTML).not.toContain('s3cr3t');
+
+  act(() => { store.getState().hostRows([unset]); });
+  await act(async () => { fireEvent.click(screen.getByTestId('host-var-mirror:var:X-copy')); });
+  expect(call).toHaveBeenCalledWith('machines.setVar', { machine: MACHINE, name: 'X', fromMac: true });
+  expect(screen.getByTestId('host-step-mirror:var:X').getAttribute('data-status')).toBe('ok');
+
+  act(() => { store.getState().hostRows([{ ...unset, here: undefined }]); });
+  expect(screen.queryByTestId('host-var-mirror:var:X-copy')).toBeNull();
+  call.mockImplementation(async () => { throw new ApiError('not_mirrored', 'trift runs a release that cannot take a variable from here; upgrade it under Machines'); });
+  fireEvent.change(screen.getByTestId('host-var-mirror:var:X-value'), { target: { value: 'v' } });
+  await act(async () => { fireEvent.click(screen.getByTestId('host-var-mirror:var:X-set')); });
+  expect(screen.getByTestId('host-tick-failed-mirror:var:X').textContent).toBe('trift runs a release that cannot take a variable from here; upgrade it under Machines');
+  expect((screen.getByTestId('host-var-mirror:var:X-value') as HTMLInputElement).value).toBe('');
 });

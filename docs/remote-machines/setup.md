@@ -183,9 +183,13 @@ Fleets that share a machine share its agent files there: a key ticked in one fle
 so tick or untick it in each fleet that uses the machine.
 
 **Variables.** A server can read a variable, as `"GITHUB_TOKEN": "${GITHUB_TOKEN}"` in its `env` does, or hold an
-empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable.
-**Open terminal** types `svall worker env GITHUB_TOKEN` there. It asks for the value without showing it, or takes it
-from a pipe, and keeps it in the fleet's `.env` on the machine. Robots that start there afterwards have it.
+empty value for one. That is a row "set GITHUB_TOKEN on studio" until the machine's daemon has the variable. In the
+app the row has a field: type the value, shown to no one, and **Set on studio** sends it over the link into the fleet's
+`.env` on the machine, mode 600, and nowhere on this Mac; the field is cleared as it goes. When this Mac has the
+variable itself, in the daemon's environment or the fleet's `.env` here, **Copy from this Mac** sends that value
+without showing it. From a terminal, `svall worker env GITHUB_TOKEN` on the machine asks for the value without showing
+it, or takes it from a pipe, and keeps it in the same file. Robots that start there afterwards have it; a machine on a
+release before this one takes no value from the app, and the row says to upgrade it.
 
 **Logins and programs.** A Claude Code server that signs in with OAuth is a row "log in once on studio". **Open
 terminal** types `MCP_OAUTH_CALLBACK_PORT=3118 claude` there and forwards port 3118 of this Mac there; run it, type
@@ -290,7 +294,8 @@ On the Linux machine, all under the account:
 - `~/.local/share/svall/log`, the units' logs.
 - `~/.cache/svall`, where `svall host add` and `upgrade` upload and unpack a release.
 - `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names this Mac, the fleet and
-  the token this Mac issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env`;
+  the token this Mac issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
+  the app's **Set on studio**;
   `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what the agent setup mirror last wrote there,
   as hashes; `cache/mirror-vars.json`, the names of the variables the copied setup reads; `journal/`, what happened
   there that this Mac has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own

@@ -16,6 +16,7 @@
     "./link/ssh": "./src/link/ssh.ts",
     "./link/process": "./src/link/process.ts",
     "./durable": "./src/durable.ts",
+    "./env-file": "./src/env-file.ts",
     "./sessions/registry": "./src/sessions/registry.ts",
     "./codex/install": "./src/codex/install.ts",
     "./codex/trust": "./src/codex/trust.ts",

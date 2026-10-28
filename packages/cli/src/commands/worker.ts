@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import readline from 'node:readline';
@@ -8,6 +7,7 @@ import { z } from 'zod';
 import { WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
 import { writeDurable } from '@svall/svalld/durable';
+import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
 import { realRun } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -82,19 +82,9 @@ export function workerCommands(target: () => Target): Command {
       if (!VAR_NAME.test(name)) throw new Error(`${name} is not a variable name`);
       const value = await readSecret(name);
       if (!value) throw new Error('no value given');
-      // the .env reader would return anything else changed
-      if (/[\r\n]/.test(value) || value !== value.trim() || /^(["']).*\1$/.test(value)) {
-        throw new Error('the value cannot be stored in .env: it must be one line, without leading or trailing spaces, and not wrapped in quotes');
-      }
-      const file = resolvePaths(target().home).env;
-      const old = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
-      const lines = old.split('\n').filter((l, i, all) => l !== '' || i < all.length - 1);
-      const line = `${name}=${value}`;
-      const mine = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`);
-      const at = lines.findIndex((l) => mine.test(l));
-      const kept = lines.filter((l) => !mine.test(l));
-      kept.splice(at < 0 ? kept.length : at, 0, line);
-      writeDurable(file, Buffer.from(`${kept.join('\n')}\n`), { mode: 0o600 });
+      const fault = envValueFault(value);
+      if (fault) throw new Error(fault);
+      writeEnvVar(resolvePaths(target().home).env, name, value);
       process.stdout.write(`${name} is set in this fleet's .env on this machine\n`);
     });
   return cmd;

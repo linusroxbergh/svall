@@ -103,7 +103,7 @@ export function world(o: {
   let version = 100;
   const homeLog = o.homeLog ?? silentLogger;
   const homeDocs = o.docs && new HomeDocs(homePaths.docs, homeLog, (m) => homeStore.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(homeStore.state.robots, id), 100);
-  const homeMirror = o.mirror && new Mirror({ ...o.mirror.home, consent: homePaths.mirrorConsent, log: homeLog });
+  const homeMirror = o.mirror && new Mirror({ ...o.mirror.home, consent: homePaths.mirrorConsent, log: homeLog, envFile: homePaths.env });
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
