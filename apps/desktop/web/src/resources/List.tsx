@@ -57,7 +57,7 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
   return (
     <div className="res-row">
       <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-opens={opensItself(item)}
-        title={link ? link.link.ref : `Edit the ${item.name.toLowerCase()}`}
+        data-tip={link ? link.link.ref : `Edit the ${item.name.toLowerCase()}`}
         onClick={(e) => { if (link) followLink(link.link, link.robotId, { x: e.clientX, y: e.clientY }); else void chooseResource(deps(), item); }}>
         <b>
           {link && <i className="lg"><LinkIcon item={link.link} /></i>}{item.name}
@@ -84,7 +84,7 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
     <>
       <div className="res-row" data-doc={isDoc}>
         <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
-          aria-disabled={idle || undefined} title={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
+          aria-disabled={idle || undefined} data-tip={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
           onClick={() => { void chooseResource(deps(), item, far !== undefined); }}>
           <b>
             {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && !far && <em>Finder</em>}
@@ -96,13 +96,13 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
         {isDoc && renaming && <NameField testid="resources-doc-rename-name" initial={item.name} onDone={() => setRenaming(false)} onCommit={(v) => { void renameDoc(deps(), o.rootId, o.path, v); }} />}
         {isDoc && !renaming && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-doc-rename-${item.name}`} title={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}>✎</button>
-            <button data-testid={`resources-doc-delete-${item.name}`} title={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
+            <button data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}>✎</button>
+            <button data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
           </span>
         )}
         {o && !far && deletable(kind, item) && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-delete-${kind}-${item.name}`} title={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}>×</button>
+            <button data-testid={`resources-delete-${kind}-${item.name}`} data-tip={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}>×</button>
           </span>
         )}
       </div>
@@ -145,7 +145,7 @@ function TierRows({ tier, query }: { tier: Tier; query: string }) {
     <section key={sec.id ?? tier}>
       {sec.heading && <h4>{sec.heading}</h4>}
       {sec.sources.map((s) => (
-        <button key={s.rootId} className="res-item" data-testid={`resources-list-source-${s.rootId}`} data-opens="false" title={s.root}
+        <button key={s.rootId} className="res-item" data-testid={`resources-list-source-${s.rootId}`} data-opens="false" data-tip={s.root}
           onClick={() => app.store.getState().setResourcesFilter({ where: s.rootId })}>
           <b><i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>{s.name}<em className="res-tag">{counts.get(s.rootId) ?? 0}</em></b>
           <span>{qualifierOf(s, fleet)}</span>

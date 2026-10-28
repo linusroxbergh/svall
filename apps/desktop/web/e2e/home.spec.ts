@@ -9,6 +9,11 @@ test('a button spawns a crew member on home and hands it the prompt', async ({ p
   await expect(page.getByTestId('island-label-home')).toContainText('mission control');
   await expect(page.getByTestId('island-home')).toBeVisible();
 
+  // a button says what its skill will do before it is pressed
+  await page.getByTestId('home-action-organise').hover();
+  await expect(page.getByTestId('tip')).toContainText('runs /svall-organise');
+  await expect(page.getByTestId('tip').locator('.tip-li')).toHaveCount(4);
+
   await page.getByTestId('home-action-organise').click();
   await expect(home.locator('.tok')).toHaveCount(1, { timeout: 15_000 });
   await expect(page.getByTestId('toast')).toContainText('organise started', { timeout: 15_000 });

@@ -68,7 +68,7 @@ test('a robot whose resume failed says why and waits for its Revive, which bring
   await page.getByTestId(`sb-robot-${id}`).dblclick();
   await expect(page.getByTestId('resume-error')).toHaveText(FAILED);
   await expect(page.getByTestId('side-card').getByTestId('side-resume-error')).toContainText(FAILED);
-  await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveAttribute('title', FAILED);
+  await expect(page.getByTestId(`sb-resume-error-${id}`)).toHaveAttribute('data-tip', FAILED);
 
   await page.getByTestId('revive').click();
   await expect(page.getByTestId('surface')).toHaveAttribute('data-robot', id, { timeout: 10_000 });
@@ -102,7 +102,7 @@ test('the map says on its token why a dormant robot could not resume', async ({ 
   const id = await failedResume(svall, FAILED);
   await fakeShell(page, svall);
   await svall.open('map');
-  await expect(page.getByTestId(`token-resume-error-${id}`)).toHaveAttribute('title', FAILED);
+  await expect(page.getByTestId(`token-resume-error-${id}`)).toHaveAttribute('data-tip', FAILED);
   await svall.api.call('robot.revive', { id });
   await expect(page.getByTestId(`token-resume-error-${id}`)).toHaveCount(0, { timeout: 10_000 });
 });

@@ -154,7 +154,7 @@ test('a worker\'s clone offers no Show in Finder and no delete, and opens its fi
   expect(screen.queryByTestId('resources-delete-skills-tidy')).toBeNull();
   expect(screen.getByTestId('resources-doc-delete-plan')).toBeTruthy();
   const shared = screen.getByTestId('resources-item-skills-shared');
-  expect([shared.getAttribute('aria-disabled'), shared.title]).toEqual(['true', '/home/ada/app/.claude/skills/shared (on linus-vault)']);
+  expect([shared.getAttribute('aria-disabled'), shared.getAttribute('data-tip')]).toEqual(['true', '/home/ada/app/.claude/skills/shared (on linus-vault)']);
   expect(screen.getByTestId('resources-item-skills-tidy').hasAttribute('aria-disabled')).toBe(false);
   bridge.present = true;
   try { await act(async () => { fireEvent.click(shared); }); } finally { bridge.present = false; }

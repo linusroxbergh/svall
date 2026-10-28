@@ -130,7 +130,7 @@ export function Setup() {
                 <span>
                   <input type="checkbox" checked={!off.includes(a.kind)} aria-label={AGENT_LABEL[a.kind]}
                     onChange={(e) => setOff((o) => (e.target.checked ? o.filter((k) => k !== a.kind) : [...o, a.kind]))} />
-                  <span className="setup-agent-name">{AGENT_LABEL[a.kind]}<small title={a.path}>{shortPath(a.path)}</small></span>
+                  <span className="setup-agent-name">{AGENT_LABEL[a.kind]}<small data-tip={a.path}>{shortPath(a.path)}</small></span>
                 </span>
                 <span className="setup-agent-status">{a.folderOnly ? 'CLI not found' : 'Ready'}{a.version && <small>{a.version}</small>}</span>
               </label>

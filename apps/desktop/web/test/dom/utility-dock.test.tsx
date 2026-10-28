@@ -53,9 +53,9 @@ test('answering a dialog the load panel opened leaves the panel open', async () 
 
 test('the settings button names the key the user bound, not the one it shipped with', () => {
   render(<UtilityDock />);
-  expect(screen.getByTestId('settings-open').title).toBe('Settings (⌘,)');
+  expect(screen.getByTestId('settings-open').getAttribute('data-tip')).toBe('Settings (⌘,)');
   act(() => store.getState().setSettings({ bindings: { toggleSettings: 'cmd+shift+o' } }));
-  expect(screen.getByTestId('settings-open').title).toBe('Settings (⌘⇧O)');
+  expect(screen.getByTestId('settings-open').getAttribute('data-tip')).toBe('Settings (⌘⇧O)');
 });
 
 test('the settings button carries a dot only while an update waits and the sidebar is hidden', () => {

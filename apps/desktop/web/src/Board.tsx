@@ -275,7 +275,7 @@ export function Board() {
     if (shut(id)) {
       return (
         <button key={id} className="kb-strip" data-col={id} data-testid={`col-strip-${id}`} data-target={Boolean(target)} data-reorder={reorder}
-          aria-label={`${column.name}, collapsed`} title={`Open ${column.name}`} onClick={() => fold(id, false)}>
+          aria-label={`${column.name}, collapsed`} data-tip={`Open ${column.name}`} onClick={() => fold(id, false)}>
           <span className="kb-col-ct tnum">{robots.length}</span><span className="kb-strip-n">{column.name}</span>
         </button>
       );
@@ -289,10 +289,10 @@ export function Board() {
             ? <NameInput name={column.name} className="kb-ren" testid="col-name-input" onSave={(name) => renameColumn(deps(), id, name)} onDone={() => setRenaming(undefined)} />
             : <span className="kb-col-n" data-testid={`col-name-${id}`} onDoubleClick={() => setRenaming(id)}>{column.name}</span>}
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
-          {attention > 0 && <span className="kb-red tnum" title={`${attention} want you`}>{attention}</span>}
+          {attention > 0 && <span className="kb-red tnum" data-tip={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
-            <span className="kb-grip" data-testid={`col-grip-${id}`} title="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
-            <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} title="New robot here" onClick={() => void newIn(id)}>+</button>
+            <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
+            <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}>+</button>
             <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}>⋯</button>
           </span>
         </header>
@@ -354,7 +354,7 @@ export function Board() {
       <div ref={ground} className="kb-ground">
         <div className="kb-cols" data-testid="board-cols" data-dragging={Boolean(lift || shift)} onClick={blank}>
           {cols.map(lane)}
-          <button type="button" className="kb-add-col" data-testid="board-add-column-end" aria-label="Add a column" title="Add a column" onClick={() => void add()}>+</button>
+          <button type="button" className="kb-add-col" data-testid="board-add-column-end" aria-label="Add a column" data-tip="Add a column" onClick={() => void add()}>+</button>
         </div>
         <div className="kb-overlay">
           {hovered && hoverAt && <HoverCard c={hovered} x={hoverAt.x} y={hoverAt.y} flip={hoverAt.flip} />}

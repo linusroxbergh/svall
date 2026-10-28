@@ -423,7 +423,7 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await row.getByTestId('machine-more').click();
   await expect(row.getByTestId('machine-forget')).toHaveCount(0);
   await expect(row.getByTestId('machine-remove')).toBeDisabled();
-  await expect(row.getByTestId('machine-remove')).toHaveAttribute('title', '1 robot is placed there; move it back first');
+  await expect(row.getByTestId('machine-remove')).toHaveAttribute('data-tip', '1 robot is placed there; move it back first');
 
   await rewrite(svall, (s) => { delete s.robots[id].machine; s.robots[id].moving = { id: 'mv_0123456789', to: VAULT, phase: 'prepare' }; });
   await page.reload();
@@ -431,5 +431,5 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await page.getByTestId('settings-tab-machines').click();
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   await row.getByTestId('machine-more').click();
-  await expect(row.getByTestId('machine-remove')).toHaveAttribute('title', '1 robot is placed there; move it back first');
+  await expect(row.getByTestId('machine-remove')).toHaveAttribute('data-tip', '1 robot is placed there; move it back first');
 });

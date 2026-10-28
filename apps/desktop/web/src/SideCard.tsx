@@ -30,7 +30,7 @@ export function Collapse() {
   const bindings = useApp((s) => s.settings.bindings);
   const width = usePanelWidth('card');
   return (
-    <button className="side-collapse" style={width} data-testid="side-collapse" title={keyTip('Hide the side card', 'toggleSideCard', bindings)}
+    <button className="side-collapse" style={width} data-testid="side-collapse" data-tip={keyTip('Hide the side card', 'toggleSideCard', bindings)}
       aria-label="Hide the side card" onClick={() => app.store.getState().toggleSideCard(false)}>›</button>
   );
 }
@@ -97,7 +97,7 @@ export function SideCard({ id }: { id: string }) {
         <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
-        <button className="side-star" data-testid="side-star" aria-pressed={starred} title={starred ? 'Unstar' : 'Star'}
+        <button className="side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
       </div>
       {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
@@ -134,7 +134,7 @@ export function SideCard({ id }: { id: string }) {
             </div>
             <div className="row"><span>model</span><b className="mono">{c.agent?.model ?? 'no agent'}</b></div>
             <div className="row"><span>cwd</span><b className="mono">
-              <button className="copy clip-head" title={`Copy ${cwd}`} data-testid="side-cwd"
+              <button className="copy clip-head" data-tip={`Copy ${cwd}`} data-testid="side-cwd"
                 onClick={() => { copyText(app.bridge, cwd); app.store.getState().showToast('Copied', 'ok'); }}><bdi>{c.cwd}</bdi></button>
             </b></div>
             {pct !== undefined && (
@@ -159,10 +159,10 @@ export function SideCard({ id }: { id: string }) {
       </div>
       <div className="acts">
         {placed ? (
-          <button className="btn" data-testid="side-finder" title={`A terminal on ${placed} in ${c.cwd}`}
+          <button className="btn" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
             onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
         ) : (
-          <button className="btn" data-testid="side-finder" title={`Reveal ${c.cwd} in Finder`}
+          <button className="btn" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
             onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
@@ -176,7 +176,7 @@ export function SideCard({ id }: { id: string }) {
           </div>
         )}
         <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
-        <button className="btn dan" data-testid="side-close" title="Deletes the robot and kills its terminal"
+        <button className="btn dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>

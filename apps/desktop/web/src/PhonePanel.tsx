@@ -49,7 +49,7 @@ export function MobilePanel() {
       {status.serving && (
         <>
           {status.qr && <img className="mob-qr" src={status.qr} alt={`QR code for ${status.url}`} />}
-          <button className="mob-url" data-testid="mobile-url" title="Copy the link" onClick={copy}>
+          <button className="mob-url" data-testid="mobile-url" data-tip="Copy the link" onClick={copy}>
             {copied ? 'copied' : status.url}
           </button>
           <div className="mob-here" data-testid="mobile-here" data-live={status.phones.length > 0 || undefined}>{phonesHere(status.phones)}</div>

@@ -1,6 +1,6 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { BotGlyph, EyeGlyph, MachineLine, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { BotGlyph, EyeGlyph, MachineLine, MONITORING, PrGlyph, reviewText, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
@@ -16,8 +16,8 @@ function footInner(c: Robot, status: DisplayStatus, word: string | undefined, fa
   return (
     <>
       {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
-      {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} title={failed} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>resume failed</span>}
-      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} title={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>{hintLabel(c)}</span>}
+      {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} data-tip={failed} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>resume failed</span>}
+      {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} data-tip={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>{hintLabel(c)}</span>}
     </>
   );
 }
@@ -85,7 +85,7 @@ export const Token = memoByValue(function Token({
       <div className="card">
         {machine
           ? <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />
-          : retro && <span className="mline mach retro" data-testid={`token-retro-${c.id}`} title={retro}><span>{retro}</span></span>}
+          : retro && <span className="mline mach retro" data-testid={`token-retro-${c.id}`} data-tip={retro}><span>{retro}</span></span>}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
         <Figure n={figureOf(c)} />
@@ -93,7 +93,7 @@ export const Token = memoByValue(function Token({
           type="button"
           className="foot"
           data-testid={`token-term-${c.id}`}
-          title="Open terminal"
+          data-tip="Open terminal"
           aria-label={`Open ${c.name}'s terminal`}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onOpen(); }}
@@ -113,7 +113,7 @@ export const Token = memoByValue(function Token({
                 type="button"
                 className="mark review"
                 data-testid={`token-review-${c.id}`}
-                title={reviewText(review)}
+                data-tip={reviewText(review)}
                 aria-label={reviewText(review)}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -124,11 +124,11 @@ export const Token = memoByValue(function Token({
                 <PrGlyph />
               </button>
             )}
-            {monitor && <span className="mark monitor" title="Monitoring" data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
+            {monitor && <span className="mark monitor" data-tip={MONITORING} data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
           </span>
           {subs > 0 && (
             <span className="marks left">
-              <span className="mark subs" role="img" title={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
+              <span className="mark subs" role="img" data-tip={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
                 <BotGlyph /><b>{subs}</b>
               </span>
             </span>
@@ -142,7 +142,7 @@ export const Token = memoByValue(function Token({
               key={`${l.ref}-${i}`}
               type="button"
               className="chip lk"
-              title={l.ref}
+              data-tip={l.ref}
               aria-label={l.label || l.ref}
               onPointerDown={(e) => e.stopPropagation()}
               onClick={(e) => {
@@ -154,7 +154,7 @@ export const Token = memoByValue(function Token({
             </button>
           ))}
           {hidden.length > 0 && (
-            <span className="chip more" title={hidden.map((l) => l.label || l.ref).join('\n')} data-testid={`token-more-${c.id}`}>
+            <span className="chip more" data-tip={hidden.map((l) => `• ${l.label || l.ref}`).join('\n')} data-testid={`token-more-${c.id}`}>
               +{hidden.length}
             </span>
           )}

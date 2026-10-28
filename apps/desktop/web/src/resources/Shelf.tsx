@@ -61,7 +61,7 @@ function Shelf({ tip, rowTop }: { tip: number; rowTop: number }) {
             <EditorPane onClose={() => app.store.getState().toggleResources(false)} />
           </div>
           <Foot onRefresh={refresh}>
-            {!full && <i className="card-grip" data-testid="resources-grip" title="Drag to resize" {...grip} />}
+            {!full && <i className="card-grip" data-testid="resources-grip" data-tip="Drag to resize" {...grip} />}
           </Foot>
         </div>
       </div>

@@ -14,7 +14,7 @@ export function FileTabs({ id }: { id: string }) {
       <div className="ftab-row">
         {ide.open.map((path) => (
           <div key={path} className="ftab" data-testid={`file-tab-${path}`} data-active={path === ide.active} data-dirty={ide.dirty.includes(path)}
-            onClick={() => app.store.getState().activateFile(id, path)} title={path}>
+            onClick={() => app.store.getState().activateFile(id, path)} data-tip={path}>
             <span className="ftab-name">{basename(path)}</span>
             <span className="ftab-dot" />
             <button className="ftab-x" data-testid={`file-close-${path}`} aria-label={`Close ${basename(path)}`}

@@ -21,6 +21,7 @@ import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
+import { Tips } from './Tips.js';
 import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
@@ -89,7 +90,7 @@ function Screen() {
         {sidebarOpen && <Sidebar />}
         {sidebarOpen && <SideGrip side="sidebar" />}
         {!sidebarOpen && (
-          <button className="sb-show" data-testid="sidebar-show" title="Show the islands" aria-label="Show the islands"
+          <button className="sb-show" data-testid="sidebar-show" data-tip="Show the islands" aria-label="Show the islands"
             onClick={() => app.store.getState().toggleSidebar(true)}>›</button>
         )}
         {view === 'map' ? <Map /> : <Board />}
@@ -101,7 +102,7 @@ function Screen() {
         <UtilityDock />
         {settingsOpen && <SettingsCard />}
         {!sideCardOpen && (
-          <button className="side-show" data-testid="side-show" title={keyTip('Show the side card', 'toggleSideCard', bindings)}
+          <button className="side-show" data-testid="side-show" data-tip={keyTip('Show the side card', 'toggleSideCard', bindings)}
             aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
         )}
       </div>
@@ -118,6 +119,7 @@ function Screen() {
       <LinkAsk />
       <ContextMenu />
       <Tour />
+      <Tips />
     </div>
   );
 }

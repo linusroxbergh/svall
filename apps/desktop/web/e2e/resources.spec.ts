@@ -727,7 +727,7 @@ test('the fleet’s own docs stand in a tier of their own, named for the fleet, 
   await expect(page.getByTestId('resources-group-fleet')).toHaveAttribute('aria-expanded', 'true');
   const row = page.getByTestId(`resources-where-r:${dir}`);
   await expect(row).toContainText(path.basename(svall.home));
-  await expect(row).toHaveAttribute('title', /this window only/);
+  await expect(row).toHaveAttribute('data-tip', /this window only/);
   await row.click();
   await expect(row).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-chain')).toHaveCount(0);

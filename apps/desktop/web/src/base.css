@@ -95,6 +95,12 @@ textarea.fld { padding-block: var(--sp-md); }
 .fld:focus { outline: none; border-color: var(--sand); }
 /* a menu, tip or utility panel: a step above the chrome, a step below a dialog */
 .popover { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); box-shadow: var(--shadow-2); }
+/* a hover tip: its first line names the control, the lines after it say what a press does */
+.tip { position: fixed; top: 0; left: 0; z-index: var(--z-tip); box-sizing: border-box; max-width: 320px; padding: var(--sp-sm) var(--sp-md);
+  color: var(--ink); font-size: var(--text-sm); line-height: var(--lh); overflow-wrap: anywhere; pointer-events: none; }
+.tip > :first-child:not(.tip-li) ~ * { color: var(--ink-2); }
+.tip-li { display: grid; grid-template-columns: 1em 1fr; }
+.tip > :not(.tip-li) + .tip-li { margin-top: var(--sp-xs); }
 /* a section's label */
 .kicker, .sb-head, .ide-root, .res-subh, .load-grp, .load-tot span, .setup h2 {
   font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);

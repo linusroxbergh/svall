@@ -65,7 +65,7 @@ export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name
       )}
       <div ref={ref} className="host-term-surface" data-testid="host-terminal-surface" />
       <div className="acts">
-        <button className="btn" data-testid="host-terminal-done" title="Close the terminal and go back to the checks" onClick={onEnd}>Done</button>
+        <button className="btn" data-testid="host-terminal-done" data-tip="Close the terminal and go back to the checks" onClick={onEnd}>Done</button>
       </div>
     </div>
   );
