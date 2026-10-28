@@ -89,9 +89,12 @@ describe('the end of a run', () => {
   const ready = 'box is ready. Robots you move there keep working while this Mac sleeps.';
 
   it('the outcome line reads ready when nothing is left to fix, counts the things to fix otherwise, then the parts of the agent setup that will not work there', () => {
-    expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')]))).toEqual({ text: ready, done: true });
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('codex', 'skip'), step('release', 'ok')]))).toEqual({ text: ready, done: true });
+    // a warning that names nothing to do here leaves the machine ready, and says so
+    expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')])))
+      .toEqual({ text: 'box is ready, with 1 warning. Robots you move there keep working while this Mac sleeps.', done: true });
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn', { detail: '3.4' }), step('opencode', 'warn', { detail: 'not signed in: opencode auth login', run: 'opencode auth login' }), step('codex', 'skip'), step('release', 'ok')])))
+      .toEqual({ text: 'box is ready, with 2 warnings. Robots you move there keep working while this Mac sleeps.', done: true });
     // each step's action is one thing, and so is each failed step that names none
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok')]))).toEqual({ text: 'box has 1 thing to fix.' });
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('install', 'fail', { detail: 'svall setup exited 1' })])))
@@ -102,6 +105,7 @@ describe('the end of a run', () => {
     const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
     const gap = (key: string, name: string) => step(`mirror:${key}`, 'warn', { action: `copy ${name}'s keys to box`, gap: { name, what: 'keys not copied (env.KEY)' } });
     const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'), gap('claude:mcp:github', 'github'), gap('codex:mcp:github', 'github')]);
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn'), gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready, with 1 warning. 1 part of your agent setup will not work there yet.');
     const parts = 'box is ready. 2 parts of your agent setup will not work there yet.';
     expect(outcomeOf(mirrored)).toEqual({ text: parts, done: true, setup: 2 });
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), gap('claude:mcp:linear', 'linear')])))
@@ -152,7 +156,7 @@ describe('a step by name', () => {
       'mirror:opencode:config', 'mirror:claude:plugin:acme@market', 'mirror:unreadable:/Users/ada/.codex/config.toml', 'mirror:unchecked',
       'mirror:claude:agent:team/db.md', 'mirror:claude:marketplace:market',
     ].map(stepLabel)).toEqual([
-      'Codex MCP github', 'OpenCode MCP sentry', 'plugin acme@market MCP db', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
+      'Codex MCP github', 'OpenCode MCP sentry', 'db (plugin acme)', 'notion login', 'db login', 'npx', 'chrome', 'settings.json', 'Codex config.toml',
       'OpenCode opencode.json', 'plugin acme@market', '/Users/ada/.codex/config.toml', 'Not checked', 'subagent team/db.md', 'marketplace market',
     ]);
   });

@@ -110,7 +110,7 @@ test('mission control has no move button; a refusal shows one sentence and one b
   await expect(sheet.getByTestId('move-go')).toHaveCount(0);
 });
 
-test('a robot sharing a main checkout is offered its own worktree, and moves with it', async ({ page, svall }) => {
+test('a robot sharing a main checkout gets its own worktree in the one sheet, and moves with it', async ({ page, svall }) => {
   const id = await seed(svall, true);
   // svalld behind the page, but for the move's check and start, which answer as for a robot sharing svall's main checkout
   const asked: { method: string; params: { ownWorktree?: boolean } }[] = [];
@@ -133,12 +133,9 @@ test('a robot sharing a main checkout is offered its own worktree, and moves wit
   await page.getByTestId(`sb-robot-${id}`).click();
   await page.getByTestId('side-card').getByTestId(`side-move-${VAULT}`).click();
   const sheet = page.getByTestId('move-sheet');
-  await expect(sheet.getByTestId('move-reason')).toHaveText("two robots share svall's main checkout");
-  await expect(sheet.locator('.acts button')).toHaveText(['Give it its own worktree']);
-
-  await sheet.getByTestId('move-action').click();
   await expect(sheet.getByTestId('move-converts')).toHaveText("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
-  await expect(sheet.getByLabel('Give it its own worktree')).toBeChecked();
+  await expect(sheet.getByTestId('move-refusal')).toHaveCount(0);
+  await expect(sheet.getByLabel("Give it its own worktree: two robots share svall's main checkout")).toBeChecked();
   await sheet.getByTestId('move-go').click();
   await expect(sheet.getByTestId('move-through')).toHaveText('ada runs on linus-vault.');
   expect(asked.at(-1)).toEqual({ method: 'robot.moveTo', params: { id, machine: VAULT, ownWorktree: true } });
@@ -220,6 +217,9 @@ test('a robot that lands on a machine says what of its agent setup will not work
   await toast.getByTestId('toast-action').click();
   const card = page.getByTestId('side-card');
   await expect(card.getByTestId('sec-fold-robot.machine')).toHaveText('On linus-vault');
+  // folded until opened
+  await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveCount(0);
+  await card.getByTestId('sec-fold-robot.machine').click();
   await expect(card.getByTestId('side-gap-claude:mcp:linear')).toHaveText('linear keys not copied (env.LINEAR_API_KEY)Copy keys');
   await card.getByTestId('side-gap-terminal-oauth:claude:mcp:notion').click();
   await expect.poll(async () => (await sent(page)).some((m) => m.type === 'host.list')).toBe(true);

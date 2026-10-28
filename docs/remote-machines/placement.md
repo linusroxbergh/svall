@@ -19,7 +19,7 @@ worker reads the transcript, and this Mac writes the answer.
 On the robot's card, choose **Move to linus-vault** (one for each worker that answers), or **Move to this Mac** on a
 robot that runs elsewhere. The sheet says in one line what travels, such as
 
-> session 564 KB · branch kanban: 2 commits not on origin, 3 changed files · storefront on linus-vault: will clone (first time) · .env stays here
+> session 564 KB · branch kanban: 2 commits not on origin, 3 changed files · storefront on linus-vault: will clone (first time)
 
 and **Move** runs it. Moving back, the line counts what comes back from the worker the same way. While the move runs,
 the sheet shows a line for each step as it happens: check, rest, pack, carry, land and start. A step that fails says so
@@ -50,7 +50,8 @@ takes a credential file such as `.env` along, `--own-worktree` gives a robot on 
 In the app, once the robot lands with one of them to do, the move sheet's done line says "kanban runs on linus-vault.
 2 parts of its agent setup will not work there." With the sheet closed, or for a move from elsewhere, a toast says
 "kanban is on linus-vault. 2 parts of its agent setup will not work there.", and **Show** opens its card. The card's
-**On linus-vault** section lists them while it runs there, each with **Copy keys**, **Open terminal** or what to do.
+**On linus-vault** section, folded until you open it, lists them while it runs there, each with **Copy keys**, **Open
+terminal** or what to do.
 
 While it moves the card says "moving" and its terminal "moving to linus-vault…"; opening a terminal, a revive, `svall
 robot run` and closing the robot are refused with "moving to linus-vault". Then the card names the machine, and the
@@ -62,23 +63,25 @@ Every check is about this robot alone. A move that cannot happen shows the first
 behind **details**.
 
 1. **The worker is reachable and runs this release.** "linus-vault is not reachable; try again when it is awake".
-   "linus-vault runs X, this Mac Y; upgrade it under Machines", or "update svall on this Mac" when the worker's is
-   the newer. A worker whose state schema or link protocol is not this Mac's stays linked, with its ssh connection
+   "linus-vault runs X, this Mac Y; upgrade it under Machines", whose button **Upgrade linus-vault** upgrades it from
+   the sheet and checks again, or "update svall on this Mac" when the worker's is the newer. A worker whose state schema or link protocol is not this Mac's stays linked, with its ssh connection
    and the terminals on it, but nothing else passes until it is upgraded, and its robots show unknown; two builds of
    one release that differ so say "linus-vault runs a different build; upgrade it under Machines". This Mac greets
    it again every 5 minutes and after `svall host upgrade`.
 2. **The robot's agent is installed and logged in there, at the same version or newer.** "claude is not installed on
    linus-vault", "linus-vault runs claude 2.1.299, this Mac 2.1.300; update claude on linus-vault", "claude is not
-   logged in on linus-vault; log claude in there", each with the terminal button. An OpenCode logged in on neither
+   logged in on linus-vault; log claude in there", each with the terminal button but the update, whose button
+   **Update Claude Code** runs it there from the sheet and checks again. An OpenCode logged in on neither
    machine runs on a model that needs no login, and passes.
 3. **The robot stands in a Git worktree on a branch, or on a main checkout that the move converts.** On a main
    checkout the sheet says so ("your 3 changed files in svall's main checkout move to a new branch kanban"): after
    you confirm and the agent rests, the move makes a worktree under `.claude/worktrees/<robot>` on a new branch
    `<robot>`, carries main's index, working-tree changes and untracked files into it, staged against unstaged as they
-   were, and leaves main clean on its branch. The stash list is never touched. "two robots share svall's main
-   checkout; give it its own worktree", whose button **Give it its own worktree** makes that worktree at main's HEAD
-   instead and leaves main as it is, since neither robot alone can claim its changes; the sheet says so ("it leaves
-   svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files"). The worktree starts at
+   were, and leaves main clean on its branch. The stash list is never touched. A robot that shares its main checkout
+   with another gets its own worktree at main's HEAD instead, which leaves main as it is, since neither robot alone
+   can claim its changes: the sheet ticks **Give it its own worktree: two robots share svall's main checkout** and
+   says so ("it leaves svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files").
+   Unticked, the move refuses with "two robots share svall's main checkout; give it its own worktree". The worktree starts at
    the commit the check found, whatever the robot that stays commits meanwhile; the offer is refused while another
    robot moves out of that checkout ("board is moving out of svall's main checkout; wait for the move to finish") or
    for a robot whose folder that commit lacks ("web/new is not in svall's last commit; commit it first"). "kanban is
@@ -95,13 +98,14 @@ behind **details**.
    first". The move checks it again where it applies the branch, and fails before its commit.
 6. **What travels fits, and carries no tracked credential.** The patches, untracked files and carried commits come
    to at most 100 MB. An untracked file in the worktree named like a credential (`.env*`, `*.pem`, `id_rsa*`,
-   `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick it in the sheet (`--carry`), and the sheet names it: ".env
-   stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
+   `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick **copy .env to linus-vault** in the sheet (`--carry`); the
+   CLI names it: ".env stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
    first". A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
    holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
 7. **The agent is idle, or you choose Interrupt after this turn.** "kanban is working; interrupt after this turn". "a
-   command is running; move anyway and it ends". A robot waiting on a question moves too: it resumes idle, and asks
-   again when prompted.
+   command is running; move anyway and it ends". In the app the sheet ticks the box for it, **Interrupt after this
+   turn: kanban is working** or **Move anyway and end it: a command is running**, and **Move** takes it; unticked, the
+   move refuses as above. A robot waiting on a question moves too: it resumes idle, and asks again when prompted.
 
 Mission control's robots stay on this Mac and have no move button.
 

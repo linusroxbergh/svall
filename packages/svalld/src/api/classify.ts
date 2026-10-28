@@ -36,6 +36,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'machines.refresh': 'read',
   'machines.setup': 'read',
   'machines.consent': 'mutation',
+  'machines.updateAgents': 'mutation',
   'column.add': 'mutation',
   'column.rename': 'mutation',
   'column.reorder': 'mutation',

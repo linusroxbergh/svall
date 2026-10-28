@@ -88,7 +88,7 @@
 .host-step[data-status="ok"] .host-mark { color: var(--done); }
 .host-step[data-status="warn"] .host-mark { color: var(--working); }
 .host-step[data-status="fail"] .host-mark { color: var(--blocked); }
-.host-name { flex: none; width: 120px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.host-name { flex: none; width: 120px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
 .host-said { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
 /* what the user has to go and do about this step, which the checklist never hides */
 .host-said em { display: block; font-style: normal; color: var(--sand); }
@@ -102,6 +102,7 @@
 .host-body .host-step > input[type="checkbox"] { flex: none; margin: 0; translate: 0 2px; accent-color: var(--sand); }
 .host-body .host-step > .btn { flex: none; }
 .host-failed { display: block; color: var(--danger); }
+.host-fine { align-self: flex-start; font-size: var(--text-sm); color: var(--ink-3); }
 /* a terminal on the machine, wide enough for a login's long link; the shell draws it over the surface */
 .modal.host:has(.host-term) { width: min(760px, 92vw); }
 .host-term { display: flex; flex-direction: column; gap: var(--sp-md); }

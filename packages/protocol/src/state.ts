@@ -39,6 +39,13 @@ export const AgentKind = z.enum(['claude', 'codex', 'opencode']);
 export type AgentKind = z.infer<typeof AgentKind>;
 
 export const AGENT_LABEL: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
+/** Each agent CLI's own update to its latest release, however it was installed; it runs unattended. */
+export const AGENT_UPDATE: Record<AgentKind, string> = { claude: 'claude update', codex: 'codex update', opencode: 'opencode upgrade' };
+/** The agents `run` updates, as their updates joined by &&; none for any other command. */
+export function updatesIn(run: string): AgentKind[] | undefined {
+  const kinds = run.split(' && ').map((c) => AgentKind.options.find((k) => AGENT_UPDATE[k] === c));
+  return kinds.every((k) => k !== undefined) ? kinds : undefined;
+}
 // the models each CLI's --model takes, that Settings offers; OpenCode's are a provider's, left to its config
 export const MODELS: Record<AgentKind, string[]> = { claude: ['haiku', 'sonnet', 'opus', 'fable'], codex: ['gpt-6-luna', 'gpt-6-astra', 'gpt-6-sol'], opencode: [] };
 

@@ -13,17 +13,17 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
     .then(read, (e: Error) => app.store.getState().showToast(e.message, 'error'));
   if (!rows.length) return null;
   return (
-    <Section name="robot.machine" title={`On ${name}`}>
+    <Section name="robot.machine" title={`On ${name}`} shut>
       <div className="rows">
         {rows.map((r) => (
-          <div key={r.key} className="row" data-testid={`side-gap-${r.key}`}>
-            <span><b>{r.gap!.name}</b> {r.gap!.what}</span>
+          <div key={r.key} className="side-gap" data-testid={`side-gap-${r.key}`}>
+            <span><b>{r.gap!.name}</b> {r.gap!.what}{!toTick(r) && !r.run && r.action && <em>{r.action}</em>}</span>
             {toTick(r) ? (
-              <b><button className="btn set-open" data-testid={`side-gap-copy-${r.key}`} onClick={() => void copy(r.tick!)}>Copy keys</button></b>
-            ) : r.run ? (
-              <b><button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
-                onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button></b>
-            ) : r.action && <b>{r.action}</b>}
+              <button className="btn set-open" data-testid={`side-gap-copy-${r.key}`} onClick={() => void copy(r.tick!)}>Copy keys</button>
+            ) : r.run && (
+              <button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
+                onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button>
+            )}
           </div>
         ))}
       </div>

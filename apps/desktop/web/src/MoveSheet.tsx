@@ -1,7 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveSummary, WORKTREE_ACTION, type MachineId, type MoveSheet as What, type Moving, type Refusal } from '@svall/protocol';
+import {
+  AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveSummary, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
+  type AgentKind, type MachineId, type MoveSheet as What, type Moving, type Refusal,
+} from '@svall/protocol';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
+import { machineNames, plainStep, stepLabel } from './host.js';
+import { startHost } from './HostSetup.js';
 import { useApp } from './hooks.js';
 import { setupNote } from './landings.js';
 import { machineName } from './placement.js';
@@ -17,12 +22,16 @@ export function terminalOn(machine: string, run?: string, forward?: number): voi
 type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
 const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
-const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'a command is running; move anyway and it ends' };
+const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'Move anyway and end it' };
+// a credential file's box says whether it stays
+const staying = (w: What): What => ({ ...w, stays: w.stays.filter((x) => !w.credentialFiles.some((f) => x === `${f} stays here`)) });
 const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice(1)}`;
 // the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
 type Answer = { ok: true; sheet: What } | { ok: false; refusal: Refusal } | { error: string };
+// a refusal fixed from the sheet: on its way, `upgrade` the machine's upgrade the Machines panel's run carries, or failed
+type Fix = { doing: string; upgrade?: true } | { failed: string };
 
 // the steps of a move as the sheet shows them while it runs, each over the phases it covers; before its first phase the
 // move checks itself again. On the way back the worker packs and carries in its bundle, and this Mac lands what came
@@ -75,14 +84,22 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   // the way back names this Mac by the id its daemon gives itself
   const [machine, setMachine] = useState(to);
   const [carry, setCarry] = useState<string[]>([]);
-  const [interrupt, setInterrupt] = useState<Interrupt>();
-  const [own, setOwn] = useState(false);
+  // each undefined until the user chooses: a robot at work is interrupted, and one sharing a main checkout gets its own
+  // worktree, as their boxes in the sheet say, `working` and `shared` saying why
+  const [interrupt, setInterrupt] = useState<Interrupt | false>();
+  const [working, setWorking] = useState<string>();
+  const [own, setOwn] = useState<boolean>();
+  const [shared, setShared] = useState<string>();
+  const [fix, setFix] = useState<Fix>();
   const [asked, setAsked] = useState(0);
   const [answer, setAnswer] = useState<Answer>();
   const [run, setRun] = useState<Run>();
   const [retried, setRetried] = useState<Retry>();
   const [setup, setSetup] = useState<string>();
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? machineName(s.fleet, m) : 'this Mac'; });
+  const host = useApp((s) => s.host);
+  // the machine a refusal is about: the one the robot goes to, or the one it comes back from
+  const far = to ? where : here;
   // a move that fails once the sheet is closed says so in a toast
   const shown = useRef(true);
   const reached = useRef<Step>(undefined);
@@ -108,9 +125,31 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   useEffect(() => {
     if (!params) return;
     let live = true;
-    app.api().call('robot.moveCheck', params).then((a) => { if (live) setAnswer(a); }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
+    app.api().call('robot.moveCheck', params).then((a) => {
+      if (!live) return;
+      // a fix that failed is told until the check says something new
+      setFix((f) => (f && 'failed' in f ? undefined : f));
+      const refused = 'ok' in a && !a.ok ? a.refusal : undefined;
+      const stop = refused && interrupt === undefined ? interruptOf(refused.action) : undefined;
+      if (refused && own === undefined && refused.action === WORKTREE_ACTION) {
+        setShared(refused.reason);
+        setOwn(true);
+      } else if (refused && stop) {
+        setWorking(refused.reason);
+        setInterrupt(stop);
+      } else setAnswer(a);
+    }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
     return () => { live = false; };
   }, [machine, carry.join('\n'), interrupt, own, asked]);
+  // a fix's end checks again from scratch
+  const recheck = () => { setFix(undefined); setAnswer(undefined); setAsked((n) => n + 1); };
+  // an upgrade that ran through but left things to do there ends non-zero, and the check says what they are
+  useEffect(() => {
+    if (!fix || !('upgrade' in fix) || host?.op !== 'upgrade' || host.args.name !== far || host.running) return;
+    const stop = host.steps.find((s) => s.status === 'fail');
+    if (stop) setFix({ failed: `Upgrade stopped at ${stepLabel(stop.step)}${stop.detail ? `: ${stop.detail}` : ''}` });
+    else recheck();
+  }, [host]);
   // through, as answered or, with the answer lost, as the robot's arrival says
   const through = run?.at === 'moved' || (run?.at === 'lost' && c?.machine === to);
   useEffect(() => {
@@ -148,6 +187,17 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     app.api().call('robot.moveRetry', { moveId }).then(() => { setRetried(undefined); setRun({ at: 'moved' }); }, (e: Error) => setRetried({ at: 'failed', error: e.message, over }));
   };
   const answerable = refusal && interruptOf(refusal.action);
+  const updates = refusal?.run ? updatesIn(refusal.run) : undefined;
+  const farId = to ?? c.machine;
+  // a refusal whose button says what to do needs no line saying it
+  const handled = refusal && (refusal.action === UPGRADE_ACTION || !!updates || refusal.action === WORKTREE_ACTION || !!answerable);
+  const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far }); };
+  const update = (kinds: AgentKind[], machine: MachineId) => {
+    setFix({ doing: `Updating ${kinds.map((k) => AGENT_LABEL[k]).join(' and ')} on ${far}` });
+    app.api().call('machines.updateAgents', { machine, kinds }).then(recheck, (e: Error) => setFix({ failed: plainStep(e.message, machineNames(store().machines)) }));
+  };
+  const doing = fix && 'doing' in fix ? fix : undefined;
+  const step = doing?.upgrade && host?.running ? host.steps.at(-1)?.step : undefined;
   const pick = (f: string) => setCarry((was) => (was.includes(f) ? was.filter((x) => x !== f) : [...was, f]));
 
   return (
@@ -173,22 +223,24 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {!run && sheet && (
           <>
             <div className="host-note">
-              <span data-testid="move-summary">{moveSummary(sheet, c.repo && c.repo.mainRoot.split('/').pop(), where)}</span>
+              <span data-testid="move-summary">{moveSummary(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where)}</span>
               {sheet.converts && <span data-testid="move-converts">{convertLine(sheet.converts)}</span>}
               {sheet.question && <span data-testid="move-question">its open question is dropped; it asks again</span>}
             </div>
             {sheet.credentialFiles.map((f) => (
               <label key={f} className="move-pick"><input type="checkbox" checked={carry.includes(f)} onChange={() => pick(f)} />copy {f} to {where}</label>
             ))}
-            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} />{OWN_WORKTREE}</label>}
-            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(undefined)} />{KEPT[interrupt]}</label>}
+            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} />{OWN_WORKTREE}{shared && `: ${shared}`}</label>}
+            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(false)} />{KEPT[interrupt]}{working && `: ${working}`}</label>}
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
         )}
-        {!run && refusal && (
+        {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
+        {!run && !doing && refusal && (
           <>
             <div className="host-note" data-testid="move-refusal">
-              <span><span data-testid="move-reason">{refusal.reason}</span><span className="modal-sub">{refusal.action}</span></span>
+              <span><span data-testid="move-reason">{refusal.reason}</span>{!handled && <span className="modal-sub">{refusal.action}</span>}</span>
+              {fix && 'failed' in fix && <span className="host-failed" role="status" data-testid="move-fix-failed">{fix.failed}</span>}
               {refusal.details.length > 0 && (
                 <details className="modal-more" data-testid="move-details">
                   <summary>details</summary>
@@ -197,7 +249,13 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               )}
             </div>
             <div className="acts">
-              {refusal.run ? (
+              {refusal.action === UPGRADE_ACTION ? (
+                <button className="btn pri" data-testid="move-action" disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
+                  onClick={upgrade}>Upgrade {far}</button>
+              ) : updates && farId ? (
+                <button className="btn pri" data-testid="move-action" data-tip={`Runs ${refusal.run} on ${far}, then checks again`}
+                  onClick={() => update(updates, farId)}>Update {updates.map((k) => AGENT_LABEL[k]).join(' and ')}</button>
+              ) : refusal.run ? (
                 <button className="btn pri" data-testid="move-action" data-tip={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
                   onClick={() => { close(); terminalOn(where, refusal.run); }}>Open terminal</button>
               ) : refusal.action === WORKTREE_ACTION ? (

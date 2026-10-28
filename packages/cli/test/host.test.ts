@@ -1122,6 +1122,27 @@ describe('host doctor', () => {
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok', detail: expect.stringContaining('1.2.3') });
   });
 
+  it('emits a start before each probe and every check as a step once found, in the report\'s order, the connection and the companion\'s doctor steps of their own', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+    const report = await doctorHost('trift', deps({ registry: registered(), setupRows: () => Promise.resolve([okRow('var:X')]) }));
+    const ended = events.filter((e) => e.status !== 'start');
+    expect(ended.slice(0, 2)).toEqual([{ step: 'master', status: 'ok', detail: 'connected to trift.test' }, { step: 'doctor', status: 'ok', detail: 'answered' }]);
+    expect(ended.slice(2).map((e) => e.step)).toEqual(report.checks.map((c) => c.name));
+    // each probe's start comes before what it found
+    const at = (step: string, status?: string) => events.findIndex((e) => e.step === step && (status ? e.status === status : e.status !== 'start'));
+    for (const step of ['master', 'doctor', 'release', 'versions', 'space', 'home']) expect(at(step, 'start')).toBeLessThan(at(step));
+    expect(at('mirror:var:X')).toBe(events.length - 1);
+  });
+
+  it('a doctor that cannot reach the machine says so as the connection step', async () => {
+    await expect(doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('Permission denied (publickey)')) })))
+      .rejects.toThrow('Permission denied (publickey)');
+    expect(events).toEqual([{ step: 'master', status: 'start' }, { step: 'master', status: 'fail', detail: 'Permission denied (publickey)' }]);
+  });
+
   it('fails a machine whose fleet there does not run as a worker, so the check ends ready only once robots can move there', async () => {
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     ssh.reply(['svall-space'], { stdout: DF });
@@ -1252,6 +1273,27 @@ describe('host doctor', () => {
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
 
+  it('with --steps prints each step as an NDJSON line as it goes, then the same report', async () => {
+    const config = path.join(work, 'config');
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
+    registered().save();
+    const { hostCommands } = await import('../src/commands/host.js');
+    const said: string[] = [];
+    const out = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { said.push(String(chunk)); return true; });
+    try {
+      await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['doctor', 'trift', '--steps'], { from: 'user' });
+    } finally {
+      out.mockRestore();
+    }
+    const steps = said.slice(0, -1).map((l) => JSON.parse(l) as StepEvent);
+    expect(steps[0]).toEqual({ step: 'master', status: 'start' });
+    const report = JSON.parse(said.at(-1)!) as HostReport;
+    expect(steps.filter((e) => e.status !== 'start' && e.step !== 'master' && e.step !== 'doctor').map((e) => e.step)).toEqual(report.checks.map((c) => c.name));
+  });
+
   it("drops a removed machine's check, and the file with the last one", async () => {
     const config = path.join(work, 'config');
     fs.mkdirSync(config, { recursive: true });
@@ -1361,6 +1403,16 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail' });
+    expect(report.checks.find((c) => c.name === 'release')?.action).toBeUndefined();
+  });
+
+  it('says to update svall on this Mac when the machine runs a newer release', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '9.0.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+    const report = await doctorHost('trift', deps({ registry: registered() }));
+    expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail', action: 'update svall on this Mac' });
   });
 });
 

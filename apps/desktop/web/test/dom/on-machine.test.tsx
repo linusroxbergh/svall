@@ -26,12 +26,16 @@ beforeEach(() => {
   call.mockImplementation((method: string) => Promise.resolve(method === 'machines.setup' || method === 'machines.consent' ? { rows } : {}));
 });
 
-const shown = () => [...document.querySelectorAll('[data-section="robot.machine"] .row')].map((e) => e.textContent);
+const shown = () => [...document.querySelectorAll('[data-section="robot.machine"] .side-gap')].map((e) => e.textContent);
+// the section starts folded
+const unfold = () => fireEvent.click(screen.getByTestId('sec-fold-robot.machine'));
 
 test('a placed robot\'s card lists what of its agent setup will not work on its machine, each with its one way on', async () => {
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   expect(call).toHaveBeenCalledWith('machines.setup', { machine: VAULT, robot: 'c1' });
   expect(screen.getByTestId('sec-fold-robot.machine').textContent).toBe('On vault');
+  expect(shown()).toEqual([]);
+  unfold();
   expect(shown()).toEqual(['linear keys not copied (env.LINEAR_API_KEY)Copy keys', 'notion not logged inOpen terminal', 'chrome runs only on a Mac']);
 
   rows = [notion, chrome];
@@ -49,6 +53,7 @@ test('a copy the machine did not take says why, and a robot whose agent setup al
   call.mockImplementation((method: string) => (method === 'machines.consent' ? Promise.reject(new Error('the change is saved, but vault did not take it: ENOSPC'))
     : Promise.resolve({ rows })));
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  unfold();
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
   expect(store.getState().toast).toMatchObject({ text: 'the change is saved, but vault did not take it: ENOSPC', tone: 'error' });
 
@@ -62,6 +67,7 @@ test('a row whose way on is its action says it, and one whose copy is still ther
   const db: SetupRow = { key: 'runtime:/Users/ada/bin/db-mcp', status: 'warn', detail: 'd', action: 'install db-mcp on vault', gap: { name: 'db-mcp', what: 'not installed; db needs it' } };
   rows = [still, db];
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  unfold();
   expect(shown()).toEqual(['jira unticked; still on vaultcheck vault again', 'db-mcp not installed; db needs itinstall db-mcp on vault']);
   expect(screen.queryByTestId('side-gap-copy-claude:mcp:jira')).toBeNull();
 });

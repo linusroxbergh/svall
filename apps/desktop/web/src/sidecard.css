@@ -100,6 +100,12 @@
 .side .row b.mono { font-size: var(--text-xs); }
 .side .row .meter { flex: 1; margin: 0; }
 .side .row .meter > b { color: var(--ink); font-weight: var(--w-medium); }
+/* what will not work on a placed robot's machine: its words wrap beside the one button that sets it up */
+.side-gap { display: flex; align-items: center; gap: var(--sp-md); padding: var(--sp-xs) 0; font-size: var(--text-sm); color: var(--ink-3); }
+.side-gap > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.side-gap b { font-weight: var(--w-medium); color: var(--ink); }
+.side-gap em { display: block; color: var(--ink-2); }
+.side-gap .btn { flex: none; white-space: nowrap; }
 .side-docs-new { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-cool); cursor: pointer; }
 .side-doc { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-xs) var(--sp-md); border: 0; border-radius: var(--r-sm); background: var(--fill-1); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
 .side-doc span { font-size: var(--text-xs); color: var(--ink-3); }
