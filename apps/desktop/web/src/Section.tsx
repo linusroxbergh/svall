@@ -7,6 +7,7 @@ import type { Section as Fold } from './store/index.js';
 import { useWidthGrip } from './widthGrip.js';
 
 const OPEN: Fold = {};
+const SHUT: Fold = { shut: true };
 // how short a section can be squeezed; an empty one is only its title
 const floor = (sec: HTMLElement) => { const m = getComputedStyle(sec).minHeight; return m === 'auto' ? (sec.firstElementChild as HTMLElement).offsetHeight : parseFloat(m) || 0; };
 
@@ -19,12 +20,15 @@ function room(sec: HTMLElement): number {
   return sec.offsetHeight + Math.max(0, secs.clientHeight - used) + give;
 }
 
-/** A part of a side card: the title folds it, and the edge under it pins its height, which a double-click there lets go of. */
-export function Section({ name, title, head, testid, children }: { name: string; title: string; head?: ReactNode; testid?: string; children: ReactNode }) {
-  const fold = useApp((s) => s.sections[name]) ?? OPEN;
+/**
+ * A part of a side card: the title folds it, and the edge under it pins its height, which a double-click there lets go of.
+ * `shut`, folded until first opened.
+ */
+export function Section({ name, title, head, testid, shut, children }: { name: string; title: string; head?: ReactNode; testid?: string; shut?: boolean; children: ReactNode }) {
+  const fold = useApp((s) => s.sections[name]) ?? (shut ? SHUT : OPEN);
   const range = useRef({ min: 0, max: 0 });
   const set = (f: Fold, persist?: boolean) => app.store.getState().setSection(name, f, persist);
-  const now = () => app.store.getState().sections[name] ?? OPEN;
+  const now = () => app.store.getState().sections[name] ?? (shut ? SHUT : OPEN);
   const grip = useWidthGrip((g) => {
     const sec = g.parentElement!;
     range.current = { min: floor(sec), max: room(sec) };

@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import { z } from 'zod';
 import { ApiError, checksAgain, PROTOCOL_VERSION, settable, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
@@ -266,9 +266,12 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
   host.command('doctor')
     .description('what the machine answers about itself, and what only this controller can check')
     .argument('<name>', 'the machine in the registry')
-    .action(async (name: string) => {
+    .addOption(new Option('--steps', 'with --json, print each step as an NDJSON line as it goes, before the report').hideHelp())
+    .action(async (name: string, o: { steps?: boolean }) => {
       const entry = MachineRegistry.load(dir()).get(name);
-      const report = await doctorHost(name, realDeps(() => { /* a diagnosis prints a table, not steps */ }, dir(), target())).catch((e: unknown) => {
+      // a diagnosis prints a table, not steps, unless the app follows it
+      const emit = o.steps && json() ? (e: StepEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); } : () => {};
+      const report = await doctorHost(name, realDeps(emit, dir(), target())).catch((e: unknown) => {
         if (entry) recordCheck(dir(), entry.id, undefined);
         throw e;
       });

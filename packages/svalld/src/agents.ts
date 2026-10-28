@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { AGENT_LABEL, type AgentKind } from '@svall/protocol';
+import { AGENT_LABEL, AGENT_UPDATE, type AgentKind } from '@svall/protocol';
 import { shq } from './text.js';
 
 export type Version = [number, number, number];
@@ -36,7 +36,7 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   claude: {
     // the oldest release whose sessions a move carries, which a fixture holds
     label: AGENT_LABEL.claude, bin: 'claude', installUrl: 'https://code.claude.com/docs/en/setup', minVersion: [2, 1, 251], moveFloor: true,
-    installCommand: 'curl -fsSL https://claude.ai/install.sh | bash', updateCommand: 'claude update',
+    installCommand: 'curl -fsSL https://claude.ai/install.sh | bash', updateCommand: AGENT_UPDATE.claude,
     loginArgs: ['auth', 'status', '--json'],
     loggedIn: (out) => { try { return (JSON.parse(out) as { loggedIn?: boolean }).loggedIn === true; } catch { return false; } },
     loginHint: 'claude auth login',
@@ -44,14 +44,14 @@ export const AGENTS: Record<AgentKind, AgentAdapter> = {
   },
   codex: {
     label: AGENT_LABEL.codex, bin: 'codex', installUrl: 'https://learn.chatgpt.com/docs/codex/cli', minVersion: [0, 156, 0],
-    installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', updateCommand: 'codex update',
+    installCommand: 'curl -fsSL https://chatgpt.com/codex/install.sh | sh', updateCommand: AGENT_UPDATE.codex,
     loginArgs: ['login', 'status'], loggedIn: () => true,
     loginHint: 'codex login',
     crewCommand: withModel('codex', '-m'), scribeModel: 'gpt-6-luna',
   },
   opencode: {
     label: AGENT_LABEL.opencode, bin: 'opencode', installUrl: 'https://opencode.ai/v2/docs/', minVersion: [2, 0, 22],
-    installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash', updateCommand: 'opencode upgrade',
+    installCommand: 'curl -fsSL https://opencode.ai/v2/install | bash', updateCommand: AGENT_UPDATE.opencode,
     // its login is a model provider's login or key, which auth list names; an MCP server's is an integration too. A
     // private server leaves the user's shared background service unstarted
     loginArgs: ['auth', 'list', '--standalone', '--format', 'json'],

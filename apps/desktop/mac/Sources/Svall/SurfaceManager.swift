@@ -172,7 +172,8 @@ final class SurfaceManager {
             guard let self, let view, self.overlay[id] === view else { return timer.invalidate() }
             let text = start.saw(view.screenText() ?? "", at: Date())
             if start.up { timer.invalidate() }
-            if let text { view.type(text) }
+            // the Return the typed command waits for goes to the terminal, whatever took the keys while it came up
+            if let text { view.type(text); view.window?.makeFirstResponder(view) }
         }
     }
 

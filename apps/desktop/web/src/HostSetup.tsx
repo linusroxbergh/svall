@@ -1,15 +1,16 @@
-import { settable, type MachineId, type SetupRow } from '@svall/protocol';
+import { updatesIn, wayOn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
-  groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+  groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { placeTip } from './settings.js';
+import { Caret } from './Sidebar.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
@@ -87,9 +88,9 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
-// the footer: the run's one line, then Stop while it runs, Set them up now while parts of the agent setup can be set up
-// from here and the page shows every step, and Done, or Check again on a machine in the registry while something is left to fix
-function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
+// the footer: the run's one line, then Stop while it runs, and Done, or Check again on a machine in the registry while
+// something is left to fix
+function Outcome({ run }: { run: HostRun }) {
   const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
   if (run.running) {
     return (
@@ -111,7 +112,6 @@ function Outcome({ run, narrow }: { run: HostRun; narrow?: () => void }) {
           <button className="btn" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
             onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
         )}
-        {narrow && run.steps.some((s) => s.gap && settable(s)) && <button className="btn" data-testid="host-set-up" onClick={narrow}>Set them up now</button>}
         {o.done || !known
           ? <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
           : <button className="btn" data-testid="host-check-again" onClick={() => startHost('doctor', { name })}>Check again</button>}
@@ -126,11 +126,17 @@ type Terminal = (command: string, forward?: number) => void;
 function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const name = run.args.name;
   const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
-  // the tick asked for while svalld pushes it
+  // the tick asked for while svalld pushes it, and an agent update under way there
   const [asked, setAsked] = useState<boolean>();
+  const [updating, setUpdating] = useState(false);
   const [failed, setFailed] = useState<string>();
+  const updates = row.run ? updatesIn(row.run) : undefined;
   const sentence = useId();
-  const said = stepSaid(row, name);
+  const whole = stepSaid(row, name);
+  // a check whose sentence ends in the command its terminal types says only what is wrong, the command behind details
+  const cut = row.run && !row.action && whole ? whole.lastIndexOf(': ') : -1;
+  const said = cut > 0 ? whole!.slice(0, cut) : whole;
+  const more = cut > 0 ? whole!.slice(cut + 2) : row.action && whole;
   const idle = !run.running;
   // svalld keeps a tick it could not push, so a refusal is followed by the rows as it kept them; they go to the run the tick
   // was made in, known by its args, which its rows keep, or to a check of the machine since
@@ -150,14 +156,23 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       .then(show, () => {})
       .finally(() => setAsked(undefined));
   };
+  // the machine checked again once its agents are updated
+  const update = (machine: MachineId, kinds: AgentKind[]) => {
+    setUpdating(true);
+    setFailed(undefined);
+    app.api().call('machines.updateAgents', { machine, kinds })
+      .then(() => startHost('doctor', { name }), (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines))))
+      .finally(() => setUpdating(false));
+  };
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
       <span className="host-mark">{MARK[row.status]}</span>
       <span className="host-name" data-tip={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
-        {asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
+        {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating on {name}…</span>
+          : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
-        {row.action && said && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{said}</details>}
+        {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{more}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
       {row.tick ? (
@@ -165,6 +180,11 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
         <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} aria-describedby={sentence} checked={asked ?? row.tick.on}
           disabled={!id || !idle} aria-disabled={asked !== undefined || undefined} data-tip={id ? undefined : 'listed once the machine is added'}
           onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
+      ) : updates && id && idle ? (
+        <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating} data-tip={`Runs ${row.run} on ${name}, then checks again`}
+          onClick={() => update(id as MachineId, updates)}>Update</button>
+      ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && idle ? (
+        <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
@@ -177,19 +197,55 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   );
 }
 
-// terminal: opens a terminal on the machine with a step's command typed, where the panel knows how to reach it; wide, while
-// the page shows only the agent setup rows of what will not work there and those with a tick, which keep it once it does
-function Checklist({ run, terminal, wide }: { run: HostRun; terminal?: Terminal; wide?: () => void }) {
-  const steps = wide ? run.steps.filter((s) => s.step.startsWith('mirror:') && (s.gap || s.tick)) : run.steps;
+// a step the user has something to do about or to know: one that failed, warns, or never finished, or agent setup with a
+// way to make it work there
+const needs = (s: HostStep): boolean => (s.status !== 'ok' && s.status !== 'skip') || (!!s.gap && wayOn(s));
+const isSetup = (s: HostStep): boolean => s.step.startsWith('mirror:');
+
+// which folded parts of the checklist are open: the fine checks, and the agent setup
+type Open = { fine: boolean; setup: boolean };
+const SHUT: Open = { fine: false, setup: false };
+
+/**
+ * The steps that need the user, by phase, the one under way while the run goes, then the fine ones and the agent setup,
+ * each folded behind one line. terminal: opens a terminal on the machine with a step's command typed, where the panel
+ * knows how to reach it.
+ */
+function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: HostRun; terminal?: Terminal; open: Open; unfold: (o: Open) => void }) {
+  const steps = run.steps.filter((s) => !isSetup(s));
+  const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
+  const ended = run.running ? steps.filter((s) => s.status !== 'start') : steps;
+  const ok = ended.filter((s) => !needs(s));
+  const rows = run.steps.filter(isSetup);
+  const row = (r: HostStep, at: number) => <Row key={`${r.step}-${at}`} row={r} run={run} terminal={terminal} />;
   return (
     <div className="host-steps" data-testid="host-steps">
-      {wide && <div className="acts"><button className="btn set-open" data-testid="host-show-all" onClick={wide}>Show every step</button></div>}
-      {groupSteps(steps).map((group) => (
+      {groupSteps(fine ? ended : ended.filter(needs)).map((group) => (
         <div key={group.phase} className="host-phase">
           <div className="kicker" data-testid="host-phase">{group.label}</div>
-          {group.rows.map((row, at) => <Row key={`${row.step}-${at}`} row={row} run={run} terminal={terminal} />)}
+          {group.rows.map(row)}
         </div>
       ))}
+      {now && (
+        <div className="host-step" data-testid="host-now">
+          <span className="host-mark"><span className="move-spin" /></span><span className="host-said">{stepLabel(now.step)}…</span>
+        </div>
+      )}
+      {ok.length > 0 && (
+        <button type="button" className="sec-fold host-fine" data-testid="host-fine" aria-expanded={fine} onClick={() => unfold({ fine: !fine, setup })}>
+          <Caret open={fine} />{plural(ok.length, 'check')} fine
+        </button>
+      )}
+      {rows.length > 0 && (
+        <div className="host-phase">
+          <div className="kicker">
+            <button type="button" className="sec-fold" data-testid="host-setup-fold" aria-expanded={setup} onClick={() => unfold({ fine, setup: !setup })}>
+              <Caret open={setup} />Your agent setup
+            </button>
+          </div>
+          {setup && rows.map(row)}
+        </div>
+      )}
     </div>
   );
 }
@@ -231,14 +287,16 @@ export function HostSetup() {
   const machine = useApp((s) => s.hostMachine);
   const known = useApp((s) => !!s.machines?.some((m) => m.name === s.hostMachine));
   const terminal = useApp((s) => s.hostTerminal);
-  const narrow = useApp((s) => !!s.hostNarrow);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
   const shut = useRef<HTMLButtonElement>(null);
+  // kept while a terminal there stands in for the checklist, and folded again once the panel closes
+  const [unfolded, unfold] = useState<Open>(SHUT);
 
   useEffect(() => {
-    if (!open) return;
-    shut.current?.focus();
+    if (!open) { unfold(SHUT); return; }
+    // a terminal there holds the keys, and a focused button would take its Return
+    if (!app.store.getState().hostTerminal) shut.current?.focus();
     const key = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || document.querySelector('.machine-menu')) return;
       e.stopPropagation();
@@ -296,12 +354,12 @@ export function HostSetup() {
               )}
               {shown && (
                 <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined}
-                  wide={narrow ? () => app.store.getState().narrowHost(false) : undefined} />
+                  open={unfolded} unfold={unfold} />
               )}
             </>
           )}
         </div>
-        {!term && shown && <Outcome run={shown} narrow={narrow ? undefined : () => app.store.getState().narrowHost(true)} />}
+        {!term && shown && <Outcome run={shown} />}
       </div>
     </div>
   );

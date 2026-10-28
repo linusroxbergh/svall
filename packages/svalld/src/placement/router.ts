@@ -1,12 +1,14 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { AGENT_UPDATE, AgentKind, ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import { hooklessGit } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { cliRunner } from '../sessions/registry.js';
+import type { CliRun } from '../sessions/types.js';
 import { FarPass, type Only } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
 import type { TerminalHub } from '../terminals.js';
@@ -176,17 +178,33 @@ export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId
   }
 }
 
+// an agent's own update downloads its release
+const UPDATE_MS = 5 * 60_000;
+/** How long a home waits on a worker's agent updates. */
+export const AGENTS_UPDATE_MS = UPDATE_MS + 30_000;
+
+/** Runs each agent's own update here, one after another; the first that fails says why. */
+export async function updateAgents(kinds: AgentKind[], run: CliRun = cliRunner(process.env, UPDATE_MS)): Promise<void> {
+  for (const kind of kinds) {
+    const [bin, ...args] = AGENT_UPDATE[kind].split(' ');
+    const r = await run(bin, args);
+    const said = (r.stderr.trim() || r.stdout.trim()).split('\n').at(-1);
+    if (r.code !== 0) throw new ApiError('internal', `${AGENT_UPDATE[kind]} exited ${r.code}${said ? `: ${said}` : ''}`);
+  }
+}
+
 const FarViewer = z.object({ key: z.string(), kind: z.enum(['app', 'phone']) });
 const FarOpen = methods['term.open'].params.extend({ viewer: FarViewer });
 const FarResize = methods['term.resize'].params.extend({ viewer: z.string() });
 const FarClose = z.object({ id: z.string(), viewer: z.string() });
+const AgentsUpdate = z.object({ kinds: z.array(AgentKind).min(1) });
 
 /**
  * What a worker answers the home's calls about its robots with: each runs here, and what it changes goes home as any change
  * does. A home viewer's terminal here is one of `viewers`.
  */
 export function workerCalls(o: {
-  fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach' | 'open' | 'input' | 'resize' | 'close'>; viewers: FarViewers;
+  fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach' | 'open' | 'input' | 'resize' | 'close'>; viewers: FarViewers; cli?: CliRun;
 }): Handlers {
   const { fleet, terminals, viewers } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
@@ -245,6 +263,7 @@ export function workerCalls(o: {
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
       return probeRepo(p.data, hooklessGit);
     },
+    'agents.update': async (raw) => { await updateAgents(parse(AgentsUpdate, raw).kinds, o.cli); return {}; },
   };
 }
 

@@ -49,7 +49,9 @@ test('the machines panel reads the list as it opens, and reports every step', as
   for (const event of ADD_STEPS) await receive(page, { type: 'host.step', op: 'add', event });
   await receive(page, { type: 'host.done', op: 'add', code: 1 });
 
-  await expect(page.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Trying it out']);
+  // what needs the user, by phase; the steps that went fine are folded behind one line
+  await expect(page.getByTestId('host-phase')).toHaveText(['Svall there', 'Agents there', 'Trying it out']);
+  await expect(page.getByTestId('host-step-master')).toHaveCount(0);
   await expect(page.getByTestId('host-step-tmux')).toHaveAttribute('data-status', 'warn');
   await expect(page.getByTestId('host-action-claude')).toHaveText('ssh linus@studio, then claude auth login');
   await expect(page.getByTestId('host-action-opencode')).toHaveText('ssh linus@studio, then install OpenCode');
@@ -60,6 +62,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-step-probe')).toContainText('ws://127.0.0.1:47800 refused token=…');
   await expect(page.getByTestId('host-step-probe')).not.toContainText('s3cr3t');
   // steps read as plain words, and the run ends in one line counting what is left to do
+  await page.getByTestId('host-fine').click();
   await expect(page.getByTestId('host-step-master')).toContainText('Connection');
   await expect(page.getByTestId('host-outcome')).toContainText('studio has 4 things to fix.');
   // a machine not in the registry has nothing to check again
@@ -99,8 +102,10 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'codex', status: 'skip', detail: 'not installed' } });
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'gh', status: 'warn', detail: 'not logged in' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
+  await expect(page.getByTestId('host-fine')).toHaveText('3 checks fine');
+  await page.getByTestId('host-fine').click();
   await expect(page.getByTestId('host-step-release')).toContainText('0.5.0, protocol 4');
-  await expect(page.getByTestId('host-outcome')).toContainText('studio is ready. Robots you move there keep working while this Mac sleeps.');
+  await expect(page.getByTestId('host-outcome')).toContainText('studio is ready, with 1 warning. Robots you move there keep working while this Mac sleeps.');
 
   await panel.getByTestId('machine-doctor').click();
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
@@ -238,21 +243,19 @@ const doctor = async (page: import('@playwright/test').Page, events: HostStep[],
   await receive(page, { type: 'host.done', op: 'doctor', code });
 };
 
-test('the setup page ends in one line: ready, parts of the agent setup that will not work there, which it offers to set up now, or an operation stopped at a step (remove)', async ({ page, svall }) => {
+test('the setup page ends in one line: ready, parts of the agent setup that will not work there, or an operation stopped at a step (remove)', async ({ page, svall }) => {
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, unticked('linear', 'claude', 'env.LINEAR_API_KEY'), unticked('github', 'codex', 'env.GITHUB_TOKEN')]);
-  await expect(panel.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
+  // nothing needs the user but the agent setup, folded until opened
+  await expect(panel.getByTestId('host-phase')).toHaveCount(0);
+  await expect(panel.getByTestId('host-fine')).toHaveText('4 checks fine');
+  await expect(panel.getByTestId('host-step-mirror:claude:mcp:linear')).toHaveCount(0);
+  await panel.getByTestId('host-setup-fold').click();
   // two servers whose keys are not copied are two parts, each with its own sentence and tick
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Set them up nowDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Done');
   await expect(panel.getByTestId('host-action-mirror:claude:mcp:linear')).toHaveText("copy linear's keys to studio");
   await expect(panel.getByTestId('host-action-mirror:codex:mcp:github')).toHaveText("copy github's keys to studio");
   for (const step of ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github']) await expect(panel.getByTestId(`host-tick-${step}`)).not.toBeChecked();
-  // set up now: those rows alone, until every step again
-  await panel.getByTestId('host-set-up').click();
-  await expect(panel.getByTestId('host-phase')).toHaveText(['Your agent setup']);
-  await expect(panel.locator('[data-testid^="host-step-"]')).toHaveCount(2);
-  await panel.getByTestId('host-show-all').click();
-  await expect(panel.getByTestId('host-phase')).toHaveText(['Reaching it', 'Svall there', 'Agents there', 'Your agent setup', 'Trying it out']);
 
   // a report long enough to scroll keeps the title and the outcome in sight
   await panel.getByTestId('machine-doctor').click();
@@ -263,7 +266,7 @@ test('the setup page ends in one line: ready, parts of the agent setup that will
   await expect(panel.getByTestId('host-step-mirror:var:VAR_39')).toBeInViewport();
   await expect(panel.getByTestId('host-machine')).toBeInViewport();
   await expect(panel.getByTestId('host-outcome')).toBeInViewport();
-  await expect(panel.getByTestId('host-step-ssh')).not.toBeInViewport();
+  await expect(panel.getByTestId('host-setup-fold')).not.toBeInViewport();
 
   await panel.getByTestId('machine-more').click();
   await panel.getByTestId('machine-remove').click();
@@ -290,6 +293,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   });
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, unticked('linear', 'claude', 'env.LINEAR_API_KEY'), { step: 'mirror:var:X', status: 'ok', detail: 'X is set on studio' }]);
+  await panel.getByTestId('host-setup-fold').click();
 
   const row = panel.getByTestId('host-step-mirror:claude:mcp:linear');
   await expect(row).toHaveAttribute('data-status', 'warn');
@@ -301,16 +305,16 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
   await expect(details).toHaveText('detailsmirrored without env.LINEAR_API_KEY lin…90; or set them in ~/.svall/mirror-overrides on studio');
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Set them up nowDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Done');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
   await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);
   await expect(row).toHaveAttribute('data-status', 'ok');
   await expect(row).toContainText('keys copied to studio: env.LINEAR_API_KEY lin…90');
   await expect(panel.getByTestId('host-tick-mirror:claude:mcp:linear')).toBeChecked();
-  // in place: under Your agent setup, before the variable, and the steps around it untouched
+  // in place: under Your agent setup, before the variable
   expect(await panel.locator('[data-testid^="host-step-"]').evaluateAll((rows) => rows.map((r) => r.getAttribute('data-testid'))))
-    .toEqual(['host-step-ssh', 'host-step-release', 'host-step-claude', 'host-step-mirror:claude:mcp:linear', 'host-step-mirror:var:X', 'host-step-probe']);
+    .toEqual(['host-step-mirror:claude:mcp:linear', 'host-step-mirror:var:X']);
   await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. Robots you move there keep working while this Mac sleeps.Done');
   // nothing ran on the machine for it
   expect((await sent(page)).filter((m) => m.type === 'host.start')).toHaveLength(1);
@@ -327,7 +331,8 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, ...logins]);
   // each login is its own part, as the CLI lists them: one terminal forwards one sign-in's port
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Set them up nowDone');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Done');
+  await panel.getByTestId('host-setup-fold').click();
   await expect(panel.getByTestId('host-step-mirror:oauth:claude:mcp:linear').locator('.host-name')).toHaveText('linear login');
 
   // mcp-remote's sign-in comes back on the port its args name

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
+import { AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { clean, holds } from '../path-tools.js';
@@ -66,7 +66,7 @@ export type CheckDeps = {
 type Failure = Omit<Refusal, 'details'> & { details?: string[] };
 
 const releaseFailure = (name: string, theirs: string, mine: string): Failure =>
-  ({ reason: `${name} runs ${theirs}, this Mac ${mine}`, action: compareVersions(theirs, mine) === 1 ? 'update svall on this Mac' : 'upgrade it under Machines' });
+  ({ reason: `${name} runs ${theirs}, this Mac ${mine}`, action: compareVersions(theirs, mine) === 1 ? 'update svall on this Mac' : UPGRADE_ACTION });
 
 /** A worker's hello while it is linked, or why it is not: out of reach, or on a build whose state or link this Mac cannot read. */
 export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined, name: string, release: string): { hello: WorkerHello } | { failure: Failure } {
@@ -74,7 +74,7 @@ export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'>
   if (hello) return { hello };
   const odd = link?.mismatch();
   if (!odd) return { failure: { reason: `${name} is not reachable`, action: 'try again when it is awake' } };
-  return { failure: odd.release === release ? { reason: `${name} runs a different build`, action: 'upgrade it under Machines' } : releaseFailure(name, odd.release, release) };
+  return { failure: odd.release === release ? { reason: `${name} runs a different build`, action: UPGRADE_ACTION } : releaseFailure(name, odd.release, release) };
 }
 
 const originOf = async (dir: string, git: GitRunner): Promise<string | undefined> => {

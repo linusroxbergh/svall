@@ -301,6 +301,21 @@ describe('machines.setup and machines.consent', () => {
     expect(readConsent(w.home.paths.mirrorConsent, other).size).toBe(0);
   });
 
+  it('machines.updateAgents asks the worker to run each update and answers once it has; a machine not in the fleet is not_found', async () => {
+    await linked();
+    const asked: unknown[] = [];
+    w.worker.handlers['agents.update'] = async (p) => { asked.push(p); return {}; };
+    expect(await dispatch({ id: 1, method: 'machines.updateAgents', params: { machine: W, kinds: ['claude', 'codex'] } }, w.home.ctx)).toEqual({ id: 1, result: {} });
+    expect(asked).toEqual([{ kinds: ['claude', 'codex'] }]);
+
+    w.worker.handlers['agents.update'] = async () => { throw new Error('claude update exited 1: no network'); };
+    expect(await dispatch({ id: 2, method: 'machines.updateAgents', params: { machine: W, kinds: ['claude'] } }, w.home.ctx))
+      .toMatchObject({ id: 2, error: { message: 'claude update exited 1: no network' } });
+    const other = MachineId.parse(crypto.randomUUID());
+    expect(await dispatch({ id: 3, method: 'machines.updateAgents', params: { machine: other, kinds: ['claude'] } }, w.home.ctx))
+      .toEqual({ id: 3, error: { code: 'not_found', message: `no machine ${other}` } });
+  });
+
   it('machines.setup with the link down answers the plan rows, the probe-dependent ones saying not checked, within waitMs', async () => {
     worker = farHome();
     w = world({

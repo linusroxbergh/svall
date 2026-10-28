@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch } from '../../src/api/methods.js';
 import { markDormant } from '../../src/dormancy.js';
+import { updateAgents } from '../../src/placement/router.js';
 import { cleanHomes } from '../helpers.js';
 import { H, W, placed, robot, until, world } from './world.js';
 
@@ -102,5 +103,17 @@ describe('routing calls for placed robots', () => {
       await expect(w.worker.connection.call(method, {})).rejects.toMatchObject({ code: 'unauthorized', message: `${method} is not taken from a worker` });
     }
     await expect(w.home.links.call(W, 'robot.run', { id: 'c_1' })).rejects.toMatchObject({ code: 'invalid_params' });
+  });
+});
+
+describe('updateAgents', () => {
+  it('runs each agent\'s own update in turn, and the first that fails says why with the last line it printed', async () => {
+    const ran: string[] = [];
+    const ok = async (cmd: string, args: string[]) => { ran.push([cmd, ...args].join(' ')); return { code: 0, stdout: '', stderr: '' }; };
+    await updateAgents(['claude', 'opencode'], ok);
+    expect(ran).toEqual(['claude update', 'opencode upgrade']);
+
+    const failing = async (cmd: string) => (cmd === 'claude' ? { code: 1, stdout: 'Checking for updates\n', stderr: 'fetching\nnetwork unreachable\n' } : { code: 0, stdout: '', stderr: '' });
+    await expect(updateAgents(['claude', 'codex'], failing)).rejects.toThrow('claude update exited 1: network unreachable');
   });
 });

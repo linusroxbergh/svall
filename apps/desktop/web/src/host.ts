@@ -121,7 +121,7 @@ const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', 
 // a mirror row's key: a server, by agent or plugin, with the project it belongs to after an @; its login; a variable,
 // command or file by itself; a subagent's file or a marketplace's list; an agent's own config
 const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
-  [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `plugin ${plugin} MCP ${name}`],
+  [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `${name} (plugin ${plugin.split('@')[0]})`],
   [/^(\w+):mcp:(.+?)(?:@\/.*)?$/, (agent, name) => `${AGENT_LABEL[agent] ?? agent} MCP ${name}`],
   [/^oauth:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} login`],
   [/^(?:var|runtime|unreadable):(.+)$/, (name) => name],
@@ -159,12 +159,14 @@ export const OP_TITLE: Record<HostOp, string> = {
  */
 export type RunOutcome = { text: string; done?: true; next?: 'rollback'; setup?: number };
 
-const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
+export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
 // what a step leaves to fix, as the CLI counts things: its action, or the failed step that names none; the agent setup is
 // never a thing to fix
 const thingsLeft = (run: HostRun): number =>
   new Set(run.steps.filter((s) => !s.step.startsWith(MIRROR) && (s.action || s.status === 'fail')).map((s) => s.action ?? s.step)).size;
+// a check there that warns with its fix in its sentence, as the machine's own doctor words one
+const warnings = (run: HostRun): number => run.steps.filter((s) => !s.step.startsWith(MIRROR) && s.status === 'warn' && !s.action).length;
 
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
@@ -177,7 +179,9 @@ export function outcomeOf(run: HostRun): RunOutcome {
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
     if (left) return { text: `${name} has ${plural(left, 'thing')} to fix${setup ? `, and ${parts}` : '.'}`, ...rollback, ...(setup > 0 && { setup }) };
-    if (run.code === 0) return { text: `${name} is ready. ${setup ? parts : 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
+    const warned = warnings(run);
+    const ready = `${name} is ready${warned ? `, with ${plural(warned, 'warning')}` : ''}.`;
+    if (run.code === 0) return { text: `${ready} ${setup ? parts : 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };

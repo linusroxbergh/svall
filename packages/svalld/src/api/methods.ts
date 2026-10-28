@@ -15,7 +15,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
-import type { Router } from '../placement/router.js';
+import { AGENTS_UPDATE_MS, type Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
 import { agentAdapters, type AgentProber } from '../sessions/registry.js';
@@ -31,7 +31,7 @@ import { classification } from './classify.js';
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; signal?: AbortSignal };
 
 // what starts launchd agents and names fleets stays with the Mac
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -145,6 +145,12 @@ const handlers: Handlers = {
     const unread = mirror.unreadFile(p.item);
     if (unread) throw new ApiError('not_mirrored', `${unread} on this Mac cannot be read; the copy stays on ${name} until it can`);
     return setupOf(ctx, p.machine, 0);
+  },
+  'machines.updateAgents': async (p, { store, links }) => {
+    if (!store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
+    if (!links) throw new ApiError('not_on_worker', 'not on a worker');
+    await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: AGENTS_UPDATE_MS });
+    return {};
   },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),
   'column.rename': (p, { fleet }) => fleet.renameColumn(p.id, p.name),

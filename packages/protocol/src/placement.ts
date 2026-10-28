@@ -14,6 +14,9 @@ export const INTERRUPT_ACTIONS = { agent: 'interrupt after this turn', command: 
 /** The action of the refusal a move clears by leaving a shared main checkout for a new worktree at its HEAD. */
 export const WORKTREE_ACTION = 'give it its own worktree';
 
+/** The action of the refusal a move clears by upgrading the machine to this Mac's release. */
+export const UPGRADE_ACTION = 'upgrade it under Machines';
+
 // stays holds the sheet's phrases for what is left on this Mac: ".env stays here", "node_modules is not carried";
 // converts.keep, that the main checkout keeps its `changed` files
 export const MoveSheet = z.object({

@@ -637,57 +637,72 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 
 const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
 
-/** `svall host doctor`: what the companion's own doctor says, plus what only the controller can check. */
+/**
+ * `svall host doctor`: what the companion's own doctor says, plus what only the controller can check. Each check is
+ * emitted as a step once found, after a start for the probe that finds it; the connection and the companion's doctor
+ * answering are steps of their own.
+ */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
-  const master = await d.openMaster(entry.record.ssh);
+  const start = (step: string) => d.emit({ step, status: 'start' });
   const checks: Check[] = [];
+  const found = (...cs: Check[]) => { checks.push(...cs); for (const { name: step, ...c } of cs) d.emit({ step, ...c }); };
+  start('master');
+  const master = await d.openMaster(entry.record.ssh).catch((err: Error) => { d.emit({ step: 'master', status: 'fail', detail: err.message }); throw err; });
+  d.emit({ step: 'master', status: 'ok', detail: `connected to ${entry.record.ssh}` });
   let release: string | undefined;
   try {
     const base = entry.record.svallBase;
     let report: RemoteDoctor | undefined;
+    start('doctor');
     try {
       report = await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json');
-      checks.push(...report.checks);
-    } catch (err) { checks.push(failed('doctor', err)); }
+      d.emit({ step: 'doctor', status: 'ok', detail: 'answered' });
+      found(...report.checks);
+    } catch (err) { found(failed('doctor', err)); }
+    start('release');
     try {
       const v = await farHome(master, base, d);
       release = v.release;
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
-      checks.push({
+      found({
         name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
         detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
       });
       const refused = notOurs(v, entry.record.name, d);
-      checks.push(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
+      found(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
         : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: 'this fleet runs there as a worker' }
           : { name: 'worker', status: 'fail', detail: `this fleet does not run there as a worker: svall host upgrade ${entry.record.name} makes it one` });
-    } catch (err) { checks.push(failed('release', err)); }
+    } catch (err) { found(failed('release', err)); }
+    start('versions');
     try {
       const far = await farVersions(agentCall(master, { home: entry.record.home, svallBase: base, report }));
-      checks.push({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents().catch((err: Error) => err), entry.record.ssh)) });
-    } catch (err) { checks.push(failed('versions', err)); }
+      found({ name: 'versions', ...pick(versionsOutcome(far, await d.localAgents().catch((err: Error) => err), entry.record.ssh)) });
+    } catch (err) { found(failed('versions', err)); }
+    start('space');
     try {
-      checks.push({ name: 'space', ...pick(spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });
-    } catch (err) { checks.push(failed('space', err)); }
+      found({ name: 'space', ...pick(spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME'))) });
+    } catch (err) { found(failed('space', err)); }
     let far: { home: string; user: string } | undefined;
+    start('home');
     try {
       far = await homeProbe(master);
       const n = entry.record.name;
-      checks.push(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; svall host remove ${n}, then svall host add again` }
+      found(far.home !== entry.record.home ? { name: 'home', status: 'fail', detail: `${far.home} is ${far.user}'s home on ${n}, and the registry records ${entry.record.home}; svall host remove ${n}, then svall host add again` }
         : { name: 'home', status: 'ok', detail: `${far.home} for ${far.user}` });
-    } catch (err) { checks.push(failed('home', err)); }
+    } catch (err) { found(failed('home', err)); }
     if (far && !checks.some((c) => c.name === 'linger')) {
+      start('linger');
       try {
         const out = await probe(master, sh('svall-linger', LINGER), 'loginctl show-user');
-        checks.push({ name: 'linger', ...pick(lingerProbe(out, far.user, entry.record.ssh)) });
-      } catch (err) { checks.push(failed('linger', err)); }
+        found({ name: 'linger', ...pick(lingerProbe(out, far.user, entry.record.ssh)) });
+      } catch (err) { found(failed('linger', err)); }
     }
   } finally {
     await master.close().catch(() => undefined);
   }
   const rows = await d.setupRows(entry.id, 0).catch((e: Error) => [notChecked(e, entry.record.name, d)]);
-  checks.push(...rows.map(rowCheck));
+  found(...rows.map(rowCheck));
   return { machine: entry.record.name, checks, ...(release && { release }) };
 }
 

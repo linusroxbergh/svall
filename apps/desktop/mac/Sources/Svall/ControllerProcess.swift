@@ -51,9 +51,6 @@ enum BundledSvall {
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
     case add, doctor, upgrade, rollback, remove
-
-    /// doctor prints its checks as one report when it ends; the others print a step per line as they go
-    var printsReport: Bool { self == .doctor }
 }
 
 /// What the page named the operation with. Each field belongs to one operation's flags.
@@ -91,6 +88,8 @@ enum HostCommand {
             if args.forget == true { argv.append("--forget") }
         case .doctor, .upgrade:
             guard args.ssh == nil, args.forget == nil else { return nil }
+            // a check prints its steps as it goes, as the others do, ahead of the report it ends with
+            if op == .doctor { argv.append("--steps") }
         case .rollback:
             guard args.ssh == nil, args.forget == nil else { return nil }
             argv.append("--rollback")
@@ -127,23 +126,14 @@ final class HostProcess {
         var gap: Gap? = nil
     }
 
-    /// What `svall host doctor --json` prints once it is done: each check becomes a step.
-    private struct Report: Decodable {
-        struct Check: Decodable { let name: String, status: String, detail: String?, action: String?, run: String?, forward: Int?, tick: Tick?, gap: Gap? }
-        let checks: [Check]
-    }
-
     private let child: LineChild
-    private let report: Bool
     private var cancelled = false
-    private var printed: [String] = []
     private var sawFailure = false
 
     var onStep: (Step) -> Void = { _ in }
     var onExit: (Int32) -> Void = { _ in }
 
-    init(executable: String, arguments: [String], report: Bool = false) {
-        self.report = report
+    init(executable: String, arguments: [String]) {
         child = LineChild(executable: executable, arguments: arguments)
     }
 
@@ -162,8 +152,8 @@ final class HostProcess {
         child.stop()
     }
 
+    /// A line that is no step, as the result or report a run ends with, is not the page's.
     private func take(_ line: String) {
-        if report { return printed.append(line) }
         if let step = try? JSONDecoder().decode(Step.self, from: Data(line.utf8)) { send(step) }
     }
 
@@ -175,9 +165,6 @@ final class HostProcess {
     /// The end of the run, after its last line: a run that failed with nothing to show for it leaves the user what the
     /// command itself said.
     private func finish(_ status: Int32, said: [String]) {
-        if report, let report = try? JSONDecoder().decode(Report.self, from: Data(printed.joined(separator: "\n").utf8)) {
-            for check in report.checks { send(Step(step: check.name, status: check.status, detail: check.detail, action: check.action, run: check.run, forward: check.forward, tick: check.tick, gap: check.gap)) }
-        }
         if status != 0, !sawFailure, !said.isEmpty {
             onStep(Step(step: "svall", status: "fail", detail: said.joined(separator: "\n"), action: nil))
         }

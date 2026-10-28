@@ -4,7 +4,7 @@ import XCTest
 private let step = #"{"step":"ssh","status":"ok","detail":"linus@studio accepted an interactive login"}"#
 private let warn = #"{"step":"claude","status":"warn","detail":"1.2.3, not logged in","action":"ssh linus@studio, then claude auth login","run":"claude auth login"}"#
 private let outcome = #"{"result":"actions","actions":["ssh linus@studio, then claude auth status and log in"]}"#
-// what `svall host doctor --json` prints: one report, through JSON.stringify(report, null, 2)
+// what `svall host doctor --steps --json` ends with after its steps: one report, through JSON.stringify(report, null, 2)
 private let doctorReport = #"""
 {
   "machine": "studio",
@@ -48,7 +48,7 @@ final class HostProcessTests: XCTestCase {
     func testEachOperationBuildsTheArgvItsFlagsAllow() {
         XCTAssertEqual(argv(.add, HostArgs(name: "studio", ssh: "linus@studio")),
                        ["host", "add", "studio", "--ssh", "linus@studio", "--json"])
-        XCTAssertEqual(argv(.doctor, HostArgs(name: "studio")), ["host", "doctor", "studio", "--json"])
+        XCTAssertEqual(argv(.doctor, HostArgs(name: "studio")), ["host", "doctor", "studio", "--steps", "--json"])
         XCTAssertEqual(argv(.upgrade, HostArgs(name: "studio")), ["host", "upgrade", "studio", "--json"])
         XCTAssertEqual(argv(.rollback, HostArgs(name: "studio")), ["host", "upgrade", "studio", "--rollback", "--json"])
         XCTAssertEqual(argv(.remove, HostArgs(name: "studio")), ["host", "remove", "studio", "--json"])
@@ -156,20 +156,19 @@ final class HostProcessTests: XCTestCase {
         }
     }
 
-    func testACheckReportsEachOfTheMachinesChecksAsAStep() throws {
-        let helper = try fakeHelper(prints: doctorReport.components(separatedBy: "\n"), then: "exit 1")
+    func testACheckSendsEachStepAsItGoesAndNothingOfTheReportItEndsWith() throws {
+        let tmux = #"{"step":"tmux","status":"ok","detail":"tmux 3.5a"}"#
+        let release = #"{"step":"release","status":"fail","detail":"0.4.0, protocol 3; this controller runs 0.5.0, protocol 4"}"#
+        let helper = try fakeHelper(prints: [#"{"step":"master","status":"start"}"#, tmux, release] + doctorReport.components(separatedBy: "\n"), then: "exit 1")
         let words = try XCTUnwrap(argv(.doctor, HostArgs(name: "studio")))
-        let (steps, code) = try run(HostProcess(executable: helper, arguments: words, report: HostOp.doctor.printsReport))
+        let (steps, code) = try run(HostProcess(executable: helper, arguments: words))
         // a failing check is the failure: nothing from stderr is added after it
         XCTAssertEqual(steps, [
+            HostProcess.Step(step: "master", status: "start", detail: nil, action: nil),
             HostProcess.Step(step: "tmux", status: "ok", detail: "tmux 3.5a", action: nil),
-            HostProcess.Step(step: "linger", status: "warn",
-                             detail: "off for linus: the fleet stops when you log out; run loginctl enable-linger linus", action: nil, run: "loginctl enable-linger linus"),
-            HostProcess.Step(step: "release", status: "fail",
-                             detail: "0.4.0, protocol 3; this controller runs 0.5.0, protocol 4", action: nil),
+            HostProcess.Step(step: "release", status: "fail", detail: "0.4.0, protocol 3; this controller runs 0.5.0, protocol 4", action: nil),
         ])
         XCTAssertEqual(code, 1)
-        XCTAssertFalse(HostOp.add.printsReport)
     }
 
     func testATickRowDecodesAndReachesThePageWithItsItemFieldsPreviewAndGap() throws {
@@ -184,14 +183,6 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(event?["gap"] as? NSDictionary, ["name": "linear", "what": "keys not copied (env.LINEAR_API_KEY)"])
     }
 
-    func testADoctorReportCarriesActionForwardTickAndGapIntoSteps() throws {
-        let report = #"{"machine":"studio","checks":[{"name":"mirror:oauth:claude:mcp:linear","status":"warn","detail":"then /mcp and sign in to linear","action":"log in once on studio","run":"claude","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]},"gap":{"name":"linear","what":"not logged in"}}]}"#
-        let helper = try fakeHelper(prints: [report], then: "exit 0")
-        let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"], report: true))
-        XCTAssertEqual(steps.first, HostProcess.Step(step: "mirror:oauth:claude:mcp:linear", status: "warn", detail: "then /mcp and sign in to linear", action: "log in once on studio", run: "claude", forward: 3334,
-            tick: HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"]), gap: HostProcess.Gap(name: "linear", what: "not logged in")))
-    }
-
     func testStderrIsKeptInWholeLinesAcrossChunksAndUpToTheLastByte() throws {
         let tail = [
             "printf 'Warning: Permanently added studio to the list of known hosts.\\n' >&2",
@@ -201,7 +192,7 @@ final class HostProcessTests: XCTestCase {
             "exit 1",
         ].joined(separator: "\n")
         let helper = try fakeHelper(prints: [], then: tail)
-        let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"], report: true))
+        let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"]))
         XCTAssertEqual(steps, [HostProcess.Step(step: "svall", status: "fail", detail: [
             "Warning: Permanently added studio to the list of known hosts.",
             "svall: could not open a master to linus@studio: Permission denied (publickey).",

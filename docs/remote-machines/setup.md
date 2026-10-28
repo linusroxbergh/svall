@@ -80,14 +80,18 @@ A list with nothing to do about any of it, such as servers that only run on a Ma
 
 When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
-yes, and prints each command to run on the machine once. In the app the footer then offers **Set them up now**, which
-shows those rows alone, each with its box or **Open terminal**, until **Show every step**. A run exits 1 while something is left to fix. In the app, a step that failed with nothing named
-to do offers **Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer
-and never copies a login, so these are yours.
+yes, and prints each command to run on the machine once. In the app each such row has its box or button in the list.
+A run exits 1 while something is left to fix. In the app, a step that failed with nothing named to do offers
+**Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer and never
+copies a login, so these are yours.
 
-In the app, each of them that is one command offers **Open terminal**: a terminal on the machine opens in the panel,
-over an ssh of its own that asks nothing and forwards no ssh agent, with the command typed at its prompt. Press Return
-to run it, or change it first; click a link it prints to open it in your browser. When you exit or choose **Done**,
+In the app a check shows the step under way, then what needs you, by phase; the checks that went fine and your agent
+setup are folded behind one line each, and the footer counts warnings. A row whose fix is an agent's own update
+(`claude update`, `codex update`, `opencode upgrade`) offers **Update**, which runs it there and checks the machine
+again; a check that finds the machine on another release offers **Upgrade** on that row. Each other fix that is one
+command offers **Open terminal**: a terminal on the machine opens in the panel, over an ssh of its own that asks
+nothing and forwards no ssh agent, with the command typed at its prompt. Press Return to run it, or change it first;
+click a link it prints to open it in your browser. When you exit or choose **Done**,
 or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
 list. **Open a terminal there**, in the machine's ⋯ menu, opens one with nothing typed. From a terminal on the Mac,
 each action names the command and the machine to run it on:

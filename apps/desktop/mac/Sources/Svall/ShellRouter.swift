@@ -346,7 +346,7 @@ final class ShellRouter {
             bridge.send(.hostDone(op: op.rawValue, code: 1))
             return
         }
-        let child = HostProcess(executable: executable, arguments: argv, report: op.printsReport)
+        let child = HostProcess(executable: executable, arguments: argv)
         hostRun = child
         child.onStep = { [weak self] step in self?.bridge.send(.hostStep(op: op.rawValue, step: step)) }
         child.onExit = { [weak self] code in

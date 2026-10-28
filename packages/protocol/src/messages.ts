@@ -273,6 +273,8 @@ export const methods = {
     params: z.object({ machine: MachineId, item: z.string(), fields: z.array(z.string()), on: z.boolean() }),
     result: z.object({ rows: z.array(SetupRow) }),
   },
+  // runs each agent's own update on `machine`, one after another, and answers once all have ended
+  'machines.updateAgents': { params: z.object({ machine: MachineId, kinds: z.array(AgentKind).min(1) }), result: z.object({}) },
   // each answers the board's columns, left to right. A name is trimmed and unlike every other column's in any case;
   // without afterId the column goes last, and a deleted column's robots go to moveTo
   'column.add': { params: z.object({ name: z.string(), afterId: z.string().optional() }), result: z.array(Column) },
