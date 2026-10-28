@@ -86,10 +86,8 @@ export function MachineActions({ name }: { name: string }) {
   );
 }
 
-// the footer: the run's one line, then Stop while it runs, and Done, or Check again on a machine in the registry while
-// something is left to fix
+// the footer: the run's one line, then Stop while it runs, and Done; the panel's Check button is the one that runs the check again
 function Outcome({ run }: { run: HostRun }) {
-  const known = useApp((s) => !!s.machines?.some((m) => m.name === run.args.name));
   if (run.running) {
     return (
       <div className="host-foot" data-testid="host-running">
@@ -110,9 +108,7 @@ function Outcome({ run }: { run: HostRun }) {
           <button className="btn" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
             onClick={() => startHost('rollback', { name })}>{OP_TITLE.rollback} {name}</button>
         )}
-        {o.done || !known
-          ? <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
-          : <button className="btn" data-testid="host-check-again" onClick={() => startHost('doctor', { name })}>Check again</button>}
+        <button className="btn" data-testid="host-done" onClick={() => app.store.getState().toggleHost(false)}>Done</button>
       </div>
     </div>
   );
@@ -187,10 +183,8 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
-      ) : !row.action && row.status === 'fail' && idle ? (
-        <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>
-          {run.op === 'doctor' ? 'Check again' : 'Try again'}
-        </button>
+      ) : run.op !== 'doctor' && !row.action && row.status === 'fail' && idle ? (
+        <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
       ) : null}
     </div>
   );

@@ -85,7 +85,7 @@ test('the machines panel reads the list as it opens, and reports every step', as
   await expect(page.getByTestId('host-setup')).toHaveCount(0);
 });
 
-test('a check says ready, or how many things are left, and Check again runs it once more', async ({ page, svall }) => {
+test('a check says ready, or how many things are left, and Check runs it once more', async ({ page, svall }) => {
   await fakeShell(page, svall.port, svall.token);
   await svall.open();
   await page.getByTestId('settings-open').click();
@@ -111,7 +111,7 @@ test('a check says ready, or how many things are left, and Check again runs it o
   await receive(page, { type: 'host.step', op: 'doctor', event: { step: 'systemd', status: 'fail', detail: 'svall-svalld@private.service is inactive' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 1 });
   await expect(page.getByTestId('host-outcome')).toContainText('studio has 1 thing to fix.');
-  await page.getByTestId('host-check-again').click();
+  await panel.getByTestId('machine-doctor').click();
   expect((await sent(page)).filter((m) => m.type === 'host.start').at(-1)).toEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   await receive(page, { type: 'host.done', op: 'doctor', code: 0 });
 
@@ -273,7 +273,7 @@ test('the setup page ends in one line: ready, parts of the agent setup that will
   await page.getByTestId('host-confirm-yes').click();
   await receive(page, { type: 'host.step', op: 'remove', event: { step: 'uninstall', status: 'fail', detail: 'svall uninstall exited 1' } });
   await receive(page, { type: 'host.done', op: 'remove', code: 1 });
-  await expect(panel.getByTestId('host-outcome')).toHaveText('Remove stopped at Uninstall: svall uninstall exited 1Check again');
+  await expect(panel.getByTestId('host-outcome')).toHaveText('Remove stopped at Uninstall: svall uninstall exited 1Done');
 });
 
 test('a mirror row shows one sentence, a checkbox and details; ticking calls machines.consent with item and fields and the rows come back in place', async ({ page, svall }) => {

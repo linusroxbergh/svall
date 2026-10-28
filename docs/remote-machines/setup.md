@@ -82,7 +82,7 @@ When one of them is a key to copy or a command to run there, `svall host add` an
 then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
 yes, and prints each command to run on the machine once. In the app each such row has its box or button in the list.
 A run exits 1 while something is left to fix. In the app, a step that failed with nothing named to do offers
-**Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer and never
+**Try again**; after a check, **Check** at the top runs it once more. Svall never runs `sudo`, never runs an agent's installer and never
 copies a login, so these are yours.
 
 In the app a check shows the step under way, then what needs you, by phase; the checks that went fine and your agent

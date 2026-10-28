@@ -40,7 +40,7 @@ test('opened on a machine, the panel names it once and acts on it without asking
   // one run at a time
   expect((screen.getByTestId('machine-doctor') as HTMLButtonElement).disabled).toBe(true);
 });
-test('every step that failed offers a way on: what the step said to do, or the run again', () => {
+test('a step that failed shows what to do; a step of a run other than a check offers the run again, a check row leaves that to Check', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().toggleHost(true, 'trift');
@@ -51,9 +51,15 @@ test('every step that failed offers a way on: what the step said to do, or the r
   });
   expect(screen.getByTestId('host-action-linger').textContent).toBe('ssh ada@trift, then loginctl enable-linger ada');
   expect(screen.queryByTestId('host-again-linger')).toBeNull();
+  expect(screen.queryByTestId('host-again-tmux')).toBeNull();
+  act(() => {
+    store.getState().hostStarted('upgrade', { name: 'trift' });
+    store.getState().hostStep('upgrade', { step: 'install', status: 'fail', detail: 'install exited 1' });
+    store.getState().hostDone('upgrade', 1);
+  });
   sent.length = 0;
-  fireEvent.click(screen.getByTestId('host-again-tmux'));
-  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
+  fireEvent.click(screen.getByTestId('host-again-install'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'trift' } }]);
 });
 
 test('a running check shows the step under way and what needs the user as found, the fine checks and the agent setup each folded behind one line', () => {
@@ -89,7 +95,7 @@ test('a running check shows the step under way and what needs the user as found,
   expect(rows()).toContain('host-step-mirror:var:X');
 });
 
-test('a run ends in one line, with Done once nothing is left and Check again while something is', () => {
+test('a run ends in one line and Done, whether or not something is left', () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
@@ -110,10 +116,10 @@ test('a run ends in one line, with Done once nothing is left and Check again whi
     store.getState().hostStep('doctor', { step: 'systemd', status: 'fail', detail: 'inactive' });
     store.getState().hostDone('doctor', 1);
   });
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 2 things to fix.Check again');
-  expect(screen.queryByTestId('host-done')).toBeNull();
+  expect(screen.getByTestId('host-outcome').textContent).toBe('trift has 2 things to fix.Done');
+  expect(screen.queryByTestId('host-again-systemd')).toBeNull();
   sent.length = 0;
-  fireEvent.click(screen.getByTestId('host-check-again'));
+  fireEvent.click(screen.getByTestId('machine-doctor'));
   expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'trift' } }]);
 });
 
