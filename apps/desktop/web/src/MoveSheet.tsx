@@ -111,12 +111,14 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     app.api().call('robot.moveCheck', params).then((a) => { if (live) setAnswer(a); }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
     return () => { live = false; };
   }, [machine, carry.join('\n'), interrupt, own, asked]);
+  // through, as answered or, with the answer lost, as the robot's arrival says
+  const through = run?.at === 'moved' || (run?.at === 'lost' && c?.machine === to);
   useEffect(() => {
-    if (run?.at !== 'moved' || !to) return;
+    if (!through || !to) return;
     let live = true;
     app.api().call('machines.setup', { machine: to, robot: id }).then(({ rows }) => { if (live) setSetup(setupNote(rows)); }, () => {});
     return () => { live = false; };
-  }, [run?.at]);
+  }, [through]);
 
   if (!c) return null;
   if (c.moving) reached.current = steps[c.moving.phase];

@@ -190,15 +190,18 @@ test('a Retry refused for a reason the robot\'s mark does not hold says that rea
 });
 
 test('a move whose answer is lost before any mark of it came goes on at its check until a mark or the robot\'s arrival says how it went', async () => {
+  const gap: SetupRow = { key: 'oauth:claude:mcp:linear', status: 'warn', detail: 'd', action: 'log in once on linus-vault', gap: { name: 'linear', what: 'not logged in' } };
   const move = heldMove();
+  const held = call.getMockImplementation()!;
+  call.mockImplementation((method: string, params?: unknown) => (method === 'machines.setup' ? Promise.resolve({ rows: [gap] }) : held(method, params)));
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
   await move.settle(new Error('svalld connection closed'));
   expect(lines()[0]).toBe('doing Checking…');
   expect(screen.queryByTestId('move-action')).toBeNull();
 
-  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
-  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
+  await act(async () => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault. 1 part of its agent setup will not work there.');
   expect(call.mock.calls.filter(([m]) => m === 'robot.moveTo')).toHaveLength(1);
 });
 
