@@ -103,6 +103,9 @@ describe('reading agent configs and finding secrets by field', () => {
     expect(oauthLogin(server('claude', { url: 'https://mcp.linear.app/mcp' }))).toEqual({ run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118 });
     expect(oauthLogin(server('claude', { url: 'https://x.test/mcp', raw: { oauth: { clientId: 'cid', callbackPort: 8080 } } }))).toEqual({ run: 'claude', forward: 8080 });
     expect(isMacOnly(server('claude', { url: 'http://127.0.0.1:3845/sse' }))).toBe(true);
+    expect(isMacOnly(server('claude', { command: 'xcrun', args: ['mcp-server'] }))).toBe(true);
+    expect(isMacOnly(server('claude', { command: '/usr/bin/osascript' }))).toBe(true);
+    expect(isMacOnly(server('claude', { command: 'adlc' }))).toBe(false);
     expect(runtimesOf(server('claude', { command: 'npx' }))).toEqual(['node', 'npx']);
     expect(runtimesOf(server('claude', { command: '/Users/ada/bin/srv' }))).toEqual(['/Users/ada/bin/srv']);
   });

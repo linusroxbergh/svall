@@ -96,13 +96,16 @@ describe('the last line a run prints', () => {
     expect(outcomeText({ result: 'actions', actions: [linger], setup: [linear] }, 'add', 'trift', work))
       .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift yet:\n${listed}`);
     // a list with nothing to do about any of it will not work there, not yet
+    const unread = rowStep({ key: 'unreadable:/Users/ada/x.json', status: 'warn', detail: 'd', gap: { name: 'x.json', what: 'not copied: this Mac cannot read it' } });
+    expect(outcomeText({ result: 'ready', actions: [], setup: [unread] }, 'add', 'trift', work))
+      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  x.json  not copied: this Mac cannot read it');
+    // a server that runs only on a Mac stands aside: one line of its own, after the list or alone
     const chrome = rowStep({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } });
-    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', work))
-      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', work)).toBe('trift is ready. chrome runs only on a Mac.');
     expect(outcomeText({ result: 'actions', actions: [linger], setup: [chrome] }, 'add', 'trift', work))
-      .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift:\n  chrome  runs only on a Mac`);
-    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome, linear] }, 'add', 'trift', work).split('\n')[0])
-      .toBe('trift is ready. 2 parts of your agent setup will not work there yet:');
+      .toBe(`trift has 1 thing to fix:\n  ${linger}\nchrome runs only on a Mac.`);
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome, linear] }, 'add', 'trift', work).split('\n'))
+      .toEqual(['trift is ready. 1 part of your agent setup will not work there yet:', ...listed.split('\n'), '  chrome runs only on a Mac']);
     expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift'))
       .toBe(`stopped at install; trift has 1 thing to fix:\n  ${linger}`);
     expect(outcomeText({ result: 'actions', actions: [linger] }, 'rollback', 'trift')).toBe(`still to do:\n  ${linger}`);
@@ -113,7 +116,7 @@ describe('the last line a run prints', () => {
     const fail = (name: string) => ({ name, status: 'fail' as const, detail: 'inactive' });
     expect(doctorVerdict([ok, warn, warn], 'trift', THERE)).toBe(ready);
     expect(doctorVerdict([ok, rowCheck({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } })], 'trift', THERE))
-      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
+      .toBe('trift is ready. chrome runs only on a Mac.');
     expect(doctorVerdict([ok, warn, fail('systemd')], 'trift', THERE)).toBe('trift has 1 thing to fix: systemd');
     expect(doctorVerdict([fail('systemd'), fail('release')], 'trift', THERE)).toBe('trift has 2 things to fix: systemd, release');
     // a mirror row by its own line, though two servers' rows read alike; rows that only ask to check again are not listed
@@ -133,7 +136,7 @@ describe('the last line a run prints', () => {
       unticked('claude:mcp:linear'),
       row('oauth:claude:mcp:notion', { action: 'log in once on trift', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, gap: { name: 'notion', what: 'not logged in' } }),
       varRow('GAMMA_TOKEN'),
-      row('runtime:/Users/ada/bin/db-mcp', { action: 'install db-mcp on trift', gap: { name: 'db-mcp', what: 'not installed; db needs it' } }),
+      row('runtime:/Users/ada/bin/db-mcp', { action: 'install db-mcp on trift', tick: { item: 'runtime:/Users/ada/bin/db-mcp', fields: ['skip'], on: false, preview: [] }, gap: { name: 'db-mcp', what: 'not installed; db needs it' } }),
       row('claude:mcp:odd', { action: 'check trift again', gap: { name: 'odd', what: 'ticked; not on trift yet' } }),
       row('claude:mcp:jira', { action: 'check trift again', tick: { item: 'claude:mcp:jira', fields: ['env.K'], on: false, preview: [] }, gap: { name: 'jira', what: 'unticked; still on trift' } }),
       row('maconly:claude:chrome', { status: 'skip', gap: { name: 'chrome', what: 'runs only on a Mac' } }),
@@ -205,6 +208,17 @@ describe('the last line a run prints', () => {
     await setUpNow([login('notion'), login('linear'), still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
     expect(asked).toEqual(['Set them up now? [Y/n] ']);
     expect(said.join('')).toBe('Run these on trift:\n  ssh -L 3118:localhost:3118 trift.test, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp\nsvall host doctor trift checks again once they are done.\n');
+
+    // a program row's tick is not a key to copy, but its install command is still one to run there
+    const npx: SetupRow = {
+      key: 'runtime:npx', status: 'warn', action: 'install npx on trift', run: 'sudo apt install nodejs npm', detail: 'd',
+      tick: { item: 'runtime:npx', fields: ['skip'], on: false, preview: [] }, gap: { name: 'npx', what: 'not installed; linear needs it' },
+    };
+    asked.length = 0;
+    said.length = 0;
+    await setUpNow([npx].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect(asked).toEqual(['Set them up now? [Y/n] ']);
+    expect(said.join('')).toBe('Run these on trift:\n  ssh trift.test, then sudo apt install nodejs npm\nsvall host doctor trift checks again once they are done.\n');
   });
 
   it('a run\'s lines leave the agent setup rows to the list at its end', async () => {

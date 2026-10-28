@@ -446,8 +446,12 @@ export function isOAuth(s: McpServer): boolean {
     || KNOWN_OAUTH_HOSTS.includes(hostOf(s.url));
 }
 
+// programs only a Mac has: Xcode's, and the ones that script macOS
+const MAC_ONLY_COMMANDS = ['xcrun', 'xcodebuild', 'osascript', 'swift'];
+/** Whether `s` runs only on this Mac: a loopback url, the Chrome extension, Chrome's devtools, an app bundle or a Mac's own program. */
 export const isMacOnly = (s: McpServer): boolean =>
-  /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(s.url ?? '') || [s.command ?? '', ...s.args].some((a) => /claude-in-chrome|chrome-devtools|\/Applications\//.test(a));
+  /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(s.url ?? '') || [s.command ?? '', ...s.args].some((a) => /claude-in-chrome|chrome-devtools|\/Applications\//.test(a))
+  || MAC_ONLY_COMMANDS.includes(path.posix.basename(s.command ?? ''));
 
 export function runtimesOf(s: McpServer): string[] {
   if (!s.command) return [];

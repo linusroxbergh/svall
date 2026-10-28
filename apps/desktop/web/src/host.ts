@@ -1,4 +1,4 @@
-import { MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
+import { aside, asideLine, MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
@@ -94,6 +94,10 @@ export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {
 export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, running: false, code });
 
 export const rowToStep = ({ key, ...row }: SetupRow): HostStep => ({ step: `${MIRROR}${key}`, ...row });
+/** A setup step by what the protocol asks of a row: its key, tick and gap. */
+export const stepToRow = (s: HostStep): Pick<SetupRow, 'key' | 'tick' | 'gap'> => ({ key: s.step.slice(MIRROR.length), tick: s.tick, gap: s.gap });
+/** Whether a setup step stands aside: it runs only on a Mac, or is ticked as not needed there. */
+export const asideStep = (s: HostStep): boolean => s.step.startsWith(MIRROR) && aside(stepToRow(s));
 
 /** The run with its mirror rows swapped for `rows`, worded as a step is, where they stood, or added at its end when it had none. */
 export function replaceRows(run: HostRun, rows: HostStep[], names: MachineNames = {}): HostRun {
@@ -166,17 +170,19 @@ const warnings = (run: HostRun): number => run.steps.filter((s) => !s.step.start
 export function outcomeOf(run: HostRun): RunOutcome {
   const name = run.args.name;
   const left = thingsLeft(run);
-  // the mirror rows of what will not work on the machine, yet while one has a way on
-  const gaps = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap);
+  // the mirror rows of what will not work on the machine, yet while one has a way on; the ones that stand aside after them, by name alone when none
+  const named = run.steps.filter((s) => s.step.startsWith(MIRROR) && s.gap);
+  const gaps = named.filter((s) => !asideStep(s));
+  const apart = asideLine(named.filter(asideStep).map(stepToRow), !gaps.length);
   const setup = gaps.length;
-  const parts = `${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}.`;
+  const parts = setup ? `${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}${apart ? `, and ${apart}` : ''}.` : apart ? `${apart}.` : '';
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
-    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix${setup ? `, and ${parts}` : '.'}`, ...rollback, ...(setup > 0 && { setup }) };
+    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix${setup ? `, and ${parts}` : apart ? `. ${parts}` : '.'}`, ...rollback, ...(setup > 0 && { setup }) };
     const warned = warnings(run);
     const ready = `${name} is ready${warned ? `, with ${plural(warned, 'warning')}` : ''}.`;
-    if (run.code === 0) return { text: `${ready} ${setup ? parts : 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
+    if (run.code === 0) return { text: `${ready} ${parts || 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };

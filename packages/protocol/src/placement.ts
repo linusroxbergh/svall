@@ -99,3 +99,19 @@ export const toTick = (r: WayOn): boolean => r.tick !== undefined && !r.tick.on 
 export const settable = (r: WayOn): boolean => toTick(r) || r.run !== undefined;
 /** Whether there is anything to do about a setup row: set it up now, or its action; a list with none will not work there, not yet. */
 export const wayOn = (r: WayOn): boolean => settable(r) || r.action !== undefined;
+
+/** The one field of a program row's tick: that the machine does not need the program. */
+export const NOT_NEEDED = 'skip';
+/** Whether a setup row's tick says the machine does not need its program, rather than copies a key. */
+export const notNeeded = (r: Pick<SetupRow, 'tick'>): boolean => r.tick?.fields.length === 1 && r.tick.fields[0] === NOT_NEEDED;
+type Aside = Pick<SetupRow, 'key' | 'tick' | 'gap'>;
+/** Whether a setup row stands aside from what will not work there yet: it runs only on a Mac, or you ticked that the machine does not need it. */
+export const aside = (r: Aside): boolean => r.key.startsWith('maconly:') || (notNeeded(r) && r.tick!.on);
+/** One line for the rows that stand aside, counted or by name: "2 run only on a Mac, and adlc is not needed there"; none when no row does. */
+export function asideLine(rows: Aside[], named = false): string | undefined {
+  const mac = rows.filter((r) => r.key.startsWith('maconly:'));
+  const skipped = rows.filter((r) => aside(r) && !r.key.startsWith('maconly:'));
+  const say = (rs: Aside[], one: string, many: string): string => `${named ? rs.map((r) => r.gap?.name ?? r.key).join(', ') : rs.length} ${rs.length === 1 ? one : many}`;
+  const parts = [mac.length ? say(mac, 'runs only on a Mac', 'run only on a Mac') : '', skipped.length ? say(skipped, 'is not needed there', 'are not needed there') : ''].filter(Boolean);
+  return parts.length ? parts.join(', and ') : undefined;
+}

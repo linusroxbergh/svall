@@ -43,6 +43,8 @@ with the one thing to do, as `svall host doctor` lists them; `--json` gives them
   notion  not logged in                         → ssh -L 3118:localhost:3118 ada@vault, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
 ```
 
+What runs only on a Mac, or you ticked as not needed there, ends the list in one line and is not counted.
+
 `--interrupt-after <duration>` (such as `30s`, or `0`) interrupts what still runs after that long, `--carry <file>`
 takes a credential file such as `.env` along, `--own-worktree` gives a robot on a main checkout its own worktree
 (check 3), and `--retry` runs the robot's current move again from the step it stopped at.

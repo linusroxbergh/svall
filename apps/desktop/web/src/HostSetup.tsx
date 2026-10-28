@@ -1,11 +1,11 @@
-import { updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { notNeeded, updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
-  groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+  asideStep, groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { MachineTerminal } from './MachineTerminal.js';
@@ -170,10 +170,16 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
         {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{more}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
+      {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
+      {notNeeded(row) && row.run && terminal && idle && (
+        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+      )}
       {row.tick ? (
         // a tick under way keeps the box, and focus on it, and takes no second change
-        <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={stepLabel(row.step)} aria-describedby={sentence} checked={asked ?? row.tick.on}
-          disabled={!id || !idle} aria-disabled={asked !== undefined || undefined} data-tip={id ? undefined : 'listed once the machine is added'}
+        <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={notNeeded(row) ? `${stepLabel(row.step)} is not needed on ${name}` : stepLabel(row.step)} aria-describedby={sentence}
+          checked={asked ?? row.tick.on} disabled={!id || !idle} aria-disabled={asked !== undefined || undefined}
+          data-tip={!id ? 'listed once the machine is added' : notNeeded(row) ? `Tick when ${name} does not need it; the row then stands aside` : undefined}
           onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
       ) : updates && id && idle ? (
         <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating} data-tip={`Runs ${row.run} on ${name}, then checks again`}
@@ -205,6 +211,8 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
   const ended = run.running ? steps.filter((s) => s.status !== 'start') : steps;
   const ok = ended.filter((s) => !needs(s));
   const rows = run.steps.filter(isSetup);
+  // the rows that stand aside go last, under their own line
+  const apart = rows.filter(asideStep);
   // keyed by its place in the run, so a row keeps its update under way as the folds open and shut
   const row = (r: HostStep) => <Row key={`${r.step}-${run.steps.indexOf(r)}`} row={r} run={run} terminal={terminal} />;
   return (
@@ -232,7 +240,9 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
               <Caret open={setup} />Your agent setup
             </button>
           </div>
-          {setup && rows.map(row)}
+          {setup && rows.filter((r) => !asideStep(r)).map(row)}
+          {setup && apart.length > 0 && <div className="kicker" data-testid="host-aside">Runs only on a Mac, or not needed there</div>}
+          {setup && apart.map(row)}
         </div>
       )}
     </div>
