@@ -11,6 +11,8 @@ import { islandCwd } from '../src/selectors.js';
 import { disablePush, enablePush, keyBytes, needsInstall, readPush, sameApplicationServerKey, setPushStatuses, subscriptionParams } from '../src/mobile/push.js';
 import { dragOffset, isSwipe, REVEAL, settle } from '../src/mobile/swipe.js';
 import { dragToScroll, holdScroll, lineSteps, scrollTerm, withoutClicks, type TouchSurface } from '../src/mobile/scroll.js';
+import { KEY_ROW, keyGroups } from '../src/mobile/keys.js';
+import { startMission } from '../src/mobile/mission.js';
 
 type TermEvent = Extract<Event, { event: `term.${string}` }>;
 
@@ -529,5 +531,45 @@ describe('holding the place across a repaint', () => {
     screen.write(bytes);
     flush();
     expect(scrolled).toEqual([-5]);
+  });
+});
+
+describe('phone keys', () => {
+  it('keeps shift+tab, the mode key of every agent, on the row', () => {
+    expect(KEY_ROW.find((k) => k.label === '⇧tab')?.seq).toBe('\x1b[Z');
+    expect(KEY_ROW.map((k) => k.label)).toEqual(['esc', 'tab', '⇧tab', '^C', '↑', '↓', '↩']);
+  });
+
+  it("lists the agent's own keys and commands first, and only terminal keys for a shell", () => {
+    const claude = keyGroups('claude');
+    expect(claude[0].title).toBe('Claude Code');
+    const compact = claude.flatMap((g) => g.keys).find((k) => k.label === '/compact');
+    expect(compact?.seq).toBe('/compact\r');
+    expect(keyGroups('codex')[0].keys.some((k) => k.label === '/model')).toBe(true);
+    expect(keyGroups(undefined).map((g) => g.title)).toEqual(['Terminal']);
+    expect(keyGroups(undefined)[0].keys.find((k) => k.label === '^L')?.hint).toBe('clear the screen');
+  });
+});
+
+describe('mission control from the phone', () => {
+  const api = (runSent?: boolean) => {
+    const calls: { method: string; params: Record<string, unknown> }[] = [];
+    const call = (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); return Promise.resolve({ id: 'n1', runSent }); };
+    return { calls, api: { call } as unknown as Pick<Api, 'call'> };
+  };
+
+  it('starts a home robot on the prompt, with the home command and cwd', async () => {
+    const { calls, api: a } = api();
+    const f = fleet();
+    await expect(startMission(a, f, 'plan the day')).resolves.toEqual({ id: 'n1', sent: true });
+    expect(calls).toEqual([{ method: 'robot.create', params: { islandId: 'home', cwd: '/mc', command: f.home.command, run: 'plan the day' } }]);
+  });
+
+  it('names the robot after its button, as a skill in the home command\'s own form, and says when the prompt was not sent', async () => {
+    const { calls, api: a } = api(false);
+    const f = fleet();
+    f.home.command = 'codex';
+    await expect(startMission(a, f, '/svall-retro', 'retro')).resolves.toEqual({ id: 'n1', sent: false });
+    expect(calls[0].params).toMatchObject({ name: 'retro', command: 'codex', run: '$svall-retro' });
   });
 });

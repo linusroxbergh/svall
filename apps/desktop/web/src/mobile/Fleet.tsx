@@ -154,7 +154,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
       ))}
       {sheet?.kind === 'island' && <NewIsland onClose={close} />}
       {sheet?.kind === 'robot' && <NewRobot islandId={sheet.islandId} onClose={close} onCreated={(id) => { close(); onOpen(id); }} />}
-      {sheet?.kind === 'islandMenu' && <IslandSheet islandId={sheet.islandId} onClose={close} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
+      {sheet?.kind === 'islandMenu' && <IslandSheet islandId={sheet.islandId} onClose={close} onOpen={onOpen} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
       {sheet?.kind === 'settings' && <Settings onClose={close} />}
       {sheet?.kind === 'close' && <CloseRobot id={sheet.id} onClose={close} />}
     </div>

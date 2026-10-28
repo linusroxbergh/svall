@@ -3,10 +3,14 @@ import { useApp } from '../hooks.js';
 import { robotsOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { DocsList } from './DocsList.js';
+import { startMission } from './mission.js';
 import { Sheet } from './Sheet.js';
 
-export function IslandSheet({ islandId, onClose, onNewRobot }: { islandId: string; onClose(): void; onNewRobot(): void }): JSX.Element | null {
-  const island = useApp((s) => s.fleet.islands[islandId]);
+type Props = { islandId: string; onClose(): void; onNewRobot(): void; onOpen(id: string): void };
+
+export function IslandSheet({ islandId, onClose, onNewRobot, onOpen }: Props): JSX.Element | null {
+  const fleet = useApp((s) => s.fleet);
+  const island = fleet.islands[islandId];
   const crew = useApp((s) => robotsOf(s.fleet, islandId).length);
   const [name, setName] = useState(island?.name ?? '');
   const [confirm, setConfirm] = useState(false);
@@ -22,6 +26,8 @@ export function IslandSheet({ islandId, onClose, onNewRobot }: { islandId: strin
   const rename = () => run(() => phone.api().call('island.update', { id: islandId, name: name.trim() }));
   const remove = () => run(() => phone.api().call('island.delete', { id: islandId }));
   const deletable = island.kind !== 'home' && crew === 0;
+  // a button starts a home robot on its skill and opens it, as the island's own buttons do on the Mac
+  const press = (prompt: string, label: string) => run(async () => { onOpen((await startMission(phone.api(), fleet, prompt, label)).id); });
 
   return (
     <Sheet title={island.name} onClose={onClose}>
@@ -29,6 +35,13 @@ export function IslandSheet({ islandId, onClose, onNewRobot }: { islandId: strin
         <input value={name} aria-label="Name" enterKeyHint="done" autoCapitalize="off" onChange={(e) => setName(e.target.value)} />
         <button type="submit" className="pri" disabled={busy || !name.trim() || name.trim() === island.name}>Rename</button>
       </form>
+      {island.kind === 'home' && fleet.home.actions.length > 0 && (
+        <div className="sheet-form m-shortcuts">
+          {fleet.home.actions.map((a) => (
+            <button key={a.label} type="button" disabled={busy} onClick={() => void press(a.prompt, a.label)}>{a.label}</button>
+          ))}
+        </div>
+      )}
       <DocsList tier="island" id={islandId} />
       <div className="sheet-form">
         <button type="button" onClick={onNewRobot}>New robot in another directory</button>

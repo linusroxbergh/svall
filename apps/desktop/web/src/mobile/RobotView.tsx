@@ -5,6 +5,9 @@ import { useApp } from '../hooks.js';
 import { awayLine } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
+import { readDraft, writeDraft } from './draft.js';
+import { KEY_ROW } from './keys.js';
+import { KeysSheet } from './KeysSheet.js';
 import { RobotMenu } from './RobotMenu.js';
 import { statusLabel } from './list.js';
 import { dragToScroll, holdScroll, scrollTerm, withoutClicks } from './scroll.js';
@@ -20,14 +23,6 @@ const theme = () => ({
   background: tokenOf('--surface-0'), foreground: tokenOf('--ink'), cursor: tokenOf('--sel'),
   selectionBackground: `${tokenOf('--sel')}4d`,
 });
-
-const KEYS: [string, string][] = [
-  ['esc', '\x1b'], ['tab', '\t'], ['^C', '\x03'],
-  ['←', '\x1b[D'], ['↑', '\x1b[A'], ['↓', '\x1b[B'], ['→', '\x1b[C'], ['⏎', '\r'],
-];
-
-// the page reloads itself when svalld moves to a newer protocol, so a prompt not yet sent is kept for the tab
-const DRAFT = 'svall.mobile.draft.';
 
 // a browser with site data switched off throws rather than returning nothing
 const readSize = (): number => {
@@ -58,8 +53,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   awayRef.current = !!unreachable;
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
-  const [prompt, setPrompt] = useState(() => { try { return sessionStorage.getItem(DRAFT + id) ?? ''; } catch { return ''; } });
+  const [prompt, setPrompt] = useState(() => readDraft(id));
   const [menu, setMenu] = useState(false);
+  const [keys, setKeys] = useState(false);
   const [answering, setAnswering] = useState(false);
   const [answerError, setAnswerError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
@@ -151,12 +147,12 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
   const blocked = robot?.agent?.status === 'blocked';
   const promptId = robot?.agent?.promptId;
+  // a question dialog's Enter picks the highlighted option, one question at a time
+  const question = robot?.agent?.askedTool === 'AskUserQuestion';
   const asking = useRef(promptId);
   useEffect(() => { asking.current = promptId; setAnswering(false); setAnswerError(undefined); }, [blocked, promptId]);
 
-  useEffect(() => {
-    try { if (prompt) sessionStorage.setItem(DRAFT + id, prompt); else sessionStorage.removeItem(DRAFT + id); } catch { /* site data switched off */ }
-  }, [id, prompt]);
+  useEffect(() => writeDraft(id, prompt), [id, prompt]);
 
   // the field is as tall as its text, up to the cap the stylesheet sets; past that it scrolls
   useLayoutEffect(() => {
@@ -171,6 +167,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     try { localStorage.setItem(SIZE_KEY, String(next)); } catch { /* site data switched off */ }
     setFontSize(next);
   };
+
+  const key = (seq: string) => { xterm.current?.scrollToBottom(); link.current?.input(seq); };
 
   const answer = async (a: 'approve' | 'deny') => {
     if (answering) return;
@@ -232,18 +230,17 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
         <div className="ask" role="status">
           <p>{robot.agent?.prompt ?? `${robot.name} is waiting on you`}</p>
           <span>
-            <button type="button" disabled={answering} onClick={() => void answer('approve')}>approve</button>
-            <button type="button" disabled={answering} onClick={() => void answer('deny')}>deny</button>
+            <button type="button" disabled={answering} onClick={() => void answer('approve')}>{question ? 'select' : 'approve'}</button>
+            <button type="button" disabled={answering} onClick={() => void answer('deny')}>{question ? 'cancel' : 'deny'}</button>
           </span>
           {answerError && <p className="sheet-error">{answerError}</p>}
         </div>
       )}
       <div className="keys">
-        {KEYS.map(([label, seq]) => (
-          <button key={label} disabled={away} onClick={() => { xterm.current?.scrollToBottom(); link.current?.input(seq); }}>{label}</button>
+        {KEY_ROW.map((k) => (
+          <button key={k.label} type="button" className={k.label.length === 1 ? 'glyph' : undefined} disabled={away} onClick={() => key(k.seq)}>{k.label}</button>
         ))}
-        <button onClick={() => size(-1)}>A−</button>
-        <button onClick={() => size(1)}>A+</button>
+        <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}>⋯</button>
       </div>
       <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
         {sendError && <p className="sheet-error">{sendError}</p>}
@@ -260,6 +257,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
         <button type="submit" disabled={!prompt.trim()}>send</button>
       </form>
       {menu && <RobotMenu id={id} onClose={() => setMenu(false)} onClosed={onBack} />}
+      {keys && <KeysSheet kind={robot?.agent?.kind} fontSize={fontSize} onKey={key} onSize={size} onClose={() => setKeys(false)} />}
     </div>
   );
 }

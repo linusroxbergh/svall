@@ -2223,6 +2223,35 @@ runIf('Fleet', () => {
     expect(sent).toHaveBeenCalledTimes(2);
   });
 
+  it('keeps a Claude question dialog blocked across its steps: Enter moves it to a question of its own id, until its tool runs', async () => {
+    const { fleet, store, tmux } = await boot();
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    const hook = (h: Partial<HookEvent> & Pick<HookEvent, 'name'>) => fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', sessionId: 'sess', ...h } });
+    await hook({ name: 'SessionStart', transcriptPath: '/nope' });
+    await hook({ name: 'PermissionRequest', toolName: 'AskUserQuestion' });
+    await hook({ name: 'Notification', notificationType: 'permission_prompt', message: 'Claude needs your permission' });
+    const first = store.state.robots[c.id].agent!.promptId!;
+    const sent = vi.spyOn(tmux, 'sendBytes');
+    // question 1 of 2 answered: the dialog shows question 2, and no hook says so
+    await fleet.answerPrompt(c.id, 'approve', first);
+    const next = store.state.robots[c.id].agent!;
+    expect(next).toMatchObject({ status: 'blocked', askedTool: 'AskUserQuestion' });
+    expect(next.promptId).toBeDefined();
+    expect(next.promptId).not.toBe(first);
+    // the submit step, then the tool's run ends the dialog
+    await fleet.answerPrompt(c.id, 'approve', next.promptId);
+    expect(store.state.robots[c.id].agent!.status).toBe('blocked');
+    await hook({ name: 'PostToolUse', toolName: 'AskUserQuestion' });
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'working' });
+    expect(store.state.robots[c.id].agent?.promptId).toBeUndefined();
+    expect(sent).toHaveBeenCalledTimes(2);
+    // Esc cancels the whole dialog
+    await hook({ name: 'PermissionRequest', toolName: 'AskUserQuestion' });
+    await hook({ name: 'Notification', notificationType: 'permission_prompt' });
+    await fleet.answerPrompt(c.id, 'deny');
+    expect(store.state.robots[c.id].agent!.status).toBe('idle');
+  });
+
   it('lets a hook that moved the agent on while the answer was typed stand', async () => {
     const { fleet, store, tmux } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
