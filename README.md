@@ -303,7 +303,7 @@ Svall first launches stays with Ghostty until you claim it there.
 | Cmd+Shift+O | Open a fleet | Cmd+Q | Quit |
 | Cmd+Shift+S | Sidebar and side card | | |
 
-Ctrl+click on a link asks whether to open it in the robot's browser or
+Clicking a link asks whether to open it in the robot's browser or
 yours, and selecting text copies it. A robot on a worker copies through OSC 52,
 which your Ghostty config's `clipboard-write` governs: `ask` asks at every copy,
 and `deny` drops it. Terminals attach to tmux, so Ghostty's `initial-command`

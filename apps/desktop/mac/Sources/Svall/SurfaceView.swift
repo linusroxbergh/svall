@@ -16,6 +16,10 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var keyTextAccumulator: [String]?
     var lastPerformKeyEvent: TimeInterval?
     var suppressNextLeftMouseUp = false
+    /// The link modifiers a plain click on a link holds for libghostty until its release.
+    var linkClick: NSEvent.ModifierFlags = []
+    /// libghostty showed a link under the pointer, as the last position stated found one.
+    var overLink = false
     var focused = false
     var cellSize = CGSize(width: 8, height: 16)
     private var cursor: NSCursor = .iBeam

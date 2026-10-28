@@ -49,7 +49,7 @@ export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name
         <span>
           {run ? <>On {name}, <code>{run}</code> is typed for you: press Return to run it.</> : <>A terminal on {name}.</>}
           {forward && ` Its sign-in comes back from your browser through port ${forward} on this Mac.`}
-          {' ⌘-click a link to open it in your browser.'}
+          {' Click a link to open it in your browser.'}
         </span>
       </div>
       {failed && (
