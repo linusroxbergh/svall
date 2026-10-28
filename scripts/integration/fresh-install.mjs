@@ -315,9 +315,12 @@ function upgrade(b) {
   save('host-upgrade.ndjson', r.stdout);
   const events = lines(r.stdout);
   const steps = events.filter((e) => e.step && e.status !== 'start');
-  // the machine is this fleet's worker already, which the enrol step finds
-  for (const s of steps) check(`host upgrade ${s.step}`, s.status === 'ok' || (s.status === 'skip' && s.step === 'enrol'), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
-  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']),
+  // the machine is this fleet's worker already, which the enrol step finds, and the mirror is one not-checked row as on add
+  for (const s of steps) {
+    check(`host upgrade ${s.step}`, s.status === 'ok' || (s.status === 'skip' && s.step === 'enrol') || (s.status === 'warn' && s.step === 'mirror:unchecked'),
+      () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  }
+  check('host upgrade steps', JSON.stringify(steps.map((s) => s.step)) === JSON.stringify(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol', 'mirror:unchecked']),
     () => brief(steps.map((s) => s.step)));
   check('host upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
   check('host upgrade release', steps.find((s) => s.step === 'release')?.detail === from(b), () => brief(steps.find((s) => s.step === 'release')));
