@@ -468,17 +468,32 @@ test('a robot on a worker this Mac cannot reach says so under its machine line, 
   // one run at a time
   expect((screen.getByTestId('side-away-run') as HTMLButtonElement).disabled).toBe(true);
 
+  // a worker on another build is checked too: the check's release row says whether to upgrade it, or this Mac
   const f = fleet();
   f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } };
   Object.assign(f.robots.c0, { machine: VAULT, cwd: '/home/ada/svall' });
   act(() => { store.getState().hostDone('doctor', 0); store.getState().setFleet(f); });
-  expect(screen.getByTestId('side-away').textContent).toBe('linus-vault runs a different build; upgrade it under MachinesUpgrade linus-vault');
+  expect(screen.getByTestId('side-away').textContent).toBe('linus-vault runs a different build; upgrade it under MachinesCheck linus-vault');
   sent.length = 0;
   fireEvent.click(screen.getByTestId('side-away-run'));
-  expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'linus-vault' } }]);
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'linus-vault' } }]);
 
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
   expect(screen.queryByTestId('side-away')).toBeNull();
+});
+
+test('a card mounted for a robot the fleet does not list yet shows it once it appears', () => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0 } };
+  act(() => store.getState().setFleet(f));
+  const { container } = render(<SideCard id="c9" />);
+  expect(container.innerHTML).toBe('');
+  const later = fleet();
+  later.machines = f.machines;
+  later.robots.c9 = chr('c9', 'i_b', { x: 3, y: 3 }, { name: 'nine', machine: VAULT, cwd: '/home/ada/svall' });
+  act(() => store.getState().setFleet(later));
+  expect((screen.getByTestId('side-name') as HTMLInputElement).value).toBe('nine');
+  expect(screen.getByTestId('side-away').textContent).toBe('linus-vault is not reachableCheck linus-vault');
 });
 
 test('a placed robot that landed on mission control can still move back to this Mac', () => {

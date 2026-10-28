@@ -74,13 +74,13 @@ export function SideCard({ id }: { id: string }) {
   const load = useLoad(details && active).load?.robots?.[id];
   const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
+  const hostRunning = useApp((s) => !!s.host?.running);
   if (!c) return null;
 
   const status = statusOf(c, fleet);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
   const placed = machineOf(fleet, c);
   const away = awayLine(fleet, c);
-  const hostRunning = useApp((s) => !!s.host?.running);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
@@ -187,14 +187,13 @@ export function SideCard({ id }: { id: string }) {
   );
 }
 
-// why the robot's machine is out of reach, and the one run on it that tells more: a check, or the upgrade a link in mismatch names
+// why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
 function AwayLine({ name, line, running }: { name: string; line: string; running: boolean }) {
-  const op = line.endsWith('under Machines') ? 'upgrade' : 'doctor';
-  const run = () => { app.store.getState().toggleHost(true, name); startHost(op, { name }); };
+  const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name }); };
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}</span>
-      <button className="btn set-open" data-testid="side-away-run" disabled={running} onClick={run}>{op === 'upgrade' ? 'Upgrade' : 'Check'} {name}</button>
+      <button className="btn set-open" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
     </div>
   );
 }
