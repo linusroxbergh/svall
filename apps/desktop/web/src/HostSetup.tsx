@@ -1,4 +1,4 @@
-import { updatesIn, wayOn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
@@ -134,7 +134,8 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const sentence = useId();
   const whole = stepSaid(row, name);
   // a check whose sentence ends in the command its terminal types says only what is wrong, the command behind details
-  const cut = row.run && !row.action && whole ? whole.lastIndexOf(': ') : -1;
+  const from = row.run && !row.action && whole ? whole.lastIndexOf(row.run) : -1;
+  const cut = from > 0 ? Math.max(whole!.lastIndexOf(': ', from), whole!.lastIndexOf('; ', from)) : -1;
   const said = cut > 0 ? whole!.slice(0, cut) : whole;
   const more = cut > 0 ? whole!.slice(cut + 2) : row.action && whole;
   const idle = !run.running;
@@ -156,12 +157,13 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       .then(show, () => {})
       .finally(() => setAsked(undefined));
   };
-  // the machine checked again once its agents are updated
+  // the machine checked again once its agents are updated, unless a run started meanwhile holds the panel
   const update = (machine: MachineId, kinds: AgentKind[]) => {
     setUpdating(true);
     setFailed(undefined);
     app.api().call('machines.updateAgents', { machine, kinds })
-      .then(() => startHost('doctor', { name }), (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines))))
+      .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name }); },
+        (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines))))
       .finally(() => setUpdating(false));
   };
   return (
@@ -183,7 +185,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       ) : updates && id && idle ? (
         <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating} data-tip={`Runs ${row.run} on ${name}, then checks again`}
           onClick={() => update(id as MachineId, updates)}>Update</button>
-      ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && idle ? (
+      ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
@@ -197,27 +199,23 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   );
 }
 
-// a step the user has something to do about or to know: one that failed, warns, or never finished, or agent setup with a
-// way to make it work there
-const needs = (s: HostStep): boolean => (s.status !== 'ok' && s.status !== 'skip') || (!!s.gap && wayOn(s));
+// a step the user has something to do about or to know: one that failed, warns, or never finished
+const needs = (s: HostStep): boolean => s.status !== 'ok' && s.status !== 'skip';
 const isSetup = (s: HostStep): boolean => s.step.startsWith('mirror:');
 
 // which folded parts of the checklist are open: the fine checks, and the agent setup
 type Open = { fine: boolean; setup: boolean };
 const SHUT: Open = { fine: false, setup: false };
 
-/**
- * The steps that need the user, by phase, the one under way while the run goes, then the fine ones and the agent setup,
- * each folded behind one line. terminal: opens a terminal on the machine with a step's command typed, where the panel
- * knows how to reach it.
- */
+/** The steps that need the user, by phase, then the fine ones and the agent setup, each folded behind one line. */
 function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: HostRun; terminal?: Terminal; open: Open; unfold: (o: Open) => void }) {
   const steps = run.steps.filter((s) => !isSetup(s));
   const now = run.running ? steps.filter((s) => s.status === 'start').at(-1) : undefined;
   const ended = run.running ? steps.filter((s) => s.status !== 'start') : steps;
   const ok = ended.filter((s) => !needs(s));
   const rows = run.steps.filter(isSetup);
-  const row = (r: HostStep, at: number) => <Row key={`${r.step}-${at}`} row={r} run={run} terminal={terminal} />;
+  // keyed by its place in the run, so a row keeps its update under way as the folds open and shut
+  const row = (r: HostStep) => <Row key={`${r.step}-${run.steps.indexOf(r)}`} row={r} run={run} terminal={terminal} />;
   return (
     <div className="host-steps" data-testid="host-steps">
       {groupSteps(fine ? ended : ended.filter(needs)).map((group) => (

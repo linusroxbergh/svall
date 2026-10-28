@@ -265,3 +265,53 @@ test('a check that finds the machine on another release offers its upgrade on th
   fireEvent.click(screen.getByTestId('host-upgrade'));
   expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
 });
+
+test('a check row keeps what is wrong in its sentence and puts only the command behind details', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', {
+      step: 'linger', status: 'warn', detail: 'off for ada: the fleet stops when you log out; ssh ada@trift, then sudo loginctl enable-linger ada', run: 'sudo loginctl enable-linger ada',
+    });
+    store.getState().hostDone('doctor', 0);
+  });
+  expect(screen.getByTestId('host-step-linger').querySelector('.host-said')?.firstChild?.textContent).toBe('off for ada: the fleet stops when you log out');
+  expect(screen.getByTestId('host-details-linger').textContent).toBe('detailsssh ada@trift, then sudo loginctl enable-linger ada');
+});
+
+test('a machine on a newer release than this Mac is not offered an upgrade there', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: '0.22.0 (signed), protocol 3; this controller runs 0.21.0 (signed), protocol 3', action: 'update svall on this Mac' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryByTestId('host-upgrade')).toBeNull();
+  expect(screen.getByTestId('host-action-release').textContent).toBe('update svall on this Mac');
+});
+
+test('an agent update keeps its row through the fine checks opening, and leaves a run started meanwhile alone', async () => {
+  let finish!: () => void;
+  call.mockImplementation((method: string) => (method === 'machines.updateAgents' ? new Promise((resolve) => { finish = () => resolve({}); }) : Promise.resolve({})));
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'ok', detail: '0.21.0' });
+    store.getState().hostStep('doctor', { step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac', run: 'claude update' });
+    store.getState().hostDone('doctor', 1);
+  });
+  await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
+  fireEvent.click(screen.getByTestId('host-fine'));
+  expect(screen.getByTestId('host-updating-versions').textContent).toBe('updating on trift…');
+
+  act(() => { store.getState().hostStarted('upgrade', { name: 'trift' }); });
+  await act(async () => finish());
+  expect(store.getState().host?.op).toBe('upgrade');
+  expect(sent.filter((m) => m.type === 'host.start')).toEqual([]);
+});

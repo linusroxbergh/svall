@@ -103,6 +103,8 @@ export const REPORT_MS = 10_000;
 const SETUP_REPORT_MS = 2 * REPORT_MS;
 // a tick waits for the push already under way and its own, each of up to the 200 MB tree, then for the setup rows
 const CONSENT_TIMEOUT_MS = 15 * 60_000;
+// an agent's own update downloads its release
+export const AGENT_UPDATE_MS = 5 * 60_000;
 
 // how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -119,6 +121,8 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.moveRetry') return MOVE_RETRY_TIMEOUT_MS;
   if (method === 'machines.setup') return ((params as { waitMs?: number }).waitMs ?? 0) + SETUP_REPORT_MS;
   if (method === 'machines.consent') return CONSENT_TIMEOUT_MS;
+  // the worker runs each update in turn, and the link takes 30 s beside them
+  if (method === 'machines.updateAgents') return ((params as { kinds?: unknown[] }).kinds ?? []).length * AGENT_UPDATE_MS + 30_000;
   return 0;
 };
 

@@ -116,4 +116,15 @@ describe('updateAgents', () => {
     const failing = async (cmd: string) => (cmd === 'claude' ? { code: 1, stdout: 'Checking for updates\n', stderr: 'fetching\nnetwork unreachable\n' } : { code: 0, stdout: '', stderr: '' });
     await expect(updateAgents(['claude', 'codex'], failing)).rejects.toThrow('claude update exited 1: network unreachable');
   });
+
+  it('runs an agent\'s update once for two asks at the same time, both waiting on it', async () => {
+    let runs = 0;
+    let done!: () => void;
+    const slow = async () => { runs++; await new Promise<void>((resolve) => { done = resolve; }); return { code: 0, stdout: '', stderr: '' }; };
+    const both = Promise.all([updateAgents(['claude'], slow), updateAgents(['claude'], slow)]);
+    await Promise.resolve();
+    done();
+    await both;
+    expect(runs).toBe(1);
+  });
 });

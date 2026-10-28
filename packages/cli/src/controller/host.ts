@@ -637,11 +637,7 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 
 const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
 
-/**
- * `svall host doctor`: what the companion's own doctor says, plus what only the controller can check. Each check is
- * emitted as a step once found, after a start for the probe that finds it; the connection and the companion's doctor
- * answering are steps of their own.
- */
+/** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
   const start = (step: string) => d.emit({ step, status: 'start' });
@@ -668,6 +664,8 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       found({
         name: 'release', status: same && v.protocol === d.controller.protocol ? 'ok' : 'fail',
         detail: `${v.release} (${signedWord(v.signed)}), protocol ${v.protocol}; this controller runs ${d.controller.release} (${signedWord(d.controller.signed)}), protocol ${d.controller.protocol}`,
+        // an upgrade there would go back to this Mac's older release
+        ...(!same && compareVersions(v.release, d.controller.release) === 1 && { action: 'update svall on this Mac' }),
       });
       const refused = notOurs(v, entry.record.name, d);
       found(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }

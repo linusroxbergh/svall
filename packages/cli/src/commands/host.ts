@@ -270,7 +270,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .action(async (name: string, o: { steps?: boolean }) => {
       const entry = MachineRegistry.load(dir()).get(name);
       // a diagnosis prints a table, not steps, unless the app follows it
-      const emit = o.steps && json() ? (e: StepEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); } : () => {};
+      const emit = o.steps && json() ? reporter(true, String).emit : () => {};
       const report = await doctorHost(name, realDeps(emit, dir(), target())).catch((e: unknown) => {
         if (entry) recordCheck(dir(), entry.id, undefined);
         throw e;

@@ -5,7 +5,7 @@ import {
 } from '@svall/protocol';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
-import { stepLabel } from './host.js';
+import { machineNames, plainStep, stepLabel } from './host.js';
 import { startHost } from './HostSetup.js';
 import { useApp } from './hooks.js';
 import { setupNote } from './landings.js';
@@ -194,7 +194,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far }); };
   const update = (kinds: AgentKind[], machine: MachineId) => {
     setFix({ doing: `Updating ${kinds.map((k) => AGENT_LABEL[k]).join(' and ')} on ${far}` });
-    app.api().call('machines.updateAgents', { machine, kinds }).then(recheck, (e: Error) => setFix({ failed: e.message }));
+    app.api().call('machines.updateAgents', { machine, kinds }).then(recheck, (e: Error) => setFix({ failed: plainStep(e.message, machineNames(store().machines)) }));
   };
   const doing = fix && 'doing' in fix ? fix : undefined;
   const step = doing?.upgrade && host?.running ? host.steps.at(-1)?.step : undefined;

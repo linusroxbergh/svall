@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
@@ -15,7 +15,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
-import { AGENTS_UPDATE_MS, type Router } from '../placement/router.js';
+import type { Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
 import { agentAdapters, type AgentProber } from '../sessions/registry.js';
@@ -149,7 +149,7 @@ const handlers: Handlers = {
   'machines.updateAgents': async (p, { store, links }) => {
     if (!store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     if (!links) throw new ApiError('not_on_worker', 'not on a worker');
-    await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: AGENTS_UPDATE_MS });
+    await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: serverWait('machines.updateAgents', p) });
     return {};
   },
   'column.add': (p, { fleet }) => fleet.addColumn(p.name, p.afterId),

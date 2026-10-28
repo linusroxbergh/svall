@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { AGENT_UPDATE, AgentKind, ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
@@ -178,19 +178,23 @@ export async function forgetRobot(o: { fleet: Fleet; store: Store; me: MachineId
   }
 }
 
-// an agent's own update downloads its release
-const UPDATE_MS = 5 * 60_000;
-/** How long a home waits on a worker's agent updates. */
-export const AGENTS_UPDATE_MS = UPDATE_MS + 30_000;
+// an agent's update under way here, which a second ask for it waits on rather than running it again
+const updating = new Map<AgentKind, Promise<void>>();
 
 /** Runs each agent's own update here, one after another; the first that fails says why. */
-export async function updateAgents(kinds: AgentKind[], run: CliRun = cliRunner(process.env, UPDATE_MS)): Promise<void> {
+export async function updateAgents(kinds: AgentKind[], run: CliRun = cliRunner(process.env, AGENT_UPDATE_MS)): Promise<void> {
   for (const kind of kinds) {
-    const [bin, ...args] = AGENT_UPDATE[kind].split(' ');
-    const r = await run(bin, args);
-    const said = (r.stderr.trim() || r.stdout.trim()).split('\n').at(-1);
-    if (r.code !== 0) throw new ApiError('internal', `${AGENT_UPDATE[kind]} exited ${r.code}${said ? `: ${said}` : ''}`);
+    const going = updating.get(kind) ?? updateAgent(kind, run).finally(() => updating.delete(kind));
+    updating.set(kind, going);
+    await going;
   }
+}
+
+async function updateAgent(kind: AgentKind, run: CliRun): Promise<void> {
+  const [bin, ...args] = AGENT_UPDATE[kind].split(' ');
+  const r = await run(bin, args);
+  const said = (r.stderr.trim() || r.stdout.trim()).split('\n').at(-1);
+  if (r.code !== 0) throw new ApiError('internal', `${AGENT_UPDATE[kind]} exited ${r.code}${said ? `: ${said}` : ''}`);
 }
 
 const FarViewer = z.object({ key: z.string(), kind: z.enum(['app', 'phone']) });

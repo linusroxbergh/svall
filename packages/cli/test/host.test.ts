@@ -1403,6 +1403,16 @@ describe('host doctor', () => {
     ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
     const report = await doctorHost('trift', deps({ registry: registered() }));
     expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail' });
+    expect(report.checks.find((c) => c.name === 'release')?.action).toBeUndefined();
+  });
+
+  it('says to update svall on this Mac when the machine runs a newer release', async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '9.0.0', protocol: PROTOCOL_VERSION, machineId: REMOTE }, null, 2) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+    const report = await doctorHost('trift', deps({ registry: registered() }));
+    expect(report.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'fail', action: 'update svall on this Mac' });
   });
 });
 
