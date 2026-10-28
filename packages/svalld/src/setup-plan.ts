@@ -3,6 +3,7 @@ import path from 'node:path';
 import { DEFAULT_CWD, type AgentKind, type FoundAgent, type SetupPlan } from '@svall/protocol';
 import { AGENTS, AGENT_KINDS } from './agents.js';
 import { configuredMainAgent } from './config.js';
+import { plistFile } from './launchd.js';
 import { expandHome, resolvePaths } from './paths.js';
 import { LOGIN_SHELL_TIMEOUT_MS } from './login-env.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileLabel, profileOf } from './profile.js';
@@ -20,8 +21,8 @@ export function setupPlan(o: {
     ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
     ...(has('opencode') ? [{ what: 'OpenCode plugin', path: o.opencodePlugin, agent: 'opencode' as const }] : []),
-    { what: 'Service that keeps fleets running', path: path.join(o.launchAgentsDir, `${LAUNCHD_LABEL}.plist`) },
-    ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: path.join(o.launchAgentsDir, `${profileLabel(profileOf(h))}.plist`) })),
+    { what: 'Service that keeps fleets running', path: plistFile(o.launchAgentsDir, LAUNCHD_LABEL) },
+    ...o.fleets.map((h) => ({ what: `Service for the ${profileOf(h)} fleet`, path: plistFile(o.launchAgentsDir, profileLabel(profileOf(h))) })),
     { what: `The ${SHIM} command`, path: path.join(o.shimDir, SHIM) },
     { what: 'Your fleet', path: o.home },
   ];

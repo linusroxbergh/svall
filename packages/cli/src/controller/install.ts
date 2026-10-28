@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { OLDEST_STATE_SCHEMA_VERSION } from '@svall/protocol';
 import { isFleetName } from '@svall/svalld/profile';
+import { readManifest } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { stageArchive } from '../../../../scripts/install-release.mjs';
 import { MANIFEST, NAMESPACE, SIG, SUMS, type Verify } from '../../../../scripts/release-manifest.mjs';
@@ -53,12 +54,8 @@ export function requireCompatible(c: CompanionArchive, o: { release: string; pro
  * manifest is itself an unsigned development build's. A URL relative to the release names an archive it carries.
  */
 export function companionAsset(releaseRoot: string, platform: string): { url: string; sha256: string; unsignedBuild: boolean } | undefined {
-  let manifest: { unsigned?: unknown; companions?: Record<string, { url?: unknown; sha256?: unknown }> };
-  try {
-    manifest = JSON.parse(fs.readFileSync(path.join(releaseRoot, 'release.json'), 'utf8')) as typeof manifest;
-  } catch {
-    return undefined;
-  }
+  const manifest = readManifest(releaseRoot) as { unsigned?: unknown; companions?: Record<string, { url?: unknown; sha256?: unknown }> } | undefined;
+  if (!manifest) return undefined;
   const asset = manifest.companions?.[platform];
   if (typeof asset?.url !== 'string' || typeof asset.sha256 !== 'string') return undefined;
   const url = new URL(asset.url, pathToFileURL(path.join(releaseRoot, path.sep))).href;

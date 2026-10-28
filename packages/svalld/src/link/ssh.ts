@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { Duplex } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { sha256Hex } from '../hash.js';
 import { runProcess, type RunResult } from './process.js';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
@@ -84,7 +84,7 @@ function ownSocketDir(dir: string): string {
 // a control socket path has to stay under the Unix socket limit, so the destination is hashed short.
 // The pid in front keeps each process on a master of its own, and names whose master it is once that process is gone
 const socketFor = (dir: string, destination: string): string =>
-  path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
+  path.join(dir, `${process.pid}-${sha256Hex(destination).slice(0, 12)}`);
 
 /** One master per socket path, so two callers in this process reaching the same destination share the connection. */
 const masters = new Map<string, Promise<SshMaster>>();

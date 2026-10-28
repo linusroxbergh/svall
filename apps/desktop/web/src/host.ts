@@ -1,4 +1,4 @@
-import { wayOn, type SetupRow } from '@svall/protocol';
+import { MachineRecord, wayOn, type SetupRow } from '@svall/protocol';
 import type { HostArgs, HostOp, HostStep, MachineRow } from './bridge.js';
 
 // a value the shell said was a token is never shown, kept or logged, whatever step carried it
@@ -185,11 +185,8 @@ export function outcomeOf(run: HostRun): RunOutcome {
   return { text: done[run.op] ?? `${OP_TITLE[run.op]}: done`, done: true };
 }
 
-const NAME = /^[a-z][a-z0-9-]{0,31}$/;
-const SSH = /^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/;
-
-export const machineName = (value: string): boolean => NAME.test(value);
-export const sshDestination = (value: string): boolean => SSH.test(value);
+export const machineName = (value: string): boolean => MachineRecord.shape.name.safeParse(value).success;
+export const sshDestination = (value: string): boolean => MachineRecord.shape.ssh.safeParse(value).success;
 
 /** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
 export const loginForward = (run: string, forward?: number): number | undefined => forward ?? (/^codex login\s*$/.test(run) ? 1455 : undefined);

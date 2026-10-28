@@ -9,9 +9,9 @@ import type { z } from 'zod';
 import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
-import { BWRAP_COMMAND, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
+import { BWRAP_COMMAND, BWRAP_DENIED, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
-import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
+import { launchdEnv, plistEnv, plistFile, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentHomesEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
 import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
@@ -202,7 +202,7 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
 
 function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
   const label = profileLabel(t.name);
-  const plist = path.join(d.launchAgentsDir, `${label}.plist`);
+  const plist = plistFile(d.launchAgentsDir, label);
   return { plist, fix: t.name === PRIVATE ? `${SHIM} setup` : `launchctl bootout gui/${d.uid}/${label}, delete ${plist}, then ${SHIM} ${t.name}` };
 }
 
@@ -339,7 +339,7 @@ async function codexSandbox(d: DoctorDeps): Promise<Check> {
     const err = e as Error & { killed?: boolean; code?: unknown };
     // execFile's message is its own first line, then what the command wrote to stderr
     const said = err.message.trim().split('\n').slice(1).join('\n').trim();
-    if (/bwrap:|namespace|operation not permitted/i.test(said)) {
+    if (BWRAP_DENIED.test(said)) {
       return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex robot asks before each one: ${BWRAP_PROFILE}`, run: BWRAP_COMMAND };
     }
     const why = err.killed ? 'it did not finish in time' : said.split('\n').at(-1) || `exit ${String(err.code)}, nothing said`;

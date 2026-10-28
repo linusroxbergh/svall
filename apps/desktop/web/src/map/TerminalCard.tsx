@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from '../boot.js';
-import { rectOf } from '../BrowserArea.js';
+import { rectOf } from '../bridge.js';
 import { useApp } from '../hooks.js';
 import { RobotPanes } from '../RobotPanes.js';
 import { useHalfGrip } from '../halfGrip.js';
@@ -32,8 +32,7 @@ export function TerminalCard({ id, host }: Props) {
       for (const body of el.querySelectorAll<HTMLElement>('[data-testid="surface"]')) {
         const key = body.dataset.term;
         if (!key || !app.store.getState().terminals[key]) continue;
-        const r = body.getBoundingClientRect();
-        app.manager().move(key, { x: r.left, y: r.top, width: r.width, height: r.height });
+        app.manager().move(key, rectOf(body));
       }
       const web = el.querySelector<HTMLElement>('[data-testid="browser-surface"]');
       const tab = web?.dataset.tab;

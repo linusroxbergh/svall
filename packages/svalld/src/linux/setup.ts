@@ -10,7 +10,7 @@ import { profileHome } from '../profile.js';
 import { systemdDir } from '../release.js';
 import { writeDurable } from '../durable.js';
 import type { Runtime } from '../runtime.js';
-import { readJsonSettings } from '../settings-file.js';
+import { readJsonSettings, readOrUndefined } from '../settings-file.js';
 import { setupFleetHome, setupUser } from '../setup.js';
 import { isWorker } from '../worker/mode.js';
 import { SystemdError, daemonReload, enableLinger, enableUnit, lingerState, restartUnit, type Run } from './service.js';
@@ -108,10 +108,6 @@ export function svalldUnit(o: UnitOptions & { fleet: string; home: string }): Un
 export type LinuxSetup = UnitOptions & {
   home: string; fleet: string; unitDir: string; settingsPath: string; codex: CodexPaths; shimDir: string;
   user: string; run: Run; systemctl: boolean; replaceSettings?: boolean; port?: number; agents?: AgentKind[];
-};
-
-const readOrUndefined = (file: string): string | undefined => {
-  try { return fs.readFileSync(file, 'utf8'); } catch { return undefined; }
 };
 
 /** The fleet's unit, written only when it is not already what it should be. */
@@ -230,7 +226,7 @@ export async function restartUnits(run: Run, unitDir: string): Promise<string[]>
 
 export type Rollback = { prefix: string; current: string; release: string; version: string };
 
-const fleetOf = (unit: string): string | undefined => /^svall-svalld@(.+)\.service$/.exec(unit)?.[1];
+export const fleetOf = (unit: string): string | undefined => /^svall-svalld@(.+)\.service$/.exec(unit)?.[1];
 
 /** Rolls back a release any fleet's daemon does not answer from, so an upgrade cannot leave the machine without one. */
 export async function probeOrRollback(o: {

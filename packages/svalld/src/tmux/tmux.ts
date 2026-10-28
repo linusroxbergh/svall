@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
+import { shq } from '../text.js';
 import { ControlClient } from './control.js';
 
 const exec = promisify(execFile);
@@ -254,7 +255,7 @@ export class Tmux {
     const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
     // tmux expands -c as a format, and reads an argument ending in ; as the end of the command
     const dir = cwd.replaceAll('#', '##').replace(/;$/, '\\;');
-    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} '${v.replaceAll("'", "'\\''")}'\n`).join('');
+    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} ${shq(v)}\n`).join('');
     const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
     const out = await this.call([
       ...(set ? ['source-file', '-', ';'] : []),

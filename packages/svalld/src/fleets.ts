@@ -8,6 +8,7 @@ import WebSocket from 'ws';
 import { fleetNameProblem, HelloReply, MAX_REQUEST_BYTES, PROTOCOL_VERSION, type FleetEntry } from '@svall/protocol';
 import { peekConfig } from './config.js';
 import { Invalid, NotFound } from './errors.js';
+import { plistFile } from './launchd.js';
 import { resolvePaths, userPaths } from './paths.js';
 import { PRIVATE, profileHome, profileLabel, profileOf } from './profile.js';
 import { ownRuntime, variant, type Runtime } from './runtime.js';
@@ -43,7 +44,7 @@ export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'runtime' | 'launch
 export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
   const label = profileLabel(t.name);
   const domain = `gui/${d.uid}`;
-  const plist = path.join(d.launchAgentsDir, `${label}.plist`);
+  const plist = plistFile(d.launchAgentsDir, label);
 
   // an ad-hoc $SVALL_HOME is opened as it stands; only a profile's own home gets an agent
   if (t.managed) {

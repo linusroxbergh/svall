@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { jsonLines } from '../agent/jsonl.js';
+import { withoutRobotEnv } from '../paths.js';
 import { cliRunner } from '../sessions/registry.js';
 import { runChild, stderrCause } from './child.js';
 import { NO_USAGE, type Runner, type Usage } from './run.js';
@@ -48,9 +49,8 @@ export function opencodeRunner(o: { cwd: string; bin?: string; retro?: true }): 
     fs.mkdirSync(o.cwd, { recursive: true });
     const bin = o.bin ?? 'opencode';
     const agent = o.retro ? 'svall-retro' : 'svall-scribe';
-    const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...rest } = process.env;
     // OpenCode takes its folder from PWD over the cwd it is spawned in
-    const env = { ...rest, PWD: o.cwd, OPENCODE_CONFIG_CONTENT: config(!!o.retro) };
+    const env = { ...withoutRobotEnv(process.env), PWD: o.cwd, OPENCODE_CONFIG_CONTENT: config(!!o.retro) };
     let session = o.retro ? `ses_${crypto.randomBytes(13).toString('hex')}` : undefined;
     try {
       const { code, out, err } = await runChild(

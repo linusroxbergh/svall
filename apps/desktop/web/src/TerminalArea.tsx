@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AGENT_LABEL, DORMANT_AFTER_HOURS, type FleetState } from '@svall/protocol';
 import { openSecondTerminal, retryMove, reviveRobot, startFresh } from './actions.js';
 import { app, deps } from './boot.js';
+import { rectOf } from './bridge.js';
 import { useApp } from './hooks.js';
 import { awayLine, destinationName } from './placement.js';
 import { isVeiled, resumeErrorOf } from './selectors.js';
@@ -70,10 +71,9 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     if (away || dormant || error || veiled) return;
     const el = ref.current;
     if (!el) return;
-    const rect = () => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
     const m = app.manager();
-    m.show(key, rect(), alpha.current, !keepPageFocus && !aside).catch(() => {});
-    const ro = new ResizeObserver(() => m.move(key, rect()));
+    m.show(key, rectOf(el), alpha.current, !keepPageFocus && !aside).catch(() => {});
+    const ro = new ResizeObserver(() => m.move(key, rectOf(el)));
     ro.observe(el);
     return () => { ro.disconnect(); m.hide(key); };
   }, [key, away, dormant, error, veiled]);
@@ -84,8 +84,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     const el = ref.current;
     const s = app.store.getState();
     if (!el || away || veiled || !s.terminals[key]) return;
-    const r = el.getBoundingClientRect();
-    app.manager().show(key, { x: r.left, y: r.top, width: r.width, height: r.height }, opacity, !s.settingsOpen && !keepPageFocus && !aside).catch(() => {});
+    app.manager().show(key, rectOf(el), opacity, !s.settingsOpen && !keepPageFocus && !aside).catch(() => {});
   }, [key, opacity, away, veiled]);
 
   if (!c) return null;

@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { CLIP, clip } from './outline.js';
+import { ellipsis } from '@svall/protocol';
+import { CLIP } from './outline.js';
 import { redact } from './redact.js';
 
 const execP = promisify(execFile);
@@ -34,7 +35,7 @@ export async function prThread(url: string, gh: Gh = run): Promise<PrComment[]> 
   return all.flatMap((c): PrComment[] => {
     const body = c.body?.trim();
     if (!body || c.author === pr.author?.login) return [];
-    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: clip(redact(body), CLIP.text), ...(c.path && { path: c.path }) }];
+    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: ellipsis(redact(body), CLIP.text), ...(c.path && { path: c.path }) }];
   }).sort((a, b) => a.at - b.at);
 }
 

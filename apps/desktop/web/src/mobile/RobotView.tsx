@@ -1,7 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
-import { useEffect, useLayoutEffect, useRef, useState, type JSX } from 'react';
-import { useApp } from '../hooks.js';
+import { useEffect, useRef, useState, type JSX } from 'react';
+import { useApp, useFitHeight } from '../hooks.js';
 import { awayLine } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
@@ -154,13 +154,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
 
   useEffect(() => writeDraft(id, prompt), [id, prompt]);
 
-  // the field is as tall as its text, up to the cap the stylesheet sets; past that it scrolls
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
-  }, [prompt]);
+  useFitHeight(field, prompt);
 
   const size = (step: 1 | -1) => {
     const next = SIZES[Math.min(SIZES.length - 1, Math.max(0, SIZES.indexOf(fontSize) + step))];

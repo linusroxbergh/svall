@@ -5,6 +5,9 @@ const exec = promisify(execFile);
 
 export type LiveProc = { pid: number; ppid: number; start: number; cpuNs: number; mem: number; resp?: number; path: string; args: string; robot?: string; home?: string };
 
+// ps rows carry no start time, so a zero start matches any
+export const sameStart = (a: LiveProc, b: LiveProc): boolean => a.start === 0 || b.start === 0 || a.start === b.start;
+
 /** The helper's `procs` output; undefined when it is empty (an older helper) or not that JSON. */
 export function parseHelper(out: string): LiveProc[] | undefined {
   try {

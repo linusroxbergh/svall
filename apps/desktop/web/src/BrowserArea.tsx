@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { ellipsis } from '@svall/protocol';
 import { activateBrowserTab, closeBrowserTab } from './actions.js';
 import { app, deps } from './boot.js';
+import { rectOf } from './bridge.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { keyTip } from './keys.js';
 import { canFill } from './settings.js';
 import { isVeiled } from './selectors.js';
-
-export const rectOf = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
 
 export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
   const c = useApp((s) => s.fleet.robots[id]);

@@ -161,6 +161,8 @@ export function createBridge(win: Window = window): Bridge {
   };
 }
 
+export const rectOf = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
+
 // the CLI of the build whose shell shows this page; with no shell, Svall Dev's
 export const shim = (): string => (globalThis.window?.__svallVariant === 'release' ? 'svall' : 'svall-dev');
 

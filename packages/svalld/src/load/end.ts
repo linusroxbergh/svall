@@ -1,4 +1,4 @@
-import type { LiveProc } from './procs.js';
+import { sameStart, type LiveProc } from './procs.js';
 
 export type Kill = (pid: number, signal: NodeJS.Signals) => void;
 
@@ -13,7 +13,6 @@ export async function endProcs(victims: LiveProc[], read: () => Promise<LiveProc
   const now = new Map((await read()).map((p) => [p.pid, p]));
   for (const v of victims) {
     const p = now.get(v.pid);
-    // ps rows carry no start time, so a zero start matches any
-    if (p && (p.start === 0 || v.start === 0 || p.start === v.start)) send(v.pid, 'SIGKILL');
+    if (p && sameStart(p, v)) send(v.pid, 'SIGKILL');
   }
 }

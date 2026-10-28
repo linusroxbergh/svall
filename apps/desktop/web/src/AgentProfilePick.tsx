@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { app, deps } from './boot.js';
+import { step } from './ContextMenu.js';
 import { useApp, useMeasure } from './hooks.js';
 import { chooseResource } from './resources/choose.js';
 import { reloadResources } from './resources/load.js';
@@ -11,6 +12,7 @@ const MANAGE = '\u0000manage';
 const NONE: never[] = [];
 
 type Opt = { value: string; name: string; detail?: string; error?: boolean; disabled?: boolean };
+const enabled = (o: Opt): boolean => !o.disabled;
 
 /** The role a robot plays, picked from the fleet's agent profiles; the line under it says what the role is without opening it. */
 export function AgentProfilePick({ id }: { id: string }) {
@@ -48,18 +50,14 @@ export function AgentProfilePick({ id }: { id: string }) {
   const chosen = Math.max(0, opts.findIndex((o) => o.value === (picked ?? '')));
   const choose = (o: Opt) => { setOpen(false); if (o.value !== (picked ?? '')) pick(o.value); };
   const show = () => { setActive(chosen); setOpen(true); };
-  const step = (from: number, by: number) => {
-    for (let i = from + by; i >= 0 && i < opts.length; i += by) if (!opts[i].disabled) return i;
-    return from;
-  };
   // the page closes the card on Escape and opens the terminal on Enter, so the keys the menu uses stop here
   const onKey = (e: KeyboardEvent) => {
     if (e.key === 'Tab') { setOpen(false); return; }
     const act = !open ? (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(e.key) ? show : undefined) : {
-      ArrowDown: () => setActive((a) => step(a, 1)),
-      ArrowUp: () => setActive((a) => step(a, -1)),
-      Home: () => setActive(step(-1, 1)),
-      End: () => setActive(step(opts.length, -1)),
+      ArrowDown: () => setActive((a) => step(opts, a, 1, enabled)),
+      ArrowUp: () => setActive((a) => step(opts, a, -1, enabled)),
+      Home: () => setActive(step(opts, -1, 1, enabled)),
+      End: () => setActive(step(opts, opts.length, -1, enabled)),
       Enter: () => choose(opts[active]),
       ' ': () => choose(opts[active]),
       Escape: () => setOpen(false),

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CATEGORIES, MeasureKind, type AgentKind, type Finding, type Focus, type Note } from '@svall/protocol';
+import { oneLine } from '../text.js';
 import { redact } from './redact.js';
 
 // the parts of an inventory target and of a batch's excerpt the prompts show
@@ -22,7 +23,6 @@ const FENCES = ['EXCERPT', 'NOTES', 'TARGET', 'PREVIOUS'] as const;
 const MARKER = new RegExp(`<<<(?:${FENCES.join('|')})|(?:${FENCES.join('|')})>>>`, 'gi');
 // a skill's description comes from any repo or plugin, so it is clipped and redacted as excerpts are
 const DESCRIPTION_MAX = 300;
-const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
 function fence(name: (typeof FENCES)[number], head: string, text: string): string {
   const body = text.replace(MARKER, '[fence]');
   return `<<<${name}${oneLine(head).replace(MARKER, '[fence]').replace(/^(?=\S)/, ' ')}\n${body}${body.endsWith('\n') ? '' : '\n'}${name}>>>`;

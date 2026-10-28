@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useState, type FunctionComponent, type SyntheticEvent } from 'react';
+import { memo, useEffect, useLayoutEffect, useState, type FunctionComponent, type KeyboardEvent, type RefObject, type SyntheticEvent } from 'react';
 import { useStore } from 'zustand';
 import type { AppActions, AppState, AppStore } from './store/index.js';
 
@@ -36,6 +36,16 @@ export function useTick(ms: number): void {
   }, [ms]);
 }
 
+// the field is as tall as its text, up to the cap the stylesheet sets; past that it scrolls
+export function useFitHeight(field: RefObject<HTMLTextAreaElement | null>, text: string): void {
+  useLayoutEffect(() => {
+    const el = field.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+  }, [text]);
+}
+
 type Bag = Record<string, unknown>;
 const handlerOrSame = (a: unknown, b: unknown): boolean => Object.is(a, b) || (typeof a === 'function' && typeof b === 'function');
 const sameItems = (a: unknown, b: unknown, same: (x: unknown, y: unknown) => boolean): boolean => {
@@ -51,3 +61,9 @@ export const memoByValue = <P extends object>(component: FunctionComponent<P>) =
   memo(component, (a, b) => sameItems(a, b, (x, y) => sameItems(x, y, handlerOrSame)));
 
 export const stop = (e: SyntheticEvent): void => e.stopPropagation();
+
+// the page's own Enter and Esc would act on the map behind a dialog; Enter presses what has the focus, Esc closes it
+export const dialogKeys = (close: () => void) => (e: KeyboardEvent): void => {
+  if (e.key === 'Enter') e.stopPropagation();
+  if (e.key === 'Escape') { e.stopPropagation(); close(); }
+};

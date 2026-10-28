@@ -1,5 +1,4 @@
 import { execFile, spawn } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,9 +6,10 @@ import { type AgentKind, type AgentAdapter, type TransferSession } from '@svall/
 import { codexInstalled, hooksInstalled } from '../agent-hooks.js';
 import { AGENTS, versionOf, versionOk } from '../agents.js';
 import { robotKeyEnv } from '../claude.js';
-import { BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../codex/install.js';
+import { BWRAP_DENIED, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths } from '../codex/install.js';
+import { sha256Hex } from '../hash.js';
 import { opencodePaths } from '../opencode/install.js';
-import { claudePaths, resolvePaths } from '../paths.js';
+import { claudePaths, resolvePaths, withoutRobotEnv } from '../paths.js';
 import { PRIVATE, profileHome } from '../profile.js';
 import { writeDurable, type DurableStages } from '../durable.js';
 import { claudeAdapter } from './claude.js';
@@ -69,7 +69,7 @@ export function installSession(session: TransferSession, staged: string, io: Ins
   for (const f of session.files) {
     if (f.type !== 'file') throw new SessionError('incompatible_adapter', `${f.path} is a link, which no session carries`);
     const data = io.read(path.join(staged, f.path));
-    if (!data || data.length !== f.size || crypto.createHash('sha256').update(data).digest('hex') !== f.sha256) {
+    if (!data || data.length !== f.size || sha256Hex(data) !== f.sha256) {
       throw new Error(`the staged ${f.path} is not the file the manifest names`);
     }
     if (f.path === exported) continue;
@@ -101,7 +101,6 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
   try { return text === undefined ? undefined : JSON.parse(text); } catch { return undefined; }
 };
 
-
 /** Hooks are those setup points at the private fleet's scripts, in the config folder Claude Code names. OpenCode's sessions
  *  travel as the logs the private fleet keeps, its login is a model provider's, and its hooks are Svall's plugin. */
 export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentProbe> {
@@ -125,7 +124,7 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   // AppArmor's restriction denies bwrap a user namespace for each command unless a profile allows it
   const tried = (await d.read(USERNS_RESTRICTED))?.trim() === '1' ? await d.run('codex', ['sandbox', '--', 'true']) : undefined;
   const said = tried?.stderr?.trim() ?? '';
-  const sandbox = !tried?.code ? undefined : /bwrap:|namespace|operation not permitted/i.test(said)
+  const sandbox = !tried?.code ? undefined : BWRAP_DENIED.test(said)
     ? `AppArmor keeps bwrap from making the user namespace Codex runs commands in, so a Codex robot asks before each one: ${BWRAP_PROFILE}`
     : `codex sandbox -- true fails there (${said.split('\n').at(-1) || `exit ${tried.code}, nothing said`}): run it there to see why`;
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
@@ -146,7 +145,7 @@ const KILL_GRACE = 2000;
 /** Runs an agent CLI with this daemon's env, as the agents it starts have it, less what would make Svall's hooks take it for
  *  a robot's. One still running at `timeoutMs` gets SIGTERM, then SIGKILL, and the run rejects at once. */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
-  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, SVALL_TERM: _term, ...rest } = env;
+  const { SVALL_TERM: _term, ...rest } = withoutRobotEnv(env);
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);
   const child = spawn(cmd, args, { env: rest, cwd: o.cwd ?? os.homedir(), stdio: ['ignore', out, 'pipe'] });
   if (typeof out === 'number') fs.closeSync(out);

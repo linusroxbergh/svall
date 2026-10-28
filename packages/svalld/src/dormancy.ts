@@ -6,6 +6,7 @@ import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Robo
 import { running, settle } from './agent/reducer.js';
 import { claudeTranscript, hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
+import { PRIVATE_SERVER } from './processes.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
 import type { Tmux } from './tmux/tmux.js';
@@ -207,7 +208,7 @@ export function runsInBackground(pid: number, procs: Proc[]): boolean {
     for (const p of procs) {
       if (p.ppid !== below[i]) continue;
       if (!own.has(p.pgid)) {
-        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !/\sserve\s+--stdio(\s|$)/.test(p.args)) return true;
+        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !PRIVATE_SERVER.test(p.args)) return true;
         own.add(p.pgid);
       }
       below.push(p.pid);

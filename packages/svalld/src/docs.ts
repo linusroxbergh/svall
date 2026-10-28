@@ -1,7 +1,7 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { bodyOf, frontmatter, HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
+import { sha256Hex } from './hash.js';
 import type { Logger } from './log.js';
 import { expandHome } from './paths.js';
 
@@ -20,7 +20,7 @@ const HEAD_MAX = 64 * 1024;
 export const fleetDir = (docs: string): string => path.join(docs, 'fleet');
 
 export const repoSlug = (mainRoot: string): string =>
-  `${path.basename(mainRoot).replace(/[^A-Za-z0-9._]/g, '-')}-${crypto.createHash('sha256').update(mainRoot).digest('hex').slice(0, 8)}`;
+  `${path.basename(mainRoot).replace(/[^A-Za-z0-9._]/g, '-')}-${sha256Hex(mainRoot).slice(0, 8)}`;
 
 export const docsDir = (docs: string, tier: EntityTier, id: string): string => path.join(docs, TREE[tier], id);
 

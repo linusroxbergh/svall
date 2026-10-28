@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessByStdio } from 'node:child_process';
 import fs from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
+import { withoutRobotEnv } from './paths.js';
 
 type Piped = ChildProcessByStdio<Writable, Readable, Readable>;
 
@@ -47,6 +48,6 @@ export function rendererEnv(settingsFile: string): Record<string, string> {
 // launchd gives the daemon no shell environment, so an API key comes through envFile; `env` goes over both
 export function spawnClaude(o: { args: string[]; cwd: string; envFile: string; env?: Record<string, string> }): Piped {
   fs.mkdirSync(o.cwd, { recursive: true });
-  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = { ...process.env, ...readEnvFile(o.envFile), ...o.env };
+  const env = withoutRobotEnv({ ...process.env, ...readEnvFile(o.envFile), ...o.env });
   return spawn('claude', [...o.args, ...ISOLATION], { cwd: o.cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
 }

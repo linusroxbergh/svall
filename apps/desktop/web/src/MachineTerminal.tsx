@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
+import { rectOf } from './bridge.js';
 import { loginForward } from './host.js';
 
 /** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
@@ -16,10 +17,9 @@ export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const rect = () => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
-    app.bridge.send({ type: 'term.show', id, rect: rect(), machine: { ssh, ...(run && { type: run }), ...(forward && { forward }) } });
+    app.bridge.send({ type: 'term.show', id, rect: rectOf(el), machine: { ssh, ...(run && { type: run }), ...(forward && { forward }) } });
     app.bridge.send({ type: 'term.focus', id });
-    const move = () => app.bridge.send({ type: 'term.move', id, rect: rect() });
+    const move = () => app.bridge.send({ type: 'term.move', id, rect: rectOf(el) });
     const ro = new ResizeObserver(move);
     ro.observe(el);
     // the panel scrolls, and is centred in a window that can change size

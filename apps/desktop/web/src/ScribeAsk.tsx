@@ -5,7 +5,7 @@ import { deps } from './boot.js';
 import { shim } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { directoryName, NO_AGENTS, placingAsking } from './selectors.js';
 
 // the private fleet lives in ~/.svall
@@ -22,11 +22,7 @@ function NameAsk({ skip }: { skip(): void }) {
   };
   return (
     <div className="modal-back" data-testid="fleet-name-ask">
-      <div className="modal panel"
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); skip(); }
-        }}>
+      <div className="modal panel" onKeyDown={dialogKeys(skip)}>
         <div className="kicker">Your fleet<CloseX onClose={skip} testid="fleet-name-close" /></div>
         <div className="modal-name">Name this fleet</div>
         <input className="fld" autoFocus placeholder="private" aria-label="Fleet name" value={name} data-testid="fleet-name-input" {...AS_TYPED}
@@ -49,12 +45,7 @@ function Ask({ id, title, answer, children }: { id: string; title: string; answe
   useEffect(() => { off.current?.focus(); }, []);
   return (
     <div className="modal-back" data-testid={id}>
-      <div className="modal panel"
-        onKeyDown={(e) => {
-          // the page's own Enter and Esc would act on the map behind the dialog; Enter presses the focused button
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); answer(false); }
-        }}>
+      <div className="modal panel" onKeyDown={dialogKeys(() => answer(false))}>
         <div className="kicker">Scribe<CloseX onClose={() => answer(false)} testid={`${id}-close`} /></div>
         <div className="modal-name">{title}</div>
         {children}

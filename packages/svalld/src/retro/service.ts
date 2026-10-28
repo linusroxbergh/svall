@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import {
@@ -9,6 +8,7 @@ import { readEnvFile } from '../claude.js';
 import { patchFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
 import { Invalid, NotFound } from '../errors.js';
+import { sha256Hex } from '../hash.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { expandHome, type Paths } from '../paths.js';
@@ -221,7 +221,7 @@ export class Retro {
     if (!t || t.class !== 'local' || finding.change.kind !== 'diff' || masked(finding)) throw new Invalid(`finding ${finding.id} has no diff for a file outside git to apply`);
     let text: string;
     try { text = fs.readFileSync(t.realPath, 'utf8'); } catch { throw new NotFound(`${t.path} is gone`); }
-    if (crypto.createHash('sha256').update(text).digest('hex') !== t.hash) {
+    if (sha256Hex(text) !== t.hash) {
       throw new ApiError('hash_changed', `${t.path} changed since the retro read it; plan again`);
     }
     const next = applyUnified(text, finding.change.text, t.path);

@@ -70,7 +70,7 @@ export function daemonPath(nodeDir?: string): string {
   return [...new Set([...usual, ...found.filter((dir) => !known.has(dir))])].join(':');
 }
 
-const plistFile = (o: Pick<Plist, 'label' | 'launchAgentsDir'>): string => path.join(o.launchAgentsDir, `${o.label}.plist`);
+export const plistFile = (launchAgentsDir: string, label: string): string => path.join(launchAgentsDir, `${label}.plist`);
 
 // tsx needs node on PATH; the bundle's node is named outright
 const plistText = (o: Pick<Plist, 'home' | 'label' | 'runtime'>, nodeDir: string | undefined): string => launchdPlist({
@@ -89,7 +89,7 @@ export function plistRun(text: string): { program: string[]; path: string[] } {
 /** Whether a fleet's plist holds what setup would write now to run `o.runtime`; the node it names stands while it is there. */
 export function plistCurrent(o: Plist): boolean {
   let text: string;
-  try { text = fs.readFileSync(plistFile(o), 'utf8'); } catch { return false; }
+  try { text = fs.readFileSync(plistFile(o.launchAgentsDir, o.label), 'utf8'); } catch { return false; }
   if (o.runtime.bundle) return text === plistText(o, undefined);
   const named = plistRun(text).path[0];
   return text === plistText(o, named && isExecutable(path.join(named, 'node')) ? named : nodeDirOf(process.execPath));
@@ -98,14 +98,14 @@ export function plistCurrent(o: Plist): boolean {
 /** Writes the plist that runs `o.runtime`, on the node this process runs on unless the runtime names its own; its path. */
 export function writePlist(o: Plist): string {
   fs.mkdirSync(o.launchAgentsDir, { recursive: true });
-  const plist = plistFile(o);
+  const plist = plistFile(o.launchAgentsDir, o.label);
   fs.writeFileSync(plist, plistText(o, nodeDirOf(process.execPath)));
   return plist;
 }
 
 export async function bootstrapAgent(launchAgentsDir: string, label: string): Promise<string> {
   const domain = `gui/${os.userInfo().uid}`;
-  const plist = path.join(launchAgentsDir, `${label}.plist`);
+  const plist = plistFile(launchAgentsDir, label);
   // launchd starts the daemon only when the app asks, so one that ran before the reload is started again on the new plist
   const running = await runningPid(label) !== undefined;
   await exec('launchctl', ['bootout', domain, plist]).catch(() => {});

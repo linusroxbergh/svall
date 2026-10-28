@@ -4,7 +4,7 @@ import { app } from './boot.js';
 import { shim } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { directoryName } from './selectors.js';
 
 // the fleets on this Mac: one opens beside this window, or on a bare launch in its place; File's New Fleet… asks only for a name
@@ -65,12 +65,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
 
   return (
     <div className="modal-back" data-testid="fleet-picker" onPointerDown={close}>
-      <div className="modal panel" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // the page's own Enter and Esc would act on the map behind the dialog; Enter presses the focused row
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); close(); }
-        }}>
+      <div className="modal panel" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker">{mode === 'new' ? 'New fleet' : 'Fleets'}<CloseX onClose={close} testid="fleet-picker-close" /></div>
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
         {listError && <div className="fleet-error">{listError}</div>}

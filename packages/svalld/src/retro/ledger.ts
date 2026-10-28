@@ -1,15 +1,15 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import { z } from 'zod';
 import { LedgerEntry, type DismissReason, type Finding, type Focus, type LedgerStatus, type Measure, type Rate } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
+import { sha256Hex } from '../hash.js';
 import { inSpan, type Outline, type Span } from './outline.js';
 
 export type Ledger = Record<string, LedgerEntry>;
 
 /** The id a finding keeps in every run: the same focus, category, file and skill or rule are the same issue. */
 export const findingId = (focus: Focus, category: string, realPath: string, subject: string): string =>
-  crypto.createHash('sha256').update([focus, category, realPath, subject].join('\n')).digest('hex').slice(0, 10);
+  sha256Hex([focus, category, realPath, subject].join('\n')).slice(0, 10);
 
 /** The ledger on disk; a missing or unreadable one is empty, and an entry of another shape is dropped. */
 export function readLedger(file: string): Ledger {

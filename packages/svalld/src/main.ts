@@ -14,6 +14,7 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
+import { sha256Hex } from './hash.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
 import { tryLock } from './kernel-lock.js';
@@ -80,7 +81,7 @@ const alreadyRunning = (home: string): Error => new AlreadyRunning(`svalld is al
 
 // a kernel lock, on Linux named after the home's real path
 async function lockHome(home: string): Promise<() => void> {
-  const unlock = await tryLock(path.join(home, 'daemon.lock'), `svall-svalld-${crypto.createHash('sha256').update(fs.realpathSync(home)).digest('hex')}`);
+  const unlock = await tryLock(path.join(home, 'daemon.lock'), `svall-svalld-${sha256Hex(fs.realpathSync(home))}`);
   if (!unlock) throw alreadyRunning(home);
   return unlock;
 }

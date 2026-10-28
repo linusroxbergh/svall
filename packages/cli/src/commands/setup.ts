@@ -12,7 +12,7 @@ import { opencodePaths, opencodePluginCurrent } from '@svall/svalld/opencode/ins
 import { peekConfig, saveConfig } from '@svall/svalld/config';
 import { kickstart, plistCurrent, runningPid, takenOverBy } from '@svall/svalld/launchd';
 import { realRun } from '@svall/svalld/linux/service';
-import { agentHomesEnv, ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@svall/svalld/linux/setup';
+import { agentHomesEnv, fleetOf, ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@svall/svalld/linux/setup';
 import { claudePaths, expandHome, resolvePaths, userPaths, type Paths } from '@svall/svalld/paths';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileHome, profileLabel, profileOf } from '@svall/svalld/profile';
@@ -175,7 +175,7 @@ async function rollback(o: { restart: boolean; probe: Probe }, to?: string): Pro
   if (!o.restart) return [...done, 'nothing was restarted: each daemon runs the release current names from its next start'];
   const unitDir = unitDirOf(os.homedir());
   done.push(...await restartUnits(realRun, unitDir));
-  const fleets = ourUnits(unitDir).flatMap((u) => /^svall-svalld@(.+)\.service$/.exec(u)?.[1] ?? []);
+  const fleets = ourUnits(unitDir).flatMap((u) => fleetOf(u) ?? []);
   const silent: string[] = [];
   for (const fleet of fleets) if (!await o.probe(fleet, back.version)) silent.push(fleet);
   if (silent.length) throw new Error(`${done.join('\n')}\nthe ${silent.join(' and ')} fleet's daemon did not answer from release ${back.version}; read its log`);

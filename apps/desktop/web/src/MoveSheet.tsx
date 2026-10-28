@@ -7,7 +7,7 @@ import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { machineNames, plainStep, stepLabel } from './host.js';
 import { startHost } from './HostSetup.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { setupNote } from './landings.js';
 import { machineName } from './placement.js';
 
@@ -201,12 +201,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
 
   return (
     <div className="modal-back" data-testid="move-sheet" onPointerDown={close}>
-      <div className="modal panel" ref={panel} onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // the page's own Enter and Esc would act on the map behind the sheet
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); close(); }
-        }}>
+      <div className="modal panel" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
           <Progress stand={stand(run, c.moving, retried, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}

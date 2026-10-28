@@ -1,7 +1,7 @@
 import { availableParallelism } from 'node:os';
 import type { LoadRobot, LoadSnapshot, LoadUsage } from '@svall/protocol';
 import { attribute, type Scope } from './attribute.js';
-import type { LiveProc } from './procs.js';
+import { sameStart, type LiveProc } from './procs.js';
 
 export type SamplerDeps = {
   read: () => Promise<LiveProc[]>;
@@ -78,10 +78,9 @@ export class LoadSampler {
     if (gen === this.gen) this.prev = { at, procs };
     const before = new Map(prev.procs.map((p) => [p.pid, p]));
     const elapsedNs = Math.max(at - prev.at, 1) * 1e6;
-    // ps rows carry no start time, so a zero start matches any
     const gained = (p: LiveProc): number => {
       const old = before.get(p.pid);
-      const same = old && (old.start === 0 || p.start === 0 || old.start === p.start);
+      const same = old && sameStart(old, p);
       return Math.max(p.cpuNs - (same ? old.cpuNs : 0), 0);
     };
     const usage = (ps: LiveProc[]): LoadUsage => ({
