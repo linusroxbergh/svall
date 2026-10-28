@@ -61,8 +61,8 @@ terminal reopens on the other machine with the same conversation, in the robot's
 
 ## The checks
 
-Every check is about this robot alone. A move that cannot happen shows the first reason with one action; the rest are
-behind **details**.
+Every check is about this robot alone. A move that cannot happen shows every check that failed, each with its reason
+and its own button or action, the first with its details behind it; `svall robot move` prints them one under the other.
 
 1. **The worker is reachable and runs this release.** "linus-vault is not reachable; try again when it is awake".
    "linus-vault runs X, this Mac Y; upgrade it under Machines", whose button **Upgrade linus-vault** upgrades it from

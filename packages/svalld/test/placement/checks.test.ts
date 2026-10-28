@@ -177,21 +177,37 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     }
   });
 
-  it('the first failing check is the reason and the others are details', async () => {
+  it('the first failing check is the reason and the others follow in more, each with its action and command; their details behind the first', async () => {
     const t = machines();
     const root = t.repo('code/svall');
     t.g(root, 'checkout', '-q', '--detach');
     const c = on(root, { branch: 'HEAD', islandId: 'i_home', agent: claude('working'), tmux: { windowId: '@1', paneId: '%1' } });
-    const d = depsOf(t, [c], { reachable: false, terminals: [{ robotId: 'c_1', class: 'agent-working' }] });
+    const d = depsOf(t, [c], { reachable: false, terminals: [{ robotId: 'c_1', class: 'agent-working' }, { robotId: 'c_1', class: 'foreground' }] });
     expect(await refusal(d)).toEqual({
       reason: 'mission control stays on this Mac',
       action: 'move a robot from another island',
-      details: [
-        'linus-vault is not reachable; try again when it is awake',
-        'kanban is on a detached HEAD; check out a branch first',
-        'kanban is working; interrupt after this turn',
+      details: ['wait for it'],
+      more: [
+        { reason: 'linus-vault is not reachable', action: 'try again when it is awake' },
+        { reason: 'kanban is on a detached HEAD', action: 'check out a branch first' },
+        { reason: 'kanban is working', action: 'interrupt after this turn' },
+        { reason: 'a command is running', action: 'move anyway and it ends' },
       ],
     });
+  });
+
+  it('a worker on an older release is asked about its agents too, so the upgrade and the agent update show at once; one that cannot answer adds nothing', async () => {
+    const t = machines();
+    const c = shellIn(t, { agent: claude('idle') });
+    const older = depsOf(t, [c], { release: '0.16.0', far: [{ kind: 'claude', version: '0.1.0', adapter: 1, home: `${t.far}/.claude`, loggedIn: true }] });
+    expect(await refusal(older)).toEqual({
+      reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines', details: [],
+      more: [{ reason: `linus-vault runs claude 0.1.0, this Mac ${CLAUDE}`, action: 'update claude on linus-vault', run: 'claude update' }],
+    });
+    expect(older.asked.map((a) => a.method)).toEqual(['system.info']);
+    const mute = depsOf(t, [c], { release: '0.16.0' });
+    mute.links.call = () => Promise.reject(new Error('unknown method system.info'));
+    expect(await refusal(mute)).toEqual({ reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines', details: [] });
   });
 
   it('a blocked agent is not refused: question is true and interrupts follows the choice', async () => {
@@ -533,10 +549,10 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const running = depsOf(t, [shellIn(t)], { terminals: [{ robotId: 'c_1', term: 2, class: 'foreground' }] });
     expect(await refusal(running)).toEqual({ reason: 'a command is running', action: 'move anyway and it ends', details: ['wait for it'] });
     expect((await sheet(running, { interruptAfterMs: 0 })).sheet.interrupts).toBe(true);
-    // a later failure keeps its details behind its sentence
+    // a later failure follows in more, its details behind the first's sentence
     const both = depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-working' }, { robotId: 'c_1', term: 2, class: 'foreground' }] });
     expect(await refusal(both)).toEqual({
-      reason: 'kanban is working', action: 'interrupt after this turn', details: ['a command is running; move anyway and it ends', 'wait for it'],
+      reason: 'kanban is working', action: 'interrupt after this turn', details: ['wait for it'], more: [{ reason: 'a command is running', action: 'move anyway and it ends' }],
     });
 
     const idle = await sheet(depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-ready' }] }), { interruptAfterMs: 0 });

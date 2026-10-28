@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type MoveSheet } from '@svall/protocol';
+import { AgentKind, ApiError, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
@@ -36,9 +36,13 @@ function sheetLine(s: MoveSheet, repo: string | undefined, machine: string): str
   ].join(' · ');
 }
 
+// each check that failed as one sentence and one action, the first as the refusal, as the checks or the move itself refused it
 function refuseMove(r: Refusal, json: boolean): void {
   if (json) printResult({ ok: false, refusal: r }, true);
-  else process.stderr.write(`refused: ${r.reason}\n  → ${r.action}${r.action === WORKTREE_ACTION ? ' (--own-worktree)' : ''}\n`);
+  else {
+    const line = (b: Blocker, head: string): string => `${head}: ${b.reason}\n  → ${b.action}${b.action === WORKTREE_ACTION ? ' (--own-worktree)' : ''}\n`;
+    process.stderr.write([line(r, 'refused'), ...(r.more ?? []).map((b) => line(b, 'and'))].join(''));
+  }
   process.exitCode = 2;
 }
 

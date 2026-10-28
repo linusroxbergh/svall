@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveSummary, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
-  type AgentKind, type MachineId, type MoveSheet as What, type Moving, type Refusal,
+  type AgentKind, type Blocker, type MachineId, type MoveSheet as What, type Moving, type Refusal,
 } from '@svall/protocol';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
@@ -26,6 +26,10 @@ const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', co
 // a credential file's box says whether it stays
 const staying = (w: What): What => ({ ...w, stays: w.stays.filter((x) => !w.credentialFiles.some((f) => x === `${f} stays here`)) });
 const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice(1)}`;
+// every check a move failed, the first and the rest alike
+const blockersOf = (r: Refusal): Blocker[] => [r, ...(r.more ?? [])];
+// whether a blocker's row has a button of its own; one without leaves checking again to the sheet's foot
+const hasButton = (b: Blocker): boolean => b.action === UPGRADE_ACTION || b.action === WORKTREE_ACTION || !!b.run || interruptOf(b.action) !== undefined;
 // the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
@@ -128,14 +132,16 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
       if (!live) return;
       // a fix that failed is told until the check says something new
       setFix((f) => (f && 'failed' in f ? undefined : f));
-      const refused = 'ok' in a && !a.ok ? a.refusal : undefined;
-      const stop = refused && interrupt === undefined ? interruptOf(refused.action) : undefined;
-      if (refused && own === undefined && refused.action === WORKTREE_ACTION) {
-        setShared(refused.reason);
+      // a blocker the sheet answers itself, wherever it stands in the list, is ticked and the rest asked about again
+      const refused = 'ok' in a && !a.ok ? blockersOf(a.refusal) : [];
+      const wt = own === undefined ? refused.find((b) => b.action === WORKTREE_ACTION) : undefined;
+      const busy = interrupt === undefined ? refused.find((b) => interruptOf(b.action)) : undefined;
+      if (wt) {
+        setShared(wt.reason);
         setOwn(true);
-      } else if (refused && stop) {
-        setWorking(refused.reason);
-        setInterrupt(stop);
+      } else if (busy) {
+        setWorking(busy.reason);
+        setInterrupt(interruptOf(busy.action)!);
       } else setAnswer(a);
     }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
     return () => { live = false; };
@@ -185,11 +191,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     setRetried({ at: 'running' });
     app.api().call('robot.moveRetry', { moveId }).then(() => { setRetried(undefined); setRun({ at: 'moved' }); }, (e: Error) => setRetried({ at: 'failed', error: e.message, over }));
   };
-  const answerable = refusal && interruptOf(refusal.action);
-  const updates = refusal?.run ? updatesIn(refusal.run) : undefined;
   const farId = to ?? c.machine;
-  // a refusal whose button says what to do needs no line saying it
-  const handled = refusal && (refusal.action === UPGRADE_ACTION || !!updates || refusal.action === WORKTREE_ACTION || !!answerable);
+  const blockers = refusal ? blockersOf(refusal) : [];
   const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far }); };
   const update = (kinds: AgentKind[], machine: MachineId) => {
     setFix({ doing: `Updating ${kinds.map((k) => AGENT_LABEL[k]).join(' and ')} on ${far}` });
@@ -232,34 +235,44 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
         {!run && !doing && refusal && (
           <>
-            <div className="host-note" data-testid="move-refusal">
-              <span><span data-testid="move-reason">{refusal.reason}</span>{!handled && <span className="modal-sub">{refusal.action}</span>}</span>
-              {fix && 'failed' in fix && <span className="host-failed" role="status" data-testid="move-fix-failed">{fix.failed}</span>}
-              {refusal.details.length > 0 && (
-                <details className="modal-more" data-testid="move-details">
-                  <summary>details</summary>
-                  <div className="modal-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
-                </details>
-              )}
-            </div>
-            <div className="acts">
-              {refusal.action === UPGRADE_ACTION ? (
-                <button className="btn pri" data-testid="move-action" disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
+            {blockers.map((b, i) => {
+              const answerable = interruptOf(b.action);
+              const updates = b.run ? updatesIn(b.run) : undefined;
+              const at = (id: string) => (i ? `${id}-${i}` : id);
+              const button = b.action === UPGRADE_ACTION ? (
+                <button className="btn pri" data-testid={at('move-action')} disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
                   onClick={upgrade}>Upgrade {far}</button>
               ) : updates && farId ? (
-                <button className="btn pri" data-testid="move-action" data-tip={`Runs ${refusal.run} on ${far}, then checks again`}
+                <button className="btn pri" data-testid={at('move-action')} data-tip={`Runs ${b.run} on ${far}, then checks again`}
                   onClick={() => update(updates, farId)}>Update {updates.map((k) => AGENT_LABEL[k]).join(' and ')}</button>
-              ) : refusal.run ? (
-                <button className="btn pri" data-testid="move-action" data-tip={`Opens a terminal on ${where} with ${refusal.run} typed, for you to run`}
-                  onClick={() => { close(); terminalOn(where, refusal.run); }}>Open terminal</button>
-              ) : refusal.action === WORKTREE_ACTION ? (
-                <button className="btn pri" data-testid="move-action" onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
+              ) : b.run ? (
+                <button className="btn pri" data-testid={at('move-action')} data-tip={`Opens a terminal on ${where} with ${b.run} typed, for you to run`}
+                  onClick={() => { close(); terminalOn(where, b.run); }}>Open terminal</button>
+              ) : b.action === WORKTREE_ACTION ? (
+                <button className="btn pri" data-testid={at('move-action')} onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
               ) : answerable ? (
-                <button className="btn pri" data-testid="move-action" onClick={() => setInterrupt(answerable)}>{refusal.action[0].toUpperCase()}{refusal.action.slice(1)}</button>
-              ) : (
-                <button className="btn pri" data-testid="move-action" onClick={again}>Check again</button>
-              )}
-            </div>
+                <button className="btn pri" data-testid={at('move-action')} onClick={() => setInterrupt(answerable)}>{b.action[0].toUpperCase()}{b.action.slice(1)}</button>
+              ) : undefined;
+              return (
+                <div key={b.reason} className="move-blocker">
+                  <div className="host-note" data-testid={at('move-refusal')}>
+                    {/* a blocker whose button says what to do needs no line saying it */}
+                    <span><span data-testid={at('move-reason')}>{b.reason}</span>{!button && <span className="modal-sub">{b.action}</span>}</span>
+                    {i === 0 && fix && 'failed' in fix && <span className="host-failed" role="status" data-testid="move-fix-failed">{fix.failed}</span>}
+                    {i === 0 && refusal.details.length > 0 && (
+                      <details className="modal-more" data-testid="move-details">
+                        <summary>details</summary>
+                        <div className="modal-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
+                      </details>
+                    )}
+                  </div>
+                  {button}
+                </div>
+              );
+            })}
+            {blockers.some((b) => !hasButton(b)) && (
+              <div className="acts"><button className="btn pri" data-testid="move-again" onClick={again}>Check again</button></div>
+            )}
           </>
         )}
         {!run && failed && (

@@ -269,6 +269,9 @@ describe('robot move to a machine', () => {
 
     const refused = daemon({ check: { ok: false, refusal } });
     expect(await run(refused, ['kanban', '--machine', VAULT])).toEqual({ out: '', err: 'refused: linus-vault is not reachable\n  → try again when it is awake\n' });
+    const two = daemon({ check: { ok: false, refusal: { ...refusal, more: [{ reason: 'kanban is on a detached HEAD', action: 'check out a branch first' }] } } });
+    expect((await run(two, ['kanban', '--machine', VAULT])).err)
+      .toBe('refused: linus-vault is not reachable\n  → try again when it is awake\nand: kanban is on a detached HEAD\n  → check out a branch first\n');
     expect(refused.calls.map(([m]) => m)).toEqual(['robot.moveCheck']);
     expect(process.exitCode).toBe(2);
   });
