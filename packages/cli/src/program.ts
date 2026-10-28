@@ -24,7 +24,7 @@ import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
 /** What `svall <word>` answers for a command that is gone. */
-export const RETIRED: Record<'handover' | 'gateway' | 'fleet' | 'connect', string> = {
+const RETIRED: Record<'handover' | 'gateway' | 'fleet' | 'connect', string> = {
   handover: 'svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine',
   gateway: 'svall gateway is gone with the fleet handover',
   fleet: 'svall fleet is gone with the fleet handover',

@@ -27,11 +27,7 @@ export type PluginInstall = { name: string; installPath: string; named?: string[
  */
 export type Secret = { field: string; value: string };
 
-export const KNOWN_FIELDS: readonly string[] = [
-  'type', 'command', 'args', 'cwd', 'env', 'url', 'headers', 'transport', 'oauth', 'enabled', 'timeout', 'bearer_token_env_var', 'env_vars',
-  'http_headers', 'env_http_headers', 'startup_timeout_sec', 'tool_timeout_sec', 'environment',
-];
-// each agent's share of KNOWN_FIELDS, as its own server schema names them
+// the server fields each agent's own schema names
 const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
   claude: ['type', 'command', 'args', 'env', 'url', 'headers', 'oauth', 'timeout'],
   codex: ['command', 'args', 'cwd', 'env', 'url', 'oauth', 'enabled', 'bearer_token_env_var', 'env_vars', 'http_headers', 'env_http_headers', 'startup_timeout_sec', 'tool_timeout_sec'],
@@ -49,18 +45,18 @@ const NAME = VAR_NAME.source.slice(1, -1);
 export const VAR_REF = new RegExp(`\\$\\{(${NAME})(?::-[^}]*)?\\}|\\{env:(${NAME})\\}`, 'g');
 // a reference that stands for its variable alone: one with a default holds that default as a value
 const BARE_REF = new RegExp(`\\$\\{${NAME}(?::-)?\\}|\\{env:${NAME}\\}`, 'g');
-export const KNOWN_OAUTH_HOSTS: readonly string[] = [
+const KNOWN_OAUTH_HOSTS: readonly string[] = [
   'mcp.linear.app', 'mcp.notion.com', 'mcp.atlassian.com', 'mcp.sentry.dev', 'mcp.stripe.com', 'mcp.asana.com', 'mcp.intercom.com', 'mcp.figma.com',
   'mcp.vercel.com', 'mcp.cloudflare.com',
 ];
-export const CODEX_SECRET_PATHS: readonly string[] = [
+const CODEX_SECRET_PATHS: readonly string[] = [
   'model_providers.*.http_headers.*', 'model_providers.*.experimental_bearer_token', 'model_providers.*.query_params.*', 'otel.**.headers.*', 'shell_environment_policy.set.*',
 ];
 // Codex's URLs whose query values are keys, and its lists of args read as a server's
 const CODEX_URLS = ['model_providers.*.base_url', 'otel.**.endpoint'];
 const CODEX_ARGS = ['model_providers.*.auth.args'];
-export const CODEX_NEED_PATHS: readonly string[] = ['model_providers.*.env_http_headers.*', 'model_providers.*.env_key'];
-export const OPENCODE_SECRET_PATHS: readonly string[] = [
+const CODEX_NEED_PATHS: readonly string[] = ['model_providers.*.env_http_headers.*', 'model_providers.*.env_key'];
+const OPENCODE_SECRET_PATHS: readonly string[] = [
   'provider.*.options.apiKey', 'provider.*.options.headers.*', 'provider.*.models.*.headers.*', 'providers.*.headers.*', 'providers.*.body.**',
   'providers.*.models.*.headers.*', 'providers.*.models.*.body.**', 'providers.*.models.*.variants.*.headers.*', 'providers.*.models.*.variants.*.body.**',
   'agents.*.request.headers.*', 'agents.*.request.body.**', 'lsp.*.env.*', 'formatter.*.environment.*',
@@ -306,7 +302,7 @@ export const isReferenceOnly = (v: string): boolean => v.replace(BARE_REF, '').r
 const defaultless = (v: string): string => v.replace(VAR_REF, (all, name: string | undefined) => (name === undefined ? all : `\${${name}}`));
 
 /** Secret `v` without its references' defaults, where only references are left; else undefined. */
-export const asReference = (v: string): string | undefined => (isReferenceOnly(defaultless(v)) ? defaultless(v) : undefined);
+const asReference = (v: string): string | undefined => (isReferenceOnly(defaultless(v)) ? defaultless(v) : undefined);
 
 // a URL's userinfo when its password, or the lone user of an http(s) URL, is not only references
 function credential(scheme: string, userinfo: string): string | undefined {

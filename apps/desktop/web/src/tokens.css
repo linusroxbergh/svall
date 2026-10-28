@@ -1,7 +1,6 @@
 :root {
   color-scheme: dark;
   --sea-0: #1E2A38;
-  --sea-1: #2A3A4C;
   --grid: rgba(220,205,173,.065);
   --contour: rgba(236,220,186,.14);
   --contour-2: rgba(236,220,186,.06);
@@ -88,8 +87,7 @@
   --lh-read: 1.6;       /* a document read or written at length */
 
   /* the room an icon control gets either side of its glyph */
-  --ctl-pad: 16px;      /* an icon control in a header or tab bar */
-  --ctl-pad-sm: 8px;    /* one inside a tab or a list row */
+  --ctl-pad-sm: 8px;    /* inside a tab or a list row */
   /* a square icon button: inside a dense row, and in a settings row or beside a portrait */
   --ctl-xs: 18px; --ctl-sm: 22px;
   /* a status or unsaved dot, and the pip on a tab */

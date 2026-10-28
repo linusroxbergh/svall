@@ -312,7 +312,7 @@ export async function lockWorktree(root: string, reason: string, git: GitRunner)
 }
 
 /** Empties a worktree of what git does not ignore and it does not track, but for credential files, which stay where they were. */
-export const cleanWorktree = (root: string, git: GitRunner): Promise<string> =>
+const cleanWorktree = (root: string, git: GitRunner): Promise<string> =>
   must(git, ['clean', '-q', '-f', '-d', ...CREDENTIAL_PATTERNS.flatMap((p) => ['-e', p])], root);
 
 export type Failure = Omit<Refusal, 'details'>;

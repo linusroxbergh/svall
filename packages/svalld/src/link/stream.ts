@@ -6,7 +6,7 @@ import { ApiError, LinkFrame } from '@svall/protocol';
 import { errorFrame } from '../errors.js';
 
 export const MAX_LINE = 2 * 1024 * 1024;
-export const BLOB_PART = 1024 * 1024;
+const BLOB_PART = 1024 * 1024;
 /** A result whose JSON is over PART_REPLY bytes is replied in link.part slices of PART_SLICE bytes, each sent as base64. */
 export const PART_REPLY = 1024 * 1024;
 export const PART_SLICE = 768 * 1024;

@@ -12,7 +12,7 @@ import type { Router } from './router.js';
 const BEHIND = 1024 * 1024;
 const LOOK_AGAIN_MS = 100;
 /** The most scrollback a home viewer's screen carries over the link. */
-export const REMOTE_LINES = 500;
+const REMOTE_LINES = 500;
 /** The most of a screen afresh a notification carries: its base64 and the frame around it stay under PART_REPLY. */
 export const REMOTE_SCREEN_BYTES = ((PART_REPLY - 4096) / 4) * 3;
 

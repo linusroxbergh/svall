@@ -56,7 +56,7 @@ export function MachineLine({ name, short, className, testid }: { name: string; 
   );
 }
 
-export function MachineGlyph() {
+function MachineGlyph() {
   return (
     <svg className="ind-glyph" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.25" aria-hidden="true">
       <rect x="1.6" y="1.7" width="8.8" height="3.6" rx="1.1" />

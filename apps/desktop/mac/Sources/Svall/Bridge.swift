@@ -131,7 +131,7 @@ enum FromShell {
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
     case hostMachines(machines: [[String: Any]], error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], profile: String?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String])
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -177,10 +177,8 @@ enum FromShell {
             var json: [String: Any] = ["type": "host.machines", "machines": machines]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys, let profile):
-            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
-            if let profile { json["profile"] = profile }
-            return json
+        case .shellInfo(let home, let log, let op, let ghosttyKeys):
+            return ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
         case .key(let chord): return ["type": "key", "chord": chord]
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]

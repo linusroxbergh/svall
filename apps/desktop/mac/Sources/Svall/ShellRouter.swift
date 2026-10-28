@@ -376,7 +376,7 @@ final class ShellRouter {
 
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
-                               ghosttyKeys: GhosttyKeybinds.userChords(), profile: SvallHome.profile))
+                               ghosttyKeys: GhosttyKeybinds.userChords()))
     }
 
     private func pressed(_ event: NSEvent) {

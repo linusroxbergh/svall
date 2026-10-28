@@ -11,12 +11,12 @@ import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { homeRootOf } from './repo-key.js';
 
-export const RECOVERED = (worker: string) => `recovered from ${worker}`;
-export const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
-export const takenLine = (worker: string, name: string) => `${worker} set name to ${JSON.stringify(name)} while this Mac slept; another robot has that name here`;
-export const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
-export const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
-export const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
+const RECOVERED = (worker: string) => `recovered from ${worker}`;
+const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
+const takenLine = (worker: string, name: string) => `${worker} set name to ${JSON.stringify(name)} while this Mac slept; another robot has that name here`;
+const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
+const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
+const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
 
 /** A note with `line` added, once. */
 export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);

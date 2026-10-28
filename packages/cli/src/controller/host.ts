@@ -706,7 +706,7 @@ export const rowStep = ({ key, ...row }: SetupRow): StepEvent => ({ step: `mirro
 export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:${key}`, ...row });
 
 /** The one row a command makes of a daemon it could not ask for the rows; its action asks that fleet's daemon again. */
-export const notChecked = (e: Error, name: string, d: HostDeps): SetupRow => ({
+const notChecked = (e: Error, name: string, d: HostDeps): SetupRow => ({
   key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open`,
   gap: { name: 'agent setup', what: 'not checked' },
 });

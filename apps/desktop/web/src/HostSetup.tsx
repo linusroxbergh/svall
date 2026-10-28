@@ -14,7 +14,7 @@ import { Caret } from './Sidebar.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
-export function startHost(op: HostOp, args: HostArgs): void {
+function startHost(op: HostOp, args: HostArgs): void {
   app.store.getState().hostStarted(op, args);
   app.bridge.send({ type: 'host.start', op, args });
 }

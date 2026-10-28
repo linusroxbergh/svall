@@ -50,7 +50,7 @@ export function filesIn(dir: string): string[] {
  * Calls `onChange` with each file under `dir` that changed once it has rested `debounceMs`: with its bytes, or with none
  * once it is gone. A folder that appears stands for each file in it.
  */
-export function watchDocs(dir: string, onChange: (rel: string, data?: Buffer) => void, debounceMs = 500, log?: Pick<Logger, 'error'>): () => void {
+function watchDocs(dir: string, onChange: (rel: string, data?: Buffer) => void, debounceMs = 500, log?: Pick<Logger, 'error'>): () => void {
   fs.mkdirSync(dir, { recursive: true });
   const timers = new Map<string, NodeJS.Timeout>();
   const settle = (rel: string): void => {

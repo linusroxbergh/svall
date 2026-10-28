@@ -125,7 +125,7 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
   };
 }
 /** The Mac's home and its project folders, which the worker answers for. */
-export const StateAsk = z.object({ homedir: z.string(), projects: z.array(z.string()) });
+const StateAsk = z.object({ homedir: z.string(), projects: z.array(z.string()) });
 export const WorkerFacts = z.object({ state: WorkerState, projects: z.record(z.string(), z.boolean()) });
 /** The worker's record, and whether it has each project folder of the Mac's, by the Mac's path. */
 export type WorkerFacts = z.infer<typeof WorkerFacts>;
@@ -135,9 +135,9 @@ type Root = keyof typeof ROOTS;
 // the worker's own: its `svall setup` writes hooks and statusLine, which on the Mac name the app bundle, and the rest hold
 // secrets or run what fetches them
 const WORKER_OWNED = ['hooks', 'statusLine', 'env', 'apiKeyHelper', 'awsCredentialExport', 'awsAuthRefresh', 'otelHeadersHelper'];
-export const CODEX_WORKER_OWNED = ['projects', 'hooks', 'mcp_servers'];
-export const CODEX_MAC_ONLY = ['notify', 'desktop', 'marketplaces', 'plugins'];
-export const OPENCODE_WORKER_OWNED = ['mcp'];
+const CODEX_WORKER_OWNED = ['projects', 'hooks', 'mcp_servers'];
+const CODEX_MAC_ONLY = ['notify', 'desktop', 'marketplaces', 'plugins'];
+const OPENCODE_WORKER_OWNED = ['mcp'];
 // OpenCode reads each folder by either name
 const OPENCODE_TREES = ['agent', 'agents', 'command', 'commands', 'plugin', 'plugins', 'skills'];
 // Claude's plugin lists, whose paths land by home
@@ -672,7 +672,7 @@ export function readState(file: string): WorkerState {
 }
 
 /** What a worker tells the home before a mirror: its record, and which of the Mac's project folders it has under its home. */
-export function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: string; homedir: string }): WorkerFacts {
+function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: string; homedir: string }): WorkerFacts {
   const r = { from: ask.homedir, to: o.homedir };
   return { state: readState(o.stateFile), projects: Object.fromEntries(ask.projects.map((p) => [p, fs.existsSync(relocate(p, r))])) };
 }

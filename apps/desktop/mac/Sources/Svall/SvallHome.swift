@@ -54,18 +54,6 @@ enum SvallHome {
     /// Opened from Finder, Spotlight or the Dock, which name no fleet.
     static var bare: Bool { ProcessInfo.processInfo.environment["SVALL_HOME"] == nil }
 
-    /// The profile whose home this is, or nil for the private one and for an ad-hoc $SVALL_HOME.
-    static func profileName(of path: String, in homeDirectory: String) -> String? {
-        let home = (path as NSString).standardizingPath
-        guard (home as NSString).deletingLastPathComponent == homeDirectory else { return nil }
-        let prefix = root + "-"
-        let base = (home as NSString).lastPathComponent
-        guard base.hasPrefix(prefix), base.count > prefix.count else { return nil }
-        return String(base.dropFirst(prefix.count))
-    }
-
-    static var profile: String? { profileName(of: path, in: NSHomeDirectory()) }
-
     static var isPrivate: Bool {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
     }

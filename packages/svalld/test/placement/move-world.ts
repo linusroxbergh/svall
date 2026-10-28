@@ -37,7 +37,7 @@ import { makeHome } from '../helpers.js';
 import { H, W, island } from './world.js';
 
 export const SID = '0b1c2d3e-4f50-4162-8394-a5b6c7d8e9f0';
-export const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
+const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
 export const OSID = 'ses_0123456789abAbCdEfGhIjKlMn';
 const CLAUDE = '2.1.300';
 const OPENCODE = '2.1.4';
@@ -73,7 +73,7 @@ const runsOpencode = (w: Win): boolean => /^opencode\b/.test(w.job ?? '');
 const serverOf = (w: Win): Proc => ({ pid: w.pid + 60, ppid: w.pid + 1, pgid: w.pid + 60, tpgid: 0, stat: 'Ss', args: 'opencode serve --stdio' });
 
 /** A machine's tmux server and processes, which outlive its daemon. */
-export class Box {
+class Box {
   windows = new Map<string, Win>();
   /** each window opened, by name */
   opened: string[] = [];
@@ -147,7 +147,7 @@ export class Box {
 type Held = { directory: string; messages: { id: string }[] };
 
 /** A machine's OpenCode: the sessions its database holds, as `opencode session export|import|delete --standalone` reads and writes them. */
-export class FakeOpencode {
+class FakeOpencode {
   sessions = new Map<string, Held>();
   /** how many imports to come fail */
   failImports = 0;
