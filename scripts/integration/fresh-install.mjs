@@ -301,7 +301,7 @@ function doctor(rel, label) {
   for (const name of ['systemd', 'worker', 'linger', 'svalld', 'release', 'home']) {
     check(`${label} doctor ${name}`, checks[name]?.status === 'ok', () => brief(checks[name]));
   }
-  check(`${label} doctor release`, checks.release?.detail?.startsWith(`${rel.version} (${signedWord(rel)}), protocol`), () => brief(checks.release));
+  check(`${label} doctor release`, checks.release?.detail === `${rel.version}, as on this Mac`, () => brief(checks.release));
 }
 
 function upgrade(b) {
