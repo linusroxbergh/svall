@@ -1,10 +1,13 @@
 import type { Command } from 'commander';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, WORKTREE_ACTION, type MoveSheet, type Refusal, type Robot } from '@svall/protocol';
+import { ApiError, WORKTREE_ACTION, type MoveSheet, type Refusal, type Robot, type SetupRow } from '@svall/protocol';
 import type { Client } from '../src/client.js';
 import { agentFor, robotCommands, termOf } from '../src/commands/robot.js';
 import { statusCommand } from '../src/commands/status.js';
 import { contextOf, stateOf } from '../src/render.js';
+
+// how a machine is reached from this Mac's terminal, as the registry names it
+const THERE = (name: string) => ({ ssh: `linus@${name}`, svall: 'svall' });
 
 const base: Robot = {
   id: 'c_a', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/r', context: [],
@@ -63,7 +66,7 @@ describe('agentFor', () => {
 
 describe('robot new', () => {
   it('refuses two agents, or an agent and a command, rather than drop one', async () => {
-    const cmd = robotCommands(async () => { throw new Error('connected'); }, () => false);
+    const cmd = robotCommands(async () => { throw new Error('connected'); }, () => false, THERE);
     cmd.commands.find((c) => c.name() === 'new')!.exitOverride().configureOutput({ writeErr: () => {} });
     for (const flags of [['--claude', '--codex'], ['--agent', 'codex', '--command', 'x'], ['--codex', '--command', 'x'], ['--agent', '--claude']]) {
       await expect(cmd.parseAsync(['node', 'robot', 'new', '--island', 'i', '--cwd', '/tmp', ...flags]), flags.join(' ')).rejects.toThrow(/cannot be used with/);
@@ -79,7 +82,7 @@ describe('robot new --run', () => {
     vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
     vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
     const client = { call: async (m: string) => (m === 'state.get' ? { islands: { i_1: { id: 'i_1', name: 'home' } }, robots: {} } : { ...base, id: 'c_new', runSent }), close() {} };
-    await robotCommands(async () => client as unknown as Client, () => json).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', '--run', 'go'], { from: 'user' });
+    await robotCommands(async () => client as unknown as Client, () => json, THERE).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', '--run', 'go'], { from: 'user' });
     return { out, err };
   };
 
@@ -106,7 +109,7 @@ describe('a robot command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();
     const client = { call: async () => ({ version: 12, islands: {}, robots: { c_a: base } }), close };
-    await expect(robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'show', 'nobody'])).rejects.toThrow('no robot "nobody"');
+    await expect(robotCommands(async () => client as unknown as Client, () => false, THERE).parseAsync(['node', 'robot', 'show', 'nobody'])).rejects.toThrow('no robot "nobody"');
     expect(close).toHaveBeenCalledOnce();
   });
 });
@@ -117,7 +120,7 @@ describe('robot wait', () => {
     vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const calls: string[] = [];
     const client = { call: async (m: string) => { calls.push(m); return m === 'state.get' ? { version: 12, islands: {}, robots } : { status: 'gone' }; }, close() {} };
-    await robotCommands(async () => client as unknown as Client, () => false).parseAsync(['node', 'robot', 'wait', ref, '--until', 'idle', ...flags]);
+    await robotCommands(async () => client as unknown as Client, () => false, THERE).parseAsync(['node', 'robot', 'wait', ref, '--until', 'idle', ...flags]);
     return calls;
   };
 
@@ -164,7 +167,7 @@ describe('a resume that failed', () => {
 
   it('is named under svall status and robot list, for each dormant terminal that holds one', async () => {
     const lines = [`ada: resume failed: ${error}`, 'bo (second terminal): resume failed: gone'];
-    for (const out of [await print(statusCommand(async () => client, () => false, () => '/h')), await print(robotCommands(async () => client, () => false), 'list')]) {
+    for (const out of [await print(statusCommand(async () => client, () => false, () => '/h')), await print(robotCommands(async () => client, () => false, THERE), 'list')]) {
       expect(out.trimEnd().split('\n').slice(-2)).toEqual(lines);
       expect(out).not.toMatch(/stale/);
     }
@@ -188,7 +191,7 @@ describe('robot revive', () => {
   const run = async (d: ReturnType<typeof daemon>, ...argv: string[]) => {
     let out = '';
     const spy = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
-    try { await robotCommands(d.connect, () => false).parseAsync(['revive', 'ada', ...argv], { from: 'user' }); } finally { spy.mockRestore(); }
+    try { await robotCommands(d.connect, () => false, THERE).parseAsync(['revive', 'ada', ...argv], { from: 'user' }); } finally { spy.mockRestore(); }
     return out;
   };
 
@@ -224,12 +227,18 @@ describe('robot move to a machine', () => {
   const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt after this turn'] };
 
   const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
-  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string } = {}) {
+  function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string; setup?: SetupRow[] | Error } = {}) {
     const calls: [string, unknown][] = [];
+    const setup: unknown[] = [];
     const client = {
       call: async (method: string, params: unknown) => {
         if (method === 'state.get') return { ...state, robots: o.robots ?? state.robots };
         if (method === 'system.info') return { machineId: o.answers ?? HOME };
+        if (method === 'machines.setup') {
+          setup.push(params);
+          if (o.setup instanceof Error) throw o.setup;
+          return { rows: o.setup ?? [] };
+        }
         calls.push([method, params]);
         if (method === 'robot.moveRetry') return {};
         if (method === 'robot.moveCheck') return o.check ?? { ok: true, sheet };
@@ -237,14 +246,14 @@ describe('robot move to a machine', () => {
       },
       close: () => undefined,
     };
-    return { calls, connect: async () => client as unknown as Client };
+    return { calls, setup, connect: async () => client as unknown as Client };
   }
   const run = async (d: ReturnType<typeof daemon>, argv: string[], json = false) => {
     let out = '';
     let err = '';
     vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
     vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
-    await robotCommands(d.connect, () => json).parseAsync(['move', ...argv], { from: 'user' });
+    await robotCommands(d.connect, () => json, THERE).parseAsync(['move', ...argv], { from: 'user' });
     vi.restoreAllMocks();
     return { out, err };
   };
@@ -262,6 +271,41 @@ describe('robot move to a machine', () => {
     expect(await run(refused, ['kanban', '--machine', VAULT])).toEqual({ out: '', err: 'refused: linus-vault is not reachable\n  → try again when it is awake\n' });
     expect(refused.calls.map(([m]) => m)).toEqual(['robot.moveCheck']);
     expect(process.exitCode).toBe(2);
+  });
+
+  it('lists what of the robot\'s agent setup will not work on the machine yet, between the sheet and the move id, and gives it with --json', async () => {
+    const linear: SetupRow = {
+      key: 'claude:mcp:linear', status: 'warn', action: "copy linear's keys to linus-vault", detail: 'mirrored without env.LINEAR_API_KEY lin…90',
+      tick: { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: false, preview: ['env.LINEAR_API_KEY lin…90'] }, gap: { name: 'linear', what: 'keys not copied (env.LINEAR_API_KEY)' },
+    };
+    const notion: SetupRow = {
+      key: 'oauth:claude:mcp:notion', status: 'warn', action: 'log in once on linus-vault', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118,
+      detail: 'then /mcp and sign in to notion', gap: { name: 'notion', what: 'not logged in' },
+    };
+    const d = daemon({ setup: [linear, notion, { key: 'var:X', status: 'ok', detail: 'X is set on linus-vault' }] });
+    expect((await run(d, ['c_1', '--machine', 'linus-vault'])).out.split('\n').slice(1)).toEqual([
+      "2 parts of kanban's agent setup will not work on linus-vault yet:",
+      '  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent linus-vault claude:mcp:linear on',
+      '  notion  not logged in                         → ssh -L 3118:localhost:3118 linus@linus-vault, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp',
+      'mv_0123456789', '',
+    ]);
+    expect(d.setup).toEqual([{ machine: VAULT, robot: 'c_1' }]);
+    expect(JSON.parse((await run(daemon({ setup: [linear, notion] }), ['c_1', '--machine', 'linus-vault'], true)).out)).toEqual({ ok: true, sheet, moveId: 'mv_0123456789', setup: [linear, notion] });
+
+    const chrome: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
+    expect((await run(daemon({ setup: [chrome] }), ['c_1', '--machine', 'linus-vault'])).out.split('\n')[1]).toBe("1 part of kanban's agent setup will not work on linus-vault:");
+
+    // the way back asks nothing, and a refused move lists nothing
+    const back = daemon({ setup: [linear] });
+    await run(back, ['c_1', '--machine', 'local']);
+    expect(back.setup).toEqual([]);
+    const refused = daemon({ check: { ok: false, refusal }, setup: [linear] });
+    await run(refused, ['c_1', '--machine', 'linus-vault']);
+    expect(refused.setup).toEqual([]);
+    process.exitCode = 0;
+    // a daemon that cannot list it, as a worker's cannot, leaves the move as it started
+    expect((await run(daemon({ setup: new ApiError('not_on_worker', 'not on a worker') }), ['c_1', '--machine', 'linus-vault'])).out.split('\n').slice(1)).toEqual(['mv_0123456789', '']);
+    expect(process.exitCode).toBeFalsy();
   });
 
   it('says a refusal the move itself answers as the checks do, and gives either as one JSON object with --json', async () => {
@@ -326,7 +370,7 @@ describe('robot move to a machine', () => {
 
   it('takes one of --island, --machine and --retry, and names a machine the fleet does not have', async () => {
     await expect(run(daemon(), ['c_1'])).rejects.toThrow('name one of --island, --machine and --retry');
-    const cmd = robotCommands(daemon().connect, () => false);
+    const cmd = robotCommands(daemon().connect, () => false, THERE);
     cmd.commands.find((c) => c.name() === 'move')!.exitOverride().configureOutput({ writeErr: () => {} });
     for (const flags of [
       ['--island', 'work', '--machine', 'linus-vault'], ['--island', 'work', '--carry', '.env'], ['--machine', 'linus-vault', '--cell', '1,1'],

@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import type { SetupRow } from '@svall/protocol';
+import type { AgentKind, SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../hash.js';
+import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
 import {
@@ -166,6 +167,23 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
 }
 
 /**
+ * `plan` as it reaches a robot whose terminals run `agents` in `folders` on this Mac: those agents' servers, a project's
+ * only where a folder lies in that project, and their config files.
+ */
+export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: string[] }): MirrorPlan {
+  const uses = (agent: AgentKind) => o.agents.includes(agent);
+  const reaches = ({ scope }: Pick<MirroredServer, 'scope'>) => typeof scope !== 'object' || !('project' in scope) || o.folders.some((f) => holds(clean(scope.project), clean(f)));
+  // a file this Mac cannot read is Codex's or OpenCode's in their folders, and Claude's anywhere else
+  const agentOf = (f: string): AgentKind => (holds(plan.homes.codexDir, f) ? 'codex' : holds(plan.homes.opencodeDir, f) ? 'opencode' : 'claude');
+  const { codex, ...rest } = plan;
+  return {
+    ...rest, ...(uses('codex') && codex && { codex }),
+    servers: plan.servers.filter((s) => uses(s.agent) && reaches(s)), macOnly: plan.macOnly.filter((s) => uses(s.agent) && reaches(s)), configs: plan.configs.filter((c) => uses(c.agent)),
+    plugins: uses('claude') ? plan.plugins : [], opencode: uses('opencode') ? plan.opencode : [], unreadable: plan.unreadable.filter((f) => uses(agentOf(f))),
+  };
+}
+
+/**
  * The setup rows of the mirror to machine `o.machine` by `plan` and what the worker reported, in this order: each server
  * with keys or fields Svall does not know, each variable, login and missing runtime its servers need, the Mac-only
  * servers, each config file with keys, each plugin config and each file that cannot be read. Without a report a row that
@@ -177,10 +195,11 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const rows: SetupRow[] = [];
   const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
   // a ticked item the worker does not hold yet, or was not asked about
-  const notYet = (tick: NonNullable<SetupRow['tick']>): SetupRow =>
-    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : saved, tick });
+  const notYet = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
+    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: report ? `pushed; not yet on ${m}` : saved, tick, gap: { name, what: `ticked; not on ${m} yet` } });
   // an unticked item whose copy the worker still holds
-  const stillOn = (tick: NonNullable<SetupRow['tick']>): SetupRow => ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick });
+  const stillOn = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
+    ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick, gap: { name, what: `unticked; still on ${m}` } });
   // the variables an unticked env key of server `s` reads on the worker: the references the mirror leaves in its place
   const reads = (s: MirroredServer, f: string): string[] => {
     const v = getAt(s.bare, [FIELD_PATHS[s.agent].env, f.slice('env.'.length)]);
@@ -193,19 +212,27 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
-    if (!tick.on && fields.some((f) => held(f) === 'copied')) return stillOn(tick);
+    if (!tick.on && fields.some((f) => held(f) === 'copied')) return stillOn(tick, name);
     if (fields.every((f) => (tick.on ? held(f) : own(f)))) return { key: item, status: 'ok', detail: `${m} has its own keys`, tick };
-    if (tick.on) return notYet(tick);
+    if (tick.on) return notYet(tick, name);
     const env = server ? [...new Set(fields.filter((f) => f.startsWith('env.')).flatMap((f) => reads(server, f)))].map((v) => `svall ${o.fleetFlag}worker env ${v}`) : [];
     const without = `mirrored without ${preview.join(', ')}; ${env.length ? `run ${env.join(', ')} there, ` : ''}or set them in ${o.overrides} on ${m}`;
-    return { key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: report ? without : `${saved}: ${without}`, tick };
+    return {
+      key: item, status: 'warn', action: `copy ${name}'s keys to ${m}`, detail: report ? without : `${saved}: ${without}`, tick,
+      gap: { name, what: `keys not copied (${fields.filter((f) => !own(f)).join(', ')})` },
+    };
   };
   // a server or plugin config whose fields Svall does not know, which travels whole once each is ticked
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
-    if (!on && report?.whole[item]) return stillOn(tick);
-    if (!on) return { key: item, status: 'warn', action: `copy ${name} whole to ${m}`, detail: `${name} has fields Svall does not know; it is not mirrored until you tick it`, tick };
-    return report?.whole[item] ? { key: item, status: 'ok', detail: `copied whole to ${m}`, tick } : notYet(tick);
+    if (!on && report?.whole[item]) return stillOn(tick, name);
+    if (!on) {
+      return {
+        key: item, status: 'warn', action: `copy ${name} whole to ${m}`, detail: `${name} has fields Svall does not know; it is not mirrored until you tick it`, tick,
+        gap: { name, what: 'not copied (fields Svall does not know)' },
+      };
+    }
+    return report?.whole[item] ? { key: item, status: 'ok', detail: `copied whole to ${m}`, tick } : notYet(tick, name);
   };
   // an unknown server's preview names its fields
   for (const s of plan.servers) {
@@ -224,29 +251,39 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const key = `var:${v}`;
     if (report?.vars[v]) rows.push({ key, status: 'ok', detail: `${v} is set on ${m}` });
     else if (!report) rows.push({ key, status: 'warn', action: `check ${m} again`, detail: o.unchecked });
-    else rows.push({ key, status: 'warn', action: `set ${v} on ${m}`, run: `svall ${o.fleetFlag}worker env ${v}`, detail: `${readers.join(', ')} read ${v}, which ${m}'s daemon does not have` });
+    else {
+      rows.push({
+        key, status: 'warn', action: `set ${v} on ${m}`, run: `svall ${o.fleetFlag}worker env ${v}`, detail: `${readers.join(', ')} read ${v}, which ${m}'s daemon does not have`,
+        gap: { name: v, what: `not set; ${readers.join(', ')} ${readers.length === 1 ? 'reads' : 'read'} it` },
+      });
+    }
   }
   for (const s of servers) {
     if (!s.oauth) continue;
     const key = `oauth:${s.key}`;
-    if (s.agent !== 'claude') rows.push({ key, status: 'skip', ...s.oauth, detail: `log in once on ${m} with ${s.oauth.run}; Svall cannot see whether you did` });
-    else if (report?.oauth[s.key]) rows.push({ key, status: 'ok', detail: `logged in on ${m}` });
-    else rows.push({ key, status: 'warn', action: `log in once on ${m}`, ...s.oauth, detail: `then /mcp and sign in to ${s.name}` });
+    if (s.agent !== 'claude') {
+      rows.push({ key, status: 'skip', ...s.oauth, detail: `log in once on ${m} with ${s.oauth.run}; Svall cannot see whether you did`, gap: { name: s.name, what: 'log in once; Svall cannot check' } });
+    } else if (report?.oauth[s.key]) rows.push({ key, status: 'ok', detail: `logged in on ${m}` });
+    else rows.push({ key, status: 'warn', action: `log in once on ${m}`, ...s.oauth, detail: `then /mcp and sign in to ${s.name}`, ...(report && { gap: { name: s.name, what: 'not logged in' } }) });
   }
   const missing = report ? [...new Set(servers.flatMap((s) => s.runtimes))].filter((bin) => report.commands[bin] === false) : [];
   for (const bin of missing) {
-    const users = names((s) => s.runtimes.includes(bin)).join(', ');
+    const named = names((s) => s.runtimes.includes(bin));
+    const users = named.join(', ');
     const key = `runtime:${bin}`;
+    const gap = { name: path.posix.basename(bin), what: `not installed; ${users} ${named.length === 1 ? 'needs' : 'need'} it` };
     if (path.posix.isAbsolute(bin)) {
-      rows.push({ key, status: 'warn', action: `install ${path.posix.basename(bin)} on ${m}`, detail: `${users} run ${bin}, which ${m} lacks (a path under this Mac's home is looked for under ${m}'s)` });
-    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: `${users} need it` });
+      rows.push({ key, status: 'warn', action: `install ${path.posix.basename(bin)} on ${m}`, detail: `${users} run ${bin}, which ${m} lacks (a path under this Mac's home is looked for under ${m}'s)`, gap });
+    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: `${users} need it`, gap });
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;
-    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on a Mac; not mirrored` });
+    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on a Mac; not mirrored`, gap: { name: s.name, what: 'runs only on a Mac' } });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));
-  for (const f of plan.unreadable) rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand` });
+  for (const f of plan.unreadable) {
+    rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand`, gap: { name: path.basename(f), what: 'not copied: this Mac cannot read it' } });
+  }
   return rows;
 }

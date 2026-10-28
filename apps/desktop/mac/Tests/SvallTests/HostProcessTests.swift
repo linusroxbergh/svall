@@ -172,22 +172,24 @@ final class HostProcessTests: XCTestCase {
         XCTAssertFalse(HostOp.add.printsReport)
     }
 
-    func testATickRowDecodesAndReachesThePageWithItsItemFieldsAndPreview() throws {
-        let row = #"{"step":"mirror:claude:mcp:linear","status":"warn","detail":"mirrored without env.LINEAR_API_KEY lin…90","action":"copy linear's keys to studio","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]}}"#
+    func testATickRowDecodesAndReachesThePageWithItsItemFieldsPreviewAndGap() throws {
+        let row = #"{"step":"mirror:claude:mcp:linear","status":"warn","detail":"mirrored without env.LINEAR_API_KEY lin…90","action":"copy linear's keys to studio","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]},"gap":{"name":"linear","what":"keys not copied (env.LINEAR_API_KEY)"}}"#
         let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
         XCTAssertEqual(step.tick, HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"]))
         XCTAssertEqual(step.forward, 3334)
+        XCTAssertEqual(step.gap, HostProcess.Gap(name: "linear", what: "keys not copied (env.LINEAR_API_KEY)"))
         let event = FromShell.hostStep(op: "add", step: step).json["event"] as? [String: Any]
         XCTAssertEqual(event?["tick"] as? NSDictionary, ["item": "claude:mcp:linear", "fields": ["env.LINEAR_API_KEY"], "on": false, "preview": ["env.LINEAR_API_KEY lin…90"]])
         XCTAssertEqual(event?["forward"] as? Int, 3334)
+        XCTAssertEqual(event?["gap"] as? NSDictionary, ["name": "linear", "what": "keys not copied (env.LINEAR_API_KEY)"])
     }
 
-    func testADoctorReportCarriesActionForwardAndTickIntoSteps() throws {
-        let report = #"{"machine":"studio","checks":[{"name":"mirror:oauth:claude:mcp:linear","status":"warn","detail":"then /mcp and sign in to linear","action":"log in once on studio","run":"claude","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]}}]}"#
+    func testADoctorReportCarriesActionForwardTickAndGapIntoSteps() throws {
+        let report = #"{"machine":"studio","checks":[{"name":"mirror:oauth:claude:mcp:linear","status":"warn","detail":"then /mcp and sign in to linear","action":"log in once on studio","run":"claude","forward":3334,"tick":{"item":"claude:mcp:linear","fields":["env.LINEAR_API_KEY"],"on":false,"preview":["env.LINEAR_API_KEY lin…90"]},"gap":{"name":"linear","what":"not logged in"}}]}"#
         let helper = try fakeHelper(prints: [report], then: "exit 0")
         let (steps, _) = try run(HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"], report: true))
         XCTAssertEqual(steps.first, HostProcess.Step(step: "mirror:oauth:claude:mcp:linear", status: "warn", detail: "then /mcp and sign in to linear", action: "log in once on studio", run: "claude", forward: 3334,
-            tick: HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"])))
+            tick: HostProcess.Tick(item: "claude:mcp:linear", fields: ["env.LINEAR_API_KEY"], on: false, preview: ["env.LINEAR_API_KEY lin…90"]), gap: HostProcess.Gap(name: "linear", what: "not logged in")))
     }
 
     func testStderrIsKeptInWholeLinesAcrossChunksAndUpToTheLastByte() throws {

@@ -56,11 +56,20 @@ const mirrorOf = ({ mirror }: Ctx): Mirror => {
 };
 
 // the setup rows of `machine`, asked of its worker once the link is up or `waitMs` has passed
-async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number): Promise<{ rows: SetupRow[] }> {
+async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: string): Promise<{ rows: SetupRow[] }> {
   const mirror = mirrorOf(ctx);
+  if (robot !== undefined && !Object.hasOwn(ctx.store.state.robots, robot)) throw new ApiError('not_found', `no robot ${robot}`);
   const link = ctx.links?.for(machine);
   await link?.linked(waitMs);
-  return { rows: await mirror.report(link, machine, { name: ctx.store.state.machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '' }) };
+  const { machines, robots } = ctx.store.state;
+  const c = robot === undefined ? undefined : robots[robot];
+  // a robot's folders, where it runs on a worker, under that worker's home
+  const far = c?.machine && machines?.[c.machine]?.home;
+  const only = c && {
+    agents: [c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined), folders: [c.cwd, c.repo?.mainRoot, c.second?.cwd].filter((f) => f !== undefined),
+    ...(far && { home: far }),
+  };
+  return { rows: await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) }) };
 }
 
 // the folders a scan here lists are those of the robots that run here
@@ -121,7 +130,7 @@ const handlers: Handlers = {
     })),
   }),
   'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
-  'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0),
+  'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0, p.robot),
   // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
   'machines.consent': async (p, ctx) => {
     const mirror = mirrorOf(ctx);

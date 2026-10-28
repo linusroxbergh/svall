@@ -8,6 +8,7 @@ import { setAppStore } from './hooks.js';
 import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
 import { installKeyHandlers } from './keyboard.js';
+import { followLandings } from './landings.js';
 import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
@@ -79,6 +80,7 @@ function createApp(): AppContext {
   }
 
   installDropHandlers({ bridge, store, api: () => api });
+  followLandings({ store, api: () => api });
   applyZoom(bridge, store.getState().settings.zoom);
   store.subscribe((s, prev) => { if (s.settings.zoom !== prev.settings.zoom) applyZoom(bridge, s.settings.zoom); });
   // a robot that left the fleet takes its editor buffers with it

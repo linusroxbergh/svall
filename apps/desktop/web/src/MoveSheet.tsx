@@ -4,14 +4,15 @@ import { retryMove } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { useApp } from './hooks.js';
+import { setupNote } from './landings.js';
 import { machineName } from './placement.js';
 
 const store = () => app.store.getState();
 
-/** A terminal on a worker in the Machines panel, `run` typed at its prompt; the registry it reads names the way there. */
-export function terminalOn(machine: string, run?: string): void {
+/** A terminal on a worker in the Machines panel, `run` typed at its prompt, `forward` its login's port; the registry it reads names the way there. */
+export function terminalOn(machine: string, run?: string, forward?: number): void {
   app.bridge.send({ type: 'host.list' });
-  store().openHostTerminal(machine, run);
+  store().openHostTerminal(machine, run, forward);
 }
 
 type Interrupt = keyof typeof INTERRUPT_ACTIONS;
@@ -70,6 +71,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [answer, setAnswer] = useState<Answer>();
   const [run, setRun] = useState<Run>();
   const [retrying, setRetrying] = useState(false);
+  const [setup, setSetup] = useState<string>();
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? machineName(s.fleet, m) : 'this Mac'; });
   // a move that fails once the sheet is closed says so in a toast
   const shown = useRef(true);
@@ -96,6 +98,12 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     app.api().call('robot.moveCheck', params).then((a) => { if (live) setAnswer(a); }, (e: Error) => { if (live) setAnswer({ error: e.message }); });
     return () => { live = false; };
   }, [machine, carry.join('\n'), interrupt, own, asked]);
+  useEffect(() => {
+    if (run?.at !== 'moved' || !to) return;
+    let live = true;
+    app.api().call('machines.setup', { machine: to, robot: id }).then(({ rows }) => { if (live) setSetup(setupNote(rows)); }, () => {});
+    return () => { live = false; };
+  }, [run?.at]);
 
   if (!c) return null;
   if (c.moving) reached.current = STEP_OF[c.moving.phase];
@@ -135,7 +143,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
           <Progress stand={stand(run, c.moving, retrying, reached.current)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
-            robot={c.name} where={where} here={here} close={close}
+            robot={c.name} where={where} here={here} setup={setup} close={close}
             again={(s) => {
               if (s.failed?.landed && s.failed.moveId) return retry(s.failed.moveId);
               if (!s.failed?.refused) return go();
@@ -199,8 +207,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
  * A running move: a bar of its steps and one line for each as it gets there; a failure is one sentence on its step,
  * with the rest behind details, and one button that tries again, checks again or retries the step.
  */
-function Progress({ stand: st, words, robot, where, here, close, again }: {
-  stand: Stand; words: Record<Step, Said>; robot: string; where: string; here: string; close(): void; again(s: Stand): void;
+function Progress({ stand: st, words, robot, where, here, setup, close, again }: {
+  stand: Stand; words: Record<Step, Said>; robot: string; where: string; here: string; setup?: string; close(): void; again(s: Stand): void;
 }) {
   const at = STEPS.indexOf(st.step);
   const state = (i: number) => (i < at || st.done ? 'done' : i > at ? 'todo' : st.failed ? 'failed' : 'doing');
@@ -227,7 +235,7 @@ function Progress({ stand: st, words, robot, where, here, close, again }: {
           );
         })}
       </ol>
-      {st.done && <div className="host-note" data-testid="move-through">{robot} runs on {where}.</div>}
+      {st.done && <div className="host-note" data-testid="move-through">{robot} runs on {where}.{setup && ` ${setup}`}</div>}
       {details.length > 0 && (
         <details className="modal-more" data-testid="move-run-details">
           <summary>details</summary>

@@ -22,7 +22,7 @@ export type HostArgs = { name: string; ssh?: string; forget?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
-export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
+export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'] };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
   name: string; id: string; ssh?: string; platform: string;

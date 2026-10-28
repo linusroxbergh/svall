@@ -30,10 +30,11 @@ const FREE_FLOOR_KB = 5 * 1024 * 1024;
 
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
-// port its terminal forwards from this Mac; tick: the consent a mirror row toggles
-export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
-// stopped: the step a run failed at, past which nothing ran
-export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string };
+// port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet
+export type StepEvent = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'] };
+// actions: the things to fix there; stopped: the step a run failed at, past which nothing ran; setup: the mirror rows of
+// what will not work there yet, which never stop a robot moving there
+export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stopped?: string; setup?: StepEvent[] };
 
 export type HostDeps = {
   emit(event: StepEvent): void;
@@ -67,26 +68,19 @@ class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick'] };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'] };
 
-/**
- * What a step with `action` leaves to do, as every surface counts things: the action, as two steps can find the same
- * one, but a mirror row by its key, since rows of two servers can read alike, unless it only asks to check again.
- */
-export const thingOf = (step: string, action: string): string => (step.startsWith('mirror:') && !/^check .+ again$/.test(action) ? step : action);
-
-/** The step events a host command emits, and the actions they leave the user with. */
+/** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
 class Runner {
   readonly actions: string[] = [];
-  private things = new Set<string>();
+  private readonly setup: StepEvent[] = [];
   private failed?: string;
 
   constructor(private readonly emit: (e: StepEvent) => void) {}
 
-  private todo(step: string, action: string): void {
-    if (this.things.has(thingOf(step, action))) return;
-    this.things.add(thingOf(step, action));
-    this.actions.push(action);
+  // two steps can find the same thing to do
+  private todo(action: string): void {
+    if (!this.actions.includes(action)) this.actions.push(action);
   }
 
   async step<T>(step: string, fn: () => Promise<Outcome<T>>): Promise<T> {
@@ -97,21 +91,27 @@ class Runner {
     } catch (err) {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = step;
-      this.todo(step, e.action ?? e.detail);
+      this.todo(e.action ?? e.detail);
       this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}) });
       throw e;
     }
-    if (r.action) this.todo(step, r.action);
-    this.emit({
+    const event: StepEvent = {
       step, status: r.status ?? 'ok',
       ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
-      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}),
-    });
+      ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}),
+    };
+    if (step.startsWith('mirror:')) {
+      if (r.gap) this.setup.push(event);
+    } else if (r.action) this.todo(r.action);
+    this.emit(event);
     return r.value;
   }
 
   outcome(): HostOutcome {
-    return { result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions, ...(this.failed && { stopped: this.failed }) };
+    return {
+      result: this.failed || this.actions.length ? 'actions' : 'ready', actions: this.actions, ...(this.failed && { stopped: this.failed }),
+      ...(this.setup.length > 0 && { setup: this.setup }),
+    };
   }
 }
 
@@ -590,17 +590,21 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         d.registry.save();
         return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
-      await d.refreshLinks();
-      // a machine just linked has up to 30 s to come up and answer
-      const rows = await d.setupRows(machine, 30_000).catch((e: Error) => [notChecked(e, o.name, d)]);
-      for (const r of rows) {
-        const { step, ...out } = rowStep(r);
-        await run.step(step, () => Promise.resolve({ value: undefined, ...out }));
-      }
+      await setupSteps(run, machine, o.name, d);
     } finally {
       await master.close().catch(() => undefined);
     }
   });
+}
+
+/** This fleet's daemon linked to the machine, and its agent setup there as steps, a machine just linked given up to 30 s to come up and answer. */
+async function setupSteps(run: Runner, machine: MachineId, name: string, d: HostDeps): Promise<void> {
+  await d.refreshLinks();
+  const rows = await d.setupRows(machine, 30_000).catch((e: Error) => [notChecked(e, name, d)]);
+  for (const r of rows) {
+    const { step, ...out } = rowStep(r);
+    await run.step(step, () => Promise.resolve({ value: undefined, ...out }));
+  }
 }
 
 /** `release`: the one the machine answered it runs. */
@@ -692,8 +696,10 @@ export const rowStep = ({ key, ...row }: SetupRow): StepEvent => ({ step: `mirro
 export const rowCheck = ({ key, ...row }: SetupRow): Check => ({ name: `mirror:${key}`, ...row });
 
 /** The one row a command makes of a daemon it could not ask for the rows; its action asks that fleet's daemon again. */
-export const notChecked = (e: Error, name: string, d: HostDeps): SetupRow =>
-  ({ key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open` });
+export const notChecked = (e: Error, name: string, d: HostDeps): SetupRow => ({
+  key: 'unchecked', status: 'warn', detail: `not checked: ${e.message}`, action: `${svallAt(d.fleet.home, d, `host doctor ${name}`)} once Svall is open`,
+  gap: { name: 'agent setup', what: 'not checked' },
+});
 
 const pick = (o: Outcome<unknown>): { status: Check['status']; detail: string; run?: string } =>
   ({ status: (o.status ?? 'ok') as Check['status'], detail: [o.detail, o.action].filter(Boolean).join('; '), ...(o.run && { run: o.run }) });
@@ -752,7 +758,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       });
       if (probed) {
         await becomeWorker(master, entry, run, d);
-        await d.refreshLinks();
+        await setupSteps(run, entry.id, name, d);
         return;
       }
       await run.step('rollback', async () => {

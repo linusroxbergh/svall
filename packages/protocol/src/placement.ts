@@ -79,10 +79,21 @@ export type WorkerFile = z.infer<typeof WorkerFile>;
 
 /**
  * One line of a machine's setup: how a thing stands there, and what to do when it is not right; `tick` the consent it
- * toggles, whose `item` and `fields` a tick hands to `machines.consent`.
+ * toggles, whose `item` and `fields` a tick hands to `machines.consent`; `gap` what will not work there yet, by name.
  */
 export const SetupRow = z.object({
   key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(),
   forward: z.number().int().optional(), tick: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()) }).optional(),
+  gap: z.object({ name: z.string(), what: z.string() }).optional(),
 });
 export type SetupRow = z.infer<typeof SetupRow>;
+
+type WayOn = Pick<SetupRow, 'tick' | 'run' | 'action'>;
+/** Whether a setup row asks for the machine to be checked again, as one holding a copy it should not still does. */
+export const checksAgain = (r: WayOn): boolean => /^check .+ again$/.test(r.action ?? '');
+/** Whether a setup row's way on is to tick it here: not ticked, and no copy of it left there to check for first. */
+export const toTick = (r: WayOn): boolean => r.tick !== undefined && !r.tick.on && !checksAgain(r);
+/** Whether a setup row can be set up now: ticked from here, or its command run there. */
+export const settable = (r: WayOn): boolean => toTick(r) || r.run !== undefined;
+/** Whether there is anything to do about a setup row: set it up now, or its action; a list with none will not work there, not yet. */
+export const wayOn = (r: WayOn): boolean => settable(r) || r.action !== undefined;

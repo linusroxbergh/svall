@@ -27,7 +27,7 @@ import {
   type Scope, type Secret,
 } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, pluginKey, preview, readConsent, setConsent, tickedFields } from './mirror-consent.js';
-import { ConfigReport, configReport, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
+import { ConfigReport, configReport, forRobot, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
 import { fileSha, unpack } from './move.js';
 
 export const MIRROR_FILE_MAX = 5 * 1024 * 1024;
@@ -60,7 +60,7 @@ export type MirrorPlan = {
   /** `data` stands in for `from`'s bytes where the mirror writes the file itself. */
   files: { from: string; to: string; mode: number; data?: string }[];
   servers: MirroredServer[];
-  macOnly: { agent: AgentKind; name: string }[];
+  macOnly: { agent: AgentKind; name: string; scope: Scope }[];
   /** Each config file with a secret field, by its consent item. */
   configs: { key: string; agent: AgentKind; file: string; fields: string[]; preview: string[]; ticked: string[] }[];
   settingsEnv: Record<string, string>;
@@ -400,7 +400,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const macOnly: MirrorPlan['macOnly'] = [];
   for (const s of read.servers) {
     const project = typeof s.scope === 'object' && 'project' in s.scope ? s.scope.project : undefined;
-    if (isMacOnly(s)) macOnly.push({ agent: s.agent, name: s.name });
+    if (isMacOnly(s)) macOnly.push({ agent: s.agent, name: s.name, scope: s.scope });
     else if (project === undefined || !facts || facts.projects[project]) servers.push(mirrored(s, consent));
   }
 
@@ -1100,9 +1100,13 @@ export class Mirror {
 
   /**
    * The setup rows of the mirror to `machine`, named `o.name`: what its next push carries by its consent, and what the
-   * worker holds and runs, asked over `link` while it is linked.
+   * worker holds and runs, asked over `link` while it is linked. `o.robot`: only those of a robot's agents and folders,
+   * which lie under `home` where it runs on the worker.
    */
-  async report(link: Pick<WorkerLink, 'call' | 'connected' | 'mismatch'> | undefined, machine: MachineId, o: { name: string; fleetFlag: string }): Promise<SetupRow[]> {
+  async report(
+    link: Pick<WorkerLink, 'call' | 'connected' | 'mismatch'> | undefined, machine: MachineId,
+    o: { name: string; fleetFlag: string; robot?: { agents: AgentKind[]; folders: string[]; home?: string } },
+  ): Promise<SetupRow[]> {
     // the worker's answer; none while it is not linked, or when it does not answer
     const ask = async <T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T | undefined> => {
       if (!link?.connected()) return undefined;
@@ -1118,7 +1122,9 @@ export class Mirror {
     // a worker that did not answer the first is not asked again
     const report = facts && await ask('config.report', reportAsk(plan), ConfigReport);
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
-    return setupRows(plan, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides' });
+    const r = o.robot;
+    const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides' });
   }
 
   // the Mac's project folders that hold servers

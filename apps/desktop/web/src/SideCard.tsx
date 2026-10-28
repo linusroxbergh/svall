@@ -13,7 +13,8 @@ import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
-import { machineOf } from './placement.js';
+import { OnMachine } from './OnMachine.js';
+import { isPlaced, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -107,6 +108,7 @@ export function SideCard({ id }: { id: string }) {
       )}
       {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
       <div className="side-secs">
+        {placed && isPlaced(c) && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
           <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />

@@ -113,15 +113,18 @@ const unticked = (item: string): SetupRow => {
   return {
     key: item, status: 'warn', action: `copy ${name}'s keys to trift`,
     detail: `mirrored without ${field} ${name.slice(0, 3)}…90; or set them in ~/.svall/mirror-overrides on trift`,
-    tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] },
+    tick: { item, fields: [field], on: false, preview: [`${field} ${name.slice(0, 3)}…90`] }, gap: { name, what: `keys not copied (${field})` },
   };
 };
 const ticked = (item: string): SetupRow => {
   const row = unticked(item);
   return { key: item, status: 'ok', detail: `keys copied to trift`, tick: { ...row.tick!, on: true } };
 };
-const varRow = (v: string): SetupRow =>
-  ({ key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which trift's daemon does not have` });
+const varRow = (v: string): SetupRow => ({
+  key: `var:${v}`, status: 'warn', action: `set ${v} on trift`, run: `svall worker env ${v}`, detail: `gamma reads ${v}, which trift's daemon does not have`,
+  gap: { name: v, what: 'not set; gamma reads it' },
+});
+const THERE = { ssh: 'trift.test', svall: 'svall' };
 const okRow = (key: string): SetupRow => ({ key, status: 'ok', detail: `${key.split(':').at(-1)} is set on trift` });
 
 /** Everything a healthy Ubuntu companion answers, in the order `host add` asks for it. */
@@ -806,7 +809,7 @@ describe('host add', () => {
     ]);
   });
 
-  it('host add ends with the mirror rows after the registry step, each with its tick, and two unticked servers count as two things', async () => {
+  it('host add ends with the mirror rows after the registry step, each with its tick, and is ready with them as what will not work there yet', async () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
@@ -819,10 +822,10 @@ describe('host add', () => {
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step).slice(-4)).toEqual(['registry', 'mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN']);
     expect(step('mirror:claude:mcp:linear').at(-1)).toMatchObject({ status: 'warn', action: "copy linear's keys to trift", tick: { item: 'claude:mcp:linear', on: false } });
     expect(step('mirror:var:GAMMA_TOKEN').at(-1)).toMatchObject({ status: 'warn', action: 'set GAMMA_TOKEN on trift', run: 'svall worker env GAMMA_TOKEN' });
-    expect(out).toMatchObject({ result: 'actions', actions: ["copy linear's keys to trift", "copy github's keys to trift", 'set GAMMA_TOKEN on trift'] });
+    expect(out).toEqual({ result: 'ready', actions: [], setup: ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github', 'mirror:var:GAMMA_TOKEN'].map((k) => step(k).at(-1)) });
   });
 
-  it('host add counts two servers whose rows read alike as two things, and rows that only ask to check again as one', async () => {
+  it('host add keeps two servers whose rows read alike as two rows of what will not work there, and leaves out rows that only ask to check again', async () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
@@ -830,7 +833,7 @@ describe('host add', () => {
     const rows = [unticked('claude:mcp:github'), unticked('codex:mcp:github'), again('var:X'), again('var:Y')];
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.resolve(rows) }));
     await d.close();
-    expect(out).toMatchObject({ result: 'actions', actions: ["copy github's keys to trift", "copy github's keys to trift", 'check trift again'] });
+    expect(out).toEqual({ result: 'ready', actions: [], setup: [step('mirror:claude:mcp:github').at(-1), step('mirror:codex:mcp:github').at(-1)] });
   });
 
   it('host add with only gh to log in to there is ready, and offers gh\'s login in the terminal', async () => {
@@ -851,9 +854,10 @@ describe('host add', () => {
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ setupRows: () => Promise.reject(new Error('svalld is not running')) }));
     await d.close();
     expect(step('mirror:unchecked').at(-1)).toEqual({
-      step: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall host doctor trift once Svall is open',
+      step: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
     });
-    expect(outcomeText(out, 'add', 'trift')).toBe('trift needs 1 thing before robots can move there:\n  svall host doctor trift once Svall is open');
+    expect(outcomeText(out, 'add', 'trift', { there: THERE }))
+      .toBe('trift is ready. 1 part of your agent setup will not work there yet:\n  agent setup  not checked  → svall host doctor trift once Svall is open');
   });
 
   it("the gh step reads the companion doctor's gh check: logged in, or gh auth login with the terminal and no thing to do", async () => {
@@ -1188,7 +1192,10 @@ describe('host doctor', () => {
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     ssh.reply(['svall-space'], { stdout: DF });
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
-    const login: SetupRow = { key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift with codex mcp login figma; Svall cannot see whether you did' };
+    const login: SetupRow = {
+      key: 'oauth:codex:mcp:figma', status: 'skip', run: 'codex mcp login figma', forward: 1455, detail: 'log in once on trift with codex mcp login figma; Svall cannot see whether you did',
+      gap: { name: 'figma', what: 'log in once; Svall cannot check' },
+    };
     const asked: [MachineId, number][] = [];
     const report = await doctorHost('trift', deps({
       registry: registered(),
@@ -1202,7 +1209,12 @@ describe('host doctor', () => {
     ]);
     // after the checks the machine answers
     expect(report.checks.findIndex((c) => c.name.startsWith('mirror:'))).toBe(report.checks.length - 4);
-    expect(doctorVerdict(report.checks, 'trift')).toBe('trift needs 2 things before robots can move there: mirror:claude:mcp:linear, mirror:codex:mcp:github');
+    expect(doctorVerdict(report.checks, 'trift', THERE)).toBe([
+      'trift is ready. 3 parts of your agent setup will not work there yet:',
+      '  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent trift claude:mcp:linear on',
+      '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift codex:mcp:github on',
+      '  figma   log in once; Svall cannot check       → ssh -L 1455:localhost:1455 trift.test, then codex mcp login figma',
+    ].join('\n'));
   });
 
   it('a not-checked row names the doctor of the fleet the rows were asked of', async () => {
@@ -1212,7 +1224,7 @@ describe('host doctor', () => {
     ssh.reply(['svall-home'], { stdout: `${HOME}\nlinus\n` });
     const report = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' }, setupRows: () => Promise.reject(new Error('svalld is not running')) }));
     expect(report.checks.at(-1)).toEqual({
-      name: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall -p work host doctor trift once Svall is open',
+      name: 'mirror:unchecked', status: 'warn', detail: 'not checked: svalld is not running', action: 'svall -p work host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' },
     });
   });
 
@@ -1231,10 +1243,11 @@ describe('host doctor', () => {
     } finally {
       out.mockRestore();
     }
-    // linger, and the mirror's one not-checked row, as this fleet's daemon is not running
-    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 2, release: '1.2.3' } });
+    // linger; the mirror's not-checked row, as this fleet's daemon is not running, is agent setup and no warning
+    expect(lastChecks(config)).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 1, release: '1.2.3' } });
     expect((JSON.parse(said.join('')) as HostReport).checks.at(-1)).toEqual({
       name: 'mirror:unchecked', status: 'warn', detail: expect.stringMatching(/^not checked: svalld is not running/), action: 'svall host doctor trift once Svall is open',
+      gap: { name: 'agent setup', what: 'not checked' },
     });
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
@@ -1460,6 +1473,16 @@ esac
     const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
     expect(setup[0]).toBe(`${work}/far/.cache/svall/staging-1.2.3/releases/1.2.3/bin/svall`);
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
+  });
+
+  it('ends with the machine\'s agent setup rows, its link given 30 s, and is ready with them as what will not work there yet', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION - 1]] });
+    const asked: [MachineId, number][] = [];
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, setupRows: (m, wait) => { asked.push([m, wait]); return Promise.resolve([unticked('claude:mcp:linear')]); } }));
+    await far.close();
+    expect(asked).toEqual([[REMOTE, 30_000]]);
+    expect(events.filter((e) => e.status !== 'start').at(-1)?.step).toBe('mirror:claude:mcp:linear');
+    expect(out).toEqual({ result: 'ready', actions: [], setup: [step('mirror:claude:mcp:linear').at(-1)] });
   });
 
   it('checks the new release against the signers the installed release pins, with the far machine\'s own tools', async () => {
@@ -2332,30 +2355,145 @@ describe('the last line a run prints', () => {
     expect(doneLine('remove', 'trift', { forget: true })).toBe('trift is forgotten');
   });
 
-  it('the outcome line reads ready when nothing is left to do, and counts the things otherwise', async () => {
+  it('the outcome line reads ready when nothing is left to do, counts the things to fix otherwise, then lists what of the agent setup will not work there yet', async () => {
     const { doctorVerdict, outcomeText } = await import('../src/commands/host.js');
     const ready = 'trift is ready. Robots you move there keep working while this Mac sleeps.';
     const linger = 'ssh trift, then loginctl enable-linger linus';
     const login = 'ssh trift, then claude auth login';
+    const linear = { ...rowStep(unticked('claude:mcp:linear')) };
+    const listed = '  linear  keys not copied (env.LINEAR_API_KEY)  → svall -p work host consent trift claude:mcp:linear on';
+    const work = { there: { ssh: 'trift.test', svall: 'svall -p work' } };
     expect(outcomeText({ result: 'ready', actions: [] }, 'add', 'trift')).toBe(ready);
     expect(outcomeText({ result: 'ready', actions: [] }, 'upgrade', 'trift')).toBe(ready);
-    expect(outcomeText({ result: 'actions', actions: [linger] }, 'add', 'trift')).toBe(`trift needs 1 thing before robots can move there:\n  ${linger}`);
-    expect(outcomeText({ result: 'actions', actions: [linger, login] }, 'upgrade', 'trift')).toBe(`trift needs 2 things before robots can move there:\n  ${linger}\n  ${login}`);
+    expect(outcomeText({ result: 'ready', actions: [], setup: [linear] }, 'upgrade', 'trift', work))
+      .toBe(`trift is ready. 1 part of your agent setup will not work there yet:\n${listed}`);
+    expect(outcomeText({ result: 'actions', actions: [linger] }, 'add', 'trift')).toBe(`trift has 1 thing to fix:\n  ${linger}`);
+    expect(outcomeText({ result: 'actions', actions: [linger, login] }, 'upgrade', 'trift')).toBe(`trift has 2 things to fix:\n  ${linger}\n  ${login}`);
+    expect(outcomeText({ result: 'actions', actions: [linger], setup: [linear] }, 'add', 'trift', work))
+      .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift yet:\n${listed}`);
+    // a list with nothing to do about any of it will not work there, not yet
+    const chrome = rowStep({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } });
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome] }, 'add', 'trift', work))
+      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
+    expect(outcomeText({ result: 'actions', actions: [linger], setup: [chrome] }, 'add', 'trift', work))
+      .toBe(`trift has 1 thing to fix:\n  ${linger}\n1 part of your agent setup will not work on trift:\n  chrome  runs only on a Mac`);
+    expect(outcomeText({ result: 'ready', actions: [], setup: [chrome, linear] }, 'add', 'trift', work).split('\n')[0])
+      .toBe('trift is ready. 2 parts of your agent setup will not work there yet:');
     expect(outcomeText({ result: 'actions', actions: [linger], stopped: 'install' }, 'add', 'trift'))
-      .toBe(`stopped at install; trift needs 1 thing before robots can move there:\n  ${linger}`);
+      .toBe(`stopped at install; trift has 1 thing to fix:\n  ${linger}`);
     expect(outcomeText({ result: 'actions', actions: [linger] }, 'rollback', 'trift')).toBe(`still to do:\n  ${linger}`);
     expect(outcomeText({ result: 'ready', actions: [] }, 'remove', 'trift', { forget: true })).toBe('trift is forgotten');
 
     const ok = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
     const warn = { name: 'tmux', status: 'warn' as const, detail: '3.4' };
     const fail = (name: string) => ({ name, status: 'fail' as const, detail: 'inactive' });
-    expect(doctorVerdict([ok, warn, warn], 'trift')).toBe(ready);
-    expect(doctorVerdict([ok, warn, fail('systemd')], 'trift')).toBe('trift needs 1 thing before robots can move there: systemd');
-    expect(doctorVerdict([fail('systemd'), fail('release')], 'trift')).toBe('trift needs 2 things before robots can move there: systemd, release');
-    // a mirror row by its key, as a run counts them, though two servers' rows read alike; rows with no report all say to check again
+    expect(doctorVerdict([ok, warn, warn], 'trift', THERE)).toBe(ready);
+    expect(doctorVerdict([ok, rowCheck({ key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } })], 'trift', THERE))
+      .toBe('trift is ready. 1 part of your agent setup will not work there:\n  chrome  runs only on a Mac');
+    expect(doctorVerdict([ok, warn, fail('systemd')], 'trift', THERE)).toBe('trift has 1 thing to fix: systemd');
+    expect(doctorVerdict([fail('systemd'), fail('release')], 'trift', THERE)).toBe('trift has 2 things to fix: systemd, release');
+    // a mirror row by its own line, though two servers' rows read alike; rows that only ask to check again are not listed
     const again = (key: string) => rowCheck({ key, status: 'warn', action: 'check trift again', detail: 'not checked: trift is not reachable' });
-    expect(doctorVerdict([rowCheck(unticked('claude:mcp:github')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift'))
-      .toBe('trift needs 4 things before robots can move there: mirror:claude:mcp:github, mirror:codex:mcp:github, mirror:var:X, systemd');
+    expect(doctorVerdict([rowCheck(unticked('claude:mcp:github')), rowCheck(unticked('codex:mcp:github')), again('var:X'), again('var:Y'), fail('systemd')], 'trift', THERE)).toBe([
+      'trift has 1 thing to fix: systemd',
+      '2 parts of your agent setup will not work on trift yet:',
+      '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift claude:mcp:github on',
+      '  github  keys not copied (env.GITHUB_API_KEY)  → svall host consent trift codex:mcp:github on',
+    ].join('\n'));
+  });
+
+  it('lists each row of what will not work there by name, what it lacks and the one thing to do from this Mac\'s terminal', async () => {
+    const { setupList } = await import('../src/commands/host.js');
+    const row = (key: string, o: Partial<SetupRow> & Pick<SetupRow, 'gap'>): SetupRow => ({ key, status: 'warn', detail: 'd', ...o });
+    expect(setupList([
+      unticked('claude:mcp:linear'),
+      row('oauth:claude:mcp:notion', { action: 'log in once on trift', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, gap: { name: 'notion', what: 'not logged in' } }),
+      varRow('GAMMA_TOKEN'),
+      row('runtime:/Users/ada/bin/db-mcp', { action: 'install db-mcp on trift', gap: { name: 'db-mcp', what: 'not installed; db needs it' } }),
+      row('claude:mcp:odd', { action: 'check trift again', gap: { name: 'odd', what: 'ticked; not on trift yet' } }),
+      row('claude:mcp:jira', { action: 'check trift again', tick: { item: 'claude:mcp:jira', fields: ['env.K'], on: false, preview: [] }, gap: { name: 'jira', what: 'unticked; still on trift' } }),
+      row('maconly:claude:chrome', { status: 'skip', gap: { name: 'chrome', what: 'runs only on a Mac' } }),
+      okRow('var:X'),
+    ], 'trift', { ssh: 'ada@trift', svall: 'svall -p work' })).toEqual([
+      '  linear       keys not copied (env.LINEAR_API_KEY)  → svall -p work host consent trift claude:mcp:linear on',
+      '  notion       not logged in                         → ssh -L 3118:localhost:3118 ada@trift, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp',
+      '  GAMMA_TOKEN  not set; gamma reads it               → ssh ada@trift, then svall worker env GAMMA_TOKEN',
+      '  db-mcp       not installed; db needs it            → install db-mcp on trift',
+      '  odd          ticked; not on trift yet              → svall -p work host doctor trift',
+      '  jira         unticked; still on trift              → svall -p work host doctor trift',
+      '  chrome       runs only on a Mac',
+    ]);
+  });
+
+  it('asks to set up what will not work there: yes asks for each key, copies the ones said yes to, and prints the commands to run there; no leaves it', async () => {
+    const { setUpNow } = await import('../src/commands/host.js');
+    const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), varRow('GAMMA_TOKEN')].map(rowStep);
+    const talk = (answers: string[]) => {
+      const asked: string[] = [];
+      const said: string[] = [];
+      const consent: [MachineId, string, string[], boolean][] = [];
+      return {
+        asked, said, consent,
+        io: {
+          ask: (q: string) => { asked.push(q); return Promise.resolve(answers.shift() ?? ''); },
+          write: (t: string) => { said.push(t); },
+          consent: (m: MachineId, item: string, fields: string[], on: boolean) => { consent.push([m, item, fields, on]); return Promise.resolve([ticked(item)]); },
+        },
+      };
+    };
+    const yes = talk(['', 'y', '']);
+    await setUpNow(rows, { name: 'trift', machine: REMOTE, there: THERE }, yes.io);
+    expect(yes.asked).toEqual([
+      'Set them up now? [Y/n] ',
+      "Copy linear's keys to trift? env.LINEAR_API_KEY lin…90 [y/N] ",
+      "Copy github's keys to trift? env.GITHUB_API_KEY git…90 [y/N] ",
+    ]);
+    expect(yes.consent).toEqual([[REMOTE, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true]]);
+    expect(yes.said.join('')).toBe([
+      '  ✓ linear: keys copied to trift',
+      'Run these on trift:',
+      '  ssh trift.test, then svall worker env GAMMA_TOKEN',
+      'svall host doctor trift checks again once they are done.',
+      '',
+    ].join('\n'));
+
+    const no = talk(['n']);
+    await setUpNow(rows, { name: 'trift', machine: REMOTE, there: THERE }, no.io);
+    expect(no.asked).toEqual(['Set them up now? [Y/n] ']);
+    expect(no.consent).toEqual([]);
+    expect(no.said).toEqual([]);
+  });
+
+  it('asks nothing when no row can be set up from here, never to tick a copy still there, and names each command to run there once', async () => {
+    const { setUpNow } = await import('../src/commands/host.js');
+    const asked: string[] = [];
+    const said: string[] = [];
+    const io = { ask: (q: string) => { asked.push(q); return Promise.resolve(''); }, write: (t: string) => { said.push(t); }, consent: () => Promise.resolve([]) };
+    const macOnly: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
+    const unchecked: SetupRow = { key: 'unchecked', status: 'warn', detail: 'd', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' } };
+    const still: SetupRow = { ...unticked('claude:mcp:jira'), action: 'check trift again', gap: { name: 'jira', what: 'unticked; still on trift' } };
+    await setUpNow([macOnly, unchecked, still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect([asked, said]).toEqual([[], []]);
+
+    const login = (name: string): SetupRow => ({
+      key: `oauth:claude:mcp:${name}`, status: 'warn', action: 'log in once on trift', run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118, detail: 'd', gap: { name, what: 'not logged in' },
+    });
+    await setUpNow([login('notion'), login('linear'), still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect(asked).toEqual(['Set them up now? [Y/n] ']);
+    expect(said.join('')).toBe('Run these on trift:\n  ssh -L 3118:localhost:3118 trift.test, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp\nsvall host doctor trift checks again once they are done.\n');
+  });
+
+  it('a run\'s lines leave the agent setup rows to the list at its end', async () => {
+    const { reporter } = await import('../src/commands/host.js');
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    try {
+      const r = reporter(false, () => 'last');
+      r.emit({ step: 'registry', status: 'ok', detail: "trift is in this Mac's list of machines" });
+      r.emit(rowStep(unticked('claude:mcp:linear')));
+      r.finish({ result: 'ready', actions: [] });
+    } finally { vi.restoreAllMocks(); }
+    expect(out).toEqual(["✓ registry  trift is in this Mac's list of machines\n", 'last\n']);
   });
 
   it('lists a detail of several lines under its step', async () => {

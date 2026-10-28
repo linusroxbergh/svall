@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { ApiError, INTERRUPT_ACTIONS, WORKTREE_ACTION, type MachineId, type MoveSheet as Sheet, type Moving, type Refusal } from '@svall/protocol';
+import { ApiError, INTERRUPT_ACTIONS, WORKTREE_ACTION, type MachineId, type MoveSheet as Sheet, type Moving, type Refusal, type SetupRow } from '@svall/protocol';
 import { chr, fleet } from '../fixtures.js';
 import { call, freshStore, sent, store } from './harness.js';
 
@@ -30,6 +30,7 @@ beforeEach(() => {
     if (method === 'robot.moveCheck') return Promise.resolve(answers.length > 1 ? answers.shift() : answers[0]);
     if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
     if (method === 'system.info') return Promise.resolve({ machineId: HOME });
+    if (method === 'machines.setup') return Promise.resolve({ rows: [] });
     return Promise.resolve({});
   });
 });
@@ -45,6 +46,7 @@ function heldMove() {
   const answer = new Promise<unknown>((resolve, reject) => { settle = (a) => (a instanceof Error ? reject(a) : resolve(a)); });
   call.mockImplementation((method: string) => {
     if (method === 'robot.moveTo') return answer;
+    if (method === 'machines.setup') return Promise.resolve({ rows: [] });
     return Promise.resolve(method === 'robot.moveCheck' ? { ok: true, sheet: sheet() } : {});
   });
   return { settle: (a: { moveId: string } | Error) => act(async () => settle(a)) };
@@ -104,6 +106,20 @@ test('a running move shows one line per step as it gets there under a bar of six
   expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault.');
   await act(async () => fireEvent.click(screen.getByTestId('move-done')));
   expect(store.getState().moveSheet).toBeUndefined();
+});
+
+test("once through on a worker the sheet says how much of the robot's agent setup will not work there", async () => {
+  const gap = (name: string): SetupRow => ({ key: `oauth:claude:mcp:${name}`, status: 'warn', detail: 'd', action: 'log in once on linus-vault', gap: { name, what: 'not logged in' } });
+  const rows = [gap('linear'), gap('notion'), { key: 'var:X', status: 'ok', detail: 'X is set on linus-vault' } satisfies SetupRow];
+  const move = heldMove();
+  const held = call.getMockImplementation()!;
+  call.mockImplementation((method: string, params?: unknown) => (method === 'machines.setup' ? Promise.resolve({ rows }) : held(method, params)));
+  await open(VAULT);
+  await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+  expect(call.mock.calls.some(([m]) => m === 'machines.setup')).toBe(false);
+  await move.settle({ moveId: MOVE });
+  expect(call).toHaveBeenCalledWith('machines.setup', { machine: VAULT, robot: 'c0' });
+  expect(screen.getByTestId('move-through').textContent).toBe('ada runs on linus-vault. 2 parts of its agent setup will not work there.');
 });
 
 test('a move undone before its commit says in one sentence which step failed, with details, and Try again moves again', async () => {

@@ -61,12 +61,29 @@ Both run the same steps and show each as it finishes. The app shows them in thes
    worker, and tmux opens and closes a window there. Then the machine is added to this Mac's list in
    `~/.config/svall/machines.json`, and this Mac's daemon links to it.
 
-It ends in one line: "studio is ready. Robots you move there keep working while this Mac sleeps.", or "studio needs
-2 things before robots can move there", followed by them. Each failed step counts, and so does each warning with an
-action; the rows that ask to check the machine again count once. A warning with no action, such as `gh` not logged
-in there, is advice and does not count. In the app, a step that failed with nothing named to do offers **Try again**
-(**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer and never copies a login,
-so these are yours.
+It ends in one line: "studio is ready. Robots you move there keep working while this Mac sleeps.", or "studio has
+2 things to fix", followed by them. Each failed step counts, and so does each warning with an action. A warning with
+no action, such as `gh` not logged in there, is advice and does not count. Your agent setup is never a thing to fix,
+as a move goes ahead without it: what of it will not work on the machine yet follows in a short list, a line each
+with its name, what it lacks and the one thing to do from this Mac:
+
+```
+studio is ready. 3 parts of your agent setup will not work there yet:
+  linear  keys not copied (env.LINEAR_API_KEY)  → svall host consent studio claude:mcp:linear on
+  notion  not logged in                         → ssh -L 3118:localhost:3118 ada@studio, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp
+  uvx     not installed; context7 needs it      → ssh ada@studio, then curl -LsSf https://astral.sh/uv/install.sh | sh
+Set them up now? [Y/n]
+```
+
+A list with nothing to do about any of it, such as servers that only run on a Mac, says "will not work there" without
+"yet"; so do a move's list and the app's footer.
+
+When one of them is a key to copy or a command to run there, `svall host add` and `svall host upgrade` in a terminal
+then ask whether to set them up now: yes asks for each key in turn whether to copy it there, which it does only on a
+yes, and prints each command to run on the machine once. In the app the footer then offers **Set them up now**, which
+shows those rows alone, each with its box or **Open terminal**, until **Show every step**. A run exits 1 while something is left to fix. In the app, a step that failed with nothing named
+to do offers **Try again** (**Check again** after a check). Svall never runs `sudo`, never runs an agent's installer
+and never copies a login, so these are yours.
 
 In the app, each of them that is one command offers **Open terminal**: a terminal on the machine opens in the panel,
 over an ssh of its own that asks nothing and forwards no ssh agent, with the command typed at its prompt. Press Return
@@ -142,7 +159,7 @@ key: a key for that server in the overrides (below) counts, and so does the vari
 machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
 takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
 copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
-reads "still on studio; check studio again". A file there that holds a ticked key is readable by your account alone. A
+reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
 server or plugin config with fields Svall does not know is a row "copy notion whole to studio", and is copied only
 once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
@@ -150,9 +167,11 @@ once ticked. So is a file whose keys Svall cannot leave out: a plugin's LSP conf
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a
 key or fields Svall does not know, or that names `mcpServers` in a way Svall does not read. Until ticked, each stays on
 this Mac.
-From a terminal, `svall host doctor studio` lists the rows, and `svall host consent studio <item> <on|off>
-[--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
-`--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item.
+From a terminal, `svall host doctor studio` lists what will not work there, and `svall host consent studio <item>
+<on|off> [--field <field>]` ticks one: `<item>` is its row's name after `mirror:`, such as `claude:mcp:linear`;
+`--field env.LINEAR_API_KEY` ticks that key alone, and `off` unticks every key of the item. `--json` gives every row.
+After a move, the parts of one robot's setup that will not work where it lands are listed for it
+([Moving one](placement.md#moving-one)).
 
 Fleets that share a machine share its agent files there: a key ticked in one fleet is on the machine for all of them,
 so tick or untick it in each fleet that uses the machine.
@@ -219,8 +238,8 @@ says what a machine is.
 | Command | In the app | What it does |
 | --- | --- | --- |
 | `svall host list` | Settings → Machines | Every machine in the registry, with its ssh destination, release, last check and id. |
-| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends in the same one line as `host add`: ready, or the number of things left before robots can move there, with their names. Each failed check counts, and so does each warning with an action, such as a key not ticked. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
-| `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux while a robot runs in it, and starts over on the new release's at a daemon start with none. Robots running there keep running, and while an older companion's tmux runs them, what is copied in their terminals may not reach the Mac. |
+| `svall host doctor <name>` | Check | The machine's own checks, plus whether it runs this Mac's release, whether it serves this fleet as a worker, its free space and its home path, then the rows of [your agent setup there](#your-agent-setup-on-the-machine); `host list` shows when it last ran and what it found, your agent setup aside. A check marked ✗ fails and makes it exit 1; one marked ! is a warning. It ends as `host add` does: ready, or the things to fix there, with their names, then what of your agent setup will not work there yet. Each failed check counts, and so does each warning with an action outside your agent setup. A fresh Ubuntu 24.04 warns on `gh` and `path`, and where Codex is installed on `codex sandbox`; none of these stops a move, and `gh` is advice that does not count. |
+| `svall host upgrade <name>` | Upgrade to this Mac's release, in the ⋯ menu | Installs this Mac's release there, restarts every fleet's daemon, and checks each answers from the new release. If one does not, it goes back to the release before. It then makes the machine this fleet's worker, unless it is one already, and ends with your agent setup there as `host add` does, asking the same. On an Ubuntu older than 22.04 it installs nothing. A fleet's tmux server running through the upgrade, such as one on Ubuntu's own tmux, keeps its tmux while a robot runs in it, and starts over on the new release's at a daemon start with none. Robots running there keep running, and while an older companion's tmux runs them, what is copied in their terminals may not reach the Mac. |
 | `svall host upgrade <name> --rollback [release]` | Roll back, after an upgrade that failed | Puts the machine back on the release before, or on the kept release named, restarts its units, and checks each fleet's daemon answers from it. It refuses, changing nothing, while a fleet there keeps its state at a newer schema than that release reads, or runs a tmux server that release could not reach. |
 | `svall host remove <name>` | Remove, in the ⋯ menu | Runs `svall uninstall` there, which first takes back what [your agent setup](#your-agent-setup-on-the-machine) copied there with keys (see `svall uninstall` below), shows what it took back, and ends with a warning to do by hand where it could not take a key back or a copy changed there since; it drops the machine from the registry, its last check from `checks.json` and its ticks from every fleet on this Mac. It refuses while a robot of a fleet here runs on the machine or is moving to it ("2 robots are on linus-vault: ada, bo; move them back first"). Its fleets and their files stay on that machine. |
 | `svall host remove <name> --forget` | Forget, in the ⋯ menu while the machine cannot be reached | Drops the machine, its last check and its ticks without reaching it, when it is gone. Keys the mirror copied there stay there. |
