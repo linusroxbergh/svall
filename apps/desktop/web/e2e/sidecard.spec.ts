@@ -319,7 +319,7 @@ test('a robot takes an agent profile in the side card, and the shelf shows what 
   expect((await svall.api.call('robot.show', { id: c.id })).text).toContain('Agent profile: reviewer — follow this role.');
 
   await card.getByTestId('side-agent-profile-view').click();
-  await expect(page.getByTestId('resources-editor-crumb')).toHaveText(/Fleet\s*\/\s*.+\s*\/\s*Agent profiles\s*\/\s*reviewer\.md/);
+  await expect(page.getByTestId('resources-editor-crumb')).toHaveText(/Profiles\s*\/\s*.+\s*\/\s*Agent profiles\s*\/\s*reviewer\.md/);
   await expect(page.getByTestId('resources-doc-description')).toHaveValue(/Independently reviews completed code/);
   await expect(page.locator('.res-editor .cm-content')).toContainText('You are an independent code reviewer.');
   await page.getByTestId('resources-close').click();

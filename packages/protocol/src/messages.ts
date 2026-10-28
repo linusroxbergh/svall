@@ -161,7 +161,7 @@ export const deletable = (kind: string, item: Pick<ResourceItem, 'name' | 'open'
   item.open !== undefined && (kind === 'skills' || kind === 'agents' || kind === 'commands' || (kind === 'autoMemory' && item.name !== 'MEMORY.md'));
 export const ResourceGroup = z.object({ kind: ResourceKind, items: z.array(ResourceItem) });
 export type ResourceGroup = z.infer<typeof ResourceGroup>;
-export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'robot']);
+export const ResourceTier = z.enum(['global', 'fleet', 'repo', 'island', 'robot', 'profiles']);
 // docs is the root id a new doc goes to, agentProfiles the one a new agent profile goes to; a global source has neither
 export const ResourceSource = z.object({
   rootId: z.string(), root: z.string(), name: z.string(), tier: ResourceTier, docs: z.string().optional(), agentProfiles: z.string().optional(),

@@ -3119,7 +3119,7 @@ runIf('Fleet', () => {
     const brief = fleet.brief(c.id);
     expect(brief).toContain(`- native-surfaces — "Native surfaces sit above the webview." (${path.join(dir, 'native-surfaces.md')})`);
     expect(brief).toContain(`- island: ${dir}`);
-    expect(brief).toContain(`- fleet: ${path.join(docs, 'fleet')}`);
+    expect(brief).not.toContain(`- fleet: ${path.join(docs, 'fleet')}`);
     expect(brief).toContain(`- robot: ${docsDir(docs, 'robot', c.id)}`);
     expect(brief).toMatch(/- repo: .*\/docs\/repos\/tmp-[0-9a-f]{8}/);
     expect(fleet.islandBrief(island.id)).toContain('- native-surfaces');

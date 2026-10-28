@@ -731,6 +731,7 @@ test('the fleet’s own docs stand in a tier of their own, named for the fleet, 
   await row.click();
   await expect(row).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-chain')).toHaveCount(0);
+  await expect(page.getByTestId('resources-what-agentProfiles')).toHaveCount(0);
 
   // nothing owns the fleet's folder, so it outlives the islands a spec clears away: each run writes its own note
   const name = svall.uniq('how-we-write');
@@ -744,7 +745,7 @@ test('the fleet’s own docs stand in a tier of their own, named for the fleet, 
   await expect.poll(() => fs.readFileSync(path.join(dir, `${name}.md`), 'utf8')).toContain('description: Plain words, no filler.');
 });
 
-test('a new agent profile is written in the fleet’s shelf and offered to every robot', async ({ page, svall }) => {
+test('a new agent profile is written in the agent profiles’ own shelf and offered to every robot', async ({ page, svall }) => {
   await page.setViewportSize(WIDE);
   const file = path.join(svall.home, 'agent-profiles', 'critic.md');
   fs.rmSync(file, { force: true });
@@ -755,6 +756,7 @@ test('a new agent profile is written in the fleet’s shelf and offered to every
   const pick = page.getByTestId('side-card').getByTestId('side-agent-profile');
   await pick.click();
   await page.getByTestId('side-agent-profile-opt-manage').click();
+  await expect(page.getByTestId(`resources-where-r:${path.dirname(file)}`)).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-what-agentProfiles')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-item-agentProfiles-reviewer')).toBeVisible();
 

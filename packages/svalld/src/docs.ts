@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { frontmatter, HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
+import { bodyOf, frontmatter, HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
 import type { Logger } from './log.js';
 import { expandHome } from './paths.js';
 
@@ -9,11 +9,11 @@ import { expandHome } from './paths.js';
 type EntityTier = 'repo' | 'island' | 'robot';
 export type DocTier = 'fleet' | EntityTier;
 // name is the filename without .md; a frontmatter name never replaces it
-export type DocEntry = { name: string; path: string; description?: string; modifiedAt?: number; error?: string };
+export type DocEntry = { name: string; path: string; description?: string; body?: string; modifiedAt?: number; error?: string };
 export type DocFolder = { tier: DocTier; dir: string; docs: DocEntry[] };
 
 const TREE: Record<EntityTier, string> = { repo: 'repos', island: 'islands', robot: 'robots' };
-// only the frontmatter at a doc's head is read, so a long doc costs every prompt no more than a short one
+// only a doc's head is read, so a long doc costs every prompt no more than a short one
 const HEAD_MAX = 64 * 1024;
 
 /** Notes that hold for the whole fleet, whichever island or repository a session is on. */
@@ -61,8 +61,8 @@ function readHead(file: string): string {
   } finally { fs.closeSync(fd); }
 }
 
-/** The .md files directly in `dir`. One that cannot be read is listed with its error; a link, a folder or another extension is left out. */
-export function listDocs(dir: string): DocEntry[] {
+/** The .md files directly in `dir`, with `withBody` each one's text after its frontmatter. One that cannot be read is listed with its error; a link, a folder or another extension is left out. */
+export function listDocs(dir: string, withBody = false): DocEntry[] {
   let found: fs.Dirent[];
   try { found = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
   return found.filter((d) => d.isFile() && d.name.endsWith('.md')).sort((a, b) => a.name.localeCompare(b.name)).map((d): DocEntry => {
@@ -72,14 +72,15 @@ export function listDocs(dir: string): DocEntry[] {
     catch (e) { return { name, path: file, error: `cannot be read: ${(e as NodeJS.ErrnoException).code ?? 'unknown'}` }; }
     if (text.includes('\u0000')) return { name, path: file, error: 'is not text' };
     const { description } = frontmatter(text);
-    return { name, path: file, ...(description && { description }), modifiedAt };
+    const body = withBody ? bodyOf(text).trim() : '';
+    return { name, path: file, ...(description && { description }), ...(body && { body }), modifiedAt };
   });
 }
 
 /** The doc folders in scope, broad to narrow: the fleet, a robot's repository at `repoRoot`, its island, itself; an island has the fleet's and its own. */
 export function docFolders(docs: string, island: Island, robot?: Robot, repoRoot = robot && repoRootOf(robot)): DocFolder[] {
   const at = (tier: EntityTier, id: string): DocFolder => { const dir = docsDir(docs, tier, id); return { tier, dir, docs: listDocs(dir) }; };
-  const fleet: DocFolder = { tier: 'fleet', dir: fleetDir(docs), docs: listDocs(fleetDir(docs)) };
+  const fleet: DocFolder = { tier: 'fleet', dir: fleetDir(docs), docs: listDocs(fleetDir(docs), true) };
   return [fleet, ...(repoRoot ? [at('repo', repoSlug(repoRoot))] : []), at('island', island.id), ...(robot ? [at('robot', robot.id)] : [])];
 }
 

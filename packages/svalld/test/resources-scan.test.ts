@@ -301,14 +301,20 @@ describe('doc sources', () => {
     expect(scanResources(stateOf(), claude).some((s) => s.tier === 'fleet')).toBe(false);
   });
 
-  it('gives the fleet’s source its agent profiles, and their folder as the place a new one goes', () => {
+  it('gives the agent profiles a source of their own, apart from the fleet’s, and their folder as the place a new one goes', () => {
     const home = makeHome(), docs = path.join(home, 'docs'), profiles = path.join(home, 'agent-profiles');
     const claude = { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') };
     put(path.join(profiles, 'reviewer.md'), '---\ndescription: Reviews code\n---\n\nYou are a reviewer.');
     put(path.join(profiles, 'blank.md'), '');
-    const fleet = scanResources(stateOf(), claude, undefined, docs, profiles).find((s) => s.tier === 'fleet')!;
-    expect(fleet.agentProfiles).toBe(rootIdOf(profiles));
-    expect(fleet.groups.find((g) => g.kind === 'agentProfiles')!.items).toMatchObject([
+    const sources = scanResources(stateOf(), claude, undefined, docs, profiles);
+    const fleet = sources.find((s) => s.tier === 'fleet')!;
+    expect(fleet.agentProfiles).toBeUndefined();
+    expect(fleet.groups.some((g) => g.kind === 'agentProfiles')).toBe(false);
+    const own = sources.find((s) => s.tier === 'profiles')!;
+    expect(own).toMatchObject({ rootId: rootIdOf(profiles), root: profiles, name: fleet.name, agentProfiles: rootIdOf(profiles), islandIds: [], robotIds: [] });
+    expect(own.docs).toBeUndefined();
+    expect(scanResources(stateOf(), claude, undefined, docs).some((s) => s.tier === 'profiles')).toBe(false);
+    expect(own.groups.find((g) => g.kind === 'agentProfiles')!.items).toMatchObject([
       { name: 'blank', error: 'has no text', open: { rootId: rootIdOf(profiles), path: 'blank.md' } },
       { name: 'reviewer', detail: 'Reviews code', open: { rootId: rootIdOf(profiles), path: 'reviewer.md' } },
     ]);
