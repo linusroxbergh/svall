@@ -6,7 +6,7 @@ import { machineId } from '@svall/svalld/machine';
 import { consentHost, doctorHost, rowStep, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
-  BASE, DF, DOCTOR, ELSEWHERE, HOME, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, THERE, UNIT_PATH, deps, doctorJson, fleet, okRow, ssh, ticked, unticked,
+  BASE, DF, DOCTOR, ELSEWHERE, HOME, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, THERE, UNIT_PATH, deps, doctorJson, events, fleet, okRow, ssh, ticked, unticked,
   useHostWorld, work,
 } from './controller/host-world.js';
 
