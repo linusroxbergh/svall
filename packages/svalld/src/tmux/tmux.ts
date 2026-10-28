@@ -6,6 +6,7 @@ import { promisify } from 'node:util';
 import { onPath } from '../agents.js';
 import { releaseTmux } from '../release.js';
 import { helper } from '../runtime.js';
+import { shq } from '../text.js';
 import { ControlClient } from './control.js';
 
 const exec = promisify(execFile);
@@ -23,10 +24,8 @@ export function resolveTmux(): string {
   return dir ? path.join(dir, 'tmux') : 'tmux';
 }
 
-/**
- * The tmux to run against `socket`: `own`, unless a server of another version already answers there and
- * `recorded`, the tmux an earlier daemon ran, is that version, as a newer client cannot attach to an older server.
- */
+/** `own`, unless a server of another version answers on `socket` and `recorded`, the tmux an earlier daemon ran, is that
+ *  version, as a newer client cannot attach to an older server. */
 export async function servingTmux(socket: string, recorded: string | undefined, own: string): Promise<string> {
   if (!recorded || recorded === own) return own;
   const read = (binary: string, ...args: string[]): Promise<string | undefined> =>
@@ -81,9 +80,8 @@ const unescape = (v: string): string => (v.includes('\\')
   ? Buffer.concat(v.split(/\\([0-7]{3}|[abfrv$])/).map((part, i) => (i % 2 ? Buffer.of(part.length === 3 ? parseInt(part, 8) : ESCAPED[part]) : Buffer.from(part)))).toString('utf8')
   : v);
 
-// a name or path may hold any byte but NUL: fields and rows are marked with printable text made for each listing,
-// which no name can hold except by guessing it. 3.4 prints a backslash as it is, so tmux swaps each for more such text
-// first, and every backslash left in what it prints is one of its escapes
+// a name or path may hold any byte but NUL, so fields and rows are marked with random text made for each listing. 3.4 prints
+// a backslash as it is, so each is swapped for more such text first, and every backslash left is one of tmux's escapes
 function listing(fields: string[]): { format: string; rows(out: string): string[][] } {
   const token = crypto.randomBytes(8).toString('hex');
   const [sep, end, slash] = [`<${token}>`, `</${token}>`, `(${token})`];
@@ -109,10 +107,8 @@ const MOUSE_MODES = [1000, 1002, 1003, 1006];
 
 const cup = (row: number, col: number) => `\x1b[${row + 1};${col + 1}H`;
 
-/**
- * A viewer's first screen. capture-pane carries no modes, so the cursor and mouse modes follow the rows, and a pane on the
- * alternate screen goes as both screens: its wheel then reaches the app, and leaving it shows what tmux restores.
- */
+/** capture-pane carries no modes, so the cursor and mouse modes follow the rows; a pane on the alternate screen goes as both
+ *  screens, so its wheel reaches the app and leaving it shows what tmux restores. */
 export function parseViewerScreen(out: string, lines: number): Buffer {
   const [head = '', ...rows] = out.replace(/\n$/, '').split('\n');
   const [alt, history, height, x, y, shown, savedX, savedY, ...mouse] = head.split(' ').map(Number);
@@ -179,9 +175,8 @@ export class Tmux {
     return said.trim() === windowId;
   }
 
-  // one session per desktop terminal, holding only the robot's window: when that window dies the
-  // session dies and the attached client exits instead of being moved to another window. One tmux call:
-  // a failing command ends its sequence, so the steps that would fail on a second attach sit behind `if -F`
+  // one session per desktop terminal, holding only the robot's window, so its client exits with that window rather than moving
+  // on. One tmux call: a failing command ends its sequence, so the steps that would fail on a second attach sit behind `if -F`
   async attachSession(name: string, windowId: string): Promise<void> {
     await this.run(
       // set directly on a session with no client, destroy-unattached destroys it at once
@@ -260,7 +255,7 @@ export class Tmux {
     const envArgs = Object.entries(env).flatMap(([k, v]) => ['-e', `${k}=${v}`]);
     // tmux expands -c as a format, and reads an argument ending in ; as the end of the command
     const dir = cwd.replaceAll('#', '##').replace(/;$/, '\\;');
-    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} '${v.replaceAll("'", "'\\''")}'\n`).join('');
+    const set = Object.entries(secret).map(([k, v]) => `set-environment -t ${SESSION} ${k} ${shq(v)}\n`).join('');
     const unset = Object.keys(secret).flatMap((k) => [';', 'set-environment', '-t', SESSION, '-u', k]);
     const out = await this.call([
       ...(set ? ['source-file', '-', ';'] : []),

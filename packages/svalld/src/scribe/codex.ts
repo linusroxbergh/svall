@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { jsonLines } from '../agent/jsonl.js';
+import { withoutRobotEnv } from '../paths.js';
 import { runChild, stderrCause } from './child.js';
 import type { Runner, Usage } from './run.js';
 
@@ -37,9 +38,8 @@ function usage(events: string): Usage {
   };
 }
 
-// `codex exec` takes one prompt and has no system prompt of its own, so the system text leads it. Without a
-// model or effort codex picks its own default. cwd is an empty folder, so no project instructions load. A retro call
-// has no shell tool at all
+// `codex exec` has no system prompt, so the system text leads its one prompt; cwd is an empty folder, so no project
+// instructions load
 export function codexRunner(o: { cwd: string; bin?: string; retro?: true }): Runner {
   return async (system, prompt, call, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });
@@ -47,7 +47,7 @@ export function codexRunner(o: { cwd: string; bin?: string; retro?: true }): Run
     const last = path.join(dir, 'last.txt');
     const schema = path.join(dir, 'schema.json');
     // without a robot id the Svall hook exits at once, so the pass is not mistaken for a robot
-    const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = process.env;
+    const env = withoutRobotEnv(process.env);
     const args = [
       'exec', '--json', ...(call.model ? ['-m', call.model] : []), ...(call.effort ? ['-c', `model_reasoning_effort="${call.effort}"`] : []),
       ...(o.retro ? TOOLS_OFF : []), ...ISOLATION, ...(call.schema ? ['--output-schema', schema] : []), '-o', last, '-',

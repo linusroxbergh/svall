@@ -83,7 +83,6 @@ export class Scribe {
     }
   }
 
-  /** Drops what the scribe remembers of a robot that is gone. */
   forget(id: string): void {
     this.seen.delete(id);
   }
@@ -152,7 +151,6 @@ export class Scribe {
     return this.safe(job);
   }
 
-  /** Resolves once the automatic pass and the sweep in flight have finished. */
   async settled(): Promise<void> {
     while (this.current || this.sweeping) await Promise.allSettled([this.current, this.sweeping?.done]);
   }

@@ -129,7 +129,6 @@ export async function reloadFile(d: FilesDeps, id: string, path: string): Promis
   }
 }
 
-/** Saves the buffer over whatever the disk has now. */
 export function overwriteFile(d: FilesDeps, id: string, path: string): Promise<void> {
   return saveFile(d, id, path, true);
 }

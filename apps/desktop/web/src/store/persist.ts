@@ -63,7 +63,7 @@ export const SETTINGS_KEY = 'svall.settings';
 // the first-run tour's step, or 'done'
 export const TOUR_KEY = 'svall.tour';
 
-// an older app saved a robot's side card sections as character.* and its shelf group as character
+// stored side card sections and shelf groups may still name a robot `character`
 const liftRobot = (raw: string | null): string | null => raw?.replaceAll('"character', '"robot') ?? null;
 const isView = (v: unknown): v is View => v === 'map' || v === 'board';
 const readJson = <T,>(raw: string | null, ok: (v: unknown) => v is T): T | undefined => {

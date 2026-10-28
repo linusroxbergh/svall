@@ -163,7 +163,6 @@ export function Board() {
   lifting.current = Boolean(lift);
   const [shift, setShift] = useState<Shift>();
   const size = useSize(ground);
-  // the island chips scroll sideways under a fade while more of them lie past the right edge
   const chips = useRef<HTMLDivElement>(null);
   const [moreChips, readChips, backChips] = useMore(chips, 'x');
   // an arrow brings the chip cut at the right edge to the left one, or pages back by a width

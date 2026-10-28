@@ -18,9 +18,8 @@ export function redact(text: string, secrets: string[]): string {
 }
 
 /**
- * Runs a command with an argv array; nothing it is given ever reaches a shell. Output is bounded,
- * and a command that outlives its timeout or is aborted is sent SIGTERM and then SIGKILL. It runs
- * in a session of its own, so a terminal's Ctrl-C reaches only the process that decides what it means.
+ * Runs `argv` without a shell, its output bounded; a timeout or abort sends SIGTERM, then SIGKILL. Its own session keeps a
+ * terminal's Ctrl-C to the process that decides what it means.
  */
 export function runProcess(exe: string, argv: string[], o: RunOptions): Promise<RunResult> {
   return new Promise((resolve, reject) => {

@@ -54,23 +54,10 @@ enum SvallHome {
     /// Opened from Finder, Spotlight or the Dock, which name no fleet.
     static var bare: Bool { ProcessInfo.processInfo.environment["SVALL_HOME"] == nil }
 
-    /// The profile whose home this is, or nil for the private one and for an ad-hoc $SVALL_HOME.
-    static func profileName(of path: String, in homeDirectory: String) -> String? {
-        let home = (path as NSString).standardizingPath
-        guard (home as NSString).deletingLastPathComponent == homeDirectory else { return nil }
-        let prefix = root + "-"
-        let base = (home as NSString).lastPathComponent
-        guard base.hasPrefix(prefix), base.count > prefix.count else { return nil }
-        return String(base.dropFirst(prefix.count))
-    }
-
-    static var profile: String? { profileName(of: path, in: NSHomeDirectory()) }
-
     static var isPrivate: Bool {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
     }
 
-    // the name the fleet's directory gives it, nil for the private one
     static var directoryName: String? {
         if isPrivate { return nil }
         let base = ((path as NSString).standardizingPath as NSString).lastPathComponent
@@ -78,7 +65,6 @@ enum SvallHome {
         return base.hasPrefix(prefix) ? String(base.dropFirst(prefix.count)) : base
     }
 
-    /// The fleet's own name: fleet.json's, else its directory's; nil for a private fleet with neither.
     static var fleetName: String? {
         (readJSON(path + "/fleet.json")?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
@@ -144,7 +130,6 @@ enum SvallHome {
         return Int32(parts[0])
     }
 
-    /// The running instance of this app that holds `home`, as its app.pid names it.
     static func runningApp(of home: String) -> NSRunningApplication? {
         guard let pid = appPid(of: home), let app = NSRunningApplication(processIdentifier: pid),
               app.bundleIdentifier == Bundle.main.bundleIdentifier else { return nil }

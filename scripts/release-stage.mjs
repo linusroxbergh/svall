@@ -184,10 +184,8 @@ export async function schemaVersions(work) {
 }
 
 /**
- * A release is reached through symlinks — `~/.local/bin/svall` and `current` — so the shim follows
- * its own link chain and then resolves the directory physically. What it exports is
- * `releases/<version>`, never `current`, so a process keeps reading the release it started from
- * while an upgrade moves `current` underneath it.
+ * The shim follows its link chain (`~/.local/bin/svall`, `current`) and exports the physical `releases/<version>`,
+ * so a process keeps reading the release it started from while an upgrade moves `current` underneath it.
  */
 export const shimText = (name) => `#!/bin/sh
 self=$0
@@ -277,9 +275,8 @@ export function phonePackages(repo = REPO) {
 const noticeLine = (what, license, file) => `${what}  ${license}  ${file}\n`;
 
 /**
- * The licence of everything the release redistributes, and a NOTICE naming each with the file that holds its text. A
- * bundle inlines its dependencies' code, so its list comes from what esbuild read rather than from a manifest that
- * could fall behind.
+ * The licence of everything the release redistributes, and a NOTICE naming each. A bundle inlines its dependencies'
+ * code, so the list comes from what esbuild read rather than from a manifest that could fall behind.
  */
 function stageLicenses(stage, inputs) {
   const licenses = path.join(stage, 'licenses');

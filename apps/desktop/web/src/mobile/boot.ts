@@ -26,9 +26,8 @@ function reloadOnce(s: Status): void {
 
 const PROBE_MS = 5000;
 
-// the link from the QR code carries the pass in its fragment, which stays in the browser; the daemon turns it into a
-// cookie the socket and the worker's answers carry from then on. The manifest is asked for only once that is done, so
-// a Home Screen app made from this page opens with the pass too
+// the QR link's pass rides in the fragment, which stays in the browser, and the daemon trades it for a cookie;
+// the manifest is asked for only after, so a Home Screen app made from this page opens with the pass too
 function pair(then: () => void): void {
   const done = () => {
     const link = document.createElement('link');
@@ -88,7 +87,6 @@ function createPhone(): PhoneContext {
 let ctx: PhoneContext | undefined;
 const need = (): PhoneContext => { if (!ctx) throw new Error('initPhone() before use'); return ctx; };
 
-/** Builds the phone app: the store, the socket, and the terminal fan-out. */
 export function initPhone(): PhoneContext {
   ctx ??= createPhone();
   return ctx;

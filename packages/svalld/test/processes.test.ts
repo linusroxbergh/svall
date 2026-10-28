@@ -13,12 +13,8 @@ import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 const fixture = (name: string): string => fs.readFileSync(path.join(import.meta.dirname, 'fixtures/ps', name), 'utf8');
 const args = (rows: { args: string }[] | undefined): string[] | undefined => rows?.map((r) => r.args);
 
-// the same panes as each platform's ps prints them: a prompt, a pipeline, a background job, Claude with its MCP
-// servers (`claude mcp serve` among them), tool commands (two naming scripts like Svall's) and Svall's own
-// statusline and hook, each a shell running the app's helper on macOS and node on Linux,
-// a Claude that node runs, a shell that exec'd into vim, a job that exited but is not reaped, a standalone
-// Codex and one behind npm's node launcher. The macOS standalone Codex follows one measured on this Mac, the
-// Linux one is an idle Codex 0.156.1 captured on Ubuntu; the npm layouts and Codex's tool commands are modelled.
+// the same panes as each platform's ps prints them: prompt, pipeline, background job, Claude with MCP servers, tools, statusline
+// and hook, a node-run Claude, an exec'd vim, an unreaped job, a standalone and an npm Codex (npm layouts and Codex tools modelled)
 const platforms = [
   {
     name: 'macOS', file: 'darwin.txt', rows: 45, shell: '-zsh', tool: /^\/bin\/zsh -c source/, home: '/Users/ada/.svall', node: '/Applications/Svall.app/Contents/Helpers/node',
@@ -166,9 +162,8 @@ describe.each(platforms)('ps as $name prints it', ({ file, rows, shell, tool, ho
   });
 });
 
-// an OpenCode TUI as measured on this Mac with 2.0.22: its private server in a session of its own, which runs a shell
-// command and an MCP or language server each in one more, and Svall's plugin reading the TUI's command line in its own
-// off a terminal, macOS prints a tpgid of 0 and procps one of -1
+// an OpenCode 2.0.22 TUI as measured: its server in a session of its own runs a shell command and a language server each in
+// one more; off a terminal, macOS prints a tpgid of 0 and procps one of -1
 describe.each([
   { name: 'macOS', none: 0, OC: '/Users/ada/.opencode/bin/opencode', shell: '-zsh' },
   { name: 'Linux procps', none: -1, OC: '/home/ada/.opencode/bin/opencode', shell: '-bash' },

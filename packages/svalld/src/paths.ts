@@ -29,6 +29,12 @@ export const nodeRun = (node: string, script: string): string => `n=${shq(node)}
 // a session an older svalld started carries SVALL_CHAR_ID
 export const HOOK_GUARD = '[ -z "$SVALL_ROBOT_ID$SVALL_CHAR_ID" ] ||';
 
+/** `env` less the ids HOOK_GUARD looks for, so Svall's hooks do not take a process run with it for a robot's. */
+export const withoutRobotEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
+  const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...rest } = env;
+  return rest;
+};
+
 /** The scripts setup points Claude and Codex at from this home, the hook and the statusline, and the helper that stands in for them. */
 export const installedScripts = (home: string = svallHome()): string[] =>
   [HOOK_SCRIPT, STATUS_SCRIPT, HOOK_HELPER].map((file) => path.join(home, 'hooks', file));

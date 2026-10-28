@@ -2,12 +2,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { FOCUS_OF, JudgeFinding, JudgeReply, Note, NoteReply, type AgentKind, type Finding, type Preset, type RetroPlan, type RetroReport, type RetroStatus, type Source } from '@svall/protocol';
+import { ellipsis, FOCUS_OF, JudgeFinding, JudgeReply, Note, NoteReply, type AgentKind, type Finding, type Preset, type RetroPlan, type RetroReport, type RetroStatus, type Source } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { NO_USAGE, type Call, type Runner, type Usage } from '../scribe/run.js';
 import { Budget, FAMILY, judgeTokens, RATIO, readTokens } from './budget.js';
 import { dismissedCategories, findingId, measure, readLedger, recordFindings, writeLedger } from './ledger.js';
-import { clip, type Outline, type Span } from './outline.js';
+import type { Outline, Span } from './outline.js';
 import type { PrComment } from './prs.js';
 import { judgeInput, judgePrompt, readInput, readPrompt, wireSchema } from './prompts.js';
 import { redact } from './redact.js';
@@ -44,13 +44,12 @@ const FINDINGS_OF = z.object({ findings: z.array(z.unknown()) }).transform((r) =
 
 type Read = { excerpts: Excerpt[]; notes: Note[] } | { failed: string };
 
-const said = (e: unknown): string => clip(String(e instanceof Error ? e.message : e).replace(/\s+/g, ' '), 300);
+const said = (e: unknown): string => ellipsis(String(e instanceof Error ? e.message : e).replace(/\s+/g, ' '), 300);
 const sessionKey = (s: { agent: AgentKind; session: string }): string => `${s.agent}\n${s.session}`;
 const lineKey = (s: Source): string => ('pr' in s ? s.pr : `${sessionKey(s)}\n${s.line}`);
 
-// one call whose answer must fit `reply`, under the `hold` its caller reserved, retried once under a reservation of its
-// own; a call that fails, or whose CLI says nothing of what it used, is charged all it held. OpenCode has no schema flag,
-// so its prompt carries the schema, and its answer may wrap the JSON in prose or a fence
+// a call is retried once under a reservation of its own; a failed call, or one whose CLI reports no usage, is charged all it held.
+// OpenCode has no schema flag, so the schema rides in its prompt and its JSON may come wrapped in prose or a fence
 async function ask<T>(run: Runner, agent: AgentKind, system: string, prompt: string, call: Call, reply: z.ZodType<T>, hold: number, budget: Budget, signal: AbortSignal): Promise<T> {
   const asked = agent === 'opencode' ? `${prompt}\n\nAnswer with JSON only, fitting this schema:\n${JSON.stringify(call.schema)}` : prompt;
   const once = async (): Promise<T> => {
@@ -75,7 +74,7 @@ function keep(notes: Note[], excerpts: Excerpt[], inventory: Map<string, Target>
   const sessions = new Set(excerpts.flatMap((e) => (e.session ? [sessionKey(e.session)] : [])));
   const prs = new Set(excerpts.flatMap((e) => (e.pr ? [e.pr] : [])));
   return notes.filter((n) => ('pr' in n.source ? prs.has(n.source.pr) : sessions.has(sessionKey(n.source)))).map((n) => ({
-    ...n, target: n.target !== null && inventory.has(n.target) ? n.target : null, claim: clip(redact(n.claim), CLAIM), quote: clip(redact(n.quote), QUOTE),
+    ...n, target: n.target !== null && inventory.has(n.target) ? n.target : null, claim: ellipsis(redact(n.claim), CLAIM), quote: ellipsis(redact(n.quote), QUOTE),
   }));
 }
 
@@ -148,7 +147,6 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
     const ratio = RATIO[FAMILY[preset.judge.agent]];
     const notes = cut(read.flatMap((r) => r.notes), NOTE_TOKENS * ratio);
     let findings: Finding[] = [];
-    // with no notes there is nothing to judge
     if (notes.length) {
       status('judging');
       const named = notes.flatMap((n) => inventory.get(n.target ?? '') ?? []);
@@ -182,8 +180,8 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
         const unusedSkill = j.category === 'unused-skill' && unused.has(j.subject) && j.change.kind !== 'diff';
         if ((sessions < 3 && prs < 2 && !unusedSkill) || dismissed.has(id)) return [];
         return [{
-          id, focus: j.focus, category: j.category, title: redact(j.title), claim: clip(redact(j.claim), CLAIM),
-          evidence: evidence.map((e) => ({ source: e.source, quote: clip(redact(e.quote), QUOTE) })), sessions, prs,
+          id, focus: j.focus, category: j.category, title: redact(j.title), claim: ellipsis(redact(j.claim), CLAIM),
+          evidence: evidence.map((e) => ({ source: e.source, quote: ellipsis(redact(e.quote), QUOTE) })), sessions, prs,
           change: { kind: j.change.kind, summary: redact(j.change.summary), text: redact(j.change.text) }, target,
           measure: { kind: j.measure.kind, subject: j.measure.subject, name: redact(j.measure.name), before: measure(j.measure, o.measure), after: null },
           rank: j.rank,

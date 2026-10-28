@@ -38,7 +38,6 @@ export function startPusher(o: { store: Store; push: PushStore; send: Send; log:
   });
 }
 
-/** Sends through the device's push service, signed with the fleet's pair. */
 export const webPushSender = (vapid: Vapid): Send => (sub, payload, subject) =>
   webpush.sendNotification(
     { endpoint: sub.endpoint, keys: sub.keys },

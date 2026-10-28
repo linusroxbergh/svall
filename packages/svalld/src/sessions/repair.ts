@@ -3,11 +3,8 @@ import { condenseTurns } from '../agent/transcript.js';
 
 const NAMES: Record<AgentKind, string> = { claude: 'Claude Code', codex: 'Codex', opencode: 'OpenCode' };
 
-/**
- * A brief to start a fresh agent with when a session cannot be resumed. It is a new conversation that
- * reads a summary of the old one: nothing here resumes, copies or renames the old session, and a move
- * never calls it on its own.
- */
+/** A brief for a fresh agent when a session cannot be resumed: a new conversation reading a summary of the old one, which
+ *  nothing here resumes, copies or renames. A move never calls it on its own. */
 export function repairBrief(kind: AgentKind, transcript: string, o: { sessionId: string }): string {
   const turns = condenseTurns(kind, transcript, 40);
   return [

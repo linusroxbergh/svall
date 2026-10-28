@@ -27,8 +27,7 @@ function load(n: number): Promise<void> {
   return p;
 }
 
-// one card's copy of a robot: its ids (and every reference to them) prefixed so copies never share one, hidden from
-// assistive tech, in the img's box and bottom-anchored as the img's object-position is
+// ids and every reference to them are prefixed so two cards' copies of a robot never share one
 export function inlineFigure(svg: string, prefix: string): string {
   const ids = new Set(Array.from(svg.matchAll(/\sid="([^"]+)"/g), (m) => m[1]));
   const own = (id: string) => (ids.has(id) ? `${prefix}-${id}` : id);

@@ -1,4 +1,4 @@
-import type { AgentKind } from '@svall/protocol';
+import { ellipsis, type AgentKind } from '@svall/protocol';
 import { orSkip } from '../agent/jsonl.js';
 import { redact } from './redact.js';
 
@@ -22,7 +22,6 @@ const PR = /(https?:\/\/)(?:[^\s/@"'<>`\\]*@)?([^\s/@"'<>()[\]{}`\\]+\/[^\s/"'<>
 // a call that writes a PR's body or a comment on one, the output most rules govern, whose input is kept as agent text is
 export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
 
-export const clip = (s: string, max: number): string => (s.length > max ? `${s.slice(0, max - 1)}…` : s);
 export const inSpan = (at: number, span: Span): boolean => at >= span.from && at <= span.to;
 // a tool input with each string in it redacted, so a .env line it writes is masked before JSON escapes its newlines
 const leaves = (v: unknown): unknown =>
@@ -47,7 +46,7 @@ export function outliner() {
   };
   const follow = (next: 'interrupt' | 'rejected') => { for (const r of open) r.next ??= next; };
   // whole before it is clipped, so a secret the clip cuts is still masked
-  const masked = (text: string, max: number): string => clip(redact(text), max);
+  const masked = (text: string, max: number): string => ellipsis(redact(text), max);
   return {
     prompt(line: number, at: number, text: string) {
       links(text);

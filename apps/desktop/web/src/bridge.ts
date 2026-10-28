@@ -11,8 +11,7 @@ export type Connection = { host: string; port: number; token: string };
 export type MenuState = { view: 'map' | 'board'; sides: boolean; sideCard: boolean; resources: boolean; browser: boolean; card: boolean };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
-// profile: the one `svall -p` names this fleet by, absent for the private fleet and a home of its own
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; profile?: string };
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string> };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
@@ -161,6 +160,8 @@ export function createBridge(win: Window = window): Bridge {
     onMessage: (h) => { handlers.add(h); return () => { handlers.delete(h); }; },
   };
 }
+
+export const rectOf = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, width: r.width, height: r.height }; };
 
 // the CLI of the build whose shell shows this page; with no shell, Svall Dev's
 export const shim = (): string => (globalThis.window?.__svallVariant === 'release' ? 'svall' : 'svall-dev');

@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Test double for OpenCode 2.0.22's session commands as they behave: each session is its export JSON, kept in the data
-// folder XDG_DATA_HOME names. Importing an id it holds prints "Session already exists" and exits 0; a missing id is
-// "Session not found" with exit 1; `-s` on a missing id makes an empty session with that id.
+// Test double for OpenCode 2.0.22's session commands, each session its export JSON under XDG_DATA_HOME. Importing a
+// held id exits 0 ("Session already exists"); a missing id exits 1, except `-s`, which makes an empty session.
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -15,7 +14,7 @@ const dataDir = (env: NodeJS.ProcessEnv): string => path.join(env.XDG_DATA_HOME 
 const fileOf = (env: NodeJS.ProcessEnv, id: string): string => path.join(dataDir(env), `${id}.json`);
 
 /** The sessions this data folder holds, by id. */
-export function held(env: NodeJS.ProcessEnv): Record<string, Exported> {
+function held(env: NodeJS.ProcessEnv): Record<string, Exported> {
   const dir = dataDir(env);
   if (!fs.existsSync(dir)) return {};
   return Object.fromEntries(fs.readdirSync(dir).map((f) => [f.slice(0, -'.json'.length), JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8')) as Exported]));
@@ -38,7 +37,7 @@ export function fakeEnv(dir: string): NodeJS.ProcessEnv {
 const notFound = (id: string): Ran => ({ code: 1, stdout: '', stderr: `Error: Session not found: ${id}\n` });
 
 /** What `opencode <args>` prints and exits with. */
-export function opencode(args: string[], env: NodeJS.ProcessEnv): Ran {
+function opencode(args: string[], env: NodeJS.ProcessEnv): Ran {
   const words = args.filter((a) => a !== '--standalone');
   if (words[0] === '--version') return { code: 0, stdout: '2.0.22\n', stderr: '' };
   if (words[0] === 'auth' && words[1] === 'list') return { code: 0, stdout: '0 credentials\n', stderr: '' };

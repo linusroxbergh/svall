@@ -16,8 +16,7 @@
 .map-grid { position: absolute; inset: -200px; pointer-events: none;
   background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.4px);
   background-size: var(--cell) var(--cell); background-position: var(--gx, 0) var(--gy, 0); }
-/* Dim only the scenery, including home and resources; terminal/browser surfaces and popovers
-   in map-overlay must not inherit a filter or a new compositing layer from the map itself. */
+/* only the scenery dims: surfaces and popovers in map-overlay must not inherit a filter or compositing layer from the map */
 .map-sea, .map-world, .home, .res-islet { filter: brightness(var(--map-tone, 1)); }
 .map[data-dragging="true"] { cursor: grabbing; }
 .drop-cell { position: absolute; border-radius: var(--r-sm); pointer-events: none;

@@ -1,5 +1,5 @@
-import { useLayoutEffect, useRef, useState, type JSX } from 'react';
-import { useApp } from '../hooks.js';
+import { useRef, useState, type JSX } from 'react';
+import { useApp, useFitHeight } from '../hooks.js';
 import { phone } from './boot.js';
 import { writeDraft } from './draft.js';
 import { startMission } from './mission.js';
@@ -13,13 +13,7 @@ export function MissionBar({ onOpen }: { onOpen(id: string): void }): JSX.Elemen
   const [error, setError] = useState<string>();
   const field = useRef<HTMLTextAreaElement>(null);
 
-  // the field is as tall as its text, up to the cap the stylesheet sets; past that it scrolls
-  useLayoutEffect(() => {
-    const el = field.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
-  }, [text]);
+  useFitHeight(field, text);
 
   if (!loaded) return null;
 

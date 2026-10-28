@@ -15,10 +15,4 @@ final class ControllerProcessTests: XCTestCase {
         XCTAssertNil(BundledSvall.locate(environment: [:], resourcePath: nil))
         XCTAssertNil(BundledSvall.locate(environment: ["SVALL_HELPER": "/nonexistent/svall"], resourcePath: nil))
     }
-
-    func testAFleetHomeIsNamedByItsProfile() {
-        XCTAssertNil(SvallHome.profileName(of: "/Users/x/.svall", in: "/Users/x"))
-        XCTAssertEqual(SvallHome.profileName(of: "/Users/x/.svall-work", in: "/Users/x"), "work")
-        XCTAssertNil(SvallHome.profileName(of: "/tmp/somewhere", in: "/Users/x"))
-    }
 }

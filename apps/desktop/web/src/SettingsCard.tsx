@@ -130,7 +130,6 @@ function ScribeModel() {
   return <ModelPick of="scribe" agent={agent} model={model} label="scribe model" />;
 }
 
-// only the label changes; an empty or unchanged field writes nothing
 function FleetName() {
   const name = useApp((s) => s.fleet.name);
   const home = useApp((s) => s.shell?.home ?? window.__svallHome);
@@ -161,7 +160,6 @@ const checked = (c: NonNullable<MachineRow['check']>): string => {
   return `checked ${when}: ${found}`;
 };
 
-/** Every machine this Mac runs robots on, each with what can be done to it, and a new one last. */
 function Machines() {
   const machines = useApp((s) => s.machines);
   const error = useApp((s) => s.machinesError);

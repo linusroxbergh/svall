@@ -1,11 +1,8 @@
 #!/usr/bin/env bash
-# The fresh-install run: a clean Ubuntu 24.04 machine of the docker host's architecture, added by the controller the app
-# carries (`svall host add`), then `svall host upgrade` to a second release and `svall setup --rollback` back. It builds
-# both releases from this checkout with scripts/release-build.sh (macOS only), the first carrying its companions and the
-# second pinning them on loopback, unless --release and --upgrade name folders that build wrote, and runs
-# fresh-install.mjs, which says what it checks. A release built with a --url-base on http://127.0.0.1:<port>/ is served
-# by the run and downloaded, one built with --url-base companions carries its companions and takes them from its own
-# tree, as Svall.app does, and any other is installed by path.
+# The fresh-install run: builds two releases from this checkout with scripts/release-build.sh (macOS only), the first
+# carrying its companions and the second pinning them on loopback, unless --release and --upgrade name folders that build
+# wrote, then runs fresh-install.mjs, which says what it checks. A release pinning its companions on http://127.0.0.1:<port>/
+# is served by the run, one built with --url-base companions carries them, and any other is installed by path.
 #
 #   scripts/integration/fresh-install.sh [--release <dir> --upgrade <dir>] [--out <dir>] [--keep]
 #

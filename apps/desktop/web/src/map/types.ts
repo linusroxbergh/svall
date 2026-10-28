@@ -14,7 +14,6 @@ export type Drag =
   | { kind: 'island'; id: string; position: Cell; offset?: { x: number; y: number } }
   | { kind: 'resize'; id: string; size: Size; offset?: { x: number; y: number } };
 
-// the handlers a DOM element spreads to feed the map's pointer pipeline
 // a pointer source only opens the sequence; the map host captures the pointer and sees it through
 export type PointerHandlers = {
   onPointerDown(e: React.PointerEvent<Element>): void;

@@ -26,10 +26,7 @@ function unreserved(raw: unknown): unknown {
   return rest;
 }
 
-/**
- * Every setting a running fleet reads, portable and machine-local side by side. It is also the shape
- * of the config.json the two files are split out of.
- */
+/** Every setting a running fleet reads, portable and machine-local merged; also the shape of the legacy config.json. */
 export const Config = z.preprocess(unreserved, FleetFile.omit({ mobile: true })
   .merge(NodeFile.omit({ mobile: true }))
   .extend({
@@ -125,11 +122,8 @@ export const configStray = (paths: Pick<Paths, 'legacyConfig' | 'fleetConfig'>, 
 
 const errno = (e: unknown): string | undefined => (e as NodeJS.ErrnoException).code;
 
-/**
- * Writes whichever of the two config files this fleet is missing, out of its config.json when it
- * still has one, and returns the files written. An unreadable config.json stops it before any write.
- * A config.json beside fleet.json is moved aside unread, and `say` told where.
- */
+/** Writes whichever of fleet.json and node.json is missing, split out of config.json when there is one, and returns them.
+ *  An unreadable config.json stops it before any write; one beside fleet.json is moved aside unread. */
 export function initConfig(paths: Paths, seed: Partial<NodeConfig> = {}, say: (line: string) => void = () => {}): string[] {
   const has = (file: string): boolean => fs.existsSync(file);
   const backup = `${paths.legacyConfig}.bak`;
@@ -186,15 +180,12 @@ export function configuredMainAgent(paths: Paths): AgentKind | undefined {
   return fs.existsSync(paths.legacyConfig) ? read(paths.legacyConfig, Config).mainAgent : undefined;
 }
 
-/** The phone ports the fleets at `homes` keep in their config. */
 export const keptPorts = (homes: string[]): number[] => homes.flatMap((h) => {
   try { const p = peekConfig(resolvePaths(h)).mobile.httpsPort; return p ? [p] : []; } catch { return []; }
 });
 
-/**
- * Each fleet home in `homedir` whose fleet.json names the fleet with a word svall now keeps for a command, or names it
- * nothing while its config.json, or the backup its split left, did.
- */
+/** Each fleet home in `homedir` whose fleet.json names the fleet with a reserved word, or names none while its config.json,
+ *  or the backup its split left, did. */
 export function reservedFleetNames(homedir: string): { home: string; name: string }[] {
   const json = (file: string): Raw | undefined => { try { return JSON.parse(fs.readFileSync(file, 'utf8')) as Raw; } catch { return undefined; } };
   let entries: string[];
@@ -206,11 +197,8 @@ export function reservedFleetNames(homedir: string): { home: string; name: strin
   });
 }
 
-/**
- * Sets the keys `patch` names in `file`, drops those it names as undefined, merges an object a level down, and keeps every
- * other key as the file held it. A file that does not parse, or would not after the change, is refused, not replaced.
- * A linked file (stow, home-manager) is written where it points, with the mode it had.
- */
+/** Sets `patch`'s keys in `file` (undefined drops one, an object merges a level down). A file that does not parse before or
+ *  after is refused, not replaced; a linked file (stow, home-manager) is written where it points, with its mode. */
 function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
   const text = fs.readFileSync(file, 'utf8');
   parseConfig(text, file, schema);
@@ -226,7 +214,6 @@ function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
   fs.chmodSync(real, mode);
 }
 
-/** Sets the keys `patch` names in a fleet.json, as `patchConfigFile` does. */
 export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigFile(file, FleetConfig, patch);
 
 export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>>
@@ -244,7 +231,6 @@ export function saveConfig(paths: Paths, patch: ConfigPatch, say?: (line: string
   if (Object.keys(node).length) patchConfigFile(paths.nodeConfig, NodeConfig, node);
 }
 
-/** Sets mainAgent in fleet.json, split out first if need be. */
 export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: string) => void): void {
   saveConfig(paths, { mainAgent: agent }, say);
 }

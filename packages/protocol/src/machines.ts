@@ -3,16 +3,12 @@ import { isProfileName } from './names.js';
 import { FleetId, MachineId, MachinePath } from './ids.js';
 import { AgentKind, DEFAULT_CWD, Home } from './state.js';
 
-// names such as `trift` and `local` route and present; records name machines and fleets by these ids, so renaming a
-// host leaves every record alone
+// records name machines and fleets by these ids, not by names such as `trift`, so renaming a host leaves every record alone
 export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
 
 /**
- * One machine in the controller's registry. A machine reached directly has no `ssh`.
- *
- * An ssh destination becomes an argument of the controller's own ssh command, so it is held to a
- * token that cannot read as an option. A path holds whatever a filesystem holds, spaces and all;
- * what keeps it out of a remote shell's hands is the quoting where the command is built.
+ * One machine in the controller's registry; one reached directly has no `ssh`. `ssh` is held to a token that cannot read
+ * as an ssh option; paths may hold anything, and are quoted where a remote command is built.
  */
 export const MachineRecord = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, 'lowercase letters, digits and dashes, starting with a letter'),
@@ -77,11 +73,7 @@ export const NodeConfig = z.object({
 });
 export type NodeConfig = z.infer<typeof NodeConfig>;
 
-/**
- * An installed agent CLI, the session adapter that reads its files, where it keeps them, whether it is logged in
- * with Svall's hooks in, and why it cannot sandbox the commands its agent runs, with the fix. A missing `version`
- * is a CLI that is not installed.
- */
+/** An agent CLI as a machine finds it: no `version` means not installed; `sandbox`, why it cannot sandbox its agent's commands, with the fix. */
 export const AgentAdapter = z.object({
   kind: AgentKind, version: z.string().optional(), adapter: z.number().int().nonnegative(), home: z.string().optional(),
   loggedIn: z.boolean().optional(), hooks: z.boolean().optional(), sandbox: z.string().optional(),

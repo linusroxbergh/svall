@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MANIFEST, SIG } from '../../../scripts/release-manifest.mjs';
 
 // the one place the layout is named: a published release exports SVALL_RELEASE_ROOT from its bin/
 // shims, and a development build runs from the checkout this module was compiled out of
@@ -52,25 +53,26 @@ export const askpassPath = (): string => asset('bin/svall-askpass', 'scripts/rel
 /** Where `svall mobile` builds the phone page, and where svalld serves it from. */
 export const mobileDistDir = (): string => asset('web-mobile', 'apps/desktop/web/dist-mobile');
 
+/** The release.json of the release at `dir`; undefined where it has none that parses. */
+export function readManifest(dir: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(dir, MANIFEST), 'utf8')) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The svalld build this is, which a worker's link reports and a move compares against the other machine's. */
 export function releaseVersion(): string {
   const dir = root();
-  if (!dir) return 'dev';
-  try {
-    const version = (JSON.parse(fs.readFileSync(path.join(dir, 'release.json'), 'utf8')) as { version?: unknown }).version;
-    return typeof version === 'string' && version ? version : 'dev';
-  } catch {
-    return 'dev';
-  }
+  const version = dir ? readManifest(dir)?.version : undefined;
+  return typeof version === 'string' && version ? version : 'dev';
 }
 
 /** Whether this release was built with the release key: it carries a signature and no unsigned mark. */
 export function releaseSigned(): boolean {
   const dir = root();
-  if (!dir || !fs.existsSync(path.join(dir, 'SHA256SUMS.sig'))) return false;
-  try {
-    return (JSON.parse(fs.readFileSync(path.join(dir, 'release.json'), 'utf8')) as { unsigned?: unknown }).unsigned !== true;
-  } catch {
-    return false;
-  }
+  if (!dir || !fs.existsSync(path.join(dir, SIG))) return false;
+  const manifest = readManifest(dir);
+  return manifest !== undefined && manifest.unsigned !== true;
 }

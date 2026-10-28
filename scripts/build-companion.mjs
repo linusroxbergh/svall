@@ -4,11 +4,9 @@
 //   node scripts/build-companion.mjs --out <dir> [--arch x64,arm64] [--version <id>]
 //                                    [--node-shasums <SHASUMS256.txt>]
 //
-// Each archive holds the bundled production JavaScript, the pinned Node runtime verified against
-// nodejs.org, the tmux scripts/tmux-build.sh builds for it, the phone bundle, the hook and
-// mission-control templates and the licences of all of it, under releases/<version>/.
-// SVALL_RELEASE_KEY signs the manifest; without it the release is marked unsigned and an installer
-// will only take it with --allow-unsigned.
+// Each archive holds releases/<version>/: the bundled JavaScript, the pinned Node runtime, the tmux
+// scripts/tmux-build.sh builds, and their licences. SVALL_RELEASE_KEY signs the manifest; without it the
+// release is marked unsigned and an installer takes it only with --allow-unsigned.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';

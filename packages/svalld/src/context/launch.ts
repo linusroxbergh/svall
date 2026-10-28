@@ -30,9 +30,8 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
 // a command with its quoted words emptied, so a flag inside one is no flag
 const unquoted = (command: string): string => command.replace(/\\.|'[^']*'|"(?:[^"\\]|\\.)*"/g, "''");
 
-// OpenCode's and Codex's TUIs otherwise run on the user's shared background server, whose plugins, hooks and commands
-// get the environment of whoever started it; a private server inherits the robot's. A TUI on a server the user
-// names can't have one. Codex's update picker on start would take the keys of a launch nobody watches
+// a TUI on the user's shared server gets the environment of whoever started it, not the robot's; one on a server the
+// user names keeps it. Codex's update picker on start would take the keys of a launch nobody watches
 export function withStandalone(command: string): string {
   if (agentKindOf(command) === 'codex') {
     return /\s--(no-daemon|remote)(\s|=|$)/.test(unquoted(command)) ? command : command.replace(/^\s*codex(\s+(resume|fork)(?=\s|$))?/, '$& --no-daemon -c check_for_update_on_startup=false');

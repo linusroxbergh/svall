@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useApp } from '../hooks.js';
 
-// Each robot rests, then plays one action from its own list (data-work while its card is working, else data-idle);
-// an action is the CSS animations its SVG keys on data-act. Rests and action lengths vary up to a tenth either way
+// a robot rests, then plays one action from its data-work or data-idle list: the CSS animations its SVG keys on data-act
 export const REST = { idle: 3500, working: 2000 } as const;
 const jitter = () => 0.9 + Math.random() * 0.2;
 

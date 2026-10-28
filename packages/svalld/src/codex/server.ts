@@ -1,7 +1,6 @@
 import { runsAgent, type Proc } from '../dormancy.js';
 
-/** Whether `args`, as ps prints them, run Codex's app-server: the shared one a plain `codex` attaches to, or an IDE's.
- *  Only the command counts, never a word of a shell's script. */
+/** Whether ps `args` run Codex's app-server, the shared one or an IDE's; only the command counts, never a word of a shell's script. */
 export const isCodexServer = (args: string): boolean => /^(\S*\/)?codex\s+app-server(\s|$)/.test(args);
 
 // what runs a TUI's session inside the TUI rather than on the shared server, as codex 0.162.1 decides

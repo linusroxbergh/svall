@@ -1,9 +1,7 @@
 import { isRelease } from './release.js';
 
-/**
- * Every step of a robot move, the worker's outbox and the home's apply of it that a crash can fall before or after. A
- * step runs inside `boundary`, which gives it both edges; the fault suite fails on a name here that no case crashes at.
- */
+/** Every step of a robot move, the worker's outbox and the home's apply of it that a crash can fall before or after; the
+ *  fault suite fails on a name here that no case crashes at. */
 export const FAILPOINTS = [
   // a move's steps, on the machine it leaves and the one it goes to
   'move.rest',

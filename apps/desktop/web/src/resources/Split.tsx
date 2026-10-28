@@ -8,7 +8,7 @@ const shownWidth = (grip: Element, col: 'rail' | 'list'): number => {
   return Number.isFinite(w) ? w : app.store.getState().resourceCols[col];
 };
 
-/** The handle between two columns; the width follows the pointer and is written to storage on release. */
+/** The width follows the pointer and is written to storage only on release. */
 export function Split({ col, label }: { col: 'rail' | 'list'; label: string }) {
   const grip = useWidthGrip((el) => shownWidth(el, col), (from, dx) => {
     const cols = app.store.getState().resourceCols;

@@ -24,10 +24,8 @@ export function lineSteps(lineHeight: number): (dy: number) => number {
   };
 }
 
-/**
- * A repaint resets the terminal, which drops the viewport to the bottom, so the distance a reader had
- * scrolled back is measured first and re-applied once the repaint's own write has been parsed.
- */
+/** A repaint resets the terminal to the bottom, so how far a reader had scrolled back is measured first
+ *  and re-applied once the repaint's own write has been parsed. */
 export function holdScroll(term: HeldTerm): { write(bytes: Uint8Array): void; reset(): void } {
   let held = 0;
   return {
@@ -48,10 +46,8 @@ export type DraggedTerm = {
 // the mouse tracking xterm reports a wheel step in; without it, xterm types an arrow key for one
 const WHEELED = ['vt200', 'drag', 'any'];
 
-/**
- * On the alternate screen the app keeps the scrollback, so each line goes to it as a wheel step, which xterm reports
- * the way the app asked for mouse input, as a desktop terminal hands it the wheel. An app that takes no wheel gets nothing.
- */
+/** On the alternate screen the app keeps the scrollback, so each line goes to it as a wheel step, as a desktop
+ *  terminal hands it the wheel; an app that takes no wheel gets nothing. */
 export function scrollTerm(term: DraggedTerm, n: number): void {
   const el = term.element;
   if (term.buffer.active.type !== 'alternate' || !el) { term.scrollLines(n); return; }
@@ -63,18 +59,13 @@ export function scrollTerm(term: DraggedTerm, n: number): void {
   }
 }
 
-/**
- * A tap reaches xterm as a click, which an app tracking the mouse acts on, a Claude Code dialog option among them, so of
- * the SGR mouse reports only wheel steps go through: buttons 64–67, plus the modifier bits 4, 8 and 16.
- */
+/** A tap reaches xterm as a click, which a mouse-tracking app such as a Claude Code dialog acts on, so of the SGR
+ *  mouse reports only wheel steps go through: buttons 64–67, plus the modifier bits 4, 8 and 16. */
 export function withoutClicks(data: string): string {
   return data.replace(/\x1b\[<(\d+);\d+;\d+[Mm]/g, (report, button: string) => ((Number(button) & ~31) === 64 ? report : ''));
 }
 
-/**
- * xterm scrolls on wheel events only, so a one-finger drag is turned into scrollLines here, and a flick
- * coasts to a stop. Dragging down moves back through the scrollback.
- */
+/** xterm scrolls on wheel events only, so a one-finger drag becomes scrollLines and a flick coasts to a stop. */
 export function dragToScroll(el: TouchSurface, scrollLines: (n: number) => void, lineHeight: () => number): () => void {
   let steps = lineSteps(lineHeight());
   let lastY = 0;

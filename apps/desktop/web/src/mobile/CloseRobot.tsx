@@ -4,7 +4,6 @@ import { useApp } from '../hooks.js';
 import { phone } from './boot.js';
 import { Sheet } from './Sheet.js';
 
-/** What closing a robot costs and the button that closes it, with a refusal told beside them. */
 export function CloseConfirm({ c, onClosed }: { c: Robot; onClosed(): void }): JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();

@@ -8,7 +8,7 @@ import { openUrl } from '../bridge.js';
 import { openFile } from './files.js';
 import { markdownLink } from './markdown-links.js';
 
-/** Render Markdown as React nodes. Raw HTML stays text, so a document cannot inject app markup. */
+/** Raw HTML stays text, so a document cannot inject app markup. */
 export function MarkdownPreview({ id, path, text }: { id: string; path: string; text: string }) {
   const host = useRef<HTMLDivElement>(null);
   // Prefix heading IDs so a document cannot collide with the app's own DOM IDs.

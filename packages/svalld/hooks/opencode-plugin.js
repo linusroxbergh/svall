@@ -1,6 +1,5 @@
-// Svall's plugin for OpenCode, which svalld writes into OpenCode's plugins folder and OpenCode loads into every server.
-// Inside a Svall robot it reports the session to svalld as hook events, gives the agent its brief as system text,
-// and logs the session for Svall to read.
+// Svall's plugin for OpenCode, loaded into every OpenCode server. Inside a robot it reports the session to svalld as hook
+// events, gives the agent its brief as system text, and logs the session for Svall to read.
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -341,9 +340,8 @@ async function setup(ctx) {
   };
   // permissions the stream asks or answers while a resync reads the list, which may predate them
   let heard;
-  // what a new subscription can't hear, read once it has started: a turn that ended, and permissions asked or answered;
-  // forms and shells have no list, so a shell that may have exited meanwhile is let go. A turn idle now ends a moment late,
-  // unless the stream ends it or a new prompt starts first; a subagent idle now ends, unless it has started again
+  // reads what a new subscription can't hear: ended turns and permissions asked or answered. Shells have no list, so they
+  // are let go; a turn idle now ends a moment late, unless the stream ends it or a new prompt starts first
   const resync = async () => {
     await later(0);
     monitors.clear();

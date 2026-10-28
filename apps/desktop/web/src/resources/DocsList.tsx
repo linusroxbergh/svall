@@ -7,7 +7,7 @@ import { deleteDoc } from './docs.js';
 import { loadResources } from './load.js';
 import { docsOf } from './model.js';
 
-/** An island's or a robot's docs as the agent is told of them: name and description. The shelf is where one is written. */
+/** An island's or a robot's docs as its agent is told of them; the shelf is where one is written. */
 export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string }) {
   const sources = useApp((s) => s.resources);
   // nothing watches the docs tree, so the card reads it again each time it opens

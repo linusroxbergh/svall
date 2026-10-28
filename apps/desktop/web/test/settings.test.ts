@@ -70,7 +70,6 @@ describe('settings', () => {
     // a truthy non-boolean is not on, and a status the app never posts is dropped
     expect(readSettings({ notifications: { on: 'yes', sound: 0, statuses: ['idle', 'blocked', 7] } }).notifications)
       .toEqual({ on: false, sound: true, statuses: ['blocked'] });
-    // none chosen stays none
     expect(readSettings({ notifications: { on: true, statuses: [] } }).notifications.statuses).toEqual([]);
     expect(readSettings({ notifications: 'on' }).notifications).toEqual(DEFAULT_SETTINGS.notifications);
   });

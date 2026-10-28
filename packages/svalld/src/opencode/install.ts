@@ -8,8 +8,7 @@ import { readOrUndefined } from '../settings-file.js';
 
 export type OpencodePaths = { dir: string; plugin: string; data: string };
 
-/** Where OpenCode keeps its files: its config under XDG_CONFIG_HOME, else ~/.config, its data under XDG_DATA_HOME, else
- *  ~/.local/share. The plugin's name says which build's fleets it serves. */
+/** The plugin's name says which build's fleets it serves. */
 export function opencodePaths(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): OpencodePaths {
   const dir = path.join(env.XDG_CONFIG_HOME ? path.resolve(env.XDG_CONFIG_HOME) : path.join(home, '.config'), 'opencode');
   const data = path.join(env.XDG_DATA_HOME ? path.resolve(env.XDG_DATA_HOME) : path.join(home, '.local/share'), 'opencode');
@@ -18,7 +17,6 @@ export function opencodePaths(env: NodeJS.ProcessEnv = process.env, home: string
 
 const pluginText = (): string => fs.readFileSync(path.join(assetDir('hooks'), 'opencode-plugin.js'), 'utf8');
 
-/** Whether `text`, the plugin file as it is, is the plugin this build ships. */
 export const opencodePluginCurrent = (text: string | undefined): boolean => text === pluginText();
 
 /** Writes the plugin, which OpenCode loads at its next start with no trust step. */
@@ -41,9 +39,8 @@ const SERVICE_OFF = '{"disabled":true}\n';
 // the temporary a save writes before renaming it into place, OpenCode's or Svall's own
 const SAVING = /\.tmp(-\d+)?$/;
 
-/** Fills `dir` as OpenCode's config dir for robots: links to the user's config beside a service.json that turns the
- *  shared server off, so a typed `opencode` runs its own server with the robot's env. A setting OpenCode saved over
- *  a link goes back to the user's config if it is newer; the copy it beats is kept in `replaced`. Answers what failed. */
+/** Links the user's config into `dir` beside a service.json that turns the shared server off, so a typed `opencode` runs with
+ *  the robot's env. A file saved over a link goes back if newer, the copy it beats into `replaced`. Answers what failed. */
 export function linkOpencodeConfig(dir: string, o: OpencodePaths, replaced: string): string[] {
   const failed: string[] = [];
   const each = (names: string[], f: (name: string) => void) => {

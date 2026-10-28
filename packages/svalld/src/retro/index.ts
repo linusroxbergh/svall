@@ -21,7 +21,6 @@ export type IndexJob = {
 // a share's outlines in the order it was given its files, one it could not read left null
 type Share = { outlines: (Outline | null)[]; skillsSeen: string[] };
 
-/** The scan reads a transcript this much at a time. */
 export const SCAN_CHUNK = 4 << 20;
 const EXPORT_MS = 20_000;
 // a piece's cost in bytes outlined: a scan reads about twice as fast, and an OpenCode export takes as long as 400 MB
@@ -157,10 +156,8 @@ function inWorker(job: IndexJob): Promise<Share> {
   });
 }
 
-/**
- * Each session's outline, in the job's order less those that could not be read, and which of `skills` ran in any transcript
- * on disk. The work is shared among worker threads, so svalld keeps serving; `inline` does it all on this thread.
- */
+/** Each readable session's outline in the job's order, and which of `skills` ran in any transcript on disk. Worker threads
+ *  share the work so svalld keeps serving; `inline` does it all on this thread. */
 export async function indexSessions(job: IndexJob, o: { inline?: true; workers?: number } = {}): Promise<{ outlines: Outline[]; skillsSeen: string[] }> {
   const shares = o.inline
     ? [{ job, order: job.files.map((_, i) => i) }]

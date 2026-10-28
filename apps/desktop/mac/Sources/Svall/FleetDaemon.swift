@@ -23,9 +23,8 @@ enum FleetDaemon {
     /// A quit is stopping the fleet: a start already on its way leaves the daemon unstarted.
     static func holdStarts() { held.withLock { startsWanted = false } }
 
-    /// Starts the daemon, loading its job first when launchd has not, or has the label from another plist (a test fleet's,
-    /// another copy of Svall's); a running one of ours is left be. At most every 10 s, as launchd itself spaces restarts,
-    /// so a daemon that keeps failing is not started on every page retry.
+    /// Loads the job first when launchd has none, or has the label from another plist (a test fleet's, another Svall's).
+    /// At most every 10 s, as launchd spaces restarts, so a daemon that keeps failing is not started on every page retry.
     static func start() {
         guard let label, let plist, Date().timeIntervalSince(lastStart) > 10 else { return }
         lastStart = Date()

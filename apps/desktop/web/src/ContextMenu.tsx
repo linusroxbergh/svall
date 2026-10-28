@@ -11,8 +11,8 @@ const RELOAD: MenuEntry = { title: 'Reload', sep: true, run: () => window.locati
 const live = (it: MenuEntry): boolean => Boolean(it.run || it.items?.some((x) => x.run));
 
 // the next entry from `from` that can be picked, or `from` when there is none
-const step = (items: MenuEntry[], from: number, by: number): number => {
-  for (let i = from + by; i >= 0 && i < items.length; i += by) if (live(items[i]!)) return i;
+export const step = <T,>(items: T[], from: number, by: number, ok: (it: T) => boolean): number => {
+  for (let i = from + by; i >= 0 && i < items.length; i += by) if (ok(items[i]!)) return i;
   return from;
 };
 
@@ -67,7 +67,7 @@ export function ContextMenu() {
 
   const close = () => app.store.getState().closeMenu();
   const pick = (it: MenuEntry) => { if (!it.run) return; close(); it.run(); };
-  const open = (i: number, keys: boolean) => { setSub(i); setSubActive(keys ? step(items[i]?.items ?? [], -1, 1) : -1); };
+  const open = (i: number, keys: boolean) => { setSub(i); setSubActive(keys ? step(items[i]?.items ?? [], -1, 1, live) : -1); };
   const press = (i: number, keys = false) => { const it = items[i]; if (it?.items) open(i, keys); else if (it) pick(it); };
 
   // the menu opens down and right of the pointer, and flips where the window has no room; placed before the cutout measures it
@@ -106,8 +106,8 @@ export function ContextMenu() {
     const enter = () => (inSub ? subItems[subActive] && pick(subItems[subActive]) : press(active, true));
     const key = (e: KeyboardEvent) => {
       const act = {
-        ArrowDown: () => (inSub ? setSubActive(step(subItems, subActive, 1)) : (setSub(-1), setActive(step(items, active, 1)))),
-        ArrowUp: () => (inSub ? setSubActive(step(subItems, subActive, -1)) : (setSub(-1), setActive(step(items, active < 0 ? items.length : active, -1)))),
+        ArrowDown: () => (inSub ? setSubActive(step(subItems, subActive, 1, live)) : (setSub(-1), setActive(step(items, active, 1, live)))),
+        ArrowUp: () => (inSub ? setSubActive(step(subItems, subActive, -1, live)) : (setSub(-1), setActive(step(items, active < 0 ? items.length : active, -1, live)))),
         ArrowRight: () => { if (!inSub && items[active]?.items) open(active, true); },
         ArrowLeft: () => { if (inSub) { setSub(-1); setSubActive(-1); } },
         Enter: enter,

@@ -8,7 +8,7 @@ import { isExecutable } from './agents.js';
 import type { CodexPaths } from './codex/install.js';
 import { initConfig, loadConfig, peekConfig, reservedFleetNames } from './config.js';
 import { writeDurable } from './durable.js';
-import { bootstrapAgent, isLoaded, plistCurrent, takenOverBy, writePlist } from './launchd.js';
+import { bootstrapAgent, isLoaded, plistCurrent, plistFile, takenOverBy, writePlist } from './launchd.js';
 import { installOpencodePlugin, opencodePluginCurrent, removeOpencodePlugin, type OpencodePaths } from './opencode/install.js';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, homePrefix, profileLabel, profileOf, reservedProfileHomes } from './profile.js';
 import { HOOK_SCRIPT, expandHome, realPath, resolvePaths, type Paths } from './paths.js';
@@ -87,7 +87,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; 
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
-  // an older svalld allowed only `svall char`, which the rules now call `svall robot`
+  // settings that allow `svall char` gain the same rules for `svall robot`, the name the rules use
   const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
   const current = robot && o.addRetro ? withRetro(robot, shipped) : robot;
   if (current !== read) {
@@ -147,7 +147,7 @@ export async function refreshFleetPlists(o: { homes: string[]; runtime: Runtime;
     const name = profileOf(home);
     const label = profileLabel(name);
     if (name === PRIVATE || plistCurrent({ home, label, launchAgentsDir: o.launchAgentsDir, runtime: o.runtime })) continue;
-    const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(path.join(o.launchAgentsDir, `${label}.plist`)), o.runtime);
+    const owner = o.takeOver ? undefined : takenOverBy(readOrUndefined(plistFile(o.launchAgentsDir, label)), o.runtime);
     if (owner) { done.push(`left ${home}, which ${owner} runs`); continue; }
     // one fleet that cannot be set up, such as one whose config svalld would refuse, must not cost the others their refresh
     try {

@@ -1,7 +1,7 @@
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { bodyOf, frontmatter, HOME_ISLAND, type Robot, type Island } from '@svall/protocol';
+import { sha256Hex } from './hash.js';
 import type { Logger } from './log.js';
 import { expandHome } from './paths.js';
 
@@ -19,9 +19,8 @@ const HEAD_MAX = 64 * 1024;
 /** Notes that hold for the whole fleet, whichever island or repository a session is on. */
 export const fleetDir = (docs: string): string => path.join(docs, 'fleet');
 
-/** A repository's folder name: its basename, made one safe segment, and eight hex characters of its main root's SHA-256. */
 export const repoSlug = (mainRoot: string): string =>
-  `${path.basename(mainRoot).replace(/[^A-Za-z0-9._]/g, '-')}-${crypto.createHash('sha256').update(mainRoot).digest('hex').slice(0, 8)}`;
+  `${path.basename(mainRoot).replace(/[^A-Za-z0-9._]/g, '-')}-${sha256Hex(mainRoot).slice(0, 8)}`;
 
 export const docsDir = (docs: string, tier: EntityTier, id: string): string => path.join(docs, TREE[tier], id);
 
@@ -46,10 +45,7 @@ export function liftRobotDocs(docs: string, log: Pick<Logger, 'error'>): void {
   if (fs.readdirSync(from).length === 0) fs.rmdirSync(from);
 }
 
-/**
- * The main root a robot's repository docs hang off, a worktree counted as its repository, with `~` read against
- * `home`; mission control's crew has none.
- */
+/** The main root a robot's repository docs hang off, a worktree counted as its repository; mission control's crew has none. */
 export const repoRootOf = (c: Robot, home?: string): string | undefined =>
   (c.islandId === HOME_ISLAND ? undefined : c.repo?.mainRoot ?? expandHome(c.cwd, home));
 

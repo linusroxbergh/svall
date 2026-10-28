@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { configOf } from '../../src/sessions/claude.js';
 import { filesIn } from '../../src/placement/docs-sync.js';
-import type { MirrorHomes } from '../../src/placement/mirror.js';
+import type { MirrorHomes } from '../../src/placement/mirror-state.js';
 import { SHIM } from '../../src/profile.js';
 import { makeHome } from '../helpers.js';
 
@@ -11,7 +11,9 @@ export const put = (file: string, data: string | Buffer): void => {
   fs.writeFileSync(file, data);
 };
 
-/** Reads the JSON at `file`, lets `edit` change it, and writes it back. */
+export const read = (file: string): string => fs.readFileSync(file, 'utf8');
+export const json = (file: string): any => JSON.parse(read(file));
+
 export function editJson(file: string, edit: (j: any) => void): void {
   const j = JSON.parse(fs.readFileSync(file, 'utf8'));
   edit(j);
@@ -23,7 +25,6 @@ export const mirroredFiles = (home: MirrorHomes): string[] =>
   [...new Set([...[home.claudeDir, home.codexDir, home.opencodeDir].flatMap((d) => filesIn(d).map((f) => path.join(d, f))), home.claudeJson])]
     .filter((f) => fs.existsSync(f)).sort();
 
-/** Each file's inode and mtime. */
 export const statsOf = (files: string[]) => files.map((file) => {
   const st = fs.statSync(file);
   return { file, ino: st.ino, mtimeMs: st.mtimeMs };
@@ -32,10 +33,7 @@ export const statsOf = (files: string[]) => files.map((file) => {
 const MAC_HOOKS = { Stop: [{ hooks: [{ type: 'command', command: '/Applications/Svall.app/hook' }] }] };
 const MAC_STATUS = { type: 'command', command: '/Applications/Svall.app/status' };
 
-/**
- * A Mac home: Claude's configuration with what must not travel beside it, its MCP servers, a plugin and its marketplace,
- * Codex's and OpenCode's, the shared skills and a profile.
- */
+/** A Mac home whose Claude configuration holds what must not travel beside what does. */
 export function macHome() {
   const homedir = makeHome();
   const claudeDir = path.join(homedir, '.claude');
@@ -100,6 +98,9 @@ export function macHome() {
   put(path.join(agentProfiles, 'reviewer.md'), 'a reviewer\n');
   return { homedir, claudeDir, codexDir, agentProfiles, claudeJson: path.join(homedir, '.claude.json'), opencodeDir };
 }
+
+export const ACME = 'claude/plugins/cache/mp/acme/1.0.0';
+export const marketKey = (mac: ReturnType<typeof macHome>) => `${path.join(mac.claudeDir, 'plugins/marketplaces/mp/acme/.mcp.json')} holds a key`;
 
 export const FAR_HOOKS = { Stop: [{ hooks: [{ type: 'command', command: '/home/ada/.svall/hooks/hook' }] }] };
 export const FAR_STATUS = { type: 'command', command: '/home/ada/.svall/hooks/status' };

@@ -20,7 +20,8 @@ import { realPath } from '../../src/path-tools.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { FarViewers } from '../../src/placement/far-viewers.js';
 import type { Mirror } from '../../src/placement/mirror.js';
-import { MoveFiles, Placement } from '../../src/placement/move.js';
+import { MoveFiles } from '../../src/placement/move-steps.js';
+import { Placement } from '../../src/placement/move.js';
 import { PrepareService } from '../../src/placement/prepare.js';
 import { Replay } from '../../src/placement/replay.js';
 import type { Clock } from '../../src/placement/rest.js';
@@ -37,7 +38,7 @@ import { makeHome } from '../helpers.js';
 import { H, W, island } from './world.js';
 
 export const SID = '0b1c2d3e-4f50-4162-8394-a5b6c7d8e9f0';
-export const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
+const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
 export const OSID = 'ses_0123456789abAbCdEfGhIjKlMn';
 const CLAUDE = '2.1.300';
 const OPENCODE = '2.1.4';
@@ -73,13 +74,11 @@ const runsOpencode = (w: Win): boolean => /^opencode\b/.test(w.job ?? '');
 const serverOf = (w: Win): Proc => ({ pid: w.pid + 60, ppid: w.pid + 1, pgid: w.pid + 60, tpgid: 0, stat: 'Ss', args: 'opencode serve --stdio' });
 
 /** A machine's tmux server and processes, which outlive its daemon. */
-export class Box {
+class Box {
   windows = new Map<string, Win>();
   /** each window opened, by name */
   opened: string[] = [];
-  /** each line typed, by pane */
   lines: { paneId: string; text: string }[] = [];
-  /** each key sent, by pane */
   keys: { paneId: string; text: string }[] = [];
   screens = new Map<string, string[]>();
   /** what an agent started by a line does: by default it reports its SessionStart */
@@ -149,7 +148,7 @@ export class Box {
 type Held = { directory: string; messages: { id: string }[] };
 
 /** A machine's OpenCode: the sessions its database holds, as `opencode session export|import|delete --standalone` reads and writes them. */
-export class FakeOpencode {
+class FakeOpencode {
   sessions = new Map<string, Held>();
   /** how many imports to come fail */
   failImports = 0;
@@ -191,10 +190,8 @@ const put = (file: string, data: string): void => {
 };
 
 /**
- * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
- * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
- * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
- * agent configuration, and with `pollMs` the worker's fleet polls its windows that often.
+ * A Mac under `base/Users/ada` holding robot c_1 in a dirty worktree kanban of code/app, and worker w1, whose user home
+ * is this test's HOME, holding nothing yet; both daemons run here, linked over w1's real link.sock.
  */
 export function moveWorld(o: {
   agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean;

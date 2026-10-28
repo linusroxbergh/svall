@@ -40,7 +40,6 @@ export const fieldValue = (e: Entity, field: FieldRef['field']): string =>
   (field === 'instructions' ? e.instructions : 'note' in e ? e.note : e.description);
 // the field's own name on the card; an island's note is its description, as the side card calls it
 export const fieldLabel = (r: FieldRef): string => (r.field === 'instructions' ? 'Instructions' : r.tier === 'island' ? 'Description' : 'Note');
-/** A kind's name in the What column and over the list; an island's note answers to Description there too. */
 export const kindLabel = (kind: Kind, tier: ResourceSource['tier'] | undefined): string =>
   (kind === 'note' && tier === 'island' ? 'Description' : kindOf(kind).label);
 export type Tier = ResourceSource['tier'];
@@ -219,7 +218,6 @@ export const isDoc = (sources: ResourceSource[], rootId: string, path: string): 
 /** Whether a folder is the agent profiles', whose files are written and named like docs. */
 export const isAgentProfiles = (sources: ResourceSource[], rootId: string): boolean => sources.some((s) => s.agentProfiles === rootId);
 
-/** An island's or a robot's source and the docs in it. */
 export function docsOf(sources: ResourceSource[], tier: 'island' | 'robot', id: string): { source?: ResourceSource; items: ResourceItem[] } {
   const source = sources.find((s) => s.tier === tier && (tier === 'island' ? s.islandIds[0] : s.robotIds[0]) === id);
   return { source, items: source?.groups.find((g) => g.kind === 'docs')?.items ?? [] };

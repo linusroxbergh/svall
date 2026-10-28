@@ -6,9 +6,8 @@ import { expandHome } from '../paths.js';
 // every link refresh reads each ref over again
 export const MAX_REF = 4096;
 
-// a path item is stored absolute with the kind the filesystem says; a missing path is refused; a link
-// is stored at the level worth a chip, so a view inside a PR reads as the PR.
-// an item already in the stored list is kept as is, so one dead path never blocks the rest.
+// a link is stored at the level worth a chip, so a view inside a PR reads as the PR. an item already stored is kept
+// as is, so one dead path never blocks the rest
 export function settleItems(items: ContextItem[], current: ContextItem[] = []): ContextItem[] {
   const stored = new Map(current.map((it) => [it.ref, it]));
   return items.map((raw) => {

@@ -34,8 +34,7 @@ export function resolveFile(dir: string, pathname: string): string | undefined {
 
 const BRANDED = new Set(['index.html', 'manifest.webmanifest']);
 
-/** The page and its manifest name the fleet, so two fleets installed on one phone can be told apart; the manifest may
- *  also say where a Home Screen app opens. */
+/** Names the fleet in the page and manifest, so two fleets on one phone can be told apart. */
 export function brand(file: string, text: string, fleet?: string, startUrl?: string): string {
   if (path.basename(file) === 'index.html') return fleet ? text.replace('<title>Svall</title>', `<title>Svall ${fleet}</title>`) : text;
   const manifest = JSON.parse(text) as Record<string, unknown>;

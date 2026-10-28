@@ -30,7 +30,6 @@ export const hintText = (c: Robot): string | undefined =>
 
 export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : '/hooks');
 
-// the stage of a retro, for the card of the robot that runs it
 export function retroText(retro: FleetState['retro'], id: string): string | undefined {
   if (retro?.robot !== id) return undefined;
   return retro.stage === 'reading' ? `retro reading ${retro.done}/${retro.total}` : `retro ${retro.stage}`;

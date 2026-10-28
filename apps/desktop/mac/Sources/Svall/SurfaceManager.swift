@@ -18,12 +18,10 @@ enum ControlSocket {
     }
 }
 
-/// A route to another machine: the ssh master that reaches it.
 struct RemoteRoute: Equatable {
     let destination: String, controlSocket: String
 }
 
-/// Where a terminal's tmux session runs: this Mac, or another machine over its master.
 enum ConnectionRoute: Equatable {
     case local
     case remote(RemoteRoute)
@@ -35,7 +33,6 @@ enum AttachCommand {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    /// The robot's own route when it runs on another machine, else the window's.
     static func route(_ window: ConnectionRoute, _ attach: WebAttach) -> ConnectionRoute {
         attach.via.map { .remote(RemoteRoute(destination: $0.ssh, controlSocket: $0.controlSocket)) } ?? window
     }
@@ -54,16 +51,14 @@ enum AttachCommand {
             // ssh joins the words after the destination into one line for the far login shell, which
             // splits it again, so the tmux, socket and session are quoted a second time for that shell
             let far = "\(attach.tmux.map { quote(quote($0)) } ?? "tmux") -S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
-            // past sshd's MaxSessions on the master, ssh opens a login of its own, as the master did, without a prompt
-            // ssh hands the far tmux its TERM, and Linux ships no xterm-ghostty terminfo. libghostty runs `exec -l <command>`,
-            // which would take a bare TERM= for the program, so env sets it
+            // past sshd's MaxSessions on the master, ssh opens a login of its own, without a prompt.
+            // Linux ships no xterm-ghostty terminfo, and libghostty's `exec -l` would run a bare TERM= as the program, so env sets it
             return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) \(far)"
         }
     }
 }
 
-/// The shell command a terminal on another machine runs: an ssh of its own that asks nothing, forwards no agent and
-/// joins no master, and that quits rather than open without the port forward a login's browser comes back on.
+/// An ssh of a terminal's own to another machine, which quits rather than open without the forward a login's browser comes back on.
 enum MachineCommand {
     static func build(_ machine: WebMachine) -> String? {
         guard machine.ssh.allowed(by: sshDestinationPattern) else { return nil }

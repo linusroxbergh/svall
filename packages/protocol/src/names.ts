@@ -15,7 +15,6 @@ export function fleetNameProblem(name: string, taken: string[]): string | undefi
   if (!NAME.test(name)) return 'use lowercase letters, digits and dashes, starting with a letter';
   if (DEV.test(name)) return 'dev names are kept for Svall Dev';
   if (RESERVED.includes(name)) return `svall ${name} is a command`;
-  // the profile name of ~/.svall, so no other fleet may go by it
   if (name === 'private') return 'private is the fleet in ~/.svall';
   if (taken.includes(name)) return `another fleet is called ${name}`;
   return undefined;

@@ -36,7 +36,6 @@ function sheetLine(s: MoveSheet, repo: string | undefined, machine: string): str
   ].join(' · ');
 }
 
-// one sentence and one action, as the checks or the move itself refused it
 function refuseMove(r: Refusal, json: boolean): void {
   if (json) printResult({ ok: false, refusal: r }, true);
   else process.stderr.write(`refused: ${r.reason}\n  → ${r.action}${r.action === WORKTREE_ACTION ? ' (--own-worktree)' : ''}\n`);

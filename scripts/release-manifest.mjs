@@ -1,9 +1,5 @@
-// The manifest a release carries and an installer checks it against.
-//
-// release.json describes every entry — its type, mode, size, content digest and link target —
-// and SHA256SUMS carries a digest for every file including release.json, so one detached signature
-// over SHA256SUMS covers the whole description. Nothing here downloads anything, and only signing a
-// built archive unpacks one.
+// The manifest a release carries and an installer checks it against. release.json describes every entry and SHA256SUMS
+// digests every file including release.json, so one detached signature over SHA256SUMS covers the whole release.
 
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';

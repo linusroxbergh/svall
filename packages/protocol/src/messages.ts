@@ -31,9 +31,8 @@ export const UsageWindow = z.object({
 });
 export type UsageWindow = z.infer<typeof UsageWindow>;
 
-// available is false for the logins plan limits do not cover: an API key, Bedrock, Vertex
-// idle is a fleet with no agent running, which is when no plan is asked about
-// account names the login(s) the windows belong to, when known
+// available is false for logins plan limits do not cover (API key, Bedrock, Vertex); idle, no agent running so no plan
+// is asked; account, the login(s) the windows belong to, when known
 export const UsageSnapshot = z.object({
   available: z.boolean(),
   idle: z.boolean().optional(),
@@ -79,7 +78,6 @@ export const RUN_TIMEOUT_MS = 30_000;
 // how long enabling the phone link may take, since a checkout with no phone bundle builds one first
 const MOBILE_SET_TIMEOUT_MS = 3 * 60_000;
 
-// how long a sweep of the whole fleet may take before the caller gives up on it
 const SWEEP_TIMEOUT_MS = 15 * 60_000;
 
 // how long a retro plan may take to index a month of transcripts and fetch the PR threads its reviews join
@@ -106,7 +104,7 @@ const CONSENT_TIMEOUT_MS = 15 * 60_000;
 // an agent's own update downloads its release
 export const AGENT_UPDATE_MS = 5 * 60_000;
 
-// how long the daemon holds a call before it answers: robot.wait blocks for its timeout, robot.create with a run until the agent attaches
+// how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
@@ -427,7 +425,6 @@ export type Event =
   | { event: 'mobile.phones'; data: { phones: PhoneSession[] } };
 
 export const Hello = z.object({ token: z.string() });
-/** The reply to the handshake: the daemon's protocol version. */
 export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int() });
 export type HelloResult = z.infer<typeof HelloResult>;
 // the daemon's answer to a socket it admits, which a client checks the protocol by

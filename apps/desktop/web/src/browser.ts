@@ -47,9 +47,8 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
     }
   };
 
-  // a link followed in a terminal asks whether it opens beside it, as a tab of that robot; anything the
-  // browser cannot hold, and a robot that is not there, goes straight out to the user's own browser; a path opens in the robot's Files;
-  // svall://robot/<id> and svall://island/<id> select that robot or island, as a click in the sidebar does
+  // a terminal's link: svall://robot|island/<id> selects it, a path opens in the robot's Files, a web link asks whether it
+  // opens beside the terminal, and anything else, or one from a robot that is gone, goes out to the user's own browser
   const fromTerminal = (key: string, url: string, x: number, y: number) => {
     const [, kind, target] = /^svall:\/\/(robot|island)\/([\w-]+)$/.exec(url) ?? [];
     const s = state();
@@ -135,7 +134,6 @@ export function createBrowserManager(api: Api, bridge: Bridge, store: AppStore):
 export const opensInside = (item: ContextItem): boolean =>
   item.kind !== 'file' && item.kind !== 'folder' && /^https?:/i.test(webUrl(item.ref) ?? '');
 
-// the page opens as a new tab beside the robot's terminal, with the robot in view
 export function openBeside(store: AppStore, browser: BrowserManager, id: string, url: string): void {
   const s = store.getState();
   s.focus(id);

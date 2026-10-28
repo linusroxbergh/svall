@@ -34,7 +34,6 @@ function ground(seed: string, shape: string, w: number, h: number): React.CSSPro
   };
 }
 
-// Ground inside the grass edge: soft meadow patches and a deeper middle, over the grass and under the land's grain.
 // CSS backgrounds, not an SVG pattern: WebKit redraws a pattern's tile into a new buffer on every repaint and waits for it.
 export function GrassTexture({ seed, shape, w, h }: { seed: string; shape: string; w: number; h: number }) {
   const style = useMemo(() => ground(seed, shape, w, h), [seed, shape, w, h]);

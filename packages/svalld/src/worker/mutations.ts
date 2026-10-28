@@ -14,11 +14,11 @@ import type { Store } from '../store.js';
 import type { Entry, Outbox } from './outbox.js';
 
 /** How many robots a worker starts between two of its home's acks. */
-export const OFFLINE_QUOTA = 5;
-export const quotaLine = (worker: string, n: number) => `${worker} has started ${n} robots since this Mac last answered; wait for it`;
-export const outsideClones = (worker: string, cwd: string) => `${cwd} is not inside a clone on ${worker}; start it in one`;
+const OFFLINE_QUOTA = 5;
+const quotaLine = (worker: string, n: number) => `${worker} has started ${n} robots since this Mac last answered; wait for it`;
+const outsideClones = (worker: string, cwd: string) => `${cwd} is not inside a clone on ${worker}; start it in one`;
 export const SLEPT_NOTE = (worker: string) => `started on ${worker} while this Mac slept`;
-export const NOT_HOME = 'mission control stays on this Mac; start it on another island';
+const NOT_HOME = 'mission control stays on this Mac; start it on another island';
 
 // the acknowledged mutations applied.ndjson keeps
 const APPLIED_KEPT = 500;

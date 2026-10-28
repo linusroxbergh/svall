@@ -1,7 +1,6 @@
 #!/usr/bin/env node
-// Copied to $SVALL_HOME/hooks/claude-status.mjs by svalld and `svall setup`.
-// Reports Claude's own context reading to svalld, then runs the statusline
-// command it wraps (argv[2]) on the same input and passes its output through.
+// Copied to $SVALL_HOME/hooks by svalld and `svall setup`. Reports Claude's context reading to svalld, then runs the
+// statusline command it wraps (argv[2]) on the same input and passes its output through.
 import { spawn } from 'node:child_process';
 import net from 'node:net';
 import os from 'node:os';

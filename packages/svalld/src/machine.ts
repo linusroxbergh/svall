@@ -11,7 +11,6 @@ import { createDurable, writeDurable } from './durable.js';
 const Machine = z.object({ id: MachineId, hardwareId: z.string().min(1).optional() });
 type Machine = z.infer<typeof Machine>;
 
-/** Reads this machine's hardware id, or none where it cannot be read. */
 export type HardwareReader = () => string | undefined;
 
 /** Where this installation keeps what belongs to the machine rather than to a fleet. */
@@ -49,10 +48,8 @@ export function readRegistry(dir: string = configDir()): MachineEntry[] {
   }
 }
 
-/**
- * The Mac's IOPlatformUUID, or Linux's machine-id, keyed for svall as machine-id(5) asks, so the id itself is never
- * kept. `ioreg` is named outright: launchd starts svalld on a PATH without /usr/sbin.
- */
+/** The Mac's IOPlatformUUID or Linux's machine-id, keyed as machine-id(5) asks so the raw id is never kept. `ioreg` is
+ *  named outright: launchd starts svalld on a PATH without /usr/sbin. */
 export function hardwareId(platform: NodeJS.Platform = process.platform, ioreg = '/usr/sbin/ioreg'): string | undefined {
   const keyed = (id: string | undefined): string | undefined => id && crypto.createHmac('sha256', id).update('svall').digest('hex');
   if (platform === 'darwin') {

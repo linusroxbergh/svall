@@ -45,9 +45,8 @@ if [ -d "$ROOT/apps/desktop/web/dist" ]; then
   rsync -a --delete "$ROOT/apps/desktop/web/dist/" "$APP/Contents/Resources/web/"
 fi
 
-# a release build of Svall.app carries the controller it installs: production svall and svalld, the pinned
-# Node runtime, the phone page, and the linux-x64 and linux-arm64 companions Add
-# Machine installs, each pinned by its path in the release. pnpm release names it by the tag it pushes, other builds by git describe
+# a release build carries the controller it installs: production svall and svalld, the pinned Node runtime, the phone page and
+# the linux companions Add Machine installs. pnpm release names it by the tag it pushes, other builds by git describe
 if [ "$CONFIG" = release ] && [ "$VARIANT" = release ]; then
   RELEASE="$MAC/build.noindex/release"
   COMPANIONS="$MAC/build.noindex/companions"

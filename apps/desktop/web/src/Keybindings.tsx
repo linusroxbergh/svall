@@ -8,7 +8,6 @@ type Ask = { id: ActionId; chord: Chord; from?: ActionId; ghostty?: string };
 
 const write = (bindings: Bindings) => app.store.getState().setSettings({ bindings });
 
-// the settings window's Keyboard pane
 export function Keybindings() {
   const bindings = useApp((s) => s.settings.bindings);
   const theirs = useApp((s) => s.shell?.ghosttyKeys) ?? {};

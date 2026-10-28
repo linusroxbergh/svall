@@ -7,7 +7,7 @@ import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { machineNames, plainStep, stepLabel } from './host.js';
 import { startHost } from './HostSetup.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { setupNote } from './landings.js';
 import { machineName } from './placement.js';
 
@@ -55,9 +55,8 @@ const said = (robot: string, where: string, what: string): Record<Step, Said> =>
 type Run = { at: 'going' } | { at: 'moved' } | { at: 'failed'; step: Step; error: string; moveId?: string; refused: boolean } | { at: 'lost'; error: string };
 // a retry of a stalled move: on its way, or failed with `error`, which the mark's error `over` it retried still stands for
 type Retry = { at: 'running' } | { at: 'failed'; error: string; over: string };
-// where a run stands, the robot's moving mark first: a move stalled after its commit is retried from its step. `reached`
-// is the last step a mark showed, none before one came, which stands until the move's answer comes; `arrived` is whether
-// the robot is there
+// where a run stands, the robot's moving mark first, since a move stalled after its commit is retried from its step;
+// `reached` is the last step a mark showed, which stands until the move's answer comes
 type Stand = { step: Step; done?: true; failed?: { error: string; moveId?: string; landed: boolean; refused?: boolean } };
 
 function stand(run: Run, moving: Moving | undefined, retry: Retry | undefined, reached: Step | undefined, steps: Steps, arrived: boolean): Stand {
@@ -202,12 +201,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
 
   return (
     <div className="modal-back" data-testid="move-sheet" onPointerDown={close}>
-      <div className="modal panel" ref={panel} onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // the page's own Enter and Esc would act on the map behind the sheet
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); close(); }
-        }}>
+      <div className="modal panel" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
           <Progress stand={stand(run, c.moving, retried, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
@@ -279,10 +273,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   );
 }
 
-/**
- * A running move: a bar of its steps and one line for each as it gets there; a failure is one sentence on its step,
- * with the rest behind details, and one button that tries again, checks again or retries the step.
- */
+/** A failure is one sentence on its step, the rest behind details, and one button that tries again, checks again or retries. */
 function Progress({ stand: st, words, robot, where, here, setup, close, again }: {
   stand: Stand; words: Record<Step, Said>; robot: string; where: string; here: string; setup?: string; close(): void; again(s: Stand): void;
 }) {

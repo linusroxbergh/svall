@@ -4,12 +4,10 @@
 #   scripts/release-build.sh --out <dir> --version <id> --url-base <url>
 #   scripts/release-build.sh --sign <key> --out <dir>
 #
-# The folder ends up holding svall-companion-<id>-linux-x64.tar.gz and -linux-arm64.tar.gz, and
-# svall-controller-<id>-darwin-<arch>.tar.gz, the tree the app carries, whose manifest names each companion at
-# <url>/<archive> with its digest. SVALL_RELEASE_KEY signs every manifest; without it the release is marked unsigned.
-# macOS only, as the controller is. A secret, developer path or checkout dependency in any archive fails the build.
-# The second form signs, in place, the archives a build without the key left in <dir>; the release workflow runs it in
-# a job of its own, so the key never reaches the build.
+# The folder ends up holding the linux-x64 and linux-arm64 companion archives and the darwin controller archive the app
+# carries, whose manifest pins each companion at <url>/<archive>. SVALL_RELEASE_KEY signs every manifest; without it the
+# release is marked unsigned. macOS only. A secret, developer path or checkout dependency in any archive fails the build.
+# The second form signs, in place, the archives an unsigned build left in <dir>, so the key never reaches the build job.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/.." && pwd)

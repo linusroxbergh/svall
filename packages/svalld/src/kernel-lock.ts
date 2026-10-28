@@ -6,10 +6,8 @@ import { sha256Hex } from './hash.js';
 // macOS's O_EXLOCK, which node names no constant for
 const O_EXLOCK = 0x20;
 
-/**
- * A lock the kernel holds until it is let go or its process dies, however it dies; undefined while another holds it. On
- * macOS it is `file` opened with O_EXLOCK; Linux ignores O_EXLOCK, so there it is the abstract unix socket `name`.
- */
+/** A lock the kernel holds until let go or its process dies, however it dies; undefined while another holds it. macOS
+ *  opens `file` with O_EXLOCK; Linux ignores O_EXLOCK, so there it is the abstract unix socket `name`. */
 export function tryLock(file: string, name: string): Promise<(() => void) | undefined> {
   return process.platform === 'linux' ? lockSocket(name) : Promise.resolve(lockFile(file));
 }
@@ -38,10 +36,8 @@ function lockSocket(name: string): Promise<(() => void) | undefined> {
   });
 }
 
-/**
- * Holds this user's agent files for a mirror's apply or a move's trust seed, waiting while another fleet's daemon holds
- * them: every fleet's mirror on a machine writes the same files. Rejects once `signal` aborts before it holds them.
- */
+/** Holds this user's agent files for a mirror's apply or a move's trust seed, waiting while another fleet's daemon holds
+ *  them, as every fleet's mirror writes the same files. Rejects once `signal` aborts before it holds them. */
 export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {
   const name = `svall-mirror-${sha256Hex(fs.realpathSync(homedir))}`;
   for (;;) {

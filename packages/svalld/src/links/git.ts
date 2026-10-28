@@ -13,10 +13,7 @@ export type GitRunner = (args: readonly string[], cwd: string) => Promise<GitRes
 // variables that would point git at another repository than the one around cwd
 const REDIRECTS = ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'GIT_COMMON_DIR', 'GIT_OBJECT_DIRECTORY', 'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_NAMESPACE'];
 
-/**
- * git as a reader beside the user's own: messages in English, and no index refresh that takes its lock. `config` is set
- * for every command, ahead of what the repository says.
- */
+/** git as a reader beside the user's own: English messages, no index refresh that takes its lock, `config` over the repo's. */
 function gitRunner(timeoutMs = 300_000, killSignal: NodeJS.Signals = 'SIGTERM', config: readonly string[] = [], more: NodeJS.ProcessEnv = {}): GitRunner {
   const env: NodeJS.ProcessEnv = { ...process.env, LC_ALL: 'C', GIT_OPTIONAL_LOCKS: '0', ...more };
   for (const k of REDIRECTS) delete env[k];
@@ -54,7 +51,6 @@ export async function must(git: GitRunner, args: readonly string[], cwd: string,
   return r.stdout;
 }
 
-/** `git --version`'s number, or nothing where git cannot run. */
 export async function gitVersion(git: GitRunner = hooklessGit): Promise<string | undefined> {
   const r = await git(['--version'], '/');
   return r.code === 0 ? /(\d+\.\d+(?:\.\d+)?)/.exec(r.stdout)?.[1] : undefined;

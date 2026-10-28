@@ -20,7 +20,6 @@ import { Client } from '../client.js';
 import type { Target } from '../target.js';
 import { daemonRuns } from './setup.js';
 
-// stdin to link.sock and the socket back to stdout, until either side ends
 function proxy(sock: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const socket = net.connect(sock);
@@ -43,7 +42,6 @@ async function readAll(input: NodeJS.ReadableStream): Promise<string> {
   return text;
 }
 
-// the value read without echo from a terminal, or whole from a pipe with one trailing newline trimmed
 async function readSecret(name: string): Promise<string> {
   if (process.stdin.isTTY !== true) return (await readAll(process.stdin)).replace(/\r?\n$/, '');
   const muted = new Writable({ write: (_c, _e, done) => done() });

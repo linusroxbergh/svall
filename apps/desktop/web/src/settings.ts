@@ -39,7 +39,6 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 export const OPACITY = { min: 0.3, max: 1, step: 0.05 };
 
-// the fill is on offer only where the user asked for it and the shell found the CLI
 export const canFill = (s: { settings: Settings; shell?: { op: boolean } }): boolean => s.settings.onePassword && !!s.shell?.op;
 
 // the gap CSS leaves between a settings row and the tip that belongs to it
@@ -82,7 +81,7 @@ function readBindings(v: unknown): Bindings {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out: Bindings = {};
   for (const saved of Object.keys(o)) {
-    // an older app saved the robot keys as newCharacter, nextCharacter and the like
+    // bindings saved as newCharacter, nextCharacter and the like are the robot keys
     const id = saved.replace('Character', 'Robot');
     if (!(id in ACTIONS)) continue;
     const chord = o[saved];

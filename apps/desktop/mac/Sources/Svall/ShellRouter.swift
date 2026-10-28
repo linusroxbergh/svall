@@ -21,13 +21,11 @@ final class ShellRouter {
     // whether a page panel holds a rect of the surfaces
     private var holding = false
     private var presses: Any?
-    // whether the page has sent .connection since it last loaded, and what a banner click or answer sent before that;
-    // before it has, a token would be sent into nothing
+    // whether the page has sent .connection since it last loaded
     private var listening = false
     private var pendingNotify: [FromShell] = []
     // since when the app has sat in the background or minimised, until its page is offered a fresh start
     private var awaySince: Date?
-    // the menu's Quit, which shows the chord the page quits with
     private let quitItem: NSMenuItem
     private let menu: AppMenu
     private lazy var quitFlow = QuitFlow(send: { [weak self] in self?.bridge.send($0) }, isListening: { [weak self] in self?.listening ?? false },
@@ -99,7 +97,6 @@ final class ShellRouter {
         Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.offerFreshPage() }
     }
 
-    // the app counts as in front only while its window isn't sitting minimised in the Dock
     private func sendAppActive() {
         let active = NSApp.isActive && !(webView.window?.isMiniaturized ?? false)
         awaySince = active ? nil : awaySince ?? Date()
@@ -118,7 +115,6 @@ final class ShellRouter {
     func reset() {
         surfaces.closeAll()
         browsers.closeAll()
-        // the panel that asked for the hole is gone with the page, and a new one asks again
         holding = false
         surfaces.setCutout(rects: [], passive: [])
         browsers.setCutout(rects: [], passive: [])
@@ -126,9 +122,7 @@ final class ShellRouter {
         keys.capturing = false
         setQuit(KeyMonitor.defaultQuit)
         menu.reset()
-        // the page that posted the banners is gone, and the one loading has no record of them
         notifier.clearAll()
-        // the page that asked for the hold is gone, and the one loading asks again
         awake.release()
         listening = false
         quitFlow.pageGone()
@@ -160,7 +154,6 @@ final class ShellRouter {
         awake.release()
     }
 
-    // a banner's click brings this fleet's window up, restored if it sat in the Dock
     private func open(_ key: String) {
         NSApp.activate()
         if let window = webView.window {
@@ -170,8 +163,7 @@ final class ShellRouter {
         sendNotify(.notifyOpen(key: key))
     }
 
-    // holds a banner click or answer until the page has said it is listening, since one that arrives before
-    // that (a relaunch, a reload) would otherwise vanish into an unloaded page
+    // a banner click or answer that arrives before the page listens (a relaunch, a reload) waits, or it would vanish
     private func sendNotify(_ message: FromShell) {
         if listening { bridge.send(message) } else { pendingNotify.append(message) }
     }
@@ -316,7 +308,6 @@ final class ShellRouter {
         }
     }
 
-    // a fleet whose window is open is brought up; any other opens in a new instance of this app
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
         let done = { [weak self] in if quit { self?.quit(quietly: true) } }
@@ -361,7 +352,6 @@ final class ShellRouter {
         }
     }
 
-    /// The registry as `svall host list --json` gives it; a list asked for while one runs is read again after it.
     private func listMachines() {
         if listing != nil { listAgain = true; return }
         guard let executable = BundledSvall.locate() else {
@@ -386,11 +376,9 @@ final class ShellRouter {
 
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
-                               ghosttyKeys: GhosttyKeybinds.userChords(), profile: SvallHome.profile))
+                               ghosttyKeys: GhosttyKeybinds.userChords()))
     }
 
-    // a press the page can see is answered by the page's own listener, which knows the panel's own tab from
-    // the rest of it; only a press the surfaces above the page swallow is reported here
     private func pressed(_ event: NSEvent) {
         guard holding, event.window === container.window else { return }
         let hit = container.hitTest(container.convert(event.locationInWindow, from: nil))

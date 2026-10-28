@@ -47,9 +47,8 @@ function queued(e: Entry): string | undefined {
 const COMMAND = /<command-name>([^<]*)<\/command-name>/;
 const COMMAND_ARGS = /<command-args>([\s\S]*?)<\/command-args>/;
 
-// Claude Code stamps the turns a person typed with a human origin. Everything else sharing the user
-// stream — tool results, task notifications, interrupts, local command output — is its own writing.
-// A typed slash command is the exception: it arrives unstamped, inside a command envelope.
+// Claude Code stamps only typed turns with a human origin; tool results, notifications and interrupts in the user stream are
+// its own. A typed slash command is the exception: unstamped, inside a command envelope
 export function submitted(e: Entry): string | undefined {
   if (e.type === 'attachment') return e.attachment?.commandMode === 'prompt' && e.attachment.origin?.kind === 'human' ? queued(e) : undefined;
   if (e.type !== 'user' || e.isSidechain || e.isMeta) return undefined;
@@ -103,7 +102,7 @@ export function userPromptsClaude(text: string, limit: number, pending?: Pending
   return list.slice(0, limit);
 }
 
-// toolLinks adds the URLs tool calls were given or printed, which are otherwise left out
+// toolLinks keeps the URLs tool calls were given or printed
 export function condenseTurnsClaude(text: string, turns: number, { toolLinks = false } = {}): string {
   const rendered = entries(text)
     .filter((e) => !e.isSidechain)

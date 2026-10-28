@@ -141,9 +141,8 @@ const once = (files: string[]): string[] => {
   return files.filter((file, i) => files.findIndex((f) => real(f) === real(file)) === i);
 };
 
-// takes back what setup put outside the fleet homes: the Claude hooks and statusline, the Codex hooks and the OpenCode
-// plugin that run `home`'s scripts, every fleet's phone link, service and tmux server, the keys a home's mirror copied into
-// the agents' files, the installed releases and the shims. The fleets' own data stays for purge.
+// takes back what setup put outside the fleet homes: the hooks, statusline and plugin running `home`'s scripts, every
+// fleet's phone link, service and tmux server, the mirror's copied keys, the releases and the shims; fleet data stays for purge
 export async function runUninstall(o: {
   home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
   mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; cache?: string; run?: Run;
@@ -201,7 +200,7 @@ export async function runUninstall(o: {
   }
   // the keys a home's mirror copied into the agent files its daemons wrote, now that nothing runs to write them back; the
   // mirror is loaded here, as it leads through docs-sync to the fleet, which loads this one
-  const { takeBackCopies } = await import('./placement/mirror.js');
+  const { takeBackCopies } = await import('./placement/mirror-apply.js');
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
   for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));

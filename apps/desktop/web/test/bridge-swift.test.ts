@@ -66,8 +66,8 @@ describe('bridge between the page and the shell', () => {
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
 
-  it('the shell info carries the home, its log, 1Password, the Ghostty chords and the profile', () => {
-    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op', 'profile']);
+  it('the shell info carries the home, its log, 1Password and the Ghostty chords', () => {
+    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['ghosttyKeys', 'home', 'log', 'op']);
   });
 });
 

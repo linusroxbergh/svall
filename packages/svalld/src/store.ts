@@ -29,7 +29,6 @@ function keptCopy(file: string): string | undefined {
 export class Store {
   private listeners = new Set<Listener>();
   private writing?: NodeJS.Timeout;
-  // a change not yet on disk
   private dirty = false;
   private batching = false;
   // the `withheld` calls under way, the flushes waiting for them to end, and the hold the running code is inside

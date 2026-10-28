@@ -1,11 +1,11 @@
 import { spawn, type ChildProcess } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { Duplex } from 'node:stream';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { sha256Hex } from '../hash.js';
 import { runProcess, type RunResult } from './process.js';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
@@ -30,7 +30,7 @@ const PATTERNS: [RegExp, SshErrorKind][] = [
   [SSH_AUTH, 'auth'],
   // a close during authentication names the user or says preauth; every other close is the transport's
   [/connection closed by (authenticating|invalid) user|\[preauth\]/i, 'auth'],
-  // Tailscale SSH in check mode waits for a check in the browser, which batch mode never takes
+  // batch mode never takes Tailscale's browser check
   [SSH_APPROVAL, 'auth'],
   [SSH_HOST_KEY, 'host_key'],
   [/connection refused|connection timed out|operation timed out|could not resolve|name or service not known|no route to host|network is unreachable/i, 'unreachable'],
@@ -43,9 +43,8 @@ export function classifySsh(stderr: string): SshErrorKind {
 }
 
 /**
- * A far command's exit: ssh's own failure (255), an `svall` the far shell could not run (126, 127),
- * else `otherwise`. A mux client whose master went away, or whose run was killed, exits 255 with
- * nothing said or dies of a signal; that is the transport.
+ * A far command's exit: ssh's own failure (255), an `svall` the far shell could not run (126, 127), else `otherwise`. A mux
+ * client whose master went away exits 255 silently or dies of a signal; that is the transport.
  */
 export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, otherwise: SshErrorKind): SshErrorKind {
   if (r.code === null || r.signal !== null) return 'unreachable';
@@ -55,21 +54,18 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
 }
 
 /**
- * The host every command on a master names. ssh reaches the far machine only through the master's
- * socket; with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the search domains,
- * so nothing falls back to a connection of its own that no one checked reaches the machine meant.
+ * The host every command on a master names: with no master, an `.invalid` name (RFC 6761) resolves nowhere, whatever the
+ * search domains, so ssh never falls back to an unchecked connection of its own.
  */
 const REMOTE_HOST = 'svall-remote.invalid';
 
-/** This user's folder for sockets in a temp directory. */
 function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
   return path.join(tmp, `svall-${process.getuid?.() ?? 0}`);
 }
 
 /**
- * A directory in a world-writable temp that only this user can reach. mkdir sets the mode on a
- * directory it creates, so one that was already there — or a symlink someone else left in its
- * place — has to be read back before a socket is put in it.
+ * mkdir sets the mode only on a directory it creates, so one already there, or a symlink someone left in its place, is read
+ * back before a socket goes in it.
  */
 function ownSocketDir(dir: string): string {
   try {
@@ -88,7 +84,7 @@ function ownSocketDir(dir: string): string {
 // a control socket path has to stay under the Unix socket limit, so the destination is hashed short.
 // The pid in front keeps each process on a master of its own, and names whose master it is once that process is gone
 const socketFor = (dir: string, destination: string): string =>
-  path.join(dir, `${process.pid}-${crypto.createHash('sha256').update(destination).digest('hex').slice(0, 12)}`);
+  path.join(dir, `${process.pid}-${sha256Hex(destination).slice(0, 12)}`);
 
 /** One master per socket path, so two callers in this process reaching the same destination share the connection. */
 const masters = new Map<string, Promise<SshMaster>>();
@@ -202,11 +198,8 @@ export class SshMaster {
   }
 
   /**
-   * Runs a command on the far machine. ssh re-enters its own option parsing after the destination
-   * only when no `--` preceded it (ssh.c `opt_terminated`), so the one `--` in `argv` makes the
-   * destination data and sends every remote argument on verbatim — a second one would arrive at the
-   * far shell as a word. That shell is handed the argv as a single line, so anything but a literal
-   * flag goes through `shq` first.
+   * The one `--` in `argv` sends every remote argument on verbatim (ssh.c `opt_terminated`); a second would reach the far
+   * shell as a word. That shell gets the argv as one line, so anything but a literal flag goes through `shq` first.
    */
   run(argv: string[], o: { timeoutMs?: number; signal?: AbortSignal; maxOutputBytes?: number; input?: string | Uint8Array } = {}): Promise<RunResult> {
     return runProcess('ssh', this.argv([], argv), { ...o, timeoutMs: o.timeoutMs ?? RUN_TIMEOUT });

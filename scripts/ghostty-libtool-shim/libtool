@@ -1,7 +1,6 @@
 #!/bin/sh
-# Apple libtool (cctools_ld-1267) silently drops archive members that are not
-# 8-byte aligned instead of erroring, so explode every input .a into loose
-# .o files first (libtool keeps everything given loose objects).
+# Apple libtool (cctools_ld-1267) silently drops archive members that are not 8-byte aligned,
+# so every input .a is exploded into loose .o files first.
 set -eu
 
 REAL=""

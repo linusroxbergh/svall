@@ -1,7 +1,5 @@
 #!/usr/bin/env node
 // A hook probe, run by hand; no build or CI runs it.
-
-// Records only session identity and transcript location from a disposable hook run.
 import fs from 'node:fs';
 
 const output = process.env.SVALL_CLAUDE_HOOK_PROBE;

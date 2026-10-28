@@ -4,10 +4,7 @@ import { robotsOf, startCwd } from '../selectors.js';
 
 export type CwdChoice = { path: string; label: string };
 
-/**
- * Where a new robot may start without a path being typed: the island's own directories, then the
- * rest of the fleet's, then the fleet default. Home crew are offered the home cwd first.
- */
+/** Start directories offered without typing a path: the home cwd for home crew, then the island's own, then the rest. */
 export function cwdChoices(f: FleetState, islandId: string): CwdChoice[] {
   const island = f.islands[islandId];
   const first = island?.kind === 'home' ? [f.home.cwd] : [];

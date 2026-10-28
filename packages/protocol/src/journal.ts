@@ -4,7 +4,7 @@ import { Robot } from './state.js';
 
 export const MutationId = z.string().regex(/^mu_[0-9a-z]{10}$/);
 /** The calls a worker serves itself while its home is away, journaled as mutations. */
-export const MUTATIONS = ['robot.create', 'robot.update', 'robot.close', 'robot.run'] as const;
+const MUTATIONS = ['robot.create', 'robot.update', 'robot.close', 'robot.run'] as const;
 /** The robot fields an offline `robot update` may change. */
 export const UPDATE_FIELDS = ['name', 'note', 'context', 'instructions'] as const;
 

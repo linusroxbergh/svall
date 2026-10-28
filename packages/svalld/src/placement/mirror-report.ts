@@ -8,9 +8,9 @@ import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import {
-  DOC_NAMES, docWithOverride, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirroredServer, type MirrorHomes, type MirrorPlan,
-} from './mirror.js';
+import { docWithOverride } from './mirror-apply.js';
+import type { MirroredServer, MirrorPlan } from './mirror-plan.js';
+import { DOC_NAMES, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirrorHomes } from './mirror-state.js';
 
 // how a Linux worker gets the runtime a server's command names
 const INSTALL_RUN: Record<string, string> = {
@@ -20,8 +20,8 @@ const INSTALL_RUN: Record<string, string> = {
 
 const Place = z.array(z.union([z.string(), z.number()]));
 // where an item lies on the worker: in config file `doc`, or in the file the mirror writes whole landing at `file`, at
-// `place` as the Mac holds it; lazy, as mirror.ts, which names the docs, imports this module
-const Where = { doc: z.lazy(() => z.enum(DOC_NAMES)).optional(), file: z.string().optional(), place: Place };
+// `place` as the Mac holds it
+const Where = { doc: z.enum(DOC_NAMES).optional(), file: z.string().optional(), place: Place };
 /** An item with keys: `bare` what the mirror carries at its place with every key emptied, and each secret field's leaf under it. */
 const Keyed = z.object({ item: z.string(), ...Where, bare: z.record(z.string(), z.unknown()), fields: z.array(z.object({ field: z.string(), leaf: Place })) });
 /** An item the mirror carries whole once ticked, and the fields it holds at its place. */
@@ -38,9 +38,8 @@ export const ReportAsk = z.object({
 });
 export type ReportAsk = z.infer<typeof ReportAsk>;
 /**
- * What a worker holds and runs: each command found, each variable its daemon has, each secret field non-empty there by
- * its field key, as the copy the mirror wrote or its own, each item carried whole that lies there, and each Claude OAuth
- * server it is logged in to, by item.
+ * What a worker holds and runs: commands found, variables its daemon has, each secret field non-empty there as the mirror's
+ * copy or its own, each item carried whole that lies there, and each Claude OAuth server logged in, by item.
  */
 export const ConfigReport = z.object({
   commands: z.record(z.string(), z.boolean()), vars: z.record(z.string(), z.boolean()), secrets: z.record(z.string(), z.enum(['copied', 'own'])),
@@ -54,7 +53,6 @@ const isDoc = (v: unknown): v is Doc => typeof v === 'object' && v !== null && !
 // the servers the mirror carries: an unknown one only once ticked whole
 const carried = (plan: MirrorPlan): MirroredServer[] => plan.servers.filter((s) => Object.keys(s.entry).length > 0);
 
-/** What to ask a worker about `plan`. */
 export function reportAsk(plan: MirrorPlan): ReportAsk {
   // a server's doc, or else the plugin server file it travels in, by where that lands
   const where = (s: MirroredServer): { doc: DocName } | { file: string } | undefined => {
@@ -104,10 +102,8 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
 }
 
 /**
- * A worker's answer to `ask`: each command on its daemon's PATH, or at an absolute one moved into this home as the
- * mirror moves it; each variable non-empty in its daemon's environment or its .env; each secret field where the mirror
- * writes it here, overrides merged, unless empty or as the mirror leaves it bare; each item carried whole that lies where
- * the mirror puts it, as its record says; each Claude server with a login in its credentials.
+ * A worker's answer to `ask`, each thing looked for where the mirror writes it here, overrides merged; a secret field counts
+ * only when neither empty nor as the mirror leaves it bare.
  */
 export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string }): ConfigReport {
   const move = mover(ask, o);
@@ -118,8 +114,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     if (!docs.has(name)) docs.set(name, docWithOverride(name, o));
     return docs.get(name);
   };
-  // a file the mirror writes whole as it stands here, its override standing in for it: whether it is there, its JSON and
-  // whether it is as the mirror wrote it
+  // a file the mirror writes whole as it stands here, its override standing in for it
   const fileHere = (to: string): { there: boolean; doc: unknown; copied: boolean } => {
     if (!to.startsWith('claude/')) return { there: false, doc: undefined, copied: false };
     const override = path.join(o.overrides, to);
@@ -184,11 +179,8 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
 }
 
 /**
- * The setup rows of the mirror to machine `o.machine` by `plan` and what the worker reported, in this order: each server
- * with keys or fields Svall does not know, each variable, login and missing runtime its servers need, the Mac-only
- * servers, each config file with keys, each plugin config and each file that cannot be read. Without a report a row that
- * hangs on one says `o.unchecked`, and a key row that its change is saved for when the machine links. `o.overrides`
- * names the fleet's overrides folder there.
+ * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
+ * says `o.unchecked`, and a key row that its change is saved for when the machine links.
  */
 export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string }): SetupRow[] {
   const m = o.machine;

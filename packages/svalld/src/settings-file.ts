@@ -8,7 +8,6 @@ export const readOrUndefined = (file: string): string | undefined => {
 
 export type JsonSettings = { file: string; text?: string; settings: Record<string, unknown> };
 
-/** Whether two JSON values hold the same. */
 export const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /** `next`, whose keys keep the order the file's had, as JSON written the way `text` is: its indent, line endings and trailing newline, and only ASCII if it held only ASCII. */

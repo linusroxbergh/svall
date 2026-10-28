@@ -6,11 +6,8 @@ import { docsGroups, rootIdOf } from './scan.js';
 // a worker's docs are its copy of this Mac's, and its memory and MCP servers are in its user's Claude config
 const FAR_ONLY = new Set<ResourceKind>(['docs', 'autoMemory', 'mcp']);
 
-/**
- * The shelf with each worker's clones on it, their root ids and rows naming the worker, their docs in this Mac's folder
- * for each clone as this Mac names it; a slug folder that is one of those is no orphan. A worker's other sources are its
- * copies of this Mac's, and are left out.
- */
+/** Adds each worker's clones, ids naming the worker and docs in this Mac's folder for the clone; a slug folder that is one of
+ *  those is no orphan. A worker's other sources are copies of this Mac's, and are left out. */
 export function mergeSources(
   home: ResourceSource[], far: { machine: MachineId; sources: ResourceSource[] }[], o: { docs: string; machines: FleetState['machines']; homedir: string },
 ): ResourceSource[] {

@@ -14,7 +14,6 @@ const [UP, DOWN, ENTER] = ['\x1b[A', '\x1b[B', '\r'];
 
 const modeOf = (file: string): number => (fs.statSync(file, { throwIfNoEntry: false })?.mode ?? 0o600) & 0o777;
 
-// a file's text, or undefined for no file
 function textOf(file: string): string | undefined {
   try { return fs.readFileSync(file, 'utf8'); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
@@ -47,16 +46,15 @@ function seedCodex(agentHome: string, key: string): 'seeded' | 'skipped' {
 }
 
 // `ms`, or less when `signal` aborts first
-const nap = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve) => {
+export const nap = (ms: number, signal?: AbortSignal): Promise<void> => new Promise((resolve) => {
   const done = () => { clearTimeout(timer); signal?.removeEventListener('abort', done); resolve(); };
   const timer = setTimeout(done, ms);
   signal?.addEventListener('abort', done);
 });
 
 /**
- * Trusts the clone's main checkout, and so every worktree in it, in the agent's own file: written read-modify-write while
- * holding the agent files of the user at `homedir`, as a mirror's apply does, and only while no agent of that kind runs,
- * which would write the file over again. Rejects once a mirror has held those files `waitMs`. OpenCode never asks.
+ * Trusts the clone's main checkout, and so its worktrees, in the agent's own file, holding the user's agent files as a mirror's
+ * apply does, and only while no agent of that kind runs to write over it. Rejects once a mirror held them `waitMs`; OpenCode never asks.
  */
 export async function seedTrust(
   kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean>; waitMs: number },

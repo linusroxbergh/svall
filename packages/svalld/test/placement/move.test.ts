@@ -21,10 +21,10 @@ afterEach(async () => {
 });
 const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w = moveWorld(o); worlds.push(w); return w; };
 
-// fires `then` at a step's edge, once
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
 const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ 1. No, exit', '   2. Yes, I trust this folder'];
 
+// fires `then` at a step's edge, once
 const at = (name: Failpoint, edge: Edge, then: () => void): void => {
   let done = false;
   disarm = armFailpoints((n, e) => { if (!done && n === name && e === edge) { done = true; then(); } });

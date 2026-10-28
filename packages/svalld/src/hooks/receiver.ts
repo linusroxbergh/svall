@@ -4,9 +4,8 @@ import path from 'node:path';
 import { AgentKind, isSessionId } from '@svall/protocol';
 import type { Logger } from '../log.js';
 
-// Claude Code ends a turn an API error cut short with StopFailure, in place of Stop. PermissionRequest,
-// SubagentStart and SubagentStop only say which subagent asked, and when one starts and is gone. A tool that has run,
-// or failed, was answered if it asked, which is the first word that a picked choice gives
+// StopFailure ends a turn an API error cut short; PermissionRequest and Subagent* only say which subagent asked, started or
+// is gone. A tool that has run, or failed, was answered if it asked, the first word that a picked choice gives
 export const CLAUDE_HOOKS = ['SessionStart', 'UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PostToolUseFailure', 'PermissionRequest', 'Notification', 'Stop', 'StopFailure', 'SubagentStart', 'SubagentStop', 'SessionEnd'] as const;
 // codex asks permission through an event of its own, where Claude Code sends a notification, and says
 // when the tool it asked about has run, which is the only word that the wait is over. An Esc ends its turn with Interrupt
@@ -42,7 +41,6 @@ export type HookEvent = {
   monitor?: string;
   // the subagent the event came from, or the one any agent says started or stopped
   agentId?: string;
-  // the tool a tool or permission event is about
   toolName?: string;
   cwd?: string;
   // 2 when the event comes from the robot's second terminal

@@ -81,7 +81,6 @@ export async function flushDoc(id: string, path: string): Promise<void> {
   await flush(key(id, path));
 }
 
-/** Writes every doc's unsaved edits now. */
 export async function flushDocs(): Promise<void> {
   await Promise.all([...docs.keys()].map(flush));
 }

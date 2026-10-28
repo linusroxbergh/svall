@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { frontmatter, type TargetClass } from '@svall/protocol';
+import { sha256Hex } from '../hash.js';
 import { realPath } from '../paths.js';
 import { plugins } from '../resources/parse.js';
 import { fleetHomes } from '../uninstall.js';
@@ -47,13 +47,9 @@ const syncedSkills = (claude: string): Found[] => names(path.join(claude, 'skill
 
 const SETTINGS = /^(settings(\.local)?|hooks)\.json$/;
 const tilde = (p: string, home: string): string => (within(p, home) ? `~${p.slice(home.length)}` : p);
-const sha256 = (b: Buffer): string => crypto.createHash('sha256').update(b).digest('hex');
 
-/**
- * The skills and rule files the agents read here, from Claude's and Codex's own folders, ~/.agents, mission control's and
- * the repos'. The first of a real path is kept; a repo's or mission control's file whose real path leaves its folder, as a
- * committed link may, is none, and skills of one name under different folders each have their folder in their id.
- */
+/** The first of a real path is kept; a repo's or mission control's file whose real path leaves its folder, as a committed
+ *  link may, is none, and skills of one name under different folders carry their folder in their id. */
 export async function inventory(o: {
   homedir: string; claudeDir: string; codexDir: string; repos: string[]; homeCwd: string; reviewSkills?: string[]; isGitWithRemote: (realPath: string) => boolean | Promise<boolean>;
 }): Promise<Target[]> {
@@ -102,7 +98,7 @@ export async function inventory(o: {
     ids.add(id);
     const { description } = f.kind === 'skill' ? frontmatter(bytes.toString('utf8')) : {};
     out.push({
-      id, kind: f.kind, name: f.name, ...(description && { description }), path: f.path, realPath: real, class: await classOf(real), hash: sha256(bytes),
+      id, kind: f.kind, name: f.name, ...(description && { description }), path: f.path, realPath: real, class: await classOf(real), hash: sha256Hex(bytes),
       review: f.kind === 'skill' && (f.name.includes('review') || review.has(f.name)),
     });
   }
@@ -112,7 +108,7 @@ export async function inventory(o: {
 /** The target's file as the judge reads it, its secrets masked, and the hash of the bytes read. */
 export function targetText(t: Target): { text: string; hash: string } {
   const bytes = fs.readFileSync(t.realPath);
-  return { text: redact(bytes.toString('utf8')), hash: sha256(bytes) };
+  return { text: redact(bytes.toString('utf8')), hash: sha256Hex(bytes) };
 }
 
 /** The targets that fit in `maxTokens` at `ratio` characters a token, the most named first; `ts` holds a target once for each note naming it. */

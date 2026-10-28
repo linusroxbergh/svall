@@ -15,7 +15,6 @@ function dropTargetAt(doc: Document, x: number, y: number): DropTarget | undefin
 }
 
 // every path arrives as a file; the daemon stats it and keeps folders as folders.
-// a rejected path (e.g. one that vanished mid-drag) reaches onError instead of vanishing silently.
 export function appendItems(api: Api, fleet: FleetState, target: DropTarget, paths: string[], onError: (message: string) => void): void {
   const items: ContextItem[] = paths.map((ref) => ({ kind: 'file', ref, label: '', source: 'manual' }));
   const call = target.kind === 'island'

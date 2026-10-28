@@ -55,7 +55,6 @@ enum ExternalURL {
         do { try process.run() } catch { NSLog("open %@: %@", args.joined(separator: " "), "\(error)") }
     }
 
-    /// Shows a file selected in its Finder window.
     static func reveal(_ path: String) {
         guard FileManager.default.fileExists(atPath: path) else { NSLog("refused to reveal: %@", path); return }
         NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])

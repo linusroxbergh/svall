@@ -25,7 +25,6 @@
 .map-world .island svg{display:block;overflow:visible;pointer-events:none}
 .map-world .island .land{cursor:grab}
 .island .grass{filter:brightness(var(--map-tone, 1)) drop-shadow(0 1px 1px color-mix(in srgb, var(--ink-land) 22%, transparent))}
-/* the ground's textures and the waterline over them are layers over the land's svg, out of hit testing */
 .island > .grass-texture,.island > .land-texture,.island > .waterline{position:absolute;left:0;top:0;width:100%;height:100%;pointer-events:none}
 .island > .land-texture{opacity:.22}
 .map-world .island[data-dragging="true"]{opacity:.7}
@@ -166,7 +165,7 @@
 .tok .chip.more:hover{background:var(--surface-2);color:var(--ink)}
 
 
-/* robot portraits: the top edge a meter of the context used, the name under it in a band two lines tall, the robot standing below on a soft shadow */
+/* robot portraits: the top edge is a meter of the context used */
 .tok .edge{--st:var(--idle);position:relative;height:calc(var(--tok)*.17);background:color-mix(in srgb, var(--st) 26%, var(--card-band))}
 .tok[data-status=working] .edge{--st:var(--working)}
 .tok[data-status=blocked] .edge{--st:var(--blocked)}
@@ -203,19 +202,18 @@
 .tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 .tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
 .tok .mark.monitor{background:var(--pt-sky);color:var(--map-2)}
-/* the subagents running as a capsule on the top-left corner, clear of the other marks, their count as large as the name */
+/* the subagent count, on the top-left corner clear of the other marks */
 .tok .corner .marks.left{right:auto;left:calc(var(--tok)*-.12)}
 .tok .mark.subs{width:auto;display:inline-flex;gap:calc(var(--tok)*.05);padding:0 calc(var(--tok)*.13) 0 calc(var(--tok)*.1);
   border-radius:calc(var(--tok)*.27);color:var(--ink-land);
   font-size:calc(var(--tok)*.32);font-weight:var(--w-bold);line-height:1;font-variant-numeric:tabular-nums}
 .tok .mark.subs svg{flex:none;width:calc(var(--tok)*.32);height:calc(var(--tok)*.32)}
-/* the machine a robot on a worker runs on, in the colour that means it, here and wherever else it shows; each place sets its size */
+/* a robot's machine, wherever it shows; each place sets its size */
 .mline{display:flex;align-items:center;gap:var(--sp-xs);min-width:0;color:var(--away);font-weight:var(--w-medium);white-space:nowrap}
 .mline>span{overflow:hidden;text-overflow:ellipsis}
 .mline b{font-weight:inherit}
 .mline .ind-glyph{flex:none;width:1em;height:1em}
-/* the worker a placed robot runs on, else the stage of a retro it runs, a band topping its card, theme.token.band tall: the
-   card grows up by the band, so the figure, the frame, the foot and the marks keep their places */
+/* the worker or retro band tops the card, theme.token.band tall: the card grows up by it, so everything else keeps its place */
 .tok .mach{flex:none;justify-content:center;gap:calc(var(--tok)*.08);height:calc(var(--tok)*.38);padding:0 calc(var(--tok)*.1);
   background:var(--away);color:var(--ink-on-away);font-size:calc(var(--tok)*.22);font-weight:var(--w-bold);letter-spacing:var(--track-loose);text-transform:uppercase}
 .tok .mach.retro{background:var(--surface-2);color:var(--ink)}

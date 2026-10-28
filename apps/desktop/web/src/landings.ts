@@ -10,10 +10,8 @@ export function setupNote(rows: SetupRow[]): string | undefined {
   return gaps.some(wayOn) ? `${n} ${n === 1 ? 'part' : 'parts'} of its agent setup will not work there.` : undefined;
 }
 
-/**
- * When a robot lands on a worker, a toast says how much of its agent setup will not work there, and Show opens its
- * card; the robot's open move sheet says it in its done line instead.
- */
+/** A robot landing on a worker toasts how much of its agent setup will not work there, with Show to open its card;
+ * an open move sheet says it in its done line instead. */
 export function followLandings(o: { store: AppStore; api: () => Pick<Api, 'call'> | undefined }): () => void {
   return o.store.subscribe((s, prev) => {
     for (const [id, was] of Object.entries(prev.fleet.robots)) {

@@ -102,7 +102,6 @@ const binTarball = (version: string) => `https://registry.npmjs.org/@anthropic-a
 const CLAUDE_STRINGS = [',"projects")', '}.jsonl`', '.claude.json', '.config.json', 'settings.local.json',
   'hasTrustDialogAccepted', 'bypassPermissionsModeAccepted', 'skipDangerousModePermissionPrompt'];
 
-/** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types. */
 const DAY = 24 * 60 * 60 * 1000;
 
 /** The Claude Code release to check: the newest, or while its Agent SDK isn't out yet, the newest one an SDK types.

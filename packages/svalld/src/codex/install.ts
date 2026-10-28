@@ -5,7 +5,6 @@ import { shq } from '../text.js';
 
 export type CodexPaths = { dir: string; config: string; hooks: string };
 
-/** Where Codex keeps its files: CODEX_HOME, else ~/.codex. */
 export function codexPaths(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): CodexPaths {
   const dir = env.CODEX_HOME ? path.resolve(env.CODEX_HOME) : path.join(home, '.codex');
   return { dir, config: path.join(dir, 'config.toml'), hooks: path.join(dir, 'hooks.json') };
@@ -18,6 +17,8 @@ export const USERNS_RESTRICTED = '/proc/sys/kernel/apparmor_restrict_unprivilege
 export const BWRAP_PROFILE = 'sudo apt install bubblewrap apparmor-profiles, sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/, then sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
 // the same, as one line to type
 export const BWRAP_COMMAND = 'sudo apt install bubblewrap apparmor-profiles && sudo install -m 0644 /usr/share/apparmor/extra-profiles/bwrap-userns-restrict /etc/apparmor.d/ && sudo apparmor_parser -r /etc/apparmor.d/bwrap-userns-restrict';
+// what `codex sandbox` writes when AppArmor denies bwrap its user namespace
+export const BWRAP_DENIED = /bwrap:|namespace|operation not permitted/i;
 
 // codex trusts a hook by the hash of its definition: a checkout names no node an upgrade would move, and the app names
 // its own node, whose path an update keeps

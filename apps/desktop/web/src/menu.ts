@@ -15,7 +15,7 @@ export function menuChords(b: Bindings): Record<string, string> {
   return out;
 }
 
-export const menuState = (s: AppState): MenuState => ({
+const menuState = (s: AppState): MenuState => ({
   view: s.view,
   sides: s.sidebarOpen || s.sideCardOpen,
   sideCard: s.sideCardOpen,

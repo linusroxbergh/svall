@@ -59,7 +59,6 @@ function glow(sand: string, cx: number, cy: number): Glow | null | undefined {
   return g;
 }
 
-// everything drawn under the land: the shoals lightening the sea, the cast shadow, the wave-line contours and the sand bank
 export function Seabed({ sand, cx, cy, bank }: { sand: string; cx: number; cy: number; bank: string }) {
   const [tries, retry] = useReducer((n: number) => n + 1, 0);
   const next = useMemo(() => glow(sand, cx, cy), [sand, cx, cy, tries]);

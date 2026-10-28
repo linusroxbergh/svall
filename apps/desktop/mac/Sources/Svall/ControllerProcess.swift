@@ -1,6 +1,5 @@
 import Foundation
 
-/// The NDJSON a child writes, cut into lines as its bytes arrive.
 struct LineBuffer {
     private var data = Data()
 
@@ -21,7 +20,6 @@ struct LineBuffer {
     }
 }
 
-/// The last few whole lines a child wrote to stderr, however its bytes were cut into chunks.
 struct StderrTail {
     private var buffer = LineBuffer()
     private let limit: Int
@@ -53,7 +51,6 @@ enum HostOp: String, Decodable {
     case add, doctor, upgrade, rollback, remove
 }
 
-/// What the page named the operation with. Each field belongs to one operation's flags.
 struct HostArgs: Decodable, Equatable {
     let name: String
     var ssh: String?
@@ -98,8 +95,7 @@ enum HostCommand {
     }
 }
 
-/// One run of the bundled `svall host …`: its steps go to the page as the child prints them, and it
-/// is killed when the page cancels or the window goes.
+/// One run of the bundled `svall host …`, killed when the page cancels or the window goes.
 final class HostProcess {
     /// A setup row's consent checkbox: the item's fields, whether they are ticked, and what ticking copies.
     struct Tick: Decodable, Equatable {

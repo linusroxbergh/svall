@@ -4,20 +4,12 @@
 //                                                [--steps all|<n>,...] [--scenarios all|none|kill|drop|<fault>@<phase>,...]
 //                                                [--keep] [--prefix <name>]
 //
-// Two Ubuntu 24.04 containers on one network: `svall-local` is the home, set up from the companion release built from
-// this checkout, and `svall-remote` is made its worker by `svall host add`. Their accounts have different homes, as a
-// Mac's and a Linux machine's do. The fleet has three Claude robots: `agent` in a dirty linked worktree, `kanban` on
-// the main checkout and `faults` in a worktree of its own; the repository's remote is a bare one on remote that both
-// machines reach over ssh. The run moves `agent` and `kanban`, restarts the worker, stops the home while the worker's
-// agent works, moves `faults` back and forth with the home's daemon killed or the link dropped at each phase, and
-// returns `agent` through a dirty Mac worktree. Then, from `kanban` on the worker, it starts a reviewer and four more
-// robots while the home is stopped, sweeps the scribe over them, changes kanban's notes on both machines apart, reads
-// its files from the home, and closes the reviewer while the worker is stopped. Last, it gives the home's Claude two
-// MCP servers with keys and one that reads a variable, ticks one's key for remote, sets the variable there, moves
-// `agent` there and unticks the key while it runs. With no `--archive` it builds the companion for the docker host's
-// architecture from this checkout, and with no `--image` the machine image from the Dockerfile here. `--steps` picks
-// steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' names and the network's.
-// Every check that fails is printed; the run exits 1 on the first step that has one.
+// Two Ubuntu 24.04 containers: `svall-local`, the home, set up from the companion built from this checkout, and
+// `svall-remote`, made its worker by `svall host add`; their accounts have different homes, as a Mac's and a Linux
+// machine's do. Three Claude robots (`agent`, `kanban`, `faults`) are moved between them through the STEPS below.
+// With no `--archive` the companion is built for the docker host's architecture, with no `--image` the Dockerfile here.
+// `--steps` picks steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' and network's
+// names. Every failed check is printed; the run exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -141,8 +133,7 @@ function linked(ids, since = 0, seconds = 120) {
   throw new Error(`the home did not link remote within ${seconds} s`);
 }
 
-// a repository whose remote is a bare one on remote; a linked worktree with staged, unstaged, untracked and credential
-// changes, a stash, main with changes of its own, and a worktree for the fault matrix with a commit not on origin
+// origin is a bare repository on remote; the checkouts hold every kind of change a move has to carry or leave
 const GIT_FIXTURE = String.raw`set -eu
 git config --global user.name Integration
 git config --global user.email integration@example.invalid
@@ -257,9 +248,8 @@ function treeDiff(a = {}, b = {}) {
 }
 
 /**
- * The robot runs on `machine` alone: the home's record and the worker's say so, one agent process on its session, and
- * no window or agent elsewhere. Its process resumes the session, or is `pid`, the one it ran before a move that never
- * stopped it.
+ * The robot runs on `machine` alone, by both records, its one agent process and its window. That process resumes the
+ * session, or is `pid` when the move never stopped it.
  */
 function runsOn(label, ids, l, w, id, machine, sessionId, pid) {
   const [here, there] = machine === 'remote' ? [w, l] : [l, w];
@@ -406,7 +396,7 @@ function homeDown(ids, fx) {
 function returnDirty(ids, fx) {
   const id = fx.agent;
   const head = snap(L).git['src/app-wt'].head;
-  // the robot's work on the worker: a commit, then staged, unstaged, intent-to-add and untracked edits
+  // the robot's work on the worker
   sh(R, String.raw`set -eu
 cd ~/src/app-wt
 printf 'worker commit
@@ -595,12 +585,9 @@ function deleteWorkerDown(ids, fx) {
 /** The user-scope MCP servers `~/.claude.json` holds on `machine`. */
 const serversOn = (machine) => JSON.parse(sh(machine, 'cat ~/.claude.json 2>/dev/null || echo {}').stdout).mcpServers ?? {};
 
-/** The checks `svall host doctor` lists for remote. */
 const doctor = () => JSON.parse(sh(L, 'svall host doctor remote --json', { ok: false }).stdout).checks;
-/** The mirror's rows among `checks`, by key. */
 const mirrorRows = (checks) => Object.fromEntries(checks.filter((c) => c.name.startsWith('mirror:')).map((c) => [c.name.slice(7), c]));
 
-/** `svall host consent remote <item> <on|off>`: the rows it answers, by key. */
 const consent = (item, state) => Object.fromEntries(JSON.parse(sh(L, `svall host consent remote ${item} ${state} --json`).stdout).map((r) => [r.key, r]));
 
 // a server's command the mocked agent never starts

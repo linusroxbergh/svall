@@ -37,10 +37,7 @@ export function profileLabel(name: string): string {
   return name === PRIVATE ? LAUNCHD_LABEL : `${LAUNCHD_LABEL}.${name}`;
 }
 
-/**
- * Each `~/.svall-<name>` holding a fleet under a name svall now keeps for a command of its own, which no `-p`
- * reaches, with a name it can move to.
- */
+/** Each `~/.svall-<name>` fleet under a name reserved for a command, which no `-p` reaches, with a name to move to. */
 export function reservedProfileHomes(homedir = os.homedir()): { home: string; name: string; rename: string }[] {
   let names: string[];
   try { names = fs.readdirSync(homedir).sort(); } catch { return []; }

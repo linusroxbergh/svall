@@ -30,9 +30,8 @@ export class MachineMismatch extends SshError {
 }
 
 /**
- * Refuses a far machine whose `svall version --json` names another machine id than the registry does, or answers
- * without naming one, whatever its login shell printed around it, and hands back what it answered. One whose svall exits
- * without an answer is left to the call that needs it, which fails on its own.
+ * Refuses a far machine whose `svall version --json` names another machine id than the registry, or none, and hands back
+ * its answer; one whose svall exits nonzero is left to the call that needs it.
  */
 export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineEntry): Promise<string | undefined> {
   const r = await master.run([shq(svallExe(machine.record.svallBase)), 'version', '--json']);
@@ -93,9 +92,8 @@ function localFleetId(fleetHome: string): FleetId {
 }
 
 /**
- * The far machine's connection description, checked against the machine this controller meant to
- * reach, and against a fleet when one is named, before its token is handed on. `anyProtocol` takes a
- * companion on another protocol too, as one a rollback put back on an older release is.
+ * The far machine's connection description, checked against the machine meant and any fleet named before its token is
+ * handed on. `anyProtocol` also takes a companion on another protocol, as one a rollback put on an older release is.
  */
 export async function remoteConnectionInfo(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean }): Promise<ConnectionInfo> {
   const name = machine.record.name;

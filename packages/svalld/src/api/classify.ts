@@ -1,6 +1,6 @@
 import type { MethodName } from '@svall/protocol';
 
-/** What each call does to the fleet; a worker sends every mutation and terminal call to its home. A new method without a class fails typecheck. */
+/** A worker sends every mutation and terminal call to its home. */
 export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'> = {
   'state.get': 'read',
   'island.create': 'mutation',

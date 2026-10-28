@@ -87,13 +87,11 @@ export async function changedFiles(root: string, ref: string): Promise<ChangedFi
   return files.sort((a, b) => a.path.localeCompare(b.path));
 }
 
-/** The file's size at `ref`, or undefined when it was not there. */
 export async function sizeAt(root: string, ref: string, rel: string): Promise<number | undefined> {
   const r = await git(['cat-file', '-s', `${ref}:${rel}`], root);
   return r.code === 0 ? Number(r.stdout.toString()) : undefined;
 }
 
-/** The file's bytes at `ref`, or undefined when it was not there. */
 export async function fileAt(root: string, ref: string, rel: string): Promise<Buffer | undefined> {
   const r = await git(['show', `${ref}:${rel}`], root);
   return r.code === 0 ? r.stdout : undefined;

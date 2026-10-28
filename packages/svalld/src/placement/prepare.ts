@@ -15,12 +15,12 @@ import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Tmux } from '../tmux/tmux.js';
-import { applyBundle, branchAhead, holdsWhole, verifyBundle } from './bundle.js';
+import { applyBundle, branchAhead, fileSha, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, fileSha, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, serversLeft, takeBack, unpack, wake,
+  blobIds, changedSince, checkSessions, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, serversLeft, takeBack, unpack, wake,
   type ReturnSheet,
-} from './move.js';
+} from './move-steps.js';
 import { seedTrust } from './trust.js';
 
 const WATCH_MS = 60_000;
@@ -129,7 +129,6 @@ export class PrepareService {
     };
   }
 
-  // one call at a time for each move
   private serial<T>(id: string, work: () => Promise<T>): Promise<T> {
     const p = (this.busy.get(id) ?? Promise.resolve()).catch(() => {}).then(work);
     const tail = p.catch(() => {});

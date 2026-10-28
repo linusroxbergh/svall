@@ -1,7 +1,5 @@
-/**
- * `fn` over `items`, at most `width` of them in flight, answers in the order the items came. After a failure no other
- * item starts, and the first failure is thrown once those in flight have ended.
- */
+/** `fn` over `items`, at most `width` in flight, answers in item order. After a failure no other item starts, and the
+ *  first failure is thrown once those in flight have ended. */
 export async function pool<T, R>(items: T[], width: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = new Array(items.length);
   let next = 0;

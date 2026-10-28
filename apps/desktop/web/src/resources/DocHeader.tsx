@@ -4,7 +4,7 @@ import { app } from '../boot.js';
 import { changes, editBuffer, focusBuffer, getBuffer, select, subscribeBuffer } from '../ide/buffers.js';
 import { bodyStart } from './docEditor.js';
 
-/** A doc's description, the line its agent decides by, written into the frontmatter as it is typed; an agent profile's is the line its picker shows. */
+/** A doc's description, the line its agent decides by, written into the frontmatter as it is typed. */
 export function DocHeader({ id, path, focus, profile = false }: { id: string; path: string; focus: boolean; profile?: boolean }) {
   const [text, setText] = useState(() => getBuffer(id, path)?.state.doc.toString() ?? '');
   useEffect(() => subscribeBuffer(id, path, setText), [id, path]);

@@ -35,7 +35,6 @@ export function useHover() {
   return { hover, hotIsland, hotRef, holdIsland, releaseIsland, start, end };
 }
 
-/** The hover card over or under the token it belongs to, on the map or on mission control. */
 export function HoverLayer({ c, island, layout, place, host }: { c: Robot; island: Island; layout: Layout; place: Placement; host: { w: number; h: number } }) {
   if (island.collapsed) return null;
   const onHome = island.kind === 'home';

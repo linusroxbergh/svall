@@ -71,8 +71,7 @@ export function useCamera(host: RefObject<HTMLDivElement | null>, lastPressAt: R
       const axis = (wanted: number, start: number, length: number, size: number, near: number, far: number, fallback: number) => {
         const lo = size - far - (start + length) * s, hi = near - start * s;
         if (lo <= hi) return Math.max(lo, Math.min(hi, wanted));
-        // At the minimum zoom a large fleet may still exceed the room; retain the release anchor
-        // while keeping at least the map's normal panning margin in reach.
+        // at the minimum zoom a large fleet may still exceed the room; the anchor holds within the normal panning margin
         const panLo = size - theme.panMargin - (start + length) * s;
         const panHi = theme.panMargin - start * s;
         return panLo <= panHi ? Math.max(panLo, Math.min(panHi, wanted)) : fallback;

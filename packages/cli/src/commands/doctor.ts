@@ -9,9 +9,9 @@ import type { z } from 'zod';
 import { FleetConfig, NodeConfig, type AgentKind } from '@svall/protocol';
 import { claudeHooksCurrent, codexHooksCurrent, codexInstalled, hooksInstalled } from '@svall/svalld/agent-hooks';
 import { AGENTS, AGENT_KINDS, findAgents } from '@svall/svalld/agents';
-import { BWRAP_COMMAND, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
+import { BWRAP_COMMAND, BWRAP_DENIED, BWRAP_PROFILE, USERNS_RESTRICTED, codexPaths, type CodexPaths } from '@svall/svalld/codex/install';
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
-import { launchdEnv, plistEnv, plistRun } from '@svall/svalld/launchd';
+import { launchdEnv, plistEnv, plistFile, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
 import { agentHomesEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
 import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
@@ -41,7 +41,6 @@ export type DoctorDeps = PreflightDeps & {
   // the fleet whose scripts setup points the Claude and Codex hooks at
   hooksHome: string;
   launchAgentsDir: string;
-  // where the Linux daemons' units lie
   unitDir: string;
   // what setup would hand a fleet's daemon from this account
   daemonEnv: Record<string, string>;
@@ -134,7 +133,6 @@ export function rebindMachineFile(o: { file: string; hardwareId?: string; unatte
   return { ok: true, message: `${o.file} is bound to this machine's hardware: restart svalld to run its fleets as this machine` };
 }
 
-// the process listening on the port, on `host` alone when given, as lsof names it
 async function heldBy(d: DoctorDeps, port: number, host?: string): Promise<string | undefined> {
   try {
     const out = await d.run('lsof', ['-nP', `-iTCP${host ? `@${host}` : ''}:${port}`, '-sTCP:LISTEN', '-Fpc']);
@@ -202,10 +200,9 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
   }
 }
 
-// a fleet's launchd plist, and how to have it written again
 function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
   const label = profileLabel(t.name);
-  const plist = path.join(d.launchAgentsDir, `${label}.plist`);
+  const plist = plistFile(d.launchAgentsDir, label);
   return { plist, fix: t.name === PRIVATE ? `${SHIM} setup` : `launchctl bootout gui/${d.uid}/${label}, delete ${plist}, then ${SHIM} ${t.name}` };
 }
 
@@ -310,7 +307,6 @@ function hooks(d: DoctorDeps): Check {
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
-// verifies the hook definition is installed and current, then asks Codex whether it is trusted.
 export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'integrations' | 'codexTrust'>): Promise<Check> {
   if (d.integrations && !d.integrations.includes('codex')) return { name: 'codex hooks', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('codex') && !d.exists(d.codex.dir)) return { name: 'codex hooks', status: 'skip', detail: 'not installed' };
@@ -343,7 +339,7 @@ async function codexSandbox(d: DoctorDeps): Promise<Check> {
     const err = e as Error & { killed?: boolean; code?: unknown };
     // execFile's message is its own first line, then what the command wrote to stderr
     const said = err.message.trim().split('\n').slice(1).join('\n').trim();
-    if (/bwrap:|namespace|operation not permitted/i.test(said)) {
+    if (BWRAP_DENIED.test(said)) {
       return { name, status: 'warn', detail: `AppArmor keeps bwrap from making the user namespace Codex runs commands in (${said.split('\n').at(-1)}), so a Codex robot asks before each one: ${BWRAP_PROFILE}`, run: BWRAP_COMMAND };
     }
     const why = err.killed ? 'it did not finish in time' : said.split('\n').at(-1) || `exit ${String(err.code)}, nothing said`;

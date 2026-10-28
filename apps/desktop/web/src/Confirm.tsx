@@ -3,7 +3,7 @@ import { columnOf } from '@svall/protocol';
 import { deleteColumn, deleteIsland, sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { closeRobot } from './keyboard.js';
 
 function Confirm({ id, testid, title, name, note, act, focusAct, onCancel, onConfirm }: {
@@ -25,12 +25,7 @@ function Confirm({ id, testid, title, name, note, act, focusAct, onCancel, onCon
   if (!id) return null;
   return (
     <div className="modal-back" data-testid={testid} onPointerDown={onCancel}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          // the page's own Enter and Esc would act on the map behind the dialog; Enter presses the focused button
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); onCancel(); }
-        }}>
+      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(onCancel)}>
         <div className="kicker">{title}<CloseX onClose={onCancel} testid={`${testid}-close`} /></div>
         <div className="modal-name">{name}</div>
         <div className="modal-note" data-testid={`${testid}-note`}>{note}</div>
@@ -99,11 +94,7 @@ function DeleteColumn({ id }: { id: string }) {
   const cancel = () => app.store.getState().setDeletingColumn(undefined);
   return (
     <div className="modal-back" data-testid="confirm-delete-column" onPointerDown={cancel}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.stopPropagation();
-          if (e.key === 'Escape') { e.stopPropagation(); cancel(); }
-        }}>
+      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(cancel)}>
         <div className="kicker">Delete column<CloseX onClose={cancel} testid="confirm-delete-column-close" /></div>
         <div className="modal-name">{fleet.columns[at].name}</div>
         <label className="modal-note modal-pick">

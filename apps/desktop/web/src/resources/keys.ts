@@ -5,9 +5,8 @@ const ROWS = ['.res-node', '.res-item'] as const;
 type At = { col: number; row: number };
 type Step = At | 'editor' | undefined;
 
-// A row the arrows picked shows its file without sending the keys after it, so the walk can go on, and so
-// does a file the list opened under a filter being typed, which keeps them; a row the pointer picked hands
-// them to the editor as it always has. The pane asks once, as it opens the file.
+// a row the arrows picked, or a file the list opened under a typed filter, shows its file without taking the keys;
+// a row the pointer picked hands them to the editor. The pane asks once, as it opens the file
 let walked = false;
 export const takesKeys = (): boolean => { const was = walked; walked = false; return !was; };
 export const pointerPicked = (): void => { walked = false; };

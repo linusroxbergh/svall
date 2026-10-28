@@ -7,14 +7,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
-import { cleanHomes, makeHome } from '../helpers.js';
-import { W, placed, robot, until, world } from './world.js';
+import { makeHome } from '../helpers.js';
+import { W, placed, robot, stopWorlds, until, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
-afterEach(async () => {
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
-});
+afterEach(stopWorlds);
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { cwd, encoding: 'utf8' });
 
@@ -42,7 +38,6 @@ describe('reconciling a worker on reconnect', () => {
       worker: { robots: { c_closed: closed, c_both: { ...both, cwd: '/srv/on-w1' } } },
       tmux: { listWindows: async () => [], serverPid: async () => undefined, killWindow: async (id: string) => { killed.push(id); } },
     });
-    worlds.push(w);
     await w.link();
 
     const home = w.home.store.state.robots;
@@ -77,7 +72,6 @@ describe('reconciling a worker on reconnect', () => {
       },
     });
     sock = w.worker.paths.linkSock;
-    worlds.push(w);
     await w.link();
     // a create takes the offline path until the worker has read the home's first ack
     await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });

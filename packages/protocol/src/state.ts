@@ -79,8 +79,8 @@ export const Agent = z.object({
   subagents: z.array(z.string()).optional(),
   // the tool the main thread last asked permission for, whose run alone answers the question
   askedTool: z.string().optional(),
-  // the newest prompt Claude Code accepted, as its UserPromptSubmit hook reported it. The transcript
-  // is written after that hook, so this is what the last command reads until the entry lands.
+  // the newest prompt Claude Code accepted, from its UserPromptSubmit hook; the transcript lands after it, so the last
+  // command reads this until then
   lastPrompt: z.object({ id: z.string(), text: z.string(), at: z.number() }).optional(),
   lastActivityAt: z.number(),
   // the agent process the session runs in; a `claude -p` nested inside it shares the robot, not the process
@@ -267,7 +267,6 @@ export type FleetState = z.infer<typeof FleetState>;
 export const starredOf = (f: FleetState): Robot[] =>
   Object.values(f.robots).filter((c) => c.star !== undefined).sort((a, b) => a.star! - b.star!);
 
-// the column a robot sits in
 export const columnOf = (f: Pick<FleetState, 'columns'>, c: Pick<Robot, 'column'>): Column =>
   f.columns.find((k) => k.id === c.column) ?? f.columns[0];
 

@@ -15,10 +15,7 @@ export type SessionFs = {
 /** Runs an agent CLI in `cwd` to its exit, its stdout into the file `stdout` names when it names one; rejects only when it cannot start. */
 export type CliRun = (cmd: string, args: string[], o?: { stdout?: string; cwd?: string }) => Promise<{ code: number; stdout: string; stderr: string }>;
 
-/**
- * The folder a carried session's agent resumes in on the destination, the main checkout of the repository holding it, and the
- * top of the checkout it is in.
- */
+/** Where a carried session resumes on the destination; `repo` is its repository's main checkout, `root` its checkout's top. */
 export type ResumeFolder = { cwd: string; repo?: string; root?: string };
 
 export type SessionIssueCode = 'transcript_missing' | 'incompatible_adapter' | 'path_unsupported' | 'destination_diverged' | 'agent_cli_missing';
@@ -30,10 +27,7 @@ export class SessionError extends Error {
   }
 }
 
-/**
- * Where one agent's CLI keeps a session's files, from its oldest release this adapter carries on: which files make
- * a session. The files are copied byte for byte, so what they hold is never read.
- */
+/** Which files make one agent CLI's session, from the oldest release it carries on; copied byte for byte, never read. */
 export interface SessionAdapter {
   readonly kind: AgentKind;
   /** This adapter's own version, as `system.info` reports it. */
@@ -52,19 +46,15 @@ export interface SessionAdapter {
   readonly trustQuestion?: string;
   /** The choice at that question that goes on. */
   readonly trustAnswer?: string;
-  /**
-   * For a CLI that keeps its sessions in a database of its own: the file under the agent home a move writes the
-   * session out to, which travels with its files and is read back in on the destination rather than placed.
-   */
+  /** For a CLI that keeps sessions in its own database: the file under the agent home a move writes the session out to, which
+   *  travels with its files and is read back in on the destination rather than placed. */
   exportFile?(sessionId: string): string;
   /** Writes the session out of this machine's CLI into `file`, running the CLI in `cwd`. */
   exportSession?(sessionId: string, file: string, run: CliRun, cwd: string): Promise<void>;
   /** Refuses, writing nothing, when this machine's copy of the session went on past the one written out at `file`. */
   checkSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;
-  /**
-   * Removes this machine's copy of the session, unless it went on past the one written out at `file`, once that copy is
-   * written out to `keep`; a copy an earlier attempt kept there is the one this machine held, and stays.
-   */
+  /** Removes this machine's copy, unless it went on past the one at `file`, once it is written out to `keep`; a copy an
+   *  earlier attempt kept there is the one this machine held, and stays. */
   dropSession?(sessionId: string, file: string, cwd: string, run: CliRun, keep: string): Promise<void>;
   /** Puts the session written out at `file` into this machine's CLI, which holds no copy of it, to resume in `cwd`. */
   importSession?(sessionId: string, file: string, cwd: string, run: CliRun): Promise<void>;

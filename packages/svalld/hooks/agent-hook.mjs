@@ -1,8 +1,7 @@
 #!/usr/bin/env node
-// Copied to $SVALL_HOME/hooks/agent-hook.mjs by svalld and `svall setup`, and run by Claude Code and by Codex,
-// which names itself in the first argument; the second is the pid of the agent. Forwards a hook payload
-// to svalld. On SessionStart and UserPromptSubmit it waits for one reply line and prints it as
-// additionalContext. Never blocks the agent: exits 0 within 1.5 s of its last try at the socket.
+// Run by Claude Code and Codex from $SVALL_HOME/hooks as `agent-hook.mjs <claude|codex> <agent pid>`; forwards the hook
+// payload to svalld and, on SessionStart and UserPromptSubmit, prints its reply as additionalContext. Never blocks the
+// agent: exits 0 within 1.5 s of its last try at the socket.
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';

@@ -13,7 +13,6 @@ const asIndex = (): Plugin => ({
   },
 });
 
-// the phone bundle, beside but separate from the packaged app's
 export default defineConfig({
   plugins: [react(), asIndex()],
   build: { outDir: 'dist-mobile', rolldownOptions: { input: 'mobile.html' } },

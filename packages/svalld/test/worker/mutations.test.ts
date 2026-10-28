@@ -6,14 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOME_ISLAND, Mutation, type FleetState, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
-import { cleanHomes } from '../helpers.js';
-import { H, W, island, placed, robot, until, world } from '../placement/world.js';
+import { H, W, island, placed, robot, stopWorlds, until, world } from '../placement/world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
   vi.useRealTimers();
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
+  await stopWorlds();
 });
 
 const UNREACHABLE = 'w1 cannot reach this Mac right now; try again when it is awake';
@@ -34,7 +31,6 @@ function setup(o: { home?: Partial<FleetState> } = {}) {
     screen: async () => ({ rows: [''], cursor: 0, shown: true, command: 'bash' }),
   };
   const w = world({ ...o, worker: { machines: { [W]: { name: 'w1', reachable: true, since: 1 } } }, tmux });
-  worlds.push(w);
   const clone = path.join(w.worker.paths.home, 'clone');
   const wt = path.join(clone, '.claude', 'worktrees', 'c_1');
   fs.mkdirSync(clone);

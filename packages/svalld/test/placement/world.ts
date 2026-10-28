@@ -14,7 +14,8 @@ import type { MachineEntry } from '../../src/machine.js';
 import { resolvePaths, type Paths } from '../../src/paths.js';
 import { HomeDocs, WorkerDocs, noteConflict } from '../../src/placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from '../../src/placement/far-viewers.js';
-import { Mirror, mirrorCalls, type MirrorHomes } from '../../src/placement/mirror.js';
+import type { MirrorHomes } from '../../src/placement/mirror-state.js';
+import { Mirror, mirrorCalls } from '../../src/placement/mirror.js';
 import { homeRootOf } from '../../src/placement/repo-key.js';
 import { Replay } from '../../src/placement/replay.js';
 import { Router, fileCalls, forgetRobot, workerCalls } from '../../src/placement/router.js';
@@ -30,7 +31,7 @@ import { Workspace } from '../../src/workspace/workspace.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { ScreenNotice, ScreenTails } from '../../src/worker/screens.js';
 import { applyReport } from '../../src/worker/snapshot.js';
-import { makeHome } from '../helpers.js';
+import { cleanHomes, makeHome } from '../helpers.js';
 
 export const W = MachineId.parse(crypto.randomUUID());
 export const H = MachineId.parse(crypto.randomUUID());
@@ -70,15 +71,17 @@ const ctxOf = (store: Store, fleet: Fleet, router: Router, more: Partial<Ctx>): 
 
 type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
+const opened: { stop(): Promise<void> }[] = [];
+
+/** Stops every world opened since it last ran, then removes the homes the test made. */
+export async function stopWorlds(): Promise<void> {
+  for (const w of opened.splice(0)) await w.stop();
+  cleanHomes();
+}
+
 /**
- * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
- * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
- * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
- * and the home's replay, router and docs log to `homeLog`; each side reads its robots' usage as main.ts does, its
- * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`; `scribe` answers each
- * side's scribe passes, and the worker's scribe is off as main.ts has it. Each side reads its own robots' files, the
- * home a placed robot's through the worker, and each has a Claude dir of its own under its home. The home's terminals
- * reach a placed robot's through the worker, which sends the last lines of its panes after each hook.
+ * A home and its worker w1, wired as main.ts wires them and linked over the worker's real link.sock; `far` stands in
+ * for what the worker answers the home with, `connect` for reaching it. The worker's scribe is off, as main.ts has it.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
@@ -205,7 +208,7 @@ export function world(o: {
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());
-  return {
+  const w = {
     home: {
       paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage, terminals: homeTerminals, mirror: homeMirror,
       /** Holds the mutations the home takes from here on, until the function it returns is called. */
@@ -225,4 +228,6 @@ export function world(o: {
     },
     async stop(): Promise<void> { for (const s of stops.splice(0).reverse()) await s(); },
   };
+  opened.push(w);
+  return w;
 }

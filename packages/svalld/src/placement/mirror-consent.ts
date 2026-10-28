@@ -8,7 +8,6 @@ import type { McpServer, Secret } from './mirror-config.js';
 /** What the mirror asks consent for: a server by its item key, or a whole file by one of these. */
 export const CONFIG_ITEMS = { settings: 'claude:settings', codex: 'codex:config', opencode: 'opencode:config' } as const;
 
-/** A server's item: its agent and name, and the project or plugin it belongs to. */
 export function itemKey(s: McpServer): string {
   if (s.scope === 'user') return `${s.agent}:mcp:${s.name}`;
   return 'project' in s.scope ? `${s.agent}:mcp:${s.name}@${s.scope.project}` : `claude:plugin:${s.scope.plugin}:mcp:${s.name}`;
@@ -48,7 +47,6 @@ export function setConsent(file: string, machine: MachineId, item: string, field
   writeAll(file, all);
 }
 
-/** Unticks everything for `machine`. */
 export function clearConsent(file: string, machine: MachineId): void {
   const all = readAll(file);
   delete all[machine];

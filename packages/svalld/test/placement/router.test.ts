@@ -2,15 +2,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch } from '../../src/api/methods.js';
 import { markDormant } from '../../src/dormancy.js';
 import { updateAgents } from '../../src/placement/router.js';
-import { cleanHomes } from '../helpers.js';
-import { H, W, placed, robot, until, world } from './world.js';
+import { H, W, placed, robot, stopWorlds, until, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
-afterEach(async () => {
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
-});
-const open = (o: Parameters<typeof world>[0]) => { const w = world(o); worlds.push(w); return w; };
+afterEach(stopWorlds);
 
 // the robot runs on w1; the home holds its record, tmux ids and all, as w1 last reported them
 const onW1 = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' } });
@@ -19,14 +13,14 @@ const UNREACHABLE = 'w1 cannot reach this Mac right now; try again when it is aw
 describe('routing calls for placed robots', () => {
   it('robot.run on the home for a robot placed on w1 goes over the link and returns its delivery', async () => {
     const asked: unknown[] = [];
-    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } }, far: { 'robot.run': async (p) => { asked.push(p); return { delivery: 'queued' }; } } });
+    const w = world({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } }, far: { 'robot.run': async (p) => { asked.push(p); return { delivery: 'queued' }; } } });
     await w.link();
     expect(await dispatch({ id: 1, method: 'robot.run', params: { id: 'c_1', text: 'go on' } }, w.home.ctx)).toEqual({ id: 1, result: { delivery: 'queued' } });
     expect(asked).toEqual([{ id: 'c_1', text: 'go on', enter: true }]);
   });
 
   it('robot.run while w1 is down answers not_reachable naming w1', async () => {
-    const w = open({ home: { robots: { c_1: onW1 } }, connect: () => Promise.reject(new Error('connect ECONNREFUSED')) });
+    const w = world({ home: { robots: { c_1: onW1 } }, connect: () => Promise.reject(new Error('connect ECONNREFUSED')) });
     w.home.links.start();
     await until(() => { if (w.home.store.state.machines?.[W]?.reachable !== false) throw new Error('w1 not marked down yet'); });
     expect(await dispatch({ id: 1, method: 'robot.run', params: { id: 'c_1', text: 'go on' } }, w.home.ctx))
@@ -35,7 +29,7 @@ describe('routing calls for placed robots', () => {
 
   it('on the worker, robot.read and robot.update of its note answer locally with the home down; robot.update of its figure is refused with the one sentence', async () => {
     const captured: string[] = [];
-    const w = open({
+    const w = world({
       worker: { robots: { c_1: onW1, c_home: robot({ id: 'c_home', tmux: { windowId: '@1', paneId: '%1' } }) }, machines: { [W]: { name: 'w1', reachable: true, since: 1 } } },
       tmux: { capture: async (paneId: string) => { captured.push(paneId); return Buffer.from('$ make test\nok\n'); } },
     });
@@ -54,7 +48,7 @@ describe('routing calls for placed robots', () => {
   });
 
   it('on the worker, a call its mirror cannot answer is the home\'s, and the change comes back in the next snapshot', async () => {
-    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    const w = world({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
     // a change to a robot here is the home's once the worker has read the home's first ack and has none left to send
     await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
@@ -66,7 +60,7 @@ describe('routing calls for placed robots', () => {
 
   it('robot.seen for a placed robot is taken where it runs, and the unread it clears comes back home', async () => {
     const unread = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, unread: true });
-    const w = open({ home: { robots: { c_1: unread } }, worker: { robots: { c_1: unread } } });
+    const w = world({ home: { robots: { c_1: unread } }, worker: { robots: { c_1: unread } } });
     await w.link();
     expect(() => w.home.fleet.markSeen('c_1')).toThrow('c_1 runs on w1');
     expect(await dispatch({ id: 1, method: 'robot.seen', params: { id: 'c_1' } }, w.home.ctx)).toMatchObject({ id: 1, result: { id: 'c_1', unread: false } });
@@ -75,7 +69,7 @@ describe('routing calls for placed robots', () => {
   });
 
   it('a change the worker makes to a robot placed there with no hook behind it reaches the home', async () => {
-    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    const w = world({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
     // as the worker's poll leaves a robot whose window died without a word
     w.worker.store.update((d) => { markDormant(d.robots.c_1); });
@@ -84,7 +78,7 @@ describe('routing calls for placed robots', () => {
   });
 
   it('on the worker, machines.list lists the home with no robots, and nothing the worker sends home gives the home an entry of its own', async () => {
-    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    const w = world({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
     await until(() => { if (!w.worker.store.state.machines?.[H]) throw new Error('no snapshot yet'); });
     const listed = await dispatch({ id: 1, method: 'machines.list', params: {} }, w.worker.ctx) as { result: { machines: { id: string }[] } };
@@ -96,7 +90,7 @@ describe('routing calls for placed robots', () => {
   });
 
   it('the home takes from a worker only calls about its robots, islands and tabs, and the worker only the params it can read', async () => {
-    const w = open({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
+    const w = world({ home: { robots: { c_1: onW1 } }, worker: { robots: { c_1: onW1 } } });
     await w.link();
     await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
     for (const method of ['fleets.create', 'fleet.stop', 'mobile.set', 'fs.write', 'column.add', 'placing.set']) {

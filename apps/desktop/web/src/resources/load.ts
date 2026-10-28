@@ -5,8 +5,7 @@ import { theme } from '../theme.js';
 
 export type ResourcesDeps = { api: Pick<Api, 'call'>; store: AppStore };
 
-/** What the listing is made of, as one string: the roots, and every island and robot by id, name and place, a robot's machine
- *  included. It is asked again only when this moves. */
+/** Everything the listing depends on, as one string: it is read again only when this moves. */
 export const listingKey = (f: FleetState): string => [
   ...[...new Set(Object.values(f.robots).map((c) => c.repo?.mainRoot ?? c.cwd))].sort(),
   ...Object.values(f.islands).map((i) => `i:${i.id}:${i.name}`).sort(),

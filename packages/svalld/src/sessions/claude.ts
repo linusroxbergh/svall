@@ -39,10 +39,8 @@ function readConfig(home: string): Record<string, unknown> | undefined {
   return config.value;
 }
 
-/**
- * As Claude 2.1.283 decides, by real paths composed to NFC: a folder is trusted through its repository's main checkout,
- * or through itself or a folder above it, up to the top of its checkout or, outside one, up to /.
- */
+/** As Claude 2.1.283 decides, by real paths in NFC: a folder is trusted through its repository's main checkout, or through
+ *  itself or a folder above it, up to the top of its checkout or, outside one, up to /. */
 function trusts(home: string, folder: ResumeFolder): boolean {
   const projects = readConfig(home)?.projects;
   if (!projects || typeof projects !== 'object') return false;

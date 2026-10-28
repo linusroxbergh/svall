@@ -12,8 +12,8 @@ this pass covers what only the app and real machines show. What each step should
   be your Mac's ([home paths](../../../docs/remote-machines/setup.md#home-paths)).
 - Claude Code, Codex and OpenCode (2.0.22 or newer) installed and logged in on both machines.
 - A repository with a remote both machines can fetch from with their own credentials.
-- A test fleet, so your own stays untouched: `svall smoke` offers to create one named `smoke`. Every `svall` command
-  below takes `-p smoke`.
+- A test fleet, so your own stays untouched: `svall-dev smoke` offers to create one named `smoke`. Every `svall-dev`
+  command below takes `-p smoke`.
 
 ## 1. Adding the machine
 
@@ -86,11 +86,11 @@ With a robot on `studio` and its terminal visible:
 
 ## 6. Clean up
 
-Move every robot back with **Move to this Mac**, then remove the machine with **Remove** (or `svall host remove
+Move every robot back with **Move to this Mac**, then remove the machine with **Remove** (or `svall-dev host remove
 studio`). To delete the test fleet, stop its daemon and remove its home and agent:
 
 ```sh
-launchctl bootout gui/$(id -u)/io.github.linusroxbergh.svall.svalld.smoke
-tmux -S ~/.svall-smoke/tmux.sock kill-server
-rm -rf ~/.svall-smoke ~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld.smoke.plist
+launchctl bootout gui/$(id -u)/io.github.linusroxbergh.svall.dev.svalld.smoke
+tmux -S ~/.svall-dev-smoke/tmux.sock kill-server
+rm -rf ~/.svall-dev-smoke ~/Library/LaunchAgents/io.github.linusroxbergh.svall.dev.svalld.smoke.plist
 ```

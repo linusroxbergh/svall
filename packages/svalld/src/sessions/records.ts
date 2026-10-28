@@ -2,7 +2,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { SessionError, type SessionFs } from './types.js';
 
-/** The reads discovery makes, on this machine's disk. */
 export const realSessionFs: SessionFs = {
   lstat: (p) => fsp.lstat(p),
   readdir: (p) => fsp.readdir(p, { encoding: 'buffer' }),

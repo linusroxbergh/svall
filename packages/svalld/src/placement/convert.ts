@@ -37,10 +37,8 @@ function remove(root: string, rel: string): void {
 }
 
 /**
- * Moves what the main checkout holds beyond its HEAD into a new worktree on a new branch `slug`, through the bundle's
- * patches and tar so staged and unstaged stay apart, and leaves main clean on its branch. The stash list is never touched.
- * A failure before main is reset takes the worktree and its branch away again, so the folder stands only for a conversion.
- * With `head`, the worktree starts clean at that commit and main keeps all it holds.
+ * Moves what main holds beyond HEAD into a new worktree on branch `slug`, staged and unstaged apart, the stash untouched, and
+ * resets main; a failure before the reset takes the worktree and branch away. With `head`, main keeps all it holds.
  */
 export async function convertMainCheckout(main: string, o: { git: GitRunner; slug: string; head?: string }): Promise<{ root: string; branch: string }> {
   const { git, slug } = o;

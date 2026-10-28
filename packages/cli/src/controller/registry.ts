@@ -63,7 +63,7 @@ export class MachineRegistry {
       }
     }
     // an ISO time in the name sorts the latest last
-    const recovered = fs.readdirSync(dir).filter((f) => f.startsWith('machines.json.broken-')).sort().map((f) => path.join(dir, f)).at(-1);
+    const recovered = fs.readdirSync(dir).filter((f) => f.startsWith(`${path.basename(file)}.broken-`)).sort().map((f) => path.join(dir, f)).at(-1);
     const registry = new MachineRegistry(file, id, machines, recovered);
     if (!machines.has(id)) {
       machines.set(id, localRecord(o.hostname ?? os.hostname(), [...machines.values()].map((m) => m.name)));

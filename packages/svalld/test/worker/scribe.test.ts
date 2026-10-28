@@ -7,14 +7,12 @@ import { REST_BYTES, REST_MS } from '../../src/scribe/eligible.js';
 import type { RunScribe } from '../../src/scribe/run.js';
 import { SETTLE_MS, SPACING_MS } from '../../src/scribe/scribe.js';
 import { SLEPT_NOTE } from '../../src/worker/mutations.js';
-import { cleanHomes, makeHome } from '../helpers.js';
-import { placed, robot, until, world } from '../placement/world.js';
+import { makeHome } from '../helpers.js';
+import { placed, robot, stopWorlds, until, world } from '../placement/world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
   vi.useRealTimers();
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
+  await stopWorlds();
 });
 
 const PLAN = 'https://docs.example/plan';
@@ -40,7 +38,6 @@ const kb = { name: { value: 'kb', reason: 'generated' }, note: 'building the boa
 // a home whose scribe is on, linked to w1; `asked` lists the scribe.run calls w1 takes
 async function open(o: Parameters<typeof world>[0]) {
   const w = world(o);
-  worlds.push(w);
   w.home.store.update((d) => { delete d.scribeAsk; });
   const asked: Record<string, unknown>[] = [];
   const run = w.worker.handlers['scribe.run'];
@@ -118,7 +115,6 @@ describe('the scribe on a placed robot', () => {
     const dir = makeHome();
     const robots = { c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }) };
     const w = world({ home: { robots }, worker: { robots } });
-    worlds.push(w);
     w.home.store.update((d) => { delete d.scribeAsk; });
     const far = vi.spyOn(w.home.router, 'scribe');
     const scribe = w.home.fleet['scribe'];

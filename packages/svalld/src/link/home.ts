@@ -59,7 +59,6 @@ type Options = {
   onNotify?(kind: string, data: unknown, machine: MachineId): void;
   /** A worker's inventory and the outbox past it are taken, and snapshots go to it. */
   onSynced?(machine: MachineId): void;
-  /** A worker's stream closed. */
   onLost?(machine: MachineId): void;
   snapshot: () => Snapshot;
   /** The home's agent configuration, which a worker takes once linked and before a move. */

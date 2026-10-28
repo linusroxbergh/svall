@@ -6,6 +6,7 @@ import { DORMANT_AFTER_HOURS, isSessionId, type Agent, type AgentKind, type Robo
 import { running, settle } from './agent/reducer.js';
 import { claudeTranscript, hooksFor } from './hooks/receiver.js';
 import type { Logger } from './log.js';
+import { PRIVATE_SERVER } from './processes.js';
 import type { Store } from './store.js';
 import { shq } from './text.js';
 import type { Tmux } from './tmux/tmux.js';
@@ -21,11 +22,8 @@ export function reviveCommand(t: TerminalSlot, flags: string[] = []): string {
   return [...words, t.agent.sessionId].join(' ');
 }
 
-/**
- * The command that resumes a session whose transcript last records a folder this machine lacks (`gone`), as a move
- * between homes leaves it: Codex then takes the folder its window opens in, which it records, so the next revive needs
- * nothing more. Any other is `revive` as it is.
- */
+/** `revive` for a session whose recorded folder this machine lacks (`gone`): Codex then takes the folder its window opens
+ *  in and records it, so the next revive needs nothing more. */
 export const resumeHere = (revive: string, gone: boolean): string =>
   (gone ? revive.replace(/^codex resume -c tui\.resume_cwd=session /, 'codex resume -c tui.resume_cwd=current ') : revive);
 
@@ -65,7 +63,6 @@ export const RESUME_NOTE = 'A restart ended this session mid-turn. Subagents, ba
   + 'you had running were stopped and will not report back. Check what they finished, rerun what is still needed, '
   + 'and carry on with the task.';
 
-/** The resume note, saying also that the folder the session last worked in, `moved.from`, is not here, and that it works in `moved.to` now. */
 export const resumeNote = (moved?: { from: string; to: string }): string => (moved
   ? `${RESUME_NOTE} The folder this session last worked in, ${moved.from}, is not on this machine; it works in ${moved.to} now, so check a path from earlier in this conversation before using it.`
   : RESUME_NOTE);
@@ -90,18 +87,16 @@ export function loseSecond(c: Robot, flags?: string[], atShell = false): void {
   else delete c.second;
 }
 
-// an agent resting this long, since its last turn or the user's last look, with nothing running for it and nothing
-// the user has yet to see. A failed turn keeps its error, and one a usage limit stopped carries on once it resets.
-// A second terminal open is the user's own shell beside the agent, which only a sleep closes
+// an agent resting this long since its last turn or the user's last look, with nothing running or unseen; a failed or
+// usage-limited turn stays up. A second terminal open is the user's own shell, which only a sleep closes
 export function drowsy(c: Robot, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
   if (!c.tmux || c.second?.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
   return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
 }
 
-// the launch flags a resume needs again, and those it reads past: Claude restores its model, agent and permission
-// mode itself, bar a bypass; the --add-dir flags come back from the context; a prompt, a worktree to make or a
-// session to resume described the start. Any other flag may be one the resume would lose, so it leaves the agent be
+// the launch flags a resume repeats, and those it reads past: Claude restores its model, agent and permission mode bar a
+// bypass, and --add-dir comes back from the context. Any unlisted flag may be lost on resume, so it leaves the agent be
 const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped: string[]; droppedSwitches: string[] }> = {
   claude: {
     kept: ['--effort'],
@@ -203,10 +198,9 @@ export function rememberFlags(t: TerminalSlot, procs: Proc[]): void {
   if (flags?.length) a.flags = flags; else delete a.flags;
 }
 
-// the Bash tool starts each command in a process group of its own, while MCP servers share the agent's: a descendant
-// outside the agent's group is a background shell, monitor or server it still runs. OpenCode's TUI runs its private
-// server in a group of its own, and the server gives each shell command and each MCP or language server one too. A
-// shell execs a lone command, so ps can't tell a shell from a server, and either holds off dormancy
+// Claude's Bash tool gives each command its own process group while MCP servers share the agent's, so a descendant in
+// another group is background work. OpenCode's private server has its own group and gives every shell and MCP or
+// language server one too, which ps can't tell apart, so any of them holds off dormancy
 export function runsInBackground(pid: number, procs: Proc[]): boolean {
   const own = new Set([procs.find((p) => p.pid === pid)?.pgid]);
   const below = [pid];
@@ -214,7 +208,7 @@ export function runsInBackground(pid: number, procs: Proc[]): boolean {
     for (const p of procs) {
       if (p.ppid !== below[i]) continue;
       if (!own.has(p.pgid)) {
-        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !/\sserve\s+--stdio(\s|$)/.test(p.args)) return true;
+        if (below[i] !== pid || !runsAgent(p.args, 'opencode') || !PRIVATE_SERVER.test(p.args)) return true;
         own.add(p.pgid);
       }
       below.push(p.pid);
@@ -230,14 +224,12 @@ export async function exited(pid: number, waitMs = 60_000): Promise<void> {
   if (running(pid)) try { process.kill(pid, 'SIGKILL'); } catch { /* gone */ }
 }
 
-/** What dormancy acts on: the fleet, its tmux server, what ps shows, and the windows of agents ended for idleness or
- *  put to sleep, until tmux has closed them, the agent has exited and a sleep has ended what it started. */
-// `runsHere`: absent, every robot runs on this machine
+/** `ending`: the windows of agents ended for idleness or put to sleep, until tmux has closed them and what they ran has
+ *  exited. `runsHere` absent means every robot runs on this machine. */
 export type Sleep = { store: Store; tmux: Tmux; log: Logger; processes: () => Promise<Proc[]>; ending: Map<string, Promise<void>>; runsHere?: (c: Robot) => boolean };
 
-// an agent idle past the fleet's limit is ended to free what it holds; its robot goes dormant, and a revive
-// resumes the session with the launch flags it still needs. `seen` is when the user last looked at each robot, and
-// one `holding` a prompt for its agent has work still to come
+// ends each agent idle past the fleet's limit to free what it holds, its robot dormant with a revive that resumes it.
+// `seen` is when the user last looked at each robot; one `holding` a prompt for its agent has work still to come
 export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>, stopped: () => boolean, holding: (id: string) => boolean): Promise<void> {
   const hours = o.store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
   if (!hours) return;
@@ -250,8 +242,7 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
     // the fleet stopped while ps ran or the last agent exited
     if (stopped()) return;
     const a = c.agent!;
-    // a pid gone or moved on to another program, a launch the resume can't repeat, work going on in the background,
-    // or no transcript to resume from leaves the agent be
+    // a pid gone or now another program, a launch the resume can't repeat, background work or no transcript leaves it be
     const proc = procs.find((p) => p.pid === a.pid);
     const flags = proc && startFlags(proc.args, a.kind);
     if (!proc || !flags || runsInBackground(proc.pid, procs) || !a.transcriptPath || !fs.existsSync(a.transcriptPath)) continue;

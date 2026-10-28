@@ -38,10 +38,8 @@ export type DurableOptions = { mode?: number; stages?: Partial<DurableStages> };
 const encode = (data: Buffer | object): Buffer =>
   Buffer.isBuffer(data) ? data : Buffer.from(JSON.stringify(data, null, 2) + '\n');
 
-/**
- * Replaces `file` with content that is either wholly old or wholly new after any crash: an exclusive
- * temp beside it, fsynced, then renamed over the target, then the directory entry fsynced.
- */
+/** Replaces `file` so that after any crash it is wholly old or wholly new: an exclusive temp beside it, fsynced, renamed
+ *  over the target, then the directory fsynced. */
 export function writeDurable(file: string, data: Buffer | object, opts: DurableOptions = {}): void {
   const stages = { ...realStages, ...opts.stages };
   const tmp = writeTemp(file, data, opts, stages);
@@ -49,10 +47,8 @@ export function writeDurable(file: string, data: Buffer | object, opts: DurableO
   syncDir(path.dirname(file), stages);
 }
 
-/**
- * Creates `file` whole, and only while no file holds its name: the finished temp is linked into place,
- * which fails with EEXIST however close behind another writer is.
- */
+/** Creates `file` whole, only while no file holds its name: the finished temp is linked into place, which fails with
+ *  EEXIST however close behind another writer is. */
 export function createDurable(file: string, data: Buffer | object, opts: DurableOptions = {}): void {
   const stages = { ...realStages, ...opts.stages };
   const tmp = writeTemp(file, data, opts, stages);
@@ -91,10 +87,8 @@ export const BATCH_WIDTH = 8;
 
 const tempOf = (file: string): string => `${file}.durable-${process.pid}-${crypto.randomBytes(4).toString('hex')}.tmp`;
 
-/**
- * `writeDurable` for many files, off the event loop: each written whole, fsynced and renamed over its target as it
- * goes, and each folder written into fsynced once, at `settle`, which makes every rename before it survive power loss.
- */
+/** `writeDurable` for many files, off the event loop; each folder written into is fsynced once, at `settle`, which makes
+ *  every rename before it survive power loss. */
 export class DurableBatch {
   private dirs = new Set<string>();
 
@@ -161,10 +155,7 @@ function syncDir(dir: string, stages: DurableStages = realStages): void {
   }
 }
 
-/**
- * Removes only temps proven finished with: a sibling final file at least as new, or an age past
- * `maxAgeMs`. A temp that could still belong to a write in flight is left alone.
- */
+/** Removes only temps proven finished with: a sibling final file at least as new, or an age past `maxAgeMs`. */
 export function cleanupDurableTemps(dir: string, maxAgeMs = 86_400_000): void {
   let names: string[];
   try { names = fs.readdirSync(dir); } catch { return; }

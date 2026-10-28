@@ -1,6 +1,5 @@
 import type { JSX, ReactNode } from 'react';
 
-/** A panel rising from the bottom edge; a tap on the dimmed list behind it closes it. */
 export function Sheet({ title, onClose, children }: { title: string; onClose(): void; children: ReactNode }): JSX.Element {
   return (
     <div className="sheet-back" onPointerDown={onClose}>

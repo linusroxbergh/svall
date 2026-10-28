@@ -36,7 +36,6 @@ const notFound = (r: { stdout: string; stderr: string }): boolean => /Session no
 
 const imported = (r: { stdout: string }, sessionId: string): boolean => r.stdout.split('\n').some((l) => l.trim() === `Imported session: ${sessionId}`);
 
-// the message ids of an export, in order
 const ids = (file: string): string[] | undefined => {
   try {
     const messages = (JSON.parse(fs.readFileSync(file, 'utf8')) as { messages?: unknown }).messages;

@@ -2,9 +2,8 @@ import { diff } from '@codemirror/merge';
 import { EditorState, Text, type Extension, type TransactionSpec } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 
-// the text of an open file as the editor holds it, what the disk last had, and when;
-// diskMtimeMs is the disk's newer mtime while a conflict stands, the one Overwrite saves with; root is the folder it was read under,
-// and on the worker it was read from, which leaves it read-only
+// diskMtimeMs is the disk's newer mtime while a conflict stands, the one Overwrite saves with;
+// root is the folder it was read under, and `on` the worker it was read from, which leaves it read-only
 export type Buffer = { state: EditorState; saved: Text; mtimeMs: number; diskMtimeMs?: number; root?: string; on?: string };
 
 const buffers = new Map<string, Buffer>();

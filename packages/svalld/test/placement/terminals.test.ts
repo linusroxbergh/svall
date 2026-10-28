@@ -11,15 +11,12 @@ import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
 import { ScreenTails } from '../../src/worker/screens.js';
-import { cleanHomes } from '../helpers.js';
-import { H, W, placed, until, world } from './world.js';
+import { H, W, placed, stopWorlds, until, world } from './world.js';
 
-const worlds: { stop(): Promise<void> }[] = [];
 afterEach(async () => {
   vi.useRealTimers();
   vi.restoreAllMocks();
-  for (const w of worlds.splice(0)) await w.stop();
-  cleanHomes();
+  await stopWorlds();
 });
 
 const b64 = (s: string) => Buffer.from(s).toString('base64');
@@ -67,7 +64,6 @@ async function linked(more: Partial<Robot> = {}, homeLog?: Logger) {
       return { stream: s, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } };
     },
   });
-  worlds.push(w);
   await w.link();
   await until(() => { if (!w.worker.connection.connected()) throw new Error('w1 is not linked yet'); });
   return { w, ...pane, sockets, phone: viewer('phone'), other: viewer('app') };
@@ -204,7 +200,6 @@ describe('the terminal of a robot on a worker', () => {
 
   it('the home lets go of a robot\'s last screen once its placement changes or it is closed', () => {
     const w = world({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
-    worlds.push(w);
     const { terminals, store } = w.home;
     terminals.sawScreen('c_1', 'first stint', 1, W);
     expect(terminals.lastScreen('c_1')).toEqual({ text: 'first stint', at: 1 });

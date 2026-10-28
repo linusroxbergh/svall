@@ -12,7 +12,6 @@ const exec = promisify(execFile);
 export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'];
 const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
 
-/** Whether a file's name, wherever it lies, matches a credential pattern. */
 export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.test(path.posix.basename(p)));
 
 export const BUNDLE_MAX = 100 * 1024 * 1024;
@@ -41,9 +40,8 @@ const PATCH = ['--binary', '--no-color', '--no-ext-diff', '--no-textconv', '--sr
 // diff.orderFile may write otherwise
 const RAW = ['--raw', '-z', '--no-renames', '--no-abbrev', '--ignore-submodules=dirty', '-O/dev/null'];
 
-const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
+export const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
 
-// a file's content, or a link's target, by sha256
 const contentSha = async (file: string, st: fs.Stats): Promise<string> =>
   (st.isSymbolicLink() ? sha256Hex(fs.readlinkSync(file, { encoding: 'buffer' })) : fileSha(file));
 
@@ -191,7 +189,6 @@ async function createdBy(patch: string, root: string, git: GitRunner): Promise<s
   return written.filter((p) => !indexed.has(p));
 }
 
-/** The refusal of a branch of `name` on `machine` that holds commits the branch moving there lacks. */
 export const branchAhead = (machine: string, name: string) => ({ reason: `${machine} has a branch ${name} with commits this one lacks`, action: 'merge or rename it there first' });
 
 /** Whether `sha`, the tip of a branch the move would reset, is `head` or behind it, as only then does the move lose nothing of it. */
