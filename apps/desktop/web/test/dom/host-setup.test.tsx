@@ -357,6 +357,7 @@ test('a program row with an install command keeps Open terminal beside its not-n
   expect(screen.getByTestId('host-tick-mirror:runtime:npx')).toBeTruthy();
   fireEvent.click(screen.getByTestId('host-terminal-mirror:runtime:npx'));
   expect(store.getState().hostTerminal).toEqual({ run: 'sudo apt install nodejs npm' });
+});
 
 test('a variable row takes its value in a field, shown to no one, and Set sends it to the machine; this Mac\'s own copies without it; a refusal says why', async () => {
   const unset: HostStep = { step: 'mirror:var:X', status: 'warn', action: 'set X on trift', run: 'svall worker env X', detail: 'ad reads X, which is not set on trift', gap: { name: 'X', what: 'not set; ad reads it' }, here: true };
