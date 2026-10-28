@@ -208,6 +208,17 @@ describe('the last line a run prints', () => {
     await setUpNow([login('notion'), login('linear'), still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
     expect(asked).toEqual(['Set them up now? [Y/n] ']);
     expect(said.join('')).toBe('Run these on trift:\n  ssh -L 3118:localhost:3118 trift.test, then MCP_OAUTH_CALLBACK_PORT=3118 claude, /mcp\nsvall host doctor trift checks again once they are done.\n');
+
+    // a program row's tick is not a key to copy, but its install command is still one to run there
+    const npx: SetupRow = {
+      key: 'runtime:npx', status: 'warn', action: 'install npx on trift', run: 'sudo apt install nodejs npm', detail: 'd',
+      tick: { item: 'runtime:npx', fields: ['skip'], on: false, preview: [] }, gap: { name: 'npx', what: 'not installed; linear needs it' },
+    };
+    asked.length = 0;
+    said.length = 0;
+    await setUpNow([npx].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    expect(asked).toEqual(['Set them up now? [Y/n] ']);
+    expect(said.join('')).toBe('Run these on trift:\n  ssh trift.test, then sudo apt install nodejs npm\nsvall host doctor trift checks again once they are done.\n');
   });
 
   it('a run\'s lines leave the agent setup rows to the list at its end', async () => {

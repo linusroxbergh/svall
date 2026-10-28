@@ -24,11 +24,16 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
             <span><b>{r.gap!.name}</b> {r.gap!.what}{(!toTick(r) || notNeeded(r)) && !r.run && r.action && <em>{r.action}</em>}</span>
             {toTick(r) && !notNeeded(r) ? (
               <button className="btn set-open" data-testid={`side-gap-copy-${r.key}`} onClick={() => void tick(r.tick!)}>Copy keys</button>
-            ) : r.run ? (
-              <button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
-                onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button>
-            ) : toTick(r) && (
-              <button className="btn set-open" data-testid={`side-gap-skip-${r.key}`} data-tip={`${name} does not need it; the row then stands aside`} onClick={() => void tick(r.tick!)}>Not needed</button>
+            ) : (
+              <>
+                {r.run && (
+                  <button className="btn set-open" data-testid={`side-gap-terminal-${r.key}`} data-tip={`Opens a terminal on ${name} with ${r.run} typed, for you to run`}
+                    onClick={() => terminalOn(name, r.run, r.forward)}>Open terminal</button>
+                )}
+                {toTick(r) && (
+                  <button className="btn set-open" data-testid={`side-gap-skip-${r.key}`} data-tip={`${name} does not need it; the row then stands aside`} onClick={() => void tick(r.tick!)}>Not needed</button>
+                )}
+              </>
             )}
           </div>
         ))}

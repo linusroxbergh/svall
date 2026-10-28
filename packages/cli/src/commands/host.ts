@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
-import { ApiError, aside, asideLine, checksAgain, notNeeded, PROTOCOL_VERSION, settable, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, aside, asideLine, checksAgain, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -155,7 +155,7 @@ type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; con
 
 /** Asks to set up what of the machine's agent setup can be from here: each key to copy there, one at a time, then the commands to run there. */
 export async function setUpNow(steps: StepEvent[], o: { name: string; machine: MachineId; there: There }, io: SetUpIo): Promise<void> {
-  if (!steps.some((s) => settable(s) && !notNeeded(s)) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
+  if (!steps.some((s) => (toTick(s) && !notNeeded(s)) || s.run !== undefined) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
   const rows = steps.map(asRow);
   for (const r of rows.filter((x) => toTick(x) && !notNeeded(x))) {
     const { item, fields, preview } = r.tick!;

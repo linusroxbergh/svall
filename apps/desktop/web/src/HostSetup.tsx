@@ -170,6 +170,11 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
         {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{more}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
+      {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
+      {notNeeded(row) && row.run && terminal && idle && (
+        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+      )}
       {row.tick ? (
         // a tick under way keeps the box, and focus on it, and takes no second change
         <input type="checkbox" data-testid={`host-tick-${row.step}`} aria-label={notNeeded(row) ? `${stepLabel(row.step)} is not needed on ${name}` : stepLabel(row.step)} aria-describedby={sentence}

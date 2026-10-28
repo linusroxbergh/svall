@@ -339,3 +339,21 @@ test('the agent setup fold lists what runs only on a Mac, or is ticked as not ne
   expect(steps()).toEqual(['host-step-mirror:runtime:adlc', 'host-step-mirror:var:X', 'host-aside', 'host-step-mirror:maconly:claude:chrome']);
   expect(screen.getByTestId('host-tick-mirror:runtime:adlc').getAttribute('aria-label')).toBe('adlc is not needed on trift');
 });
+
+test('a program row with an install command keeps Open terminal beside its not-needed box', () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', {
+      step: 'mirror:runtime:npx', status: 'warn', action: 'install npx on trift', run: 'sudo apt install nodejs npm', detail: 'linear needs it; tick if trift does not',
+      tick: { item: 'runtime:npx', fields: ['skip'], on: false, preview: [] }, gap: { name: 'npx', what: 'not installed; linear needs it' },
+    });
+    store.getState().hostDone('doctor', 0);
+  });
+  fireEvent.click(screen.getByTestId('host-setup-fold'));
+  expect(screen.getByTestId('host-tick-mirror:runtime:npx')).toBeTruthy();
+  fireEvent.click(screen.getByTestId('host-terminal-mirror:runtime:npx'));
+  expect(store.getState().hostTerminal).toEqual({ run: 'sudo apt install nodejs npm' });
+});

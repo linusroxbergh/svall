@@ -78,10 +78,11 @@ test('a program row offers Not needed, which ticks it; ticked, it joins the one 
     key: 'runtime:adlc', status: on ? 'skip' : 'warn', detail: 'd', ...(!on && { action: 'install adlc on vault' }),
     tick: { item: 'runtime:adlc', fields: ['skip'], on, preview: [] }, gap: on ? { name: 'adlc', what: 'not needed there, you ticked' } : { name: 'adlc', what: 'not installed; ad needs it' },
   });
-  rows = [skip(false), chrome];
+  const npx: SetupRow = { ...skip(false), key: 'runtime:npx', run: 'sudo apt install nodejs npm', action: 'install npx on vault', tick: { item: 'runtime:npx', fields: ['skip'], on: false, preview: [] }, gap: { name: 'npx', what: 'not installed; ad needs it' } };
+  rows = [skip(false), npx, chrome];
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   unfold();
-  expect(shown()).toEqual(['adlc not installed; ad needs itinstall adlc on vaultNot needed', 'chrome runs only on a Mac']);
+  expect(shown()).toEqual(['adlc not installed; ad needs itinstall adlc on vaultNot needed', 'npx not installed; ad needs itOpen terminalNot needed', 'chrome runs only on a Mac']);
   rows = [skip(true), chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-skip-runtime:adlc')); });
   expect(call).toHaveBeenCalledWith('machines.consent', { machine: VAULT, item: 'runtime:adlc', fields: ['skip'], on: true });
