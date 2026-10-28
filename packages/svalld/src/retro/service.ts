@@ -25,7 +25,7 @@ import { pack } from './pack.js';
 import { PRICES_CHECKED } from './prices.js';
 import { ghReady, prForBranch, prThread, type PrComment } from './prs.js';
 import { runPlan } from './run.js';
-import { discover, opencodeSessions, otherFleetSessions, repoFinder, scope, type Candidate } from './scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
 import { select } from './select.js';
 import { readSessions } from './sessions.js';
 import { inventory, isGitWithRemote, type Target } from './targets.js';
@@ -257,7 +257,7 @@ export class Retro {
     const dirs = [...new Set([...own.values()].filter((r) => r.agent === 'opencode' && r.cwd).map((r) => r.cwd!).concat(found.flatMap((c) => (c.cwd ? [c.cwd] : []))))];
     const candidates: Candidate[] = [...found, ...(await opencodeSessions(dirs)).filter((c) => !c.mtime || c.mtime >= span.from)];
     const { inScope, counts } = await scope({
-      candidates, own, others: otherFleetSessions(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
+      candidates, home: this.d.paths.home, own, others: otherFleets(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
       islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
     const repos = [...new Set(inScope.flatMap((c) => (c.repo ? [c.repo] : [])))];
