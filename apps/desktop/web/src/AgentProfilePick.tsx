@@ -16,15 +16,15 @@ type Opt = { value: string; name: string; detail?: string; error?: boolean; disa
 export function AgentProfilePick({ id }: { id: string }) {
   const picked = useApp((s) => s.fleet.robots[id]?.agentProfile);
   const running = useApp((s) => Boolean(s.fleet.robots[id]?.agent));
-  const fleet = useApp((s) => s.resources.find((r) => r.tier === 'fleet'));
-  const items = fleet?.groups.find((g) => g.kind === 'agentProfiles')?.items ?? NONE;
+  const profiles = useApp((s) => s.resources.find((r) => r.tier === 'profiles'));
+  const items = profiles?.groups.find((g) => g.kind === 'agentProfiles')?.items ?? NONE;
   const current = picked === undefined ? undefined : items.find((i) => i.name === picked);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [place, setPlace] = useState<CSSProperties>();
   const row = useRef<HTMLDivElement>(null);
   const menu = useRef<HTMLDivElement>(null);
-  const shelf = () => { if (fleet) app.store.getState().toggleResources(true, { where: fleet.rootId, what: 'agentProfiles' }); };
+  const shelf = () => { if (profiles) app.store.getState().toggleResources(true, { where: profiles.rootId, what: 'agentProfiles' }); };
   // svalld reads the file as it saves the pick and refuses one it cannot use, so only its yes is told as one; the listing is read
   // again either way, so the line under says what the folder holds now
   const pick = (v: string) => {
@@ -36,14 +36,14 @@ export function AgentProfilePick({ id }: { id: string }) {
     void reloadResources(deps());
   };
   // before the listing has come there is nothing to say a profile is missing
-  const hint = picked === undefined || !fleet ? undefined
+  const hint = picked === undefined || !profiles ? undefined
     : !current ? `${picked}.md is not in the agent profiles folder` : current.error ? `${picked} ${current.error}` : current.detail;
 
   const opts: Opt[] = [
     { value: '', name: 'No profile' },
     ...items.map((i) => ({ value: i.name, name: i.name, detail: i.error ?? i.detail, error: Boolean(i.error), disabled: Boolean(i.error) && i.name !== picked })),
-    ...(picked !== undefined && !current ? [{ value: picked, name: fleet ? `${picked} (missing)` : picked }] : []),
-    ...(fleet ? [{ value: MANAGE, name: 'Manage profiles…' }] : []),
+    ...(picked !== undefined && !current ? [{ value: picked, name: profiles ? `${picked} (missing)` : picked }] : []),
+    ...(profiles ? [{ value: MANAGE, name: 'Manage profiles…' }] : []),
   ];
   const chosen = Math.max(0, opts.findIndex((o) => o.value === (picked ?? '')));
   const choose = (o: Opt) => { setOpen(false); if (o.value !== (picked ?? '')) pick(o.value); };

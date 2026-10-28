@@ -170,7 +170,7 @@ export function List() {
   const farAt = source && farRootOf(source.rootId);
   const far = farAt ? machineName(fleet, farAt.machine) : undefined;
   // a new agent profile is made where the list shows them; a new doc wherever else docs show
-  const profile = what === 'agentProfiles';
+  const profile = what === 'agentProfiles' || source?.tier === 'profiles';
   const addTo = profile ? source?.agentProfiles : what === 'all' || what === 'docs' ? source?.docs : undefined;
   const noun = profile ? 'profile' : 'doc';
   // a filter that leaves one file needs no choosing — CLAUDE.md is the usual one — so the pane shows it
@@ -190,7 +190,7 @@ export function List() {
             {addTo && naming && <NewDocField label={`New ${noun}`} onDone={() => setNaming(false)} onCommit={(v) => createDoc(deps(), addTo, v)} />}
             {groups.length === 0 && <div className="res-none">Nothing here.</div>}
             {groups.map((g) => {
-              const badge = g.kind === 'autoMemory' ? undefined : badgeOf(g.kind, { name: '' });
+              const badge = g.kind === 'autoMemory' ? undefined : badgeOf(g.kind, { name: '' }, source?.tier);
               return (
                 <section key={g.kind}>
                   <h4>

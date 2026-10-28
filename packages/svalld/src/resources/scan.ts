@@ -274,13 +274,16 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
 
   const repos = repoSources(state, claude, docs, rootOf);
 
-  // the fleet's own docs, read by every robot in this fleet and by no other, and the agent profiles its robots pick from;
-  // both sit in the fleet's home
+  // the fleet's own docs, read by every robot in this fleet and by no other
   const fleet = docs === undefined ? [] : [((): ResourceSource => {
     const dir = fleetDir(docs);
-    const profiles = agentProfiles === undefined ? {} : { agentProfiles: rootIdOf(agentProfiles) };
-    const groups = groupsOf([['docs', docRows(dir)], ['agentProfiles', agentProfiles === undefined ? [] : agentProfileRows(agentProfiles)]]);
-    return { rootId: rootIdOf(dir), root: dir, name: state.name ?? profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), ...profiles, islandIds: [], robotIds: [], groups };
+    return { rootId: rootIdOf(dir), root: dir, name: state.name ?? profileOf(path.dirname(docs)), tier: 'fleet', docs: rootIdOf(dir), islandIds: [], robotIds: [], groups: groupsOf([['docs', docRows(dir)]]) };
+  })()];
+
+  // the roles a robot may be given, which none reads until one is picked for it
+  const profiles = agentProfiles === undefined ? [] : [((): ResourceSource => {
+    const id = rootIdOf(agentProfiles);
+    return { rootId: id, root: agentProfiles, name: state.name ?? profileOf(path.dirname(agentProfiles)), tier: 'profiles', agentProfiles: id, islandIds: [], robotIds: [], groups: groupsOf([['agentProfiles', agentProfileRows(agentProfiles)]]) };
   })()];
 
   const entity = (tier: 'island' | 'robot', id: string, name: string, islandIds: string[], robotIds: string[]): ResourceSource[] => {
@@ -303,5 +306,5 @@ export function scanResources(state: FleetState, claude: ClaudePaths, codex?: Co
   });
 
   const everywhereCodex = codex && codexSource(codex);
-  return [everywhere, ...(everywhereCodex ? [everywhereCodex] : []), ...fleet, ...repos, ...orphans, ...islands, ...robots];
+  return [everywhere, ...(everywhereCodex ? [everywhereCodex] : []), ...fleet, ...repos, ...orphans, ...islands, ...robots, ...profiles];
 }

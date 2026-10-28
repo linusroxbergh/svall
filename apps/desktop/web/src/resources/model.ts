@@ -113,13 +113,15 @@ export const sourceOfRoot = (sources: ResourceSource[], root: string | undefined
   root === undefined ? undefined : sources.find((s) => s.root === root && farRootOf(s.rootId)?.machine === machine);
 
 
-// the ladder, broad to narrow; one is the label of a single source of the tier
+// the ladder, broad to narrow, then the agent profiles, which stand on no rung as none is read until picked;
+// one is the label of a single source of the tier
 const TIERS: { tier: Tier; label: string; one: string; glyph: string; colour: string }[] = [
   { tier: 'global', label: 'Global', one: 'Global', glyph: '◎', colour: '--ink-cool' },
   { tier: 'fleet', label: 'Fleet', one: 'Fleet', glyph: '◆', colour: '--pt-coral' },
   { tier: 'repo', label: 'Repos', one: 'Repo', glyph: '▣', colour: '--pt-sky' },
   { tier: 'island', label: 'Islands', one: 'Island', glyph: '▲', colour: '--pt-moss' },
   { tier: 'robot', label: 'Robots', one: 'Robot', glyph: '●', colour: '--pt-sun' },
+  { tier: 'profiles', label: 'Profiles', one: 'Profiles', glyph: '◇', colour: '--sand' },
 ];
 
 export const tierOf = (tier: Tier) => TIERS.find((t) => t.tier === tier)!;
@@ -129,6 +131,7 @@ const plural = (n: number, one: string): string => (n === 0 ? `no ${one}s` : n =
 /** The second line of a source's row: what tells it from another of the same name. */
 export function qualifierOf(s: ResourceSource, f: FleetState): string {
   if (s.tier === 'fleet') return 'this window only';
+  if (s.tier === 'profiles') return 'read only by a robot given one';
   if (s.tier === 'island') return plural(s.robotIds.length, 'robot');
   if (s.tier === 'robot') { const c = f.robots[s.robotIds[0]]; return c?.repo?.branch ?? shortPath(c?.cwd ?? s.root); }
   if (s.tier === 'repo' && s.docs === s.rootId) return 'no robots here';
@@ -165,13 +168,13 @@ export function kindRows(s: Source | undefined): { what: What; label: string; co
   return [row('all', 'All'), ...KINDS.filter((k) => offers(s?.tier, k.kind)).map((k) => row(k.kind, kindLabel(k.kind, s?.tier), k.colour))];
 }
 
-/** Whether a tier is offered a kind at all: only an island and a robot have a card, and only the fleet has agent profiles. */
+/** Whether a tier is offered a kind at all: only an island and a robot have a card, and the agent profiles hold only themselves. */
 export const offers = (tier: Tier | undefined, kind: Kind): boolean =>
-  kind === 'agentProfiles' ? tier === 'fleet' : !kindOf(kind).card || tier === 'island' || tier === 'robot';
+  (kind === 'agentProfiles') === (tier === 'profiles') && (!kindOf(kind).card || tier === 'island' || tier === 'robot');
 
 /** Whether a row's content rides in the prompt or is read when wanted; configuration is neither. */
-export const badgeOf = (kind: Kind, item: Pick<Item, 'name'>): 'attached' | 'lookup' | undefined =>
-  kind === 'instructions' || kind === 'agentInstructions' ? 'attached'
+export const badgeOf = (kind: Kind, item: Pick<Item, 'name'>, tier?: Tier): 'attached' | 'lookup' | undefined =>
+  kind === 'instructions' || kind === 'agentInstructions' || (kind === 'docs' && tier === 'fleet') ? 'attached'
     : kind === 'autoMemory' ? (item.name === 'MEMORY.md' ? 'attached' : 'lookup')
     : kind === 'docs' || kind === 'skills' || kind === 'agents' || kind === 'commands' ? 'lookup' : undefined;
 

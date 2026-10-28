@@ -247,7 +247,7 @@ describe('renderBrief with docs', () => {
     'A plan, scratch file, research dump, script or screenshot goes in a temp folder, never beside a note.',
     'Finished work gets no note: its record goes in the PR or ticket, a trap it found in a comment at the code.',
     "Leave a note only for what a later agent will need again and can't get from the code, PR or ticket, in at most 30 lines. Update or delete a note before adding one, and hold memories to the same bar.",
-    "A fleet, repo or island note must stay true and useful across many tasks for months; one task's research, plan, fix or results never goes there.",
+    "A repo or island note must stay true and useful across many tasks for months; one task's research, plan, fix or results never goes there.",
     "A handover or other note on this robot's task goes in the robot folder; anything narrower goes in a temp folder.",
     'Write a note as <name>.md with a `description:` frontmatter line, in the narrowest folder it applies to:',
   ];
@@ -300,6 +300,81 @@ describe('renderBrief with docs', () => {
     ]);
     expect(text).not.toContain('Docs (island):');
     expect(text.split("Read a doc when").length).toBe(2);
+  });
+
+  it('gives each fleet doc whole, indented under its line, with no blank line inside', () => {
+    const fleet: DocFolder = { tier: 'fleet', dir: '/d/fleet', docs: [
+      { name: 'tickets', path: '/d/fleet/tickets.md', description: 'When reading tickets.', body: 'Tickets live in minimalplans.\r\n\r\n# Islands: none\nAsk first.' },
+      { name: 'empty', path: '/d/fleet/empty.md' },
+    ] };
+    const lines = renderBrief(island(), robot(), [fleet, ...folders()]).split('\n');
+    const from = lines.indexOf('Docs (fleet), which hold for every robot and change only when the user asks:');
+    expect(lines.slice(from, from + 6)).toEqual([
+      'Docs (fleet), which hold for every robot and change only when the user asks:',
+      '- tickets — "When reading tickets." (/d/fleet/tickets.md)',
+      '  Tickets live in minimalplans.',
+      '  # Islands: none',
+      '  Ask first.',
+      '- empty (/d/fleet/empty.md)',
+    ]);
+    expect(lines.join('\n')).not.toContain('Read a doc when');
+  });
+
+  it('never offers the fleet folder as a place to write a note', () => {
+    const text = renderBrief(island(), robot(), [{ tier: 'fleet', dir: '/d/fleet', docs: [] }, ...folders()]);
+    expect(text).toContain('- repo: /d/repos/app-12345678');
+    expect(text).not.toContain('/d/fleet');
+  });
+
+  it('keeps the fleet docs while a lookup list has a note to give up, though the fleet list is longer', () => {
+    const fleet: DocFolder = { tier: 'fleet', dir: '/d/fleet', docs: Array.from({ length: 3 }, (_, n) => ({ name: `rule-${n}`, path: `/d/fleet/${n}.md`, body: String(n).repeat(2200), modifiedAt: 0 })) };
+    const repo = Array.from({ length: 2 }, (_, n) => ({ name: `note-${n}`, path: `/d/repos/app-12345678/${n}.md`, description: 'x'.repeat(150), modifiedAt: 1 }));
+    const text = renderBrief(island(), robot(), [fleet, ...folders({ repo })]);
+    expect(text.length).toBeLessThanOrEqual(9_000);
+    for (const n of [0, 1, 2]) expect(text).toContain(`  ${String(n).repeat(2200)}`);
+    expect(text).toMatch(/- …and \d more in \/d\/repos\/app-12345678/);
+  });
+
+  it('gives up a fleet doc too long to fit before the short ones, and says to read it', () => {
+    const fleet: DocFolder = { tier: 'fleet', dir: '/d/fleet', docs: [
+      { name: 'huge', path: '/d/fleet/huge.md', body: 'h'.repeat(9_500), modifiedAt: 9 },
+      { name: 'tone', path: '/d/fleet/tone.md', body: 'Plain words.', modifiedAt: 0 },
+    ] };
+    const text = renderBrief(island(), robot(), [fleet, ...folders()]);
+    expect(text).toContain('- tone (/d/fleet/tone.md)\n  Plain words.');
+    expect(text).not.toContain('hhh');
+    expect(text).toContain('- …and 1 more in /d/fleet, too long to give here: read each');
+  });
+
+  it('gives up the browser tabs before a fleet doc', () => {
+    const fleet: DocFolder = { tier: 'fleet', dir: '/d/fleet', docs: [{ name: 'rules', path: '/d/fleet/rules.md', body: 'r'.repeat(5_000) }] };
+    const tabs = Array.from({ length: 30 }, (_, n) => ({ id: `t${n}`, url: `https://example.com/${'t'.repeat(150)}/${n}`, title: '' }));
+    const text = renderBrief(island(), robot({ browser: { tabs, active: 't0' } }), [fleet, ...folders()]);
+    expect(text.length).toBeLessThanOrEqual(9_000);
+    expect(text).toContain(`  ${'r'.repeat(5_000)}`);
+    expect(text).toMatch(/- …and \d+ more tabs/);
+  });
+
+  it('sends a fleet doc whole when its text changes, a reorder too, and names one taken away by its line', () => {
+    const at = (...docs: { name: string; body: string }[]) =>
+      renderBrief(island(), robot(), [{ tier: 'fleet', dir: '/d/fleet', docs: docs.map((d) => ({ ...d, path: `/d/fleet/${d.name}.md` })) }]);
+    const before = at({ name: 'rules', body: '## Do\n- Merge your own PR.\n## Never\n- Force push.' });
+    const after = at({ name: 'rules', body: '## Do\n- Force push.\n## Never\n- Merge your own PR.' });
+    expect(briefDiff(before, after)).toBe([
+      '# Svall context changed',
+      '- - rules (/d/fleet/rules.md)',
+      '+ - rules (/d/fleet/rules.md)\n  ## Do\n  - Force push.\n  ## Never\n  - Merge your own PR.',
+    ].join('\n'));
+    expect(briefReply('UserPromptSubmit', after, before).reply).toContain('- Force push.\n  ## Never');
+    expect(briefDiff(before, at())).toBe('# Svall context changed\n- Docs (fleet), which hold for every robot and change only when the user asks:\n- - rules (/d/fleet/rules.md)');
+  });
+
+  it('carries a fleet doc change into a delivered brief that has another change pending', () => {
+    const at = (body: string, description = '') =>
+      renderBrief(island({ description }), robot(), [{ tier: 'fleet', dir: '/d/fleet', docs: [{ name: 'rules', path: '/d/fleet/rules.md', body }] }]);
+    const delivered = at('- One.\n- Two.');
+    const carried = carryBrief(delivered, at('- One.\n- Two.', 'new'), at('- Two.\n- One.', 'new'));
+    expect(briefDiff(carried!, at('- Two.\n- One.', 'new'))).toBe('# Svall context changed\n- Island: Docs site\n+ Island: Docs site — new');
   });
 
   it('cuts a description at 200 characters', () => {

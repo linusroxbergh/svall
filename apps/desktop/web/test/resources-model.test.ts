@@ -75,13 +75,14 @@ const chr = (id: string, name: string, islandId: string) => src('robot', name, `
 const all = [claude, codex, repoA, repoP, orphan, isle('i1', 'ATLAS', ['c1', 'c2']), isle('i2', 'mobile', ['c3', 'c4']), isle('i3', 'empty', []), isle('home', 'Mission control', ['h1']),
   chr('c1', 'deep robin', 'i1'), chr('c2', 'violet tern', 'i1'), chr('c3', 'calm otter', 'i2'), chr('c4', 'brisk vole', 'i2'), chr('h1', 'pilot', 'home')];
 const ours = src('fleet', 'private', '/Users/l/.svall/docs/fleet', { docs: 'r:/Users/l/.svall/docs/fleet' });
+const roles = src('profiles', 'Agent profiles', '/Users/l/.svall/agent-profiles', { agentProfiles: 'r:/Users/l/.svall/agent-profiles' });
 
 describe('whereGroups', () => {
   it('groups sources by tier in ladder order, each with its count', () => {
-    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 0], ['repo', 3], ['island', 4], ['robot', 5]]);
+    expect(whereGroups(all, f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 0], ['repo', 3], ['island', 4], ['robot', 5], ['profiles', 0]]);
   });
-  it('stands the fleet between global and the repositories', () => {
-    expect(whereGroups([...all, ours], f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 1], ['repo', 3], ['island', 4], ['robot', 5]]);
+  it('stands the fleet between global and the repositories, and the agent profiles past the robots', () => {
+    expect(whereGroups([roles, ...all, ours], f, '').map((g) => [g.tier, g.count])).toEqual([['global', 2], ['fleet', 1], ['repo', 3], ['island', 4], ['robot', 5], ['profiles', 1]]);
   });
   it('sub-groups robots by island and nothing else', () => {
     const groups = whereGroups(all, f, '');
@@ -100,7 +101,7 @@ describe('whereGroups', () => {
   });
   it('filters across every group by name and qualifier, keeping a group with no match at zero', () => {
     const groups = whereGroups(all, f, 'ATLAS');
-    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['fleet', 0], ['repo', 1], ['island', 1], ['robot', 0]]);
+    expect(groups.map((g) => [g.tier, g.count])).toEqual([['global', 0], ['fleet', 0], ['repo', 1], ['island', 1], ['robot', 0], ['profiles', 0]]);
   });
 });
 
@@ -132,6 +133,7 @@ describe('qualifierOf', () => {
   });
   it('says the fleet holds for this window alone', () => {
     expect(qualifierOf(ours, f)).toBe('this window only');
+    expect(qualifierOf(roles, f)).toBe('read only by a robot given one');
   });
   it('names the worker a clone is on', () => {
     const onVault = { ...f, machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
@@ -153,9 +155,9 @@ describe('kindRows', () => {
     }
     for (const s of [claude, repoA]) expect(kindRows(s).map((r) => r.what).filter((w) => card.includes(w))).toEqual([]);
   });
-  it('offers agent profiles to the fleet alone', () => {
-    expect(kindRows(ours).map((r) => r.what).slice(0, 3)).toEqual(['all', 'docs', 'agentProfiles']);
-    for (const s of [claude, repoA, isle('i1', 'ATLAS', []), chr('c1', 'deep robin', 'i1')]) expect(kindRows(s).some((r) => r.what === 'agentProfiles')).toBe(false);
+  it('offers agent profiles to their own source alone, and nothing else to it', () => {
+    expect(kindRows(roles).map((r) => r.what)).toEqual(['all', 'agentProfiles']);
+    for (const s of [claude, ours, repoA, isle('i1', 'ATLAS', []), chr('c1', 'deep robin', 'i1')]) expect(kindRows(s).some((r) => r.what === 'agentProfiles')).toBe(false);
   });
   it('calls the note kind Description on an island, the way the row and the crumb do', () => {
     const label = (s: Parameters<typeof kindRows>[0]) => kindRows(s).find((r) => r.what === 'note')?.label;
@@ -207,6 +209,8 @@ describe('badgeOf', () => {
     expect(badgeOf('autoMemory', it_('MEMORY.md'))).toBe('attached');
     expect(badgeOf('autoMemory', it_('plan.md'))).toBe('lookup');
     for (const k of ['docs', 'skills', 'agents', 'commands'] as const) expect(badgeOf(k, it_('x'))).toBe('lookup');
+    expect(badgeOf('docs', it_('x'), 'fleet')).toBe('attached');
+    expect(badgeOf('docs', it_('x'), 'repo')).toBe('lookup');
     for (const k of ['mcp', 'hooks', 'plugins', 'settings'] as const) expect(badgeOf(k, it_('x'))).toBeUndefined();
   });
 });
@@ -235,6 +239,7 @@ describe('chainOf', () => {
     expect(labels(chainOf([...all, ours], f, all[9]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['repo', 'atlas'], ['island', 'ATLAS'], ['robot', 'deep robin']]);
     expect(labels(chainOf([...all, ours], f, all[13]))).toEqual([['global', 'Claude'], ['fleet', 'private'], ['island', 'Mission control'], ['robot', 'pilot']]);
     expect(chainOf([...all, ours], f, ours)).toBeUndefined();
+    expect(chainOf([...all, ours, roles], f, all[9])?.chips.some((c) => c.tier === 'profiles')).toBe(false);
   });
   it('is nothing for a global or a repository source', () => {
     expect(chainOf(all, f, claude)).toBeUndefined();

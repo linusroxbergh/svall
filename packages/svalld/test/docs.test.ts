@@ -77,6 +77,13 @@ describe('listDocs', () => {
     expect(locked).toMatchObject({ name: 'locked', error: expect.stringContaining('cannot be read') });
     fs.chmodSync(path.join(dir, 'locked.md'), 0o644);
   });
+  it('gives each doc its text after the frontmatter when asked', () => {
+    const dir = path.join(makeHome(), 'd');
+    put(path.join(dir, 'tone.md'), '---\ndescription: How we write.\n---\n\nShort sentences.\n');
+    put(path.join(dir, 'blank.md'), '---\ndescription: Nothing yet.\n---\n\n');
+    expect(listDocs(dir, true).map((d) => [d.name, d.body])).toEqual([['blank', undefined], ['tone', 'Short sentences.']]);
+    expect(listDocs(dir)[1]).not.toHaveProperty('body');
+  });
   it('is empty for a folder that is not there', () => {
     expect(listDocs('/nowhere/at/all')).toEqual([]);
   });
@@ -101,7 +108,8 @@ describe('docFolders', () => {
       ['island', path.join(docs, 'islands', 'i1')],
       ['robot', path.join(docs, 'robots', 'c1')],
     ]);
-    expect(folders[0].docs.map((d) => d.name)).toEqual(['tone']);
+    expect(folders[0].docs.map((d) => [d.name, d.body])).toEqual([['tone', '# body']]);
+    expect(folders[1].docs[0]).not.toHaveProperty('body');
     expect(folders[1].docs.map((d) => d.name)).toEqual(['conventions']);
     expect(folders[2].docs).toEqual([]);
   });
