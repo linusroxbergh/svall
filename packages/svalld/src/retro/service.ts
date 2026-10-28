@@ -25,7 +25,7 @@ import { pack } from './pack.js';
 import { PRICES_CHECKED } from './prices.js';
 import { ghReady, prForBranch, prThread, type PrComment } from './prs.js';
 import { runPlan } from './run.js';
-import { discover, opencodeSessions, otherFleetSessions, repoFinder, scope, type Candidate } from './scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
 import { select } from './select.js';
 import { readSessions } from './sessions.js';
 import { inventory, isGitWithRemote, type Target } from './targets.js';
@@ -257,7 +257,7 @@ export class Retro {
     const dirs = [...new Set([...own.values()].filter((r) => r.agent === 'opencode' && r.cwd).map((r) => r.cwd!).concat(found.flatMap((c) => (c.cwd ? [c.cwd] : []))))];
     const candidates: Candidate[] = [...found, ...(await opencodeSessions(dirs)).filter((c) => !c.mtime || c.mtime >= span.from)];
     const { inScope, counts } = await scope({
-      candidates, own, others: otherFleetSessions(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
+      candidates, home: this.d.paths.home, own, others: otherFleets(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
       islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
     const repos = [...new Set(inScope.flatMap((c) => (c.repo ? [c.repo] : [])))];
@@ -269,7 +269,9 @@ export class Retro {
     const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string) => prThread(url), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
     const ready = FOCUS_OF[focus].includes('review-tweaks') && await gh.ready();
     const { prOf, comments } = ready ? await this.prs(outlines, targets, inScope, gh) : { prOf: new Map<string, string>(), comments: new Map<string, PrComment[]>() };
-    return { counts, repos, targets, outlines, skillsSeen, ready, prOf, comments };
+    // the island each session in scope ran on, which a fix robot started from a finding takes
+    const islands = Object.fromEntries(inScope.flatMap((c) => (c.island ? [[c.session, c.island]] : [])));
+    return { counts, repos, targets, outlines, skillsSeen, ready, prOf, comments, islands };
   }
 
   private inventory(repos: string[], retro: FleetConfig['retro']): Promise<Target[]> {
@@ -297,7 +299,8 @@ export class Retro {
     fs.mkdirSync(path.join(dir, 'batches'), { recursive: true });
     for (const b of batches) writeDurable(path.join(dir, 'batches', `${b.id}.json`), Buffer.from(JSON.stringify(b.excerpts)), { mode: 0o600 });
     writeDurable(path.join(dir, 'select.json'), Buffer.from(JSON.stringify({ runs: picked.runs, unused: picked.unused, mechanical: picked.mechanical, thin: picked.thin })), { mode: 0o600 });
-    writeDurable(path.join(dir, 'plan.json'), Buffer.from(JSON.stringify(plan, null, 2)), { mode: 0o600 });
+    writeDurable(path.join(dir, 'islands.json'), Buffer.from(JSON.stringify(g.islands)), { mode: 0o600 });
+    writeDurable(path.join(dir, 'plan.json'),Buffer.from(JSON.stringify(plan, null, 2)), { mode: 0o600 });
     this.gathered = { plan: id, repos: g.repos, outlines: g.outlines, prOf: g.prOf, comments: g.comments };
     return plan;
   }
@@ -405,11 +408,13 @@ export class Retro {
     fs.mkdirSync(diffs, { recursive: true });
     const file = path.join(diffs, `${id}.diff`);
     writeDurable(file, Buffer.from(diff), { mode: 0o644 });
-    // the island most of the finding's sessions came from
+    // the island most of the finding's sessions came from, as the fleet recorded it or, failing that, their context named it
     const sessions = readSessions(this.d.paths.retroSessions);
+    const named = this.readJson<Record<string, string>>(path.join(this.runDir(run), 'islands.json')) ?? {};
     const tally = new Map<string, number>();
     for (const e of evidence) {
-      const island = 'session' in e.source && e.source.session ? sessions.get(e.source.session)?.island : undefined;
+      const session = 'session' in e.source ? e.source.session : undefined;
+      const island = session ? sessions.get(session)?.island ?? named[session] : undefined;
       if (island && this.d.store.state.islands[island]) tally.set(island, (tally.get(island) ?? 0) + 1);
     }
     const islandId = [...tally].sort((a, b) => b[1] - a[1])[0]?.[0] ?? HOME_ISLAND;

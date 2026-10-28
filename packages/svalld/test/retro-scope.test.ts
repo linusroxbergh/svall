@@ -2,10 +2,12 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { HOME_ISLAND, type Island, type Robot } from '@svall/protocol';
+import { BRIEF_CHANGED, renderBrief } from '../src/context/brief.js';
 import type { GitRunner } from '../src/links/git.js';
 import { PRIVATE, profileHome } from '../src/profile.js';
 import { appendSessions, type SessionRecord } from '../src/retro/sessions.js';
-import { discover, opencodeSessions, otherFleetSessions, repoFinder, scope, type Candidate } from '../src/retro/scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from '../src/retro/scope.js';
 import type { CliRun } from '../src/sessions/types.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -18,7 +20,8 @@ const OLD = FROM - 86_400_000;
 const cand = (session: string, o: Partial<Candidate> = {}): Candidate => ({ agent: 'claude', session, file: `/t/${session}.jsonl`, mtime: IN, ...o });
 const rec = (session: string, o: Partial<SessionRecord> = {}): SessionRecord => ({ at: 1, start: 1, session, robot: 'c_a', island: 'i_work', ...o });
 const repos = (m: Record<string, string>) => (cwd: string): Promise<string | undefined> => Promise.resolve(m[cwd]);
-const base = { own: new Map<string, SessionRecord>(), others: new Set<string>(), exclude: { repos: [], islands: [] }, unrecorded: [], islandName: () => undefined, repoOf: repos({}), remote: 0 };
+const none = { homes: new Set<string>(), sessions: new Set<string>() };
+const base = { home: '/f/mine', own: new Map<string, SessionRecord>(), others: none, exclude: { repos: [], islands: [] }, unrecorded: [], islandName: () => undefined, repoOf: repos({}), remote: 0 };
 
 describe('scope', () => {
   it('never takes a session another fleet recorded', async () => {
@@ -27,8 +30,8 @@ describe('scope', () => {
     for (const h of [mine, theirs]) { fs.mkdirSync(h); fs.writeFileSync(path.join(h, 'fleet.json'), '{}'); }
     appendSessions(path.join(theirs, 'retro', 'sessions.ndjson'), [{ at: 1, session: 'S1', robot: 'c_b' }]);
     appendSessions(path.join(mine, 'retro', 'sessions.ndjson'), [{ at: 1, session: 'S2', robot: 'c_a' }]);
-    const others = otherFleetSessions(mine, homedir);
-    expect([...others]).toEqual(['S1']);
+    const others = otherFleets(mine, homedir);
+    expect(others).toEqual({ homes: new Set([fs.realpathSync(theirs)]), sessions: new Set(['S1']) });
     const r = await scope({ ...base, candidates: [cand('S1', { cwd: '/r' })], own: new Map([['S1', rec('S1')]]), others, unrecorded: ['/r'], repoOf: repos({ '/r': '/r' }), remote: 2 });
     expect(r.inScope).toEqual([]);
     expect(r.counts).toEqual({ inScope: 0, excluded: 0, otherFleets: 1, remote: 2, unrecorded: [], missing: {} });
@@ -49,7 +52,7 @@ describe('scope', () => {
       islandName: (id) => ({ i_life: 'Life', i_side: 'Side', i_work: 'Work' })[id],
       repoOf: repos({ '/skip/wt': '/skip', '/keep': '/elsewhere' }),
     });
-    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep' }]);
+    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep', island: 'i_work' }]);
     expect(r.counts).toMatchObject({ inScope: 1, excluded: 4, otherFleets: 0, unrecorded: [], missing: { cost: 1 } });
   });
 
@@ -122,12 +125,40 @@ describe('scope', () => {
   it("takes a Codex sub-agent's rollout as the session that started it", async () => {
     const child = (parent: string) => cand(`${parent}-child`, { agent: 'codex', cwd: '/r', parent });
     const r = await scope({
-      ...base, candidates: [child('THEIRS'), child('LIFE'), child('MINE')], others: new Set(['THEIRS']),
+      ...base, candidates: [child('THEIRS'), child('LIFE'), child('MINE')], others: { ...none, sessions: new Set(['THEIRS']) },
       own: new Map([['LIFE', rec('LIFE', { island: 'i_life' })], ['MINE', rec('MINE')]]),
       exclude: { repos: [], islands: ['i_life'] }, unrecorded: ['/r'], repoOf: repos({ '/r': '/r' }),
     });
     expect(r.inScope.map((c) => [c.session, c.record?.session])).toEqual([['MINE-child', 'MINE']]);
     expect(r.counts).toMatchObject({ otherFleets: 1, excluded: 1, unrecorded: [] });
+  });
+
+  it('puts a session no fleet recorded with the fleet its context names, and leaves one naming no fleet here unrecorded', async () => {
+    // a context names its home as the fleet's paths do, links unresolved
+    const [mine, theirs] = [fs.realpathSync(makeHome()), fs.realpathSync(makeHome())];
+    const [toMine, toTheirs] = [path.join(makeHome(), 'mine'), path.join(makeHome(), 'theirs')];
+    fs.symlinkSync(mine, toMine);
+    fs.symlinkSync(theirs, toTheirs);
+    const briefed = (session: string, home: string, island = 'i_work') => cand(session, { cwd: '/r', fleet: { home, island } });
+    const r = await scope({
+      ...base, home: mine, others: { ...none, homes: new Set([theirs]) },
+      candidates: [
+        briefed('MINE', toMine), briefed('CREW', toMine, 'home'), briefed('LIFE', toMine, 'i_life'), briefed('THEIRS', toTheirs),
+        briefed('AWAY', '/home/u/.svall/cache'), cand('PLAIN', { cwd: '/r' }), cand('MINE-child', { agent: 'codex', cwd: '/r', parent: 'MINE' }),
+      ],
+      exclude: { repos: [], islands: ['Life'] }, islandName: (id) => ({ i_life: 'Life' })[id], repoOf: repos({ '/r': '/r' }),
+    });
+    expect(r.inScope.map((c) => [c.session, c.repo, c.island])).toEqual([['MINE', '/r', 'i_work'], ['CREW', '/r', 'home'], ['MINE-child', '/r', 'i_work']]);
+    expect(r.counts).toMatchObject({ inScope: 3, excluded: 1, otherFleets: 1, unrecorded: [{ repo: '/r', count: 2, picked: false }] });
+  });
+
+  it('trusts what a fleet recorded over the context a session names', async () => {
+    const theirs = fs.realpathSync(makeHome());
+    const r = await scope({
+      ...base, others: { ...none, homes: new Set([theirs]) }, own: new Map([['S', rec('S')]]),
+      candidates: [cand('S', { cwd: '/r', fleet: { home: theirs, island: 'i_x' } })], repoOf: repos({ '/r': '/r' }),
+    });
+    expect(r.inScope.map((c) => c.session)).toEqual(['S']);
   });
 });
 
@@ -179,6 +210,49 @@ describe('discover', () => {
       { agent: 'opencode', session: 'ses_new', file: '', cwd: '/w/three', mtime: IN },
     ]);
     expect(dirs).toEqual(['/w/three', '/w/three/wt', '/w/broken']);
+  });
+
+  it('reads the fleet from the Svall context a robot gave the session, at its start or further on, never from one it quoted', async () => {
+    const root = makeHome();
+    const [claudeDir, codexDir] = [path.join(root, 'claude'), path.join(root, 'codex')];
+    const brief = (home: string, island: string) =>
+      `# Svall context\nIsland: work\n\n- island: ${home}/docs/islands/${island}\n- robot: ${home}/docs/robots/c_abc123\n\n\`svall robot show c_abc123\` reprints this.`;
+    const hook = (text: string) => JSON.stringify({
+      type: 'attachment', attachment: { type: 'hook_success', hookEvent: 'SessionStart', content: '', stdout: JSON.stringify({ hookSpecificOutput: { additionalContext: text } }) },
+    });
+    const quoted = (text: string) => JSON.stringify({ type: 'user', message: { content: [{ type: 'tool_result', content: text }] } });
+    const start = JSON.stringify({ type: 'user', cwd: '/w/one' });
+    const long = JSON.stringify({ type: 'assistant', text: 'x'.repeat(70 * 1024) });
+    const S3 = '5c3e8f2a-2b4c-4d6e-9f0a-1b2c3d4e5f60';
+    const project = path.join(claudeDir, 'projects', '-w-one');
+    touch(path.join(project, `${S1}.jsonl`), [start, hook(brief('/h/work', 'i_one'))].join('\n') + '\n', IN);
+    touch(path.join(project, `${S2}.jsonl`), [start, quoted(brief('/h/other', 'i_q')), long, hook(brief('/h/work', 'i_two'))].join('\n') + '\n', IN);
+    touch(path.join(project, `${S3}.jsonl`), [start, quoted(brief('/h/other', 'i_q'))].join('\n') + '\n', IN);
+    touch(path.join(codexDir, 'sessions', '2026', '10', '20', `rollout-2026-10-20T10-00-00-${X1}.jsonl`), [
+      `{"type":"session_meta","payload":{"id":"${X1}","cwd":"/w/two"}}`,
+      JSON.stringify({ type: 'response_item', payload: { type: 'message', role: 'developer', content: [{ type: 'input_text', text: brief('/h/work', 'i_three') }] } }),
+    ].join('\n') + '\n', IN);
+
+    const found = await discover({ span: { from: FROM, to: IN }, claudeDir, codexDir });
+    expect(Object.fromEntries(found.map((c) => [c.session, c.fleet]))).toEqual({
+      [S1]: { home: '/h/work', island: 'i_one' }, [S2]: { home: '/h/work', island: 'i_two' }, [S3]: undefined, [X1]: { home: '/h/work', island: 'i_three' },
+    });
+    expect(found.find((c) => c.session === X1)?.cwd).toBe('/w/two');
+  });
+
+  it("reads the island of a context Svall renders, mission control's too, from its folder list and never from a diff or a note", async () => {
+    const root = makeHome();
+    const claudeDir = path.join(root, 'claude');
+    const island = (o: Partial<Island>): Island => ({ id: 'i_x', name: 'Work', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 6, h: 4 }, seed: 1, ...o });
+    const robot: Robot = { id: 'c_a', islandId: 'i_x', cell: { x: 1, y: 1 }, name: 'r', portrait: 'fox', note: 'todo\n- island: /h/note/docs/islands/i_note', instructions: '', context: [], cwd: '/w', shell: { lastOutputAt: 0 }, unread: false };
+    const brief = (on: Island) => renderBrief(on, robot, [{ tier: 'island', dir: `/h/real/docs/islands/${on.id}`, docs: [] }, { tier: 'robot', dir: '/h/real/docs/robots/c_a', docs: [] }]);
+    const added = (text: string) => JSON.stringify({ type: 'attachment', attachment: { type: 'hook_additional_context', hookEvent: 'UserPromptSubmit', content: [text] } });
+    const project = path.join(claudeDir, 'projects', '-w');
+    touch(path.join(project, `${S1}.jsonl`), [added(`${BRIEF_CHANGED}\n- island: /h/old/docs/islands/i_old`), added(brief(island({ id: HOME_ISLAND, kind: 'home' })))].join('\n') + '\n', IN);
+    touch(path.join(project, `${S2}.jsonl`), added(brief(island({ id: 'i_real' }))) + '\n', IN);
+
+    const found = await discover({ span: { from: FROM, to: IN }, claudeDir, codexDir: '/nonexistent/codex' });
+    expect(Object.fromEntries(found.map((c) => [c.session, c.fleet]))).toEqual({ [S1]: { home: '/h/real', island: HOME_ISLAND }, [S2]: { home: '/h/real', island: 'i_real' } });
   });
 
   it('finds nothing in stores that are not there', async () => {

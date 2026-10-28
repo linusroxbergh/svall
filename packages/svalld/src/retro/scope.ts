@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import type { AgentKind, RetroPlan } from '@svall/protocol';
+import { HOME_ISLAND, type AgentKind, type RetroPlan } from '@svall/protocol';
 import { orSkip } from '../agent/jsonl.js';
+import { BRIEF_CHANGED, BRIEF_HEADING } from '../context/brief.js';
 import { resolveRepo, type GitRunner } from '../links/git.js';
 import { realPath, resolvePaths } from '../paths.js';
 import { cliRunner } from '../sessions/registry.js';
@@ -11,12 +12,18 @@ import type { CliRun } from '../sessions/types.js';
 import { fleetHomes } from '../uninstall.js';
 import { readSessions, type SessionRecord } from './sessions.js';
 
-/** A session written to in the span; a Claude session's subagents keep files of their own, and a Codex sub-agent's rollout
- *  names the session that started it as `parent`. */
-export type Candidate = { agent: AgentKind; session: string; file: string; cwd?: string; mtime: number; subagents?: string[]; parent?: string };
-export type InScope = Candidate & { record?: SessionRecord; repo?: string };
+/** The fleet home and island a session's Svall context names. */
+type Briefed = { home: string; island: string };
+
+/** A session written to in the span, with the fleet a robot ran it in; a Claude session's subagents keep files of their own,
+ *  and a Codex sub-agent's rollout names the session that started it as `parent`. */
+export type Candidate = { agent: AgentKind; session: string; file: string; cwd?: string; mtime: number; subagents?: string[]; parent?: string; fleet?: Briefed };
+export type InScope = Candidate & { record?: SessionRecord; repo?: string; island?: string };
 
 const HEAD = 64 * 1024;
+// a whole Svall context, not the diff a later prompt gets, ends with its folders, its island's in its fleet's home
+const WHOLE = new RegExp(`^(?!${BRIEF_CHANGED}$)${BRIEF_HEADING}`, 'm');
+const ISLAND_DOCS = new RegExp(`^- island: (.+)/docs/islands/(i_[a-z0-9]+|${HOME_ISLAND})$`, 'gm');
 const ROLLOUT = /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 // the fields an agent's sessions never record, which the plan counts against the sessions in scope
 const LACKS: Record<AgentKind, string[]> = { claude: [], codex: ['cost'], opencode: [] };
@@ -26,17 +33,57 @@ const names = (dir: string, recursive = false): Promise<string[]> => fs.promises
 
 const mtimeOf = (file: string): Promise<number | undefined> => fs.promises.stat(file).then((s) => s.mtimeMs, () => undefined);
 
-// the folder a session started in: Claude's lines carry it, and a Codex rollout's first session_meta holds it with the
-// parent a sub-agent's rollout names, as a later one is its parent's
-async function head(agent: 'claude' | 'codex', file: string): Promise<{ cwd?: string; parent?: string }> {
+type Said = { type?: unknown; attachment?: { stdout?: unknown; content?: unknown }; payload?: { role?: unknown; content?: unknown } };
+
+// what a line gave the session as its own context: a Claude hook's JSON reply or the context it added, or a Codex developer
+// message. One the session read or was pasted names another robot's fleet
+function given(agent: 'claude' | 'codex', line: Said | undefined): unknown[] {
+  if (agent === 'codex') {
+    const p = line?.type === 'response_item' ? line.payload : undefined;
+    return p?.role === 'developer' && Array.isArray(p.content) ? p.content.map((c: { text?: unknown } | null) => c?.text) : [];
+  }
+  if (line?.type !== 'attachment') return [];
+  const { stdout, content } = line.attachment ?? {};
+  const reply = typeof stdout === 'string' ? orSkip(() => (JSON.parse(stdout) as { hookSpecificOutput?: { additionalContext?: unknown } }).hookSpecificOutput?.additionalContext) : undefined;
+  return [reply, ...(Array.isArray(content) ? content : [])];
+}
+
+// the first whole Svall context a robot gave the session; the last island line is the folder list's, below any note that
+// mimics one
+function briefIn(agent: 'claude' | 'codex', text: string): Briefed | undefined {
+  // only a line of that kind is parsed: a transcript of work on Svall quotes its context in lines of megabytes
+  const kind = agent === 'claude' ? '"type":"attachment"' : '"role":"developer"';
+  for (let at = text.indexOf(BRIEF_HEADING), end = 0; at !== -1 && end !== -1; at = text.indexOf(BRIEF_HEADING, end)) {
+    end = text.indexOf('\n', at);
+    const raw = text.slice(text.lastIndexOf('\n', at) + 1, end === -1 ? undefined : end);
+    for (const s of raw.includes(kind) ? given(agent, orSkip(() => JSON.parse(raw) as Said)) : []) {
+      const m = typeof s === 'string' && WHOLE.test(s) ? [...s.matchAll(ISLAND_DOCS)].at(-1) : undefined;
+      if (m) return { home: m[1], island: m[2] };
+    }
+  }
+  return undefined;
+}
+
+// the folder a session started in and the fleet that ran it. A robot gives its context at the start, or further on when it
+// takes up a session begun elsewhere, so a file whose head has none is read whole
+async function head(agent: 'claude' | 'codex', file: string): Promise<{ cwd?: string; parent?: string; fleet?: Briefed }> {
   let text = '';
+  let size = 0;
   try {
     const fh = await fs.promises.open(file, 'r');
     try {
       const buf = Buffer.alloc(HEAD);
       text = buf.toString('utf8', 0, (await fh.read(buf, 0, HEAD, 0)).bytesRead);
+      size = (await fh.stat()).size;
     } finally { await fh.close(); }
   } catch { return {}; }
+  const fleet = briefIn(agent, text) ?? (size > HEAD ? briefIn(agent, await fs.promises.readFile(file, 'utf8').catch(() => '')) : undefined);
+  return { ...where(agent, text), ...(fleet && { fleet }) };
+}
+
+// Claude's lines carry the folder, and a Codex rollout's first session_meta holds it with the parent a sub-agent's rollout
+// names, as a later one is its parent's
+function where(agent: 'claude' | 'codex', text: string): { cwd?: string; parent?: string } {
   for (const line of text.split('\n')) {
     if (agent === 'claude') {
       const cwd = line.includes('"cwd"') ? orSkip(() => (JSON.parse(line) as { cwd?: unknown }).cwd) : undefined;
@@ -69,7 +116,7 @@ export async function discover(o: { span: { from: number; to: number }; claudeDi
       const dir = path.join(projects, project, session, 'subagents');
       const subagents: string[] = [];
       for (const s of (await names(dir)).filter((s) => s.endsWith('.jsonl'))) if (await touched(path.join(dir, s)) !== undefined) subagents.push(path.join(dir, s));
-      out.push({ agent: 'claude', session, file, cwd: (await head('claude', file)).cwd, mtime, ...(subagents.length > 0 && { subagents }) });
+      out.push({ agent: 'claude', session, file, ...(await head('claude', file)), mtime, ...(subagents.length > 0 && { subagents }) });
     }
   }
   const rollouts = path.join(o.codexDir, 'sessions');
@@ -114,22 +161,26 @@ export function repoFinder(git?: GitRunner): (cwd: string) => Promise<string | u
   };
 }
 
-/** The sessions the other fleets on this machine recorded, which a retro of this one never reads. */
-export function otherFleetSessions(home: string, homedir: string = os.homedir()): Set<string> {
+type Others = { homes: Set<string>; sessions: Set<string> };
+
+/** The other fleets on this machine, by real home, and the sessions they recorded, which a retro of this one never reads. */
+export function otherFleets(home: string, homedir: string = os.homedir()): Others {
   const self = realPath(home);
-  return new Set(fleetHomes(homedir).filter((h) => realPath(h) !== self).flatMap((h) => [...readSessions(resolvePaths(h).retroSessions).keys()]));
+  const homes = fleetHomes(homedir).map(realPath).filter((h) => h !== self);
+  return { homes: new Set(homes), sessions: new Set(homes.flatMap((h) => [...readSessions(resolvePaths(h).retroSessions).keys()])) };
 }
 
-/** This fleet's sessions less excluded islands (id or name) and repos, plus unrecorded ones in the repos the user picked; the
- *  rest are counted, the unrecorded by repo, else cwd. Repos compare by real path; a Codex sub-agent goes with its parent. */
+/** This fleet's sessions, recorded or named by their context, less excluded islands (id or name) and repos, plus those no
+ *  fleet ran in the repos the user picked; the rest are counted, the unrecorded by repo, else cwd. Repos and homes compare by
+ *  real path; a Codex sub-agent goes with its parent. */
 export async function scope(o: {
-  candidates: Candidate[]; own: Map<string, SessionRecord>; others: Set<string>;
+  candidates: Candidate[]; home: string; own: Map<string, SessionRecord>; others: Others;
   exclude: { repos: string[]; islands: string[] }; unrecorded: string[];
   islandName: (id: string) => string | undefined; repoOf: (cwd: string) => Promise<string | undefined>; remote: number;
 }): Promise<{ inScope: InScope[]; counts: RetroPlan['counts'] }> {
   const inScope: InScope[] = [];
   const groups = new Map<string, number>();
-  let [excluded, otherFleets] = [0, 0];
+  let [excluded, theirs] = [0, 0];
   const islandOut = (id?: string): boolean => !!id && o.exclude.islands.some((n) => n === id || n === o.islandName(id));
   const reals = new Map<string, string>();
   const real = (p: string): string => {
@@ -141,16 +192,22 @@ export async function scope(o: {
   // an excluded folder leaves out its repo's sessions and any that ran inside it, in git or not
   const out = (repo?: string, cwd?: string): boolean =>
     (!!repo && excludedRepos.has(real(repo))) || (!!cwd && [...excludedRepos].some((x) => real(cwd) === x || real(cwd).startsWith(x + path.sep)));
+  const self = real(o.home);
+  const fleets = new Map(o.candidates.flatMap((c) => (c.fleet ? [[c.session, c.fleet] as const] : [])));
   for (const c of o.candidates) {
     const ids = [c.session, ...(c.parent ? [c.parent] : [])];
-    if (ids.some((id) => o.others.has(id))) { otherFleets++; continue; }
     const record = ids.map((id) => o.own.get(id)).find((r) => r);
+    // a session no fleet recorded goes with the fleet its context names; a home no fleet here has leaves it unrecorded
+    const fleet = record ? undefined : ids.map((id) => fleets.get(id)).find((f) => f);
+    const home = fleet && real(fleet.home);
+    if (ids.some((id) => o.others.sessions.has(id)) || (home && o.others.homes.has(home))) { theirs++; continue; }
     const cwd = c.cwd ?? record?.cwd;
-    if (record) {
-      if (islandOut(record.island)) { excluded++; continue; }
-      const repo = record.repo ?? (cwd ? await o.repoOf(cwd) : undefined);
+    if (record || home === self) {
+      const island = record?.island ?? fleet?.island;
+      if (islandOut(island)) { excluded++; continue; }
+      const repo = record?.repo ?? (cwd ? await o.repoOf(cwd) : undefined);
       if (out(repo, cwd)) { excluded++; continue; }
-      inScope.push({ ...c, record, repo });
+      inScope.push({ ...c, record, repo, island });
       continue;
     }
     const repo = cwd ? await o.repoOf(cwd) : undefined;
@@ -163,5 +220,5 @@ export async function scope(o: {
   for (const field of inScope.flatMap((c) => LACKS[c.agent])) missing[field] = (missing[field] ?? 0) + 1;
   const unrecorded = [...groups].map(([repo, count]) => ({ repo, count, picked: picks.has(real(repo)) }))
     .sort((a, b) => b.count - a.count || a.repo.localeCompare(b.repo));
-  return { inScope, counts: { inScope: inScope.length, excluded, otherFleets, remote: o.remote, unrecorded, missing } };
+  return { inScope, counts: { inScope: inScope.length, excluded, otherFleets: theirs, remote: o.remote, unrecorded, missing } };
 }
