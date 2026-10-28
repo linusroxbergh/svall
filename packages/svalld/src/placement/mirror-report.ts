@@ -280,5 +280,22 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   for (const f of plan.unreadable) {
     rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand`, gap: { name: path.basename(f), what: 'not copied: this Mac cannot read it' } });
   }
+  tellApart(rows, plan.servers);
   return rows;
+}
+
+/** A gap name two servers share names each one's plugin, project or agent too, as the panel labels their rows. */
+function tellApart(rows: SetupRow[], servers: MirroredServer[]): void {
+  const serverOf = (r: SetupRow) => servers.find((s) => r.key === s.key || r.key === `oauth:${s.key}`);
+  const holders = new Map<string, Set<string>>();
+  for (const r of rows) {
+    const s = r.gap && serverOf(r);
+    if (s) (holders.get(r.gap!.name) ?? holders.set(r.gap!.name, new Set()).get(r.gap!.name)!).add(s.key);
+  }
+  for (const r of rows) {
+    const s = r.gap && serverOf(r);
+    if (!s || (holders.get(r.gap!.name)?.size ?? 0) < 2) continue;
+    const where = s.scope === 'user' ? s.agent : 'plugin' in s.scope ? `plugin ${s.scope.plugin.split('@')[0]}` : path.basename(s.scope.project);
+    r.gap = { ...r.gap!, name: `${r.gap!.name} (${where})` };
+  }
 }

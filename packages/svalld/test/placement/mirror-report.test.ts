@@ -156,6 +156,16 @@ describe('the setup rows of the mirror', () => {
     expect(odd.find(byKey('var:REMOTE_TOKEN'))).toMatchObject({ detail: 'not checked: w1 runs another release; upgrade it' });
   });
 
+  it('two plugins\' servers of one name are told apart by their plugin in the gap name; a name no other row shares stays bare', () => {
+    const beta = path.join(mac.claudeDir, 'plugins/cache/mp/beta/1.0.0');
+    editJson(path.join(mac.claudeDir, 'plugins/installed_plugins.json'), (j) => { j.plugins.beta = [{ scope: 'user', installPath: beta, version: '1.0.0' }]; });
+    put(path.join(beta, '.mcp.json'), JSON.stringify({ mcpServers: { pdf: { command: 'node', args: ['${CLAUDE_PLUGIN_ROOT}/pdf.js'], env: { PDF_KEY: 'pdf_key_0987654321' } } } }));
+    const gaps = Object.fromEntries(rows(report()).map((r) => [r.key, r.gap?.name]));
+    expect(gaps['claude:plugin:acme:mcp:pdf']).toBe('pdf (plugin acme)');
+    expect(gaps['claude:plugin:beta:mcp:pdf']).toBe('pdf (plugin beta)');
+    expect(gaps['claude:mcp:linear']).toBe('linear');
+  });
+
   it('a row of what will not work on w1 yet names it and what it lacks; one that is there or a row not checked names none', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.notion = { type: 'http', url: 'https://mcp.notion.com/mcp' }; });
     expect(Object.fromEntries(rows(report({ commands: { npx: false } })).map((r) => [r.key, r.gap]))).toEqual({
