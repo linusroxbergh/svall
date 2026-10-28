@@ -58,7 +58,6 @@ export type RestDeps = {
   store: Pick<Store, 'state' | 'update' | 'subscribe'>;
   tmux: Pick<Tmux, 'listWindows' | 'sendBytes' | 'killWindow'>;
   viewers: Pick<TerminalHub, 'detach'>;
-  /** The journal the rest records what it stops in. */
   journal: { read(): RestJournal; write(j: RestJournal): void };
   processes?: (signal?: AbortSignal) => Promise<ProcessTable>;
   kill?: (group: number, signal: NodeJS.Signals) => void;
@@ -222,9 +221,8 @@ function recordJournal(journal: RestDeps['journal'], change: (j: RestJournal) =>
 }
 
 /**
- * Brings every live terminal `only` picks to rest and closes its window, leaving both slots of
- * each robot it picks dormant. It rechecks each terminal before touching any, and returns blockers
- * without closing a window when one is not at rest and the choices do not cover it.
+ * Brings every live terminal `only` picks to rest and closes its window, leaving each picked robot's slots dormant; when one
+ * is not at rest and the choices do not cover it, returns blockers without closing a window.
  */
 export async function restTerminals(deps: RestDeps, o: RestOptions): Promise<SettleResult> {
   const clock = deps.clock ?? realClock;
@@ -303,9 +301,8 @@ const tableOf = (deps: Pick<RestDeps, 'processes'>): NonNullable<RestDeps['proce
 type Owned<P> = { t: TerminalRef; p: P };
 
 /**
- * Waits for the journaled private OpenCode server of each terminal the rest stopped that `closed` picks to exit, as the
- * export reads the database it writes. One that outlasts the settle time is killed with all it runs, journaled first, as is
- * what an earlier kill journaled that still runs; it throws if any of that still runs a settle time after its SIGKILL.
+ * Waits for the journaled private OpenCode server of each stopped terminal `closed` picks to exit, as the export reads its
+ * database. One past the settle, or an earlier kill still running, is journaled and SIGKILLed; it throws if any outlives that.
  */
 export async function serversGone(
   deps: Pick<RestDeps, 'store' | 'journal' | 'processes' | 'kill' | 'clock' | 'bootId'>,
@@ -407,9 +404,8 @@ async function layToRest(
   const { stoppedTerminals, terminated } = deps.journal.read();
   const stopped = new Map(stoppedTerminals.map((s) => [keyOf(s), s]));
   const ended = new Set(terminated.map(keyOf));
-  // the agent each terminal carried before the rest stopped it: its exit hook may have taken it since; one whose
-  // window a rest that died closed has no track, and keeps the launch flags that rest recorded. One whose window this rest
-  // has just closed is laid even when the live fleet saw the close first and marked it dormant without its agent
+  // the agent each terminal carried before the rest stopped it, which its exit hook may have taken since; one with no track
+  // keeps the flags a rest that died recorded, and one this rest just closed is laid even if the fleet marked it dormant first
   const lay = (d: FleetState, t: TerminalRef, closing = false) => {
     const c = d.robots[t.robotId];
     const slot = c && (t.term === 2 ? c.second : c);

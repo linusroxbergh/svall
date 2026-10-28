@@ -23,9 +23,8 @@ export function usePromptHistory(api: () => Pick<Api, 'call'>, id: string, agent
       })
       .catch(() => { if (live) setHist({ list: [], at: 0 }); });
     return () => { live = false; };
-    // a new session or prompt changes the list, and a turn's end settles what its prompt left pending;
-    // the tool events and permission asks in between would re-read the tail for nothing. A prompt sent mid-turn carries
-    // the id of the turn's first, so a new one is told by its time
+    // read again on a new session, a new prompt (told by its time: one sent mid-turn carries the turn's first id) or a
+    // turn's end; the tool events and permission asks in between would re-read the tail for nothing
   }, [id, agent?.sessionId, agent?.transcriptPath, agent?.lastPrompt?.at, running]);
 
   const { list } = hist;

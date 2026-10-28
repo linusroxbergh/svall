@@ -9,7 +9,6 @@ const BLOCKING = new Set(['permission_prompt', 'worker_permission_prompt', 'elic
 const TOOL_EVENTS = new Set(['PreToolUse', 'PostToolUse', 'PostToolUseFailure']);
 const TOOL_ACTIVITY_MS = 10_000;
 
-/** Puts the agent at `status` with no question open and no background work counted. */
 export function settle(agent: Agent, status: Agent['status']): void {
   agent.status = status;
   delete agent.prompt;
@@ -80,9 +79,8 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
     agent.promptId = crypto.randomUUID();
     if (e.message) agent.prompt = e.message; else delete agent.prompt;
   };
-  // a subagent's events count it and track its question: Claude Code's notification blocks, Codex's and OpenCode's request
-  // does at once and a later event on that thread answers. One can stop and start again under its id, when a shell it left
-  // running ends
+  // a subagent's question blocks on Claude Code's notification, at once on Codex's and OpenCode's request, and a later event
+  // on its thread answers it. a subagent can stop and start again under its id when a shell it left running ends
   if (e.agentId) {
     const counted = agent.subagents ?? [];
     const was = counted.includes(e.agentId);
@@ -146,7 +144,6 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
       return next;
     }
   }
-  // a new prompt or the end of a turn leaves no tool asked about
   if (e.name === 'UserPromptSubmit' || e.name === 'Stop' || e.name === 'StopFailure' || e.name === 'Interrupt') delete agent.askedTool;
   switch (e.name) {
     case 'UserPromptSubmit':

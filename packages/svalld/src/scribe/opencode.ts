@@ -11,19 +11,16 @@ import { NO_USAGE, type Runner, type Usage } from './run.js';
 type Line = { type?: string; sessionID?: string; part?: { text?: string }; error?: { type?: string; message?: string } };
 type Spent = { type?: string; cost?: number; tokens?: { input?: number; output?: number; reasoning?: number; cache?: { read?: number; write?: number } } };
 
-// no tool may run on what a transcript says: this agent's ask comes after any rule the user's config sets, and `opencode
-// run` turns every ask down. Tools denied outright would leave the request, which Zen's free models refuse, so only
-// `execute` is: Code Mode runs it without asking, and its fetch and worktree tools with it. A pass holds other robots'
-// transcripts, so it is never shared, whatever the user's config says. A retro call also stops after 3 steps
+// these asks follow the user's rules and `opencode run` turns every ask down. A denied tool leaves the request, which Zen's free
+// models refuse, so only `execute`, which Code Mode runs unasked, is denied. A pass holds other robots' transcripts: never shared
 const ASK = { mode: 'primary', permissions: [{ action: '*', resource: '*', effect: 'ask' }, { action: 'execute', resource: '*', effect: 'deny' }] };
 const config = (retro: boolean): string => JSON.stringify({
   share: 'disabled',
   agents: retro ? { 'svall-retro': { ...ASK, steps: 3 } } : { 'svall-scribe': ASK },
 });
 
-// `run --format json` never prints its last step's step_finish, so what a call spent is read off the session's export: its
-// totals, which count the title call too, else its replies. The export goes to a file, as a pipe can stop short; OpenCode
-// counts reasoning apart from output
+// `run --format json` never prints its last step_finish, so spend is read off the session's export, written to a file as a
+// pipe can stop short: its totals, else its replies. OpenCode counts reasoning apart from output
 async function spent(bin: string, session: string, o: { cwd: string; env: NodeJS.ProcessEnv }): Promise<Usage> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-spent-'));
   try {
@@ -44,9 +41,8 @@ async function spent(bin: string, session: string, o: { cwd: string; env: NodeJS
   }
 }
 
-// `opencode run` takes one prompt on stdin and has no system prompt of its own, so the system text leads it. A private
-// server takes this config from the environment, where the shared background service would not. Only a retro call is
-// asked what it spent, and it names its session up front, so one that times out or is stopped is deleted too
+// `opencode run` has no system prompt, so the system text leads its one prompt; a private server takes the config from the
+// env, where the shared one would not. A retro call names its session up front, so one that times out is deleted too
 export function opencodeRunner(o: { cwd: string; bin?: string; retro?: true }): Runner {
   return async (system, prompt, call, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });

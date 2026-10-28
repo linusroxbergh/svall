@@ -190,7 +190,6 @@ const split = (message: string): Failure => {
   return at < 0 ? { reason: message, action: 'fix it on this Mac first' } : { reason: message.slice(0, at), action: message.slice(at + 2) };
 };
 
-// why a worktree's bundle could not be built
 const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
   ? { reason: e.message, action: 'push its commits or ignore its large files first' }
   : split((e as Error).message.trim().split('\n').at(-1) ?? ''));

@@ -77,7 +77,6 @@ export class Poll {
 
   constructor(private deps: Deps) {}
 
-  /** Polls until stopped; a poll stopped starts again. */
   start(): void {
     this.stopped = false;
     this.schedule();
@@ -94,7 +93,6 @@ export class Poll {
     }, this.deps.pollMs ?? 3000);
   }
 
-  /** Stops polling; resolves once a poll under way has finished. */
   async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.timer);

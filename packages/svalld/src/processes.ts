@@ -8,7 +8,6 @@ import { isShellCommand } from './tmux/tmux.js';
 
 const exec = promisify(execFile);
 
-/** One process as `ps` printed it. */
 export type Proc = { pid: number; ppid: number; pgid: number; tpgid: number; stat: string; args: string };
 
 /** The agent holding a terminal, the tool commands it runs off that terminal, and an OpenCode TUI's private server. */
@@ -21,7 +20,6 @@ export type PaneProcesses = { group: number; foreground: Proc[]; agent?: AgentPr
 const PS_ARGV = ['-A', '-ww', '-o', 'pid=,ppid=,pgid=,tpgid=,stat=,args='];
 const ROW = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(-?\d+)\s+(\S+)(?:\s+(.*))?$/;
 
-/** Reads `ps -o pid=,ppid=,pgid=,tpgid=,stat=,args=` as macOS and procps print it, skipping any line that is not a row. */
 export function parsePs(stdout: string): Proc[] {
   const rows: Proc[] = [];
   for (const line of stdout.split('\n')) {
@@ -53,10 +51,8 @@ function program(p: Proc): string {
   return name === 'node' && script ? path.basename(script).replace(/\.[cm]?js$/, '') : name;
 }
 
-/**
- * A snapshot of this machine's processes, read one tmux pane at a time. `scripts` are the hook and
- * statusline scripts setup installed and their helper, whose processes run beside an agent rather than as its work.
- */
+/** A snapshot of this machine's processes, read one tmux pane at a time. `scripts` are setup's hook and statusline
+ *  scripts and their helper, whose processes run beside an agent rather than as its work. */
 export class ProcessTable {
   private byPid = new Map<number, Proc>();
   private children = new Map<number, Proc[]>();
@@ -75,7 +71,6 @@ export class ProcessTable {
     return new ProcessTable(parsePs(stdout), o.scripts);
   }
 
-  /** Whether any process of the group is still running. */
   alive(group: number): boolean {
     for (const p of this.byPid.values()) if (p.pgid === group && !zombie(p)) return true;
     return false;
@@ -99,7 +94,7 @@ export class ProcessTable {
     return { group, foreground, ...(agent && { agent }) };
   }
 
-  // the job's leader when it is claude or codex; behind a node launcher such as npm's, the same program it started
+  // the job's leader when it runs an agent; behind a node launcher such as npm's, the same program it started
   private agent(leader: Proc | undefined): AgentProcess | undefined {
     const kind = leader ? program(leader) : '';
     if (!leader || !AGENTS.has(kind)) return undefined;

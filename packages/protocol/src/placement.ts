@@ -26,7 +26,6 @@ export const MoveSheet = z.object({
 });
 export type MoveSheet = z.infer<typeof MoveSheet>;
 
-// in thousands, as the sheet counts them, to the whole unit
 function size(n: number): string {
   const kb = Math.round(n / 1000);
   return kb < 1000 ? `${Math.max(1, kb)} KB` : `${Math.round(n / 1_000_000)} MB`;

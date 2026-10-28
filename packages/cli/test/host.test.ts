@@ -68,9 +68,8 @@ const archive = (o: { version?: string; protocol?: number; platform?: string; si
   companionArchive(work, { ...o, ...((o.signed ?? true) ? { signedBy: signer.key } : {}) });
 
 /**
- * Archives holding release 1.2.3 whose SHA256SUMS, extracted by name, `signer` signed, and an intruder's release
- * that a full unpack writes over it: its SHA256SUMS spelled another way or named twice, or written through a link.
- * Each intruder's svall touches `ran(name)`.
+ * Archives whose SHA256SUMS, extracted by name, `signer` signed, but whose full unpack writes an intruder's release over
+ * it (spelled another way, named twice, or through a link); each intruder's svall touches `ran(name)`.
  */
 function smuggling(ran: (name: string) => string): { name: string; archive: string }[] {
   const intruder = ephemeralSigner(work);
@@ -1458,10 +1457,9 @@ describe('host upgrade', () => {
   };
 
   /**
-   * A companion on this machine: every far command runs here, `current` is a real link, and each release's svall is a
-   * script that answers as that release, naming the state schema it reads unless that is null. Its setup installs an archive and keeps it only while the new release's daemon
-   * comes up (no `down-<release>` file beside the releases) and speaks the protocol this svall's client does; else it goes
-   * back to the release it replaced, or after a reinstall under that name to the newest other kept, as a real setup does.
+   * A companion on this machine whose far commands run here, each release given as [version, protocol, state schema or null].
+   * Its setup keeps a new release only if its daemon comes up (no `down-<release>` file) and speaks this client's protocol,
+   * else goes back to the release it replaced (after a reinstall, the newest other kept), as a real setup does.
    */
   async function farMachine(o: { releases: [string, number, (number | null)?][]; accepts?: (release: string) => boolean; pins?: string }) {
     const home = path.join(work, 'far');

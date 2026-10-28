@@ -7,7 +7,6 @@ import type { Store } from '../store.js';
 import type { ControlClient } from '../tmux/control.js';
 import type { Tmux } from '../tmux/tmux.js';
 
-// what the terminals hear of the panes: their output, tmux pausing and resuming one, and a client attached afresh
 export type PaneEvents = {
   output: [robotId: string, data: Buffer];
   pause: [robotId: string];
@@ -28,18 +27,15 @@ type Deps = {
  *  whenever the one before it is lost. */
 export class ControlLink {
   private control?: ControlClient;
-  // the next try at bringing the control client back
   private retry?: NodeJS.Timeout;
   // a server the recovery is bringing up, which a stop waits for so that a quit's kill comes after it
   private starting?: Promise<void>;
-  // tmux stops reading a pane's pty once every client has it off, which freezes the pane;
-  // output is filtered here instead.
+  // tmux stops reading a pane's pty once every client has it off, freezing the pane, so output is filtered here instead
   private streaming = new Set<string>();
   private stopped = false;
 
   constructor(private deps: Deps) {}
 
-  /** Attaches a client, again after a stop. */
   start(): Promise<void> {
     this.stopped = false;
     return this.attach();

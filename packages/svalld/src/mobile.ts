@@ -32,10 +32,8 @@ type Status = {
   User?: Record<string, { ID?: number; LoginName?: string }>;
 };
 
-/**
- * The name this Mac answers to on the tailnet, which is also the origin the phone loads the page from,
- * and the login it is signed in as. A tagged Mac belongs to no login.
- */
+/** The name this Mac answers to on the tailnet, also the origin the phone loads the page from, and the login it is
+ *  signed in as; a tagged Mac belongs to no login. */
 export async function tailnetSelf(d: MobileDeps, bin: string): Promise<{ host: string; owner?: string }> {
   const status = JSON.parse(await d.run(bin, ['status', '--json'])) as Status;
   if (status.BackendState !== 'Running') throw new Error(`tailscale is not connected${status.BackendState ? ` (${status.BackendState})` : ''}; sign in and try again`);
@@ -73,10 +71,7 @@ export function phoneKey(file: string, initial: string): { get(): string; rotate
 const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
 
-/**
- * Where the phone page is, built from the checkout first when it can be. A release ships it built
- * and has no checkout or pnpm to reach for, so there it is only ever reported present or missing.
- */
+/** Where the phone page is, built from the checkout first when it can be; a release ships it built, with no pnpm to run. */
 export async function ensureBundle(d: MobileDeps, o: { rebuild?: boolean } = {}): Promise<{ dist: string; missing: boolean }> {
   const dist = mobileDist();
   if (!isRelease() && (o.rebuild || !d.exists(dist))) await buildBundle(d);
@@ -179,10 +174,8 @@ export function watchServed(mobile: Pick<Mobile, 'get'>, wanted: () => boolean, 
   return () => { stopped = true; clearTimeout(timer); };
 }
 
-/**
- * The phone link as a panel can drive it: every environment failure comes back as `error` rather than
- * a rejection, because the panel that shows the switch is also where the reason belongs.
- */
+/** The phone link as a panel drives it: every environment failure comes back as `error`, not a rejection, since the
+ *  panel that shows the switch is where the reason belongs. */
 export function mobileControl(d: MobileDeps, opts: {
   home: string; profile: string; logins: () => string[]; phones: Phones; httpsPort?: number; rotateKey: () => void; pass: string;
   // the ports other fleets keep, and where this fleet keeps the one it serves on, saying whether that worked

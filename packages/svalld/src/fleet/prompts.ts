@@ -59,9 +59,8 @@ export class Prompts {
     });
   }
 
-  // whether the agent's prompt line is in view and empty, or undefined with no agent there, on record or running in front;
-  // throws while the agent waits on an answer, which a paste could give.
-  // The agent is looked at again once the screen is in, as a hook may have come while it was read
+  // whether the agent's prompt line is in view and empty, or undefined with no agent there; throws while the agent waits on
+  // an answer, which a paste could give. the agent is looked at again once the screen is in, as a hook may have come meanwhile
   private async free(name: string, id: string, term: 2 | undefined, paneId: string): Promise<boolean | undefined> {
     const live = () => (term === 2 ? this.deps.store.state.robots[id]?.second : this.deps.store.state.robots[id]);
     const asked = (a?: Agent) => {
@@ -165,9 +164,8 @@ export class Prompts {
     const release = () => { if (this.answering.get(id) === asked) this.answering.delete(id); };
     try { await this.deps.tmux.sendBytes(c.tmux.paneId, Buffer.from(answer === 'approve' ? '\r' : '\x1b')); }
     catch (e) { release(); throw e; }
-    // OpenCode's plugin reports each answer, and a key may only open a further step, as Esc on a subagent's question
-    // does; the hold stays until the plugin moves the card on. Enter may only move a question on to its next part,
-    // which takes an Enter of its own once the plugin has had time to report an answer
+    // OpenCode's plugin reports each answer, and a key may only open a further step: Esc's hold stays until the plugin moves
+    // the card on, Enter's lifts after a step, as a question's next part takes an Enter of its own
     if (c.agent.kind === 'opencode') {
       if (answer === 'approve') setTimeout(release, STEP_MS).unref();
       return;
@@ -188,7 +186,6 @@ export class Prompts {
     return this.until<WaitResult>(() => {
       const c = this.deps.store.state.robots[id];
       const t = term === 2 ? c?.second : c;
-      // a terminal whose tmux window died will never reach the awaited status.
       if (!t?.tmux) return 'gone';
       // the turn of a prompt still held has not begun, so the end of the turn before it does not count
       const ended = t.agent?.status === 'done' || t.agent?.status === 'idle';

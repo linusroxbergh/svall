@@ -37,9 +37,8 @@ function usage(events: string): Usage {
   };
 }
 
-// `codex exec` takes one prompt and has no system prompt of its own, so the system text leads it. Without a
-// model or effort codex picks its own default. cwd is an empty folder, so no project instructions load. A retro call
-// has no shell tool at all
+// `codex exec` has no system prompt, so the system text leads its one prompt; cwd is an empty folder, so no project
+// instructions load
 export function codexRunner(o: { cwd: string; bin?: string; retro?: true }): Runner {
   return async (system, prompt, call, signal) => {
     fs.mkdirSync(o.cwd, { recursive: true });

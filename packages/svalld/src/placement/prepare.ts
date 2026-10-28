@@ -129,7 +129,6 @@ export class PrepareService {
     };
   }
 
-  // one call at a time for each move
   private serial<T>(id: string, work: () => Promise<T>): Promise<T> {
     const p = (this.busy.get(id) ?? Promise.resolve()).catch(() => {}).then(work);
     const tail = p.catch(() => {});

@@ -2,10 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import { loginForward } from './host.js';
 
-/**
- * A terminal on the machine, over an ssh of its own, with `run` typed at its prompt for the user to run or change, and
- * `forward` the port its login waits on there. `onEnd` once the user is done with it or its shell exits.
- */
+/** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
+ * `onEnd` once the user is done with it or its shell exits. */
 export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name: string; ssh: string; run?: string; forward?: number; onEnd: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();

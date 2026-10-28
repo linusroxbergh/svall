@@ -17,7 +17,6 @@ export function usePanelWidth(side: 'sidebar' | 'card'): React.CSSProperties {
   return { [side === 'sidebar' ? '--sb-w' : '--side-w']: `${w}px` } as React.CSSProperties;
 }
 
-// while `on`, calls `measure` now and again whenever anything scrolls or the window resizes
 export function useMeasure(on: boolean, measure: () => void): void {
   useLayoutEffect(() => {
     if (!on) return;

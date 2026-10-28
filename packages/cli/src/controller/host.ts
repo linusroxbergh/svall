@@ -208,7 +208,6 @@ function lingerProbe(out: string, user: string, destination: string): Outcome<bo
     };
 }
 
-// the remote $HOME and $USER, in the one probe that reads them
 async function homeProbe(master: SshMaster): Promise<{ home: string; user: string }> {
   const [home, user] = (await probe(master, sh('svall-home', 'printf "%s\\n%s\\n" "$HOME" "$USER"'), '$HOME')).split('\n');
   return { home, user: user?.trim() ?? '' };
@@ -299,9 +298,8 @@ function agentCall(master: SshMaster, o: { home: string; svallBase: string; repo
 }
 
 /**
- * The agent checks, as the companion's units run each CLI, and the companion doctor's checks of that agent: every one
- * of them is something to go and do, never something that stops setup. An agent no fleet here runs needs installing only
- * once one does. Hands back each version Svall's floor takes.
+ * Checks each agent CLI as the companion's units run it, with the companion doctor's checks of it: each finding is
+ * something to do, never something that stops setup. Hands back each version Svall's floor takes.
  */
 async function agentChecks(master: SshMaster, o: { destination: string; home: string; svallBase: string; report: RemoteDoctor; homedir: string }, run: Runner): Promise<FarVersions> {
   const call = agentCall(master, o);
@@ -405,7 +403,6 @@ async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: strin
   return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, serves this fleet as a worker, and tmux opens and closes a window there` };
 }
 
-// the far `svall` flag for the fleet's profile there
 const farFleet = (fleet: HostDeps['fleet']): string[] => (fleet.profile ? ['-p', shq(fleet.profile)] : []);
 
 /** What this fleet's fleet home there serves, as its own `svall version --json` reads it. */
@@ -734,9 +731,8 @@ const UNITS = '[ -f "$1/$2" ] && echo gateway; if [ -f "$1/$3" ]; then if grep -
 const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f "$1" && systemctl --user daemon-reload';
 
 /**
- * `svall host upgrade`: a new release installed by its own setup, as the setup of the release it replaces may not speak
- * its protocol, then a probe that puts the old one back if it does not answer. A machine that runs this fleet as anything
- * but a worker then becomes its worker.
+ * `svall host upgrade`: the new release installed by its own setup, as the old one's may not speak its protocol, then a
+ * probe that puts the old one back if it does not answer; a machine not yet this fleet's worker then becomes one.
  */
 export function upgradeHost(name: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {

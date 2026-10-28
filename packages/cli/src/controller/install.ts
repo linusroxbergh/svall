@@ -19,14 +19,12 @@ export type CompanionArchive = { archive: string; version: string; platform: str
 
 export type FetchLike = (url: string) => Promise<{ ok: boolean; status: number; arrayBuffer(): Promise<ArrayBuffer> }>;
 
-/** Where a companion downloaded from a release manifest is kept. */
 export const companionCache = (homedir: string = os.homedir()): string =>
   path.join(homedir, '.local', 'share', 'svall', 'companions');
 
 /**
- * The version, platform and protocol an archive names for itself, and whether this controller's own signers vouch for
- * it, staged and checked as the installer stages it. The far machine's first install checks the archive against the
- * signers the archive carries, so it is authenticated here, before it is uploaded.
+ * What an archive names itself, and whether this controller's signers vouch for it. A far machine's first install trusts
+ * the signers the archive carries, so it is authenticated here, before upload.
  */
 export async function inspectCompanion(archive: string, o: { verify: Verify }): Promise<CompanionArchive> {
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-companion-'));
@@ -112,12 +110,10 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `the companion could not be written to ${o.remote}: ${r.stderr.trim().slice(0, 400)}`);
 }
 
-// $1 the archive, $2 the staging folder, $3 the release asked for, $4 the far svallBase, or empty to skip the signature.
-// Every member must be a path in releases/$3, spelled one way and listed once. Where a release is installed, the
-// signature over SHA256SUMS is checked against the signers it pins before anything else leaves the archive, and again
-// after, since GNU tar writes a member under a link over the file it extracted by name; a signers file holding only
-// comments pins no key, as a release built before one existed does. The PATH holds only system folders, so no relative
-// entry in the login shell's can reach a tool the upload carries
+// $1 archive, $2 staging folder, $3 release asked for, $4 far svallBase or empty to skip the signature. Every member must
+// be a path in releases/$3, spelled one way and listed once. The installed release's pinned signers check SHA256SUMS
+// before anything else is extracted and again after, as GNU tar writes a member under a link over a file it extracted by
+// name; a signers file of only comments pins no key. PATH is system folders only, so no relative entry reaches a tool the upload carries
 const UNPACK = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 dir="$2/releases/$3"
 signers="$4/current/release/allowed_signers"
@@ -155,9 +151,8 @@ grep -Fqx -e "$want," -e "$want" ${MANIFEST} || exit 6`;
 export type FarCheck = 'pinned' | 'unpinned' | 'first' | 'digests';
 
 /**
- * Unpacks an uploaded archive into `staging` on the far machine and checks it there with ssh-keygen and sha256sum,
- * against the signers the release installed at `svallBase` pins, before anything the archive carries runs. Without
- * `svallBase` it checks the digests alone.
+ * Unpacks an uploaded archive into `staging` there and checks it with the far machine's own ssh-keygen and sha256sum
+ * against the signers `svallBase`'s release pins, before any of it runs; without `svallBase`, the digests alone.
  */
 async function unpackStaged(master: SshMaster, o: { archive: string; staging: string; version: string; svallBase?: string }): Promise<{ check: FarCheck; signers: string }> {
   const signers = path.posix.join(o.svallBase ?? '', 'current', 'release', 'allowed_signers');
@@ -186,9 +181,8 @@ const checked = (c: { check: FarCheck; signers: string }): string => ({
 })[c.check];
 
 /**
- * Installs an uploaded archive with the `svall` unpacked from that same archive. `installed` names the far machine's
- * svallBase: a release installed there checks the staged one with its pinned signers before its `svall` runs, and a
- * machine with none rests on the controller's check before the upload.
+ * Installs an uploaded archive with the `svall` unpacked from it. A release already at `installed` checks the staged one
+ * against its pinned signers first; a machine with none rests on the controller's check before upload.
  */
 export async function bootstrapSetup(master: SshMaster, o: { staging: string; archive: string; version: string; allowUnsigned: boolean; installed: string }): Promise<string> {
   await remote(master, ['mkdir', '-p', shq(o.staging)], `mkdir -p ${o.staging}`, TAR_TIMEOUT);
@@ -277,10 +271,8 @@ async function strandedTmux(master: SshMaster, o: { svallBase: string; home: str
 }
 
 /**
- * Why going back to `to`, or without one to the newest other release kept, would leave a fleet's svalld on the far machine
- * refusing to start, or unable to reach its tmux server: its state.json at a newer schema than that release reads, or
- * a server that release's tmux cannot talk to. A release that does not say what it reads is held to the oldest schema
- * any release has read. Undefined when nothing there stands in the way.
+ * Why going back to `to` (else the newest other release kept) would leave a far fleet's svalld refusing to start or cut
+ * off from its tmux server; a release that does not say which state schema it reads is held to the oldest any has read.
  */
 export async function rollbackRefusal(master: SshMaster, o: { svallBase: string; home: string; from: string; to?: string }): Promise<string | undefined> {
   const states = await stateVersions(master, o.home);

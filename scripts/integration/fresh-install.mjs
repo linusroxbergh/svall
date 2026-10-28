@@ -3,14 +3,10 @@
 //   node scripts/integration/fresh-install.mjs --release <dir> --upgrade <dir> --arch x64|arm64
 //                                              [--image <tag>] [--out <dir>] [--keep]
 //
-// Each folder holds one release as scripts/release-build.sh writes it: the controller tree the app carries, packed, and
-// the companion archives its manifest pins. The controller runs here, on this host, from that tree, with a home of its
-// own; the machine is a clean Ubuntu 24.04 container with systemd and sshd, an account at the controller's home path
-// and no Node. The run adds the machine with the first release (`svall host add`), which turns lingering on and makes
-// it the controller's fleet's worker, checks the unit runs that release and nothing else, upgrades to
-// the second release (`svall host upgrade`), then goes back with `svall setup --rollback` on the machine, checking the
-// unit each time. A release that pins its companion on this host's loopback is served from its folder and downloaded,
-// and one that carries it, as Svall.app's does, takes it from its own tree; any other is named by path with --release.
+// Each folder holds one release as scripts/release-build.sh writes it. The controller runs on this host from that
+// release's tree with a home of its own; the machine is a clean Ubuntu 24.04 container with an account at that home
+// path and no Node. The run does `svall host add` with the first release, `svall host upgrade` to the second, then
+// `svall setup --rollback` on the machine, checking each time that the unit runs that release and nothing else.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -48,9 +44,8 @@ function one(dir, re) {
 }
 
 /**
- * One release: its companion for this machine, and the controller tree unpacked as the app carries it. A tree built for
- * this host runs through its own shim and Node; one that is not (the Mac's, on a Linux runner) runs its bundled `svall`
- * on this process's Node.
+ * One release: its companion for this machine and its controller tree, unpacked. A tree built for another platform
+ * (the Mac's, on a Linux runner) runs its bundled `svall` on this process's Node instead of its own shim.
  */
 function release(dir, name) {
   const packed = one(dir, /^svall-controller-.+\.tar\.gz$/);
@@ -92,7 +87,6 @@ function svall(rel, ...args) {
     : spawnLogged(`${rel.name} svall`, process.execPath, [path.join(rel.root, 'lib', 'svall.mjs'), ...args], { ...ENV, SVALL_RELEASE_ROOT: rel.root });
 }
 
-/** A command on the machine as its user runs it over ssh. */
 const ssh = (...args) => spawnLogged('ssh fresh', path.join(BIN, 'ssh'), ['fresh', '--', ...args]);
 
 /** A shell on the machine, as root or, with `uid`, as the account beside its user manager, with no login of its own. */

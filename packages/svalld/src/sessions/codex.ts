@@ -21,7 +21,6 @@ function trusts(home: string, folder: ResumeFolder): boolean {
 export const codexAdapter: SessionAdapter = {
   kind: 'codex',
   adapter: 1,
-  // every release counts when Svall sets no floor for Codex
   min: AGENTS.codex.minVersion ?? [0, 0, 0],
   sessionStartOnResume: false,
 

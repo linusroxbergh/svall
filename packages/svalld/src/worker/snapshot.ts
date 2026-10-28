@@ -55,9 +55,8 @@ function keepPending(robots: Record<string, Robot>, held: Record<string, Robot>,
   }
 }
 
-/** Takes the home's snapshot into a worker's store but the scribe switch, the worker-owned fields of a robot placed here at that
- *  placement, a robot placed here it lacks, until the home forgets it, and what the `pending` mutations changed here; `home`
- *  gets its entry with this snapshot's version. */
+/** Takes the home's snapshot into a worker's store, keeping the scribe switch, the robots placed here with their own fields at
+ *  that placement, and what `pending` mutations changed; `home` gets its entry with this snapshot's version. */
 export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?: { id: MachineId; name: string; reachable: boolean }, pending: Mutation[] = []): void {
   store.update((d) => {
     const held = home && d.machines?.[home.id];

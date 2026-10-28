@@ -3,10 +3,8 @@
 //   node scripts/install-release.mjs --release <dir or tarball> --prefix <dir>
 //                                    [--allow-unsigned] [--allowed-signers <file>] [--signer <id>]
 //
-// The release is untrusted until it is authenticated, so nothing is written anywhere `current`
-// could reach: it is staged, authenticated there, renamed whole into releases/<version>/, and only
-// then reached by a `current` symlink renamed over the old one. The release `current` pointed at
-// before stays for rollback, and every other is removed.
+// The release is staged and authenticated before it is renamed whole into releases/<version>/ and a `current` symlink
+// is renamed over the old one. The release `current` pointed at before stays for rollback; every other is removed.
 
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -33,11 +31,9 @@ const tar = (argv) => execFileSync(TAR, argv, { encoding: 'utf8', stdio: ['ignor
 const contentOf = (file) => (fs.existsSync(file) ? fs.readFileSync(file) : undefined);
 
 /**
- * Unpacks a release archive into `staging` and authenticates it there, as every installer of one does. It must hold one
- * release under a name an installer takes, each member a path in it spelled one way and listed once. The signature over
- * its SHA256SUMS is checked before anything else leaves the archive; after the rest is unpacked that SHA256SUMS must still
- * be the one there, since GNU tar writes a member under a link inside the release over a file it extracted by name, and
- * every file and the tree must match it. `verify(dir, signer)` throws to refuse a signature.
+ * Unpacks a release archive into `staging` and authenticates it. The signature over SHA256SUMS is checked before anything
+ * else leaves the archive, and SHA256SUMS must be unchanged after the full unpack, since GNU tar writes a member under a
+ * link over a file it extracted by name. `verify(dir, signer)` throws to refuse a signature.
  */
 export function stageArchive(archive, staging, o = {}) {
   const { version, members } = archiveRelease(archive, tar(['-tzf', archive]));

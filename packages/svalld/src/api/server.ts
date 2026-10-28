@@ -45,7 +45,7 @@ const APP_ORIGINS = new Set(['svall://app', ...(variant === 'dev' ? ['http://loc
 // tailscale serve sets this on every request it proxies, and strips any the client sent itself
 const IDENTITY_HEADER = 'tailscale-user-login';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
-// the cookie a phone keeps the pass in, for as long as a browser keeps one
+// the cookie a phone keeps the pass in; 400 days is the most a browser keeps one
 const PASS_COOKIE = 'svall-pass';
 const PASS_MAX_AGE_S = 400 * 86_400;
 
@@ -66,7 +66,6 @@ export function stripKey(url: string, key: string): string | undefined {
   return (end === -1 ? '/' : path.slice(end)) + (q === -1 ? '' : url.slice(q));
 }
 
-/** What the request's cookie `name` says, if it carries one. */
 export function cookieOf(req: IncomingMessage, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
     const at = part.indexOf('=');
@@ -75,10 +74,7 @@ export function cookieOf(req: IncomingMessage, name: string): string | undefined
   return undefined;
 }
 
-/**
- * The page svalld served itself is allowed: on loopback, or on the tailnet name when the proxy brought the request.
- * Any other name could be a page whose own name was made to resolve to this Mac.
- */
+/** Only svalld's own page: on loopback, or on the tailnet name when proxied. Any other name could be a page made to resolve to this Mac. */
 export function originAllowed(req: IncomingMessage, extra: string[] = [], proxied = false): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;

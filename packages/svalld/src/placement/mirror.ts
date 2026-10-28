@@ -45,9 +45,8 @@ export type DocName = (typeof DOC_NAMES)[number];
 const OPENCODE_FILES = ['opencode.json', 'opencode.jsonc'] as const;
 
 /**
- * An MCP server as the mirror carries it: `entry` with each secret not ticked emptied, `bare` with every one emptied;
- * `preview` each secret masked, or the field names of one whose fields the mirror does not know; `doc` and `place` where
- * it lies, a plugin's naming no doc but the `file` on the Mac it travels in.
+ * An MCP server as the mirror carries it: `entry` with each unticked secret emptied, `bare` with every one; a plugin's names no
+ * `doc` but the `file` on the Mac it travels in.
  */
 export type MirroredServer = {
   key: string; agent: AgentKind; name: string; scope: Scope; entry: Record<string, unknown>; bare: Record<string, unknown>; needs: string[];
@@ -65,10 +64,7 @@ export type MirrorPlan = {
   configs: { key: string; agent: AgentKind; file: string; fields: string[]; preview: string[]; ticked: string[] }[];
   settingsEnv: Record<string, string>;
   settings: Record<string, unknown>;
-  /**
-   * Each item the mirror carries whole once every field is ticked, by its consent item and what its row calls it, with its
-   * files: a plugin's settings and LSP configs, a marketplace list setting headers, a subagent defining a server.
-   */
+  /** What travels whole once every field is ticked: a plugin's settings and LSP configs, a marketplace list setting headers, a subagent defining a server. */
   plugins: { key: string; name: string; fields: string[]; ticked: boolean; files: string[] }[];
   codex?: Record<string, unknown>;
   /** Each OpenCode config file, and the secret fields of its own. */
@@ -93,11 +89,8 @@ const Shas = z.record(z.string(), Sha256);
 const Copies = z.record(z.string(), z.union([Sha256, z.array(Sha256)]));
 const Bare = z.record(z.string(), z.object({ value: z.string().optional(), envVar: z.literal(true).optional() }));
 /**
- * What the mirror last wrote on a worker, by sha256: each file by its `to`, each doc's keys, each server and each copied
- * value by the JSON of its doc, or of a file's `to`, and the keys that lead to it there; each server copied whole, by its
- * keys in any order, and each file holding a ticked key. A value an apply cut short may have left as either of two. Beside them each copied
- * value's bare form, what an untick leaves at its place: its value, none where it goes, `envVar` where a Codex server's
- * env_vars then names it; and the sequence of the last push applied.
+ * What the mirror last wrote on a worker, by sha256 under a file's `to` or the JSON of a doc and the keys into it; a copy an
+ * apply cut short holds either of two shas. `bare` is what an untick leaves, `envVar` where a Codex server's env_vars names it.
  */
 export const WorkerState = z.object({
   files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),
@@ -111,7 +104,6 @@ const serverSha = (v: unknown): string | undefined => {
   try { return sha256Hex(canonicalJson(v)); } catch { return undefined; }
 };
 
-/** Whether `v` is a value the record holds as copied. */
 export const isCopy = (recorded: Copied | undefined, v: unknown): boolean => typeof v === 'string' && isCopyOf(recorded, sha256Hex(v));
 
 // matches no file and no value, so a push writes again what an apply cut short may have left half done
@@ -153,7 +145,6 @@ const PLUGIN_LISTS = ['installed_plugins.json', 'known_marketplaces.json'];
 // a key or a login by its name: a move's credential patterns and more
 const SECRET = [...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'auth.json', 'mcp-auth.json', 'id_ed25519*', '*.p12', '.git-credentials', '.npmrc', '.pypirc']
   .map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
-// keys and logins by where they lie: anything in these folders, and these files
 const SECRET_DIRS = ['.aws', '.ssh', '.gnupg'];
 const SECRET_FILES = ['.docker/config.json', 'gh/hosts.yml'];
 const secret = (file: string): boolean => {
@@ -197,8 +188,7 @@ const isNoFile = (e: unknown): boolean => (e as NodeJS.ErrnoException).code === 
 
 type Walk = { found: { file: string; rel: string; mode: number }[]; bytes: number; seen: Set<string> };
 
-// the plain files under `dir` that `keep` lets go, links followed and version control left out, gathered into `w`; false
-// once they pass the tree's limit. A file over the file limit is named in `skipped`
+// gathers the files under `dir` into `w`, links followed and .git left out; false once past the tree's limit
 function walk(dir: string, rel: string, w: Walk, keep: (file: string) => boolean, skipped: string[]): boolean {
   let names: string[];
   try {
@@ -258,7 +248,6 @@ function configDoc(file: string, parse: (source: string) => unknown, unreadable:
   return undefined;
 }
 
-// every string in `v` with its URLs' logins gone
 const withoutLogins = (v: unknown): unknown =>
   typeof v === 'string' ? withoutCredentials(v) : Array.isArray(v) ? v.map(withoutLogins) : isDoc(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, withoutLogins(x)])) : v;
 
@@ -278,8 +267,7 @@ function mirrored(s: McpServer, consent: ReadonlySet<string>): MirroredServer {
   };
 }
 
-// a plugin's server file as the worker gets it: each server as `mirrored` carries it, one Mac-only or not carried left
-// out; undefined when it cannot be read now
+// a plugin's server file as the worker gets it, Mac-only and uncarried servers left out; undefined when it cannot be read
 function pluginFile(file: string, servers: McpServer[], consent: ReadonlySet<string>): string | undefined {
   let doc: unknown;
   try { doc = JSON.parse(fs.readFileSync(file, 'utf8')); } catch { /* below */ }
@@ -291,7 +279,7 @@ function pluginFile(file: string, servers: McpServer[], consent: ReadonlySet<str
   return `${JSON.stringify(doc, null, 2)}\n`;
 }
 
-// a server that may travel raw: one whose fields the mirror knows, holding no key
+// a server that may travel raw
 const plain = (s: McpServer): boolean => s.known && !secretsOf(s).length;
 const manifestOf = (root: string): string => path.join(root, '.claude-plugin/plugin.json');
 // the folders among `files` that hold a .claude-plugin folder, a plugin's or a marketplace's
@@ -309,7 +297,6 @@ const readJson = (file: string): unknown => {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return undefined; }
 };
 
-// the place of each string in `v`
 const stringPlaces = (v: unknown, place: Place = []): Place[] => (typeof v === 'string' ? [place] : typeof v !== 'object' || v === null ? []
   : Object.entries(v).flatMap(([k, x]) => stringPlaces(x, [...place, Array.isArray(v) ? Number(k) : k])));
 
@@ -324,10 +311,8 @@ function keysIn(v: unknown, bare: unknown, place: Place = []): InPlace['places']
 }
 
 /**
- * Of a marketplace's files: the plugin server, LSP and settings files and marketplace lists that hold a key or a server the
- * mirror does not know, an LSP config an entry names by path among them; those that cannot be read; silently, every file
- * of a plugin whose manifest cannot be read, and of a marketplace whose list cannot be read; and each other list whose
- * entries set headers, with those entries.
+ * Of a marketplace's files: `keyed` those holding a key or an unknown server, `broken` the unreadable, `hidden` those withheld
+ * silently since an unreadable manifest or list may name them, `headed` the other lists whose entries set headers.
  */
 function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; hidden: string[]; headed: { file: string; fields: string[] }[] } {
   const broken: string[] = [];
@@ -381,12 +366,8 @@ function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; 
 }
 
 /**
- * What the home's agent configuration mirror carries to a worker whose consent is `consent` and whose `facts` are known:
- * Claude's CLAUDE.md, skills, rules, agents, commands, keybindings, settings by key and installed plugins with their
- * marketplaces; Codex's AGENTS.md and config.toml by key; OpenCode's folders, AGENTS.md and config by key; ~/.agents/skills,
- * the fleet's agent profiles and every agent's MCP servers but the Mac-only ones, a project's only where the worker has
- * it. A key travels only where its field is ticked; logins never do; a file over 5 MB, a tree over 200 MB or a path ustar
- * cannot hold is skipped with a line in `skipped`.
+ * What the agent configuration mirror carries to a worker: every agent's instructions, skills, plugins, settings and MCP servers
+ * but the Mac-only ones, a project's only where the worker has it. A key travels only where ticked; logins never do.
  */
 export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Set(), facts?: WorkerFacts): MirrorPlan {
   const files: MirrorPlan['files'] = [];
@@ -429,8 +410,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const ocOff = unticked(CONFIG_ITEMS.opencode, 'opencode', ocDocs.filter((d) => d.secrets.length).map((d) => d.file).join(' and '), ocDocs.flatMap((d) => d.secrets));
 
   const pluginConfigs = [...readPluginConfigs(plugins, unreadable), ...readPluginLsp(plugins, unreadable)];
-  // what never travels as a file, links to it included: logins, the agents' config files, plugin server files, which
-  // travel redacted, files that cannot be read, Svall's own OpenCode plugin, and a file whose item is not ticked
+  // what never travels as a file, links to it included; the config and plugin server files travel redacted instead
   const withheld = new Set<string>();
   const hold = (file: string): void => { withheld.add(realPath(file)); };
   for (const f of [
@@ -467,7 +447,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     const real = realPath(file);
     return !withheld.has(real) && ![file, real].some(secret);
   };
-  // the files under `top` that `keep` and `also` let go, once `vet` has seen them
+  // `vet` may hold what it has seen, so `keep` is asked again after it
   const tree = (root: Root, top: string, under: string, also: (file: string) => boolean = () => true, vet: (found: string[]) => void = () => {}): void => {
     const w: Walk = { found: [], bytes: 0, seen: new Set() };
     if (!walk(top, '', w, (f) => keep(f) && also(f), skipped)) {
@@ -485,7 +465,6 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     else files.push({ from, to: path.posix.join(root, name), mode: st.mode & 0o777 });
   };
 
-  // a marketplace's plugin server file or settings that holds a key stays here, as one that cannot be read does
   const pluginsDir = path.join(o.claudeDir, 'plugins');
   const installs = plugins.map((p) => clean(p.installPath));
   // a file the mirror writes itself, as the Mac's `from` would land; one holding a ticked key for its owner alone
@@ -503,9 +482,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     skipped.push(`${file} cannot be read`);
     unreadable.push(file);
   };
-  // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's, in an agents folder or
-  // where the plugin.json or marketplace.json of one of `plugin.roots` names it in `agents`, read whether or not they
-  // travel, or one of `plugin.also`, is named by its path under Claude's folder
+  // a subagent defining a server the mirror must ask for travels whole once ticked; a plugin's, found by its agents folder or
+  // an `agents` path its manifest, marketplace entry or `plugin.also` names, is keyed by its path under Claude's folder
   const agentsDir = path.join(o.claudeDir, 'agents');
   const vetAgents = (found: string[], plugin?: { roots: string[]; also?: string[] }): void => {
     const named = [...plugin?.also ?? [], ...(plugin?.roots ?? []).flatMap((root) => {
@@ -625,10 +603,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   };
 }
 
-/**
- * Packs into the tar `file` each planned file `state` does not record as the worker holds it, and the plan as the worker
- * applies it, which leaves out the files, the previews and the lines skipped.
- */
+/** Packs each planned file `state` does not record the worker holding, and the manifest without previews or skipped lines. */
 export async function packMirror(plan: MirrorPlan, file: string, state?: WorkerState): Promise<{ sent: number }> {
   const stage = `${file}.d`;
   fs.rmSync(stage, { recursive: true, force: true });
@@ -752,11 +727,9 @@ function readDocFile(file: string, parse: (text: string) => unknown): Doc | unde
   return doc;
 }
 
-// `b` over `a`, objects merged key by key all the way down
 const overlay = (a: unknown, b: unknown): unknown =>
   isDoc(a) && isDoc(b) ? { ...a, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, overlay(a[k], v)])) } : b;
 
-// `override` merged over `doc`: its servers by name, and its other keys whole unless it takes servers only
 function overrideOver(d: DocSpec, doc: Doc, override: Doc | undefined): void {
   for (const [k, v] of Object.entries(override ?? {})) {
     if (k === d.servers) doc[k] = overlay(doc[k], v);
@@ -778,10 +751,8 @@ export function docWithOverride(name: DocName, o: Homes & { overrides: string })
 }
 
 /**
- * A secret value's place in a doc: `want` the Mac's when its field is ticked, `bare` what stands there when not, none for
- * nothing; `named` when the place names the value itself rather than a url or arg holding it, `remerged` when the doc
- * merge wrote over it now, `overOwn` when a ticked value goes over one the worker set itself, `server` a Codex server
- * whose env it lies in.
+ * A secret value's place in a doc: `want` the Mac's if ticked, else `bare`; `named` when the place is the value itself, not a url
+ * or arg holding it; `remerged` when this merge wrote over it; `overOwn` when it may replace the worker's own; `server` its Codex server.
  */
 type Leaf = { record: string; place: Place; want?: string; bare?: string; named: boolean; remerged: boolean; overOwn: boolean; server?: Place };
 
@@ -795,9 +766,8 @@ function setLeaf(doc: Doc, l: Leaf, v: string | undefined): void {
   setAt(doc, [...l.server, 'env_vars'], v === undefined ? [...rest, name] : rest.length ? rest : undefined);
 }
 
-// one secret value, `was` the doc before this apply: a ticked one is the Mac's unless it would go over the worker's own
-// and may not; a copied one is emptied once unticked; the worker's own goes back where the merge wrote over it. The
-// record `next` keeps each copy with its bare form while its place holds the one or the other
+// a ticked value is the Mac's unless it would go over the worker's own; a copy is emptied once unticked; the worker's own goes
+// back where the merge wrote over it. `next` keeps a copy while its place holds it or its bare form
 function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next: WorkerState): void {
   const pre = getAt(was, l.place);
   const copied = isCopy(recorded, pre);
@@ -818,7 +788,6 @@ function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next:
   if (recorded !== undefined && (isCopy(recorded, after) || after === l.bare)) keep(recorded);
 }
 
-// the leaves of `fields` of a doc or entry, grouped by the place each lies at
 function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { place: Place; fields: string[] }[] {
   const groups = new Map<string, { place: Place; fields: string[] }>();
   for (const f of fields) {
@@ -831,11 +800,8 @@ function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { pla
 }
 
 /**
- * Puts the mirror unpacked at `blobDir` into this machine's homes, reading and writing each file of theirs at once:
- * each config file merged by key, its servers in place and its secrets as ticked, then each file the record says changed,
- * each the home no longer carries removed, and the overrides last. A record of everything this apply may write goes
- * first, so an apply cut short still knows each copy it left; the record of what it wrote goes last, once all of it is
- * on disk. The files go off the event loop, a few at once, so the link is answered meanwhile.
+ * Puts the mirror at `blobDir` into this machine's homes. A record of all it may write goes first, so an apply cut short still
+ * knows each copy it left, the final one last; files go off the event loop, a few at once, so the link is answered meanwhile.
  */
 export async function applyMirror(
   blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number },
@@ -872,7 +838,6 @@ export async function applyMirror(
   const batch = new DurableBatch();
   await place(batch, o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
   await batch.settle();
-  // where `to` lies in this machine's homes
   const fileOf = (to: string): string | undefined => {
     const [root, ...rest] = to.split('/');
     const home = Object.hasOwn(ROOTS, root) ? o[ROOTS[root as Root]] : undefined;
@@ -897,8 +862,7 @@ export async function applyMirror(
   written.push(...wrote.filter((f) => f !== undefined));
   const keep = new Set(m.keep);
   const pluginList = path.join(m.homes.claudeDir, 'plugins/installed_plugins.json');
-  // a plugin file stays as the mirror last wrote it while the Mac cannot read it, its plugin's manifest, the plugin list or
-  // the marketplace list its install came from
+  // a plugin file stays as the mirror last wrote it while the Mac cannot read it or a manifest or list that may name it
   const unread = (to: string): boolean => {
     if (!to.startsWith('claude/plugins/')) return false;
     const mac = path.join(m.homes.claudeDir, to.slice('claude/'.length));
@@ -949,9 +913,8 @@ export async function applyMirror(
 
 type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string };
 
-// one config file as the mirror leaves it, none when that is as it was, and whether it holds a ticked value: its
-// keys merged, its servers put in place, its secrets settled and its override over them; one the Mac could not read keeps
-// the record of it
+// one config file as the mirror leaves it, none when unchanged, and whether it holds a ticked value; one the Mac could not
+// read keeps its record
 function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): { doc?: Doc; keyed: boolean } {
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
@@ -1105,15 +1068,13 @@ export class Mirror {
   }
 
   /**
-   * The setup rows of the mirror to `machine`, named `o.name`: what its next push carries by its consent, and what the
-   * worker holds and runs, asked over `link` while it is linked. `o.robot`: only those of a robot's agents and folders,
-   * which lie under `home` where it runs on the worker.
+   * The setup rows of the mirror to `machine`: what its next push carries, and what the worker holds and runs while linked.
+   * `o.robot` narrows them to a robot's agents and folders, which lie under `home` on the worker.
    */
   async report(
     link: Pick<WorkerLink, 'call' | 'connected' | 'mismatch'> | undefined, machine: MachineId,
     o: { name: string; fleetFlag: string; robot?: { agents: AgentKind[]; folders: string[]; home?: string } },
   ): Promise<SetupRow[]> {
-    // the worker's answer; none while it is not linked, or when it does not answer
     const ask = async <T>(method: string, params: unknown, schema: z.ZodType<T>): Promise<T | undefined> => {
       if (!link?.connected()) return undefined;
       try {
@@ -1174,19 +1135,15 @@ function dropBlobs(stage: string): number {
 }
 
 /**
- * Takes back what the mirror copied into this machine's agent files, by the record at `stateFile`, each while it is still
- * the copy: a copied value becomes what an untick leaves there, as the record keeps it, or '' where it keeps none, in a
- * config file or where it lies in a file the agent needs; a server copied whole leaves its file; another file holding a
- * ticked key is removed; and a blob left beside the record goes. Answers a line for each file it changed or could not,
- * and for each copy left as it changed there since.
+ * Takes back each copy the mirror's record names while it is still the copy: a value becomes its bare form, a server copied
+ * whole leaves, another keyed file goes. Answers a line for each file it changed or could not, and each copy changed since.
  */
 export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
   const state = readState(o.stateFile);
   const done: string[] = [];
   const what = (keys: number, servers: number): string => [keys && `${keys} ${keys === 1 ? 'key' : 'keys'} the mirror copied`, servers && `${servers} ${servers === 1 ? 'server' : 'servers'} the mirror copied whole`]
     .filter(Boolean).join(' and ');
-  // the copy recorded as `k` at `at` in `doc` set to its bare form; a value there that is neither, by a record that keeps
-  // the bare form, changed there since
+  // a value there that is neither copy nor bare form counts as changed only where the record keeps a bare form
   const takeBack = (doc: unknown, k: string, at: Place, one: boolean, server?: Place): 'took' | 'changed' | undefined => {
     const v = getAt(doc, at);
     const bare = state.bare?.[k];
@@ -1299,11 +1256,8 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
 }
 
 /**
- * A worker's side: `config.state` answers with its record and which of the Mac's projects it has, `config.report` with
- * what it holds and runs of what the home asks, `config.blob` takes the blob's id before the home sends a byte of it,
- * and `config.apply` applies it once it has arrived as it left, answering with the files written and removed; it refuses
- * a push whose `seq` is not above the last one applied, and gives up one its link or the home gave up on before it held
- * the agent files. A blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
+ * A worker's side. `config.apply` refuses a push whose `seq` is not above the last applied, and gives up one abandoned before it
+ * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
   overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;

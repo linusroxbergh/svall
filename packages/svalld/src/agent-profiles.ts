@@ -4,7 +4,7 @@ import { bodyOf, frontmatter } from '@svall/protocol';
 import { assetDir } from './runtime.js';
 
 // the body rides first in every brief whose robot picks it, and in a change to one; Claude shows only the first 2,000 or so
-// robots of hook text past 10,000, and under this cap the whole role fits in them
+// characters of hook text past 10,000, and under this cap the whole role fits in them
 export const AGENT_PROFILE_MAX = 1500;
 // a file this big is over the cap whatever its frontmatter, and is not read into memory to find out
 const FILE_MAX = 16 * 1024;

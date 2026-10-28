@@ -17,7 +17,6 @@ import { codexAdapter } from './codex.js';
 import { opencodeAdapter } from './opencode.js';
 import { SessionError, type CliRun, type SessionAdapter } from './types.js';
 
-/** Every session adapter, each for one agent kind from its minimum release on. */
 export const SESSION_ADAPTERS: readonly SessionAdapter[] = [claudeAdapter, codexAdapter, opencodeAdapter];
 
 /** The agent kinds whose sessions a move carries. */
@@ -42,12 +41,8 @@ const realInstallFs: InstallFs = {
   mkdir: (dir) => { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); },
 };
 
-/**
- * Puts one carried session in place under this machine's agent home, where the source's agent home had it, byte for
- * byte. `staged` holds the source's bytes at their manifest paths. A file already here is kept when it is the same,
- * and replaced when the incoming one only adds to it, as a session that went away and grew does; anything else means
- * the session was continued here, and nothing is written.
- */
+/** Places a carried session byte for byte from `staged`. A file here is kept when the same and replaced when the incoming one
+ *  only adds to it, as a session that went away and grew does; anything else means it went on here, and nothing is written. */
 export function installSession(session: TransferSession, staged: string, io: InstallFs = realInstallFs): { transcriptPath: string } {
   const { sourceHome, destinationHome, destinationPath } = session;
   if (!sourceHome || !destinationHome || !destinationPath) throw new SessionError('incompatible_adapter', `session ${session.sessionId} has no place on this machine`);
@@ -95,10 +90,7 @@ export function installSession(session: TransferSession, staged: string, io: Ins
   return { transcriptPath: destinationPath };
 }
 
-/**
- * What one machine's agent CLI says about itself: its release, where it keeps its files, its login, whether Svall's
- * hooks are in, and why it cannot sandbox the commands its agent runs, when it cannot.
- */
+/** `sandbox` says why the CLI cannot sandbox the commands its agent runs, when it cannot. */
 export type AgentProbe = { kind: AgentKind; version?: string; home: string; loggedIn: boolean; hooks: boolean; sandbox?: string };
 
 /** Runs a command to its exit, whatever the code; rejects only when it cannot start. */
@@ -110,11 +102,8 @@ const json = (text: string | undefined): Record<string, unknown> | undefined => 
 };
 
 
-/**
- * Probes this machine's CLI for one agent. Claude Code names its own config folder, which is where its hooks must be;
- * the hooks are the ones setup points at the private fleet's scripts. OpenCode's sessions travel as the logs the
- * private fleet keeps of them, its login is a model provider's, and its hooks are Svall's plugin.
- */
+/** Hooks are those setup points at the private fleet's scripts, in the config folder Claude Code names. OpenCode's sessions
+ *  travel as the logs the private fleet keeps, its login is a model provider's, and its hooks are Svall's plugin. */
 export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentProbe> {
   const hooksHome = profileHome(PRIVATE, d.homedir);
   const home = kind === 'claude' ? claudePaths(d.env, d.homedir).dir
@@ -142,10 +131,7 @@ export async function probeAgent(kind: AgentKind, d: ProbeDeps): Promise<AgentPr
   return { kind, version, home, loggedIn: login.code === 0, hooks: !!hooks && codexInstalled(hooks, resolvePaths(hooksHome).hookScript), ...(sandbox && { sandbox }) };
 }
 
-/**
- * Runs a CLI to its exit, or to `timeoutMs`, which reads as a failed run; rejects only when it cannot start. `keys` are
- * added to this daemon's env.
- */
+/** `timeoutMs` reads as a failed run; rejects only when the CLI cannot start. `keys` are added to this daemon's env. */
 const runAgent = (keys: () => Record<string, string>, timeoutMs = 10_000): AgentRun => (cmd, args) => new Promise((resolve, reject) => {
   execFile(cmd, args, { timeout: timeoutMs, maxBuffer: 1024 * 1024, env: { ...process.env, ...keys() } }, (err, stdout, stderr) => {
     const code = (err as { code?: unknown } | null)?.code;
@@ -157,11 +143,8 @@ const runAgent = (keys: () => Record<string, string>, timeoutMs = 10_000): Agent
 // how long a CLI sent SIGTERM at its deadline has before SIGKILL
 const KILL_GRACE = 2000;
 
-/**
- * Runs an agent CLI with this daemon's env, which places its files as the agents it starts find them, less the
- * variables that would make Svall's own hooks take the run for a robot's, in the home unless told where. One
- * still running at `timeoutMs` is sent SIGTERM, then SIGKILL, and the run rejects at once.
- */
+/** Runs an agent CLI with this daemon's env, as the agents it starts have it, less what would make Svall's hooks take it for
+ *  a robot's. One still running at `timeoutMs` gets SIGTERM, then SIGKILL, and the run rejects at once. */
 export const cliRunner = (env: NodeJS.ProcessEnv = process.env, timeoutMs = 120_000): CliRun => (cmd, args, o = {}) => new Promise((resolve, reject) => {
   const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, SVALL_TERM: _term, ...rest } = env;
   const out = o.stdout === undefined ? 'pipe' : fs.openSync(o.stdout, 'w', 0o600);

@@ -1,9 +1,7 @@
 // The in-machine half of the robot placement integration run, run inside each container with the release's own node:
 //
-//   snap [--light]                        one JSON document: this machine's view of the fleet, its repos, sessions,
-//                                         terminals, agent processes, worktree locks, move journals, outbox and
-//                                         its epoch, applied mutations and docs conflict copies;
-//                                         --light leaves out repos, trees and sessions
+//   snap [--light]                        this machine's view of the fleet, its repos, processes and journals as one
+//                                         JSON document; --light leaves out repos, trees and sessions
 //   machines                              the links the fleet's state holds, by machine id
 //   call <method> [<params json>]         one call to this machine's daemon: its answer, or its error, as one JSON document
 //   drive move|return <robot> [--machine <name>] [--fault kill|drop --at rest|bundle|prepare|commit|activate|release] [--cap <s>]
@@ -262,9 +260,8 @@ const UNIT = 'svall-svalld@private.service';
 const MOVE_PHASES = ['rest', 'bundle', 'prepare', 'commit', 'activate', 'release'];
 
 /**
- * One move of a robot, with the home's daemon killed or the link dropped at a phase. Each write of the move's journal
- * stops the daemon until the phase is read, so the fault lands at that phase; a kill takes the daemon alone, as a crash
- * does, and systemd starts it again. A move refused while the worker catches up is asked again.
+ * One move of a robot, with the home's daemon killed or the link dropped at a phase. Each journal write stops the daemon
+ * until the phase is read, so the fault lands at that phase. A move refused while the worker catches up is asked again.
  */
 async function driveMove(o) {
   const [kind, robot] = o._;

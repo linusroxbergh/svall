@@ -131,7 +131,6 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
   );
 });
 
-// a PR in review and a running monitor, marked without words; the tip spells them out
 function Marks({ c }: { c: Robot }) {
   const pr = inReview(c) ? mainPr(c) : undefined;
   const monitor = isMonitoring(c);
@@ -140,7 +139,6 @@ function Marks({ c }: { c: Robot }) {
   return <span className="sb-ind" data-tip={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
 }
 
-// a robot on a worker names the machine on a line under its name
 function RobotName({ c, machine, title }: { c: Robot; machine?: string; title?: string }) {
   const name = <span className="sb-name" data-tip={title}>{c.name}</span>;
   return machine ? <span className="sb-names">{name}<MachineLine name={machine} short className="sb-on" testid={`sb-machine-${c.id}`} /></span> : name;
@@ -262,7 +260,6 @@ function Starred() {
   );
 }
 
-// the press brings up Sparkle's window for the release update.available named
 function UpdateRow() {
   const version = useApp((s) => s.update);
   if (!version) return null;

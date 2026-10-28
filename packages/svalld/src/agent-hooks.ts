@@ -78,7 +78,6 @@ export function unmergeHooks(settings: Record<string, unknown>, script: string):
   return out;
 }
 
-/** Whether the Claude settings run the statusline and the hook script of the fleet at `home`. */
 export function hooksInstalled(settings: Record<string, unknown>, home: string): boolean {
   const paths = resolvePaths(home);
   const status = (settings.statusLine as StatusLine | undefined)?.command ?? '';

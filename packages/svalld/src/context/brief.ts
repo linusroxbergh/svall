@@ -38,8 +38,6 @@ const docLine = (d: DocEntry): string => {
 const fleetDocLines = (d: DocEntry): string[] =>
   [docLine(d), ...(d.body ?? '').split(/\r?\n/).filter((l) => l.trim() !== '').map((l) => `  ${l}`)];
 
-// the brief calls a robot a robot, as the user does
-
 function docLines(folders: DocFolder[], hidden: number[] = []): string[] {
   if (!folders.length) return [];
   const listed = folders.flatMap((f, i) => (f.docs.length || hidden[i] ? [{ f, more: hidden[i] ?? 0 }] : []));

@@ -12,7 +12,6 @@ final class BrowserView: WKWebView, OverlayView {
     /// What stopped the last navigation, until one gets somewhere.
     var error: String? { didSet { if error != oldValue { report() } } }
     var cutout = Cutout() { didSet { cutout.apply(to: self) } }
-    /// When its web process last died and the page was loaded again.
     var crashedAt: Date?
     private var observers: [NSKeyValueObservation] = []
 
@@ -46,7 +45,6 @@ final class BrowserView: WKWebView, OverlayView {
 
     private var dialogs: [BrowserDialog] { subviews.compactMap { $0 as? BrowserDialog } }
 
-    /// True while a dialog waits over this tab.
     var asking: Bool { !dialogs.isEmpty }
 
     func takeKeys() {

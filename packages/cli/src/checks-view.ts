@@ -9,7 +9,6 @@ export type Check = {
   name: string; status: 'ok' | 'warn' | 'fail' | 'skip'; detail: string; run?: string; action?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap'];
 };
 
-/** `[x] ` or `[ ] ` before the detail of a row with a tick. */
 export const tickMark = (tick?: SetupRow['tick']): string => (tick ? (tick.on ? '[x] ' : '[ ] ') : '');
 
 export const MARK = { ok: '✓', warn: '!', fail: '✗', skip: '–' };

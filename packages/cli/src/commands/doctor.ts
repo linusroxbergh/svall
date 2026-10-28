@@ -41,7 +41,6 @@ export type DoctorDeps = PreflightDeps & {
   // the fleet whose scripts setup points the Claude and Codex hooks at
   hooksHome: string;
   launchAgentsDir: string;
-  // where the Linux daemons' units lie
   unitDir: string;
   // what setup would hand a fleet's daemon from this account
   daemonEnv: Record<string, string>;
@@ -134,7 +133,6 @@ export function rebindMachineFile(o: { file: string; hardwareId?: string; unatte
   return { ok: true, message: `${o.file} is bound to this machine's hardware: restart svalld to run its fleets as this machine` };
 }
 
-// the process listening on the port, on `host` alone when given, as lsof names it
 async function heldBy(d: DoctorDeps, port: number, host?: string): Promise<string | undefined> {
   try {
     const out = await d.run('lsof', ['-nP', `-iTCP${host ? `@${host}` : ''}:${port}`, '-sTCP:LISTEN', '-Fpc']);
@@ -202,7 +200,6 @@ async function launchd(t: Target, d: DoctorDeps): Promise<Check> {
   }
 }
 
-// a fleet's launchd plist, and how to have it written again
 function plistOf(t: Target, d: DoctorDeps): { plist: string; fix: string } {
   const label = profileLabel(t.name);
   const plist = path.join(d.launchAgentsDir, `${label}.plist`);
@@ -310,7 +307,6 @@ function hooks(d: DoctorDeps): Check {
     : { name: 'hooks', status: 'warn', detail: `out of date in ${d.settingsPath}: run ${SHIM} setup`, run: `${SHIM} setup` };
 }
 
-// verifies the hook definition is installed and current, then asks Codex whether it is trusted.
 export async function codexCheck(d: Pick<DoctorDeps, 'codex' | 'exists' | 'read' | 'hooksHome' | 'found' | 'integrations' | 'codexTrust'>): Promise<Check> {
   if (d.integrations && !d.integrations.includes('codex')) return { name: 'codex hooks', status: 'skip', detail: 'turned off in setup' };
   if (!d.found.includes('codex') && !d.exists(d.codex.dir)) return { name: 'codex hooks', status: 'skip', detail: 'not installed' };

@@ -109,13 +109,11 @@ export class Client {
     this.ws.close();
   }
 
-  /** Hands each event the daemon pushes to `fn`, until the returned function is called. */
   onEvent(fn: (e: Event) => void): () => void {
     this.listeners.add(fn);
     return () => { this.listeners.delete(fn); };
   }
 
-  /** Runs once the connection is gone, whichever side closed it. */
   onClose(fn: () => void): void {
     this.ws.once('close', fn);
   }

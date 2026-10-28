@@ -16,9 +16,8 @@ function send(bridge: Bridge): void {
 /** Sends every held rect again, for an overlay that moved without changing size. */
 export const recut = (bridge: Bridge): void => send(bridge);
 
-/** The shell draws terminals and browser tabs above the page, so an overlay that lands on one is seen and
- * clicked only where the surfaces give its rect up. One that takes no presses leaves them to the surface.
- * Returns the call that hands the region back. */
+/** The shell draws terminals and browser tabs above the page, so an overlay on one shows and takes presses only where the
+ * surfaces give its rect up; without `presses` they stay with the surface. Returns the release. */
 export function holdCutout(bridge: Bridge, el: Element, presses = true, win: Window & typeof globalThis = window): () => void {
   const held = holders.get(bridge) ?? new Map<Element, boolean>();
   holders.set(bridge, held);

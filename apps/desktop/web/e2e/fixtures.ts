@@ -22,7 +22,7 @@ export type Svall = DaemonInfo & {
   uniq(prefix: string): string;
   // an island reshapes around its crew as it grows, so a cell read at creation goes stale
   cellOf(id: string): Promise<Cell>;
-  // a stand-in for the native shell, installed before the page opens: it records what the page sends and answers the connection request
+  // installed before the page opens
   nativeShell(): Promise<NativeShell>;
 };
 

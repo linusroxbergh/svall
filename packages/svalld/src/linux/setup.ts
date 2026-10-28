@@ -19,7 +19,6 @@ export const GATEWAY_UNIT = 'svall-gateway.service';
 
 export const svalldUnitName = (fleet: string): string => `svall-svalld@${fleet}.service`;
 
-/** Where systemd reads a user's own units. */
 export const unitDirOf = (homedir: string): string => path.join(homedir, '.config', 'systemd', 'user');
 
 const isOurUnit = (f: string): boolean => f === GATEWAY_UNIT || /^svall-svalld@[a-z][a-z0-9-]*\.service$/.test(f);
@@ -49,16 +48,12 @@ function render(name: string, values: Record<string, string>): string {
 /** `env`: the agent homes the daemon is given, as `agentHomesEnv` reads them. */
 export type UnitOptions = { runtime: Runtime; homedir: string; prefix: string; env?: Record<string, string> };
 
-/** The unit line that sets `key` for the daemon. */
 export const unitEnv = (key: string, value: string): string => `Environment="${key}=${esc(value)}"`;
 
 const MARK = 'svall-agent-homes';
 
-/**
- * Where this account keeps Claude's, Codex's and OpenCode's files, when it says: this process's CLAUDE_CONFIG_DIR,
- * CODEX_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME and OPENCODE_DB, else its login shell's, since a setup over ssh runs in a shell that read
- * no profile. systemd gives a unit none of them.
- */
+/** The agents' home variables from this process, else its login shell, since a setup over ssh runs in a shell that read no
+ *  profile; systemd gives a unit none of them. */
 export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
   let said: string[] = [];
   try {
@@ -203,11 +198,8 @@ export async function serveAsWorker(o: UnitOptions & { fleet: string; home: stri
   return [...done, `systemctl --user restart ${unit}`];
 }
 
-/**
- * Setup, and for a release that replaced another, or a tree of its own name, the probe that can put it back. Only a daemon
- * this run really started says anything about the release: a machine with no systemd would
- * otherwise roll back a release that installed perfectly well.
- */
+/** Setup, then the probe that can roll back a release that replaced another. Only a daemon this run started counts: a
+ *  machine with no systemd would otherwise roll back a release that installed fine. */
 export async function setupLinuxRelease(o: LinuxSetup & {
   rollbackTo?: string;
   replaced?: boolean;
@@ -221,10 +213,8 @@ export async function setupLinuxRelease(o: LinuxSetup & {
   return [...done, ...await probeOrRollback({ prefix: o.prefix, unitDir: o.unitDir, run: o.run, probe: o.probe, rollback: o.rollback })];
 }
 
-/**
- * Every fleet's daemon, started again from the release `current` now names, and never the gateway unit an older release
- * left, which the enrol of `host add` and `host upgrade` stops and removes. A unit that does not start is said, not thrown.
- */
+/** Restarts every fleet's daemon onto the release `current` names, never the gateway unit, which `host add` and
+ *  `host upgrade` remove. A unit that does not start is reported, not thrown. */
 export async function restartUnits(run: Run, unitDir: string): Promise<string[]> {
   const done: string[] = [];
   for (const unit of ourUnits(unitDir).filter((u) => u !== GATEWAY_UNIT)) {
@@ -242,10 +232,7 @@ export type Rollback = { prefix: string; current: string; release: string; versi
 
 const fleetOf = (unit: string): string | undefined => /^svall-svalld@(.+)\.service$/.exec(unit)?.[1];
 
-/**
- * A release any fleet's daemon does not answer from goes back where it came from, so an upgrade cannot leave
- * the machine without a daemon. Every fleet with a unit here is asked, as each was restarted onto it.
- */
+/** Rolls back a release any fleet's daemon does not answer from, so an upgrade cannot leave the machine without one. */
 export async function probeOrRollback(o: {
   prefix: string; unitDir: string; run: Run;
   probe: (fleet: string) => Promise<boolean>;

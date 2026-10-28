@@ -4,7 +4,6 @@ import { condenseTurnsClaude, userPromptsClaude, type Pending } from './claude-t
 import { condenseTurnsCodex, userPromptsCodex } from './codex-transcript.js';
 import { condenseTurnsOpencode, userPromptsOpencode } from './opencode-transcript.js';
 
-// each agent writes its own transcript format, and no parser reads anything out of another's file
 const READERS: Record<AgentKind, { prompts: typeof userPromptsClaude; condense: typeof condenseTurnsClaude }> = {
   claude: { prompts: userPromptsClaude, condense: condenseTurnsClaude },
   codex: { prompts: userPromptsCodex, condense: condenseTurnsCodex },

@@ -20,7 +20,6 @@ const xml = (s: string): string =>
 const unxml = (s: string): string =>
   s.replace(/&quot;/g, '"').replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
 
-/** The plist entry that sets `key` for the daemon. */
 export const plistEnv = (key: string, value: string): string => `<key>${xml(key)}</key><string>${xml(value)}</string>`;
 
 /** Where this shell keeps the agents' files, when it says; launchd gives the daemon no shell environment. */
@@ -128,11 +127,10 @@ export async function kickstart(labels: string[]): Promise<string[]> {
   return done;
 }
 
-/** Whether launchd has `label` loaded in this user's session. */
 export const isLoaded = (label: string): Promise<boolean> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(() => true, () => false);
 
-/** Whether `label`'s daemon runs: a loaded job runs only while its fleet's window is open. */
+/** The pid of `label`'s daemon while it runs: a loaded job runs only while its fleet's window is open. */
 export const runningPid = (label: string): Promise<number | undefined> =>
   exec('launchctl', ['print', `gui/${os.userInfo().uid}/${label}`]).then(({ stdout }) => {
     const pid = /\bstate = running\b/.test(stdout) ? /^\tpid = (\d+)$/m.exec(stdout)?.[1] : undefined;

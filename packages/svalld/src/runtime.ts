@@ -71,7 +71,6 @@ export const bundleRuntime = (app: string): Runtime => {
 export const releaseRuntime = (release: string): Runtime =>
   ({ daemon: [path.join(release, 'bin', 'svalld')], cli: [path.join(release, 'bin', 'svall')], release });
 
-/** The runtime this code is running from. */
 export const ownRuntime = (): Runtime => {
   if (bundled) return bundleRuntime(path.resolve(here, '../../..'));
   return isRelease() ? releaseRuntime(path.join(DEFAULT_PREFIX, 'current')) : checkoutRuntime(path.resolve(here, '../../..'));

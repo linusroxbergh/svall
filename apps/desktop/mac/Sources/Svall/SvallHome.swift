@@ -70,7 +70,6 @@ enum SvallHome {
         (path as NSString).standardizingPath == NSHomeDirectory() + "/" + root
     }
 
-    // the name the fleet's directory gives it, nil for the private one
     static var directoryName: String? {
         if isPrivate { return nil }
         let base = ((path as NSString).standardizingPath as NSString).lastPathComponent
@@ -78,7 +77,6 @@ enum SvallHome {
         return base.hasPrefix(prefix) ? String(base.dropFirst(prefix.count)) : base
     }
 
-    /// The fleet's own name: fleet.json's, else its directory's; nil for a private fleet with neither.
     static var fleetName: String? {
         (readJSON(path + "/fleet.json")?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? directoryName
     }
@@ -144,7 +142,6 @@ enum SvallHome {
         return Int32(parts[0])
     }
 
-    /// The running instance of this app that holds `home`, as its app.pid names it.
     static func runningApp(of home: String) -> NSRunningApplication? {
         guard let pid = appPid(of: home), let app = NSRunningApplication(processIdentifier: pid),
               app.bundleIdentifier == Bundle.main.bundleIdentifier else { return nil }

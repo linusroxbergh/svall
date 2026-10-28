@@ -15,7 +15,6 @@ export const randomSeed = (): number => Math.floor(Math.random() * 2 ** 31);
 // a folded island is off the map and holds no ground
 export const worldIslands = (state: FleetState): Island[] => Object.values(state.islands).filter((i) => i.kind !== 'home' && !i.collapsed);
 
-// footprints separated by at least `margin` cells do not intersect
 export function clearBy(a: Footprint, b: Footprint, margin: number): boolean {
   return a.position.x + a.size.w + margin <= b.position.x || b.position.x + b.size.w + margin <= a.position.x ||
     a.position.y + a.size.h + margin <= b.position.y || b.position.y + b.size.h + margin <= a.position.y;
@@ -27,8 +26,7 @@ const REACH = 80;
 const fits = (state: FleetState, island: Island, margin: number, floor: boolean): boolean => Boolean(island.collapsed) ||
   ((!floor || aboveHome(state, island)) && worldIslands(state).every((o) => o.id === island.id || clearBy(o, island, margin)));
 
-// the island's own position whenever it is legal, else the closest spot that clears its neighbours by
-// GAP, walking outwards a cell at a time and preferring to stay on the same row.
+// the island's own position when legal, else the closest spot clearing its neighbours by GAP, preferring the same row.
 // `floor` keeps the result off mission control's row, for callers placing into a fleet that has already settled
 export function freePosition(state: FleetState, island: Island, floor = false): Cell {
   const wanted = island.position;
@@ -63,9 +61,8 @@ const PASSES = 16;
 // an island stands legally when it clears every other island and keeps off mission control's row
 const settled = (state: FleetState, island: Island): boolean => fits(state, island, 1, true);
 
-// the island that changed keeps the ground it asked for, past mission control's row too; the fleet around it yields,
-// one round after another, until every island is clear again. a round that moves nothing has nowhere left to go,
-// and the islands it could not settle are the caller's sign that the search ran out
+// the island that changed keeps the ground it asked for, past mission control's row too, and the fleet around it yields
+// round after round; returns how many islands are left unsettled, the caller's sign that the search ran out
 export function makeRoom(draft: FleetState, islandId: string): number {
   const island = draft.islands[islandId];
   if (!island || island.kind === 'home') return 0;
@@ -251,9 +248,8 @@ export function arrangeFleet(draft: FleetState, aspect = 4 / 3, homeRoom?: numbe
 
 class IslandFull extends Error { code = 'invalid'; }
 
-// the island takes the ground a crew one larger needs and everyone lines up on it, as `arrange` lays out
-// the fleet; the newcomer takes the cell the grid leaves at the end, and the islands the new shape reaches
-// into are pushed aside. a hidden island comes back onto the map, so the newcomer is seen arriving
+// the island takes the grid a crew one larger needs, as `arrange` lays it out, and the newcomer its last cell; islands the
+// new shape reaches into are pushed aside, and a hidden island comes back so the newcomer is seen arriving
 export function placeOnIsland(draft: FleetState, islandId: string, exceptId?: string, log?: Logger, force?: true): Cell {
   const island = draft.islands[islandId];
   if (island.kind === 'home') return placeOnHome(draft, island, exceptId);

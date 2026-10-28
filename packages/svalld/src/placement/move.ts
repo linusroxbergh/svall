@@ -125,7 +125,6 @@ const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b 
 
 export const fileSha = async (file: string): Promise<string> => (await hashStream(fs.createReadStream(file))).sha256;
 
-/** The blob ids a move's files travel under. */
 export const blobIds = (id: string) => ({ bundle: id, session: `${id}_session` });
 
 // a folder as one file, and back: pax, which bsdtar and GNU tar both read, holds any path a session has, and none of the
@@ -141,9 +140,8 @@ export async function unpack(file: string, dir: string): Promise<void> {
 }
 
 /**
- * Copies each terminal's session into `into/<n>` by its path under its agent home, and names where it lands: the
- * transcript at the plan's place for it, the files beside it as under the source's agent home. A CLI that keeps its
- * sessions in a database of its own writes the session out to its export file there.
+ * Copies each terminal's session into `into/<n>` by its path under its agent home, the transcript landing at the plan's place
+ * for it; a CLI that keeps its sessions in a database of its own writes the session out to its export file there.
  */
 async function stageSessions(c: Robot, paths: MovePlan['paths'], into: string, run: CliRun): Promise<TransferSession[]> {
   const sessions: TransferSession[] = [];
@@ -294,9 +292,8 @@ export async function restRobot(deps: RestSide, j: MoveJournal, save: (j: MoveJo
 }
 
 /**
- * Waits for the OpenCode server each terminal the move's rest closed left running, and kills one that outlasts the
- * settle, before the terminal reopens: an OpenCode resumed beside it would share its database. A terminal whose window
- * still runs keeps its server.
+ * Waits for the OpenCode server each terminal the rest closed left running, killing one that outlasts the settle: an OpenCode
+ * resumed beside it would share its database. A terminal whose window still runs keeps its server.
  */
 export async function serversLeft(deps: Omit<RestSide, 'viewers'>, j: MoveJournal, save: (j: MoveJournal) => void): Promise<void> {
   if (!j.rest) return;
@@ -373,9 +370,8 @@ function watchTrust(w: Wake, j: MoveJournal, name: string, pane: string, adapter
 }
 
 /**
- * Opens the terminals the move's rest closed, resuming the robot's agent, and watches for `watchMs` for its session to
- * start, answering its trust question if `trust` and it asks. Answers the resume's error, or undefined once the robot
- * is up or still coming up; a robot an earlier activation opened is up, and gets the second terminal that one may not have reached.
+ * Opens the terminals the rest closed and watches `watchMs` for the robot's session to start, answering its trust question if
+ * `trust`. Answers the resume's error, or undefined once it is up or coming up; one already up gets its second terminal.
  */
 export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined> {
   const id = j.robotId;
@@ -443,9 +439,8 @@ export type PlacementDeps = {
 };
 
 /**
- * The home's side of every move: a robot goes to a worker and comes back through rest, bundle, prepare, commit, activate
- * and release, each journaled before it runs. Before the commit a failure reopens the robot where it was; from the
- * commit on the robot is the destination's, and a crash resumes from the journal.
+ * The home's side of every move, each phase journaled before it runs. Before the commit a failure reopens the robot where it
+ * was; from the commit on the robot is the destination's, and a crash resumes from the journal.
  */
 export class Placement {
   private files: MoveFiles;
@@ -785,9 +780,8 @@ export class Placement {
     return j;
   }
 
-  // before the commit: a worktree here this return took back is left as the robot left it and locked again, and the
-  // worker reopens the robot where it was; a worker out of reach is told once it is back. A step that fails is logged,
-  // and the rest still run
+  // before the commit: a worktree this return took back is locked again as the robot left it, and the worker reopens the
+  // robot, told once it is back if out of reach; a step that fails is logged and the rest still run
   private async abortBack(failed: MoveJournal, error: Error): Promise<void> {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     const j = this.readable(failed.id) ?? failed;

@@ -22,7 +22,7 @@ const texts = (c?: Texts): string => (c ?? []).map((x) => x.text ?? '').join('')
 const commandOf = (c: unknown): string =>
   Array.isArray(c) ? (c.length === 3 && /^-l?c$/.test(String(c[1])) ? String(c[2]) : c.join(' ')) : String(c ?? '');
 
-/** A Codex rollout's outline; Codex records no cost. */
+/** Codex records no cost, so the outline carries none. */
 export function outlineCodex(text: string, file: string, span: Span): Outline {
   const out = outliner();
   let session = path.basename(file, '.jsonl'), cwd: string | undefined, model: string | undefined, branch: string | undefined;

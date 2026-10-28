@@ -7,7 +7,6 @@ import type { FieldRef } from './resources/model.js';
 import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
 import type { AppStore } from './store/index.js';
 
-// what it takes to act on the fleet: the socket, the mirror, and the shell
 export type Deps = { api: Api; store: AppStore; bridge: Bridge };
 // the fleet calls need the socket and the mirror; only the keyboard also needs the shell
 type ActionDeps = Pick<Deps, 'api' | 'store'>;
@@ -28,7 +27,6 @@ export async function createRobot(api: Pick<Api, 'call'>, params: Params<'robot.
   }
 }
 
-// a new robot opens its side card, whatever the side card was left at, and its terminal unless it is only selected
 export const showCreated = (d: ActionDeps, id: string, how: 'focus' | 'select' = 'focus'): void => {
   const s = d.store.getState();
   if (how === 'focus') s.focus(id); else s.select(id);
@@ -83,7 +81,6 @@ export function releaseRobot(d: ActionDeps, id: string): void {
   d.api.call('robot.release', { id }).catch(toast(d));
 }
 
-// the first of New column, New column 2, … that no column is called yet, in any case
 const freeColumnName = (cols: Column[]): string => {
   const taken = new Set(cols.map((k) => k.name.toLowerCase()));
   for (let n = 1; ; n++) {
@@ -192,13 +189,11 @@ export function toggleIsland(d: ActionDeps, id: string): void {
   d.api.call('island.update', { id, collapsed: !island.collapsed }).catch(toast(d));
 }
 
-// the daemon lays the whole fleet out at once; the map refits to whatever comes back
 export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number): void {
   d.api.call('island.arrange', { aspect, homeRoom }).catch(toast(d));
 }
 
-// an island made on the map centres on the cell that asked for it; made from a button it has no cell,
-// and the daemon picks the spot
+// without a cell the daemon picks the spot
 export function newIsland(d: ActionDeps, cell?: Cell): void {
   closeSettings(d);
   const n = Object.values(d.store.getState().fleet.islands).filter((i) => i.kind !== 'home').length + 1;
@@ -225,8 +220,7 @@ export async function newRobotTarget(d: ActionDeps): Promise<{ islandId: string;
   return { islandId, cwd };
 }
 
-// a named robot wherever the map last was, with its note and links written on once it exists;
-// it is the caller that reports a refusal, so the dialog can stay open on one
+// the caller reports a refusal, so the dialog can stay open on one
 export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd } = await newRobotTarget(d);
@@ -245,9 +239,8 @@ export async function newNamedRobot(d: ActionDeps, p: { name: string; note: stri
   return c.id;
 }
 
-// the fleet answers a start only once the agent has booted, seconds later; the crew member stands on
-// mission control long before that, so it is selected from the mirror. A selection made meanwhile is
-// the user's, not ours: `before` is the one to yield to
+// the fleet answers a start only once the agent has booted, but the crew member is in the mirror long
+// before, so it is selected from there; a selection made meanwhile (away from `before`) is the user's
 function selectOnArrival(d: ActionDeps, before: string | undefined): () => void {
   const known = new Set(Object.keys(d.store.getState().fleet.robots));
   const stop = d.store.subscribe((s) => {
@@ -259,8 +252,7 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
   return stop;
 }
 
-// a fresh crew member in the home cwd, started with the home command and handed the prompt;
-// without a label the daemon names it. false when the fleet refused, the reason already on a toast
+// without a label the daemon names it; false when the fleet refused, the reason already on a toast
 export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?: string }): Promise<boolean> {
   closeSettings(d);
   const { home } = d.store.getState().fleet;
@@ -295,7 +287,6 @@ export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?:
 export const skillPrompt = (command: string, prompt: string): string =>
   (/^codex(\s|$)/.test(command.trim()) ? prompt.replace(/^\/(?=[\w-]+(\s|$))/, '$') : prompt);
 
-// a button on the home island carries its own label and prompt
 export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promise<void> => {
   await startHomeRobot(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label });
 };
@@ -346,7 +337,6 @@ export const saveIslandContext = (d: ActionDeps, id: string, context: ContextIte
   d.api.call('island.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
 };
 
-// the island goes and the card that showed it goes with it; a refused delete leaves both
 export const deleteIsland = (d: ActionDeps, id: string): void => {
   d.api.call('island.delete', { id }).catch(toast(d));
 };
@@ -355,7 +345,6 @@ export const deleteIsland = (d: ActionDeps, id: string): void => {
 export const sleepRobot = (d: ActionDeps, id: string): Promise<void> =>
   d.api.call('robot.sleep', { id }).then(() => {}, toast(d));
 
-// an island's or a robot's own field, written straight back to the fleet
 export const saveEntityField = (d: ActionDeps, r: FieldRef, value: string): void => {
   if (r.tier === 'robot') saveRobot(d, r.id, r.field === 'note' ? { note: value } : { instructions: value });
   else saveIsland(d, r.id, r.field === 'note' ? { description: value } : { instructions: value });

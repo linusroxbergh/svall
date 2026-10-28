@@ -35,7 +35,6 @@ function goTo({ store }: Deps, id?: string, starred = false): void {
   st.setStarredRow(starred ? id : undefined);
 }
 
-// the robot the keys act on: the selection, else the card's
 const currentOf = (s: AppState): string | undefined => s.selectedId ?? s.card ?? selectedOf(s);
 
 const nextOf = (s: AppState, id: string | undefined, step: 1 | -1) =>

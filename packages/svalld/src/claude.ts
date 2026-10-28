@@ -43,9 +43,8 @@ export function rendererEnv(settingsFile: string): Record<string, string> {
   return { CLAUDE_CODE_NO_FLICKER: '1' };
 }
 
-// cwd is an empty folder so no project settings or CLAUDE.md load; without a robot id the
-// Svall hook exits at once, so the pass is not mistaken for a robot. launchd gives the
-// daemon no shell environment, so an API key reaches the child through envFile; `env` goes over both
+// cwd is an empty folder so no project settings or CLAUDE.md load, and without a robot id the Svall hook exits at once.
+// launchd gives the daemon no shell environment, so an API key comes through envFile; `env` goes over both
 export function spawnClaude(o: { args: string[]; cwd: string; envFile: string; env?: Record<string, string> }): Piped {
   fs.mkdirSync(o.cwd, { recursive: true });
   const { SVALL_ROBOT_ID: _id, SVALL_CHAR_ID: _old, ...env } = { ...process.env, ...readEnvFile(o.envFile), ...o.env };

@@ -1,12 +1,8 @@
 name: svall-site
 
-# svall.dev stack (runs on linus-vault).
-#
-# Cloudflare Tunnel -> cloudflared -> Caddy, which serves /srv/svall.dev.
-# scripts/release.sh in the svall repo fills that folder over rsync, and
-# scripts/site-deploy.sh puts the landing page beside it. Nothing here
-# publishes a host port. The server keeps its own copy of this file and the
-# Caddyfile, so a change here reaches it only when copied there by hand.
+# svall.dev on linus-vault: Cloudflare Tunnel -> cloudflared -> Caddy serving /srv/svall.dev, which scripts/release.sh
+# and scripts/site-deploy.sh fill; no host port is published. The server keeps its own copy of this file and the
+# Caddyfile, so copy a change there by hand.
 services:
   web:
     image: caddy:2-alpine

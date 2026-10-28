@@ -34,7 +34,6 @@ const execFileP = promisify(execFile);
 type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean };
 type Choices = Parameters<typeof saveConfig>[1];
 
-// what every part of a setup run reads
 type Run = Omit<SetupOptions, 'agents' | 'integrations'> & { answered: boolean; json: boolean; paths: Paths; homes: string[] };
 
 const label = (home: string): string => profileLabel(profileOf(home));

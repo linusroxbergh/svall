@@ -21,9 +21,8 @@ function span(doc: Text): { end: number; start: number } {
 const clamp = (sel: EditorSelection, at: number): EditorSelection =>
   EditorSelection.create(sel.ranges.map((r) => EditorSelection.range(Math.max(r.anchor, at), Math.max(r.head, at))), sel.mainIndex);
 
-// what a person types, deletes or moves lands in the body, and a doc that ends at the block gets a line break ahead of it;
-// a find-panel replacement that reaches into the block is left out; the field, undo and a read from the disk still write
-// the block, and every selection stays in the body
+// typed, deleted and moved text lands in the body (after a line break when the doc ends at the block), a find-panel replace
+// reaching into the block is dropped, and selections stay in the body; the field, undo and a disk read still write the block
 const keepBlock = EditorState.transactionFilter.of((tr) => {
   if (!tr.docChanged && !tr.selection) return tr;
   const { end, start } = span(tr.startState.doc);
@@ -42,7 +41,7 @@ const keepBlock = EditorState.transactionFilter.of((tr) => {
       if (from < to || insert) specs.push({ from, to, insert });
     });
     if (touched) {
-      // a moved line or swapped robot that reaches into the block does not move at all
+      // a moved line or swapped character that reaches into the block does not move at all
       if (tr.isUserEvent('move')) return [];
       const changes = tr.startState.changes(specs);
       const after: SelectionRange[] = [];

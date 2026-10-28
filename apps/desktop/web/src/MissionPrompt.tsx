@@ -17,9 +17,8 @@ export function MissionPrompt() {
   // a prompt sent or given up leaves the field empty; one the other dialog's key closed waits for the next open
   const close = () => { setText(''); app.store.getState().setMissionPrompt(false); };
 
-  // the fleet takes as long as the agent takes to boot, so the dialog is done the moment the prompt is in;
-  // a refusal brings it back with what was typed, the reason already on a toast. by then the user may have
-  // typed a new prompt or opened the other dialog, so the text only fills an empty field and the layer is cleared
+  // the fleet answers only once the agent boots, so the dialog closes as the prompt is in; a refusal brings it back,
+  // its text filling only a field still empty, and clears the layer of any dialog opened meanwhile
   const send = () => {
     const prompt = text.trim();
     if (!prompt) return;

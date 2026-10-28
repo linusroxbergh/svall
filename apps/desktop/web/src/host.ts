@@ -32,7 +32,6 @@ function withoutIds(text: string, names: MachineNames): string {
 
 export const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
 
-/** A step as the panel keeps it: its words plain, and what it carries. */
 const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   step: event.step, status: event.status,
   ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
@@ -94,7 +93,6 @@ export function applyStep(run: HostRun, event: HostStep, names: MachineNames = {
 
 export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, running: false, code });
 
-/** A row of the mirror's report as the step `svall host` names it. */
 export const rowToStep = ({ key, ...row }: SetupRow): HostStep => ({ step: `${MIRROR}${key}`, ...row });
 
 /** The run with its mirror rows swapped for `rows`, worded as a step is, where they stood, or added at its end when it had none. */
@@ -153,10 +151,7 @@ export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove',
 };
 
-/**
- * How a finished run ends: its one line, whether nothing is left to fix (`done`), the one step the panel offers next, and
- * how many parts of the agent setup will not work on the machine yet (`setup`).
- */
+/** `done`: nothing is left to fix; `next`: the one step the panel offers; `setup`: the parts of the agent setup that will not work there yet. */
 export type RunOutcome = { text: string; done?: true; next?: 'rollback'; setup?: number };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;

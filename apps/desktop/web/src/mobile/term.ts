@@ -29,11 +29,8 @@ export const encode = (bytes: Uint8Array): string => {
   return btoa(s);
 };
 
-/**
- * One robot's terminal over the daemon's streaming path. open() paints the pane as it stands and
- * starts the stream; calling it again after a reconnect repaints, which is what Safari needs every time
- * it drops the socket on lock.
- */
+/** open() paints the pane as it stands and starts the stream; calling it again after a reconnect repaints,
+ *  which Safari needs every time it drops the socket on lock. */
 export function linkTerminal(deps: LinkDeps, id: string, screen: Screen): TerminalLink {
   let unsubscribe: (() => void) | undefined;
   let closed = false;

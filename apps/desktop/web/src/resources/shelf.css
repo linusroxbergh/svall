@@ -1,5 +1,4 @@
-/* the shelf the islet opens: a tree of sources, the list, the file, and one line under all three. it stands centred
-   in the room over mission control's row, at the size it was dragged to, easing as the terminal card does */
+/* the shelf the islet opens, centred in the room over mission control's row and easing as the terminal card does */
 .res-room{position:absolute;left:var(--map-inset);right:var(--map-inset);top:calc(var(--map-inset) + var(--sp-md));bottom:calc(var(--home-row-top, 212px));z-index:var(--z-shelf);pointer-events:none}
 .res-shelf{--rail-w:min(var(--rail),24%);--list-w:min(var(--list),30%);position:absolute;box-sizing:border-box;pointer-events:auto;
   transition:left var(--dur) var(--ease),top var(--dur) var(--ease),width var(--dur) var(--ease),height var(--dur) var(--ease)}

@@ -17,8 +17,7 @@ export const mapIslandsSorted = (f: FleetState): Island[] => mapIslands(f).sort(
 
 export const homeIsland = (f: FleetState): Island | undefined => Object.values(f.islands).find((i) => i.kind === 'home');
 
-// mission control's crew start with the home command, the main agent's unless fleet.json names another; anywhere
-// else a new robot is a shell
+// mission control's crew start with the home command; anywhere else a new robot is a shell
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
   (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});
 
@@ -37,8 +36,6 @@ export const robotsOf = (f: FleetState, islandId: string): Robot[] => {
 // where a new robot starts when it takes another one's directory: the repo itself, never the worktree that one sits in
 export const startCwd = (c: Robot): string => (c.repo?.isWorktree ? c.repo.mainRoot : c.cwd);
 
-// with no directory asked for, home crew start in the home cwd, others where their island's first robot
-// started, and on an island with no crew in the fleet's default
 export const islandCwd = (f: FleetState, islandId: string): string => {
   const first = robotsOf(f, islandId)[0];
   return f.islands[islandId]?.kind === 'home' ? f.home.cwd : first ? startCwd(first) : f.defaultCwd;
@@ -54,7 +51,6 @@ export const STARRED = 'sidebar.starred';
 
 type SidebarRow = { c: Robot; starred: boolean };
 
-// the robot rows the sidebar shows, top to bottom: the starred while their section is open, then each open island's crew
 const sidebarRows = (f: FleetState, starsOpen: boolean): SidebarRow[] => [
   ...(starsOpen ? starredOf(f).map((c) => ({ c, starred: true })) : []),
   ...islandsSorted(f).filter((i) => !i.collapsed).flatMap((i) => robotsOf(f, i.id).map((c) => ({ c, starred: false }))),
@@ -128,7 +124,6 @@ export function robotsByPriority(f: FleetState): Robot[] {
   return order.map((c, i) => ({ c, i })).sort((a, b) => priorityOf(a.c, f) - priorityOf(b.c, f) || a.i - b.i).map((x) => x.c);
 }
 
-// a robot wants the user when it is stuck, or when it has news nobody has read
 export const wantsUser = (c: Robot, f: Pick<FleetState, 'machines'>): boolean => isUnread(c) || statusOf(c, f) === 'blocked';
 
 // the PR the work is on: the branch's own, the one svalld reads a state for, else the first among the links
@@ -150,7 +145,6 @@ export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
   return out;
 }
 
-// the robot the keys start from: the explicit selection, else the remembered focus, else the first robot
 export const selectedOf = (s: { fleet: FleetState; selectedId?: string; focusedId?: string }): string | undefined => {
   if (s.selectedId && s.fleet.robots[s.selectedId]) return s.selectedId;
   if (s.focusedId && s.fleet.robots[s.focusedId]) return s.focusedId;
@@ -169,7 +163,6 @@ export function boardColumns(f: FleetState, shown: (c: Robot) => boolean, arrive
   return cols;
 }
 
-// the column each robot sits in, by robot id
 export const placesOf = (f: FleetState): Map<string, string> => new Map(Object.values(f.robots).map((c) => [c.id, columnOf(f, c).id]));
 
 export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string | undefined): Panes => (id && s.ide[id]?.panes) || SINGLE;

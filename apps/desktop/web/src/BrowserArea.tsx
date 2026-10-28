@@ -18,7 +18,6 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
   const bindings = useApp((s) => s.settings.bindings);
   const active = c?.browser?.active;
   const view = useApp((s) => (active ? s.webviews[active] : undefined));
-  // the shell reports a navigation that failed with the rest of the tab's state
   const failure = view?.error;
   const addressFocus = useApp((s) => s.addressFocus);
   const fills = useApp(canFill);

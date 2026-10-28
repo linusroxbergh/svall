@@ -65,7 +65,6 @@ runIf('desktop terminal attach', () => {
     const windows = (await tmux.run('list-windows', '-t', `=v-${c.id}`, '-F', '#{window_id}')).trim().split('\n');
     expect(windows).toEqual([c.tmux!.windowId]);
     expect(await tmux.run('show-hooks', '-t', `v-${c.id}`)).toContain(`set-option -t v-${c.id} destroy-unattached on`);
-    // attaching again is idempotent
     expect(await hub.attach(c.id)).toEqual(r);
     expect((await tmux.run('list-windows', '-t', `=v-${c.id}`, '-F', '#{window_id}')).trim().split('\n')).toEqual([c.tmux!.windowId]);
   });

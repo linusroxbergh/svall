@@ -25,8 +25,7 @@ const actionTip = (a: HomeAction): string => (SKILLS[a.prompt]
   ? [`Starts a mission control robot that runs ${a.prompt}`, ...SKILLS[a.prompt].map((l) => `• ${l}`)].join('\n')
   : `Starts a mission control robot named ${a.label} and sends it:\n${a.prompt}`);
 
-// the home island: sandbar land pinned to the bottom centre, its crew, and the label row with the buttons; the land
-// shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them
+// the land shrinks by `scale` towards the bottom centre, its cards stand at `cards`, and the row stays full size above them
 export function Home({
   island, crew, config, collapsed, selected, selectedId, drag, status, failed, retro, links, shift, rowShift, mapW, scale, cards = scale, extra,
   onToggle, onAction, onArrange, onNewIsland, onNew, label, tokenPointer, onHoverStart, onHoverEnd, onOpen, onLink, onMenu, dropHover,

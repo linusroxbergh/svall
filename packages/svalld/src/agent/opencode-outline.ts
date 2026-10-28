@@ -19,7 +19,7 @@ const DECLINED = 'The user declined';
 
 const texts = (c?: Texts): string => (c ?? []).map((x) => x.text ?? '').join('').trim();
 
-/** An OpenCode session's outline, from what `opencode session export` prints; a line is a message's place in its list. */
+/** `exported` is what `opencode session export` prints; a line is a message's place in its list. */
 export function outlineOpencode(exported: unknown, span: Span): Outline {
   const { info, messages = [] } = (exported ?? {}) as Export;
   const out = outliner();

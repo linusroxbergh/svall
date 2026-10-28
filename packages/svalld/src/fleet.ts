@@ -179,7 +179,6 @@ export class Fleet extends EventEmitter<Events> {
     this.track((this.deps.refreshLinks ?? refreshLinks)(this.deps.store, this.deps.config, robotId), `links ${robotId}`);
   }
 
-  /** Stops polling, the scribe, held prompts and the control client; resolves once a poll under way has finished and the fleet is on disk. */
   async stop(): Promise<void> {
     this.stopped = true;
     this.unwatch?.();
@@ -242,7 +241,6 @@ export class Fleet extends EventEmitter<Events> {
     return c as LiveRobot;
   }
 
-  // the terminal a call means: the main one, or the second when it says so
   terminal(id: string, term?: 2): { tmux: NonNullable<Robot['tmux']>; agent?: Agent } {
     if (term !== 2) return this.live(id);
     const c = this.local(id);
@@ -376,9 +374,8 @@ export class Fleet extends EventEmitter<Events> {
     return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
   }
 
-  // each fleet is offered the retro button and its crew's rules for it once, recorded in fleet.json, so one the user
-  // deletes stays deleted; the default buttons, or a list naming its prompt, have the button already. The fleet.json
-  // change that makes the offer, or none when it was made
+  // the fleet.json patch offering the retro button and its rules once, recorded there so a button the user deletes
+  // stays deleted; none once offered
   private retroOffer(): Partial<FleetConfig['home']> | undefined {
     let home: FleetConfig['home'];
     try { home = readFleetConfig({ fleetConfig: this.deps.paths.fleetConfig }).home; } catch { return undefined; }
@@ -409,7 +406,6 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { d.dormantAfterHours = hours; });
   }
 
-  // the scribe's CLI and model as fleet.json and the main agent name them now
   private scribeRunner(): RunScribe {
     const { paths, store } = this.deps;
     const agent = store.state.scribeAgent ?? 'claude';
@@ -421,12 +417,10 @@ export class Fleet extends EventEmitter<Events> {
     return scribeOf(runner, { model, ...(agent === 'codex' && { effort: 'low' as const }) });
   }
 
-  // fleet.json's model for `agent`'s CLI, else the CLI's default
   private model(of: 'scribe' | 'home', agent: AgentKind): string | undefined {
     return modelPicks(this.deps.config, of)[agent] ?? (of === 'scribe' ? AGENTS[agent].scribeModel : AGENTS[agent].crewModel);
   }
 
-  // fleet.json's home.command, else the main agent's on the crew's model
   private crewCommand(): string {
     const agent = mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? []);
     return this.deps.config.home.command ?? AGENTS[agent].crewCommand(this.model('home', agent));
@@ -519,8 +513,7 @@ export class Fleet extends EventEmitter<Events> {
       if (occupiedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} is occupied`);
       if (blockedCells(this.deps.store.state, p.islandId).has(cellKey(p.cell))) throw new Invalid(`cell ${cellKey(p.cell)} touches another robot`);
     } else {
-      // probe the real placement (including any grow) on a clone: a full island must fail before the
-      // tmux window exists, not after — the clone keeps this one code path with placeOnIsland
+      // probe the real placement (including any grow) on a clone: a full island must fail before the tmux window exists
       placeOnIsland(structuredClone(this.deps.store.state), p.islandId);
     }
     const cwd = expandHome(p.cwd);
@@ -546,8 +539,8 @@ export class Fleet extends EventEmitter<Events> {
       // the window can die between the agent attaching and the send; the robot stays, without its prompt
       try { await this.run(id, p.run, true); } catch { runSent = false; }
     }
-    // Claude Code asks whether an unfamiliar directory is trusted before it starts, and reports in only
-    // once answered: the whole wait passes with the pane sitting on the question, which is worth a line
+    // Claude Code reports in only once its trust question for an unfamiliar directory is answered, so the wait can
+    // lapse with the pane sitting on that question
     if (!runSent) this.deps.log.error(`robot ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
     return { ...this.robot(id), runSent };
   }
@@ -575,8 +568,7 @@ export class Fleet extends EventEmitter<Events> {
       if (p.command) await this.deps.tmux.sendLine(w.paneId, this.launchLine(id, withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context), prompt), true);
       this.deps.created?.(this.deps.store.state.robots[id], p);
     } catch (e) {
-      // the island filled up while the window was being created, or the start command never reached the
-      // pane: neither an orphan window nor a half-created robot survives
+      // the island filled up while the window was being created, or the start command never reached the pane
       if (prompt) fs.rmSync(this.promptFile(id), { force: true });
       this.deps.store.update((d) => { delete d.robots[id]; });
       await this.deps.tmux.killWindow(w.windowId);
@@ -641,7 +633,6 @@ export class Fleet extends EventEmitter<Events> {
     d.robots[id].cell = cell;
   }
 
-  /** A profile renamed in its folder takes the robots that use it along. */
   renameAgentProfile(from: string, to: string): void {
     this.deps.store.update((d) => { for (const c of Object.values(d.robots)) if (c.agentProfile === from) c.agentProfile = to; });
   }
@@ -673,7 +664,7 @@ export class Fleet extends EventEmitter<Events> {
 
   // one store update: a swap must never be observed half done
   moveRobot(id: string, islandId: string, cell?: Cell): Robot {
-    this.robot(id);   // whichever path runs, the robot has to exist
+    this.robot(id);
     const island = this.island(islandId);
     // without a cell the fleet picks one and grows the island to fit, even on the island the robot already stands on
     if (!cell) {
@@ -695,14 +686,12 @@ export class Fleet extends EventEmitter<Events> {
     return this.robot(id);
   }
 
-  // a cell asked for by name is one of mission control's slots, or land on any other island
   private checkCell(island: Island, cell: Cell): void {
     if (island.kind === 'home' && !isHomeSlot(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not a home slot`);
     if (!isLand(island, cell)) throw new Invalid(`cell ${cellKey(cell)} is not land`);
   }
 
-  // A sidebar drop inserts into the target crew in one update. On another island it first
-  // makes room there; within one island it rotates only the occupied cells between the rows.
+  // a sidebar drop, in one update: the crew's occupied cells stay put and its robots rotate through them
   reorderRobot(id: string, targetId: string, after: boolean): Robot {
     const moving = this.robot(id);
     const target = this.robot(targetId);
@@ -881,8 +870,7 @@ export class Fleet extends EventEmitter<Events> {
         loseSecond(cur, cur.second.tmux.windowId === c.second?.tmux?.windowId ? secondFlags : undefined);
       }
     });
-    // registered with the state change under both windows' names, so a revive or a poll waits for the windows, the
-    // agents and what they started, as a settle does
+    // registered under both windows' names, so a revive or a poll waits for the windows, agents and what they started
     const killed = Promise.all(windows.map((w) => this.deps.tmux.killWindow(w)));
     const closing: Promise<void> = killed
       .then(() => Promise.all(pids.map((pid) => exited(pid))))
@@ -977,10 +965,8 @@ export class Fleet extends EventEmitter<Events> {
     return this.robot(id);
   }
 
-  /**
-   * Starts a new session of a dormant terminal's agent in its folder, with the launch flags its resume carries and, as
-   * its first prompt, a summary of the session it could not resume, whose files stay where they are.
-   */
+  /** Starts a new session of a dormant terminal's agent with its resume's launch flags and, as its first prompt, a
+   * summary of the session it could not resume. */
   async startFresh(id: string, term?: 2): Promise<Robot> {
     // the session's transcript is on the machine the robot runs on
     const far = this.deps.remote?.forward(id, 'robot.fresh', { id, term });

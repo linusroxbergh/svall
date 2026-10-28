@@ -160,15 +160,13 @@ export function acceptName(current: string, proposal: RobotAnswer['name'], taken
   return v;
 }
 
-// one line of at most max robots, or undefined when there is nothing to write
 export function acceptLine(text: string | null | undefined, max: number): string | undefined {
   const v = fit(oneLine(text ?? ''), max).slice(0, max);
   return v || undefined;
 }
 
-// the scribe's links after this answer: only URLs the given text names or the scribe already holds, none the other sources hold, none a person took off.
-// The branch's PR is the scribe's to take too, pin and all, so the work keeps it once its checkout moves to another branch.
-// A held link someone pinned, or that the branch's lookup still reads a state for, stays whatever the answer says
+// only URLs the text names or the scribe holds, none another source holds or a person took off; the branch's PR too, pin and
+// all, so the work keeps it once its checkout moves on. A held link pinned or with a PR state stays whatever the answer says
 export function acceptLinks(proposed: NonNullable<RobotAnswer['links']>, text: string, context: ContextItem[], removed: string[] = []): ContextItem[] {
   const held = new Map(context.filter((it) => it.source === 'scribe').map((it) => [bareUrl(it.ref), it]));
   const branchPrs = new Map(context.filter((it) => it.source === 'auto' && it.kind === 'pr').map((it) => [bareUrl(it.ref), it]));

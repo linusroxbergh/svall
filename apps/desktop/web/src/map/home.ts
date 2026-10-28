@@ -5,8 +5,7 @@ import { cardScale, robotAt, fitAll, roomOf, type Below, type Block, type Crew, 
 import { ISLET, placeIslet } from './resources.js';
 import type { Drag } from './types.js';
 
-// the visible strip of home land, in map px: centred, theme.home.visible tall, flush with the bottom edge, and the
-// size of a cell on it, all drawn at `scale`
+// the visible strip of home land in map px, and the size of a cell on it, all drawn at `scale`
 type HomeBox = { x: number; y: number; w: number; h: number; cell: number };
 
 export function homeBox(island: Island, host: { w: number; h: number }, shift = 0, scale = 1): HomeBox {
@@ -39,8 +38,8 @@ export const homeCellToScreen = (b: HomeBox, cell: Cell): { x: number; y: number
 export const homeReserve = (collapsed: boolean, row = theme.home.row, scale = 1): number =>
   (collapsed ? theme.home.bar : theme.home.visible * scale + theme.home.rowGap) + row + theme.home.water;
 
-// what mission control stands on the map's foot with, each grown by the water the fleet keeps from it: its label row
-// at its measured size, as tall as it has wrapped to, the land under the row and the resources islet, taken as tall as the row
+// the label row, the land under it and the resources islet, each grown by the water the fleet keeps from it;
+// the islet is taken as tall as the row
 export function homeBlocks(island: Island, host: { w: number; h: number }, measured: { w: number; h: number }, most = 1): Block[] {
   const place = placeIslet(host.w, island.size.w * theme.cell, Boolean(island.collapsed), most);
   const pad = theme.home.water, top = host.h - homeReserve(Boolean(island.collapsed), measured.h, place.homeScale);

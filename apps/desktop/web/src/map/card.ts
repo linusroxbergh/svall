@@ -3,7 +3,6 @@ import { clampHalf, DEFAULT_HALF_CARD, type CardSize, type HalfCard } from '../s
 
 type Opts = { size: CardSize; win: { w: number; h: number }; half?: HalfCard };
 
-// full: the whole map, edge to edge; half: a fraction of the map, centred (the side card sits beside the map, not over it)
 export function cardRect({ size, win, half = DEFAULT_HALF_CARD }: Opts): Rect {
   if (size === 'full') return { x: 0, y: 0, width: win.w, height: win.h };
   const width = Math.round(win.w * clampHalf(half.w)), height = Math.round(win.h * clampHalf(half.h));

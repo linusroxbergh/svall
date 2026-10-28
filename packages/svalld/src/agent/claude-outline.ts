@@ -11,8 +11,7 @@ type Line = {
   prUrl?: string; totalCostUSD?: number;
 };
 
-// the lines read past their type: the conversation, the PRs Claude Code links to the session and what it has cost so far.
-// Logged API requests and the like are most of a transcript's bytes and are never parsed
+// the only line types parsed; logged API requests and the like are most of a transcript's bytes
 const READ = new Set(['user', 'assistant', 'attachment', 'system', 'pr-link', 'cost-state']);
 const REJECTED = "The user doesn't want to proceed";
 const INTERRUPT = '[Request interrupted by user';
@@ -34,7 +33,6 @@ const blocks = (e: Line): Block[] => (Array.isArray(e.message?.content) ? e.mess
 const textOf = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: Block) => b.text ?? '').join('\n') : '').trim();
 const rejection = (b: Block): boolean => Boolean(b.is_error) && textOf(b.content).startsWith(REJECTED);
 
-// a subagent's tool calls and the ones that failed, inside the span
 function subagentCounts(text: string, span: Span): { tools: number; errors: number } {
   let [tools, errors] = [0, 0];
   for (const { e } of lines(text)) {
@@ -47,7 +45,7 @@ function subagentCounts(text: string, span: Span): { tools: number; errors: numb
   return { tools, errors };
 }
 
-/** A Claude Code session's outline; `subagents` are the texts of its subagent files, whose tool calls and errors count with it. */
+/** `subagents` are the texts of the session's subagent files; their tool calls and errors count toward its outline. */
 export function outlineClaude(text: string, file: string, span: Span, subagents: string[] = []): Outline {
   const out = outliner();
   const calls = new Map<string, { name: string; command?: string }>();

@@ -9,7 +9,7 @@ import { FileTabs } from './FileTabs.js';
 import { Tree } from './Tree.js';
 import { absOf, parent, placeOf, rootOf } from './where.js';
 
-/** The handle on the tree's edge; the width follows the pointer and is written to storage on release. */
+/** The width follows the pointer and is written to storage only on release. */
 function TreeGrip() {
   const grip = useWidthGrip(
     // a narrow area draws the tree below its stored width, so a drag starts from what is on screen

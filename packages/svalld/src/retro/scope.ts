@@ -11,10 +11,8 @@ import type { CliRun } from '../sessions/types.js';
 import { fleetHomes } from '../uninstall.js';
 import { readSessions, type SessionRecord } from './sessions.js';
 
-/**
- * A session an agent wrote to in the span, with the folder it started in; a Claude session's subagents keep files of their
- * own, and a Codex sub-agent's rollout names the session that started it as `parent`.
- */
+/** A session written to in the span; a Claude session's subagents keep files of their own, and a Codex sub-agent's rollout
+ *  names the session that started it as `parent`. */
 export type Candidate = { agent: AgentKind; session: string; file: string; cwd?: string; mtime: number; subagents?: string[]; parent?: string };
 export type InScope = Candidate & { record?: SessionRecord; repo?: string };
 
@@ -87,10 +85,8 @@ export async function discover(o: { span: { from: number; to: number }; claudeDi
 
 const Listed = z.array(z.object({ id: z.string(), updated: z.number(), directory: z.string() }));
 
-/**
- * The sessions `opencode session list` gives in each of `dirs`. It lists the project a folder is in, so a session in a
- * project none of `dirs` is in is not found; OpenCode keeps no file per session, and its candidates name none.
- */
+/** It lists by project, so a session in a project none of `dirs` is in is missed; OpenCode keeps no file per session, so
+ *  its candidates name none. */
 export async function opencodeSessions(dirs: string[], run: CliRun = cliRunner()): Promise<Candidate[]> {
   const out = new Map<string, Candidate>();
   for (const cwd of new Set(dirs)) {
@@ -102,10 +98,8 @@ export async function opencodeSessions(dirs: string[], run: CliRun = cliRunner()
   return [...out.values()];
 }
 
-/**
- * The main checkout of the repo a folder is in, asked of git once per folder; a folder gone is asked by the nearest one
- * above it still there, as a worktree removed since lies in its repo. None outside any repo.
- */
+/** The main checkout of a folder's repo, asked of git once per folder; a folder gone is asked by its nearest existing
+ *  ancestor, as a worktree removed since lies in its repo. */
 export function repoFinder(git?: GitRunner): (cwd: string) => Promise<string | undefined> {
   const seen = new Map<string, Promise<string | undefined>>();
   return (cwd) => {
@@ -126,11 +120,8 @@ export function otherFleetSessions(home: string, homedir: string = os.homedir())
   return new Set(fleetHomes(homedir).filter((h) => realPath(h) !== self).flatMap((h) => [...readSessions(resolvePaths(h).retroSessions).keys()]));
 }
 
-/**
- * This fleet's sessions less those on an excluded island (by id or name) or in an excluded repo, plus the sessions no
- * fleet recorded in the repos the user picked and did not exclude; those it leaves are counted, the unrecorded by repo,
- * else by cwd. Repos compare by real path, and a Codex sub-agent's rollout goes with the session that started it.
- */
+/** This fleet's sessions less excluded islands (id or name) and repos, plus unrecorded ones in the repos the user picked; the
+ *  rest are counted, the unrecorded by repo, else cwd. Repos compare by real path; a Codex sub-agent goes with its parent. */
 export async function scope(o: {
   candidates: Candidate[]; own: Map<string, SessionRecord>; others: Set<string>;
   exclude: { repos: string[]; islands: string[] }; unrecorded: string[];

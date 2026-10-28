@@ -47,7 +47,6 @@ export function sessionLines(before: Robot | undefined, after: Robot | undefined
   return [...lines, ...held(after).filter((h) => !named(h.session) && !lines.some((l) => l.session === h.session))];
 }
 
-/** A line for each session a robot holds now. */
 export const currentLines = (robots: Robot[], at: number): SessionLine[] =>
   robots.flatMap((c) => [c, c.second].flatMap((slot) => (slot?.agent ? [started(c, slot, at)] : [])));
 

@@ -5,7 +5,6 @@ import { shq } from './text.js';
 
 export type Version = [number, number, number];
 
-// what Svall needs to know about each agent CLI
 type AgentAdapter = {
   label: string;
   bin: string;

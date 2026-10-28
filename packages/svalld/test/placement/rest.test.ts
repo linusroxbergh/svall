@@ -33,9 +33,8 @@ const robot = (id: string, over: Partial<Robot> = {}): Robot => ({
   shell: { lastOutputAt: 0 }, unread: false, ...over,
 });
 
-// a terminal as tmux and ps show it: a shell at its prompt unless a job holds it. Under the job's last process, an
-// agent's tool commands run off the terminal in groups of their own, outliving the job unless signalled, and its
-// MCP servers stay on the terminal in groups of their own
+// a terminal as tmux and ps show it: a shell at its prompt unless a job holds it; the agent's tools run off the
+// terminal and its MCP servers on it, each in a group of its own that outlives the job unless signalled
 type Pane = {
   windowId: string; paneId: string; pid: number; path: string; job?: string[]; tools?: string[]; servers?: string[];
   ignoresTerm?: boolean; unkillable?: boolean; stubbornTools?: boolean;

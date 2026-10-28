@@ -416,7 +416,6 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     });
   }
 
-  // a tab shows its view; the arrow keys walk the tabs
   const tabs = [...document.querySelectorAll('.tabs [role=tab]')], views = [...document.querySelector('.frame').children];
   const show = (i) => tabs.forEach((t, k) => {
     t.setAttribute('aria-selected', String(k === i));

@@ -7,9 +7,8 @@ import type { Router } from './placement/router.js';
 import type { Store } from './store.js';
 import type { Tmux } from './tmux/tmux.js';
 
-// a phone drives the tmux window's size; an app viewer yields to the desktop terminal attached to it.
-// login is the tailnet identity the proxy vouched for; an app or CLI socket has none; lines, the most scrollback a screen sent it carries;
-// screenBytes, the most bytes of a screen afresh it takes
+// a phone drives the tmux window's size; an app viewer yields to an attached desktop terminal. `login` is the tailnet
+// identity the proxy vouched for, none on an app or CLI socket; `lines` and `screenBytes` cap the screens it is sent
 export type Viewer = { kind: 'app' | 'phone'; login?: string; lines?: number; screenBytes?: number; send(ev: Event): void; backlog(): number };
 
 // the viewer stopped watching before the screen was ready
@@ -99,8 +98,7 @@ export class TerminalHub {
     }
   }
 
-  // one message per keystroke, each spawning its own tmux paste: without a queue the letters race and land
-  // out of order. The desktop never saw this because it attaches its terminal to tmux directly.
+  // one message per keystroke, each spawning its own tmux paste: without a queue the letters race and land out of order
   async input(id: string, data: Buffer): Promise<void> {
     const at = this.remote?.router.placedAt(id);
     if (at && this.far) return this.far.input(at, id, data);
@@ -136,7 +134,6 @@ export class TerminalHub {
     return { socket: this.tmux.socket, session, tmux: this.tmux.binary };
   }
 
-  /** Lets go of every desktop terminal attached to either of a robot's terminals. */
   async detach(id: string, signal?: AbortSignal): Promise<void> {
     await this.tmux.detachClients(viewerSession(id), signal);
     await this.tmux.detachClients(viewerSession(id, 2), signal);

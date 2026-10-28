@@ -36,7 +36,6 @@ const LOOK_FOR: Record<Focus, string> = {
   instructions: 'outputs a rule governs (PR bodies, comments, reports, last messages) that break a rule in CLAUDE.md, AGENTS.md or a rule file, rules that conflict, and rules kept far from the output they govern',
 };
 
-/** The system prompt of a read: what to note for each focus, in which categories, about which targets. */
 export function readPrompt(o: { focus: Focus[]; targets: TargetRef[] }): string {
   return [
     "You read excerpts of coding agents' sessions and pull request threads and note what a retro on the user's skills, reviews and instructions should weigh.",
@@ -53,7 +52,6 @@ export function readPrompt(o: { focus: Focus[]; targets: TargetRef[] }): string 
   ].join('\n');
 }
 
-/** A read's prompt: its batch's excerpts, each fenced with where it comes from. */
 export const readInput = (batch: { excerpts: ExcerptRef[] }): string => batch.excerpts.map((e) => fence(
   'EXCERPT', ` id=${e.id}${e.session ? ` agent=${e.session.agent} session=${e.session.session}` : ''}${e.pr ? ` pr=${e.pr}` : ''}`, e.text,
 )).join('\n\n');
@@ -65,7 +63,6 @@ const MEASURES: Record<MeasureKind, string> = {
   none: 'nothing code can count',
 };
 
-/** The judge's system prompt: what makes a finding, its change and its measure. */
 export function judgePrompt(o: { focus: Focus[] }): string {
   return [
     "You judge a retro over coding agents' sessions: readers noted what they saw, and you turn what recurs into changes to the user's skills, reviews and instructions.",
@@ -83,7 +80,6 @@ export function judgePrompt(o: { focus: Focus[] }): string {
   ].join('\n');
 }
 
-/** The judge's prompt: the notes, the targets they name with their text, the dismissed categories and the previous fixes. */
 export function judgeInput(o: {
   notes: Note[]; targets: { id: string; path: string; text: string }[];
   dismissed: { focus: Focus; category: string; reason: string }[]; previous: Finding[];

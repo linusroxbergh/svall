@@ -105,7 +105,6 @@ const shaOf = (file: string): string | undefined => {
   }
 };
 
-// the conflict files in `dir` whose names start with `stem`
 const keptIn = (dir: string, stem: string): string[] => {
   try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.startsWith(stem) && d.name.endsWith('.conflict.md')).map((d) => path.join(dir, d.name)); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -147,9 +146,8 @@ export class HomeDocs {
 
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
-  /** Takes a worker's change made on this Mac's copy or held here already, else answers the conflict: a write kept beside
-   *  the file, a delete refused. A malformed event, and one in the folder of a robot closed here, is logged and dropped; a
-   *  failed write throws and stays in the outbox. */
+  /** Takes a worker's change made on this Mac's copy or already held, else answers the conflict. A malformed event, or one in
+   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
@@ -165,7 +163,7 @@ export class HomeDocs {
     return undefined;
   }
 
-  // the file and bytes an event names and what it was made on, or none, said in the log, for one the docs cannot take
+  // none, logged, for an event the docs cannot take
   private named(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Named | undefined {
     try {
       const e = kind === 'docs.write' ? DocsWrite.parse(data) : { ...DocsDelete.parse(data), data: undefined, sha256: undefined };

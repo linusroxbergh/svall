@@ -17,8 +17,7 @@ export type Webview = { tab: string; rect: Rect; url: string; title: string; loa
 export type Toast = { text: string; tone: 'error' | 'ok'; action?: { label: string; run(): void }; dismiss?: boolean };
 // a link waiting by the pointer for the user to say where it should open; one from a terminal names the surface the keys go back to
 export type LinkAsk = { url: string; robotId: string; x: number; y: number; surface?: string };
-// a right-click's menu, by the pointer that asked for it; an entry with items opens them beside it, one with neither
-// run nor items to pick shows greyed out, a checked one carries a tick, a note sits small at its right, and sep rules it off from those above
+// an entry with items opens them beside it, one with neither run nor items shows greyed out, and sep rules it off from those above
 export type MenuEntry = { title: string; run?: () => void; danger?: boolean; items?: MenuEntry[]; checked?: boolean; note?: string; sep?: boolean };
 // a button's own menu, bare, leaves out the page's Reload
 export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };

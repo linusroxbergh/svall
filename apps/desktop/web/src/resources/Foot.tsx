@@ -28,7 +28,6 @@ function ChainChip({ chip, sources, on }: { chip: Chip; sources: ResourceSource[
   );
 }
 
-/** The line under all three panes: the shown file's path, what an island's or a robot's agent reads, and the actions on the file. */
 export function Foot({ onRefresh, children }: { onRefresh(): void; children?: React.ReactNode }) {
   const sources = useApp((s) => s.resources);
   const fleet = useApp((s) => s.fleet);

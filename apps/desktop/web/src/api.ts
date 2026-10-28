@@ -42,10 +42,7 @@ export class Api {
 
   start(): void { this.stopped = false; this.open(); }
 
-  /**
-   * A daemon that restarted on a free port comes back on a different one; the next attempt uses this, and a socket
-   * still open to the old one is let go.
-   */
+  /** A daemon that restarted on a free port comes back on another; a socket still open to the old one is let go. */
   setEndpoint(endpoint: Endpoint): void {
     const moved = endpoint.url !== this.endpoint.url || endpoint.token !== this.endpoint.token;
     this.endpoint = endpoint;

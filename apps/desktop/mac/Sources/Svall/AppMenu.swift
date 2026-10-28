@@ -35,7 +35,6 @@ final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     // a fleet is only made from a window svalld on this Mac answers
     private var canCreate = false
 
-    /// An item that runs the page's `action`.
     func command(_ title: String, _ action: String) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: #selector(run(_:)), keyEquivalent: "")
         item.target = self

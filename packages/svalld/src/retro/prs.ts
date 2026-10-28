@@ -16,7 +16,6 @@ const run: Gh = async (args, cwd) =>
 type Said = { author?: { login?: string } | null; body?: string; createdAt?: string; submittedAt?: string };
 type Inline = { user?: { login?: string } | null; body?: string; created_at?: string; path?: string };
 
-/** Whether gh is installed and signed in. */
 export async function ghReady(gh: Gh = run): Promise<boolean> {
   try { await gh(['auth', 'status']); return true; } catch { return false; }
 }

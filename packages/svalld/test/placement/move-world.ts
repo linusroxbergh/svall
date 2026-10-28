@@ -77,9 +77,7 @@ export class Box {
   windows = new Map<string, Win>();
   /** each window opened, by name */
   opened: string[] = [];
-  /** each line typed, by pane */
   lines: { paneId: string; text: string }[] = [];
-  /** each key sent, by pane */
   keys: { paneId: string; text: string }[] = [];
   screens = new Map<string, string[]>();
   /** what an agent started by a line does: by default it reports its SessionStart */
@@ -191,10 +189,8 @@ const put = (file: string, data: string): void => {
 };
 
 /**
- * A Mac under `base/Users/ada` holding robot c_1 in worktree kanban of code/app, with commits past origin, a staged, an
- * unstaged and an untracked change and a .env, and its Claude session; and worker w1, whose user home is this test's
- * HOME, holding nothing yet. Both daemons run here, linked over w1's real link.sock; `mirror` stands in for the home's
- * agent configuration, and with `pollMs` the worker's fleet polls its windows that often.
+ * A Mac under `base/Users/ada` holding robot c_1 in a dirty worktree kanban of code/app, and worker w1, whose user home
+ * is this test's HOME, holding nothing yet; both daemons run here, linked over w1's real link.sock.
  */
 export function moveWorld(o: {
   agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean;

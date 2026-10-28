@@ -40,9 +40,8 @@ function toSnapshot(raw: RawUsage): UsageSnapshot {
   };
 }
 
-// a headless Claude that runs no model turn: one control request over stdin answers with the plan's
-// rate-limit windows and costs nothing, and its initialize reply names the login they belong to.
-// skip_behaviors keeps it off a scan of every transcript touched in the last seven days
+// a headless Claude that runs no model turn: one control request answers with the plan's windows at no cost, and its initialize
+// reply names the login. skip_behaviors keeps it off a scan of every transcript touched in the last seven days
 export function usageFetcher(o: { cwd: string; envFile: string; timeoutMs?: number }): FetchUsage {
   return () => new Promise((resolve, reject) => {
     const proc = spawnClaude({
@@ -142,9 +141,8 @@ export const codexWindows = (limits: RawRateLimits): UsageWindow[] =>
 
 const CODEX_TAIL = 64 * 1024;
 
-// a plan shows only while a robot runs on it. Codex answers no usage question out of band and
-// reports its limits on every turn instead, so they are read off the live sessions' rollouts when the
-// panel asks: nothing is remembered, and a reading is no older than the last turn of an open session
+// a plan shows only while a robot runs on it. Codex answers no usage question out of band but reports its limits every turn,
+// so they are read off the live sessions' rollouts when the panel asks, no older than an open session's last turn
 export function fleetUsage(o: { state: () => FleetState; claude: FetchUsage; readTail?: (file: string) => string; runsHere?: (c: Robot) => boolean }): FetchUsage {
   const tail = o.readTail ?? ((file: string) => readFileTail(file, CODEX_TAIL));
   // the login line names only the plans whose windows show

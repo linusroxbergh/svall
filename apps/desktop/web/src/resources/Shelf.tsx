@@ -69,7 +69,7 @@ function Shelf({ tip, rowTop }: { tip: number; rowTop: number }) {
   );
 }
 
-/** Mounted with the map, so a close is answered even though the shelf is gone: the surfaces then take the keyboard as they always do. */
+/** Mounted with the map, so a close is answered even though the shelf is gone. */
 export function ResourcesLayer({ tip, rowTop }: { tip: number; rowTop: number }) {
   const open = useApp((s) => s.resourcesOpen);
   useEffect(() => { if (!open) app.store.getState().pageFocusSettled(); }, [open]);

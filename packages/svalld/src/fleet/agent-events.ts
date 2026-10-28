@@ -103,7 +103,6 @@ export class AgentEvents {
     this.record(currentLines(Object.values(this.deps.store.state.robots).filter(here), Date.now()).filter((l) => !this.recorded().has(l.session)));
   }
 
-  // the sessions the record names, read off it once
   private recorded(): Set<string> {
     return this.named ??= new Set(this.deps.sessions ? readSessions(this.deps.sessions).keys() : []);
   }

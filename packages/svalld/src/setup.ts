@@ -87,7 +87,7 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; 
   const settings = path.join(dotClaude, 'settings.json');
   const shipped = fs.readFileSync(path.join(template, '.claude/settings.json'), 'utf8');
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
-  // an older svalld allowed only `svall char`, which the rules now call `svall robot`
+  // settings that allow `svall char` gain the same rules for `svall robot`, the name the rules use
   const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
   const current = robot && o.addRetro ? withRetro(robot, shipped) : robot;
   if (current !== read) {

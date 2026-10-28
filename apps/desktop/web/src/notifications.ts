@@ -79,7 +79,6 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
     for (const key of d.remove) o.bridge.send({ type: 'notify.remove', key });
     for (const n of d.post) o.bridge.send({ type: 'notify.post', ...n });
   });
-  // waits for the daemon to be reachable, up to ANSWER_WAIT_MS; a reachable daemon resolves at once
   const waitOnline = (): Promise<Api | undefined> => {
     const ready = () => (o.store.getState().status === 'online' ? o.api() : undefined);
     const api = ready();

@@ -21,7 +21,6 @@ final class KeepAwake {
         apply()
     }
 
-    /// Whether a hold is up for what the page asked, on the power source the Mac draws from.
     static func holds(reason: String?, onBattery: Bool) -> Bool {
         reason != nil && !onBattery
     }

@@ -5,7 +5,6 @@ import { shq } from '../text.js';
 
 export type CodexPaths = { dir: string; config: string; hooks: string };
 
-/** Where Codex keeps its files: CODEX_HOME, else ~/.codex. */
 export function codexPaths(env: NodeJS.ProcessEnv = process.env, home: string = os.homedir()): CodexPaths {
   const dir = env.CODEX_HOME ? path.resolve(env.CODEX_HOME) : path.join(home, '.codex');
   return { dir, config: path.join(dir, 'config.toml'), hooks: path.join(dir, 'hooks.json') };

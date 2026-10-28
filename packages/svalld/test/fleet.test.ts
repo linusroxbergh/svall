@@ -42,7 +42,6 @@ runIf('Fleet', () => {
     // the fleet an earlier run left on disk
     if (state) fs.writeFileSync(paths.state, JSON.stringify(state));
     const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}), ...fleetHome }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
-    // the home block fleet.json holds
     if (fleetHome) fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: config.id, home: fleetHome }));
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
@@ -170,7 +169,6 @@ runIf('Fleet', () => {
     const paneId = store.state.robots[c.id].second!.tmux!.paneId;
     await tmux.sendLine(paneId, 'echo term-$SVALL_TERM-$SVALL_ROBOT_ID', true);
     await waitFor(async () => (await tmux.capture(paneId, 20)).toString().includes(`term-2-${c.id}`));
-    // several polls pass and the record stays
     await waitForPolls(fleet, 3);
     expect(store.state.robots[c.id].second).toBeDefined();
     await tmux.sendLine(paneId, 'exit', true);

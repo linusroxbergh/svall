@@ -207,7 +207,6 @@ export class FarTerminals {
     for (const machine of machines) this.o.links.call(machine, 'far.viewer.gone', { viewer: viewerKey(viewer) }).catch(() => {});
   }
 
-  /** The terminal of robot `id` the viewer `key` holds open. */
   held(key: string, id: string): FarTerm | undefined {
     return this.terms.get(`${key}\0${id}`);
   }

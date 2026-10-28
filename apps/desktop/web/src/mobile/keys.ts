@@ -56,6 +56,5 @@ const TERMINAL: Key[] = [
   { label: 'pgdn', seq: '\x1b[6~', hint: 'a page on' },
 ];
 
-/** The keys sheet's groups: the agent's own keys and slash commands, then the terminal's. */
 export const keyGroups = (kind: AgentKind | undefined): KeyGroup[] =>
   [...(kind ? [{ title: AGENT_LABEL[kind], keys: AGENT[kind] }] : []), { title: 'Terminal', keys: TERMINAL }];

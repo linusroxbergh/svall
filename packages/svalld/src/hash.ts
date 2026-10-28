@@ -2,10 +2,8 @@ import crypto from 'node:crypto';
 
 export const byCodeUnit = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
 
-/**
- * JSON with every object's keys in code-unit order and no whitespace, as RFC 8785 writes the values a
- * manifest holds: equal values give equal text whatever order they were built in.
- */
+/** JSON with every object's keys in code-unit order and no whitespace, as RFC 8785 writes a manifest's values: equal
+ *  values give equal text whatever order they were built in. */
 export function canonicalJson(value: unknown): string {
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value);
   if (typeof value === 'number' && Number.isFinite(value)) return JSON.stringify(value);

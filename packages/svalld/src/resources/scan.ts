@@ -30,9 +30,8 @@ export function fleetRoots(state: FleetState, rootOf: RootOf = repoRootOf): Flee
   return [...by.values()].map((r) => ({ ...r, islandIds: r.islandIds.sort(), robotIds: r.robotIds.sort() })).sort((a, b) => a.root.localeCompare(b.root));
 }
 
-// <docs>/islands/<id>, <docs>/robots/<id> or <docs>/repos/<slug>, for an entity the fleet has, a clone `docsRootOf` keeps
-// docs for, or a slug folder on disk; the folder may itself be a link out of the tree, so it is judged by where its
-// closest existing ancestor really is
+// <docs>/islands/<id>, <docs>/robots/<id> or <docs>/repos/<slug> for a known entity, clone or slug folder on disk; the folder
+// may be a link out of the tree, so it is judged by where its closest existing ancestor really is
 function isDocsRoot(root: string, state: FleetState, docs: string, docsRootOf: RootOf = repoRootOf): boolean {
   // the fleet's own folder names no entity, so it is known by its place alone
   if (root === fleetDir(docs)) { const r = realOf(root), rd = realOf(docs); return r !== undefined && rd !== undefined && within(r, rd); }
@@ -60,8 +59,7 @@ export function resourceRoot(
   return docs !== undefined && isDocsRoot(root, state, docs, docsRootOf) ? root : undefined;
 }
 
-// The folder a workspace id names: a resource root when the id is one, else the robot's own folder, refused for a robot
-// `here` says runs on another machine, as that folder is on its disk.
+// a resource root when the id is one, else the robot's own folder, refused for a robot `here` says runs on another machine
 export function workspaceRoot(
   id: string, state: FleetState, claude: ClaudePaths, codex?: CodexPaths, docs?: string, agentProfiles?: string, here?: (c: Robot) => boolean,
   rootOf?: RootOf, docsRootOf?: RootOf,
@@ -159,7 +157,6 @@ function docRows(dir: string): Row[] {
   return listDocs(dir).map((d) => ({ ...fileItem(b, path.basename(d.path), { name: d.name, detail: d.description }), ...(d.error && { error: d.error }) }));
 }
 
-/** The docs group of a docs folder, none when it holds no doc. */
 export const docsGroups = (dir: string): ResourceGroup[] => groupsOf([['docs', docRows(dir)]]);
 
 function agentProfileRows(dir: string): Row[] {

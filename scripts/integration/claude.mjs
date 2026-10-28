@@ -1,10 +1,7 @@
-// Mocked Claude Code for the integration run: answers the CLI probes a move makes, and in a terminal runs as an
-// agent that posts Svall's hook events (with its own pid) and, after each turn, the context reading its statusLine
-// would send (the transcript's record count as a percentage) to $SVALL_HOME/hooks.sock, and keeps a transcript where
-// Claude Code 2.1.x keeps one (<config>/projects/<slug of the real cwd>/<session>.jsonl). `--resume <id>` finds that
-// transcript under the real cwd's slug, or else the newest of that id in another project folder, and appends to it, as
-// the real CLI does after its folder moved; it fails the way the real one does when there is none. As the real one,
-// its SessionStart names the cwd's slug either way.
+// Mocked Claude Code for the integration run: answers the CLI probes a move makes, and in a terminal posts Svall's hook
+// events and its statusLine context (the transcript's record count as a percentage) to $SVALL_HOME/hooks.sock, keeping a
+// transcript where Claude Code 2.1.x does. As the real CLI after its folder moved, `--resume <id>` falls back to the
+// newest transcript of that id in another project folder, while SessionStart still names the cwd's slug.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';

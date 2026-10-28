@@ -11,18 +11,14 @@ import { relocated, type MirrorHomes } from './mirror.js';
 export const Scope = z.union([z.literal('user'), z.object({ project: z.string() }), z.object({ plugin: z.string() })]);
 export type Scope = z.infer<typeof Scope>;
 
-/**
- * An MCP server as its agent's config holds it: `raw` the entry itself, the rest read from it; `file` the file it was read
- * from and `place` the keys that lead to its entry there.
- */
+/** An MCP server as its agent's config holds it: `raw` the entry, the rest read from it; `place` the keys to it in `file`. */
 export type McpServer = {
   agent: AgentKind; name: string; scope: Scope; command?: string; args: string[]; cwd?: string; env: Record<string, string>;
   url?: string; headers: Record<string, string>; raw: Record<string, unknown>; known: boolean; file?: string; place?: string[];
 };
 /**
- * An installed plugin; `named` the server files, `namedLsp` the LSP configs and `namedAgents` the subagents its
- * marketplace entry names by path, under the plugin, and `unreadMarket` its marketplace.json when that cannot be read, so
- * its entry is not known.
+ * An installed plugin; `named`, `namedLsp` and `namedAgents` the server files, LSP configs and subagents its marketplace
+ * entry names by path, `unreadMarket` its marketplace.json when that cannot be read.
  */
 export type PluginInstall = { name: string; installPath: string; named?: string[]; namedLsp?: string[]; namedAgents?: string[]; unreadMarket?: string };
 /**
@@ -47,7 +43,7 @@ export const FIELD_PATHS: Record<AgentKind, { env: string; headers: string; args
   codex: { env: 'env', headers: 'http_headers', args: 'args' },
   opencode: { env: 'environment', headers: 'headers', args: 'command' },
 };
-// a variable's name as VAR_NAME takes it
+// VAR_NAME unanchored
 const NAME = VAR_NAME.source.slice(1, -1);
 /** A reference: `${NAME}`, `${NAME:-default}` or `{env:NAME}`, the variable named in its first or second group. */
 export const VAR_REF = new RegExp(`\\$\\{(${NAME})(?::-[^}]*)?\\}|\\{env:(${NAME})\\}`, 'g');
@@ -136,10 +132,8 @@ function readDoc(file: string, parse: (source: string) => unknown, unreadable: s
 }
 
 type Entry = { name: string; raw: Doc; file: string; place: string[] };
-// the server entries of `v`, which sits at `place` in `file`
 const entries = (file: string, place: string[], v: unknown): Entry[] => docs(v).map(([name, raw]) => ({ name, raw, file, place: [...place, name] }));
 
-// where `raw` holds its args, and from which index: OpenCode's command array from 1, else args
 function argsAt(agent: AgentKind, raw: Doc): [key: string, from: number] {
   const key = FIELD_PATHS[agent].args;
   return key !== 'command' ? [key, 0] : Array.isArray(raw.command) ? ['command', 1] : ['args', 0];
@@ -193,7 +187,6 @@ function pluginServers(installPath: string, unreadable: string[], marketNamed: s
   ];
 }
 
-/** The Claude servers of plugin `plugin` in `v`, which lies at `place` in `file`. */
 export const pluginServersAt = (plugin: string, file: string, place: string[], v: unknown): McpServer[] =>
   entries(file, place, v).map((e) => toServer('claude', { plugin }, e));
 
@@ -206,9 +199,8 @@ export const readPluginServers = (p: PluginInstall, unreadable: string[]): McpSe
   pluginServers(p.installPath, unreadable, p.named).map((e) => toServer('claude', { plugin: p.name }, e));
 
 /**
- * Every agent's MCP servers: Claude's user servers, those of its projects and each plugin's, once per plugin
- * and name from the first install; Codex's mcp_servers; OpenCode's in opencode.json and opencode.jsonc, OpenCode 2's under
- * mcp.servers and OpenCode 1's flat in mcp, which OpenCode 2 still reads.
+ * Every agent's MCP servers, a plugin's once per name from its first install; OpenCode's both under mcp.servers (OpenCode 2)
+ * and flat in mcp (OpenCode 1), which OpenCode 2 still reads.
  */
 export function readServers(homes: MirrorHomes, plugins: PluginInstall[]): { servers: McpServer[]; unreadable: string[] } {
   const servers: McpServer[] = [];
@@ -264,13 +256,10 @@ export function readPlugins(claudeDir: string, unreadable: string[]): PluginInst
   });
 }
 
-/** The paths an `mcpServers` value names: one, or each of a list. */
 export const namedPaths = (v: unknown): string[] => (Array.isArray(v) ? v : [v]).filter((n): n is string => typeof n === 'string');
 
-// the server files, LSP configs and subagents each marketplace's plugin entries name by path, as `strict: false` entries do, by
-// `<plugin>@<marketplace>`; each marketplace whose folder is not there or whose marketplace.json cannot be read, by its
-// name; every name found; and known_marketplaces.json when it cannot be read. A marketplace lies under
-// plugins/marketplaces, or where known_marketplaces.json puts one added from a local folder
+// the paths each marketplace's plugin entries name, as `strict: false` entries do, by `<plugin>@<marketplace>`; a marketplace
+// lies under plugins/marketplaces, or where known_marketplaces.json puts one added from a local folder
 function marketNamed(claudeDir: string): {
   named: Map<string, string[]>; namedLsp: Map<string, string[]>; namedAgents: Map<string, string[]>; broken: Map<string, string>; known: Set<string>;
   list?: string;
@@ -314,22 +303,19 @@ function marketNamed(claudeDir: string): {
 /** Whether `v` holds only references, after any auth scheme; a reference's default is a value, so only an empty one is. */
 export const isReferenceOnly = (v: string): boolean => v.replace(BARE_REF, '').replace(/^(Bearer|Token|Basic)\s*$/i, '').trim() === '';
 
-// `v` with each reference's default gone
 const defaultless = (v: string): string => v.replace(VAR_REF, (all, name: string | undefined) => (name === undefined ? all : `\${${name}}`));
 
 /** Secret `v` without its references' defaults, where only references are left; else undefined. */
 export const asReference = (v: string): string | undefined => (isReferenceOnly(defaultless(v)) ? defaultless(v) : undefined);
 
-// a URL's credential: its userinfo when it holds a password that is not only references, or when it is the lone user of
-// an http(s) URL and not only references
+// a URL's userinfo when its password, or the lone user of an http(s) URL, is not only references
 function credential(scheme: string, userinfo: string): string | undefined {
   const colon = userinfo.indexOf(':');
   if (colon >= 0) return isReferenceOnly(userinfo.slice(colon + 1)) ? undefined : userinfo;
   return /https?:\/\/$/i.test(scheme) && !isReferenceOnly(userinfo) ? userinfo : undefined;
 }
-// whether `source` holds a URL; one without :// is not scanned further
+// a string without :// is not scanned by URL_IN
 const hasUrl = (source: string): boolean => source.includes('://') && URL_IN.test(source);
-// the credential of each URL in `source`
 const credentials = (source: string): string[] =>
   (hasUrl(source) ? [...source.matchAll(USERINFO)] : []).flatMap((m) => [credential(m[1], m[2])].filter((c): c is string => c !== undefined));
 /** `source` without the credential of each URL in it; one that holds only references once their defaults go keeps them. */
@@ -338,13 +324,11 @@ export const withoutCredentials = (source: string): string => (!hasUrl(source) ?
   return credential(scheme, defaultless(userinfo)) === undefined ? `${scheme}${defaultless(userinfo)}@` : scheme;
 }));
 
-// the query parameters of `url` before any fragment
 function params(url: string): { name: string; value: string }[] {
   const query = url.split('#')[0].split('?').slice(1).join('?');
   return query.split('&').flatMap((kv) => (kv.indexOf('=') > 0 ? [{ name: kv.slice(0, kv.indexOf('=')), value: kv.slice(kv.indexOf('=') + 1) }] : []));
 }
 
-// the secrets in `source`, the value of `field`: its query parameter values when `query`, and every URL credential in it
 function urlSecrets(source: string, field: string, query: boolean): Secret[] {
   const values = query ? params(source).filter((p) => !isReferenceOnly(p.value)).map((p) => ({ field: `${field}.${p.name}`, value: p.value })) : [];
   return [...values, ...credentials(source).map((value) => ({ field: `${field}.userinfo`, value }))];
@@ -369,11 +353,9 @@ const secretFlag = (flag: string): boolean => SECRET_FLAG.test(flag.replace(/([a
 // a header `Name: value` after `keep`, as the part that stays and its value
 const header = (keep: string, h: string): [keep: string, value: string] => [`${keep}${h.slice(0, h.indexOf(':') + 1)}`, h.slice(h.indexOf(':') + 1).trim()];
 
-// a header `Name: value`'s name
 const headerName = (h: string): string => h.slice(0, h.indexOf(':')).trim();
 
-// what names arg `i`, whatever its value: the secret flag or the header flag and header before it, its own secret
-// --flag= or --header=Name, the KEY of KEY= bare or after --flag=, or the scheme and host of a URL in it
+// what names arg `i` whatever its value: a secret or header flag before it, its own --flag= or --header=, a KEY=, or a URL's origin
 function argName(args: string[], i: number): string | undefined {
   const a = args[i];
   const before = args[i - 1] ?? '';
@@ -389,8 +371,7 @@ function argName(args: string[], i: number): string | undefined {
   return originOf(a);
 }
 
-// the scheme and host of the first URL in `a`, looked for back from each :// in it, so a long run of letters is not
-// scanned for a scheme
+// looks back from each :// for a scheme, so a long run of letters is not scanned for one
 function originOf(a: string): string | undefined {
   for (let i = a.indexOf('://'); i >= 0; i = a.indexOf('://', i + 1)) {
     const scheme = /[a-z][a-z0-9+.-]{0,31}$/i.exec(a.slice(Math.max(0, i - 32), i))?.[0];
@@ -402,12 +383,9 @@ function originOf(a: string): string | undefined {
 // each arg's field: `args[<what names it>]`, which every arg of that name shares, or `args[<i>]` where nothing names it
 const argFields = (args: string[]): string[] => args.map((_, i) => `args[${argName(args, i) ?? i}]`);
 
-// the indices of the args whose field `field` is or lies under
 const argIndices = (args: string[], field: string): number[] => argFields(args).flatMap((f, i) => (field === f || field.startsWith(`${f}.`) ? [i] : []));
 
-// arg `i` as the part that stays and the value a secret there would be: after a secret flag or --header, or in
-// --flag=value with a secret flag, --header=Name: value, or KEY=value bare or after --flag=, KEY upper case or a secret's
-// name
+// arg `i` as the part that stays and the value a secret there would be; undefined where none could be
 function argValue(args: string[], i: number): [keep: string, value: string] | undefined {
   const a = args[i];
   const flag = /^--?([^=]+)$/.exec(args[i - 1] ?? '')?.[1];
@@ -423,8 +401,7 @@ function argValue(args: string[], i: number): [keep: string, value: string] | un
   return undefined;
 }
 
-// the secrets in `args`, each by its field: an arg's value whole, or else the query and credentials of a URL anywhere in
-// it; the args are named only once one holds a secret
+// an arg's value whole, or else a URL's query and credentials in it; the args are named only once one holds a secret
 function argsSecrets(args: string[]): Secret[] {
   const found = args.flatMap((a, i) => {
     const kv = argValue(args, i);
@@ -435,7 +412,6 @@ function argsSecrets(args: string[]): Secret[] {
   return found.map(({ i, part, value }) => ({ field: `${fields[i]}${part}`, value }));
 }
 
-// arg `i` of `args`, whose field is `field`, with the secrets `drop` names emptied
 function argWithout(args: string[], i: number, field: string, drop: ReadonlySet<string>): string {
   const kv = argValue(args, i);
   return kv && drop.has(field) ? `${kv[0]}${asReference(kv[1]) ?? ''}` : urlWithout(args[i], field, drop);
@@ -450,10 +426,7 @@ export function secretsOf(s: McpServer): Secret[] {
   return [...fields('env'), ...fields('headers'), ...url, ...args, ...oauth];
 }
 
-/**
- * The variables `s` names, which the worker's daemon must hold: references, empty env values and Codex's env-named fields,
- * each a variable's name.
- */
+/** The variables the worker's daemon must hold for `s`: its references, empty env values and Codex's env-named fields. */
 export function needsOf(s: McpServer): string[] {
   const named = [...Object.values(s.env), ...Object.values(s.headers), s.url ?? '', ...s.args, ...Object.values(texts(s.raw.oauth))]
     .flatMap((v) => [...v.matchAll(VAR_REF)].map((m) => m[1] ?? m[2]));
@@ -477,11 +450,9 @@ export function isOAuth(s: McpServer): boolean {
     || KNOWN_OAUTH_HOSTS.includes(hostOf(s.url));
 }
 
-/** Whether `s` runs only on this Mac: a loopback url, the Chrome extension, Chrome's devtools or an app bundle. */
 export const isMacOnly = (s: McpServer): boolean =>
   /^https?:\/\/(127\.0\.0\.1|localhost)(:|\/|$)/.test(s.url ?? '') || [s.command ?? '', ...s.args].some((a) => /claude-in-chrome|chrome-devtools|\/Applications\//.test(a));
 
-/** What the worker must have to run `s`: the runtime its command names, or an absolute command itself. */
 export function runtimesOf(s: McpServer): string[] {
   if (!s.command) return [];
   if (path.posix.isAbsolute(s.command)) return [s.command];
@@ -510,15 +481,13 @@ export function oauthLogin(s: McpServer): { run: string; forward?: number } {
 }
 
 /**
- * `s.raw` with each secret not in `keep` emptied where its agent holds it, but for the references it holds, and each
- * such env value and every empty one named as the agent's reference, so the worker's own variable is used: Claude
- * `${KEY}`, OpenCode `{env:KEY}`, Codex `env_vars`.
+ * `s.raw` with each secret not in `keep` emptied but for its references; an emptied or empty env value names the worker's
+ * own variable instead: Claude `${KEY}`, OpenCode `{env:KEY}`, Codex `env_vars`.
  */
 export function redacted(s: McpServer, keep: ReadonlySet<string>): Record<string, unknown> {
   const drop = new Set(secretsOf(s).map((f) => f.field).filter((f) => !keep.has(f)));
   const p = FIELD_PATHS[s.agent];
   const raw = structuredClone(s.raw);
-  // an env key holding a reference keeps that reference; another, and an empty value, names the worker's own variable
   const ref = (k: string): string | undefined => (drop.has(`env.${k}`) ? asReference(s.env[k]) : undefined);
   const unset = Object.keys(s.env).filter((k) => (drop.has(`env.${k}`) && ref(k) === undefined) || s.env[k] === '');
   const env = raw[p.env] as Doc;
@@ -541,10 +510,7 @@ export function redacted(s: McpServer, keep: ReadonlySet<string>): Record<string
   return raw;
 }
 
-/**
- * Where secret field `field` of a server lies in its entry `raw`: under its env, headers or oauth key, its url, or each arg
- * of its name; none for an arg no longer there.
- */
+/** Where secret field `field` lies in entry `raw`: for an arg, each arg of its name, none when it is gone. */
 export function fieldPlace(agent: AgentKind, raw: Record<string, unknown>, field: string): Place[] {
   if (field.startsWith('args[')) {
     const [key, from] = argsAt(agent, raw);
@@ -556,7 +522,7 @@ export function fieldPlace(agent: AgentKind, raw: Record<string, unknown>, field
   return [[head === 'env' ? FIELD_PATHS[agent].env : head === 'headers' ? FIELD_PATHS[agent].headers : head, field.slice(dot + 1)]];
 }
 
-/** A server entry with its command, args, cwd and OpenCode's command array moved by `move` where they are absolute paths. */
+/** A server entry with the absolute paths in its command, args and cwd moved by `move`. */
 export function relocatedServer(entry: Record<string, unknown>, move: (p: string) => string): Record<string, unknown> {
   const moved = { ...entry };
   for (const k of ['command', 'args', 'cwd']) if (Object.hasOwn(entry, k)) moved[k] = relocated(entry[k], move, true);
@@ -586,15 +552,13 @@ function providerSecrets(doc: Record<string, unknown>): Secret[] {
   return [...named, ...queries];
 }
 
-// Codex's provider base_url and otel endpoints by their query values, and its args lists as a server's args, each list's
-// fields under its own path
+// Codex's base_url and otel endpoint query values, and its args lists read as a server's args under each list's path
 function codexSecrets(doc: Record<string, unknown>): Secret[] {
   const queries = CODEX_URLS.flatMap((p) => strings(at(doc, p.split('.')))).flatMap((l) => urlSecrets(l.value, l.field, true).filter((s) => !s.field.endsWith('.userinfo')));
   const args = argLists(doc).flatMap((l) => argsSecrets(l.args).map((s) => ({ field: `${l.field}${s.field.slice('args'.length)}`, value: s.value })));
   return [...queries, ...args];
 }
 
-// each of Codex's args lists in `doc`, by its path
 const argLists = (doc: unknown): { field: string; args: string[] }[] => CODEX_ARGS.flatMap((p) => at(doc, p.split('.')))
   .filter((l) => Array.isArray(l.value) && l.value.every((a) => typeof a === 'string')).map((l) => ({ field: l.field, args: l.value as string[] }));
 
@@ -621,14 +585,12 @@ export function configNeeds(agent: AgentKind, doc: Record<string, unknown>): str
   return [...new Set(names)].filter((n): n is string => !!n).sort();
 }
 
-/** Keys leading into a document, an array's index among them. */
 export type Place = (string | number)[];
 
-/** The value at `place` in `doc`, or undefined where nothing lies. */
 export const getAt = (doc: unknown, place: Place): unknown =>
   place.reduce<unknown>((v, k) => (typeof v === 'object' && v !== null && Object.hasOwn(v, k) ? (v as Record<string | number, unknown>)[k] : undefined), doc);
 
-/** Puts `v` at `place` in `doc`, making the objects that lead there; `undefined` removes what lies there. */
+/** Makes the objects that lead to `place`; `undefined` removes what lies there, but not from an array. */
 export function setAt(doc: Record<string, unknown>, place: Place, v: unknown): void {
   let at = doc as Record<string | number, unknown>;
   for (const [i, k] of place.slice(0, -1).entries()) {
@@ -662,10 +624,7 @@ function argOf(doc: unknown, field: string): { list: string[]; args: string[]; f
   return list && { list, args: getAt(doc, list) as string[], field: `args${field.slice(open)}` };
 }
 
-/**
- * Where config field `field` of `doc`, as configSecrets names it, lies: its string, each arg of its name, or the URL one
- * that holds it for a `.userinfo` or a query value, whose name may hold dots.
- */
+/** Where configSecrets' field `field` lies in `doc`: its string, each arg of its name, or the URL holding it, whose name may hold dots. */
 export function configPlace(doc: unknown, field: string): string[][] {
   const arg = argOf(doc, field);
   if (arg) return argIndices(arg.args, arg.field).map((i) => [...arg.list, String(i)]);
@@ -677,10 +636,7 @@ export function configPlace(doc: unknown, field: string): string[][] {
   return [];
 }
 
-/**
- * `doc` with each of `fields` emptied but for the references it holds: a key field's string, or in a URL the
- * credentials for a `.userinfo` or the query value.
- */
+/** `doc` with each of `fields` emptied but for the references it holds. */
 export function configRedacted(doc: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out = structuredClone(doc);
   for (const f of fields) {
@@ -702,10 +658,7 @@ export function configRedacted(doc: Record<string, unknown>, fields: readonly st
 /** Claude's settings.json env, which stays off the worker. */
 export const readSettingsEnv = (claudeDir: string): Record<string, string> => texts(readDoc(path.join(claudeDir, 'settings.json'), JSON.parse, [])?.env);
 
-/**
- * Each plugin's settings.json that holds more than permissions, hooks, a model and env references, with its top-level keys;
- * one that cannot be read is named in `unreadable`.
- */
+/** Each plugin's settings.json that holds more than PLUGIN_SETTINGS and env references, with its top-level keys. */
 export function readPluginConfigs(plugins: PluginInstall[], unreadable: string[]): { name: string; file: string; fields: string[] }[] {
   return plugins.flatMap(({ name, installPath }) => {
     const file = path.join(installPath, 'settings.json');
@@ -719,8 +672,8 @@ export function readPluginConfigs(plugins: PluginInstall[], unreadable: string[]
 }
 
 /**
- * Claude's known_marketplaces.json with each header of a marketplace's source that is not only references, and each query
- * value of its url, emptied, but those `keep` holds by their settings.json field; `kept` whether one of those stays.
+ * Claude's known_marketplaces.json with its sources' headers and url query values emptied but those `keep` holds by their
+ * settings.json field; `kept` whether one of those stays.
  */
 export function marketplaceList(doc: Record<string, unknown>, keep: ReadonlySet<string>): { doc: Record<string, unknown>; kept: boolean } {
   const out = structuredClone(doc);
@@ -745,10 +698,8 @@ export const keyedLsp = (v: unknown): string[] => docs(isDoc(v) && isDoc(v.lspSe
   .filter(([, s]) => Object.values(texts(s.env)).some((x) => !isReferenceOnly(x))).map(([name]) => name);
 
 /**
- * The LSP configs under plugin root `root` with a server holding a key, each with those servers as `lspServers.<name>`:
- * its .lsp.json, its manifest's lspServers inline or in each file under it the manifest names, and each its marketplace
- * entry names by path, `marketNamed`; one there that cannot be read, or that leads outside the plugin, is named in
- * `unreadable`.
+ * The LSP configs under plugin root `root` with a server holding a key, as `lspServers.<name>`; one that cannot be read, or
+ * leads outside the plugin, is named in `unreadable`.
  */
 export function lspKeys(root: string, unreadable: string[], marketNamed: string[] = []): { file: string; fields: string[] }[] {
   const manifest = path.join(root, '.claude-plugin/plugin.json');
@@ -769,7 +720,6 @@ export function lspKeys(root: string, unreadable: string[], marketNamed: string[
   });
 }
 
-/** Each plugin's LSP configs with a server holding a key, as lspKeys finds them in its install. */
 export const readPluginLsp = (plugins: PluginInstall[], unreadable: string[]): { name: string; file: string; fields: string[] }[] =>
   plugins.flatMap((p) => lspKeys(p.installPath, unreadable, p.namedLsp).map((c) => ({ name: p.name, ...c })));
 
@@ -841,9 +791,8 @@ function yamlBlock(lines: YamlLine[], i: number, indent: number): [unknown, numb
   return [out, i];
 }
 
-// a subagent file's frontmatter mcpServers block: its value, and where its lines start among the file's and how many they
-// are; null for none, undefined where it is not in the plain YAML or JSON the mirror reads or the frontmatter names
-// mcpServers anywhere else, as a quoted, escaped, explicit or second key a YAML reader may take
+// a subagent frontmatter's mcpServers block and its lines; null for none, undefined where it is not plain YAML or JSON or a
+// YAML reader could take mcpServers from elsewhere too, as a quoted, escaped, explicit or second key
 function agentBlock(source: string): { value: unknown; from: number; count: number } | null | undefined {
   const end = frontmatterEnd(source);
   const lines = end ? source.slice(0, end).split(/\r?\n/).slice(1, -1) : [];
@@ -874,8 +823,7 @@ function agentBlock(source: string): { value: unknown; from: number; count: numb
   return value === undefined ? undefined : { value, from: at + 1, count };
 }
 
-// each server a subagent's mcpServers value defines inline, by its place in that value, name and entry; undefined for a
-// value of another shape
+// the servers a subagent's mcpServers map or list defines inline; undefined for another shape
 function inlineServers(value: unknown): { place: Place; name: string; raw: unknown }[] | undefined {
   if (value === null) return [];
   if (isDoc(value)) return Object.entries(value).map(([name, raw]) => ({ place: [name], name, raw }));
@@ -890,22 +838,18 @@ function inlineServers(value: unknown): { place: Place; name: string; raw: unkno
   return servers;
 }
 
-/**
- * The servers a subagent file's frontmatter `mcpServers` defines inline, each by its name and entry, from its list or map;
- * a server it only names is none. Undefined where that block is not in the plain YAML the mirror reads.
- */
+/** The servers a subagent file's `mcpServers` defines inline, not those it only names; undefined where it cannot be read. */
 export function agentServers(source: string): [name: string, entry: unknown][] | undefined {
   const b = agentBlock(source);
   if (b === null) return [];
   return b && inlineServers(b.value)?.map((s) => [s.name, s.raw]);
 }
 
-// an inline server of a subagent as a Claude server
 const agentServer = (name: string, raw: Doc): McpServer => toServer('claude', 'user', { name, raw, file: '', place: [] });
 
 /**
- * What of a subagent file `source` the mirror asks before it travels: each inline server holding a key or fields the mirror
- * does not know, as `mcpServers.<name>`, or `mcpServers` whole where it cannot read them.
+ * What the mirror asks of a subagent file before it travels: each inline server holding a key or unknown fields, as
+ * `mcpServers.<name>`, or `mcpServers` whole where it cannot read them.
  */
 export function agentKeys(source: string): string[] {
   const servers = agentServers(source);
@@ -918,8 +862,8 @@ export function agentKeys(source: string): string[] {
 }
 
 /**
- * Each key of subagent file `source`'s inline servers by its place in the frontmatter's mcpServers, with its value and what
- * an untick leaves there; undefined where a server's fields are not all known or the block cannot be read.
+ * Each key of a subagent file's inline servers by its place in mcpServers, with its value and what an untick leaves there;
+ * undefined where a server's fields are not all known or the block cannot be read.
  */
 export function agentLeaves(source: string): { place: Place; value: string; bare: string }[] | undefined {
   const b = agentBlock(source);

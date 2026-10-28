@@ -5,7 +5,7 @@ import { Sheet } from './Sheet.js';
 
 type Props = { kind: AgentKind | undefined; fontSize: number; onKey(seq: string): void; onSize(step: 1 | -1): void; onClose(): void };
 
-/** The keys the row has no room for: the agent's own, the terminal's, and the type size. */
+/** The keys the row has no room for, and the type size. */
 export function KeysSheet({ kind, fontSize, onKey, onSize, onClose }: Props): JSX.Element {
   return (
     <Sheet title="Keys" onClose={onClose}>

@@ -234,7 +234,6 @@ export class Retro {
     return { path: t.path, backup };
   }
 
-  /** Ends a run under way, as svalld stops. */
   async stop(): Promise<void> {
     this.current?.aborter.abort();
     await this.current?.done.catch(() => {});

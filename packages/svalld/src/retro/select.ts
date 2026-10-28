@@ -23,7 +23,6 @@ const count = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' :
 // tier 2 for a review run or a run something followed, 1 another run or a rule's output, 0 prompts; then the newest first,
 // as `at / 1e13` stays under 1 until 2286
 const priority = (tier: number, at: number): number => tier + at / 1e13;
-// the places in a session's turns that `keep` picks
 const places = (s: Outline, keep: (t: Turn, i: number) => boolean): number[] => s.turns.flatMap((t, i) => (keep(t, i) ? [i] : []));
 // a run's turns, from its call to the prompt that ended it
 const runTurns = ({ s, r }: Run): number[] => {
@@ -64,10 +63,8 @@ function mechanical(outlines: Outline[]): string[] {
   ];
 }
 
-/**
- * The excerpts each focus reads, cut from the outlines; `runs` counts every run of each skill before the cap,
- * `mechanical` what code finds alone, `unused` the skills no transcript has run, and `thin` the focuses with too little evidence.
- */
+/** `runs` counts every run of each skill before the cap, `mechanical` what code finds alone, `unused` the skills no
+ *  transcript has run, and `thin` the focuses with too little evidence. */
 export function select(o: {
   outlines: Outline[]; focus: Focus[]; targets: Target[]; skillsSeen: Set<string>;
   // whether gh is installed and signed in; `prOf` links a session to its PR and `prs` holds each PR's thread

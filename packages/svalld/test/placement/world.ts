@@ -71,14 +71,8 @@ const ctxOf = (store: Store, fleet: Fleet, router: Router, more: Partial<Ctx>): 
 type Handlers = Record<string, (p: unknown) => Promise<unknown>>;
 
 /**
- * A home and its worker w1, each with its store, fleet, router and API context, linked over the worker's real
- * link.sock; `far` stands in for what the worker answers the home with, `connect` for reaching it; `docs` syncs the
- * fleet's docs as main.ts does, each watcher quiet for 100 ms, `mirror` names each side's agent homes for the mirror,
- * and the home's replay, router and docs log to `homeLog`; each side reads its robots' usage as main.ts does, its
- * Claude login answering with `usage.claude` and each rollout with its text in `usage.tails`; `scribe` answers each
- * side's scribe passes, and the worker's scribe is off as main.ts has it. Each side reads its own robots' files, the
- * home a placed robot's through the worker, and each has a Claude dir of its own under its home. The home's terminals
- * reach a placed robot's through the worker, which sends the last lines of its panes after each hook.
+ * A home and its worker w1, wired as main.ts wires them and linked over the worker's real link.sock; `far` stands in
+ * for what the worker answers the home with, `connect` for reaching it. The worker's scribe is off, as main.ts has it.
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;

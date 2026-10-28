@@ -7,7 +7,6 @@ protocol OverlayView: NSView {
 }
 
 extension OverlayView {
-    /// True while this view, or something inside it, is the window's first responder.
     var hasKeys: Bool { (window?.firstResponder as? NSView)?.isDescendant(of: self) ?? false }
 }
 

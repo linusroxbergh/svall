@@ -17,10 +17,8 @@ export function realOf(p: string): string | undefined {
   try { return fs.realpathSync(cur); } catch { return undefined; }
 }
 
-/**
- * The absolute path `rel` names under `root`, refused when dots or a symlink take it outside,
- * or into a .git at any depth: a listing hides .git, so no name or link reaches it either.
- */
+/** `rel` under `root`, refused when dots or a symlink take it outside, or into a .git at any depth: a listing hides .git,
+ *  so no name or link reaches it either. */
 export function inside(root: string, rel: string): string {
   root = path.resolve(root);
   const abs = path.resolve(root, rel);

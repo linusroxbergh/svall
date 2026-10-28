@@ -14,13 +14,11 @@ import { Caret } from './Sidebar.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 
-/** Runs one `svall host …` in the shell, and has the panel follow it. */
 export function startHost(op: HostOp, args: HostArgs): void {
   app.store.getState().hostStarted(op, args);
   app.bridge.send({ type: 'host.start', op, args });
 }
 
-/** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
 export function MachineActions({ name }: { name: string }) {
   const running = useApp((s) => !!s.host?.running);
   // a terminal needs the destination the registry has for it, which the page may not have read yet
@@ -122,7 +120,6 @@ function Outcome({ run }: { run: HostRun }) {
 
 type Terminal = (command: string, forward?: number) => void;
 
-/** One line: what the step is, one sentence, and the one thing to do about it; the recipe behind details. */
 function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const name = run.args.name;
   const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
@@ -248,7 +245,7 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
   );
 }
 
-/** Adding a machine by its name and ssh, before it is in the registry; an add that stopped short fills them in again. */
+// from: an add that stopped short, whose name and ssh fill the form in again
 function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
   const [name, setName] = useState(from?.name ?? '');
   const [ssh, setSsh] = useState(from?.ssh ?? '');

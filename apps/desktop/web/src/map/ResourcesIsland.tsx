@@ -62,7 +62,6 @@ export function ResourcesIsland({ place }: { place: Placement }) {
           <Seabed sand={rock} cx={cx} cy={cy} bank="var(--rock-bank)" />
           <g style={{ pointerEvents: 'visiblePainted', cursor: 'pointer' }} onPointerDown={stop} onDoubleClick={stop} onClick={press}>
             <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
-            {/* a wet rim inside the shore, a paler top face, two darker facets, one pale, and a grain over it all */}
             <g clipPath="url(#c-res)">
               <path d={rock} fill="none" stroke={ROCK.crag} strokeWidth="14" />
               <path d={rock} fill="none" stroke={ROCK.crag} strokeWidth="6" />
