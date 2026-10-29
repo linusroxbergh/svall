@@ -391,6 +391,7 @@ export const methods = {
     result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
   },
   'system.info': { params: z.object({}), result: SystemInfo },
+  'feedback.preview': { params: z.object({}), result: z.object({ text: z.string() }) },
 } as const;
 
 export type MethodName = keyof typeof methods;

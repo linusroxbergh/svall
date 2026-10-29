@@ -15,3 +15,4 @@ export * from './placement.js';
 export * from './link.js';
 export * from './journal.js';
 export * from './retro.js';
+export * from './feedback.js';
