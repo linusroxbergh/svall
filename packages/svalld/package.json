@@ -33,6 +33,8 @@
     "./fleets": "./src/fleets.ts",
     "./release": "./src/release.ts",
     "./text": "./src/text.ts",
+    "./retro/render": "./src/retro/render.ts",
+    "./retro/test-report": "./test/fixtures/retro/report.ts",
     "./mobile": "./src/mobile.ts",
     "./tmux/conf": "./src/tmux/conf.ts",
     "./linux/setup": "./src/linux/setup.ts",

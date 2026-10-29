@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {
-  ApiError, FOCUS_OF, HOME_ISLAND, RetroPlan, RetroReport,
-  type AgentKind, type Billing, type DismissReason, type Finding, type FleetConfig, type FocusPick, type LedgerStatus, type ParsedParams, type Preset, type Result, type RetroSpan, type RetroStatus, type Robot,
+  ApiError, HOME_ISLAND, RetroPlan, RetroReport,
+  type AgentKind, type Billing, type DismissReason, type Finding, type FleetConfig, type LedgerStatus, type ParsedParams, type Preset, type Result, type RetroSpan, type RetroStatus, type Robot,
 } from '@svall/protocol';
 import { readEnvFile } from '../claude.js';
 import { patchFleetConfig } from '../config.js';
@@ -17,23 +17,26 @@ import { opencodeRunner } from '../scribe/opencode.js';
 import { claudeRunner, type Runner } from '../scribe/run.js';
 import type { Store } from '../store.js';
 import { applyUnified } from './apply.js';
-import { estimateBatches, presetsFor } from './budget.js';
+import { callTokens, cardCall, estimate, FAMILY, labelCall, presetsFor, synthesisCall, verifyCalls, type PresetPick, type Work } from './budget.js';
+import { calibrated, readCalibration } from './calibrate.js';
+import { CARD_SYSTEM, cardInput, cardKey, cachedCard, chunks, packCalls, parseCard, type Chunk } from './cards.js';
+import { compact } from './compact.js';
 import { indexSessions } from './index.js';
+import { LABEL_SYSTEM, labelInput, labelItems, packLabels } from './labels.js';
 import { mark as markLedger, readLedger, recordFindings, writeLedger } from './ledger.js';
 import type { Outline } from './outline.js';
-import { pack } from './pack.js';
 import { PRICES_CHECKED } from './prices.js';
-import { ghReady, prForBranch, prThread, type PrComment, type PrThread } from './prs.js';
-import { runPlan } from './run.js';
+import { ghReady, joinRun, prForBranch, prThread, type PrThread } from './prs.js';
+import { findingSection, reportMd } from './render.js';
+import { runPlan, type RunInput } from './run.js';
 import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
-import { select } from './select.js';
 import { readSessions } from './sessions.js';
-import { inventory, isGitWithRemote, type Target } from './targets.js';
+import { inventory, isGitWithRemote, targetText, type Target } from './targets.js';
 
 const DAY = 86_400_000;
-// a plan this old is planned again before it runs
+// a plan this old is planned again rather than run
 const STALE_MS = DAY;
-// how long a run's notes and files are kept
+// how long a run's files, and a card no run has read, are kept
 const KEEP_MS = 90 * DAY;
 const SPAN_DAYS: Record<Exclude<RetroSpan, 'last'>, number> = { '7d': 7, '30d': 30 };
 // how long a crew member's card keeps showing a run that has ended
@@ -41,7 +44,7 @@ const SHOWN_MS = 10 * 60_000;
 const ENDED = new Set<RetroStatus['stage']>(['done', 'failed', 'interrupted']);
 const FIRST_DAYS = 14;
 
-type Deps = {
+export type Deps = {
   paths: Paths; store: Store; log: Logger;
   // fleet.json as it is now, so `svall retro config` applies without a restart
   config: () => FleetConfig;
@@ -53,13 +56,19 @@ type Deps = {
   now?: () => number;
 };
 
-// what a plan read, kept for its run so the measures need no second index
-type Gathered = { repos: string[]; outlines: Outline[]; prOf: Map<string, string>; comments: Map<string, PrComment[]> };
+// a session in a plan's scope, as scope.json keeps it for its run
+type Scoped = { agent: AgentKind; session: string; file: string; cwd?: string; subagents?: string[]; repo?: string; island?: string };
+// what a plan read, kept for its run so a run soon after needs no second index
+type Gathered = Pick<RunInput, 'outlines' | 'repoOf' | 'threads' | 'joins' | 'unused'> & { repos: string[]; targets: Target[]; ready: boolean };
+// what each preset's run would hold before its cards, and each card call's cap with the sessions it completes
+type Fit = Record<string, { fixed: number; cards: { tokens: number; sessions: number }[] }>;
 
 const RUN_ID = /^r_\d+$/;
+const OLDER = 'was made by an older retro; plan again';
 
 // a diff in which redaction masked a value would write the mask, so it is never applied or handed to a robot
 const masked = (f: Finding): boolean => f.change.text.includes('[redacted]');
+const tokens = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1e3)}k`);
 
 // a diff a robot may take to a repo: hunks alone, under no header or one naming the target from the repo's `root`, that apply
 // cleanly to the file as it is. git apply reads any other line, or a header inside the hunks, as another file's change
@@ -78,7 +87,7 @@ function fits(t: NonNullable<Finding['target']>, diff: string, root: string): bo
   } catch { return false; }
 }
 
-/** The retro: plans read the stores here and send nothing to a model; a run reads its plan's batches under its budget. */
+/** The retro: plans read the stores here and send nothing to a model; a run cards its plan's sessions under its budget. */
 export class Retro {
   private current?: { status: RetroStatus; aborter: AbortController; done: Promise<void> };
   private gathered?: { plan: string } & Gathered;
@@ -90,20 +99,26 @@ export class Retro {
 
   private get dir(): string { return this.d.paths.retro; }
   private runDir(id: string): string { return path.join(this.dir, 'runs', id); }
-  private get ledgerFile(): string { return path.join(this.dir, 'ledger.json'); }
+  private get ledgerFile(): string { return path.join(this.dir, 'ledger.v2.json'); }
+  private get cardsDir(): string { return path.join(this.dir, 'cards'); }
+  private get calibrationFile(): string { return path.join(this.dir, 'calibration.json'); }
 
-  /** Clears what a restart left: the batches of a run it interrupted, which is reported and never resumed, and runs past 90 days. */
+  /** Clears what a restart left: a run it interrupted is reported and never resumed; runs and cards past 90 days go. */
   start(): void {
     // no run outlives the daemon that ran it
     if (this.d.store.state.retro) this.d.store.update((d) => { delete d.retro; });
     for (const id of this.runIds()) {
       const dir = this.runDir(id);
-      const plan = this.readPlan(id);
-      if (plan && this.now() - plan.created > KEEP_MS) { fs.rmSync(dir, { recursive: true, force: true }); continue; }
-      // a plan that has not run keeps its batches for its run
-      if (!fs.existsSync(path.join(dir, 'started'))) continue;
-      fs.rmSync(path.join(dir, 'batches'), { recursive: true, force: true });
-      if (!fs.existsSync(path.join(dir, 'totals.json'))) writeDurable(path.join(dir, 'totals.json'), Buffer.from(JSON.stringify({ interrupted: true })));
+      const created = this.readJson<{ created?: number }>(path.join(dir, 'plan.json'))?.created;
+      if (created !== undefined && this.now() - created > KEEP_MS) { fs.rmSync(dir, { recursive: true, force: true }); continue; }
+      if (fs.existsSync(path.join(dir, 'started')) && !fs.existsSync(path.join(dir, 'totals.json'))) writeDurable(path.join(dir, 'totals.json'), Buffer.from(JSON.stringify({ interrupted: true })));
+    }
+    // a card is touched each time a plan or run reads it
+    let cards: string[] = [];
+    try { cards = fs.readdirSync(this.cardsDir); } catch { /* no cards yet */ }
+    for (const name of cards) {
+      const file = path.join(this.cardsDir, name);
+      try { if (this.now() - fs.statSync(file).mtimeMs > KEEP_MS) fs.rmSync(file); } catch { /* gone meanwhile */ }
     }
   }
 
@@ -119,7 +134,7 @@ export class Retro {
       };
       patchFleetConfig(this.d.paths.fleetConfig, { retro });
     }
-    return this.makePlan(this.span(p.span), p.focus, retro);
+    return this.makePlan(this.span(p.span), retro);
   }
 
   run(p: ParsedParams<'retro.run'>): Result<'retro.run'> {
@@ -129,13 +144,28 @@ export class Retro {
     const planned = this.readPlan(p.plan);
     if (!planned) throw new NotFound(`no retro plan ${p.plan}`);
     if (fs.existsSync(path.join(this.runDir(p.plan), 'started'))) throw new Invalid(`retro plan ${p.plan} has already run; plan again`);
+    // a plan runs over the scope it froze, which a day on no longer says what the span holds
+    if (this.now() - planned.created > STALE_MS) throw new Invalid(`retro plan ${p.plan} is more than a day old; plan again`);
     // with none named, balanced where the plan has it, else its first
     const preset = p.preset === undefined ? planned.presets.find((x) => x.name === 'balanced') ?? planned.presets[0] : planned.presets.find((x) => x.name === p.preset);
     if (!preset) throw new Invalid(`plan ${p.plan} has no preset ${p.preset}`);
-    const status: RetroStatus = { run: p.plan, stage: 'planned', done: 0, total: planned.batches.length };
+    // the budget the user approved, else the preset's cap on the plan they saw
+    const budget = p.budget ?? Math.ceil(preset.tokens.max);
+    const fit = this.readJson<Fit>(path.join(this.runDir(p.plan), 'fit.json'))?.[preset.name];
+    const need = fit ? fit.fixed + fit.cards.reduce((n, c) => n + c.tokens, 0) : 0;
+    if (fit && budget < need) {
+      let room = budget - fit.fixed;
+      let n = planned.work.sessions - fit.cards.reduce((k, c) => k + c.sessions, 0);
+      for (const c of fit.cards) {
+        if (c.tokens > room) break;
+        room -= c.tokens;
+        n += c.sessions;
+      }
+      throw new Invalid(`a budget of ${tokens(budget)} covers the cards of ${room < 0 ? 0 : n} of ${planned.work.sessions} sessions; give at least ${tokens(need)} or plan a shorter span`);
+    }
+    const status: RetroStatus = { run: p.plan, stage: 'planned', done: 0, total: planned.work.sessions };
     const aborter = new AbortController();
-    // the budget the user approved, else the preset's upper estimate on the plan they saw
-    const done = this.execute(planned, preset, p.budget ?? Math.ceil(preset.tokens.max), p.robot, status, aborter.signal);
+    const done = this.execute(planned, preset, budget, p.robot, status, aborter.signal);
     this.current = { status, aborter, done };
     return { run: p.plan };
   }
@@ -147,17 +177,31 @@ export class Retro {
     const plan = this.readPlan(id);
     if (!plan) throw new NotFound(`no retro ${id}`);
     const totals = this.readJson<{ interrupted?: boolean; failed?: string }>(path.join(this.runDir(id), 'totals.json'));
-    const stage = !totals ? 'planned' : totals.interrupted ? 'interrupted' : totals.failed ? 'failed' : 'done';
-    return { run: id, stage, done: stage === 'done' ? plan.batches.length : 0, total: plan.batches.length, ...(totals?.failed && { error: totals.failed }) };
+    const report = this.readJson<Pick<RetroReport, 'usage'>>(path.join(this.runDir(id), 'report.json'));
+    const stage = report ? 'done' : !totals ? 'planned' : totals.interrupted ? 'interrupted' : 'failed';
+    const total = plan.work.sessions;
+    return { run: id, stage, done: stage === 'done' ? total : 0, total, ...(report && { used: report.usage.used }), ...(totals?.failed && { error: totals.failed }) };
   }
 
   findings(run?: string): RetroReport {
     const id = run ?? this.finishedIds().at(-1);
     if (!id) throw new NotFound('no retro has finished yet');
     if (!RUN_ID.test(id)) throw new NotFound(`no retro ${id}`);
-    const report = RetroReport.safeParse(this.readJson(path.join(this.runDir(id), 'report.json'))).data;
+    const raw = this.readJson<{ version?: unknown }>(path.join(this.runDir(id), 'report.json'));
+    if (raw && raw.version !== 2) throw new Invalid(`retro ${id} ${OLDER}`);
+    const report = RetroReport.safeParse(raw).data;
     if (!report) throw new NotFound(`retro ${id} has no findings: ${this.status(id).stage}`);
     return report;
+  }
+
+  /** Finding n's section of a run's report.md, numbered as its findings are. */
+  show(n: number, run?: string): Result<'retro.show'> {
+    const { run: id } = this.findings(run);
+    let md: string;
+    try { md = fs.readFileSync(path.join(this.runDir(id), 'report.md'), 'utf8'); } catch { throw new NotFound(`retro ${id} has no report.md`); }
+    const text = findingSection(md, n);
+    if (!text) throw new NotFound(`retro ${id} has no finding ${n}`);
+    return { text };
   }
 
   async mark(p: ParsedParams<'retro.mark'>): Promise<Result<'retro.mark'>> {
@@ -242,14 +286,14 @@ export class Retro {
   private span(span: RetroSpan): RetroPlan['span'] {
     const to = this.now();
     if (span !== 'last') return { from: to - SPAN_DAYS[span] * DAY, to, label: `last ${SPAN_DAYS[span]} days` };
-    const last = this.finishedIds().map((id) => this.readPlan(id)?.created).filter((c): c is number => c !== undefined).at(-1);
+    const last = this.finishedIds().map((id) => this.readJson<{ created?: number }>(path.join(this.runDir(id), 'plan.json'))?.created).filter((c): c is number => c !== undefined).at(-1);
     return last
       ? { from: last, to, label: `since the last retro (${new Date(last).toISOString().slice(0, 10)})` }
       : { from: to - FIRST_DAYS * DAY, to, label: `last ${FIRST_DAYS} days` };
   }
 
-  // reads the stores for `span`: what is in scope, the inventory, the outlines and the PR threads reviews join
-  private async gather(span: RetroPlan['span'], focus: FocusPick, retro: FleetConfig['retro']) {
+  // the sessions in scope for `span`, and what was left out
+  private async scope(span: RetroPlan['span'], retro: FleetConfig['retro']): Promise<{ scoped: Scoped[]; counts: RetroPlan['counts'] }> {
     const state = this.d.store.state;
     const own = readSessions(this.d.paths.retroSessions);
     const found = await discover({ span, claudeDir: this.d.claudeDir, codexDir: this.d.codexDir });
@@ -260,100 +304,135 @@ export class Retro {
       candidates, home: this.d.paths.home, own, others: otherFleets(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
       islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
-    const repos = [...new Set(inScope.flatMap((c) => (c.repo ? [c.repo] : [])))];
+    const scoped = inScope.map((c) => ({
+      agent: c.agent, session: c.session, file: c.file, ...(c.cwd && { cwd: c.cwd }), ...(c.subagents && { subagents: c.subagents }), ...(c.repo && { repo: c.repo }), ...(c.island && { island: c.island }),
+    }));
+    return { scoped, counts };
+  }
+
+  // reads the sessions in scope over `span`: the inventory, the outlines, and each review run's PR with its thread
+  private async read(span: RetroPlan['span'], scoped: Scoped[], retro: FleetConfig['retro']): Promise<Gathered> {
+    const repos = [...new Set(scoped.flatMap((c) => (c.repo ? [c.repo] : [])))];
     const targets = await this.inventory(repos, retro);
     const { outlines, skillsSeen } = await indexSessions({
-      files: inScope.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
+      files: scoped.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
       span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: await this.onDisk(),
     }, this.d.inline && { inline: true });
+    const seen = new Set(skillsSeen);
+    const unused = [...new Set(targets.filter((t) => t.kind === 'skill' && !seen.has(t.name)).map((t) => t.name))];
+    const repoOf = new Map(scoped.map((c) => [c.session, c.repo]));
     const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string, since?: number) => prThread(url, { since }), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
-    const ready = FOCUS_OF[focus].includes('review-tweaks') && await gh.ready();
-    const { prOf, comments } = ready ? await this.prs(outlines, targets, inScope, gh) : { prOf: new Map<string, string>(), comments: new Map<string, PrComment[]>() };
-    // the island each session in scope ran on, which a fix robot started from a finding takes
-    const islands = Object.fromEntries(inScope.flatMap((c) => (c.island ? [[c.session, c.island]] : [])));
-    return { counts, repos, targets, outlines, skillsSeen, ready, prOf, comments, islands };
+    const ready = await gh.ready();
+    const prs = ready ? await this.prs(outlines, targets, repoOf, gh) : { joins: { reviews: [], failed: 0, ambiguous: 0 }, threads: new Map<string, PrThread>() };
+    return { repos, targets, outlines, unused, repoOf, ready, ...prs };
   }
 
   private inventory(repos: string[], retro: FleetConfig['retro']): Promise<Target[]> {
     return inventory({ homedir: this.d.homedir, claudeDir: this.d.claudeDir, codexDir: this.d.codexDir, repos, homeCwd: expandHome(this.d.store.state.home.cwd, this.d.homedir), reviewSkills: retro.reviewSkills, isGitWithRemote });
   }
 
-  // a plan planned again for its run keeps its id and its CLI
-  private async makePlan(span: RetroPlan['span'], focus: FocusPick, retro: FleetConfig['retro'], again?: Pick<RetroPlan, 'id' | 'agent'>): Promise<RetroPlan> {
+  private async makePlan(span: RetroPlan['span'], retro: FleetConfig['retro']): Promise<RetroPlan> {
     const created = this.now();
-    let id = again?.id ?? `r_${Math.floor(created / 1000)}`;
-    while (!again && fs.existsSync(this.runDir(id))) id = `r_${Number(id.slice(2)) + 1}`;
-    const agent = again?.agent ?? this.d.store.state.mainAgent ?? 'claude';
-    const g = await this.gather(span, focus, retro);
-    const picked = select({ outlines: g.outlines, focus: FOCUS_OF[focus], targets: g.targets, skillsSeen: new Set(g.skillsSeen), gh: g.ready, prs: g.comments, prOf: g.prOf });
-    const batches = pack(picked.excerpts);
+    let id = `r_${Math.floor(created / 1000)}`;
+    while (fs.existsSync(this.runDir(id))) id = `r_${Number(id.slice(2)) + 1}`;
+    const agent = this.d.store.state.mainAgent ?? 'claude';
+    const { scoped, counts } = await this.scope(span, retro);
+    const g = await this.read(span, scoped, retro);
+    const picks = presetsFor(agent, retro);
+    const sized = this.size(g, picks, agent);
+    const shown = sized.find((x) => x.pick.name === 'balanced') ?? sized[0];
     const plan: RetroPlan = {
-      id, created, span, focus, scope: { exclude: retro.exclude, unrecorded: retro.unrecorded }, counts: g.counts,
+      version: 2, id, created, span, scope: { exclude: retro.exclude, unrecorded: retro.unrecorded }, counts,
       reviews: g.ready ? 'gh' : 'no-gh', agent, billing: this.billing(agent),
-      presets: presetsFor(agent, retro).map((pick) => estimateBatches(batches, pick, agent)),
-      batches: batches.map((b) => ({ id: b.id, excerpts: b.excerpts.map((e) => e.id), tokens: b.tokens })),
-      thin: picked.thin, pricesChecked: PRICES_CHECKED,
+      presets: sized.map((x) => estimate(x.work, x.pick, agent)),
+      work: { sessions: g.outlines.length, chunks: shown.chunks, cached: shown.cached, calls: shown.work.cards.length, prs: g.threads.size, comments: shown.comments },
+      pricesChecked: PRICES_CHECKED,
     };
     const dir = this.runDir(id);
-    fs.rmSync(path.join(dir, 'batches'), { recursive: true, force: true });
-    fs.mkdirSync(path.join(dir, 'batches'), { recursive: true });
-    for (const b of batches) writeDurable(path.join(dir, 'batches', `${b.id}.json`), Buffer.from(JSON.stringify(b.excerpts)), { mode: 0o600 });
-    writeDurable(path.join(dir, 'select.json'), Buffer.from(JSON.stringify({ runs: picked.runs, unused: picked.unused, mechanical: picked.mechanical, thin: picked.thin })), { mode: 0o600 });
-    writeDurable(path.join(dir, 'islands.json'), Buffer.from(JSON.stringify(g.islands)), { mode: 0o600 });
-    writeDurable(path.join(dir, 'plan.json'),Buffer.from(JSON.stringify(plan, null, 2)), { mode: 0o600 });
-    this.gathered = { plan: id, repos: g.repos, outlines: g.outlines, prOf: g.prOf, comments: g.comments };
+    fs.mkdirSync(dir, { recursive: true });
+    const write = (name: string, value: unknown) => writeDurable(path.join(dir, name), Buffer.from(JSON.stringify(value, null, 2)), { mode: 0o600 });
+    write('scope.json', scoped);
+    write('fit.json', Object.fromEntries(sized.map((x) => [x.pick.name, x.fit])));
+    // the island each session in scope ran on, which a fix robot started from a finding takes
+    write('islands.json', Object.fromEntries(scoped.flatMap((c) => (c.island ? [[c.session, c.island]] : []))));
+    write('plan.json', plan);
+    this.gathered = { plan: id, ...g };
     return plan;
   }
 
-  // the PR each review run is joined to: a PR link in its session, else its branch's PR, with the comments others left on it
-  private async prs(outlines: Outline[], targets: Target[], inScope: { session: string; repo?: string }[], gh: NonNullable<Deps['gh']>): Promise<Pick<Gathered, 'prOf' | 'comments'>> {
-    const reviews = new Set(targets.filter((t) => t.review).map((t) => t.name));
-    const repoOf = new Map(inScope.map((c) => [c.session, c.repo]));
-    const prOf = new Map<string, string>();
-    for (const o of outlines) {
-      if (!o.skills.some((r) => reviews.has(r.name))) continue;
-      const repo = repoOf.get(o.session);
-      const pr = o.prs[0]?.url ?? (repo && o.branch ? await gh.forBranch(repo, o.branch).catch(() => undefined) : undefined);
-      if (pr) prOf.set(o.session, pr);
-    }
-    const comments = new Map<string, PrComment[]>();
-    for (const url of new Set(prOf.values())) {
-      try {
-        const t = await gh.thread(url);
-        comments.set(url, t.comments.filter((c) => c.author !== t.author));
-      } catch (e) { this.d.log.error(`retro: ${url}: ${String(e)}`); }
-    }
-    return { prOf, comments };
+  // each preset's calls on what the plan read: the chunks its read model has no cached card for, packed as the run packs
+  // them, the labels, and the synthesis and verify; with the sessions each card call completes
+  private size(g: Gathered, picks: PresetPick[], agent: AgentKind) {
+    const cpt = calibrated(readCalibration(this.calibrationFile), FAMILY[agent]);
+    const all = g.outlines.map((s) => chunks(s, compact(s), g.repoOf.get(s.session)));
+    const items = labelItems(g.joins.reviews.map((r) => ({ ...r, findings: [] })), g.threads);
+    const labels = packLabels(items).map((xs) => labelCall(LABEL_SYSTEM.length + labelInput(xs).length, xs.length, cpt));
+    const chars = g.targets.reduce((n, t) => {
+      if (t.kind === 'skill') return n + t.id.length + (t.description?.length ?? 0);
+      try { return n + targetText(t).text.length; } catch { return n; }
+    }, 0);
+    const synthesis = synthesisCall(chars, g.outlines.length, cpt);
+    return picks.map((pick) => {
+      const cached = (c: Chunk) => parseCard(cachedCard(this.cardsDir, cardKey({ model: pick.read, agent, text: c.text })))?.card.chunk === c.id;
+      const left = all.map((cs) => cs.filter((c) => !cached(c)));
+      const calls = packCalls(left.flat());
+      const work: Work = { sessions: g.outlines.length, cards: calls.map((cs) => cardCall(CARD_SYSTEM.length + cardInput(cs).length, cs.length, cpt)), labels, synthesis, verify: verifyCalls() };
+      const lastCall = new Map<string, number>();
+      calls.forEach((cs, k) => { for (const c of cs) lastCall.set(c.session, k); });
+      const fixed = g.outlines.length ? [synthesis, ...work.verify, ...labels].reduce((n, c) => n + callTokens(c, agent).max, 0) : 0;
+      const fit = { fixed, cards: work.cards.map((c, k) => ({ tokens: callTokens(c, agent).max, sessions: [...lastCall.values()].filter((x) => x === k).length })) };
+      const chunked = all.reduce((n, cs) => n + cs.length, 0);
+      return { pick, work, fit, chunks: chunked, cached: chunked - left.reduce((n, cs) => n + cs.length, 0), comments: items.length };
+    });
   }
 
-  private async execute(first: RetroPlan, chosen: Preset, budget: number, robot: string | undefined, status: RetroStatus, signal: AbortSignal): Promise<void> {
-    let plan = first;
-    const set = (s: Partial<RetroStatus>) => this.show(Object.assign(status, s), robot);
+  // the PR each review run reviewed, by its own links or its branch's PR, and the thread of each; a run whose PR's thread
+  // gh can't read counts as unjoined
+  private async prs(outlines: Outline[], targets: Target[], repoOf: Map<string, string | undefined>, gh: NonNullable<Deps['gh']>): Promise<Pick<Gathered, 'joins' | 'threads'>> {
+    const reviewSkills = new Set(targets.filter((t) => t.review).map((t) => t.name));
+    const branches = new Map<string, Promise<string | undefined>>();
+    const joined: Gathered['joins']['reviews'] = [];
+    let [failed, ambiguous] = [0, 0];
+    for (const o of outlines) {
+      for (const r of o.skills.filter((x) => reviewSkills.has(x.name))) {
+        let join = joinRun(o, r);
+        const repo = repoOf.get(o.session);
+        if ('failed' in join && join.failed === 'none' && repo && o.branch) {
+          const key = `${repo}\0${o.branch}`;
+          if (!branches.has(key)) branches.set(key, gh.forBranch(repo, o.branch).catch(() => undefined));
+          join = joinRun(o, r, await branches.get(key));
+        }
+        if ('pr' in join) joined.push({ session: o.session, skill: r.name, run: r.id, pr: join.pr, end: r.end });
+        else if (join.failed === 'ambiguous') ambiguous++;
+        else failed++;
+      }
+    }
+    const threads = new Map<string, PrThread>();
+    for (const url of new Set(joined.map((r) => r.pr))) {
+      try {
+        threads.set(url, await gh.thread(url, Math.min(...joined.filter((r) => r.pr === url).map((r) => r.end))));
+      } catch (e) { this.d.log.error(`retro: ${url}: ${String(e)}`); }
+    }
+    const reviews = joined.filter((r) => threads.has(r.pr));
+    return { joins: { reviews, failed: failed + joined.length - reviews.length, ambiguous }, threads };
+  }
+
+  private async execute(plan: RetroPlan, preset: Preset, budget: number, robot: string | undefined, status: RetroStatus, signal: AbortSignal): Promise<void> {
+    const set = (s: Partial<RetroStatus>) => this.card(Object.assign(status, s), robot);
     set({});
     try {
-      // a plan older than a day, or whose exclusions or picks changed since, is planned again as the same run, under the same budget
       const retro = this.d.config().retro;
-      if (this.now() - plan.created > STALE_MS || JSON.stringify(plan.scope) !== JSON.stringify({ exclude: retro.exclude, unrecorded: retro.unrecorded })) {
-        const label = plan.span.label.startsWith('last 7') ? '7d' : plan.span.label.startsWith('last 30') ? '30d' : 'last';
-        plan = await this.makePlan(this.span(label), plan.focus, retro, plan);
-        set({ total: plan.batches.length });
-      }
-      const preset = plan.presets.find((x) => x.name === chosen.name);
-      if (!preset) throw new Invalid(`planned again, the retro has no preset ${chosen.name}; plan again`);
       const dir = this.runDir(plan.id);
       fs.writeFileSync(path.join(dir, 'started'), JSON.stringify({ preset: preset.name, budget, robot }));
-      // after a restart the plan's index is gone, and the measures read its span again
-      const gathered = this.gathered?.plan === plan.id ? this.gathered : await this.gather(plan.span, plan.focus, { ...retro, ...plan.scope });
-      const picked = this.readJson<{ runs: Record<string, number>; unused?: string[]; mechanical: string[]; thin: string[] }>(path.join(dir, 'select.json')) ?? { runs: {}, mechanical: [], thin: [] };
+      // after a restart the plan's index is gone, and its scope is read again over its span
+      const g = this.gathered?.plan === plan.id ? this.gathered : await this.read(plan.span, this.readJson<Scoped[]>(path.join(dir, 'scope.json')) ?? [], { ...retro, ...plan.scope });
       const report = await runPlan({
-        plan, preset, budget, runner: this.d.runner ?? ((agent) => this.runner(agent)), dir, ledgerFile: this.ledgerFile,
-        targets: await this.inventory(gathered.repos, retro),
-        measure: { outlines: gathered.outlines, span: plan.span, prOf: gathered.prOf, comments: gathered.comments },
-        // runs are counted for the skill focuses alone; another plan read none of them
-        runs: FOCUS_OF[plan.focus].some((f) => f === 'skill-tweaks' || f === 'review-tweaks') ? picked.runs : {}, unused: picked.unused ?? [],
-        mechanical: picked.mechanical, thin: picked.thin, previous: this.previousFixes(plan.id),
-        onStatus: (s) => set(s), signal, now: this.now,
+        plan, preset, budget, runner: this.d.runner ?? ((agent) => this.runner(agent)), dir, cardsDir: this.cardsDir, calibrationFile: this.calibrationFile, ledgerFile: this.ledgerFile,
+        targets: await this.inventory(g.repos, retro), outlines: g.outlines, repoOf: g.repoOf, threads: g.threads, joins: g.joins, unused: g.unused,
+        previous: this.previousFixes(plan.id), onStatus: (s) => set(s), signal, now: this.now,
       });
+      const md = path.join(dir, 'report.md');
+      writeDurable(md, Buffer.from(reportMd(report, md)), { mode: 0o600 });
       writeDurable(path.join(dir, 'report.json'), Buffer.from(JSON.stringify(report, null, 2)), { mode: 0o600 });
       set({ stage: 'done' });
     } catch (e) {
@@ -363,14 +442,13 @@ export class Retro {
       const totals = path.join(this.runDir(plan.id), 'totals.json');
       if (!fs.existsSync(totals)) writeDurable(totals, Buffer.from(JSON.stringify(signal.aborted ? { interrupted: true } : { failed: message })));
     } finally {
-      fs.rmSync(path.join(this.runDir(plan.id), 'batches'), { recursive: true, force: true });
       if (this.gathered?.plan === plan.id) this.gathered = undefined;
     }
   }
 
-  // the card of the crew member who started the run shows its stage, until a while after it ends
-  private show(s: RetroStatus, robot?: string): void {
-    this.d.store.update((d) => { d.retro = { run: s.run, stage: s.stage, done: s.done, total: s.total, ...(robot && { robot }) }; });
+  // the card of the crew member who started the run shows its stage and tokens, until a while after it ends
+  private card(s: RetroStatus, robot?: string): void {
+    this.d.store.update((d) => { d.retro = { run: s.run, stage: s.stage, done: s.done, total: s.total, ...(s.used !== undefined && { used: s.used }), ...(robot && { robot }) }; });
     if (!ENDED.has(s.stage)) return;
     setTimeout(() => this.d.store.update((d) => { if (d.retro?.run === s.run && ENDED.has(d.retro.stage)) delete d.retro; }), SHOWN_MS).unref();
   }
@@ -447,7 +525,10 @@ export class Retro {
   }
 
   private readPlan(id: string): RetroPlan | undefined {
-    return RUN_ID.test(id) ? RetroPlan.safeParse(this.readJson(path.join(this.runDir(id), 'plan.json'))).data : undefined;
+    if (!RUN_ID.test(id)) return undefined;
+    const raw = this.readJson<{ version?: unknown }>(path.join(this.runDir(id), 'plan.json'));
+    if (raw && raw.version !== 2) throw new Invalid(`retro ${id} ${OLDER}`);
+    return RetroPlan.safeParse(raw).data;
   }
 
   private readJson<T>(file: string): T | undefined {

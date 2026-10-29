@@ -6,7 +6,7 @@ import { priceOf } from '../src/retro/prices.js';
 
 const retro = (o: object = {}) => FleetConfig.shape.retro.parse(o);
 const work = (cards: number, chars = 120_000): Work => ({
-  cards: Array.from({ length: cards }, () => cardCall(chars, 3, 3)), labels: [labelCall(30_000, 20, 3)],
+  sessions: cards * 3, cards: Array.from({ length: cards }, () => cardCall(chars, 3, 3)), labels: [labelCall(30_000, 20, 3)],
   synthesis: synthesisCall(60_000, 200, 3), verify: verifyCalls(),
 });
 
@@ -91,9 +91,11 @@ describe('estimate', () => {
     expect(reserved).toBe(callTokens(synthesisCall(60_000, 200, 3), 'codex').max + 3 * callTokens(verifyCalls()[0], 'codex').max);
   });
 
-  it('costs nothing with nothing to read', () => {
-    const p = estimate({ cards: [], labels: [], synthesis: synthesisCall(0, 0, 3), verify: verifyCalls() }, presetsFor('claude', retro())[0], 'claude');
+  it('costs nothing with nothing to read, and still synthesizes and verifies sessions whose cards are all cached', () => {
+    const none = (sessions: number): Work => ({ sessions, cards: [], labels: [], synthesis: synthesisCall(0, 0, 3), verify: verifyCalls() });
+    const p = estimate(none(0), presetsFor('claude', retro())[0], 'claude');
     expect(p.tokens).toEqual({ min: 0, max: 0 });
     expect(p.cost).toEqual({ min: 0, max: 0 });
+    expect(estimate(none(4), presetsFor('claude', retro())[0], 'claude').tokens.max).toBe(capOf(none(4), 'claude').reserved);
   });
 });

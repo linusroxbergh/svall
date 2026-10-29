@@ -178,6 +178,7 @@ const handlers: Handlers = {
   'retro.run': (p, ctx) => retroOf(ctx).run(p),
   'retro.status': (p, ctx) => retroOf(ctx).status(p.run),
   'retro.findings': (p, ctx) => retroOf(ctx).findings(p.run),
+  'retro.show': (p, ctx) => retroOf(ctx).show(p.n, p.run),
   'retro.mark': (p, ctx) => retroOf(ctx).mark(p),
   'retro.apply': (p, ctx) => retroOf(ctx).apply(p.id),
   'placing.set': (p, { fleet }) => { fleet.setPlacing(p.enabled); return {}; },

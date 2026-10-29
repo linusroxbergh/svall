@@ -49,8 +49,8 @@ export function presetsFor(agent: AgentKind, config: FleetConfig['retro']): Pres
 
 /** One call before it is counted: the tokens its prompt holds and what it may answer, reasoning included at the top. */
 export type CallSize = { input: Range; out: Range };
-/** Every call a run makes, by stage. */
-export type Work = { cards: CallSize[]; labels: CallSize[]; synthesis: CallSize; verify: CallSize[] };
+/** Every call a run makes over `sessions`, by stage; a cached card needs none. */
+export type Work = { sessions: number; cards: CallSize[]; labels: CallSize[]; synthesis: CallSize; verify: CallSize[] };
 
 const fixed = (n: number): Range => ({ min: n, max: n });
 /** A card call of `chars` prompt characters over `chunks` chunks. */
@@ -88,7 +88,7 @@ const sum = (ranges: Range[]): Range => ({ min: ranges.reduce((n, r) => n + r.mi
 
 /** What a run holds back before it reads: the synthesis and verify at their caps; and what reading every session may take. */
 export function capOf(work: Work, agent: AgentKind): { reserved: number; reading: number } {
-  if (!work.cards.length) return { reserved: 0, reading: 0 };
+  if (!work.sessions) return { reserved: 0, reading: 0 };
   return {
     reserved: callTokens(work.synthesis, agent).max + work.verify.reduce((n, c) => n + callTokens(c, agent).max, 0),
     reading: [...work.cards, ...work.labels].reduce((n, c) => n + callTokens(c, agent).max, 0),
@@ -98,7 +98,7 @@ export function capOf(work: Work, agent: AgentKind): { reserved: number; reading
 /** What a preset would take on the plan's work: tokens, typical and cap, and cost when every role's model has a price. */
 export function estimate(work: Work, p: PresetPick, agent: AgentKind): Preset & { verify: Preset['read'] } {
   // with nothing to read there are no groups, and neither the synthesis nor the verify is called
-  const roles: [CallSize[], string | undefined][] = work.cards.length
+  const roles: [CallSize[], string | undefined][] = work.sessions
     ? [[[...work.cards, ...work.labels], p.read], [[work.synthesis], p.judge], [work.verify, p.verify]]
     : [];
   const tokens = sum(roles.flatMap(([calls]) => calls.map((c) => callTokens(c, agent))));
@@ -138,33 +138,4 @@ export class Budget {
   get used(): number { return this.spent; }
   /** What is neither spent nor held. */
   get left(): number { return this.total - this.spent - this.held; }
-}
-
-// the v1 retro's batches, read until the run moves to cards
-
-/** Characters per token by model family; batches are counted at the lowest, so a family with more reads fewer tokens. */
-export const RATIO: Record<Family, number> = { claude: 3.5, openai: 4, other: 3.5 };
-const READ_OUT = 2_000, READ_REASONING = 4_000, JUDGE_OUT = 12_000, JUDGE_REASONING = 16_000, JUDGE_IN_MAX = 140_000;
-const PACKED = Math.min(...Object.values(RATIO));
-type V1Call = { tokens: Range; cost?: Range };
-function v1call(input: number, out: number, reasoning: number, agent: AgentKind, price: Price | undefined): V1Call {
-  const o = OVERHEAD[agent];
-  const tokens = { min: Math.ceil(input + o.min + out / 2), max: Math.ceil(input * 1.15 + o.max + out + reasoning) };
-  if (!price) return { tokens };
-  const own = o.cached ? price.cacheRead : price.input;
-  const usd = (i: number, overhead: number, output: number) => (i * price.input + overhead * own + output * price.output) / 1e6;
-  return { tokens, cost: { min: usd(input, o.min, out / 2), max: usd(input * 1.15, o.max, out + reasoning) } };
-}
-const readCall = (tokens: number, agent: AgentKind, model?: string): V1Call => v1call(tokens * PACKED / RATIO[FAMILY[agent]], READ_OUT, READ_REASONING, agent, priceOf(model));
-const judgeCall = (batches: number, agent: AgentKind, model?: string): V1Call => v1call(Math.min(JUDGE_IN_MAX, batches * READ_OUT + 40_000), JUDGE_OUT, JUDGE_REASONING, agent, priceOf(model));
-export const readTokens = (tokens: number, agent: AgentKind): Range => readCall(tokens, agent).tokens;
-export const judgeTokens = (batches: number, agent: AgentKind): Range => judgeCall(batches, agent).tokens;
-export function estimateBatches(batches: { tokens: number }[], p: PresetPick, agent: AgentKind): Preset {
-  const calls = batches.length ? [...batches.map((b) => readCall(b.tokens, agent, p.read)), judgeCall(batches.length, agent, p.judge)] : [];
-  const tokens = sum(calls.map((c) => c.tokens));
-  const costs = calls.flatMap((c) => (c.cost ? [c.cost] : []));
-  return {
-    name: p.name, label: p.label, read: { agent, ...(p.read && { model: p.read }) }, judge: { agent, ...(p.judge && { model: p.judge }) },
-    tokens: { min: Math.round(tokens.min), max: Math.round(tokens.max) }, ...(costs.length === calls.length && { cost: sum(costs) }),
-  };
 }
