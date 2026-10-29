@@ -10,7 +10,7 @@ import type { Outline, Turn } from './outline.js';
 import { redact } from './redact.js';
 
 /** Bumped when a card's prompt or shape changes, so cached cards are read again. */
-export const CARD_VERSION = 1;
+const CARD_VERSION = 1;
 /** Characters a token when splitting and packing: fixed, so a new calibration never moves a chunk's edges and its cache key. */
 export const PACK_CPT = 3;
 

@@ -31,7 +31,7 @@ const PR = /(https?:\/\/)(?:[^\s/@"'<>`\\]*@)?([^\s/@"'<>()[\]{}`\\]+\/[^\s/"'<>
 // a call that writes a PR's body or a comment on one, the output most rules govern, whose input is kept as agent text is
 export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
 
-export const turnId = (line: number, block: number): string => `L${line}.${block}`;
+const turnId = (line: number, block: number): string => `L${line}.${block}`;
 export const inSpan = (at: number, span: Span): boolean => at >= span.from && at <= span.to;
 // a tool input with each string in it redacted, so a .env line it writes is masked before JSON escapes its newlines
 const leaves = (v: unknown): unknown =>

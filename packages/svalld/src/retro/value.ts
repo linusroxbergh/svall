@@ -4,9 +4,9 @@ import type { Group } from './aggregate.js';
 const MIN = 60_000;
 /** What one occurrence costs, for the categories with a fixed cost; a review miss costs by severity, friction and errors by
  *  the minutes lost, and a repeated workflow by its steps. */
-export const IMPACT: Partial<Record<Category, number>> = { 'skill-redo': 3, correction: 2, 'rule-missed': 2, 'rule-conflict': 2, 'retyped-rule': 2, noise: 1 };
-export const CONFIDENCE = { holds: 1, partly: 0.6 } as const;
-export const BADGES = { High: 15, Med: 6 } as const;
+const IMPACT: Partial<Record<Category, number>> = { 'skill-redo': 3, correction: 2, 'rule-missed': 2, 'rule-conflict': 2, 'retyped-rule': 2, noise: 1 };
+const CONFIDENCE = { holds: 1, partly: 0.6 } as const;
+const BADGES = { High: 15, Med: 6 } as const;
 const CAP = 3, REVIEW_MISS = 3;
 
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;

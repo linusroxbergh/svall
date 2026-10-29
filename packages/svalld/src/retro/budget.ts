@@ -14,7 +14,7 @@ export const FAMILY: Record<AgentKind, Family> = { claude: 'claude', codex: 'ope
 const CARD_OUT = { min: 750, max: 1_500 }, LABEL_OUT = { min: 100, max: 300 }, REASONING = 2_000;
 const SYNTHESIS_OUT = { min: 10_000, max: 32_000 }, VERIFY_OUT = { min: 2_700, max: 12_000 };
 /** The synthesis reads at most this much; a verify call four candidates of up to 17k each, three calls for twelve. */
-export const SYNTHESIS_IN = 150_000;
+const SYNTHESIS_IN = 150_000;
 const VERIFY_IN = { min: 20_000, max: 68_000 }, VERIFY_CALLS = 3;
 // the synthesis input a carded session adds to the inventory and rule files it always reads
 const PER_SESSION = 300;

@@ -89,7 +89,9 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; 
   const read = fs.existsSync(settings) ? fs.readFileSync(settings, 'utf8') : undefined;
   // settings that allow `svall char` gain the same rules for `svall robot`, the name the rules use
   const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
-  const current = robot && o.addRetro ? withRetro(robot, shipped) : robot;
+  const retro = robot && o.addRetro ? withRetro(robot, shipped) : robot;
+  // settings that allow `svall retro findings` gain `svall retro show`, which prints one of its findings
+  const current = retro && !retro.includes('"Bash(svall retro show:') ? retro.replace(/^(\s*)"Bash\(svall retro findings:\*\)"/m, '$1"Bash(svall retro findings:*)",\n$1"Bash(svall retro show:*)"') : retro;
   if (current !== read) {
     writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);

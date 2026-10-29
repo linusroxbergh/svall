@@ -2,8 +2,8 @@ import { z } from 'zod';
 import { fence, pack, PACK_CPT } from './cards.js';
 import { revisionAt, type PrComment, type PrThread } from './prs.js';
 
-export const Theme = z.enum(['missing-test', 'logic-bug', 'edge-case', 'error-handling', 'concurrency', 'security', 'performance', 'naming-style', 'docs', 'design', 'question']);
-export type Theme = z.infer<typeof Theme>;
+const Theme = z.enum(['missing-test', 'logic-bug', 'edge-case', 'error-handling', 'concurrency', 'security', 'performance', 'naming-style', 'docs', 'design', 'question']);
+type Theme = z.infer<typeof Theme>;
 /** What a small model says of one later PR comment. */
 export const Label = z.object({
   comment: z.string(), theme: Theme, severity: z.enum(['high', 'medium', 'low']), catchable: z.boolean(), inLocalFindings: z.boolean(), addressed: z.enum(['yes', 'no', 'unknown']),
