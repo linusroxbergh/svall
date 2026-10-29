@@ -1,13 +1,11 @@
 import os from 'node:os';
 import path from 'node:path';
-import { ellipsis, type AgentKind } from '@svall/protocol';
+import { ellipsis, GroupKind, type AgentKind } from '@svall/protocol';
 import { activeMs, type SessionCard } from './cards.js';
 import type { CommentClass, Label, LabelItem, ReviewRun } from './labels.js';
 import type { Command, Outline } from './outline.js';
 import type { Target } from './targets.js';
 
-export const GROUP_KINDS = ['review-miss', 'skill-outcome', 'correction', 'retyped-rule', 'error', 'friction', 'ask', 'sequence'] as const;
-export type GroupKind = (typeof GROUP_KINDS)[number];
 
 /** One thing a group can show as an example: a turn of a session, or a comment on a PR. */
 export type Evidence = { id: string; agent?: AgentKind; session?: string; at?: string; pr?: string; comment?: string; when: number; repo?: string; text: string };
@@ -231,7 +229,7 @@ export function aggregate(i: AggregateInput): Aggregate {
         ...a.more, ...(ms !== undefined && { elapsedMs: ms }), ...(sev && { impact: sev.reduce((x, y) => x + y, 0) / sev.length }),
       } as Group,
     };
-  }).sort((x, y) => GROUP_KINDS.indexOf(x.group.kind) - GROUP_KINDS.indexOf(y.group.kind) || y.group.n - x.group.n || x.group.key.localeCompare(y.group.key));
+  }).sort((x, y) => GroupKind.options.indexOf(x.group.kind) - GroupKind.options.indexOf(y.group.kind) || y.group.n - x.group.n || x.group.key.localeCompare(y.group.key));
   groups.forEach(({ group, picked }, k) => {
     group.id = `g${k + 1}`;
     group.examples = picked.map((o) => {

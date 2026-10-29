@@ -50,6 +50,21 @@ export type MeasureKind = z.infer<typeof MeasureKind>;
 export const Measure = z.object({ kind: MeasureKind, subject: z.string().nullable(), name: z.string(), before: Rate.nullable(), after: Rate.nullable() });
 export type Measure = z.infer<typeof Measure>;
 
+/** What a retro finding is about, which sets what one occurrence of it costs. */
+export const Category = z.enum(['review-miss', 'skill-redo', 'correction', 'rule-missed', 'rule-conflict', 'retyped-rule', 'friction', 'error', 'workflow', 'noise']);
+export type Category = z.infer<typeof Category>;
+/** The kinds of group code counts from the sessions, cards and PR labels. */
+export const GroupKind = z.enum(['review-miss', 'skill-outcome', 'correction', 'retyped-rule', 'error', 'friction', 'ask', 'sequence']);
+export type GroupKind = z.infer<typeof GroupKind>;
+/** How much a change is to make. */
+export const Effort = z.enum(['rule line', 'skill edit', 'new skill', 'setting', 'code change']);
+export type Effort = z.infer<typeof Effort>;
+/** A finding's priority as code computed it, shown as its parts: `n` occurrences, `m` the rate's denominator. */
+export const Value = z.object({
+  badge: z.enum(['High', 'Med', 'Low']), score: z.number(), n: z.number().int(), m: z.number().int(), impact: z.number(), confidence: z.number(), reason: z.string(),
+});
+export type Value = z.infer<typeof Value>;
+
 /** What a finding proposes: a unified diff of its target, a new file's text, words on where to change it, or a command. */
 export const Change = z.object({ kind: z.enum(['diff', 'draft', 'proposal', 'command']), summary: z.string(), text: z.string() });
 export type Change = z.infer<typeof Change>;
