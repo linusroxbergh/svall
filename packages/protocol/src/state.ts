@@ -259,8 +259,8 @@ export const FleetState = z.object({
   scribeAgent: AgentKind.optional(),
   // the model the scribe runs; absent, the CLI picks its own
   scribeModel: z.string().optional(),
-  // the retro svalld is running or just ran, and the robot whose card shows its stage
-  retro: z.object({ run: z.string(), stage: RetroStage, done: z.number().int(), total: z.number().int(), robot: z.string().optional() }).optional(),
+  // the retro svalld is running or just ran, the tokens it has used, and the robot whose card shows its stage
+  retro: z.object({ run: z.string(), stage: RetroStage, done: z.number().int(), total: z.number().int(), used: z.number().int().optional(), robot: z.string().optional() }).optional(),
 });
 export type FleetState = z.infer<typeof FleetState>;
 

@@ -10,7 +10,7 @@ const SHAPES: Record<number, string> = {
   9: '0948919b0399c74d',
   10: '3084ba6befe06ae7',
   11: 'a943d34774de97a2',
-  12: '27285fd17fd2b0de',
+  12: 'a8861fe7598ba15b',
 };
 
 // a refine is a custom check, read by the source of its function
