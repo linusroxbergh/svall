@@ -6,12 +6,15 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOME_ISLAND, type AgentKind, type Finding, type RetroPlan, type Robot } from '@svall/protocol';
 import { classification } from '../src/api/classify.js';
-import { readFleetConfig } from '../src/config.js';
+import { patchFleetConfig, readFleetConfig } from '../src/config.js';
 import { resolvePaths } from '../src/paths.js';
-import { Retro } from '../src/retro/service.js';
+import { CARD_SYSTEM } from '../src/retro/cards.js';
+import { reportMd } from '../src/retro/render.js';
+import { Retro, type Deps } from '../src/retro/service.js';
 import { appendSessions } from '../src/retro/sessions.js';
 import type { Runner } from '../src/scribe/run.js';
 import { Store } from '../src/store.js';
+import { finding, report } from './fixtures/retro/report.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
@@ -21,7 +24,7 @@ const NOW = Date.parse('2026-10-27T12:00:00Z');
 const HOUR = 3_600_000;
 
 // a fleet whose one recorded session is the Claude fixture, in a store of its own, with gh signed out
-function world(o: { runner?: Runner; now?: () => number; robots?: unknown[]; started?: Promise<void> } = {}) {
+function world(o: { runner?: Runner; now?: () => number; robots?: unknown[]; started?: Promise<void>; gh?: Deps['gh'] } = {}) {
   const home = makeHome();
   const paths = resolvePaths(path.join(home, '.svall'));
   fs.mkdirSync(paths.home, { recursive: true });
@@ -39,26 +42,71 @@ function world(o: { runner?: Runner; now?: () => number; robots?: unknown[]; sta
   const make = () => new Retro({
     paths, store, log: { info: () => {}, error: () => {} }, config: () => readFleetConfig(paths), claudeDir, codexDir, homedir: home,
     createRobot: async (p: unknown) => { o.robots?.push(p); await o.started; return { id: 'c_fix' } as Robot; }, runner: (agent) => { agents.push(agent); return runner; },
-    gh: { ready: async () => false, thread: async () => [], forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
+    gh: o.gh ?? { ready: async () => false, thread: async (url) => ({ url, author: 'me', comments: [], commits: [], truncated: false }), forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
   });
-  return { paths, store, codexDir, runner, agents, make, retro: make() };
+  return { paths, store, claudeDir, codexDir, runner, agents, make, retro: make() };
 }
 
+// a model that cards each chunk it is given, finds nothing to change, and holds its cards until `open` while `hold` is on
+function answering() {
+  let open!: () => void;
+  let gate: Promise<void> = Promise.resolve();
+  const runner: Runner = async (system, prompt) => {
+    await gate;
+    const chunks = [...prompt.matchAll(/<<<CHUNK id=(\S+)/g)].map((m) => m[1]);
+    const reply = system === CARD_SYSTEM
+      ? { cards: chunks.map((chunk) => ({ chunk, goal: 'g', kind: 'build', outcome: 'done', asks: [], corrections: [], rules: [], friction: [], skills: [], reviews: [], wins: [] })) }
+      : { overview: 'o', works: 'w', candidates: [] };
+    return { text: JSON.stringify(reply), usage: { input: 1_000, output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0 } };
+  };
+  return { runner, hold: () => { gate = new Promise((r) => { open = r; }); }, open: () => open() };
+}
+const ENDED = ['done', 'failed', 'interrupted'];
+const SHOWN_MS = 10 * 60_000;
+const mode = (file: string) => fs.statSync(file).mode & 0o777;
+
 describe('the retro service', () => {
-  it('plans without sending anything to a model', async () => {
+  it('plans without sending anything to a model, and freezes its scope for its run', async () => {
     const w = world();
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+    const plan = await w.retro.plan({ span: '7d' });
     expect(w.runner).not.toHaveBeenCalled();
-    expect(plan.counts.inScope).toBe(1);
+    expect(plan).toMatchObject({ version: 2, counts: { inScope: 1 }, reviews: 'no-gh', work: { sessions: 1, cached: 0, prs: 0, comments: 0 } });
+    expect(plan.work.chunks).toBeGreaterThan(0);
     expect(plan.presets.map((p) => p.name)).toEqual(['thrifty', 'balanced', 'thorough']);
-    expect(plan.reviews).toBe('no-gh');
-    expect(fs.existsSync(path.join(w.paths.retro, 'runs', plan.id, 'plan.json'))).toBe(true);
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'islands.json'), 'utf8'))).toEqual({ 'claude-session': 'i_x' });
-    expect(w.retro.status(plan.id)).toMatchObject({ stage: 'planned' });
+    const dir = path.join(w.paths.retro, 'runs', plan.id);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'scope.json'), 'utf8'))).toEqual([expect.objectContaining({ agent: 'claude', session: 'claude-session', island: 'i_x' })]);
+    expect(mode(path.join(dir, 'scope.json'))).toBe(0o600);
+    expect(JSON.parse(fs.readFileSync(path.join(dir, 'islands.json'), 'utf8'))).toEqual({ 'claude-session': 'i_x' });
+    expect(w.retro.status(plan.id)).toMatchObject({ stage: 'planned', total: 1 });
+  });
+
+  it('joins each review run to its PR with gh, and counts the comments after it to label', async () => {
+    const since: number[] = [];
+    const w = world({ gh: {
+      ready: async () => true, forBranch: async () => undefined,
+      thread: async (url, at) => {
+        since.push(at!);
+        return { url, author: 'me', truncated: false, commits: [], comments: [{ id: '1', kind: 'conversation', author: 'kim', bot: false, at: NOW, body: 'needs a test' }] };
+      },
+    } });
+    for (const name of ['ship-it', 'babysit-pr']) {
+      fs.mkdirSync(path.join(w.claudeDir, 'skills', name), { recursive: true });
+      fs.writeFileSync(path.join(w.claudeDir, 'skills', name, 'SKILL.md'), `# ${name}\n`);
+    }
+    patchFleetConfig(w.paths.fleetConfig, { retro: { ...readFleetConfig(w.paths).retro, reviewSkills: ['ship-it', 'babysit-pr'] } });
+    // babysit-pr links two PRs while it runs, and ship-it none, in a folder that is no repo
+    expect((await w.retro.plan({ span: '7d' })).work).toMatchObject({ prs: 0, comments: 0 });
+    expect(since).toEqual([]);
+    // with one link, babysit-pr's PR is read from the end of its run
+    const transcript = path.join(w.claudeDir, 'projects', '-w', 'claude-session.jsonl');
+    fs.writeFileSync(transcript, fs.readFileSync(transcript, 'utf8').split('\n').filter((l) => !l.includes('"prNumber":43')).join('\n'));
+    fs.utimesSync(transcript, new Date(NOW - HOUR), new Date(NOW - HOUR));
+    expect((await w.retro.plan({ span: '7d' })).work).toMatchObject({ prs: 1, comments: 1 });
+    expect(since).toEqual([Date.parse('2026-10-26T09:07:00.000Z')]);
   });
 
   it('takes the repos a session worked in for its targets, not the folder it started in', async () => {
-    const w = world();
+    const w = world({ runner: answering().runner });
     const home = path.dirname(w.paths.home);
     const repo = path.join(home, 'elsewhere');
     execFileSync('git', ['init', '-q', repo]);
@@ -70,9 +118,12 @@ describe('the retro service', () => {
       message: { model: 'claude-opus-5-5', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: path.join(repo, 'src', 'a.ts') } }] },
     }) + '\n');
     fs.utimesSync(transcript, new Date(NOW - HOUR), new Date(NOW - HOUR));
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    const picked = JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'select.json'), 'utf8')) as { unused: string[] };
-    expect(picked.unused).toContain('elsewhere-only');
+    const plan = await w.retro.plan({ span: '7d' });
+    const [scoped] = JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'scope.json'), 'utf8')) as { repos: string[] }[];
+    expect(scoped.repos.map((r) => fs.realpathSync(r))).toEqual([fs.realpathSync(repo)]);
+    w.retro.run({ plan: plan.id });
+    await vi.waitFor(() => expect(w.retro.status(plan.id).stage).toBe('done'), { timeout: 10_000 });
+    expect(w.retro.findings(plan.id).housekeeping.sources.flatMap((x) => x.skills)).toContain('elsewhere-only');
   });
 
   it('reads an OpenCode session no fleet ran once its folder is picked', async () => {
@@ -87,106 +138,147 @@ describe('the retro service', () => {
     const listed = JSON.stringify([{ id: 'ses_picked', updated: NOW - HOUR, directory: dir }]);
     fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\ncase "$1 $2" in\n"session list") echo '${listed}' ;;\n"session export") [ "$4" = ses_picked ] && cat '${exported}' ;;\nesac\n`, { mode: 0o755 });
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
-    const plan = await w.retro.plan({ span: '7d', focus: 'new-skills', unrecorded: [dir] });
+    const plan = await w.retro.plan({ span: '7d', unrecorded: [dir] });
     expect(plan.counts.unrecorded).toEqual([{ repo: dir, count: 1, picked: true }]);
-    const batches = path.join(w.paths.retro, 'runs', plan.id, 'batches');
-    const sessions = fs.readdirSync(batches).flatMap((f) => (JSON.parse(fs.readFileSync(path.join(batches, f), 'utf8')) as { session: { session: string } }[]).map((e) => e.session.session));
-    expect(sessions).toContain('ses_picked');
+    const scoped = JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'scope.json'), 'utf8')) as { session: string }[];
+    expect(scoped.map((c) => c.session)).toContain('ses_picked');
+    expect(plan.work.sessions).toBe(2);
   });
 
   it('adds the exclusions a plan is given to the saved ones, and saves its picks in place of theirs', async () => {
     const w = world();
-    await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { islands: ['i_x'] }, unrecorded: ['/code/docs'] });
+    await w.retro.plan({ span: '7d', exclude: { islands: ['i_x'] }, unrecorded: ['/code/docs'] });
     expect(readFleetConfig(w.paths).retro).toMatchObject({ exclude: { repos: [], islands: ['i_x'] }, unrecorded: ['/code/docs'] });
-    await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { repos: ['/code/life'], islands: ['Life', 'i_x'] }, unrecorded: ['/code/app'] });
+    await w.retro.plan({ span: '7d', exclude: { repos: ['/code/life'], islands: ['Life', 'i_x'] }, unrecorded: ['/code/app'] });
     expect(readFleetConfig(w.paths).retro).toMatchObject({ exclude: { repos: ['/code/life'], islands: ['i_x', 'Life'] }, unrecorded: ['/code/app'] });
   });
 
-  it('reports a run a restart interrupted, and drops its batches', async () => {
+  it('reports a run a restart interrupted', async () => {
     const w = world();
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    const dir = path.join(w.paths.retro, 'runs', plan.id);
-    fs.writeFileSync(path.join(dir, 'started'), '{}');
+    const plan = await w.retro.plan({ span: '7d' });
+    fs.writeFileSync(path.join(w.paths.retro, 'runs', plan.id, 'started'), '{}');
     const after = w.make();
     after.start();
     expect(after.status(plan.id)).toMatchObject({ stage: 'interrupted' });
-    expect(fs.existsSync(path.join(dir, 'batches'))).toBe(false);
   });
 
-  it('plans again a plan older than a day before it runs, as the same run under the budget its first plan gave', async () => {
-    let now = NOW;
-    const w = world({ now: () => now, runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    now += 25 * HOUR;
+  it('cards and judges a plan, writes its report twice over, and shows the tokens on the crew card', async () => {
+    const w = world({ runner: answering().runner });
+    const plan = await w.retro.plan({ span: '7d' });
     const { run } = w.retro.run({ plan: plan.id, preset: 'thrifty', robot: 'c_crew' });
     expect(run).toBe(plan.id);
     await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
-    expect(w.retro.status().run).toBe(run);
     const dir = path.join(w.paths.retro, 'runs', run);
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8')).created).toBe(now);
     const thrifty = plan.presets.find((x) => x.name === 'thrifty')!;
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ preset: 'thrifty', budget: Math.ceil(thrifty.tokens.max) });
-    expect(w.retro.findings(run).run).toBe(run);
-    // the crew member's card shows the run it started, and a restart clears it
-    expect(w.store.state.retro).toMatchObject({ run, stage: 'done', robot: 'c_crew' });
+    expect(w.retro.findings(run)).toMatchObject({ version: 2, run, findings: [] });
+    expect(fs.readFileSync(path.join(dir, 'report.md'), 'utf8')).toContain('## Coverage and tokens');
+    expect([mode(path.join(dir, 'report.json')), mode(path.join(dir, 'report.md'))]).toEqual([0o600, 0o600]);
+    expect(w.retro.status(run)).toMatchObject({ stage: 'done', used: expect.any(Number) });
+    expect(w.store.state.retro).toMatchObject({ run, stage: 'done', robot: 'c_crew', used: expect.any(Number) });
+    // a restart clears the crew card
     w.make().start();
     expect(w.store.state.retro).toBeUndefined();
   });
 
-  it('plans a stale plan again on the CLI it was planned for, whatever the main agent is now', async () => {
+  it('counts the chunks a run carded as cached in the next plan, which reads them from the cache', async () => {
+    const w = world({ runner: answering().runner });
+    const first = await w.retro.plan({ span: '7d' });
+    w.retro.run({ plan: first.id });
+    await vi.waitFor(() => expect(w.retro.status(first.id).stage).toBe('done'), { timeout: 10_000 });
+    const calls = w.runner.mock.calls.length;
+    const second = await w.retro.plan({ span: '7d' });
+    expect(second.work).toMatchObject({ chunks: first.work.chunks, cached: first.work.chunks, calls: 0 });
+    // thorough reads with Sonnet, whose cache holds no card yet
+    expect(second.presets.find((p) => p.name === 'thorough')!.tokens.max).toBeGreaterThan(second.presets.find((p) => p.name === 'balanced')!.tokens.max);
+    w.retro.run({ plan: second.id });
+    await vi.waitFor(() => expect(w.retro.status(second.id).stage).toBe('done'), { timeout: 10_000 });
+    expect(w.retro.findings(second.id).coverage.sessions.map((s) => s.status)).toEqual(['cached']);
+    expect(w.runner.mock.calls.length - calls).toBe(1);
+  });
+
+  it('refuses a budget that won\'t cover the cards, saying how many sessions it covers and what would', async () => {
+    const w = world({ runner: answering().runner });
+    const plan = await w.retro.plan({ span: '7d' });
+    const cap = Math.ceil(plan.presets.find((p) => p.name === 'balanced')!.tokens.max);
+    expect(() => w.retro.run({ plan: plan.id, budget: cap - 1 })).toThrow(new RegExp(`^a budget of \\d+k covers the cards of 0 of 1 sessions; give at least ${Math.round(cap / 1e3)}k or plan a shorter span$`));
+    expect(w.runner).not.toHaveBeenCalled();
+    w.retro.run({ plan: plan.id, budget: cap });
+    await vi.waitFor(() => expect(w.retro.status(plan.id).stage).toBe('done'), { timeout: 10_000 });
+  });
+
+  it('refuses a plan older than a day', async () => {
     let now = NOW;
-    const w = world({ now: () => now, runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    w.store.update((d) => { d.mainAgent = 'codex'; });
+    const w = world({ now: () => now });
+    const plan = await w.retro.plan({ span: '7d' });
     now += 25 * HOUR;
-    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced', budget: 10_000_000 });
+    expect(() => w.retro.run({ plan: plan.id })).toThrow('is more than a day old; plan again');
+  });
+
+  it('runs a plan on the CLI it was planned for, whatever the main agent is now', async () => {
+    const w = world({ runner: answering().runner });
+    const plan = await w.retro.plan({ span: '7d' });
+    w.store.update((d) => { d.mainAgent = 'codex'; });
+    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced' });
     await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', run, 'plan.json'), 'utf8')).agent).toBe('claude');
     expect(new Set(w.agents)).toEqual(new Set(['claude']));
   });
 
   it('gives a second plan in the same second an id of its own', async () => {
     const w = world();
-    const [a, b] = [await w.retro.plan({ span: '7d', focus: 'skills-reviews' }), await w.retro.plan({ span: '7d', focus: 'skills-reviews' })];
+    const [a, b] = [await w.retro.plan({ span: '7d' }), await w.retro.plan({ span: '7d' })];
     expect(b.id).not.toBe(a.id);
     expect(w.retro.status(a.id)).toMatchObject({ stage: 'planned' });
   });
 
-  it('runs under the budget the user gave, and plans again a plan whose exclusions changed since', async () => {
-    const w = world({ runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    await w.retro.plan({ span: '7d', focus: 'skills-reviews', exclude: { islands: ['i_x'] } });
-    const { run } = w.retro.run({ plan: plan.id, preset: 'balanced', budget: 123_456 });
-    await vi.waitFor(() => expect(w.retro.status(run).stage).toBe('done'), { timeout: 10_000 });
-    const dir = path.join(w.paths.retro, 'runs', run);
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'started'), 'utf8'))).toMatchObject({ budget: 123_456 });
-    expect(JSON.parse(fs.readFileSync(path.join(dir, 'plan.json'), 'utf8'))).toMatchObject({ scope: { exclude: { islands: ['i_x'] } }, counts: { inScope: 0, excluded: 1 } });
-  });
-
-  it('keeps the batches of a plan that has not run across a restart, and runs it', async () => {
-    const w = world({ runner: async () => ({ text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } }) });
-    const plan = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
-    expect(plan.batches.length).toBeGreaterThan(0);
+  it('runs a plan across a restart over the scope it froze, whatever was excluded since', async () => {
+    const w = world({ runner: answering().runner });
+    const plan = await w.retro.plan({ span: '7d' });
+    await w.retro.plan({ span: '7d', exclude: { islands: ['i_x'] } });
     const after = w.make();
     after.start();
-    expect(fs.existsSync(path.join(w.paths.retro, 'runs', plan.id, 'batches', `${plan.batches[0].id}.json`))).toBe(true);
     after.run({ plan: plan.id });
-    await vi.waitFor(() => expect(['done', 'failed']).toContain(after.status(plan.id).stage), { timeout: 10_000 });
+    await vi.waitFor(() => expect(ENDED).toContain(after.status(plan.id).stage), { timeout: 10_000 });
     expect(after.status(plan.id)).toMatchObject({ stage: 'done' });
+    expect(after.findings(plan.id).coverage.sessions.map((s) => s.session)).toEqual(['claude-session']);
     // with no preset named, balanced
     expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'started'), 'utf8'))).toMatchObject({ preset: 'balanced' });
+  });
+
+  it('says a run an older retro made is to be planned again', () => {
+    const w = world();
+    const dir = path.join(w.paths.retro, 'runs', 'r_5');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify({ id: 'r_5', created: NOW, batches: [] }));
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ run: 'r_5', findings: [] }));
+    expect(() => w.retro.findings()).toThrow('retro r_5 was made by an older retro; plan again');
+    expect(() => w.retro.show(1, 'r_5')).toThrow('made by an older retro; plan again');
+    expect(() => w.retro.run({ plan: 'r_5' })).toThrow('made by an older retro; plan again');
+  });
+
+  it('drops runs and cards no run has read in 90 days at start', async () => {
+    const w = world();
+    const cards = path.join(w.paths.retro, 'cards');
+    fs.mkdirSync(cards, { recursive: true });
+    const [old, fresh] = [path.join(cards, 'a.json'), path.join(cards, 'b.json')];
+    for (const [file, age] of [[old, 91], [fresh, 89]] as const) {
+      fs.writeFileSync(file, '{}');
+      fs.utimesSync(file, new Date(NOW - age * 24 * HOUR), new Date(NOW - age * 24 * HOUR));
+    }
+    w.make().start();
+    expect([fs.existsSync(old), fs.existsSync(fresh)]).toEqual([false, true]);
   });
 
   it('refuses a run id that is not one, before it reads a path', async () => {
     const w = world();
     const outside = path.join(w.paths.retro, 'x');
     fs.mkdirSync(outside, { recursive: true });
-    const report = { run: 'x', findings: [], previous: [], mechanical: [], thin: [], skipped: [], usage: { budget: 1, used: 1 } };
-    fs.writeFileSync(path.join(outside, 'report.json'), JSON.stringify(report));
+    fs.writeFileSync(path.join(outside, 'report.json'), JSON.stringify(report({ run: 'x' })));
     fs.writeFileSync(path.join(outside, 'totals.json'), '{}');
     for (const run of ['../x', 'r_1/../../x']) {
       expect(() => w.retro.findings(run)).toThrow(`no retro ${run}`);
       expect(() => w.retro.status(run)).toThrow(`no retro ${run}`);
+      expect(() => w.retro.show(1, run)).toThrow(`no retro ${run}`);
     }
   });
 
@@ -196,7 +288,7 @@ describe('the retro service', () => {
       const w = world();
       w.store.update((d) => { d.mainAgent = 'codex'; });
       fs.writeFileSync(w.paths.env, 'OPENAI_API_KEY=sk-test\n');
-      const billing = async () => (await w.retro.plan({ span: '7d', focus: 'new-skills' })).billing;
+      const billing = async () => (await w.retro.plan({ span: '7d' })).billing;
       expect(await billing()).toBe('subscription');
       fs.mkdirSync(w.codexDir, { recursive: true });
       fs.writeFileSync(path.join(w.codexDir, 'auth.json'), JSON.stringify({ auth_mode: 'apikey', OPENAI_API_KEY: null }));
@@ -212,26 +304,13 @@ describe('the retro service', () => {
     }
   });
 
-  // a run whose reads wait for `open` before the judge answers with no findings
-  function held() {
-    let open!: () => void;
-    let gate: Promise<void> = Promise.resolve();
-    const runner: Runner = async () => {
-      await gate;
-      return { text: JSON.stringify({ notes: [], findings: [] }), usage: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 } };
-    };
-    return { runner, hold: () => { gate = new Promise((r) => { open = r; }); }, open: () => open() };
-  }
-  const ENDED = ['done', 'failed', 'interrupted'];
-  const SHOWN_MS = 10 * 60_000;
-
   it('clears an ended run from the crew card ten minutes on, leaving a newer run on it', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     try {
       let now = NOW;
-      const h = held();
+      const h = answering();
       const w = world({ now: () => now, runner: h.runner });
-      const first = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+      const first = await w.retro.plan({ span: '7d' });
       w.retro.run({ plan: first.id, preset: 'balanced', robot: 'c_crew' });
       await vi.waitFor(() => expect(ENDED).toContain(w.store.state.retro?.stage));
       vi.advanceTimersByTime(SHOWN_MS / 2);
@@ -239,7 +318,8 @@ describe('the retro service', () => {
 
       now += HOUR;
       h.hold();
-      const second = await w.retro.plan({ span: '7d', focus: 'skills-reviews' });
+      const second = await w.retro.plan({ span: '7d' });
+      fs.rmSync(path.join(w.paths.retro, 'cards'), { recursive: true });
       w.retro.run({ plan: second.id, preset: 'balanced', robot: 'c_crew' });
       await vi.waitFor(() => expect(w.store.state.retro).toMatchObject({ run: second.id, stage: 'reading' }));
       vi.advanceTimersByTime(SHOWN_MS);
@@ -255,30 +335,41 @@ describe('the retro service', () => {
   });
 
   it('classes the reads and the mutations', () => {
-    expect(['retro.status', 'retro.findings'].map((m) => classification[m as keyof typeof classification])).toEqual(['read', 'read']);
+    expect(['retro.status', 'retro.findings', 'retro.show'].map((m) => classification[m as keyof typeof classification])).toEqual(['read', 'read', 'read']);
     expect(['retro.plan', 'retro.run', 'retro.mark', 'retro.apply'].map((m) => classification[m as keyof typeof classification])).toEqual(['mutation', 'mutation', 'mutation', 'mutation']);
   });
 
-  // a finished run whose one finding changes `file`, as the judge read it
+  // a finished run whose one finding changes `file`, as the verifier read it
   function finished(w: ReturnType<typeof world>, file: string, cls: NonNullable<Finding['target']>['class'], more: Partial<Finding> = {}): Finding {
     const dir = path.join(w.paths.retro, 'runs', 'r_100');
     fs.mkdirSync(dir, { recursive: true });
     const plan: RetroPlan = {
-      id: 'r_100', created: NOW - HOUR, span: { from: 0, to: 1, label: 'x' }, focus: 'skills-reviews', scope: { exclude: { repos: [], islands: [] }, unrecorded: [] },
+      version: 2, id: 'r_100', created: NOW - HOUR, span: { from: 0, to: 1, label: 'x' }, scope: { exclude: { repos: [], islands: [] }, unrecorded: [] },
       counts: { inScope: 3, excluded: 0, otherFleets: 0, remote: 0, unrecorded: [], missing: {} }, reviews: 'no-gh', agent: 'claude', billing: 'subscription',
-      presets: [], batches: [], thin: [], pricesChecked: 'x',
+      presets: [], work: { sessions: 3, chunks: 3, cached: 0, calls: 1, prs: 0, comments: 0 }, pricesChecked: 'x',
     };
-    const f: Finding = {
-      id: 'f1', focus: 'skill-tweaks', category: 'skipped-step', title: 'publish skips the changelog', claim: 'c',
-      evidence: ['s1', 's2', 's3'].map((session) => ({ source: { agent: 'claude' as const, session, line: 1 }, quote: 'q' })), sessions: 3, prs: 0,
+    const f = finding('f1', {
+      title: 'publish skips the changelog',
+      evidence: ['s1', 's2', 's3'].map((session) => ({ source: { agent: 'claude' as const, session, at: 'L1.0' }, when: NOW, quote: 'q' })), sessions: 3, prs: 0,
       change: { kind: 'diff', summary: 'add the changelog step', text: '@@ -1,2 +1,3 @@\n # Publish\n+Update the changelog.\n 1. Tag.' },
-      target: { path: file, realPath: file, class: cls, hash: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') },
-      measure: { kind: 'none', subject: null, name: 'n', before: null, after: null }, rank: 1, ...more,
-    };
+      target: { path: file, realPath: file, class: cls, hash: crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex') }, ...more,
+    });
+    const r = report({ run: 'r_100', findings: [f] });
     fs.writeFileSync(path.join(dir, 'plan.json'), JSON.stringify(plan));
-    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify({ run: 'r_100', findings: [f], previous: [], mechanical: [], thin: [], skipped: [], usage: { budget: 1, used: 1 } }));
+    fs.writeFileSync(path.join(dir, 'report.json'), JSON.stringify(r));
+    fs.writeFileSync(path.join(dir, 'report.md'), reportMd(r, path.join(dir, 'report.md')));
     return f;
   }
+
+  it("shows a finding's section of its run's report by its number", () => {
+    const w = world();
+    finished(w, skill(path.join(makeHome(), 'skills', 'publish')), 'local');
+    const { text } = w.retro.show(1);
+    expect(text).toMatch(/^### 1\. publish skips the changelog\n/);
+    expect(text).toContain('Update the changelog.');
+    expect(text).not.toMatch(/^##? /m);
+    expect(() => w.retro.show(2)).toThrow('retro r_100 has no finding 2');
+  });
 
   const skill = (dir: string) => {
     const file = path.join(dir, 'SKILL.md');
@@ -294,7 +385,7 @@ describe('the retro service', () => {
     const r = w.retro.apply('f1');
     expect(fs.readFileSync(file, 'utf8')).toBe('# Publish\nUpdate the changelog.\n1. Tag.\n');
     expect(fs.readFileSync(r.backup, 'utf8')).toBe('# Publish\n1. Tag.\n');
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'fixed', fixedAt: NOW });
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.v2.json'), 'utf8')).f1).toMatchObject({ status: 'fixed', fixedAt: NOW });
   });
 
   it('refuses to apply to a file edited since the judge read it, and leaves it alone', () => {
@@ -339,7 +430,7 @@ describe('the retro service', () => {
     finished(w, skill(path.join(makeHome(), 'plugins', 'p', 'skills', 'publish')), 'synced');
     expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results[0]).toMatchObject({ outcome: 'proposal' });
     await w.retro.mark({ marks: [{ id: 'f1', action: 'dismiss', reason: 'wrong' }] });
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.v2.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
   });
 
   it('proposes a diff in which a value was masked, and never applies it or hands it to a robot', async () => {
@@ -410,7 +501,7 @@ describe('the retro service', () => {
     start();
     expect((await Promise.all(fixes)).map((r) => r.results[0].outcome).sort()).toEqual(['fixed', 'robot']);
     expect(robots).toHaveLength(1);
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.v2.json'), 'utf8')).f1).toMatchObject({ status: 'dismissed', reason: 'wrong' });
   });
 
   it('applies only to a local file, never to a repo, plugin or claude.ai one', () => {
@@ -430,7 +521,7 @@ describe('the retro service', () => {
     execFileSync('git', ['init', '-q', repo]);
     const f = finished(w, skill(path.join(repo, '.claude', 'skills', 'publish')), 'repo');
     await expect(w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }, { id: 'nope', action: 'fix' }] })).rejects.toThrow('no retro finding nope');
-    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.json'), 'utf8')).f1).toMatchObject({ status: 'fixed' });
+    expect(JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'ledger.v2.json'), 'utf8')).f1).toMatchObject({ status: 'fixed' });
     expect((await w.retro.mark({ marks: [{ id: 'f1', action: 'fix' }] })).results).toEqual([{ id: 'f1', outcome: 'fixed', path: f.target!.path }]);
     expect(robots).toHaveLength(1);
   });

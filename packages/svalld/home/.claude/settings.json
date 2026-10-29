@@ -25,6 +25,7 @@
       "Bash(svall retro wait:*)",
       "Bash(svall retro status:*)",
       "Bash(svall retro findings:*)",
+      "Bash(svall retro show:*)",
       "Bash(svall retro mark:*)"
     ]
   }

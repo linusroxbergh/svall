@@ -53,6 +53,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'retro.run': 'mutation',
   'retro.status': 'read',
   'retro.findings': 'read',
+  'retro.show': 'read',
   'retro.mark': 'mutation',
   'retro.apply': 'mutation',
   'usage.get': 'read',

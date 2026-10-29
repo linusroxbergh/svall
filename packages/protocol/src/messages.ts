@@ -2,7 +2,7 @@ import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { MachineId, SystemInfo } from './machines.js';
 import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
-import { DismissReason, FocusPick, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
+import { DismissReason, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
 const Id = z.object({ id: z.string() });
@@ -301,10 +301,10 @@ export const methods = {
   // the model the scribe or mission control's crew runs on `agent`'s CLI; with none, that CLI's default
   'model.set': { params: z.object({ of: z.enum(['scribe', 'home']), agent: AgentKind, model: z.string().min(1).optional() }), result: z.object({}) },
   // a retro over what the agents here did: plan reads the stores and sends nothing to a model; given exclusions or picks
-  // are saved to fleet.json. run starts the plan's batches under the approved budget; mark and apply act on findings
+  // are saved to fleet.json. run cards the plan's sessions and judges them under the approved budget; mark and apply act on findings
   'retro.plan': {
     params: z.object({
-      span: RetroSpan.default('last'), focus: FocusPick.default('skills-reviews'),
+      span: RetroSpan.default('last'),
       exclude: z.object({ repos: z.array(z.string()).optional(), islands: z.array(z.string()).optional() }).optional(),
       unrecorded: z.array(z.string()).optional(),
     }),
@@ -315,6 +315,8 @@ export const methods = {
   'retro.run': { params: z.object({ plan: z.string(), preset: z.string().optional(), budget: z.number().int().positive().optional(), robot: z.string().optional() }), result: z.object({ run: z.string() }) },
   'retro.status': { params: z.object({ run: z.string().optional() }), result: RetroStatus },
   'retro.findings': { params: z.object({ run: z.string().optional() }), result: RetroReport },
+  // finding n's section of a run's report.md, as numbered in its findings
+  'retro.show': { params: z.object({ n: z.number().int().positive(), run: z.string().optional() }), result: z.object({ text: z.string() }) },
   'retro.mark': {
     params: z.object({
       marks: z.array(z.object({ id: z.string(), action: z.enum(['fix', 'dismiss', 'later']), reason: DismissReason.optional() })

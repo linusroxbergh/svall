@@ -185,6 +185,21 @@ describe('the home template', () => {
     expect(permissions()).toEqual({ allow: ['Bash(svall status:*)', ...retro], deny: ['Bash(svall scribe sweep:*)'] });
   });
 
+  it('settings that allow svall retro findings gain svall retro show beside it', () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped = fs.readFileSync(settings, 'utf8');
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    fs.writeFileSync(settings, `${JSON.stringify({ permissions: { allow: allow.filter((r) => r !== 'Bash(svall retro show:*)') } }, null, 2)}\n`);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
+    // settings that allow no findings gain no show
+    fs.writeFileSync(settings, `${JSON.stringify({ permissions: { allow: ['Bash(svall status:*)'] } }, null, 2)}\n`);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toEqual(['Bash(svall status:*)']);
+  });
+
   // Claude Code asks before a command holding a shell variable even when a rule allows it
   it('lets the buttons run every svall command their skills name without asking, deleting an island, applying a retro finding and changing its config aside', () => {
     const svalld = path.join(repoRoot, 'packages/svalld');
@@ -207,7 +222,7 @@ describe('the home template', () => {
     const mc = path.join(makeHome(), 'mc');
     installHomeTemplate(mc, { replaceSettings: false });
     expect(fs.readFileSync(path.join(mc, '.codex/rules/svall.rules'), 'utf8'))
-      .toContain('prefix_rule(pattern = ["svall", "retro", ["plan", "run", "wait", "status", "findings", "mark"]], decision = "allow")');
+      .toContain('prefix_rule(pattern = ["svall", "retro", ["plan", "run", "wait", "status", "findings", "show", "mark"]], decision = "allow")');
   });
 
   it('allows a Codex crew exactly the svall commands a Claude crew is allowed', () => {

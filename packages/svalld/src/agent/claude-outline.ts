@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { inSpan, outliner, type Outline, type Span } from '../retro/outline.js';
+import { inSpan, outliner, type Outline, type Span, type Turn } from '../retro/outline.js';
 import { submitted } from './claude-transcript.js';
 import { orSkip } from './jsonl.js';
 
@@ -18,6 +18,9 @@ const INTERRUPT = '[Request interrupted by user';
 // a skill's text, loaded after its Skill call or after the person typed its slash command
 const SKILL_TEXT = 'Base directory for this skill:';
 const HOOK_ERROR = /^hook_\w*error$/;
+const EXIT = /^Exit code (\d+)\n?/;
+// a background agent's final message comes in a notification naming its call
+const NOTIFIED = /<tool-use-id>([^<]+)<\/tool-use-id>[\s\S]*?<result>([\s\S]*?)<\/result>/;
 const WRITES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 function lines(text: string): { n: number; e: Line }[] {
@@ -39,7 +42,7 @@ function worked(out: ReturnType<typeof outliner>, b: Block, cwd?: string): void 
   const input = (b.input ?? {}) as { file_path?: unknown; notebook_path?: unknown; command?: unknown };
   const file = input.file_path ?? input.notebook_path;
   if (WRITES.has(b.name ?? '') && typeof file === 'string') out.wrote(file, cwd);
-  if (b.name === 'Bash' && typeof input.command === 'string') out.ran(input.command, cwd);
+  if (b.name === 'Bash' && typeof input.command === 'string') out.ranIn(input.command, cwd);
 }
 
 function subagentCounts(text: string, span: Span, out: ReturnType<typeof outliner>): { tools: number; errors: number } {
@@ -59,12 +62,12 @@ function subagentCounts(text: string, span: Span, out: ReturnType<typeof outline
 /** `subagents` are the texts of the session's subagent files; their tool calls and errors count toward its outline. */
 export function outlineClaude(text: string, file: string, span: Span, subagents: string[] = []): Outline {
   const out = outliner();
-  const calls = new Map<string, { name: string; command?: string }>();
+  const calls = new Map<string, { name: string; turn: Turn; command?: string; agent?: string }>();
   let model: string | undefined, cwd: string | undefined, branch: string | undefined;
   // a cost-state line has no time of its own; it holds what the session had cost by the line before it
   let lastAt = NaN, costBefore = 0, costAfter: number | undefined;
   // a slash command just typed, which the next line shows to be a skill when it loads one
-  let typed: { name: string; n: number; at: number } | undefined;
+  let typed: { name: string; n: number; at: number; id: string } | undefined;
   for (const { n, e } of lines(text)) {
     if (e.type === 'cost-state') {
       if (typeof e.totalCostUSD !== 'number') continue;
@@ -77,46 +80,61 @@ export function outlineClaude(text: string, file: string, span: Span, subagents:
     if (!inSpan(at, span) || e.isSidechain) continue;
     const command = typed;
     typed = undefined;
-    if (e.type === 'pr-link' && typeof e.prUrl === 'string') out.pr(e.prUrl);
+    if (e.type === 'pr-link' && typeof e.prUrl === 'string') out.pr(e.prUrl, at);
     if (e.type === 'attachment' && HOOK_ERROR.test(e.attachment?.type ?? '')) out.hookError();
     if (e.type !== 'user' && e.type !== 'assistant' && e.type !== 'attachment') continue;
     cwd = e.cwd ?? cwd;
     branch = e.gitBranch ?? branch;
     const said = orSkip(() => submitted(e));
     if (said) {
-      out.prompt(n, at, said);
+      const t = out.prompt(n, at, said);
       const name = /^\/(\S+)/.exec(said)?.[1];
-      if (name) typed = { name, n, at };
+      if (name) typed = { name, n, at, id: t.id };
       continue;
     }
     if (e.type === 'assistant') {
       if (e.message?.model && e.message.model !== '<synthetic>') model = e.message.model;
-      for (const b of blocks(e)) {
-        if (b.type === 'text' && b.text?.trim()) out.said(n, at, b.text.trim());
-        if (b.type !== 'tool_use') continue;
+      blocks(e).forEach((b, i) => {
+        if (b.type === 'text' && b.text?.trim()) out.said(n, at, b.text.trim(), i);
+        if (b.type !== 'tool_use') return;
         const name = b.name ?? 'tool';
-        const input = (b.input ?? {}) as { skill?: unknown; command?: unknown };
-        out.tool(n, at, name, b.input);
+        const input = (b.input ?? {}) as { skill?: unknown; command?: unknown; subagent_type?: unknown };
+        const turn = out.tool(n, at, name, b.input, i);
         worked(out, b, cwd);
-        calls.set(b.id ?? '', { name, ...(name === 'Bash' && typeof input.command === 'string' && { command: input.command }) });
-        if (name === 'Skill' && typeof input.skill === 'string') out.skill(input.skill, n, at);
-      }
+        calls.set(b.id ?? '', {
+          name, turn, ...(name === 'Bash' && typeof input.command === 'string' && { command: input.command }),
+          ...(typeof input.subagent_type === 'string' && { agent: input.subagent_type }),
+        });
+        if (name === 'Skill' && typeof input.skill === 'string') out.skill(input.skill, n, at, { id: turn.id });
+      });
       continue;
     }
     if (e.type !== 'user') continue;
     const first = textOf(typeof e.message?.content === 'string' ? e.message.content : blocks(e).find((b) => b.type === 'text')?.text);
     if (first.startsWith(INTERRUPT)) out.interrupt(n, at);
-    if (e.isMeta && command && first.startsWith(SKILL_TEXT)) out.skill(command.name, command.n, command.at);
-    for (const b of blocks(e)) {
-      if (b.type !== 'tool_result') continue;
+    if (e.isMeta && command && first.startsWith(SKILL_TEXT)) out.skill(command.name, command.n, command.at, { id: command.id });
+    if (e.origin?.kind === 'task-notification') {
+      const [, id, result] = NOTIFIED.exec(first) ?? [];
+      const agent = id ? calls.get(id)?.agent : undefined;
+      if (agent && result?.trim()) out.subagent(n, at, agent, result.trim());
+    }
+    blocks(e).forEach((b, i) => {
+      if (b.type !== 'tool_result') return;
       const call = calls.get(b.tool_use_id ?? '');
       if (rejection(b)) {
-        out.rejected(n, at, call?.name ?? 'tool');
-        continue;
+        out.rejected(n, at, call?.name ?? 'tool', i);
+        return;
       }
-      if (b.is_error) out.error(n, at, textOf(b.content));
-      if (call?.command !== undefined) out.command(call.command, Boolean(b.is_error));
-    }
+      const said = textOf(b.content);
+      if (call?.command !== undefined) {
+        const exit = b.is_error ? EXIT.exec(said) : null;
+        out.ran(call.turn, n, at, call.command, { failed: Boolean(b.is_error), ...(exit && { exit: Number(exit[1]) }), out: exit ? said.slice(exit[0].length) : said }, i);
+        return;
+      }
+      if (b.is_error) out.error(n, at, said, i);
+      // a background agent answers with its launch, and its final message comes later
+      else if (call?.agent && said && !(e as { toolUseResult?: { isAsync?: unknown } }).toolUseResult?.isAsync) out.subagent(n, at, call.agent, said, i);
+    });
   }
   const counts = subagents.map((s) => subagentCounts(s, span, out));
   const o = out.outline({ agent: 'claude', session: path.basename(file, '.jsonl'), file, model, cwd, branch, costUsd: costAfter === undefined ? undefined : costAfter - costBefore });

@@ -60,17 +60,19 @@ describe('outlineClaude', () => {
   it('a skill run followed by an interrupt is marked interrupt', () => {
     const o = outlineClaude(claude, file, span);
     // typed as /ship-it, it runs from that prompt to the next
-    expect(o.skills[0]).toEqual({ name: 'ship-it', line: 10, at: at('09:00:30.000'), end: at('09:05:00.000'), next: 'interrupt', replyMs: 240_000 });
+    expect(o.skills[0]).toEqual({ name: 'ship-it', id: 'L10.0', line: 10, at: at('09:00:30.000'), end: at('09:05:00.000'), next: 'interrupt', replyMs: 240_000 });
     expect(o.skills.map((s) => s.name)).toEqual(['ship-it', 'babysit-pr']);
     expect([o.interrupts, o.rejected, o.hookErrors]).toEqual([2, 1, 1]);
-    expect(o.turns.filter((t) => t.role === 'error').map((t) => t.text)).toEqual(['[rejected] Bash', 'Exit code 1\nFAIL test/one.test.ts']);
-    // a rejected command never ran
-    expect(o.commands).toEqual([{ text: 'pnpm test', failed: true }]);
+    expect(o.turns.filter((t) => t.role === 'error').map((t) => t.text)).toEqual(['[rejected] Bash']);
+    // a rejected command never ran, and a failed one's result is on its call
+    const call = o.turns.find((t) => t.cmd)!;
+    expect(call.cmd).toEqual({ text: 'pnpm test', failed: true, exit: 1, out: 'FAIL test/one.test.ts' });
+    expect(o.commands).toEqual([{ id: call.id, at: call.at, text: 'pnpm test', failed: true, exit: 1, out: 'FAIL test/one.test.ts' }]);
   });
 
   it('a reply within two minutes is marked reply', () => {
     expect(outlineClaude(claude, file, span).skills[1]).toEqual({
-      name: 'babysit-pr', line: 16, at: at('09:05:05.000'), end: at('09:07:00.000'), next: 'reply', replyMs: 60_000,
+      name: 'babysit-pr', id: 'L16.0', line: 16, at: at('09:05:05.000'), end: at('09:07:00.000'), next: 'reply', replyMs: 60_000,
     });
     const slow = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
       + assistant([{ type: 'tool_use', id: 't1', name: 'Skill', input: { skill: 'babysit-pr' } }], '2026-10-26T09:00:05.000Z')
@@ -81,20 +83,58 @@ describe('outlineClaude', () => {
     expect(run.replyMs).toBe(180_000);
   });
 
-  it('clips agent text to 1500 and tool input to 300 and drops tool output', () => {
-    const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
+  it('clips user text to 4000, agent text to 1500, tool input to 300 and drops tool output, counting the prose it clipped', () => {
+    const text = user('u'.repeat(5000), '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
       + assistant([{ type: 'text', text: 'a'.repeat(5000) }], '2026-10-26T09:00:01.000Z')
       + assistant([{ type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'x'.repeat(1000) } }], '2026-10-26T09:00:02.000Z')
       + user([{ type: 'tool_result', tool_use_id: 't1', content: 'OUTPUT-MARKER' }], '2026-10-26T09:00:03.000Z')
       + user([{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: 'e'.repeat(1000) }], '2026-10-26T09:00:04.000Z');
     const o = outlineClaude(text, file, span);
-    const [agent, tool, error] = o.turns.slice(1);
-    expect(agent).toMatchObject({ role: 'agent', line: 2 });
-    expect(agent.text).toHaveLength(CLIP.text);
+    const [prompt, agent, tool, error] = o.turns;
+    expect(prompt).toMatchObject({ role: 'user', clipped: true });
+    expect(prompt.text).toHaveLength(CLIP.user);
+    expect(agent).toMatchObject({ role: 'agent', line: 2, clipped: true });
+    expect(agent.text).toHaveLength(CLIP.agent);
     expect(tool.text.startsWith('Read {"file_path":"xxx')).toBe(true);
     expect(tool.text).toHaveLength('Read '.length + CLIP.input);
+    expect(tool).toMatchObject({ name: 'Read', file: 'x'.repeat(1000) });
+    expect(tool.clipped).toBeUndefined();
     expect(error.text).toHaveLength(CLIP.error);
+    expect(o.clipped).toBe(2);
     expect(o.turns.some((t) => t.text.includes('OUTPUT-MARKER'))).toBe(false);
+  });
+
+  it('gives each turn its line and block as L<line>.<block>', () => {
+    const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
+      + assistant([{ type: 'text', text: 'checking' }, { type: 'tool_use', id: 't1', name: 'Read', input: { file_path: 'a.ts' } }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'ls' } }], '2026-10-26T09:00:01.000Z')
+      + user([{ type: 'tool_result', tool_use_id: 't1', content: 'x' }, { type: 'tool_result', tool_use_id: 't2', is_error: true, content: 'Exit code 2\nls: nope: No such file or directory' }], '2026-10-26T09:00:02.000Z');
+    const o = outlineClaude(text, file, span);
+    expect(o.turns.map((t) => t.id)).toEqual(['L1.0', 'L2.0', 'L2.1', 'L2.2']);
+    expect(o.commands).toEqual([{ id: 'L2.2', at: at('09:00:01.000'), text: 'ls', failed: true, exit: 2, out: 'ls: nope: No such file or directory' }]);
+    const all = outlineClaude(claude, file, span).turns.map((t) => t.id);
+    expect(new Set(all).size).toBe(all.length);
+  });
+
+  it("clips a failed command's output to 1000, and keeps a command that worked without its output", () => {
+    const text = assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'pnpm test' } }, { type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'pnpm build' } }], '2026-10-26T09:00:01.000Z')
+      + user([{ type: 'tool_result', tool_use_id: 't1', is_error: true, content: `Exit code 1\n${'f'.repeat(3000)}` }, { type: 'tool_result', tool_use_id: 't2', content: 'built' }], '2026-10-26T09:00:02.000Z');
+    const [failed, worked] = outlineClaude(text, file, span).commands;
+    expect(failed.out).toHaveLength(CLIP.failed);
+    expect(worked).toEqual({ id: 'L1.1', at: at('09:00:01.000'), text: 'pnpm build', failed: false });
+  });
+
+  it("reads a subagent's final message into its parent, from its result or from the notification a background one sends", () => {
+    const call = (id: string, type: string) => assistant([{ type: 'tool_use', id, name: 'Agent', input: { subagent_type: type, prompt: 'review it' } }], '2026-10-26T09:00:01.000Z');
+    const text = call('t1', 'code-reviewer')
+      + user([{ type: 'tool_result', tool_use_id: 't1', content: [{ type: 'text', text: 'Two findings: a missing test.' }] }], '2026-10-26T09:00:02.000Z')
+      + call('t2', 'general-purpose')
+      + user([{ type: 'tool_result', tool_use_id: 't2', content: [{ type: 'text', text: 'Async agent launched successfully.' }] }], '2026-10-26T09:00:03.000Z', { toolUseResult: { isAsync: true, status: 'async_launched' } })
+      + user('<task-notification>\n<task-id>x</task-id>\n<tool-use-id>t2</tool-use-id>\n<status>completed</status>\n<result>All clear.</result>\n</task-notification>', '2026-10-26T09:01:00.000Z', { origin: { kind: 'task-notification' } });
+    const o = outlineClaude(text, file, span);
+    expect(o.turns.filter((t) => t.role === 'subagent').map((t) => [t.id, t.text])).toEqual([
+      ['L2.0', 'SUBAGENT code-reviewer: Two findings: a missing test.'], ['L5.0', 'SUBAGENT general-purpose: All clear.'],
+    ]);
+    expect(o.prompts).toEqual([]);
   });
 
   it("leaves out a sidechain's lines", () => {
@@ -105,22 +145,28 @@ describe('outlineClaude', () => {
     expect(o.tools).toBe(0);
   });
 
-  it('keeps a PR body a gh call writes to 1500, as the rules it is judged by need it', () => {
-    const body = `gh pr create --title t --body "${'b'.repeat(3000)}"`;
+  it('keeps a PR body a gh call writes to 8000, as the rules it is judged by need it, and counts its clip', () => {
+    const body = `gh pr create --title t --body "${'b'.repeat(9000)}"`;
     const text = user('go', '2026-10-26T09:00:00.000Z', { origin: { kind: 'human' } })
       + assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: body } }], '2026-10-26T09:00:01.000Z');
-    expect(outlineClaude(text, file, span).turns[1].text).toHaveLength('Bash '.length + CLIP.text);
+    const o = outlineClaude(text, file, span);
+    expect(o.turns[1].text).toHaveLength('Bash '.length + CLIP.body);
+    expect([o.turns[1].clipped, o.clipped]).toEqual([true, 1]);
   });
 
   it('finds PR links', () => {
     // one in what the agent said, one Claude Code noted for the session
-    expect(outlineClaude(claude, file, span).prs).toEqual(['https://github.com/acme/app/pull/42', 'https://github.com/acme/app/pull/43']);
+    const urls = (o: { prs: { url: string }[] }) => [...new Set(o.prs.map((p) => p.url))];
+    const prs = outlineClaude(claude, file, span).prs;
+    expect(urls({ prs })).toEqual(['https://github.com/acme/app/pull/42', 'https://github.com/acme/app/pull/43']);
+    // each link with the time it was seen
+    expect(prs[0].at).toBeGreaterThanOrEqual(span.from);
     const said = assistant([{ type: 'text', text: 'see https://github.com/acme/app/pull/42#discussion_r1 and https://github.com/acme/app/pull/42.' }], '2026-10-26T09:00:01.000Z');
-    expect(outlineClaude(said, file, span).prs).toEqual(['https://github.com/acme/app/pull/42']);
+    expect(outlineClaude(said, file, span).prs).toEqual([{ url: 'https://github.com/acme/app/pull/42', at: at('09:00:01.000') }, { url: 'https://github.com/acme/app/pull/42', at: at('09:00:01.000') }]);
     // without the user:password@ a remote's URL carries, said or in a tool input that is masked first
     const remote = assistant([{ type: 'text', text: 'opened https://bot:t0ken@github.com/acme/app/pull/5' }], '2026-10-26T09:00:01.000Z')
       + assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'gh pr view https://bot:t0ken@github.com/acme/app/pull/6' } }], '2026-10-26T09:00:02.000Z');
-    expect(outlineClaude(remote, file, span).prs).toEqual(['https://github.com/acme/app/pull/5', 'https://github.com/acme/app/pull/6']);
+    expect(urls(outlineClaude(remote, file, span))).toEqual(['https://github.com/acme/app/pull/5', 'https://github.com/acme/app/pull/6']);
   });
 
   it("notes where it worked: the folders of the files it edited and those its commands ran in, a subagent's too", () => {
@@ -141,15 +187,19 @@ describe('outlineCodex', () => {
     const o = outlineCodex(text, rollout, span);
     expect(o).toMatchObject({ agent: 'codex', session: '01a1c0de-0000-7000-8000-000000000001', model: 'gpt-5.5', cwd: '/w/app', branch: 'fix-lint' });
     expect(o.costUsd).toBeUndefined();
-    // a $name in a prompt runs that skill too; both end where the next prompt starts
+    // a $name in a prompt runs that skill too; both end where the next prompt starts, and a read of SKILL.md is inferred
     expect(o.skills).toEqual([
-      { name: 'ship-it', line: 5, at: Date.parse('2026-10-26T10:00:01.000Z'), end: Date.parse('2026-10-26T10:01:00.100Z'), next: 'interrupt', replyMs: 40_100 },
-      { name: 'review', line: 7, at: Date.parse('2026-10-26T10:00:03.000Z'), end: Date.parse('2026-10-26T10:01:00.100Z'), next: 'interrupt', replyMs: 40_100 },
+      { name: 'ship-it', id: 'L5.0', line: 5, at: Date.parse('2026-10-26T10:00:01.000Z'), end: Date.parse('2026-10-26T10:01:00.100Z'), next: 'interrupt', replyMs: 40_100 },
+      { name: 'review', id: 'L6.0', line: 7, at: Date.parse('2026-10-26T10:00:03.000Z'), end: Date.parse('2026-10-26T10:01:00.100Z'), next: 'interrupt', replyMs: 40_100, inferred: true },
     ]);
     expect(o.prompts.map((t) => t.text)).toEqual(['use $ship-it to land the lint fix', 'stop, just open the PR']);
     expect([o.tools, o.errors, o.interrupts, o.rejected]).toEqual([2, 1, 1, 0]);
-    expect(o.commands).toEqual([{ text: 'cat /u/.codex/skills/review/SKILL.md', failed: false }, { text: 'pnpm lint', failed: true }]);
-    expect(o.prs).toEqual(['https://github.com/acme/app/pull/7']);
+    // each command's result is on the call that ran it
+    expect(o.commands).toEqual([
+      { id: 'L6.0', at: Date.parse('2026-10-26T10:00:02.000Z'), text: 'cat /u/.codex/skills/review/SKILL.md', failed: false, exit: 0 },
+      { id: 'L9.0', at: Date.parse('2026-10-26T10:00:04.000Z'), text: 'pnpm lint', failed: true, exit: 1, out: '2 lint errors' },
+    ]);
+    expect(o.prs.map((p) => p.url)).toEqual(['https://github.com/acme/app/pull/7']);
     expect(o.turns.some((t) => t.text.includes('SKILL-BODY-MARKER') || t.text.includes('environment_context'))).toBe(false);
   });
 
@@ -195,10 +245,11 @@ describe('outlineOpencode', () => {
     expect(o.costUsd).toBeCloseTo(0.3);
     expect(o.prompts.map((t) => [t.line, t.text])).toEqual([[3, 'review the branch before I merge'], [6, 'fix lint first']]);
     // the declined call came before the interrupt
-    expect(o.skills).toEqual([{ name: 'deep-review', line: 4, at: 1793012401500, end: 1793012460000, next: 'rejected', replyMs: 55_000 }]);
+    expect(o.skills).toEqual([{ name: 'deep-review', id: 'L4.1', line: 4, at: 1793012401500, end: 1793012460000, next: 'rejected', replyMs: 55_000 }]);
     expect([o.tools, o.errors, o.interrupts, o.rejected]).toEqual([3, 1, 1, 1]);
-    expect(o.commands).toEqual([{ text: 'pnpm lint', failed: true }]);
-    expect(o.prs).toEqual(['https://github.com/acme/app/pull/9']);
+    // a part's id is its message's place and its own
+    expect(o.commands).toEqual([{ id: 'L4.2', at: 1793012402000, text: 'pnpm lint', failed: true, exit: 1, out: '2 lint errors' }]);
+    expect(o.prs.map((p) => p.url)).toEqual(['https://github.com/acme/app/pull/9']);
     expect(o.turns.some((t) => /MARKER|old/.test(t.text))).toBe(false);
   });
 

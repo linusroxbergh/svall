@@ -32,7 +32,8 @@ export const hintLabel = (c: Robot): string => (c.codexDaemon ? '--no-daemon' : 
 
 export function retroText(retro: FleetState['retro'], id: string): string | undefined {
   if (retro?.robot !== id) return undefined;
-  return retro.stage === 'reading' ? `retro reading ${retro.done}/${retro.total}` : `retro ${retro.stage}`;
+  const used = retro.used ? ` · ${retro.used >= 1e6 ? `${(retro.used / 1e6).toFixed(1)}M` : `${Math.round(retro.used / 1e3)}k`}` : '';
+  return `${retro.stage === 'reading' ? `retro reading ${retro.done}/${retro.total}` : `retro ${retro.stage}`}${used}`;
 }
 
 // idle and a bare shell read from the ring; every other status is spelled out

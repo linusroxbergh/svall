@@ -28,6 +28,9 @@ describe('retroText', () => {
     expect(retroText({ ...retro, stage: 'judging' }, 'c0')).toBe('retro judging');
     expect(retroText({ ...retro, stage: 'done' }, 'c0')).toBe('retro done');
     expect(retroText({ ...retro, stage: 'failed' }, 'c0')).toBe('retro failed');
+    // with the tokens used so far
+    expect(retroText({ ...retro, done: 84, total: 194, used: 410_000 }, 'c0')).toBe('retro reading 84/194 · 410k');
+    expect(retroText({ ...retro, stage: 'judging', used: 1_640_000 }, 'c0')).toBe('retro judging · 1.6M');
     expect(retroText(retro, 'c1')).toBeUndefined();
     expect(retroText({ ...retro, robot: undefined }, 'c0')).toBeUndefined();
     expect(retroText(undefined, 'c0')).toBeUndefined();

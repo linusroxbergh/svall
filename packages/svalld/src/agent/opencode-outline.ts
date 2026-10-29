@@ -37,30 +37,31 @@ export function outlineOpencode(exported: unknown, span: Span): Outline {
     if (m.type !== 'assistant') return;
     cost += m.cost ?? 0;
     if (m.model?.id) model = m.model.providerID ? `${m.model.providerID}/${m.model.id}` : m.model.id;
-    for (const c of m.content ?? []) {
+    (m.content ?? []).forEach((c, i) => {
       const t = c.time?.created ?? at;
-      if (c.type === 'text' && c.text?.trim()) out.said(n, t, c.text.trim());
-      if (c.type !== 'tool') continue;
+      if (c.type === 'text' && c.text?.trim()) out.said(n, t, c.text.trim(), i);
+      if (c.type !== 'tool') return;
       const name = c.name ?? 'tool';
       const s = c.state ?? {};
-      out.tool(n, t, name, s.input);
+      const call = out.tool(n, t, name, s.input, i);
       if (s.error?.type === 'aborted' && s.error.message?.startsWith(DECLINED)) {
-        out.rejected(n, t, name);
-        continue;
+        out.rejected(n, t, name, i);
+        return;
       }
       const skill = s.input?.id ?? s.metadata?.name;
-      if (name === 'skill' && typeof skill === 'string') out.skill(skill, n, t);
-      const failed = s.status === 'error' || (typeof s.metadata?.exit === 'number' && s.metadata.exit !== 0);
-      if (failed) out.error(n, t, s.error?.message ?? texts(s.content));
+      if (name === 'skill' && typeof skill === 'string') out.skill(skill, n, t, { id: call.id });
+      const exit = s.metadata?.exit;
+      const failed = s.status === 'error' || (typeof exit === 'number' && exit !== 0);
+      const said = s.error?.message ?? texts(s.content);
       if (SHELLS.has(name) && typeof s.input?.command === 'string') {
-        out.command(s.input.command, failed);
-        out.ran(s.input.command, dir);
-      }
-      if (!WRITES.has(name)) continue;
+        out.ran(call, n, t, s.input.command, { failed, ...(typeof exit === 'number' && { exit }), out: said }, i);
+        out.ranIn(s.input.command, dir);
+      } else if (failed) out.error(n, t, said, i);
+      if (!WRITES.has(name)) return;
       const file = s.input?.path ?? s.input?.filePath;
       if (typeof file === 'string') out.wrote(file, dir);
       if (typeof s.input?.patchText === 'string') for (const [, f] of s.input.patchText.matchAll(PATCHED)) out.wrote(f, dir);
-    }
+    });
   });
   return out.outline({ agent: 'opencode', session: info?.id ?? '', file: '', model, cwd: dir, costUsd: cost });
 }
