@@ -134,6 +134,8 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const said = cut > 0 ? whole!.slice(0, cut) : whole;
   const more = cut > 0 ? whole!.slice(cut + 2) : row.action && whole;
   const idle = !run.running;
+  // no upgrade from a row while the machine runs a newer release or serves another Mac
+  const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action);
   // the rows svalld answers a change with go to the run the change was made in, known by its args, which its rows keep,
   // or to a check of the machine since
   const take = () => {
@@ -195,10 +197,10 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
-      ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !row.action && idle ? (
+      ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? (
         <button className="btn set-open" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
           onClick={() => startHost('upgrade', { name })}>Set up</button>
-      ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && idle ? (
+      ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? (
         <button className="btn set-open" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
           onClick={() => startHost('upgrade', { name })}>Repair</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (

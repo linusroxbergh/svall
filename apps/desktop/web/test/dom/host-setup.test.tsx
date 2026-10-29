@@ -286,11 +286,12 @@ test('a check row whose agent is behind on this Mac updates it here, after the o
 
 test("a check row that setup there fixes offers Repair, which installs this Mac's release there again, while the machine runs that release", () => {
   render(<HostSetup />);
-  const check = (release: 'ok' | 'fail') => act(() => {
+  const check = (release: 'ok' | 'fail', more: HostStep[] = []) => act(() => {
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
     store.getState().toggleHost(true, 'trift');
     store.getState().hostStarted('doctor', { name: 'trift' });
     store.getState().hostStep('doctor', { step: 'release', status: release, detail: release === 'ok' ? '0.21.0, as on this Mac' : '0.20.0 there; this Mac runs 0.21.0' });
+    for (const s of more) store.getState().hostStep('doctor', s);
     store.getState().hostStep('doctor', { step: 'hooks', status: 'fail', detail: 'not installed in /home/ada/.claude/settings.json: svall setup', run: 'svall setup' });
     store.getState().hostDone('doctor', 1);
   });
@@ -301,6 +302,24 @@ test("a check row that setup there fixes offers Repair, which installs this Mac'
   // another release there is the release row's upgrade to make
   check('fail');
   expect(screen.queryByTestId('host-repair-hooks')).toBeNull();
+
+  // another Mac's worker keeps its setup to run there
+  check('ok', [{ step: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift' }]);
+  expect(screen.queryByTestId('host-repair-hooks')).toBeNull();
+  expect(screen.getByTestId('host-terminal-hooks').textContent).toBe('Open terminal');
+
+  // an add's agent row whose fix is setup there keeps its terminal
+  act(() => {
+    store.getState().hostStarted('add', { name: 'trift', ssh: 'ada@trift' });
+    store.getState().hostStep('add', { step: 'release', status: 'ok', detail: '0.21.0' });
+    store.getState().hostStep('add', {
+      step: 'claude', status: 'warn', detail: '2.1.300, logged in; the hooks check there says not installed in /home/ada/.claude/settings.json',
+      action: 'ssh ada@trift, then svall setup', run: 'svall setup',
+    });
+    store.getState().hostDone('add', 0);
+  });
+  expect(screen.queryByTestId('host-repair-claude')).toBeNull();
+  expect(screen.getByTestId('host-terminal-claude').textContent).toBe('Open terminal');
 });
 
 test('a step whose fix is to forget the machine offers Forget, which asks first', () => {
@@ -333,7 +352,7 @@ test('a check that finds the machine on another release offers its upgrade on th
   expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
 });
 
-test("a check that finds the machine not running this fleet's robots offers the upgrade that sets it up, and not when another Mac holds it", () => {
+test("a check that finds the machine not running this fleet's robots offers the upgrade that sets it up, and not when another Mac holds it or it runs a newer release", () => {
   render(<HostSetup />);
   act(() => {
     store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
@@ -348,6 +367,15 @@ test("a check that finds the machine not running this fleet's robots offers the 
   act(() => {
     store.getState().hostStarted('doctor', { name: 'trift' });
     store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryByTestId('host-worker')).toBeNull();
+
+  // an upgrade there would go back to this Mac's older release
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'release', status: 'fail', detail: "0.22.0 there, newer than this Mac's 0.21.0", action: 'update svall on this Mac' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
     store.getState().hostDone('doctor', 1);
   });
   expect(screen.queryByTestId('host-worker')).toBeNull();
