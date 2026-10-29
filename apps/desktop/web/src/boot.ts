@@ -13,6 +13,7 @@ import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
 import { followResources } from './resources/load.js';
+import { applyShow } from './show.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
@@ -54,9 +55,12 @@ function createApp(): AppContext {
       if (status === 'offline' || status === 'outdated') bridge.send({ type: 'connection' });
     };
     const fleet = followFleet(a, store);
+    // one show at a time, so a file the last one opens is in before the next one moves the panes
+    let shows = Promise.resolve();
     a.onEvent = (e) => {
       if (e.event === 'repo.changed') { repoWatch?.emit(e.data.id); return; }
       if (e.event === 'mobile.phones') { store.getState().setPhones(e.data.phones); return; }
+      if (e.event === 'app.show') { shows = shows.then(() => applyShow({ api: a, store, bridge }, e.data)).catch((err: Error) => console.warn(`app.show: ${err.message}`)); return; }
       if (e.event === 'state.patch') fleet.patch(e.data.ops);
     };
     // a launch that named no fleet offers the others, once, when there are any; svalld's list settles it, and so does

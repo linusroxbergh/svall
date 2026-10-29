@@ -45,8 +45,9 @@ export async function openFile(d: FilesDeps, id: string, path: string): Promise<
 }
 
 /** A path followed in the robot's terminal `beside`, as its agent prints it: relative to its cwd, and maybe ending in :line or :line:col.
- *  Files opens on the other side, a file at its line, a folder as the tree's top; a file the editor cannot show goes to the Mac. */
-export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' | 'send'> }, id: string, text: string, beside: Surface): Promise<void> {
+ *  Files opens on the other side, a file at its line, a folder as the tree's top; a file the editor cannot show goes to the Mac.
+ *  Answers the place of the file the editor opened. */
+export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' | 'send'> }, id: string, text: string, beside: Surface): Promise<string | undefined> {
   const c = d.store.getState().fleet.robots[id];
   if (!c) return;
   const root = rootOf(c);
@@ -70,6 +71,7 @@ export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' |
   }
   d.store.getState().openFile(id, path);
   if (line) placeLine(id, path, Number(line));
+  return path;
 }
 
 /** The cursor goes to the first place `find` stands; text that is not there moves nothing. */

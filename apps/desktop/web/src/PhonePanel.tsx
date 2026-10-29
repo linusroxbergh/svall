@@ -31,9 +31,10 @@ export function MobileSwitch({ testId }: { testId: string }) {
 /** Once the fleet is served, the link to reach it by; the panel's title carries the switch. */
 export function MobilePanel() {
   const status = useApp((s) => s.mobile);
+  const redact = useApp((s) => s.phoneRedact);
   const [copied, setCopied] = useState(false);
   const revert = useRef<number>(undefined);
-  useEffect(() => { loadMobileStatus(deps()); return () => window.clearTimeout(revert.current); }, []);
+  useEffect(() => { loadMobileStatus(deps()); return () => { window.clearTimeout(revert.current); app.store.getState().setPhoneRedact(undefined); }; }, []);
   const copy = () => {
     if (!status?.url) return;
     // the copied link pairs the phone, as the QR code does
@@ -48,9 +49,9 @@ export function MobilePanel() {
     <div className="mob" data-testid="mobile-body">
       {status.serving && (
         <>
-          {status.qr && <img className="mob-qr" src={status.qr} alt={`QR code for ${status.url}`} />}
+          {status.qr && <img className="mob-qr" src={redact ?? status.qr} alt={`QR code for ${status.url}`} />}
           <button className="mob-url" data-testid="mobile-url" data-tip="Copy the link" onClick={copy}>
-            {copied ? 'copied' : status.url}
+            {redact ? <><i className="mob-mask" /><i className="mob-mask" /></> : copied ? 'copied' : status.url}
           </button>
           <div className="mob-here" data-testid="mobile-here" data-live={status.phones.length > 0 || undefined}>{phonesHere(status.phones)}</div>
         </>
@@ -58,7 +59,7 @@ export function MobilePanel() {
       <div className="use-note">
         {status.serving ? <>
           {status.pageMissing && <><b data-testid="mobile-nopage">{NO_PAGE}</b>{' '}</>}
-          {status.logins.length ? `Only ${status.logins.join(', ')} can connect. To add others, list everyone in mobile.logins in fleet.json and restart the daemon.` : 'No login can connect yet. Add one to mobile.logins in fleet.json and restart the daemon.'}
+          {status.logins.length ? <>Only {redact ? <i className="mob-mask" /> : status.logins.join(', ')} can connect. To add others, list everyone in mobile.logins in fleet.json and restart the daemon.</> : 'No login can connect yet. Add one to mobile.logins in fleet.json and restart the daemon.'}
           {' '}On the phone: open the link, then Share → Add to Home Screen.
         </> : OFF}
       </div>

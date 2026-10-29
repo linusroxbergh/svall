@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
@@ -29,10 +29,12 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal };
+// the app windows on this fleet, each told what to show; show answers how many were
+export type AppWindows = { show(p: AppShow): number };
 
-// what starts launchd agents and names fleets stays with the Mac
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar'] satisfies MethodName[]);
+// what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -255,6 +257,10 @@ const handlers: Handlers = {
   'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
   'system.info': (_p, { systemInfo }) => systemInfo(),
+  'app.show': (p, { store, apps }) => {
+    if (p.id !== undefined && !Object.hasOwn(store.state.robots, p.id)) throw new ApiError('not_found', `no robot ${p.id}`);
+    return { apps: apps?.show(p) ?? 0 };
+  },
 };
 
 /** What this machine is and runs, as system.info answers here and a worker answers its home. */
@@ -292,7 +298,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
 }
 
 // what a worker sends on from a CLI in one of its panes: never the machines, the fleets beside this one or the phone link
-const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe']);
+const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe', 'app']);
 
 /** The result of a call a worker sends on, or its error thrown as the client would read it. */
 export async function answer(method: string, params: unknown, ctx: Ctx): Promise<unknown> {
