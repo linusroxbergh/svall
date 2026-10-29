@@ -275,8 +275,8 @@ export const methods = {
     params: z.object({ machine: MachineId, item: z.string(), fields: z.array(z.string()), on: z.boolean() }),
     result: z.object({ rows: z.array(SetupRow) }),
   },
-  // runs each agent's own update on `machine`, one after another, and answers once all have ended
-  'machines.updateAgents': { params: z.object({ machine: MachineId, kinds: z.array(AgentKind).min(1) }), result: z.object({}) },
+  // runs each agent's own update on `machine`, or on this Mac without one, one after another, and answers once all have ended
+  'machines.updateAgents': { params: z.object({ machine: MachineId.optional(), kinds: z.array(AgentKind).min(1) }), result: z.object({}) },
   // sets a variable for the fleet's robots on `machine`, from `value` or, with fromMac, from this Mac's own; answers the setup rows
   'machines.setVar': {
     params: z.object({ machine: MachineId, name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), value: z.string().min(1).max(4096).optional(), fromMac: z.literal(true).optional() }),

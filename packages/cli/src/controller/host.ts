@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
+import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
@@ -369,7 +369,7 @@ function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: st
   return {
     value: undefined, status: 'warn',
     detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a move there and back needs the same release on both`,
-    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`on this Mac, run ${here.join(', then ')}`] : [])].join('; '),
+    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`${ON_THIS_MAC}${here.join(', then ')}`] : [])].join('; '),
     ...(there.length > 0 && { run: there.join(' && ') }),
   };
 }
@@ -672,7 +672,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
         ...(newer && { action: 'update svall on this Mac' }),
       });
       const refused = notOurs(v, entry.record.name, d);
-      found(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
+      found(refused ? { name: 'worker', status: 'fail', detail: refused.detail, action: refused.action }
         : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
           : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: svall host upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
@@ -803,9 +803,6 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
   await run.step('enrol', async () => {
     const { far, units, off } = await claimUnits(master, { name, home: entry.record.home, svallBase: entry.record.svallBase }, d);
     if (units.includes('worker') && servesUs(far, d)) return { value: undefined, status: off ? 'ok' as const : 'skip' as const, detail: `${name} serves this fleet as a worker${off}` };
-    if (!off && !units.includes('plain') && !units.includes('worker')) {
-      return { value: undefined, status: 'warn' as const, detail: `no unit of this fleet runs on ${name}`, action: `svall host add ${name} --ssh ${entry.record.ssh} again makes it this fleet's worker` };
-    }
     return enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase, off }, d);
   });
 }

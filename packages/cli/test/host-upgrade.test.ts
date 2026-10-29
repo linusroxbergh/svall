@@ -502,14 +502,13 @@ esac
     expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toHaveLength(1);
   });
 
-  it('names the add that enrols a machine running no unit of this fleet', async () => {
+  it('enrols a fleet of this Mac that runs no unit there yet', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
-    fs.rmSync(path.join(work, 'far', '.config', 'systemd', 'user', 'svall-svalld@private.service'));
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    serves();
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: { home: fleet, profile: 'work' } }));
     await far.close();
-    const action = "svall host add trift --ssh trift.test again makes it this fleet's worker";
-    expect(out).toEqual({ result: 'actions', actions: [action] });
-    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'warn', detail: 'no unit of this fleet runs on trift', action });
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(ssh.remoteCalls().filter((w) => w.includes('enroll'))).toEqual([expect.arrayContaining(['-p', 'work', 'worker', 'enroll'])]);
   });
 
   it('upgrade runs where owner.json and route.json name another machine', async () => {

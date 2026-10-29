@@ -464,6 +464,9 @@ describe('doctor on Linux', () => {
 
     const absent = byName(await doctor(priv, linux({ [show]: undefined as never }).deps));
     expect(absent.systemd).toMatchObject({ status: 'fail', detail: expect.stringMatching(/no systemd user services/) });
+
+    const missing = byName(await doctor(priv, linux({ [show]: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nUnitFileState=\n' }).deps));
+    expect(missing.systemd).toEqual({ name: 'systemd', status: 'fail', detail: `${unit} is not installed: svall setup`, run: 'svall setup' });
   });
 
   it('warns when AppArmor keeps Codex\'s sandbox from starting, naming the bwrap profile that lets it', async () => {
