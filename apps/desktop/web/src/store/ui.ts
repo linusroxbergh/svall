@@ -1,4 +1,4 @@
-import type { MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
+import type { FeedbackKind, MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
@@ -22,6 +22,9 @@ export type MenuEntry = { title: string; run?: () => void; danger?: boolean; ite
 // a button's own menu, bare, leaves out the page's Reload
 export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };
 export type MoveAsk = { id: string; to?: MachineId };
+
+export type FeedbackDraft = { kind: FeedbackKind; text: string; tick?: boolean };
+const EMPTY_DRAFT: FeedbackDraft = { kind: 'bug', text: '' };
 
 export type UiState = {
   view: View;
@@ -74,6 +77,9 @@ export type UiState = {
   usageOpen: boolean;
   mobileOpen: boolean;
   loadOpen: boolean;
+  feedbackOpen: boolean;
+  // what the form holds, kept across the panel closing; a send clears it
+  feedbackDraft: FeedbackDraft;
   mobile?: MobileStatus;
   // the QR a screenshot's phone panel shows in place of the fleet's, its link and logins hidden
   phoneRedact?: string;
@@ -142,6 +148,8 @@ export type UiActions = {
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
+  toggleFeedback(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
+  setFeedbackDraft(patch?: Partial<FeedbackDraft>): void;
   setMobile(status?: MobileStatus): void;
   setPhones(phones: PhoneSession[]): void;
   setPhoneRedact(qr?: string): void;
@@ -162,10 +170,10 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
   let checkGhosttyKeys = firstRun;
   // the dock has one open utility at a time; leaving first-run settings still records the answer
-  const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
+  const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen' | 'feedbackOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
     const next = open ?? !s[which];
     if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
-    return { usageOpen: false, mobileOpen: false, loadOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
+    return { usageOpen: false, mobileOpen: false, loadOpen: false, feedbackOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
       capturingKey: next ? undefined : s.capturingKey,
       resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
   });
@@ -205,6 +213,8 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     usageOpen: false,
     mobileOpen: false,
     loadOpen: false,
+    feedbackOpen: false,
+    feedbackDraft: EMPTY_DRAFT,
     mobile: undefined,
     phoneRedact: undefined,
     keepPageFocus: false,
@@ -288,13 +298,15 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
-        keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen) ? true : s.keepPageFocus,
+      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen, feedbackOpen: next ? false : s.feedbackOpen,
+        keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen || s.feedbackOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),
     toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     toggleLoad: (open, opts) => toggleUtility('loadOpen', open, opts),
+    toggleFeedback: (open, opts) => toggleUtility('feedbackOpen', open, opts),
+    setFeedbackDraft: (patch) => set((s) => ({ feedbackDraft: patch ? { ...s.feedbackDraft, ...patch } : EMPTY_DRAFT })),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands

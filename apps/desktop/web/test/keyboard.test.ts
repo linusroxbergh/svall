@@ -676,6 +676,29 @@ describe('dispatchKey on the map', () => {
     listeners.keydown({ key: 'Escape', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
     expect(c.store.getState()).toMatchObject({ settingsOpen: false, resourcesOpen: true, card: 'c1' });
   });
+  it('Escape in the feedback form closes the form and leaves the card and the selection', () => {
+    const c = ctx(true);
+    const listeners: Record<string, (e: KeyboardEvent) => void> = {};
+    const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
+    installKeyHandlers(c, win);
+    c.store.getState().focus('c1');
+    c.store.getState().toggleFeedback(true);
+    listeners.keydown({ key: 'Escape', target: { tagName: 'TEXTAREA', blur() {} }, preventDefault() {} } as unknown as KeyboardEvent);
+    expect(c.store.getState()).toMatchObject({ feedbackOpen: false, card: 'c1' });
+  });
+  it('Enter on a feedback control leaves the selection closed, and the resources shelf closes the form', () => {
+    const c = ctx(true);
+    const listeners: Record<string, (e: KeyboardEvent) => void> = {};
+    const win = { addEventListener: (t: string, h: (e: KeyboardEvent) => void) => { listeners[t] = h; }, removeEventListener() {} } as unknown as Window;
+    installKeyHandlers(c, win);
+    c.store.getState().setView('board');
+    c.store.getState().select('c1');
+    c.store.getState().toggleFeedback(true);
+    listeners.keydown({ key: 'Enter', target: { tagName: 'DIV' }, preventDefault() {} } as unknown as KeyboardEvent);
+    expect(c.store.getState().card).toBeUndefined();
+    c.store.getState().toggleResources(true);
+    expect(c.store.getState().feedbackOpen).toBe(false);
+  });
   it('Escape closes the card, then the side card', () => {
     const c = ctx(true);
     const listeners: Record<string, (e: KeyboardEvent) => void> = {};

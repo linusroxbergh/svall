@@ -144,9 +144,12 @@ to this Mac and remove each machine with `svall host remove <name>` first:
 
 ### When something breaks
 
-Run `svall doctor`. It checks what the fleet needs and prints the end of the
-daemon's log, `~/.svall/svalld.log`. Send its output, and what you were doing,
-as an issue on
+Choose Help, Send Feedback… in the app, describe what happened and send it.
+The report can carry diagnostics, which See what's sent shows before you send.
+
+`svall doctor` checks what the fleet needs and prints the end of the daemon's
+log, `~/.svall/svalld.log`. It names your home and paths, so read it before
+pasting it into an issue on
 [linusroxbergh/svall](https://github.com/linusroxbergh/svall/issues).
 
 If a new robot's terminal takes seconds to show its prompt, zsh is usually
@@ -506,6 +509,11 @@ send:
   code, which stays in a cookie on the phone.
 - A robot's browser starts on google.com, and `svall doctor` runs
   `gh auth status`.
+- A report sent from Send Feedback goes to svall.dev, which sees your IP
+  address, and is filed in a private repository only the maintainer reads.
+  Diagnostics are optional, and See what's sent shows them before you send:
+  versions, your agents and the end of the daemon's log, which can name your
+  robots, islands and repos, with your home written as `~`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
   svall.dev your IP address and the version you run. Svall Dev doesn't.
 - A move copies a robot's agent session, branch and changes, and your agent

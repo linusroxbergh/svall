@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
+import { FeedbackPanel } from './FeedbackPanel.js';
 import { useApp, usePanelWidth } from './hooks.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
@@ -30,6 +31,12 @@ const Pulse = () => (
   </svg>
 );
 
+const Bubble = () => (
+  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M4 5h16v11H10l-5 4v-4H4z" />
+  </svg>
+);
+
 const Gear = () => (
   <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <circle cx="12" cy="12" r="3" />
@@ -42,6 +49,7 @@ export function UtilityDock() {
   const usageOpen = useApp((s) => s.usageOpen);
   const mobileOpen = useApp((s) => s.mobileOpen);
   const loadOpen = useApp((s) => s.loadOpen);
+  const feedbackOpen = useApp((s) => s.feedbackOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
   const width = usePanelWidth('sidebar');
@@ -57,7 +65,7 @@ export function UtilityDock() {
   const box = useRef<HTMLDivElement>(null);
   const tabs = useRef<HTMLDivElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const open = usageOpen || mobileOpen || loadOpen;
+  const open = usageOpen || mobileOpen || loadOpen || feedbackOpen;
 
   useEffect(() => {
     // the surfaces have answered this close; the next one takes the keyboard as it always does
@@ -66,13 +74,15 @@ export function UtilityDock() {
       app.store.getState().toggleUsage(false, { keepPageFocus: true });
       app.store.getState().toggleMobile(false, { keepPageFocus: true });
       app.store.getState().toggleLoad(false, { keepPageFocus: true });
+      app.store.getState().toggleFeedback(false, { keepPageFocus: true });
     };
     app.bridge.send({ type: 'term.focus' });
     // the press that opened the panel lands on the tab, which counts as inside; a press anywhere else
     // (a pointerdown, since the map's send no mousedown) is where the user wants the keys, so the surface leaves them there
     const away = (e: PointerEvent) => {
       // the dialogs the panel's buttons open stand outside the dock, and answering one is no press away
-      if (!box.current?.contains(e.target as Node) && !(e.target instanceof Element && e.target.closest('.modal-back'))) shut();
+      // the sidebar's feedback link toggles the panel itself
+      if (!box.current?.contains(e.target as Node) && !(e.target instanceof Element && e.target.closest('.modal-back, .sb-feedback'))) shut();
     };
     window.addEventListener('pointerdown', away, true);
     // a press on a surface never reaches the listener above; the shell answers for those
@@ -95,6 +105,9 @@ export function UtilityDock() {
   return (
     <div className="use" ref={box} data-testid="utility-dock" data-collapsed={!sidebarOpen} data-open={open}>
       <div className="use-tabs" ref={tabs} style={width}>
+        {/* the sidebar's own link stands in while it is open */}
+        <button className="use-tab" data-rail data-testid="feedback-tab" aria-expanded={feedbackOpen} aria-controls="corner-panel"
+          data-tip="Send feedback" aria-label="Send feedback" onClick={() => app.store.getState().toggleFeedback()}><Bubble /><span className="use-tab-label">Feedback</span></button>
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
             data-tip={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}
@@ -112,15 +125,15 @@ export function UtilityDock() {
       </div>
       {open && (
         // the load reads anew every few seconds, which a live region would announce each time
-        <div className="use-panel popover" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : 'mobile-panel'}
-          data-load={loadOpen || undefined} aria-live={loadOpen ? 'off' : 'polite'}>
+        <div className="use-panel popover" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : feedbackOpen ? 'feedback-panel' : 'mobile-panel'}
+          data-load={loadOpen || undefined} aria-live={loadOpen || feedbackOpen ? 'off' : 'polite'}>
           <div className="use-panel-title">
-            <span>{usageOpen ? 'Plan usage' : loadOpen ? 'Load' : 'Phone link'}</span>
+            <span>{usageOpen ? 'Plan usage' : loadOpen ? 'Load' : feedbackOpen ? 'Send feedback' : 'Phone link'}</span>
             {mobileOpen && <MobileSwitch testId="mobile-switch" />}
-            {/* closing any one of the three closes whichever is open */}
+            {/* closing any one of the four closes whichever is open */}
             <CloseX onClose={() => app.store.getState().toggleUsage(false)} testid="corner-panel-close" />
           </div>
-          {usageOpen ? <UsagePanel /> : loadOpen ? <LoadPanel /> : <MobilePanel />}
+          {usageOpen ? <UsagePanel /> : loadOpen ? <LoadPanel /> : feedbackOpen ? <FeedbackPanel diagnostics={() => app.api().call('feedback.preview', {}).then((r) => r.text)} /> : <MobilePanel />}
         </div>
       )}
     </div>

@@ -1,11 +1,23 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
 import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
+import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
 import { shortPath } from './paths.js';
 
 export function Setup() {
   const [bridge] = useState(createBridge);
+  const [feedback, setFeedback] = useState(false);
+  useEffect(() => bridge.onMessage((m) => { if (m.type === 'menu.run' && m.action === 'feedback') setFeedback(true); }), [bridge]);
+  return (
+    <>
+      <SetupScreen bridge={bridge} />
+      {feedback && <FeedbackPopover onClose={() => setFeedback(false)} diagnostics={() => Promise.reject(new Error('no diagnostics before setup'))} />}
+    </>
+  );
+}
+
+function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [plan, setPlan] = useState<SetupPlan>();
   const [off, setOff] = useState<AgentKind[]>([]);
   const [projects, setProjects] = useState('');

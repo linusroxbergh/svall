@@ -415,6 +415,7 @@ export const methods = {
     result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
   },
   'system.info': { params: z.object({}), result: SystemInfo },
+  'feedback.preview': { params: z.object({}), result: z.object({ text: z.string() }) },
   // apps is how many app windows on the fleet were told
   'app.show': { params: AppShow, result: z.object({ apps: z.number().int() }) },
 } as const;

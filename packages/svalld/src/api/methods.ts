@@ -29,12 +29,12 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -260,6 +260,10 @@ const handlers: Handlers = {
   'app.show': (p, { store, apps }) => {
     if (p.id !== undefined && !Object.hasOwn(store.state.robots, p.id)) throw new ApiError('not_found', `no robot ${p.id}`);
     return { apps: apps?.show(p) ?? 0 };
+  },
+  'feedback.preview': async (_p, { diagnostics }) => {
+    if (!diagnostics) throw new ApiError('not_on_worker', 'diagnostics are the Mac\'s');
+    return { text: await diagnostics() };
   },
 };
 

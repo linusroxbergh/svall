@@ -1,7 +1,7 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "workspaces": {
-    ".": { "entry": ["scripts/**/*.{mjs,js}", "test/*.test.ts"] },
+    ".": { "entry": ["scripts/**/*.{mjs,js}", "test/*.test.ts", "services/feedback/src/index.ts"] },
     "packages/cli": { "entry": ["test/fixtures/*.{mjs,ts}"] },
     "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}", "src/retro/index-worker.ts"] }
   },

@@ -22,5 +22,16 @@ test('the app keeps its settings under the fleet the shell names', async () => {
   fresh.initApp().store.getState().setView('board');
   expect(saved.get('svall.view@/Users/me/.svall-work')).toBe('board');
   delete window.__svallHome;
-  vi.unstubAllGlobals();
+});
+
+test('Send Feedback… opens the form from the menu although svalld never connected', async () => {
+  const sent: string[] = [];
+  (window as unknown as { webkit: unknown }).webkit = { messageHandlers: { svall: { postMessage: (m: string) => sent.push(m) } } };
+  vi.resetModules();
+  const fresh = await import('../../src/boot.js');
+  const { store } = fresh.initApp();
+  window.__svall!.receive(JSON.stringify({ type: 'menu.run', action: 'feedback' }));
+  expect(store.getState().feedbackOpen).toBe(true);
+  expect(() => fresh.app.api()).toThrow('svalld not connected');
+  delete (window as unknown as { webkit?: unknown }).webkit;
 });

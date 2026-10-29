@@ -3,7 +3,9 @@ import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { SetupPlan } from '@svall/protocol';
 import { afterEach, expect, test } from 'vitest';
+import { setAppStore } from '../../src/hooks.js';
 import { Setup } from '../../src/Setup.js';
+import { createAppStore } from '../../src/store/index.js';
 
 afterEach(() => { delete window.webkit; });
 
@@ -120,4 +122,14 @@ test('successful setup retains actionable warnings before continuing', () => {
   expect(screen.getByText('Svall is set up')).toBeTruthy();
   expect(screen.getByText('Trust the Codex hooks once.')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Continue' })).toBeTruthy();
+});
+
+test('Help\'s Send Feedback… opens the form on the setup page, and Esc closes it', async () => {
+  setAppStore(createAppStore());
+  const s = shell(ready);
+  s.receive({ type: 'menu.run', action: 'feedback' });
+  expect(screen.getByTestId('feedback-panel')).toBeTruthy();
+  expect(await screen.findByText('Diagnostics unavailable')).toBeTruthy();
+  fireEvent.keyDown(screen.getByTestId('feedback-text'), { key: 'Escape' });
+  expect(screen.queryByTestId('feedback-panel')).toBeNull();
 });

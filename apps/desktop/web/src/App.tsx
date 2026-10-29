@@ -4,6 +4,8 @@ import { Board } from './Board.js';
 import { revealFile, shim } from './bridge.js';
 import { ConfirmClose, ConfirmDeleteColumn, ConfirmDeleteIsland, ConfirmSleep } from './Confirm.js';
 import { ContextMenu } from './ContextMenu.js';
+import { FeedbackPopover } from './FeedbackPanel.js';
+import { connectDiagnostics } from './feedback.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
@@ -43,6 +45,7 @@ function Screen() {
   const view = useApp((s) => s.view);
   const sideCardOpen = useApp((s) => s.sideCardOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
+  const feedbackOpen = useApp((s) => s.feedbackOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const selectedId = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
@@ -58,7 +61,7 @@ function Screen() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  if (!loaded && waiting && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
+  if (!loaded && waiting && !feedbackOpen && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {
     const log = shell && `${shell.home}/svalld.log`;
     return (
@@ -73,7 +76,10 @@ function Screen() {
               {shell.log.length > 0 && <pre className="connect-log" data-testid="connect-log">{shell.log.join('\n')}</pre>}
             </>
           )}
+          <button className="btn" data-testid="connect-feedback" onClick={() => app.store.getState().toggleFeedback()}>Send feedback</button>
         </div>
+        {feedbackOpen && <FeedbackPopover onClose={() => app.store.getState().toggleFeedback(false)} hint="The last lines of svalld.log."
+          diagnostics={async () => connectDiagnostics(shell ?? { home: '', log: [], op: false }, status === 'outdated')} />}
       </div>
     );
   }

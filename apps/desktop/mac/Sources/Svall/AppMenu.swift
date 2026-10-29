@@ -23,7 +23,6 @@ final class PageMenu: NSMenu {
 /// The page's commands in the menu bar, each by its action's name in keys.ts, and the fleets on this Mac in File.
 final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     static let help = "https://github.com/linusroxbergh/svall#readme"
-    static let issues = "https://github.com/linusroxbergh/svall/issues"
 
     var send: (FromShell) -> Void = { _ in }
     private var commands: [String: NSMenuItem] = [:]
@@ -91,7 +90,7 @@ final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
         help.addItem(withTitle: "Svall Help", action: #selector(openHelp(_:)), keyEquivalent: "").target = self
         help.addItem(command("Keyboard Shortcuts", "shortcuts"))
         help.addItem(.separator())
-        help.addItem(withTitle: "Report an Issue", action: #selector(openIssues(_:)), keyEquivalent: "").target = self
+        help.addItem(command("Send Feedback…", "feedback"))
         NSApp.helpMenu = help
         return Self.top(help)
     }()
@@ -150,7 +149,7 @@ final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(openHelp(_:)) || item.action == #selector(openIssues(_:)) { return true }
+        if item.action == #selector(openHelp(_:)) || item.representedObject as? String == "feedback" { return true }
         return ready && (item !== newFleet || canCreate)
     }
 
@@ -166,5 +165,4 @@ final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     @objc private func openHelp(_ sender: Any?) { ExternalURL.open(Self.help) }
-    @objc private func openIssues(_ sender: Any?) { ExternalURL.open(Self.issues) }
 }

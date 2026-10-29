@@ -7,6 +7,7 @@ import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
+import { diagnostics, macos } from './feedback.js';
 import { codexPaths } from './codex/install.js';
 import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig, saveConfig } from './config.js';
 import { liftRobotDocs } from './docs.js';
@@ -349,6 +350,8 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
+      // diagnostics read the last minute's agent probe; a worker gives none
+      ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }),
