@@ -49,11 +49,10 @@ describe('svall app show', () => {
     expect(f.asked).toEqual([]);
   });
 
-  it("hands the phone panel a QR for the url with modules the size of the fleet's", async () => {
+  it("hands the phone panel a QR for the url, filling the square as the fleet's does", async () => {
     const f = fake();
     await f.run('--panel', 'phone', '--redact', 'https://svall.dev');
-    const margin = 1 + (QRCode.create(PAIR, {}).modules.size - QRCode.create('https://svall.dev', {}).modules.size) / 2;
-    expect(f.asked).toEqual([{ panel: 'phone', redact: { qr: await QRCode.toDataURL('https://svall.dev', { margin, width: 320 }) } }]);
+    expect(f.asked).toEqual([{ panel: 'phone', redact: { qr: await QRCode.toDataURL('https://svall.dev', { margin: 1, width: 320 }) } }]);
     await expect(f.run('--redact', 'https://svall.dev')).rejects.toThrow('--redact goes with --panel phone');
     await expect(fake(1, '').run('--panel', 'phone', '--redact', 'https://svall.dev')).rejects.toThrow('--redact needs the phone link on');
   });
