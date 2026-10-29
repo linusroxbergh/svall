@@ -33,14 +33,11 @@ export function showParams(id: string | undefined, o: Opts): AppShow {
   };
 }
 
-// a QR for url whose modules are the size of the fleet's, as svalld's mobile.ts draws it: the quiet zone makes up the difference
+// a QR for url drawn as svalld's mobile.ts draws the fleet's, so it fills the same square
 async function redactQr(c: Client, url: string): Promise<AppShow['redact']> {
   const status = await c.call('mobile.get', {});
   if (!status.serving) throw new Error('--redact needs the phone link on: svall mobile on');
-  const modules = (text: string) => QRCode.create(text, {}).modules.size;
-  const margin = 1 + (modules(status.pair ?? status.url) - modules(url)) / 2;
-  if (margin < 1) throw new Error(`a QR for ${url} is denser than the fleet's`);
-  return { qr: await QRCode.toDataURL(url, { margin, width: 320 }) };
+  return { qr: await QRCode.toDataURL(url, { margin: 1, width: 320 }) };
 }
 
 export function appCommands(connect: () => Promise<Client>, json: () => boolean): Command {
