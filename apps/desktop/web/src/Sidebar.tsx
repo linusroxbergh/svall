@@ -273,6 +273,17 @@ function UpdateRow() {
   );
 }
 
+function FeedbackLink() {
+  return (
+    <button className="sb-feedback" data-testid="sidebar-feedback" onClick={() => app.store.getState().toggleFeedback()}>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        <path d="M4 5h16v11H10l-5 4v-4H4z" />
+      </svg>
+      Send feedback
+    </button>
+  );
+}
+
 export function Sidebar() {
   const fleet = useApp((s) => s.fleet);
   const active = useApp((s) => s.active);
@@ -329,6 +340,7 @@ export function Sidebar() {
         })}
       </div>
       <UpdateRow />
+      <FeedbackLink />
     </aside>
   );
 }

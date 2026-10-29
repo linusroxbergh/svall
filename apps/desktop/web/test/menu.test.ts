@@ -37,6 +37,11 @@ describe('menuChords', () => {
 });
 
 describe('followMenu', () => {
+  it('the menu\'s feedback action opens the feedback panel', () => {
+    const c = ctx(); c.bridge.emit({ type: 'menu.run', action: 'feedback' });
+    expect(c.store.getState().feedbackOpen).toBe(true);
+  });
+
   it('tells the shell what the menu shows at once, and again only when that changes', () => {
     const c = ctx();
     expect(c.states()).toHaveLength(1);

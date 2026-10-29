@@ -6,6 +6,8 @@
 .use-tab { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp-2xs);
   padding: var(--sp-xs) var(--sp-2xs); border: 1px solid transparent; border-radius: var(--r-sm); color: var(--ink-2); background: none;
   font-size: var(--text-sm); font-weight: var(--w-medium); line-height: var(--lh-tight); white-space: nowrap; }
+.use-tab[data-rail] { display: none; }
+.use[data-collapsed="true"] .use-tab[data-rail] { display: flex; }
 .use-glyph { flex: none; width: 18px; height: 18px; }
 .use-tab-label { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
 /* four labels need about this much; a narrower sidebar shows the glyphs alone, as the collapsed rail does */

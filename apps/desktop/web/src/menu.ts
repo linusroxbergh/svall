@@ -50,6 +50,7 @@ export function followMenu(ctx: KeyDeps): () => void {
     const s = store.getState();
     // a click is no answer to a shortcut row waiting for a chord
     if (s.capturingKey) s.setCapturingKey(undefined);
+    if (action === 'feedback') return store.getState().toggleFeedback(true);
     if (action === 'newFleet') return openFleetPicker(store, 'new');
     // the menu's Settings… opens the window rather than closing an open one
     if (action === 'toggleSettings' || action === 'shortcuts') {

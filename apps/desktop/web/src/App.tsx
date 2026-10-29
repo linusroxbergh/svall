@@ -4,6 +4,9 @@ import { Board } from './Board.js';
 import { revealFile, shim } from './bridge.js';
 import { ConfirmClose, ConfirmDeleteColumn, ConfirmDeleteIsland, ConfirmSleep } from './Confirm.js';
 import { ContextMenu } from './ContextMenu.js';
+import { FeedbackPanel } from './FeedbackPanel.js';
+import { connectDiagnostics } from './feedback.js';
+import { CloseX } from './CloseX.js';
 import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
@@ -43,6 +46,7 @@ function Screen() {
   const view = useApp((s) => s.view);
   const sideCardOpen = useApp((s) => s.sideCardOpen);
   const sidebarOpen = useApp((s) => s.sidebarOpen);
+  const feedbackOpen = useApp((s) => s.feedbackOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
   const selectedId = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
@@ -73,7 +77,16 @@ function Screen() {
               {shell.log.length > 0 && <pre className="connect-log" data-testid="connect-log">{shell.log.join('\n')}</pre>}
             </>
           )}
+          <button className="btn" data-testid="connect-feedback" onClick={() => app.store.getState().toggleFeedback()}>Send feedback</button>
         </div>
+        {feedbackOpen && (
+          <div className="use">
+            <div className="use-panel popover" data-testid="feedback-panel">
+              <div className="use-panel-title"><span>Send feedback</span><CloseX onClose={() => app.store.getState().toggleFeedback(false)} testid="corner-panel-close" /></div>
+              <FeedbackPanel diagnostics={async () => connectDiagnostics(shell ?? { home: '', log: [], op: false })} />
+            </div>
+          </div>
+        )}
       </div>
     );
   }

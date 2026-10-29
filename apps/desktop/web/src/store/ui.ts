@@ -74,6 +74,7 @@ export type UiState = {
   usageOpen: boolean;
   mobileOpen: boolean;
   loadOpen: boolean;
+  feedbackOpen: boolean;
   mobile?: MobileStatus;
   // a panel closed by a click into the page leaves the keyboard where the click put it, so the
   // surface coming back out from under it does not take it
@@ -140,6 +141,7 @@ export type UiActions = {
   toggleUsage(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
+  toggleFeedback(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   setMobile(status?: MobileStatus): void;
   setPhones(phones: PhoneSession[]): void;
   pageFocusSettled(): void;
@@ -159,10 +161,10 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
   // the collision check belongs to that same launch: after it, what is written down is the user's answer
   let checkGhosttyKeys = firstRun;
   // the dock has one open utility at a time; leaving first-run settings still records the answer
-  const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
+  const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen' | 'feedbackOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
     const next = open ?? !s[which];
     if (next && s.settingsOpen && s.loaded) storage?.setSettings(s.settings);
-    return { usageOpen: false, mobileOpen: false, loadOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
+    return { usageOpen: false, mobileOpen: false, loadOpen: false, feedbackOpen: false, [which]: next, settingsOpen: next ? false : s.settingsOpen,
       capturingKey: next ? undefined : s.capturingKey,
       resourcesOpen: next ? false : s.resourcesOpen, keepPageFocus: opts?.keepPageFocus ?? false };
   });
@@ -202,6 +204,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     usageOpen: false,
     mobileOpen: false,
     loadOpen: false,
+    feedbackOpen: false,
     mobile: undefined,
     keepPageFocus: false,
     settings: storage?.getSettings() ?? DEFAULT_SETTINGS,
@@ -284,13 +287,14 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       // before the fleet arrives the connect screen stands in its place, and closes nobody saw answer nothing
       if (!next && s.loaded) storage?.setSettings(s.settings);
       // a window that goes must not leave the keyboard listening
-      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen,
-        keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen) ? true : s.keepPageFocus,
+      return { settingsOpen: next, settingsAsk: next ? (pane ? { pane } : s.settingsAsk) : undefined, usageOpen: next ? false : s.usageOpen, mobileOpen: next ? false : s.mobileOpen, loadOpen: next ? false : s.loadOpen, feedbackOpen: next ? false : s.feedbackOpen,
+        keepPageFocus: next && (s.usageOpen || s.mobileOpen || s.loadOpen || s.feedbackOpen) ? true : s.keepPageFocus,
         capturingKey: next ? s.capturingKey : undefined };
     }),
     toggleUsage: (open, opts) => toggleUtility('usageOpen', open, opts),
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     toggleLoad: (open, opts) => toggleUtility('loadOpen', open, opts),
+    toggleFeedback: (open, opts) => toggleUtility('feedbackOpen', open, opts),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands
