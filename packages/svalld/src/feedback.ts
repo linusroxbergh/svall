@@ -22,5 +22,9 @@ export async function diagnostics(o: { info: () => Promise<SystemInfo>; log: str
   const build = (from: number) => maskHome([...head, ...lines.slice(from)].join('\n'), o.home);
   let from = 0;
   while (from < lines.length - 1 && build(from).length > FEEDBACK_DIAGNOSTICS_MAX) from++;
-  return build(from);
+  const text = build(from);
+  const cut = text.length - FEEDBACK_DIAGNOSTICS_MAX;
+  if (cut <= 0) return text;
+  const start = text.lastIndexOf('\n') + 1;
+  return text.slice(0, start) + text.slice(start + cut);
 }

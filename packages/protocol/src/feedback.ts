@@ -5,8 +5,8 @@ export const FEEDBACK_DIAGNOSTICS_MAX = 50_000;
 
 export type FeedbackKind = 'bug' | 'idea';
 
-/** `text` with `home` written `~`, wherever it ends a path segment, a quote or the text. */
+/** `text` with `home` written `~`, wherever it is not part of a longer path or name. */
 export function maskHome(text: string, home: string): string {
   if (home === '' || home === '/') return text;
-  return text.replace(new RegExp(`${home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?=[/"'\\s]|$)`, 'g'), '~');
+  return text.replace(new RegExp(`(?<![\\w.-])${home.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w.-])`, 'g'), '~');
 }

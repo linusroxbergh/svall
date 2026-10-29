@@ -31,7 +31,8 @@ describe('diagnostics', () => {
     expect(text).toContain('\ncodex ?\n');
     expect(text).toContain('svalld.log, last 200 lines');
     expect(text).toContain('line 249');
-    expect(text).not.toContain('line 49\n');
+    expect(text).not.toContain('line 49 ');
+    expect(text).toContain('line 50 ');
     expect(text).not.toContain(home);
   });
 
@@ -47,6 +48,18 @@ describe('diagnostics', () => {
     expect(text.length).toBeLessThanOrEqual(FEEDBACK_DIAGNOSTICS_MAX);
     expect(text).toContain('line 199');
     expect(text).not.toContain('line 0 ');
+  });
+});
+
+describe('diagnostics of one huge line', () => {
+  it('cuts the start of the line so the text fits', async () => {
+    const home = makeHome();
+    const log = path.join(home, 'svalld.log');
+    fs.writeFileSync(log, `${'a'.repeat(60_000)}END\n`);
+    const text = await diagnostics({ info: async () => info, log, home, macos: async () => '26.0' });
+    expect(text.length).toBe(FEEDBACK_DIAGNOSTICS_MAX);
+    expect(text.endsWith('aaaEND')).toBe(true);
+    expect(text.split('\n')[0]).toBe('svall 0.22.0 · macOS 26.0 · arm64');
   });
 });
 
