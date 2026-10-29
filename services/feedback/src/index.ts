@@ -13,6 +13,15 @@ const reply = (status: number, body?: object) =>
 const fail = (status: number, error: string) => reply(status, { error });
 
 export async function handle(req: Request, env: Env, fetchFn: typeof fetch): Promise<Response> {
+  try {
+    return await route(req, env, fetchFn);
+  } catch (e) {
+    console.error('feedback: unhandled', e);
+    return fail(500, 'internal error');
+  }
+}
+
+async function route(req: Request, env: Env, fetchFn: typeof fetch): Promise<Response> {
   if (req.method === 'OPTIONS') {
     return new Response(null, {
       status: 204,
@@ -34,7 +43,8 @@ export async function handle(req: Request, env: Env, fetchFn: typeof fetch): Pro
   if (!success) return fail(429, 'too many reports, try again shortly');
   try {
     await createIssue(await installationToken(env, fetchFn), env.FEEDBACK_REPO, issueOf(report), fetchFn);
-  } catch {
+  } catch (e) {
+    console.error('feedback: github', e);
     return fail(502, 'could not file the report');
   }
   return reply(201, { ok: true });

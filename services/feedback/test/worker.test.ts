@@ -83,6 +83,7 @@ test('a limited IP gets 429 and GitHub is never called', async () => {
 });
 
 test('GitHub refusing the issue is 502 with no token or GitHub body in the reply', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
   const fetchFn = vi.fn(async (url: string | URL | Request) =>
     String(url).includes('access_tokens') ? Response.json({ token: 'ghs_secret' }, { status: 201 }) : new Response('internal repo details', { status: 403 }));
   const res = await handle(post(JSON.stringify({ kind: 'bug', text: 'x' })), env, fetchFn as unknown as typeof fetch);
@@ -91,4 +92,17 @@ test('GitHub refusing the issue is 502 with no token or GitHub body in the reply
   expect(text).not.toContain('ghs_secret');
   expect(text).not.toContain('internal repo details');
   expect(JSON.parse(text)).toHaveProperty('error');
+  expect(log).toHaveBeenCalledWith('feedback: github', expect.objectContaining({ message: 'create issue: 403' }));
+  log.mockRestore();
+});
+
+test('a throw inside the handler still answers 500 with CORS', async () => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const lim = { limit: vi.fn(async () => { throw new Error('limiter down'); }) };
+  const res = await handle(post(JSON.stringify({ kind: 'bug', text: 'x' })), { ...env, LIMITER: lim }, vi.fn());
+  expect(res.status).toBe(500);
+  expect(res.headers.get('access-control-allow-origin')).toBe('*');
+  expect(await res.json()).toHaveProperty('error');
+  expect(log).toHaveBeenCalled();
+  log.mockRestore();
 });

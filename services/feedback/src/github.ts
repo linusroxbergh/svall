@@ -1,6 +1,11 @@
 import type { Issue } from './report.js';
 
-export type GithubEnv = { GITHUB_APP_ID: string; GITHUB_INSTALLATION_ID: string; GITHUB_PRIVATE_KEY: string };
+export type GithubEnv = {
+  GITHUB_APP_ID: string;
+  GITHUB_INSTALLATION_ID: string;
+  // GitHub hands out PKCS#1; convert first (openssl pkcs8 -topk8 -nocrypt) since importKey('pkcs8') rejects it
+  GITHUB_PRIVATE_KEY: string;
+};
 
 const headers = {
   Accept: 'application/vnd.github+json',
