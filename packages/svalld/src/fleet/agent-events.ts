@@ -9,7 +9,7 @@ import type { Config } from '../config.js';
 import { briefReply } from '../context/brief.js';
 import type { Proc } from '../dormancy.js';
 import type { RefreshLinks } from '../fleet.js';
-import type { SocketEvent } from '../hooks/receiver.js';
+import type { HookEvent, SocketEvent } from '../hooks/receiver.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { appendSessions, currentLines, readSessions, sessionLines, type SessionLine } from '../retro/sessions.js';
@@ -86,6 +86,7 @@ export class AgentEvents {
       }
     });
     this.record(sessionLines(before, this.deps.store.state.robots[ev.robotId], Date.now(), (s) => this.recorded().has(s)));
+    if ('hook' in e) this.record(this.nestedLines(e.hook));
     // the second terminal is a side shell, and a run nested inside the agent or a subagent works where it likes; none moves the robot
     const agent = this.deps.store.state.robots[ev.robotId]?.agent;
     const nested = 'hook' in e && !!agent && !!e.hook.sessionId && e.hook.sessionId !== agent.sessionId;
@@ -101,6 +102,15 @@ export class AgentEvents {
   recordCurrent(here: (c: Robot) => boolean): void {
     if (!this.deps.sessions) return;
     this.record(currentLines(Object.values(this.deps.store.state.robots).filter(here), Date.now()).filter((l) => !this.recorded().has(l.session)));
+  }
+
+  // a run the agent started, as a `claude -p`, `codex exec` or `opencode run` in its shell is, inherits the robot and is
+  // recorded as the robot's once, though it never takes the slot
+  private nestedLines(h: HookEvent): SessionLine[] {
+    const c = this.deps.store.state.robots[h.robotId];
+    const held = (h.term === 2 ? c?.second : c)?.agent;
+    if (!c || !held || !h.sessionId || h.sessionId === held.sessionId || this.recorded().has(h.sessionId)) return [];
+    return [{ at: Date.now(), session: h.sessionId, robot: c.id, island: c.islandId, ...(h.cwd && { cwd: h.cwd }), agent: h.backend, ...(h.transcriptPath && { transcript: h.transcriptPath }) }];
   }
 
   private recorded(): Set<string> {

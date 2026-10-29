@@ -316,6 +316,19 @@ describe('machines.setup and machines.consent', () => {
       .toEqual({ id: 3, error: { code: 'not_found', message: `no machine ${other}` } });
   });
 
+  it('machines.updateAgents without a machine runs each update on this Mac', async () => {
+    await linked();
+    const bin = fs.mkdtempSync(path.join(w.home.paths.home, 'bin-'));
+    const said = path.join(bin, 'said');
+    fs.writeFileSync(path.join(bin, 'codex'), `#!/bin/sh\necho "codex $*" >> '${said}'\n`, { mode: 0o755 });
+    const was = process.env.PATH;
+    process.env.PATH = `${bin}:${was}`;
+    try {
+      expect(await dispatch({ id: 1, method: 'machines.updateAgents', params: { kinds: ['codex'] } }, w.home.ctx)).toEqual({ id: 1, result: {} });
+    } finally { process.env.PATH = was; }
+    expect(fs.readFileSync(said, 'utf8')).toBe('codex update\n');
+  });
+
   it('machines.setVar writes the value into the worker\'s .env and answers the rows with the variable set; from this Mac, the value this Mac has; a bad value is refused without naming it', async () => {
     await linked();
     const r = await call(w.home.ctx, 'machines.setVar', { machine: W, name: 'REMOTE_TOKEN', value: 'rt_1234567890abcdef' });

@@ -17,7 +17,7 @@ import { Store } from '../src/store.js';
 import { finding, report } from './fixtures/retro/report.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
-afterEach(cleanHomes);
+afterEach(() => { cleanHomes(); vi.unstubAllEnvs(); });
 
 const fixtures = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'retro');
 const NOW = Date.parse('2026-10-27T12:00:00Z');
@@ -103,6 +103,46 @@ describe('the retro service', () => {
     fs.utimesSync(transcript, new Date(NOW - HOUR), new Date(NOW - HOUR));
     expect((await w.retro.plan({ span: '7d' })).work).toMatchObject({ prs: 1, comments: 1 });
     expect(since).toEqual([Date.parse('2026-10-26T09:07:00.000Z')]);
+  });
+
+  it('takes the repos a session worked in for its targets, not the folder it started in', async () => {
+    const w = world({ runner: answering().runner });
+    const home = path.dirname(w.paths.home);
+    const repo = path.join(home, 'elsewhere');
+    execFileSync('git', ['init', '-q', repo]);
+    fs.mkdirSync(path.join(repo, '.claude', 'skills', 'elsewhere-only'), { recursive: true });
+    fs.writeFileSync(path.join(repo, '.claude', 'skills', 'elsewhere-only', 'SKILL.md'), '---\nname: elsewhere-only\ndescription: a skill only that repo has\n---\n');
+    const transcript = path.join(home, '.claude', 'projects', '-w', 'claude-session.jsonl');
+    fs.appendFileSync(transcript, JSON.stringify({
+      type: 'assistant', cwd: '/w', timestamp: new Date(NOW - 2 * HOUR).toISOString(),
+      message: { model: 'claude-opus-5-5', content: [{ type: 'tool_use', id: 'e1', name: 'Edit', input: { file_path: path.join(repo, 'src', 'a.ts') } }] },
+    }) + '\n');
+    fs.utimesSync(transcript, new Date(NOW - HOUR), new Date(NOW - HOUR));
+    const plan = await w.retro.plan({ span: '7d' });
+    const [scoped] = JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'scope.json'), 'utf8')) as { repos: string[] }[];
+    expect(scoped.repos.map((r) => fs.realpathSync(r))).toEqual([fs.realpathSync(repo)]);
+    w.retro.run({ plan: plan.id });
+    await vi.waitFor(() => expect(w.retro.status(plan.id).stage).toBe('done'), { timeout: 10_000 });
+    expect(w.retro.findings(plan.id).housekeeping.sources.flatMap((x) => x.skills)).toContain('elsewhere-only');
+  });
+
+  it('reads an OpenCode session no fleet ran once its folder is picked', async () => {
+    const w = world();
+    const home = path.dirname(w.paths.home);
+    const [dir, bin] = [path.join(home, 'oc'), path.join(home, 'bin')];
+    for (const d of [dir, bin]) fs.mkdirSync(d);
+    // the fleet's own OpenCode session sends discovery into the folder, where OpenCode lists one no fleet ran
+    appendSessions(w.paths.retroSessions, [{ at: NOW - 2 * HOUR, session: 'ses_ours', robot: 'c_a', island: 'i_x', cwd: dir, agent: 'opencode' }]);
+    const exported = path.join(home, 'export.json');
+    fs.writeFileSync(exported, JSON.stringify({ info: { id: 'ses_picked', location: { directory: dir } }, messages: [{ type: 'user', time: { created: NOW - HOUR }, text: 'tidy the docs' }] }));
+    const listed = JSON.stringify([{ id: 'ses_picked', updated: NOW - HOUR, directory: dir }]);
+    fs.writeFileSync(path.join(bin, 'opencode'), `#!/bin/sh\ncase "$1 $2" in\n"session list") echo '${listed}' ;;\n"session export") [ "$4" = ses_picked ] && cat '${exported}' ;;\nesac\n`, { mode: 0o755 });
+    vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
+    const plan = await w.retro.plan({ span: '7d', unrecorded: [dir] });
+    expect(plan.counts.unrecorded).toEqual([{ repo: dir, count: 1, picked: true }]);
+    const scoped = JSON.parse(fs.readFileSync(path.join(w.paths.retro, 'runs', plan.id, 'scope.json'), 'utf8')) as { session: string }[];
+    expect(scoped.map((c) => c.session)).toContain('ses_picked');
+    expect(plan.work.sessions).toBe(2);
   });
 
   it('adds the exclusions a plan is given to the saved ones, and saves its picks in place of theirs', async () => {

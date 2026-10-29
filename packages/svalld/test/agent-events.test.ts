@@ -146,4 +146,22 @@ describe('AgentEvents and the retro\'s record of sessions', () => {
     await hook('UserPromptSubmit', 0);
     expect(sessions().slice(1)).toEqual([{ at: expect.any(Number), session: SID, robot: 'c_a', island: 'home', cwd: '/tmp', agent: 'codex' }]);
   });
+
+  it("records a run the robot's agent started as the robot's, once, and no subagent of its own", async () => {
+    const { store, hook, sessions } = events([]);
+    const run = '9d8c7b6a-5f4e-4d3c-8b2a-1f0e9d8c7b6a';
+    store.update((d) => {
+      d.robots.c_a.tmux = { windowId: '@1', paneId: '%1' };
+      d.robots.c_a.agent = { kind: 'claude', sessionId: SID, status: 'working', lastActivityAt: 1, pid: process.pid };
+    });
+    const nested = { backend: 'opencode' as const, sessionId: run, cwd: '/w/core-api' };
+    await hook('SessionStart', 999_999, nested);
+    await hook('PreToolUse', 999_999, nested);
+    await hook('PreToolUse', process.pid, { backend: 'claude', agentId: 'a1' });
+    expect(store.state.robots.c_a.agent?.sessionId).toBe(SID);
+    expect(sessions()).toEqual([
+      expect.objectContaining({ session: SID, robot: 'c_a', agent: 'claude' }),
+      { at: expect.any(Number), session: run, robot: 'c_a', island: 'home', cwd: '/w/core-api', agent: 'opencode' },
+    ]);
+  });
 });

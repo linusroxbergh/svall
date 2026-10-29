@@ -4,7 +4,7 @@ type Texts = { text?: string }[];
 type Part = {
   type?: string; text?: string; name?: string; time?: { created?: number };
   state?: {
-    status?: string; input?: { id?: unknown; command?: unknown }; content?: Texts;
+    status?: string; input?: { id?: unknown; command?: unknown; path?: unknown; filePath?: unknown; patchText?: unknown }; content?: Texts;
     metadata?: { exit?: number; name?: unknown }; error?: { type?: string; message?: string };
   };
 };
@@ -15,6 +15,8 @@ type Message = {
 type Export = { info?: { id?: string; location?: { directory?: string } }; messages?: Message[] };
 
 const SHELLS = new Set(['shell', 'bash']);
+const WRITES = new Set(['write', 'edit', 'multiedit', 'patch', 'apply_patch']);
+const PATCHED = /^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm;
 const DECLINED = 'The user declined';
 
 const texts = (c?: Texts): string => (c ?? []).map((x) => x.text ?? '').join('').trim();
@@ -23,6 +25,7 @@ const texts = (c?: Texts): string => (c ?? []).map((x) => x.text ?? '').join('')
 export function outlineOpencode(exported: unknown, span: Span): Outline {
   const { info, messages = [] } = (exported ?? {}) as Export;
   const out = outliner();
+  const dir = info?.location?.directory;
   let model: string | undefined;
   let cost = 0;
   messages.forEach((m, i) => {
@@ -50,9 +53,15 @@ export function outlineOpencode(exported: unknown, span: Span): Outline {
       const exit = s.metadata?.exit;
       const failed = s.status === 'error' || (typeof exit === 'number' && exit !== 0);
       const said = s.error?.message ?? texts(s.content);
-      if (SHELLS.has(name) && typeof s.input?.command === 'string') out.ran(call, n, t, s.input.command, { failed, ...(typeof exit === 'number' && { exit }), out: said }, i);
-      else if (failed) out.error(n, t, said, i);
+      if (SHELLS.has(name) && typeof s.input?.command === 'string') {
+        out.ran(call, n, t, s.input.command, { failed, ...(typeof exit === 'number' && { exit }), out: said }, i);
+        out.ranIn(s.input.command, dir);
+      } else if (failed) out.error(n, t, said, i);
+      if (!WRITES.has(name)) return;
+      const file = s.input?.path ?? s.input?.filePath;
+      if (typeof file === 'string') out.wrote(file, dir);
+      if (typeof s.input?.patchText === 'string') for (const [, f] of s.input.patchText.matchAll(PATCHED)) out.wrote(f, dir);
     });
   });
-  return out.outline({ agent: 'opencode', session: info?.id ?? '', file: '', model, cwd: info?.location?.directory, costUsd: cost });
+  return out.outline({ agent: 'opencode', session: info?.id ?? '', file: '', model, cwd: dir, costUsd: cost });
 }

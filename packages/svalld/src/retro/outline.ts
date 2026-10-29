@@ -1,3 +1,5 @@
+import os from 'node:os';
+import path from 'node:path';
 import { ellipsis, type AgentKind } from '@svall/protocol';
 import { orSkip } from '../agent/jsonl.js';
 import { redact } from './redact.js';
@@ -14,13 +16,15 @@ export type Turn = {
 export type SkillRun = { name: string; id: string; line: number; at: number; end: number; next?: 'interrupt' | 'rejected' | 'reply'; replyMs?: number; inferred?: true };
 /** A shell command that ran: `id` is its call's turn. */
 export type Command = { id: string; at: number; text: string; failed: boolean; exit?: number; out?: string };
+/** Where a session worked: the folders of the files it wrote and those its commands ran in, each with how often. */
+export type Work = { wrote: Record<string, number>; ran: Record<string, number> };
 /** One session as the index reads it: only what its lines say inside the span, text clipped and redacted, tool output left
  *  out but a failed command's. */
 export type Outline = {
   agent: AgentKind; session: string; file: string; model?: string; cwd?: string; branch?: string;
   start: number; end: number; turns: Turn[]; prompts: Turn[]; skills: SkillRun[];
   tools: number; errors: number; interrupts: number; rejected: number; prs: { url: string; at: number }[]; costUsd?: number;
-  commands: Command[]; hookErrors: number; clipped: number;
+  commands: Command[]; hookErrors: number; clipped: number; work: Work;
 };
 
 export const CLIP = { user: 4_000, agent: 1_500, input: 300, error: 300, failed: 1_000, body: 8_000, subagent: 4_000 } as const;
@@ -32,6 +36,18 @@ const PR = /(https?:\/\/)(?:[^\s/@"'<>`\\]*@)?([^\s/@"'<>()[\]{}`\\]+\/[^\s/"'<>
 export const GH_BODY = /\bgh\s+(?:pr\s+(?:create|edit|comment)\b|api\b.*\bbody=)/;
 
 const turnId = (line: number, block: number): string => `L${line}.${block}`;
+
+// a command works where a leading `cd` takes it or a `git -C` points, else where its shell stands
+const CD = /^\s*(?:cd|pushd)\s+("[^"]+"|'[^']+'|[^\s;&|]+)\s*(?:&&|;|\n)/;
+const GIT_C = /\bgit\s+-C\s+("[^"]+"|'[^']+'|[^\s;&|]+)/;
+
+// a path as a shell or tool names it, from the folder it was named in
+const pathAt = (p: string, cwd?: string): string | undefined => {
+  const q = p.replace(/^(["'])(.*)\1$/, '$2');
+  if (q === '~' || q.startsWith('~/')) return path.join(os.homedir(), q.slice(1));
+  return path.isAbsolute(q) ? path.normalize(q) : cwd && path.resolve(cwd, q);
+};
+
 export const inSpan = (at: number, span: Span): boolean => at >= span.from && at <= span.to;
 // a tool input with each string in it redacted, so a .env line it writes is masked before JSON escapes its newlines
 const leaves = (v: unknown): unknown =>
@@ -45,6 +61,8 @@ const FILE_KEYS = ['file_path', 'path', 'filePath', 'notebook_path'];
 export function outliner() {
   const o = { start: 0, end: 0, turns: [] as Turn[], prompts: [] as Turn[], skills: [] as SkillRun[], tools: 0, errors: 0, interrupts: 0, rejected: 0, hookErrors: 0, clipped: 0 };
   const prs: Outline['prs'] = [];
+  const work: Work = { wrote: {}, ran: {} };
+  const count = (m: Record<string, number>, dir?: string) => { if (dir) m[dir] = (m[dir] ?? 0) + 1; };
   // the runs no prompt has ended yet
   let open: SkillRun[] = [];
   const links = (text: string, at: number) => { for (const [, scheme, rest] of text.matchAll(PR)) prs.push({ url: scheme + rest, at }); };
@@ -129,6 +147,14 @@ export function outliner() {
     pr(url: string, at: number) {
       prs.push({ url, at });
     },
+    wrote(file: string, cwd?: string) {
+      const f = pathAt(file, cwd);
+      count(work.wrote, f && path.dirname(f));
+    },
+    ranIn(command: string, cwd?: string) {
+      const to = (CD.exec(command) ?? GIT_C.exec(command))?.[1];
+      count(work.ran, to ? pathAt(to, cwd) : cwd);
+    },
     hookError() {
       o.hookErrors++;
     },
@@ -138,7 +164,7 @@ export function outliner() {
       const commands = o.turns.flatMap((t): Command[] => (t.cmd?.failed === undefined ? [] : [{
         id: t.id, at: t.at, text: t.cmd.text, failed: t.cmd.failed, ...(t.cmd.exit !== undefined && { exit: t.cmd.exit }), ...(t.cmd.out && { out: t.cmd.out }),
       }]));
-      return { ...head, ...o, prs, commands };
+      return { ...head, ...o, prs, commands, work };
     },
   };
 }

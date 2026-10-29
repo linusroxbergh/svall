@@ -29,7 +29,7 @@ import { PRICES_CHECKED } from './prices.js';
 import { ghReady, joinRun, prForBranch, prThread, type PrThread } from './prs.js';
 import { findingSection, reportMd } from './render.js';
 import { runPlan, type RunInput } from './run.js';
-import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, repoWork, scope, type Candidate } from './scope.js';
 import { readSessions } from './sessions.js';
 import { inventory, isGitWithRemote, targetText, type Target } from './targets.js';
 
@@ -59,7 +59,7 @@ export type Deps = {
 };
 
 // a session in a plan's scope, as scope.json keeps it for its run
-type Scoped = { agent: AgentKind; session: string; file: string; cwd?: string; subagents?: string[]; repo?: string; island?: string };
+type Scoped = { agent: AgentKind; session: string; file: string; cwd?: string; subagents?: string[]; repos: string[]; island?: string };
 // what a plan read, kept for its run so a run soon after needs no second index
 type Gathered = Pick<RunInput, 'outlines' | 'repoOf' | 'threads' | 'joins' | 'unused'> & { repos: string[]; targets: Target[]; ready: boolean };
 // what each preset's run would hold before its cards, and each card call's cap with the sessions it completes
@@ -294,35 +294,54 @@ export class Retro {
       : { from: to - FIRST_DAYS * DAY, to, label: `last ${FIRST_DAYS} days` };
   }
 
-  // the sessions in scope for `span`, and what was left out
-  private async scope(span: RetroPlan['span'], retro: FleetConfig['retro']): Promise<{ scoped: Scoped[]; counts: RetroPlan['counts'] }> {
+  // the sessions in scope for `span`, what was left out, and the outlines read to place them in their repos
+  private async scope(span: RetroPlan['span'], retro: FleetConfig['retro']): Promise<{ scoped: Scoped[]; counts: RetroPlan['counts']; outlines: Outline[] }> {
     const state = this.d.store.state;
     const own = readSessions(this.d.paths.retroSessions);
     const found = await discover({ span, claudeDir: this.d.claudeDir, codexDir: this.d.codexDir });
     // OpenCode lists a project's sessions only from inside it: the folders this fleet's OpenCode sessions and the others ran in
     const dirs = [...new Set([...own.values()].filter((r) => r.agent === 'opencode' && r.cwd).map((r) => r.cwd!).concat(found.flatMap((c) => (c.cwd ? [c.cwd] : []))))];
     const candidates: Candidate[] = [...found, ...(await opencodeSessions(dirs)).filter((c) => !c.mtime || c.mtime >= span.from)];
+    const repoOf = repoFinder();
+    const reposOf = repoWork(repoOf);
+    const inline = this.d.inline && { inline: true as const };
+    const outline = async (sessions: Candidate[]) => (await indexSessions({
+      files: sessions.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })), span, skills: [], onDisk: [],
+    }, inline)).outlines;
+    // a session goes with the repos it worked in, which its outline holds
+    const read = new Map<string, Outline | undefined>();
+    const worked = async (sessions: Candidate[]) => {
+      for (const c of sessions) read.set(c.session, undefined);
+      const found = await outline(sessions);
+      for (const o of found) read.set(o.session, o);
+      return new Map(await Promise.all(found.map(async (o) => [o.session, await reposOf(o.work)] as const)));
+    };
     const { inScope, counts } = await scope({
       candidates, home: this.d.paths.home, own, others: otherFleets(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
-      islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
+      islandName: (i) => state.islands[i]?.name, repoOf, worked, remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
+    // an OpenCode session picked by its folder is read now
+    for (const o of await outline(inScope.filter((c) => !read.has(c.session)))) read.set(o.session, o);
     const scoped = inScope.map((c) => ({
-      agent: c.agent, session: c.session, file: c.file, ...(c.cwd && { cwd: c.cwd }), ...(c.subagents && { subagents: c.subagents }), ...(c.repo && { repo: c.repo }), ...(c.island && { island: c.island }),
+      agent: c.agent, session: c.session, file: c.file, ...(c.cwd && { cwd: c.cwd }), ...(c.subagents && { subagents: c.subagents }), repos: c.repos, ...(c.island && { island: c.island }),
     }));
-    return { scoped, counts };
+    return { scoped, counts, outlines: inScope.flatMap((c) => read.get(c.session) ?? []) };
   }
 
-  // reads the sessions in scope over `span`: the inventory, the outlines, and each review run's PR with its thread
-  private async read(span: RetroPlan['span'], scoped: Scoped[], retro: FleetConfig['retro']): Promise<Gathered> {
-    const repos = [...new Set(scoped.flatMap((c) => (c.repo ? [c.repo] : [])))];
+  // reads the sessions in scope over `span`, the outlines unless the scope read them: the inventory, and each review run's
+  // PR with its thread
+  private async read(span: RetroPlan['span'], scoped: Scoped[], retro: FleetConfig['retro'], outlined?: Outline[]): Promise<Gathered> {
+    const inline = this.d.inline && { inline: true as const };
+    const outlines = outlined ?? (await indexSessions({
+      files: scoped.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })), span, skills: [], onDisk: [],
+    }, inline)).outlines;
+    const repos = [...new Set(scoped.flatMap((c) => c.repos))];
     const targets = await this.inventory(repos, retro);
-    const { outlines, skillsSeen } = await indexSessions({
-      files: scoped.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
-      span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: await this.onDisk(),
-    }, this.d.inline && { inline: true });
-    const seen = new Set(skillsSeen);
-    const unused = [...new Set(targets.filter((t) => t.kind === 'skill' && !seen.has(t.name)).map((t) => t.name))];
-    const repoOf = new Map(scoped.map((c) => [c.session, c.repo]));
+    const skills = targets.filter((t) => t.kind === 'skill').map((t) => t.name);
+    // a run an outline holds counts too, an OpenCode session's among them
+    const seen = new Set([...outlines.flatMap((o) => o.skills.map((r) => r.name)), ...(await indexSessions({ files: [], span, skills, onDisk: await this.onDisk() }, inline)).skillsSeen]);
+    const unused = [...new Set(skills.filter((s) => !seen.has(s)))];
+    const repoOf = new Map(scoped.map((c) => [c.session, c.repos[0]]));
     const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string, since?: number) => prThread(url, { since }), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
     const ready = await gh.ready();
     const prs = ready ? await this.prs(outlines, targets, repoOf, gh) : { joins: { reviews: [], failed: 0, ambiguous: 0 }, threads: new Map<string, PrThread>() };
@@ -338,8 +357,8 @@ export class Retro {
     let id = `r_${Math.floor(created / 1000)}`;
     while (fs.existsSync(this.runDir(id))) id = `r_${Number(id.slice(2)) + 1}`;
     const agent = this.d.store.state.mainAgent ?? 'claude';
-    const { scoped, counts } = await this.scope(span, retro);
-    const g = await this.read(span, scoped, retro);
+    const { scoped, counts, outlines } = await this.scope(span, retro);
+    const g = await this.read(span, scoped, retro, outlines);
     const picks = presetsFor(agent, retro);
     const sized = this.size(g, picks, agent);
     const shown = sized.find((x) => x.pick.name === 'balanced') ?? sized[0];

@@ -21,6 +21,7 @@ const HOOK_ERROR = /^hook_\w*error$/;
 const EXIT = /^Exit code (\d+)\n?/;
 // a background agent's final message comes in a notification naming its call
 const NOTIFIED = /<tool-use-id>([^<]+)<\/tool-use-id>[\s\S]*?<result>([\s\S]*?)<\/result>/;
+const WRITES = new Set(['Edit', 'Write', 'MultiEdit', 'NotebookEdit']);
 
 function lines(text: string): { n: number; e: Line }[] {
   const out: { n: number; e: Line }[] = [];
@@ -36,12 +37,22 @@ const blocks = (e: Line): Block[] => (Array.isArray(e.message?.content) ? e.mess
 const textOf = (c: unknown): string => (typeof c === 'string' ? c : Array.isArray(c) ? c.map((b: Block) => b.text ?? '').join('\n') : '').trim();
 const rejection = (b: Block): boolean => Boolean(b.is_error) && textOf(b.content).startsWith(REJECTED);
 
-function subagentCounts(text: string, span: Span): { tools: number; errors: number } {
+// the file a tool call wrote or the command it ran, from the folder the session stood in
+function worked(out: ReturnType<typeof outliner>, b: Block, cwd?: string): void {
+  const input = (b.input ?? {}) as { file_path?: unknown; notebook_path?: unknown; command?: unknown };
+  const file = input.file_path ?? input.notebook_path;
+  if (WRITES.has(b.name ?? '') && typeof file === 'string') out.wrote(file, cwd);
+  if (b.name === 'Bash' && typeof input.command === 'string') out.ranIn(input.command, cwd);
+}
+
+function subagentCounts(text: string, span: Span, out: ReturnType<typeof outliner>): { tools: number; errors: number } {
   let [tools, errors] = [0, 0];
+  let cwd: string | undefined;
   for (const { e } of lines(text)) {
+    cwd = e.cwd ?? cwd;
     if (!inSpan(Date.parse(e.timestamp ?? ''), span)) continue;
     for (const b of blocks(e)) {
-      if (e.type === 'assistant' && b.type === 'tool_use') tools++;
+      if (e.type === 'assistant' && b.type === 'tool_use') { tools++; worked(out, b, cwd); }
       if (e.type === 'user' && b.type === 'tool_result' && b.is_error && !rejection(b)) errors++;
     }
   }
@@ -89,6 +100,7 @@ export function outlineClaude(text: string, file: string, span: Span, subagents:
         const name = b.name ?? 'tool';
         const input = (b.input ?? {}) as { skill?: unknown; command?: unknown; subagent_type?: unknown };
         const turn = out.tool(n, at, name, b.input, i);
+        worked(out, b, cwd);
         calls.set(b.id ?? '', {
           name, turn, ...(name === 'Bash' && typeof input.command === 'string' && { command: input.command }),
           ...(typeof input.subagent_type === 'string' && { agent: input.subagent_type }),
@@ -124,9 +136,9 @@ export function outlineClaude(text: string, file: string, span: Span, subagents:
       else if (call?.agent && said && !(e as { toolUseResult?: { isAsync?: unknown } }).toolUseResult?.isAsync) out.subagent(n, at, call.agent, said, i);
     });
   }
+  const counts = subagents.map((s) => subagentCounts(s, span, out));
   const o = out.outline({ agent: 'claude', session: path.basename(file, '.jsonl'), file, model, cwd, branch, costUsd: costAfter === undefined ? undefined : costAfter - costBefore });
-  for (const s of subagents) {
-    const c = subagentCounts(s, span);
+  for (const c of counts) {
     o.tools += c.tools;
     o.errors += c.errors;
   }

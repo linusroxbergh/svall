@@ -89,9 +89,12 @@ copies a login, so these are yours.
 
 In the app a check shows the step under way, then what needs you, by phase; the checks that went fine and your agent
 setup are folded behind one line each, and the footer counts warnings. A row whose fix is an agent's own update
-(`claude update`, `codex update`, `opencode upgrade`) offers **Update**, which runs it there and checks the machine
-again; a check that finds the machine on another release offers **Upgrade** on that row. Each other fix that is one
-command offers **Open terminal**: a terminal on the machine opens in the panel, over an ssh of its own that asks
+(`claude update`, `codex update`, `opencode upgrade`) offers **Update**, which runs it there, on this Mac or both, and
+checks the machine again; a check that finds the machine on another release offers **Upgrade** on that row, and one
+that finds it not running this fleet's robots offers **Set up**, the same upgrade. A row that `svall setup` there fixes
+offers **Repair** while the machine runs this Mac's release, which installs that release there again. Neither shows
+on a machine that runs a newer release or serves another Mac. A step whose fix
+is to forget the machine offers **Forget**, which asks first. Each other fix that is one command offers **Open terminal**: a terminal on the machine opens in the panel, over an ssh of its own that asks
 nothing and forwards no ssh agent, with the command typed at its prompt. Press Return to run it, or change it first;
 click a link it prints to open it in your browser. When you exit or choose **Done**,
 or close the panel with ×, the terminal hangs up and the panel checks the machine again, once it is in this Mac's
