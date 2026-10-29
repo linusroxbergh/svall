@@ -79,3 +79,19 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-bar i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--sand); }
 .load-row[data-app] { margin-top: var(--sp-md); padding-top: var(--sp-md); border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-sm) var(--r-sm); }
 .load-row[data-app] .load-bar i { background: var(--sel); }
+
+/* the feedback form under a panel title */
+.fb { display: flex; flex-direction: column; gap: var(--sp-lg); }
+.fb .kb-seg { display: flex; }
+.fb .kb-seg button { flex: 1; padding-inline: 0; }
+.fb textarea.fld { min-height: 92px; resize: vertical; }
+.fb-check { display: flex; align-items: flex-start; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink); }
+.fb-check input { flex: none; margin: var(--sp-2xs) 0 0; accent-color: var(--sand); }
+.fb-hint { display: block; font-size: var(--text-sm); color: var(--ink-3); }
+.fb-see { padding: 0; background: none; font-size: inherit; font-weight: inherit; color: var(--sel); }
+.fb-see:hover { background: none; text-decoration: underline; }
+.fb-preview { max-height: 200px; margin: 0; overflow: auto; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line-soft); border-radius: var(--r-sm); background: var(--fill-1);
+  font-size: var(--text-sm); color: var(--ink-2); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.fb-error { font-size: var(--text-sm); color: var(--danger); }
+.fb-send, .fb-sent { width: 100%; }
+.fb-sent { padding: var(--sp-lg) 0; text-align: center; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--done); }
