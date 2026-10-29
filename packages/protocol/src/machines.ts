@@ -39,11 +39,11 @@ export const FleetConfig = z.object({
   scribe: z.object({ agent: AgentKind.optional(), model: z.union([z.string(), ModelPicks]).optional() }).prefault({}),
   linear: z.object({ workspace: z.string(), teamKeys: z.array(z.string()) }).optional(),
   // what a retro leaves out (repos by path, islands by id or name), the repos whose sessions no fleet recorded it reads,
-  // the models it reads and judges with on each CLI, and the skills it reads as reviews beside those named for one
+  // the models it reads, judges and verifies with on each CLI, and the skills it reads as reviews beside those named for one
   retro: z.object({
     exclude: z.object({ repos: z.array(z.string()).default([]), islands: z.array(z.string()).default([]) }).prefault({}),
     unrecorded: z.array(z.string()).default([]),
-    model: z.partialRecord(AgentKind, z.object({ read: z.string().optional(), judge: z.string().optional() })).optional(),
+    model: z.partialRecord(AgentKind, z.object({ read: z.string().optional(), judge: z.string().optional(), verify: z.string().optional() })).optional(),
     reviewSkills: z.array(z.string()).optional(),
   }).prefault({}),
   mobile: z.object({

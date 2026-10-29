@@ -17,7 +17,7 @@ import { opencodeRunner } from '../scribe/opencode.js';
 import { claudeRunner, type Runner } from '../scribe/run.js';
 import type { Store } from '../store.js';
 import { applyUnified } from './apply.js';
-import { estimate, presetsFor } from './budget.js';
+import { estimateBatches, presetsFor } from './budget.js';
 import { indexSessions } from './index.js';
 import { mark as markLedger, readLedger, recordFindings, writeLedger } from './ledger.js';
 import type { Outline } from './outline.js';
@@ -290,7 +290,7 @@ export class Retro {
     const plan: RetroPlan = {
       id, created, span, focus, scope: { exclude: retro.exclude, unrecorded: retro.unrecorded }, counts: g.counts,
       reviews: g.ready ? 'gh' : 'no-gh', agent, billing: this.billing(agent),
-      presets: presetsFor(agent, retro).map((pick) => estimate(batches, pick, agent)),
+      presets: presetsFor(agent, retro).map((pick) => estimateBatches(batches, pick, agent)),
       batches: batches.map((b) => ({ id: b.id, excerpts: b.excerpts.map((e) => e.id), tokens: b.tokens })),
       thin: picked.thin, pricesChecked: PRICES_CHECKED,
     };
