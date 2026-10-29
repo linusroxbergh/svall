@@ -43,6 +43,8 @@ const SPAN_DAYS: Record<Exclude<RetroSpan, 'last'>, number> = { '7d': 7, '30d': 
 const SHOWN_MS = 10 * 60_000;
 const ENDED = new Set<RetroStatus['stage']>(['done', 'failed', 'interrupted']);
 const FIRST_DAYS = 14;
+// the characters a review's findings add to each comment labelled, which no card has said at plan time
+const FOUND = 1_300;
 
 export type Deps = {
   paths: Paths; store: Store; log: Logger;
@@ -366,7 +368,7 @@ export class Retro {
     const cpt = calibrated(readCalibration(this.calibrationFile), FAMILY[agent]);
     const all = g.outlines.map((s) => chunks(s, compact(s), g.repoOf.get(s.session)));
     const items = labelItems(g.joins.reviews.map((r) => ({ ...r, findings: [] })), g.threads);
-    const labels = packLabels(items).map((xs) => labelCall(LABEL_SYSTEM.length + labelInput(xs).length, xs.length, cpt));
+    const labels = packLabels(items).map((xs) => labelCall(LABEL_SYSTEM.length + labelInput(xs).length + FOUND * xs.length, xs.length, cpt));
     const chars = g.targets.reduce((n, t) => {
       if (t.kind === 'skill') return n + t.id.length + (t.description?.length ?? 0);
       try { return n + targetText(t).text.length; } catch { return n; }

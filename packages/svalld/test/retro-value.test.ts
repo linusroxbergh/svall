@@ -35,6 +35,9 @@ describe('valueOf', () => {
     expect(valueOf({ category: 'review-miss', groups: [miss], verdict: 'holds' })).toEqual({
       badge: 'High', score: 36.2, n: 7, m: 17, impact: 4, confidence: 1, reason: '7 confirmed misses in 5 of 17 reviewed PRs',
     });
+    // beside a group of sessions it cites, still over the PRs
+    const big = { ...miss, n: 12, occ: Array.from({ length: 12 }, (_, i) => `m${i}`) };
+    expect(valueOf({ category: 'review-miss', groups: [big, sessions('a', 'b')], verdict: 'holds' }).reason).toBe('12 confirmed misses in 5 of 17 reviewed PRs');
   });
 
   it('weighs friction and errors by the minutes each took, capped at 3, and says the failures and time', () => {

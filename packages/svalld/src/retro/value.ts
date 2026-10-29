@@ -30,7 +30,11 @@ export function valueOf(o: { category: Category; groups: Group[]; verdict: 'hold
   const score = n * impact * (1 + rate) * confidence;
   const lead = [...o.groups].sort((a, b) => b.n - a.n)[0];
   const time = elapsed >= MIN ? `, ${took(elapsed)} elapsed` : '';
-  const reason = lead?.kind === 'review-miss' ? `${plural(n, 'confirmed miss', 'confirmed misses')} in ${hit} of ${m} reviewed PRs`
+  // a review miss is told over the PRs alone, whatever sessions the finding also cites
+  const prs = o.groups.filter((g) => g.kind === 'review-miss');
+  const missed = (f: (g: Group) => string[]) => new Set(prs.flatMap(f)).size;
+  const reason = lead?.kind === 'review-miss'
+    ? `${plural(missed((g) => g.occ), 'confirmed miss', 'confirmed misses')} in ${missed((g) => g.hits)} of ${Math.max(...prs.map((g) => g.of))} reviewed PRs`
     : lead?.kind === 'error' ? `${plural(n, 'failure')} in ${plural(hit, 'session')}${time}`
     : lead?.unit === 'runs' ? `${hit} of ${m} runs`
     : `${hit} of ${m} sessions${time}`;
