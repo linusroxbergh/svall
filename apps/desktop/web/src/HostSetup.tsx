@@ -1,4 +1,4 @@
-import { notNeeded, updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
+import { AGENT_UPDATE, notNeeded, updatesHere, updatesIn, type AgentKind, type MachineId, type SetupRow } from '@svall/protocol';
 import { useEffect, useId, useRef, useState, type CSSProperties } from 'react';
 import { app } from './boot.js';
 import type { HostArgs, HostOp, HostStep } from './bridge.js';
@@ -15,6 +15,9 @@ import { Caret } from './Sidebar.js';
 import { VarField } from './VarField.js';
 
 const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
+// the machine's own setup, which installing this Mac's release there runs again
+const SETUP = /^svall(-dev)? setup$/;
+const FORGET = /\bhost remove \S+ --forget\b/;
 
 /** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
 export function MachineActions({ name }: { name: string }) {
@@ -122,6 +125,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const [updating, setUpdating] = useState(false);
   const [failed, setFailed] = useState<string>();
   const updates = row.run ? updatesIn(row.run) : undefined;
+  const onMac = updatesHere(`${row.detail ?? ''}; ${row.action ?? ''}`);
   const sentence = useId();
   const whole = stepSaid(row, name);
   // a check whose sentence ends in the command its terminal types says only what is wrong, the command behind details
@@ -153,11 +157,12 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       .then(({ rows }) => show(rows), () => {})
       .finally(() => setAsked(undefined));
   };
-  // the machine checked again once its agents are updated, unless a run started meanwhile holds the panel
-  const update = (machine: MachineId, kinds: AgentKind[]) => {
+  // the machine checked again once its agents and this Mac's are updated, unless a run started meanwhile holds the panel
+  const update = (machine: MachineId, there?: AgentKind[], mac?: AgentKind[]) => {
     setUpdating(true);
     setFailed(undefined);
-    app.api().call('machines.updateAgents', { machine, kinds })
+    (there ? app.api().call('machines.updateAgents', { machine, kinds: there }) : Promise.resolve({}))
+      .then(() => mac && app.api().call('machines.updateAgents', { kinds: mac }))
       .then(() => { if (!app.store.getState().host?.running) startHost('doctor', { name }); },
         (e: Error) => setFailed(plainStep(e.message, machineNames(app.store.getState().machines))))
       .finally(() => setUpdating(false));
@@ -167,7 +172,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       <span className="host-mark">{MARK[row.status]}</span>
       <span className="host-name" data-tip={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
-        {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating on {name}…</span>
+        {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
           : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
         {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{more}</details>}
@@ -184,17 +189,24 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           checked={asked ?? row.tick.on} disabled={!id || !idle} aria-disabled={asked !== undefined || undefined}
           data-tip={!id ? 'listed once the machine is added' : notNeeded(row) ? `Tick when ${name} does not need it; the row then stands aside` : undefined}
           onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
-      ) : updates && id && idle ? (
-        <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating} data-tip={`Runs ${row.run} on ${name}, then checks again`}
-          onClick={() => update(id as MachineId, updates)}>Update</button>
+      ) : (updates || onMac) && id && idle ? (
+        <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating}
+          data-tip={`Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
+          onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
       ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
           onClick={() => startHost('upgrade', { name })}>Set up</button>
+      ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && idle ? (
+        <button className="btn set-open" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
+          onClick={() => startHost('upgrade', { name })}>Repair</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
         <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}
           take={() => { setFailed(undefined); return take(); }} failed={(m) => fail(new Error(m))} />
+      ) : row.status === 'fail' && row.action && FORGET.test(row.action) && id && idle ? (
+        <button className="btn set-open" data-testid={`host-forget-${row.step}`} data-tip={`Drop the route to ${name}, leaving the machine untouched`}
+          onClick={() => app.store.getState().confirmHost({ name, forget: true })}>Forget</button>
       ) : row.run && terminal && idle ? (
         <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>

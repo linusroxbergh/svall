@@ -46,6 +46,13 @@ export function updatesIn(run: string): AgentKind[] | undefined {
   const kinds = run.split(' && ').map((c) => AgentKind.options.find((k) => AGENT_UPDATE[k] === c));
   return kinds.every((k) => k !== undefined) ? kinds : undefined;
 }
+/** What a check's sentence says before the agent updates it leaves to this Mac, each joined by `, then `. */
+export const ON_THIS_MAC = 'on this Mac, run ';
+/** The agents a check's sentence leaves to update on this Mac. */
+export function updatesHere(said: string): AgentKind[] | undefined {
+  const at = said.lastIndexOf(ON_THIS_MAC);
+  return at < 0 ? undefined : updatesIn(said.slice(at + ON_THIS_MAC.length).split(';')[0].split(', then ').join(' && '));
+}
 // the models each CLI's --model takes, that Settings offers; OpenCode's are a provider's, left to its config
 export const MODELS: Record<AgentKind, string[]> = { claude: ['haiku', 'sonnet', 'opus', 'fable'], codex: ['gpt-6-luna', 'gpt-6-astra', 'gpt-6-sol'], opencode: [] };
 

@@ -16,7 +16,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
-import type { Router } from '../placement/router.js';
+import { updateAgents, type Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
 import { agentAdapters, type AgentProber } from '../sessions/registry.js';
@@ -148,6 +148,7 @@ const handlers: Handlers = {
     return setupOf(ctx, p.machine, 0);
   },
   'machines.updateAgents': async (p, { store, links }) => {
+    if (!p.machine) { await updateAgents(p.kinds); return {}; }
     if (!store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     if (!links) throw new ApiError('not_on_worker', 'not on a worker');
     await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: serverWait('machines.updateAgents', p) });

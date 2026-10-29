@@ -264,7 +264,7 @@ async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Che
   try {
     const s = await unitStatus(asRun(d), unit);
     const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
-    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${SHIM} setup` };
+    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${SHIM} setup`, run: `${SHIM} setup` };
     return { name, status: s.active === 'active' ? 'ok' : 'fail', detail };
   } catch (e) {
     return { name, status: 'fail', detail: (e as Error).message };

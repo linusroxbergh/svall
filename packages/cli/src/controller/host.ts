@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
+import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
@@ -369,7 +369,7 @@ function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: st
   return {
     value: undefined, status: 'warn',
     detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a move there and back needs the same release on both`,
-    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`on this Mac, run ${here.join(', then ')}`] : [])].join('; '),
+    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`${ON_THIS_MAC}${here.join(', then ')}`] : [])].join('; '),
     ...(there.length > 0 && { run: there.join(' && ') }),
   };
 }
