@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { Finding, Preset, RetroPlan, RetroStatus } from '@svall/protocol';
 import type { Call, Runner } from '../src/scribe/run.js';
 import type { Aggregate, Group } from '../src/retro/aggregate.js';
-import { Budget } from '../src/retro/budget.js';
+import { Budget, callTokens, verifyCalls } from '../src/retro/budget.js';
 import { readCalibration } from '../src/retro/calibrate.js';
 import { CARD_SYSTEM } from '../src/retro/cards.js';
 import { LABEL_SYSTEM } from '../src/retro/labels.js';
@@ -61,8 +61,8 @@ const candidate = (more: Partial<Candidate> = {}): Candidate => ({
   change: { kind: 'proposal', summary: 'lead with the action', text: 'Lead with the action.' }, target: 'rule:CLAUDE.md', subject: 'reports', nearest: [], kind: 'pattern', ...more,
 });
 
-// a runner that answers each kind of call, unless `answer` says otherwise for it
-function fake(answer: Partial<Record<string, (prompt: string, n: number) => unknown>> = {}) {
+// a runner that answers each kind of call, unless `answer` says otherwise for it, and reports `spend` input tokens for it
+function fake(answer: Partial<Record<string, (prompt: string, n: number) => unknown>> = {}, spend: Partial<Record<string, number>> = {}) {
   const seen: Seen[] = [];
   let open = 0, most = 0;
   const runner: Runner = async (system, prompt, call) => {
@@ -79,13 +79,13 @@ function fake(answer: Partial<Record<string, (prompt: string, n: number) => unkn
         : kind === 'labels' ? { labels: ids(prompt, 'ITEM').map((comment) => ({ comment, theme: 'missing-test', severity: 'high', catchable: true, inLocalFindings: false, addressed: 'yes' })) }
         : kind === 'synthesis' ? { overview: 'Mostly reviews in core-api.', works: 'Nothing stood out.', candidates: [candidate()] }
         : { verdicts: ids(prompt, 'CANDIDATE').map((n) => ({ candidate: Number(n), verdict: 'holds', reason: 'seen', change: 'ok', edited: null, extend: null, rule: 'preference' })) });
-      return { text: JSON.stringify(reply), usage: { input: 1_000 + Math.ceil((system.length + prompt.length) / 4), output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0 } };
+      return { text: JSON.stringify(reply), usage: { input: spend[kind] ?? 1_000 + Math.ceil((system.length + prompt.length) / 4), output: 100, cacheRead: 0, cacheWrite: 0, reasoning: 0 } };
     } finally { open--; }
   };
   return { runner, seen, most: () => most };
 }
 
-function setup(answer?: Parameters<typeof fake>[0], more: Partial<RunInput> = {}) {
+function setup(answer?: Parameters<typeof fake>[0], more: Partial<RunInput> = {}, spend?: Parameters<typeof fake>[1]) {
   const home = makeHome();
   const dir = path.join(home, 'runs', 'r_1');
   fs.mkdirSync(dir, { recursive: true });
@@ -99,7 +99,7 @@ function setup(answer?: Parameters<typeof fake>[0], more: Partial<RunInput> = {}
     counts: { inScope: 4, excluded: 0, otherFleets: 0, remote: 0, unrecorded: [], missing: {} }, reviews: 'gh', agent: 'claude', billing: 'subscription', presets: [PRESET],
     work: { sessions: 4, chunks: 4, cached: 0, calls: 1, prs: 1, comments: 1 }, pricesChecked: 'x',
   };
-  const f = fake(answer);
+  const f = fake(answer, spend);
   const statuses: RetroStatus[] = [];
   const input: RunInput = {
     plan, preset: PRESET, budget: 10_000_000, runner: () => f.runner, dir, cardsDir: path.join(home, 'cards'), calibrationFile: path.join(home, 'calibration.json'),
@@ -200,12 +200,23 @@ describe('runPlan', () => {
     expect(calls(slowed.seen, 'cards')).toHaveLength(15);
   });
 
-  it('verifies only what the held verify still covers after the cards cut it, the top-ranked first', async () => {
-    const twelve = Array.from({ length: 12 }, (_, i) => candidate({ title: `c${i}`, subject: `s${i}`, groups: i < 2 ? ['g1', 'g2'] : ['g2'] }));
+  const twelve = Array.from({ length: 12 }, (_, i) => candidate({ title: `c${i}`, subject: `s${i}`, groups: i < 2 ? ['g1', 'g2'] : ['g2'] }));
+  // the synthesis and verify's holds, from the run that refuses a budget below them
+  const heldBy = async (input: RunInput) => Number(/verify's (\d+)/.exec(((await runPlan({ ...input, budget: 1 }).catch((e: Error) => e)) as Error).message)![1]);
+
+  it('verifies every candidate when reading spent less than its calls held, though their caps cut the verify while they ran', async () => {
     const { input, seen } = setup({ synthesis: () => ({ overview: 'o', works: 'w', candidates: twelve }) });
-    const refused = await runPlan({ ...input, budget: 1 }).catch((e: Error) => e);
-    expect(refused).toBeInstanceOf(Error);
-    const holds = Number(/verify's (\d+)/.exec((refused as Error).message)![1]);
+    const r = await runPlan({ ...input, budget: await heldBy(input) });
+    expect(calls(seen, 'verify')).toHaveLength(3);
+    expect(r.coverage.unverified).toBe(0);
+  });
+
+  it('stops verifying, the top-ranked first, once the budget left will not cover a call', async () => {
+    const V = callTokens(verifyCalls()[0], 'claude').max;
+    const probe = setup();
+    const holds = await heldBy(probe.input);
+    // the synthesis overran its hold by half a verify call, and each verify call took all it held
+    const { input, seen } = setup({ synthesis: () => ({ overview: 'o', works: 'w', candidates: twelve }) }, {}, { synthesis: holds - 3 * V + V / 2, verify: V });
     const r = await runPlan({ ...input, budget: holds });
     const verify = calls(seen, 'verify');
     expect(verify).toHaveLength(2);

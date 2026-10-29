@@ -109,8 +109,8 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
 
   // the synthesis and the verify are held first, at their caps; an overrun cuts the verify to one call, then the synthesis
   // input to its floor, before it leaves a session or comment unread
-  const verifyCall = callTokens(verifyCalls()[0], agent).max;
-  const holds = { synthesis: total ? callTokens(synthesisCall(0, 0, cpt), agent).max : 0, verify: total ? verifyCall * verifyCalls().length : 0 };
+  const verifyCall = callTokens(verifyCalls()[0], agent).max, synthesisCap = callTokens(synthesisCall(0, 0, cpt), agent).max;
+  const holds = { synthesis: total ? synthesisCap : 0, verify: total ? verifyCall * verifyCalls().length : 0 };
   const floors = { synthesis: callTokens({ input: { min: SYNTHESIS_FLOOR, max: SYNTHESIS_FLOOR }, out: synthesisCall(0, 0, cpt).out }, agent).max, verify: verifyCall };
   if (!budget.reserve(holds.synthesis + holds.verify)) throw new Error(`a budget of ${o.budget} tokens won't cover the synthesis and verify's ${holds.synthesis + holds.verify}`);
   const reserve = reserver(budget, holds, floors);
@@ -219,6 +219,9 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
     let overview = '', works = '', cut = 0, unverified = 0;
     let checked: Checked[] = [];
     if (agg.groups.some((g) => !g.expected)) {
+      // reading held each call's cap while it ran, which may have cut the synthesis; what it left unspent restores it
+      const more = Math.min(synthesisCap - holds.synthesis, budget.left);
+      if (more > 0 && budget.reserve(more)) holds.synthesis += more;
       const rules = o.targets.filter((t) => t.kind === 'rule').flatMap((t) => { try { return [{ id: t.id, path: short(t.path), text: targetText(t).text }]; } catch { return []; } });
       const syn = synthesisInput({
         agg, skills: o.targets.filter((t) => t.kind === 'skill'), rules, dismissed: dismissedCategories(ledger),
@@ -233,15 +236,17 @@ export async function runPlan(o: RunInput): Promise<RetroReport> {
       const candidates = keepCandidates(reply.candidates, agg, inventory)
         .map((c) => ({ c, score: valueOf({ category: c.category, groups: c.groups.flatMap((g) => groups.get(g) ?? []), verdict: 'holds' }).score }))
         .sort((a, b) => b.score - a.score).map((x) => x.c);
-      const calls = Math.min(Math.ceil(candidates.length / VERIFY_GROUP), Math.floor(holds.verify / verifyCall));
-      const verified = candidates.slice(0, calls * VERIFY_GROUP);
-      unverified = candidates.length - verified.length;
-      checked = candidates.slice(verified.length).map((c) => ({ c, dropped: `not verified: ${OVER}` }));
-      budget.release(holds.verify - calls * verifyCall);
+      budget.release(holds.verify);
       holds.verify = 0;
       const verifier = o.runner(preset.verify.agent);
-      for (let k = 0; k < verified.length; k += VERIFY_GROUP) {
-        const group = verified.slice(k, k + VERIFY_GROUP).map((c, i) => {
+      for (let k = 0; k < candidates.length; k += VERIFY_GROUP) {
+        // each call reserves its cap after the one before it settled; from one the budget left won't cover, none is verified
+        if (!budget.reserve(verifyCall)) {
+          unverified = candidates.length - k;
+          checked.push(...candidates.slice(k).map((c) => ({ c, dropped: `not verified: ${OVER}` })));
+          break;
+        }
+        const group = candidates.slice(k, k + VERIFY_GROUP).map((c, i) => {
           const ev = evidenceFor(c, { agg, outlines: bySession, threads: o.threads, cpt });
           return { n: k + i + 1, c, cut: ev.cut, evidence: ev.text, ...textsFor(c, { inventory, read, cpt }) };
         });
