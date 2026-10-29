@@ -14,7 +14,7 @@ function session(id: string, start: number, turns: [Turn['role'], string][], ext
   return {
     agent: 'claude', session: id, file: `/t/${id}.jsonl`, start, end: ts.at(-1)?.at ?? start, turns: ts,
     prompts: ts.filter((t) => t.role === 'user' && t.text !== '[interrupted]'), skills: [],
-    tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, ...extra,
+    tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, work: { wrote: {}, ran: {} }, ...extra,
   };
 }
 

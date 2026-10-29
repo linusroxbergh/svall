@@ -1,11 +1,12 @@
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { inSpan, outliner, type Outline, type Span } from '../retro/outline.js';
 import { orSkip } from './jsonl.js';
 
 type Texts = { text?: string }[];
 type Item = {
-  type?: string; content?: Texts; command?: unknown; status?: string; exit_code?: number; aggregated_output?: string;
-  server?: string; tool?: string; result?: { isError?: boolean; content?: Texts }; error?: { message?: string };
+  type?: string; content?: Texts; command?: unknown; cwd?: string; status?: string; exit_code?: number; aggregated_output?: string;
+  server?: string; tool?: string; result?: { isError?: boolean; content?: Texts }; error?: { message?: string }; changes?: Record<string, unknown>;
 };
 type Payload = {
   type?: string; id?: string; cwd?: string; model?: string; git?: { branch?: string };
@@ -67,8 +68,13 @@ export function outlineCodex(text: string, file: string, span: Span): Outline {
       const command = commandOf(it.command);
       const failed = it.status === 'failed' || (typeof it.exit_code === 'number' && it.exit_code !== 0);
       out.command(command, failed);
+      out.ran(command, it.cwd?.startsWith('file:') ? orSkip(() => fileURLToPath(it.cwd!)) : it.cwd ?? cwd);
       if (failed) out.error(n, at, it.aggregated_output ?? '');
       for (const m of command.matchAll(SKILL_READ)) out.skill(m[1], n, at);
+      return;
+    }
+    if (it?.type === 'FileChange') {
+      for (const file of Object.keys(it.changes ?? {})) out.wrote(file, cwd);
       return;
     }
     if (it?.type === 'McpToolCall' && (it.status === 'failed' || it.result?.isError)) {

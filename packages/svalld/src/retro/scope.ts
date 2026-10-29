@@ -10,6 +10,7 @@ import { realPath, resolvePaths } from '../paths.js';
 import { cliRunner } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
 import { fleetHomes } from '../uninstall.js';
+import type { Work } from './outline.js';
 import { readSessions, type SessionRecord } from './sessions.js';
 
 /** The fleet home and island a session's Svall context names. */
@@ -18,7 +19,8 @@ type Briefed = { home: string; island: string };
 /** A session written to in the span, with the fleet a robot ran it in; a Claude session's subagents keep files of their own,
  *  and a Codex sub-agent's rollout names the session that started it as `parent`. */
 export type Candidate = { agent: AgentKind; session: string; file: string; cwd?: string; mtime: number; subagents?: string[]; parent?: string; fleet?: Briefed };
-export type InScope = Candidate & { record?: SessionRecord; repo?: string; island?: string };
+/** `repos` are those the session worked in, the most first, less any excluded; `repo` is the first of them. */
+export type InScope = Candidate & { record?: SessionRecord; repo?: string; repos: string[]; island?: string };
 
 const HEAD = 64 * 1024;
 // a whole Svall context, not the diff a later prompt gets, ends with its folders, its island's in its fleet's home
@@ -27,6 +29,8 @@ const ISLAND_DOCS = new RegExp(`^- island: (.+)/docs/islands/(i_[a-z0-9]+|${HOME
 const ROLLOUT = /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
 // the fields an agent's sessions never record, which the plan counts against the sessions in scope
 const LACKS: Record<AgentKind, string[]> = { claude: [], codex: ['cost'], opencode: [] };
+// a repo with less of a session's work than this is one it looked into, not one it worked in
+const SHARE = 0.2;
 
 // discovery stats and reads the heads of every transcript on disk, so it waits on each rather than hold svalld up
 const names = (dir: string, recursive = false): Promise<string[]> => fs.promises.readdir(dir, { encoding: 'utf8', recursive }).catch(() => []);
@@ -170,13 +174,44 @@ export function otherFleets(home: string, homedir: string = os.homedir()): Other
   return { homes: new Set(homes), sessions: new Set(homes.flatMap((h) => [...readSessions(resolvePaths(h).retroSessions).keys()])) };
 }
 
+/** The repos a session worked in, the most first: those it wrote files in, else those its commands ran in, each with a fifth
+ *  of that work or more. A folder counts for its checkout, the nearest folder up holding a .git, which alone git is asked of. */
+export function repoWork(repoOf: (dir: string) => Promise<string | undefined>): (work: Work) => Promise<string[]> {
+  const checkouts = new Map<string, string | undefined>();
+  const checkout = (dir: string): string | undefined => {
+    if (!checkouts.has(dir)) {
+      const up = path.dirname(dir);
+      checkouts.set(dir, fs.existsSync(path.join(dir, '.git')) ? dir : up === dir ? undefined : checkout(up));
+    }
+    return checkouts.get(dir);
+  };
+  const tally = async (m: Record<string, number>): Promise<Map<string, number>> => {
+    const by = new Map<string, number>();
+    for (const [dir, n] of Object.entries(m)) {
+      const top = checkout(dir);
+      const repo = top && await repoOf(top);
+      if (repo) by.set(repo, (by.get(repo) ?? 0) + n);
+    }
+    return by;
+  };
+  return async (work) => {
+    const wrote = await tally(work.wrote);
+    const by = wrote.size ? wrote : await tally(work.ran);
+    const total = [...by.values()].reduce((a, b) => a + b, 0);
+    return [...by].filter(([, n]) => n >= total * SHARE).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([r]) => r);
+  };
+}
+
 /** This fleet's sessions, recorded or named by their context, less excluded islands (id or name) and repos, plus those no
- *  fleet ran in the repos the user picked; the rest are counted, the unrecorded by repo, else cwd. Repos and homes compare by
- *  real path; a Codex sub-agent goes with its parent. */
+ *  fleet ran in the repos the user picked; the rest are counted, the unrecorded by repo, else cwd. A session's repo is the one
+ *  `worked` says it worked in most, else the one it started in. Repos and homes compare by real path; a Codex sub-agent goes
+ *  with its parent. */
 export async function scope(o: {
   candidates: Candidate[]; home: string; own: Map<string, SessionRecord>; others: Others;
   exclude: { repos: string[]; islands: string[] }; unrecorded: string[];
   islandName: (id: string) => string | undefined; repoOf: (cwd: string) => Promise<string | undefined>; remote: number;
+  // the repos each session it may keep worked in, the most first, by session
+  worked?: (sessions: Candidate[]) => Promise<Map<string, string[]>>;
 }): Promise<{ inScope: InScope[]; counts: RetroPlan['counts'] }> {
   const inScope: InScope[] = [];
   const groups = new Map<string, number>();
@@ -194,27 +229,34 @@ export async function scope(o: {
     (!!repo && excludedRepos.has(real(repo))) || (!!cwd && [...excludedRepos].some((x) => real(cwd) === x || real(cwd).startsWith(x + path.sep)));
   const self = real(o.home);
   const fleets = new Map(o.candidates.flatMap((c) => (c.fleet ? [[c.session, c.fleet] as const] : [])));
-  for (const c of o.candidates) {
+  const sorted = o.candidates.map((c) => {
     const ids = [c.session, ...(c.parent ? [c.parent] : [])];
     const record = ids.map((id) => o.own.get(id)).find((r) => r);
     // a session no fleet recorded goes with the fleet its context names; a home no fleet here has leaves it unrecorded
     const fleet = record ? undefined : ids.map((id) => fleets.get(id)).find((f) => f);
     const home = fleet && real(fleet.home);
-    if (ids.some((id) => o.others.sessions.has(id)) || (home && o.others.homes.has(home))) { theirs++; continue; }
+    const other = ids.some((id) => o.others.sessions.has(id)) || (!!home && o.others.homes.has(home));
+    return { c, record, other, ours: !other && (!!record || home === self), island: record?.island ?? fleet?.island };
+  });
+  // only an export reads an OpenCode session, so one no fleet ran is placed by its folder
+  const worked = await o.worked?.(sorted.filter((s) => (s.ours && !islandOut(s.island)) || (!s.other && !s.ours && s.c.agent !== 'opencode')).map((s) => s.c));
+  for (const { c, record, other, ours, island } of sorted) {
+    if (other) { theirs++; continue; }
+    if (ours && islandOut(island)) { excluded++; continue; }
     const cwd = c.cwd ?? record?.cwd;
-    if (record || home === self) {
-      const island = record?.island ?? fleet?.island;
-      if (islandOut(island)) { excluded++; continue; }
-      const repo = record?.repo ?? (cwd ? await o.repoOf(cwd) : undefined);
-      if (out(repo, cwd)) { excluded++; continue; }
-      inScope.push({ ...c, record, repo, island });
+    const done = worked?.get(c.session) ?? [];
+    // one that worked in no repo goes with the one it started in
+    const started = done.length ? undefined : record?.repo ?? (cwd ? await o.repoOf(cwd) : undefined);
+    const repos = started ? [started] : done;
+    if (out(repos[0], cwd)) { excluded++; continue; }
+    const kept = { repo: repos[0], repos: repos.filter((r) => !excludedRepos.has(real(r))) };
+    if (ours) {
+      inScope.push({ ...c, record, ...kept, island });
       continue;
     }
-    const repo = cwd ? await o.repoOf(cwd) : undefined;
-    if (out(repo, cwd)) { excluded++; continue; }
-    const group = repo ?? cwd ?? 'unknown';
+    const group = repos[0] ?? cwd ?? 'unknown';
     groups.set(group, (groups.get(group) ?? 0) + 1);
-    if (picks.has(real(group))) inScope.push({ ...c, repo });
+    if (picks.has(real(group))) inScope.push({ ...c, ...kept });
   }
   const missing: Record<string, number> = {};
   for (const field of inScope.flatMap((c) => LACKS[c.agent])) missing[field] = (missing[field] ?? 0) + 1;
