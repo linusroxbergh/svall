@@ -91,6 +91,8 @@ function createApp(): AppContext {
     followMemory({ store, bridge });
     followAwake({ store, bridge });
     bridge.onMessage((m) => {
+      // Send Feedback… works before svalld connects, and without it
+      if (m.type === 'menu.run' && m.action === 'feedback') { store.getState().toggleFeedback(true); return; }
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
       if (m.type === 'shell.info') {

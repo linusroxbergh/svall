@@ -149,7 +149,7 @@ final class AppMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
-        if item.action == #selector(openHelp(_:)) { return true }
+        if item.action == #selector(openHelp(_:)) || item.representedObject as? String == "feedback" { return true }
         return ready && (item !== newFleet || canCreate)
     }
 

@@ -192,6 +192,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     if (st.usageOpen) { st.toggleUsage(false); refocusSurface(ctx); return; }
     if (st.loadOpen) { st.toggleLoad(false); refocusSurface(ctx); return; }
     if (st.mobileOpen) { st.toggleMobile(false); refocusSurface(ctx); return; }
+    if (st.feedbackOpen) { st.toggleFeedback(false); refocusSurface(ctx); return; }
     // the move sheet stands over the card
     if (st.moveSheet) { st.setMoveSheet(undefined); return; }
     if (st.card) { st.closeCard(); return; }
@@ -220,7 +221,7 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     }
     const s = ctx.store.getState();
     // behind an overlay or a popup the selection is out of sight, so Enter is theirs
-    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.loadOpen && !s.settingsOpen) {
+    if (e.key === 'Enter' && !control(e) && !e.metaKey && !isVeiled(s) && !s.linkAsk && !s.usageOpen && !s.mobileOpen && !s.loadOpen && !s.feedbackOpen && !s.settingsOpen) {
       // the key is spent here: a control still holding the focus must not activate on it as well
       if (s.selectedId) { e.preventDefault(); s.focus(s.selectedId); return true; }
     }
