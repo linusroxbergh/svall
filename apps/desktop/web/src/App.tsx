@@ -83,7 +83,7 @@ function Screen() {
           <div className="use">
             <div className="use-panel popover" data-testid="feedback-panel">
               <div className="use-panel-title"><span>Send feedback</span><CloseX onClose={() => app.store.getState().toggleFeedback(false)} testid="corner-panel-close" /></div>
-              <FeedbackPanel diagnostics={async () => connectDiagnostics(shell ?? { home: '', log: [], op: false })} />
+              <FeedbackPanel hint="The last lines of svalld.log." diagnostics={async () => connectDiagnostics(shell ?? { home: '', log: [], op: false })} />
             </div>
           </div>
         )}

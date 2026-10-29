@@ -121,3 +121,38 @@ test('a failed preview disables and unticks the box with "Diagnostics unavailabl
   await screen.findByTestId('feedback-sent');
   expect(posted()).toEqual({ kind: 'bug', text: 'broke' });
 });
+
+test('the textarea has the focus on open', async () => {
+  await shown();
+  expect(document.activeElement).toBe(screen.getByTestId('feedback-text'));
+});
+
+test('while the preview loads the hint says so and a Bug waits to send, then carries the diagnostics', async () => {
+  let done!: (t: string) => void;
+  render(<FeedbackPanel diagnostics={() => new Promise<string>((r) => { done = r; })} />);
+  type('broke');
+  expect(screen.getByText('Gathering diagnostics…')).toBeTruthy();
+  expect(send().disabled).toBe(true);
+  done(DIAG);
+  await waitFor(() => expect(send().disabled).toBe(false));
+  fireEvent.click(send());
+  await screen.findByTestId('feedback-sent');
+  expect(posted()).toEqual({ kind: 'bug', text: 'broke', diagnostics: DIAG });
+});
+
+test('an Idea does not wait for the preview', () => {
+  render(<FeedbackPanel diagnostics={() => new Promise<string>(() => {})} />);
+  fireEvent.click(screen.getByTestId('feedback-kind-idea'));
+  type('idea');
+  expect(send().disabled).toBe(false);
+});
+
+test('the sent and error lines are announced', async () => {
+  fetchMock.mockResolvedValueOnce(new Response('{"error":"slow down"}', { status: 429 }));
+  await shown();
+  type('broke');
+  fireEvent.click(send());
+  expect((await screen.findByTestId('feedback-error')).getAttribute('role')).toBe('alert');
+  fireEvent.click(send());
+  expect((await screen.findByTestId('feedback-sent')).getAttribute('role')).toBe('status');
+});

@@ -75,6 +75,8 @@ test('the connect screen offers Send feedback, and its form previews the shell l
   fireEvent.click(screen.getByTestId('feedback-see'));
   const text = screen.getByTestId('feedback-preview').textContent!;
   expect(text).toContain('svalld not running');
+  expect(text).toContain('svalld.log, last lines');
+  expect(screen.getByText('The last lines of svalld.log.')).toBeTruthy();
   expect(text).toContain('boom in ~/.svall/x');
   expect(text).not.toContain('ada');
 });
@@ -104,4 +106,21 @@ test('closing the panel keeps the draft, and a send clears it', async () => {
   } finally {
     vi.unstubAllGlobals();
   }
+});
+
+test('the sidebar link closes the open panel instead of reopening it', () => {
+  render(<><Sidebar /><UtilityDock /></>);
+  const link = screen.getByTestId('sidebar-feedback');
+  fireEvent.pointerDown(link);
+  fireEvent.click(link);
+  expect(store.getState().feedbackOpen).toBe(true);
+  fireEvent.pointerDown(link);
+  fireEvent.click(link);
+  expect(store.getState().feedbackOpen).toBe(false);
+});
+
+test('the panel is not a live region', () => {
+  store.getState().toggleFeedback(true);
+  render(<UtilityDock />);
+  expect(screen.getByTestId('feedback-panel').getAttribute('aria-live')).toBe('off');
 });

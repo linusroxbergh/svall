@@ -81,7 +81,8 @@ export function UtilityDock() {
     // (a pointerdown, since the map's send no mousedown) is where the user wants the keys, so the surface leaves them there
     const away = (e: PointerEvent) => {
       // the dialogs the panel's buttons open stand outside the dock, and answering one is no press away
-      if (!box.current?.contains(e.target as Node) && !(e.target instanceof Element && e.target.closest('.modal-back'))) shut();
+      // the sidebar's feedback link toggles the panel itself
+      if (!box.current?.contains(e.target as Node) && !(e.target instanceof Element && e.target.closest('.modal-back, .sb-feedback'))) shut();
     };
     window.addEventListener('pointerdown', away, true);
     // a press on a surface never reaches the listener above; the shell answers for those
@@ -125,7 +126,7 @@ export function UtilityDock() {
       {open && (
         // the load reads anew every few seconds, which a live region would announce each time
         <div className="use-panel popover" ref={panel} id="corner-panel" data-testid={usageOpen ? 'usage-panel' : loadOpen ? 'load-panel' : feedbackOpen ? 'feedback-panel' : 'mobile-panel'}
-          data-load={loadOpen || undefined} aria-live={loadOpen ? 'off' : 'polite'}>
+          data-load={loadOpen || undefined} aria-live={loadOpen || feedbackOpen ? 'off' : 'polite'}>
           <div className="use-panel-title">
             <span>{usageOpen ? 'Plan usage' : loadOpen ? 'Load' : feedbackOpen ? 'Send feedback' : 'Phone link'}</span>
             {mobileOpen && <MobileSwitch testId="mobile-switch" />}

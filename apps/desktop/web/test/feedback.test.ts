@@ -9,6 +9,14 @@ test('sendFeedback posts JSON to the endpoint and leaves diagnostics out when ab
   expect(JSON.parse(f.mock.calls[0][1].body)).toEqual({ kind: 'idea', text: 'x' });
 });
 
+test('sendFeedback posts to VITE_FEEDBACK_URL when set', async () => {
+  vi.stubEnv('VITE_FEEDBACK_URL', 'http://127.0.0.1:9/api/feedback');
+  const f = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 201 }));
+  await sendFeedback({ kind: 'idea', text: 'x' }, f);
+  expect(f.mock.calls[0][0]).toBe('http://127.0.0.1:9/api/feedback');
+  vi.unstubAllEnvs();
+});
+
 test('sendFeedback posts the diagnostics when given', async () => {
   const f = vi.fn().mockResolvedValue(new Response('{"ok":true}', { status: 201 }));
   await sendFeedback({ kind: 'bug', text: 'x', diagnostics: 'd' }, f);
@@ -28,7 +36,7 @@ test('connectDiagnostics masks the user home under /Users/<name> and keeps the l
   const log = Array.from({ length: 250 }, (_, i) => `l${i} /Users/ann/.svall`);
   const t = connectDiagnostics({ home: '/Users/ann/.svall', log, op: false });
   expect(t.split('\n')[0]).toBe('svall (svalld not running)');
-  expect(t).toContain('svalld.log, last 200 lines');
+  expect(t).toContain('svalld.log, last lines');
   expect(t).toContain('l249 ~/.svall');
   expect(t).not.toContain('l49 ');
   expect(t).not.toContain('/Users/ann');
@@ -45,5 +53,5 @@ test('connectDiagnostics drops the oldest lines to fit, then cuts a lone oversiz
   expect(big).toContain('y'.repeat(100));
   const lone = connectDiagnostics({ home: '/Users/ann/.svall', log: ['z'.repeat(60_000)], op: false });
   expect(lone.length).toBe(FEEDBACK_DIAGNOSTICS_MAX);
-  expect(lone.startsWith('svall (svalld not running)\n\nsvalld.log, last 200 lines\n')).toBe(true);
+  expect(lone.startsWith('svall (svalld not running)\n\nsvalld.log, last lines\n')).toBe(true);
 });

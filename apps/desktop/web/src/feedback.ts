@@ -5,7 +5,7 @@ import type { ShellInfo } from './bridge.js';
 export async function sendFeedback(r: { kind: FeedbackKind; text: string; diagnostics?: string }, fetchFn: typeof fetch = fetch): Promise<void> {
   let res: Response;
   try {
-    res = await fetchFn(FEEDBACK_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(r) });
+    res = await fetchFn((import.meta.env.VITE_FEEDBACK_URL as string | undefined) ?? FEEDBACK_URL, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(r) });
   } catch (e) {
     throw new Error(`Couldn't send: ${e instanceof Error ? e.message : String(e)}`);
   }
@@ -18,7 +18,7 @@ export async function sendFeedback(r: { kind: FeedbackKind; text: string; diagno
 export function connectDiagnostics(shell: ShellInfo): string {
   const home = /^\/Users\/[^/]+/.exec(shell.home)?.[0] ?? '';
   const lines = shell.log.filter(Boolean).slice(-FEEDBACK_LOG_LINES);
-  const build = (from: number) => maskHome(['svall (svalld not running)', '', `svalld.log, last ${FEEDBACK_LOG_LINES} lines`, ...lines.slice(from)].join('\n'), home);
+  const build = (from: number) => maskHome(['svall (svalld not running)', '', 'svalld.log, last lines', ...lines.slice(from)].join('\n'), home);
   let from = 0;
   while (from < lines.length - 1 && build(from).length > FEEDBACK_DIAGNOSTICS_MAX) from++;
   const text = build(from);
