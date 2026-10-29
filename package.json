@@ -8,7 +8,7 @@
   "scripts": {
     "test": "vitest run",
     "integration:placement": "node scripts/integration/robot-placement.mjs",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json && tsc --noEmit -p services/feedback",
     "svalld": "tsx packages/svalld/src/bin.ts",
     "svall": "tsx packages/cli/src/main.ts",
     "compat": "tsx scripts/compat/main.ts",

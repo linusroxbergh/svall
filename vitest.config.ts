@@ -12,6 +12,7 @@ export default defineConfig({
     projects: [
       { test: { name: 'scripts', include: ['test/*.test.ts'], ...slow } },
       { test: { name: 'protocol', root: 'packages/protocol' } },
+      { test: { name: 'feedback', root: 'services/feedback' } },
       ...['svalld', 'cli'].map((name) => ({ test: { name, root: `packages/${name}`, setupFiles: [isolate], env: shell, ...slow } })),
       'apps/desktop/web',
     ],
