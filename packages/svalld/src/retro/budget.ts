@@ -62,6 +62,11 @@ export const labelCall = (chars: number, items: number, cpt: number): CallSize =
 export const synthesisCall = (chars: number, sessions: number, cpt: number): CallSize =>
   ({ input: { min: Math.min(SYNTHESIS_IN, Math.ceil(chars / cpt) + PER_SESSION * sessions), max: SYNTHESIS_IN }, out: SYNTHESIS_OUT });
 export const verifyCalls = (): CallSize[] => Array.from({ length: VERIFY_CALLS }, () => ({ input: VERIFY_IN, out: VERIFY_OUT }));
+/** The least synthesis input an overrun may cut it to. */
+export const SYNTHESIS_FLOOR = 60_000;
+/** The synthesis input a hold of `hold` tokens covers at the cap, its output and the CLI's own allowed for. */
+export const synthesisInputFor = (hold: number, agent: AgentKind): number =>
+  Math.max(0, Math.floor((((hold * 10) / 11 - OVERHEAD[agent].max - SYNTHESIS_OUT.max) * 20) / 23));
 
 // the cap reads 15% more input than counted and allows a tenth more for retries
 const capped = (input: number, overhead: number, out: number): number => Math.ceil(((input * 23) / 20 + overhead + out) * 11 / 10);
