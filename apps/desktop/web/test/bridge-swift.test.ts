@@ -85,8 +85,12 @@ describe('the menu bar between the page and the shell', () => {
 
   it('each menu command is an action in keys.ts, Keyboard Shortcuts or Send Feedback', () => {
     const ids = [...menu.matchAll(/\("[^"]+", "(\w+)"\)/g), ...delegate.matchAll(/commands\.command\("[^"]+", "(\w+)"\)/g)].map(([, id]) => id!);
-    expect(ids).toEqual(expect.arrayContaining(['newRobot', 'toggleView', 'paneChanges', 'toggleSettings']));
+    expect(ids).toEqual(expect.arrayContaining(['newRobot', 'toggleView', 'paneChanges', 'toggleSettings', 'feedback']));
     expect(ids.filter((id) => id !== 'shortcuts' && id !== 'feedback' && !(actionIds() as string[]).includes(id))).toEqual([]);
+  });
+
+  it('Send Feedback… is on before the page is ready, so it answers while svalld is down', () => {
+    expect(menu).toMatch(/func validateMenuItem[^}]*representedObject as\? String == "feedback" \{ return true \}\s*return ready/);
   });
 });
 

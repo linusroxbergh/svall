@@ -66,6 +66,7 @@ test('a GET is 405, a 300 KiB body 413, bad JSON 400', async () => {
   expect(get.status).toBe(405);
   expect(get.headers.get('access-control-allow-origin')).toBe('*');
   expect((await handle(post('x'.repeat(300 * 1024)), env, f)).status).toBe(413);
+  expect((await handle(post('{}', { 'content-length': String(100 * 1024 * 1024) }), env, f)).status).toBe(413);
   const bad = await handle(post('{nope'), env, f);
   expect(bad.status).toBe(400);
   expect(await bad.json()).toHaveProperty('error');

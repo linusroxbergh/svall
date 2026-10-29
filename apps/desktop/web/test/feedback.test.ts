@@ -42,6 +42,10 @@ test('connectDiagnostics masks the user home under /Users/<name> and keeps the l
   expect(t).not.toContain('/Users/ann');
 });
 
+test('connectDiagnostics says when svalld is another version rather than down', () => {
+  expect(connectDiagnostics({ home: '', log: [], op: false }, true).split('\n')[0]).toBe('svall (svalld is another version)');
+});
+
 test('connectDiagnostics masks nothing when the home is not under /Users', () => {
   expect(connectDiagnostics({ home: '/root/.svall', log: ['at /root/.svall'], op: false })).toContain('at /root/.svall');
 });

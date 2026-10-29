@@ -14,11 +14,11 @@ export async function sendFeedback(r: { kind: FeedbackKind; text: string; diagno
   throw new Error(typeof body?.error === 'string' ? body.error : `Couldn't send: ${res.status}`);
 }
 
-/** What a report carries while svalld is down: the shell's log tail, the home masked and the oldest lines dropped to fit. */
-export function connectDiagnostics(shell: ShellInfo): string {
+/** What a report carries while svalld is down or another version: the shell's log tail, the home masked and the oldest lines dropped to fit. */
+export function connectDiagnostics(shell: ShellInfo, outdated = false): string {
   const home = /^\/Users\/[^/]+/.exec(shell.home)?.[0] ?? '';
   const lines = shell.log.filter(Boolean).slice(-FEEDBACK_LOG_LINES);
-  const build = (from: number) => maskHome(['svall (svalld not running)', '', 'svalld.log, last lines', ...lines.slice(from)].join('\n'), home);
+  const build = (from: number) => maskHome([`svall (svalld ${outdated ? 'is another version' : 'not running'})`, '', 'svalld.log, last lines', ...lines.slice(from)].join('\n'), home);
   let from = 0;
   while (from < lines.length - 1 && build(from).length > FEEDBACK_DIAGNOSTICS_MAX) from++;
   const text = build(from);

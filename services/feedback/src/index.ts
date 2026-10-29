@@ -29,6 +29,7 @@ async function route(req: Request, env: Env, fetchFn: typeof fetch): Promise<Res
     });
   }
   if (req.method !== 'POST') return fail(405, 'method not allowed');
+  if (Number(req.headers.get('content-length')) > MAX_BODY) return fail(413, 'body too large');
   const raw = await req.text();
   if (new TextEncoder().encode(raw).length > MAX_BODY) return fail(413, 'body too large');
   let json: unknown;

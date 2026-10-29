@@ -74,7 +74,7 @@ test('the connect screen offers Send feedback, and its form previews the shell l
   expect(box.checked).toBe(true);
   fireEvent.click(screen.getByTestId('feedback-see'));
   const text = screen.getByTestId('feedback-preview').textContent!;
-  expect(text).toContain('svalld not running');
+  expect(text).toContain('svalld is another version');
   expect(text).toContain('svalld.log, last lines');
   expect(screen.getByText('The last lines of svalld.log.')).toBeTruthy();
   expect(text).toContain('boom in ~/.svall/x');
@@ -123,4 +123,19 @@ test('the panel is not a live region', () => {
   store.getState().toggleFeedback(true);
   render(<UtilityDock />);
   expect(screen.getByTestId('feedback-panel').getAttribute('aria-live')).toBe('off');
+});
+
+test('Esc closes the connect screen\'s form, where no key handler runs yet', () => {
+  act(() => { store.setState({ loaded: false }); store.getState().setStatus('outdated'); });
+  render(<App />);
+  fireEvent.click(screen.getByTestId('connect-feedback'));
+  fireEvent.keyDown(screen.getByTestId('feedback-text'), { key: 'Escape' });
+  expect(store.getState().feedbackOpen).toBe(false);
+});
+
+test('a form opened while svalld is still being found shows at once', () => {
+  act(() => store.setState({ loaded: false }));
+  render(<App />);
+  act(() => store.getState().toggleFeedback(true));
+  expect(screen.getByTestId('feedback-panel')).toBeTruthy();
 });

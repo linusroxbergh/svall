@@ -64,10 +64,20 @@ describe('diagnostics of a long log', () => {
     expect(text.length).toBeLessThanOrEqual(FEEDBACK_DIAGNOSTICS_MAX);
   });
 
+  it('leaves out what lies before the tail window', async () => {
+    const home = makeHome();
+    const log = path.join(home, 'svalld.log');
+    // blank lines are dropped, so only the window decides whether the old line shows
+    fs.writeFileSync(log, `old line\n${'\n'.repeat(300_000)}last line\n`);
+    const text = await diagnostics({ info: async () => info, log, home, macos: async () => '26.0' });
+    expect(text).toContain('last line');
+    expect(text).not.toContain('old line');
+  });
+
   it('drops a partial first line when the tail window starts mid-line', async () => {
     const home = makeHome();
     const log = path.join(home, 'svalld.log');
-    fs.writeFileSync(log, `${'x'.repeat(300_000)}\nlast one\n`);
+    fs.writeFileSync(log, `${'x'.repeat(1000)}${'\n'.repeat(256 * 1024 - 500)}last one\n`);
     const text = await diagnostics({ info: async () => info, log, home, macos: async () => '26.0' });
     expect(text.endsWith('last one')).toBe(true);
     expect(text).not.toContain('xxxx');

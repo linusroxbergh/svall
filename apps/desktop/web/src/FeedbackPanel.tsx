@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { FEEDBACK_TEXT_MAX, type FeedbackKind } from '@svall/protocol';
+import { CloseX } from './CloseX.js';
 import { sendFeedback } from './feedback.js';
 import { useApp } from './hooks.js';
 
@@ -48,7 +49,7 @@ export function FeedbackPanel({ diagnostics, hint = 'Version, health checks, las
 
   return (
     <div className="fb">
-      <div className="kb-seg">
+      <div className="kb-seg" role="group" aria-label="Kind">
         {(['bug', 'idea'] as const).map((k) => (
           <button key={k} data-testid={`feedback-kind-${k}`} aria-pressed={kind === k} onClick={() => setDraft({ kind: k })}>{k === 'bug' ? 'Bug' : 'Idea'}</button>
         ))}
@@ -70,6 +71,18 @@ export function FeedbackPanel({ diagnostics, hint = 'Version, health checks, las
       {sent
         ? <div className="fb-sent" role="status" data-testid="feedback-sent">Sent, thanks</div>
         : <button className="btn pri fb-send" data-testid="feedback-send" disabled={busy || gathering || !text.trim()} onClick={submit}>Send</button>}
+    </div>
+  );
+}
+
+/** The form in a popover of its own, for the screens without the utility dock. */
+export function FeedbackPopover({ onClose, ...form }: { onClose: () => void } & Parameters<typeof FeedbackPanel>[0]) {
+  return (
+    <div className="use">
+      <div className="use-panel popover" data-testid="feedback-panel" onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+        <div className="use-panel-title"><span>Send feedback</span><CloseX onClose={onClose} testid="corner-panel-close" /></div>
+        <FeedbackPanel {...form} />
+      </div>
     </div>
   );
 }

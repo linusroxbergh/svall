@@ -18,6 +18,11 @@ test('diagnostics sit in a collapsed block whose fence outlasts any backtick run
   expect(body.startsWith('see ```x``` </details>\n')).toBe(true);
   expect(body).toMatch(/<details><summary>Diagnostics<\/summary>\n\n`{6,}text\nlog ````` end\n`{6,}\n\n<\/details>$/);
 });
+test('a fence the text leaves open is closed before the diagnostics block', () => {
+  const { body } = issueOf({ kind: 'bug', text: 'it crashed:\n````js\nTypeError: x\n```', diagnostics: 'log' });
+  expect(body).toMatch(/^it crashed:\n````js\nTypeError: x\n```\n````\n\n<details>/);
+  expect(issueOf({ kind: 'bug', text: 'fine\n~~~\ncode\n~~~', diagnostics: 'log' }).body).toMatch(/^fine\n~~~\ncode\n~~~\n\n<details>/);
+});
 test('no diagnostics, no block', () => expect(issueOf({ kind: 'idea', text: 'x' }).body).toBe('x'));
 
 test('the limits are the client\'s', () => {

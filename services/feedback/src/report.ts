@@ -22,9 +22,23 @@ export function issueOf(r: Report): Issue {
   const title = first.length > MAX_TITLE ? `${first.slice(0, MAX_TITLE - 1)}…` : first;
   let body = r.text;
   if (r.diagnostics !== undefined) {
+    body = closeFence(body);
     const longest = Math.max(0, ...(r.diagnostics.match(/`+/g) ?? []).map((run) => run.length));
     const fence = '`'.repeat(Math.max(3, longest + 1));
     body += `\n\n<details><summary>Diagnostics</summary>\n\n${fence}text\n${r.diagnostics}\n${fence}\n\n</details>`;
   }
   return { title, body, labels: [r.kind] };
+}
+
+// a fence the text leaves open would swallow the diagnostics block after it
+function closeFence(text: string): string {
+  let open: string | undefined;
+  for (const line of text.split('\n')) {
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!m) continue;
+    const fence = m[1]!, rest = m[2]!;
+    if (!open) { if (fence[0] === '~' || !rest.includes('`')) open = fence; }
+    else if (fence[0] === open[0] && fence.length >= open.length && !rest.trim()) open = undefined;
+  }
+  return open ? `${text}\n${open}` : text;
 }
