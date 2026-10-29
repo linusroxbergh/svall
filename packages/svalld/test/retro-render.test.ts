@@ -108,4 +108,12 @@ Measured next time by: correction "report-style", now 5 of 194`);
     r.coverage.sessions[1] = { ...r.coverage.sessions[1], status: 'failed', reason: 'no card after a retry' };
     expect(reportMd(r, PATH)).toContain('Not carded:\n- s001-aaa (claude, core-api, 2026-10-23): no card after a retry');
   });
+
+  it("tells OpenCode sessions apart by their ids' ends, as their starts are the time they began", () => {
+    const sessions = ['ses_e79023d50ffeEX75NXf3vYKDnd', 'ses_e7908a74affeL9D4tR0TqV6I05'];
+    const f = finding('a1', { evidence: sessions.map((session) => ({ source: { agent: 'opencode' as const, session, at: 'L1.0' }, when: Date.parse('2026-10-29T09:00:00Z'), quote: 'q' })) });
+    const md = reportMd(report({ findings: [f] }), PATH);
+    expect(md).toContain('· f3vYKDnd · "q"');
+    expect(md).toContain('· 0TqV6I05 · "q"');
+  });
 });

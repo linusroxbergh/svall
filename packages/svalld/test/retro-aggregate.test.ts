@@ -41,6 +41,9 @@ describe('signature', () => {
     });
     expect(signature(cmd('curl -f https://x', true, 22, 'curl: (22) The requested URL returned error: 404')).signature).toBe('exit 22 · curl: (22) The requested URL returned error: 404');
     expect(signature(cmd('pnpm test', true, 1, 'FAIL x.test.ts\n  line 42: expected 1')).signature).toBe('exit 1 · FAIL x.test.ts');
+    // past the headings and labels before the cause
+    const rspec = 'Run options: include {focus: true}\n\nFailures:\n\n  1) Idempotency replays\n     Failure/Error: expect(r.status).to eq(201)';
+    expect(signature(cmd('bundle exec rspec x_spec.rb', true, 1, rspec)).signature).toBe('exit 1 · Failure/Error: expect(r.status).to eq(201)');
   });
 
   it('calls a probe failing with no such file, not found or no output expected, and any other probe failure a failure', () => {
@@ -49,6 +52,10 @@ describe('signature', () => {
     expect(signature(cmd('which bun', true, 1, 'bun not found')).expected).toBe(true);
     expect(signature(cmd('cat secrets.json', true, 1, 'cat: secrets.json: Permission denied')).expected).toBe(false);
     expect(signature(cmd('pnpm test', true, 1)).expected).toBe(false);
+    // a probe that printed what it found and failed on something after it, and a command the user interrupted
+    expect(signature(cmd('cat notes.md; ls docs/x', true, 1, '---\ndescription: notes\n---\n# Notes')).expected).toBe(true);
+    expect(signature(cmd('ls *.rb', true, 1, 'zsh:1: no matches found: *.rb')).expected).toBe(true);
+    expect(signature(cmd('bundle exec rspec', true, undefined, 'Tool execution interrupted')).expected).toBe(true);
   });
 
   it('names a command by its program and subcommand, past a cd and the variables set for it', () => {

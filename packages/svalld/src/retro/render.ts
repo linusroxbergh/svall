@@ -20,6 +20,8 @@ export const fenced = (text: string, by = '', lang = ''): string => {
   const fence = '`'.repeat(Math.max(3, ...[...text.matchAll(/`+/g)].map((m) => m[0].length + 1)));
   return [`${by}${fence}${lang}`, ...clean(text).split('\n').map((l) => `${by}${l}`), `${by}${fence}`].join('\n');
 };
+/** A session's id cut to eight characters: an OpenCode id's last, as its first are its start time. */
+export const shortId = (id: string): string => (id.startsWith('ses_') ? id.slice(-8) : id.slice(0, 8));
 export const tokens = (n: number): string => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1e3)}k`);
 const hours = (ms: number): string => `${Math.round(ms / 3_600_000)}h`;
 const minutes = (ms: number): string => (ms >= 3_600_000 ? `~${hours(ms)}` : ms >= 60_000 ? `~${Math.round(ms / 60_000)}m` : '–');
@@ -103,7 +105,7 @@ export function summary(r: RetroReport, reportPath: string): string {
   return lines.join('\n');
 }
 
-const sourceText = (e: Finding['evidence'][number]): string => ('pr' in e.source ? `PR ${prName(e.source.pr)}` : e.source.session.slice(0, 8));
+const sourceText = (e: Finding['evidence'][number]): string => ('pr' in e.source ? `PR ${prName(e.source.pr)}` : shortId(e.source.session));
 const where = (f: Finding): string => {
   const t = f.target;
   if (!t) return 'nowhere yet: a proposal to make by hand';
@@ -182,7 +184,7 @@ export function reportMd(r: RetroReport, reportPath: string): string {
     ...table(['Agent', 'Sessions', 'Carded', 'Cached', 'Failed', 'Turns clipped'], by((s) => s.agent)), '',
     ...table(['Repo', 'Sessions', 'Carded', 'Cached', 'Failed', 'Turns clipped'], by((s) => (s.repo ? s.repo.split('/').pop()! : 'no repo'))), '',
     ...table(['Day', 'Sessions', 'Carded', 'Cached', 'Failed', 'Turns clipped'], by((s) => s.day)), '',
-    ...(failed.length ? ['Not carded:', ...failed.map((s) => `- ${s.session.slice(0, 8)} (${s.agent}${s.repo ? `, ${s.repo.split('/').pop()}` : ''}, ${s.day}): ${flat(s.reason ?? 'failed')}`), ''] : []),
+    ...(failed.length ? ['Not carded:', ...failed.map((s) => `- ${shortId(s.session)} (${s.agent}${s.repo ? `, ${s.repo.split('/').pop()}` : ''}, ${s.day}): ${flat(s.reason ?? 'failed')}`), ''] : []),
     `Cache: ${c.sessions.filter((s) => s.status === 'cached').length} of ${plural(c.sessions.length, 'session')} read from it. Card quality: ${Math.round(c.quality * 100)}% of items kept after the source checks.`,
     `Review joins: ${c.joins.joined} joined, ${c.joins.failed} with no PR, ${c.joins.ambiguous} naming several, ${c.joins.truncated} PRs with commits left unread.`,
     `Groups cut from the synthesis: ${c.cutGroups}. Candidates not verified: ${c.unverified}. Below the gate: ${c.belowGate}.`,

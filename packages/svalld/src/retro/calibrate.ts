@@ -8,7 +8,8 @@ const Calibration = z.partialRecord(z.enum(['claude', 'openai', 'other']), z.obj
 /** Characters a token per family, as calls reported them, and how many calls it was taken from. */
 export type Calibration = z.infer<typeof Calibration>;
 
-export const DEFAULT_CPT = 3;
+// what Haiku read of a week of Claude and OpenCode transcripts: code, paths and ids take more tokens than prose
+export const DEFAULT_CPT = 2.2;
 // a fifth of the way toward each sample; a sample outside 1.5–6 is a CLI that counted something else
 const ALPHA = 0.2, LOW = 1.5, HIGH = 6;
 

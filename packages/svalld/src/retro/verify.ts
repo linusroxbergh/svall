@@ -6,6 +6,7 @@ import { fence } from './cards.js';
 import { compact, lineText, type Line } from './compact.js';
 import type { Outline } from './outline.js';
 import type { PrThread } from './prs.js';
+import { shortId } from './render.js';
 import { day, type Candidate } from './synthesis.js';
 import type { Target } from './targets.js';
 
@@ -60,7 +61,7 @@ export function evidenceFor(c: Candidate, o: { agg: Aggregate; outlines: Map<str
     if (!lines.has(s.session)) lines.set(s.session, compact(s));
     const all = lines.get(s.session)!;
     const i = Math.max(0, all.findIndex((l) => l.ids.includes(e.at ?? '')));
-    return [[`${id} · ${day(e.when)} · ${where(e)} · session ${s.session.slice(0, 8)}`,
+    return [[`${id} · ${day(e.when)} · ${where(e)} · session ${shortId(s.session)}`,
       ...all.slice(Math.max(0, i - AROUND), i + AROUND + 1).map((l) => `${l === all[i] ? '> ' : ''}${lineText(l)}`)].join('\n')];
   });
   const text = blocks.join('\n\n');

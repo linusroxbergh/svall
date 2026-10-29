@@ -36,6 +36,8 @@ export type Aggregate = {
 const EXAMPLES = 5, TEXT = 300, KEY = 120, SIGNATURE = 160, WINS = 20, WORKS_RUNS = 5, WORKS_SHARE = 0.85;
 const PROBES = new Set(['ls', 'cat', 'grep', 'rg', 'find', 'test', 'sleep', 'echo', 'which', 'stat', 'wc', 'sed', 'awk', 'jq', 'cd']);
 const ERRORISH = /error|exception|fail|cannot|refused|denied|not found|no such file|timed? ?out/i;
+// a heading, a rule or a label such as `Failures:` names no cause
+const HEADER = /^(?:#+\s.*|[\W_]+|\S+(?:\s\S+)?:)$/;
 const SEVERITY = { low: 2, medium: 3, high: 4 } as const;
 // a correction that names the rule file it is about is kept apart from others of its kind
 const RULE_FILE = /\b(CLAUDE\.md|AGENTS\.md|rules\/[\w.-]+\.md)\b/;
@@ -50,19 +52,21 @@ export function program(command: string): string {
 
 // what tells failures apart: status and exit codes and error classes stay, paths, hashes, line numbers and durations go
 const normal = (line: string): string => line
-  .replace(/(?:~|\.{1,2})?\/[^\s'"`:,()]+/g, '<path>')
+  .replace(/(?<!\w)(?:~|\.{1,2})?\/[^\s'"`:,()]+/g, '<path>')
   .replace(/\b(?=[0-9a-f]*\d)[0-9a-f]{7,40}\b/gi, '<hash>')
   .replace(/:\d+(?::\d+)?\b/g, ':<n>')
   .replace(/\bline \d+\b/gi, 'line <n>')
   .replace(/\b\d+(?:\.\d+)?\s?(?:ms|s|sec|m|min|h)\b/g, '<t>');
 
 /** A failed command's program and what failed, from the first line of its output that reads as an error; a probe failing
- *  with no such file, not found or nothing is an expected exit. */
+ *  with no such file, not found or no error, and a command the user interrupted, are expected exits. */
 export function signature(c: Command): { key: string; signature: string; expected: boolean } {
   const key = program(c.text);
-  const lines = (c.out ?? '').split('\n').map((l) => l.trim()).filter(Boolean);
-  const line = lines.find((l) => ERRORISH.test(l)) ?? lines[0];
-  const expected = PROBES.has(key.split(' ')[0]) && (!line || /no such file|not found/i.test(c.out ?? ''));
+  const lines = (c.out ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !HEADER.test(l));
+  const error = lines.find((l) => ERRORISH.test(l));
+  const line = error ?? lines[0];
+  const interrupted = c.exit === undefined && /interrupted/i.test(c.out ?? '');
+  const expected = interrupted || (PROBES.has(key.split(' ')[0]) && (!error || /no such file|not found/i.test(c.out ?? '')));
   return { key, signature: ellipsis(`exit ${c.exit ?? '?'}${line ? ` · ${normal(line)}` : ''}`, SIGNATURE), expected };
 }
 
