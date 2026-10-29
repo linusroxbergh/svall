@@ -10,18 +10,18 @@ const MIN = 60_000;
 
 // a session whose turns are [role, text] pairs on lines 1, 2, …, a minute apart from `start`
 function session(id: string, start: number, turns: [Turn['role'], string][], extra: Partial<Outline> = {}): Outline {
-  const ts: Turn[] = turns.map(([role, text], i) => ({ line: i + 1, at: start + i * MIN, role, text }));
+  const ts: Turn[] = turns.map(([role, text], i) => ({ id: `L${i + 1}.0`, line: i + 1, at: start + i * MIN, role, text }));
   return {
     agent: 'claude', session: id, file: `/t/${id}.jsonl`, start, end: ts.at(-1)?.at ?? start, turns: ts,
     prompts: ts.filter((t) => t.role === 'user' && t.text !== '[interrupted]'), skills: [],
-    tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, ...extra,
+    tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, clipped: 0, ...extra,
   };
 }
 
 // a session that runs `skill` at line 2 and is answered at line 4
 function runOf(id: string, start: number, skill: string, next?: SkillRun['next']): Outline {
   const s = session(id, start, [['user', `please ${skill}`], ['tool', `Skill {"skill":"${skill}"}`], ['agent', 'done'], ['user', next === 'interrupt' ? 'no, redo it' : 'thanks'], ['agent', 'after']]);
-  s.skills = [{ name: skill, line: 2, at: start + MIN, end: start + 3 * MIN, ...(next && { next }) }];
+  s.skills = [{ name: skill, id: 'L2.0', line: 2, at: start + MIN, end: start + 3 * MIN, ...(next && { next }) }];
   return s;
 }
 
@@ -77,10 +77,10 @@ describe('select', () => {
   });
 
   it('mechanical lists a command that failed in three sessions', () => {
-    const failed = (text: string) => ({ text, failed: true });
+    const failed = (text: string) => ({ id: 'L1.0', at: T0, text, failed: true });
     const outlines = [
       session('a', T0, [['user', 'ship'], ['error', '[rejected] Bash']], { commands: [failed('git push origin a'), failed('git push -u origin a'), failed('ls /nope')], hookErrors: 2 }),
-      session('b', T0, [['user', 'ship'], ['error', '[rejected] Bash']], { commands: [failed('cd /repo && git push'), { text: 'git push', failed: false }], hookErrors: 1 }),
+      session('b', T0, [['user', 'ship'], ['error', '[rejected] Bash']], { commands: [failed('cd /repo && git push'), { id: 'L1.0', at: T0, text: 'git push', failed: false }], hookErrors: 1 }),
       session('c', T0, [['user', 'ship']], { commands: [failed('GIT_TRACE=1 git push')] }),
     ];
     expect(pick({ outlines, focus: [] }).mechanical).toEqual([

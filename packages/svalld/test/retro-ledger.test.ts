@@ -16,8 +16,8 @@ const finding = (id: string, category = 'skipped-step'): Finding => ({
 
 const session = (id: string, skills: Partial<SkillRun>[], at = 1000): Outline => ({
   agent: 'claude', session: id, file: `/t/${id}.jsonl`, start: at, end: at + 500, turns: [], prompts: [],
-  skills: skills.map((s) => ({ name: 'publish', line: 1, at: at + 10, end: at + 20, ...s })),
-  tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0,
+  skills: skills.map((s) => ({ name: 'publish', id: 'L1.0', line: 1, at: at + 10, end: at + 20, ...s })),
+  tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, clipped: 0,
 });
 
 describe('the ledger', () => {

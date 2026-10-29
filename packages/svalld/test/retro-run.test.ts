@@ -48,8 +48,8 @@ const finding = (id: string): Finding => ({
 
 const session = (id: string, at: number, next?: SkillRun['next']): Outline => ({
   agent: 'claude', session: id, file: `/t/${id}.jsonl`, start: at, end: at + 500, turns: [], prompts: [],
-  skills: [{ name: 'publish', line: 2, at: at + 10, end: at + 20, ...(next && { next }) }],
-  tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0,
+  skills: [{ name: 'publish', id: 'L2.0', line: 2, at: at + 10, end: at + 20, ...(next && { next }) }],
+  tools: 0, errors: 0, interrupts: 0, rejected: 0, prs: [], commands: [], hookErrors: 0, clipped: 0,
 });
 
 type Seen = { side: 'read' | 'judge'; prompt: string; call: Call; signal?: AbortSignal };

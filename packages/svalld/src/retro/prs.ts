@@ -35,7 +35,7 @@ export async function prThread(url: string, gh: Gh = run): Promise<PrComment[]> 
   return all.flatMap((c): PrComment[] => {
     const body = c.body?.trim();
     if (!body || c.author === pr.author?.login) return [];
-    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: ellipsis(redact(body), CLIP.text), ...(c.path && { path: c.path }) }];
+    return [{ author: c.author ?? 'ghost', at: Date.parse(c.at ?? ''), body: ellipsis(redact(body), CLIP.agent), ...(c.path && { path: c.path }) }];
   }).sort((a, b) => a.at - b.at);
 }
 

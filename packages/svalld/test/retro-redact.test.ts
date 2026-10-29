@@ -92,7 +92,7 @@ describe('the outliner', () => {
     o.said(3, 3, long);
     o.prompt(4, 4, long);
     o.error(5, 5, `${'e'.repeat(250)} TOKEN="${'s'.repeat(100)}"`);
-    o.command(`${'c'.repeat(250)} TOKEN="${'s'.repeat(100)}"`, true);
+    o.ran(undefined, 6, 6, `${'c'.repeat(250)} TOKEN="${'s'.repeat(100)}"`, { failed: true });
     const { turns, commands } = o.outline({ agent: 'claude', session: 's', file: 'f' });
     expect(turns[0].text).toBe('Write {"file_path":".env","content":"PORT=1\\nOPENAI_API_KEY=[redacted]\\nDB_PASSWORD=[redacted]"}');
     expect(turns[1].text).toBe('exec_command {"cmd":"cat > .env <<EOF\\nSESSION_SECRET=[redacted]\\nEOF"}');

@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { inSpan, outliner, type Outline, type Span } from '../retro/outline.js';
+import { inSpan, outliner, type Outline, type Span, type Turn } from '../retro/outline.js';
 import { orSkip } from './jsonl.js';
 
 type Texts = { text?: string }[];
@@ -30,6 +30,8 @@ export function outlineCodex(text: string, file: string, span: Span): Outline {
   let said: string | undefined;
   // a sub-agent's rollout holds its parent's session_meta after its own
   let met = false;
+  // the calls no command has ended yet, newest last
+  const calls: Turn[] = [];
   text.split('\n').forEach((raw, i) => {
     const l = raw.startsWith('{') ? orSkip(() => JSON.parse(raw) as Line) : undefined;
     if (!l?.payload) return;
@@ -52,7 +54,7 @@ export function outlineCodex(text: string, file: string, span: Span): Outline {
     }
     if (l.type === 'response_item' && (p.type === 'function_call' || p.type === 'custom_tool_call')) {
       said = undefined;
-      out.tool(n, at, p.name ?? 'call', p.arguments ?? p.input);
+      calls.push(out.tool(n, at, p.name ?? 'call', p.arguments ?? p.input));
       return;
     }
     if (l.type !== 'event_msg') return;
@@ -66,9 +68,13 @@ export function outlineCodex(text: string, file: string, span: Span): Outline {
       said = undefined;
       const command = commandOf(it.command);
       const failed = it.status === 'failed' || (typeof it.exit_code === 'number' && it.exit_code !== 0);
-      out.command(command, failed);
-      if (failed) out.error(n, at, it.aggregated_output ?? '');
-      for (const m of command.matchAll(SKILL_READ)) out.skill(m[1], n, at);
+      // a command ends the newest call that holds it, as calls can run side by side, else the newest call
+      const escaped = JSON.stringify(command).slice(1, -1);
+      let i = calls.length - 1;
+      while (i >= 0 && !calls[i].text.includes(command) && !calls[i].text.includes(escaped)) i--;
+      const [call] = calls.splice(i >= 0 ? i : calls.length - 1, 1);
+      out.ran(call, n, at, command, { failed, ...(typeof it.exit_code === 'number' && { exit: it.exit_code }), out: it.aggregated_output });
+      for (const m of command.matchAll(SKILL_READ)) out.skill(m[1], n, at, { id: call?.id, inferred: true });
       return;
     }
     if (it?.type === 'McpToolCall' && (it.status === 'failed' || it.result?.isError)) {

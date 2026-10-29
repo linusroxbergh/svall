@@ -313,7 +313,7 @@ export class Retro {
     for (const o of outlines) {
       if (!o.skills.some((r) => reviews.has(r.name))) continue;
       const repo = repoOf.get(o.session);
-      const pr = o.prs[0] ?? (repo && o.branch ? await gh.forBranch(repo, o.branch).catch(() => undefined) : undefined);
+      const pr = o.prs[0]?.url ?? (repo && o.branch ? await gh.forBranch(repo, o.branch).catch(() => undefined) : undefined);
       if (pr) prOf.set(o.session, pr);
     }
     const comments = new Map<string, PrComment[]>();
