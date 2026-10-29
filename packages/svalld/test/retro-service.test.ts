@@ -39,7 +39,7 @@ function world(o: { runner?: Runner; now?: () => number; robots?: unknown[]; sta
   const make = () => new Retro({
     paths, store, log: { info: () => {}, error: () => {} }, config: () => readFleetConfig(paths), claudeDir, codexDir, homedir: home,
     createRobot: async (p: unknown) => { o.robots?.push(p); await o.started; return { id: 'c_fix' } as Robot; }, runner: (agent) => { agents.push(agent); return runner; },
-    gh: { ready: async () => false, thread: async () => [], forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
+    gh: { ready: async () => false, thread: async (url) => ({ url, author: 'me', comments: [], commits: [], truncated: false }), forBranch: async () => undefined }, inline: true, now: o.now ?? (() => NOW),
   });
   return { paths, store, codexDir, runner, agents, make, retro: make() };
 }

@@ -23,7 +23,7 @@ import { mark as markLedger, readLedger, recordFindings, writeLedger } from './l
 import type { Outline } from './outline.js';
 import { pack } from './pack.js';
 import { PRICES_CHECKED } from './prices.js';
-import { ghReady, prForBranch, prThread, type PrComment } from './prs.js';
+import { ghReady, prForBranch, prThread, type PrComment, type PrThread } from './prs.js';
 import { runPlan } from './run.js';
 import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
 import { select } from './select.js';
@@ -48,7 +48,7 @@ type Deps = {
   claudeDir: string; codexDir: string; homedir: string;
   createRobot: (p: { islandId: string; cwd: string; name: string; command: string; run: string }) => Promise<Robot>;
   runner?: (agent: AgentKind) => Runner;
-  gh?: { ready: () => Promise<boolean>; thread: (url: string) => Promise<PrComment[]>; forBranch: (repo: string, branch: string) => Promise<string | undefined> };
+  gh?: { ready: () => Promise<boolean>; thread: (url: string, since?: number) => Promise<PrThread>; forBranch: (repo: string, branch: string) => Promise<string | undefined> };
   inline?: true;
   now?: () => number;
 };
@@ -266,7 +266,7 @@ export class Retro {
       files: inScope.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
       span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: await this.onDisk(),
     }, this.d.inline && { inline: true });
-    const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string) => prThread(url), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
+    const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string, since?: number) => prThread(url, { since }), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
     const ready = FOCUS_OF[focus].includes('review-tweaks') && await gh.ready();
     const { prOf, comments } = ready ? await this.prs(outlines, targets, inScope, gh) : { prOf: new Map<string, string>(), comments: new Map<string, PrComment[]>() };
     // the island each session in scope ran on, which a fix robot started from a finding takes
@@ -318,7 +318,10 @@ export class Retro {
     }
     const comments = new Map<string, PrComment[]>();
     for (const url of new Set(prOf.values())) {
-      try { comments.set(url, await gh.thread(url)); } catch (e) { this.d.log.error(`retro: ${url}: ${String(e)}`); }
+      try {
+        const t = await gh.thread(url);
+        comments.set(url, t.comments.filter((c) => c.author !== t.author));
+      } catch (e) { this.d.log.error(`retro: ${url}: ${String(e)}`); }
     }
     return { prOf, comments };
   }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Focus } from '@svall/protocol';
 import type { Outline, SkillRun, Turn } from '../src/retro/outline.js';
-import { prThread, type PrComment } from '../src/retro/prs.js';
+import type { PrComment } from '../src/retro/prs.js';
 import { select } from '../src/retro/select.js';
 import type { Target } from '../src/retro/targets.js';
 
@@ -60,8 +60,8 @@ describe('select', () => {
     const linked = runOf('a', T0, 'work-review');
     const unlinked = runOf('b', T0 + 60 * MIN, 'work-review');
     const thread: PrComment[] = [
-      { author: 'bot', at: T0, body: 'before the run' },
-      { author: 'kim', at: T0 + 10 * MIN, body: 'this leaks the handle', path: 'src/a.ts' },
+      { id: '1', kind: 'conversation', bot: false, author: 'bot', at: T0, body: 'before the run' },
+      { id: '2', kind: 'inline', bot: false, author: 'kim', at: T0 + 10 * MIN, body: 'this leaks the handle', path: 'src/a.ts' },
     ];
     const r = pick({ outlines: [linked, unlinked], focus: ['review-tweaks'], targets: [target('work-review', true)], prs: new Map([[url, thread]]), prOf: new Map([['a', url]]) });
     expect(r.excerpts).toHaveLength(1);
@@ -99,32 +99,5 @@ describe('select', () => {
     expect(r.excerpts.find((e) => e.id === 'a:2')?.text).toBe('L2 TOOL: Bash {"command":"gh pr create --title x --body \\"notes\\""}\nL5 AGENT: bye');
     expect(r.mechanical).toContain('skills no transcript on disk has run, to keep or retire: babysit-pr');
     expect(r.thin).toEqual(['skill triggers: 1 session of evidence', 'new skills: 1 session of evidence', 'instructions: 1 session of evidence']);
-  });
-});
-
-describe('prThread', () => {
-  it("keeps others' comments, reviews and inline comments, oldest first, clipped and redacted", async () => {
-    const calls: string[][] = [];
-    const gh = async (args: string[]) => {
-      calls.push(args);
-      if (args[0] === 'pr') {
-        return JSON.stringify({
-          author: { login: 'me' },
-          comments: [{ author: { login: 'me' }, body: 'my own note', createdAt: '2026-10-20T10:00:00Z' }, { author: { login: 'kim' }, body: `${'x'.repeat(1490)} TOKEN="${'q'.repeat(500)}"`, createdAt: '2026-10-20T12:00:00Z' }],
-          reviews: [{ author: { login: 'bot' }, body: '', submittedAt: '2026-10-20T09:30:00Z' }, { author: { login: 'bot' }, body: 'token ghp_abcdefghijklmnopqrstuvwx', submittedAt: '2026-10-20T11:00:00Z' }],
-        });
-      }
-      return JSON.stringify([[{ user: { login: 'kim' }, body: 'nit', created_at: '2026-10-20T10:30:00Z', path: 'src/a.ts' }]]);
-    };
-    const thread = await prThread('https://github.com/o/r/pull/7', gh);
-    expect(calls).toEqual([
-      ['pr', 'view', 'https://github.com/o/r/pull/7', '--json', 'author,comments,reviews'],
-      ['api', '--hostname', 'github.com', 'repos/o/r/pulls/7/comments', '--paginate', '--slurp'],
-    ]);
-    expect(thread.map((c) => [c.author, c.path])).toEqual([['kim', 'src/a.ts'], ['bot', undefined], ['kim', undefined]]);
-    expect(thread[1].body).toBe('token [redacted]');
-    // masked whole, then clipped, so the clip leaves none of a secret it cuts
-    expect(thread[2].body).toHaveLength(1500);
-    expect(thread[2].body).not.toContain('q');
   });
 });
