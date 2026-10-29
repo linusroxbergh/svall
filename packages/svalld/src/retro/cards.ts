@@ -116,17 +116,20 @@ export function chunks(o: Outline, lines: Line[], repo?: string, max = CHUNK_TOK
   return out;
 }
 
-/** Chunks in calls of at most `max` tokens, each whole in the first call it fits. */
-export function packCalls(cs: Chunk[], max = CALL_TOKENS): Chunk[][] {
-  const calls: { chunks: Chunk[]; tokens: number }[] = [];
-  for (const c of cs) {
-    let call = calls.find((x) => x.tokens + c.tokens <= max);
-    if (!call) calls.push((call = { chunks: [], tokens: 0 }));
-    call.chunks.push(c);
-    call.tokens += c.tokens;
+/** `xs` in calls of at most `max` tokens, each whole in the first call it fits. */
+export function pack<T>(xs: T[], tokens: (x: T) => number, max = CALL_TOKENS): T[][] {
+  const calls: { xs: T[]; tokens: number }[] = [];
+  for (const x of xs) {
+    const n = tokens(x);
+    let call = calls.find((c) => c.tokens + n <= max);
+    if (!call) calls.push((call = { xs: [], tokens: 0 }));
+    call.xs.push(x);
+    call.tokens += n;
   }
-  return calls.map((x) => x.chunks);
+  return calls.map((c) => c.xs);
 }
+
+export const packCalls = (cs: Chunk[], max = CALL_TOKENS): Chunk[][] => pack(cs, (c) => c.tokens, max);
 
 export const CARD_SYSTEM = [
   "You read chunks of coding agents' sessions and write one card per chunk, for a retro on the user's skills, reviews and instructions.",

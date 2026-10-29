@@ -20,7 +20,7 @@ type Gh = (args: string[], cwd?: string) => Promise<string>;
 const run: Gh = async (args, cwd) =>
   (await execP('gh', args, { cwd, timeout: 30_000, killSignal: 'SIGKILL', maxBuffer: 64 * 1024 * 1024 })).stdout;
 
-type Said = { id?: string; author?: { login?: string } | null; body?: string; createdAt?: string; submittedAt?: string };
+type Said = { id?: string; author?: { login?: string } | null; body?: string; createdAt?: string; submittedAt?: string; commit?: { oid?: string } | null };
 type Inline = {
   id?: number; in_reply_to_id?: number; user?: { login?: string; type?: string } | null; body?: string; created_at?: string;
   path?: string; diff_hunk?: string; original_commit_id?: string;
@@ -47,7 +47,8 @@ export async function prThread(url: string, o: { since?: number; gh?: Gh } = {})
   const said = (kind: 'review' | 'conversation') => (c: Said): PrComment[] => {
     const body = c.body?.trim();
     const author = c.author?.login ?? 'ghost';
-    return body ? [{ id: c.id ?? '', kind, author, bot: bot(author), at: Date.parse(c.createdAt ?? c.submittedAt ?? ''), body: ellipsis(redact(body), CLIP.agent) }] : [];
+    const commit = c.commit?.oid;
+    return body ? [{ id: c.id ?? '', kind, author, bot: bot(author), at: Date.parse(c.createdAt ?? c.submittedAt ?? ''), body: ellipsis(redact(body), CLIP.agent), ...(commit && { commit }) }] : [];
   };
   const inline = pages.flat().flatMap((c): PrComment[] => {
     const body = c.body?.trim();

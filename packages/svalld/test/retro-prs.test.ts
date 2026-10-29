@@ -18,7 +18,7 @@ function gh(calls: string[][]) {
         ],
         reviews: [
           { id: 'PRR_1', author: { login: 'kim' }, body: '', submittedAt: '2026-10-20T09:30:00Z' },
-          { id: 'PRR_2', author: { login: 'kim' }, body: 'token ghp_abcdefghijklmnopqrstuvwx', submittedAt: '2026-10-20T11:00:00Z' },
+          { id: 'PRR_2', author: { login: 'kim' }, body: 'token ghp_abcdefghijklmnopqrstuvwx', submittedAt: '2026-10-20T11:00:00Z', commit: { oid: 'c2' } },
         ],
         commits: [
           { oid: 'c1', committedDate: '2026-10-20T08:00:00Z' }, { oid: 'c2', committedDate: '2026-10-20T09:00:00Z' },
@@ -51,7 +51,7 @@ describe('prThread', () => {
       ['IC_1', 'conversation', 'me', false, undefined, undefined, undefined],
       ['11', 'inline', 'kim', false, undefined, 'src/a.ts', 'c2'],
       ['13', 'inline', 'coderabbitai[bot]', true, undefined, 'src/b.ts', 'c2'],
-      ['PRR_2', 'review', 'kim', false, undefined, undefined, undefined],
+      ['PRR_2', 'review', 'kim', false, undefined, undefined, 'c2'],
       ['IC_2', 'conversation', 'kim', false, undefined, undefined, undefined],
       ['12', 'inline', 'me', false, '11', 'src/a.ts', 'c2'],
     ]);
