@@ -7,7 +7,7 @@ import { BRIEF_CHANGED, renderBrief } from '../src/context/brief.js';
 import type { GitRunner } from '../src/links/git.js';
 import { PRIVATE, profileHome } from '../src/profile.js';
 import { appendSessions, type SessionRecord } from '../src/retro/sessions.js';
-import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from '../src/retro/scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, repoWork, scope, type Candidate } from '../src/retro/scope.js';
 import type { CliRun } from '../src/sessions/types.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -52,7 +52,7 @@ describe('scope', () => {
       islandName: (id) => ({ i_life: 'Life', i_side: 'Side', i_work: 'Work' })[id],
       repoOf: repos({ '/skip/wt': '/skip', '/keep': '/elsewhere' }),
     });
-    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep', island: 'i_work' }]);
+    expect(r.inScope).toEqual([{ ...cand('E', { cwd: '/keep', agent: 'codex' }), record: own.get('E'), repo: '/keep', repos: ['/keep'], island: 'i_work' }]);
     expect(r.counts).toMatchObject({ inScope: 1, excluded: 4, otherFleets: 0, unrecorded: [], missing: { cost: 1 } });
   });
 
@@ -152,6 +152,25 @@ describe('scope', () => {
     expect(r.counts).toMatchObject({ inScope: 3, excluded: 1, otherFleets: 1, unrecorded: [{ repo: '/r', count: 2, picked: false }] });
   });
 
+  it('places a session by the repos it worked in, kept or offered, and reads only those it may keep', async () => {
+    const own = new Map([...['MOVED', 'TWO', 'GONE', 'IDLE'].map((s): [string, SessionRecord] => [s, rec(s, { repo: '/a' })]), ['LIFE', rec('LIFE', { island: 'i_life' })]]);
+    const read: string[] = [];
+    const worked = async (cs: Candidate[]) => {
+      read.push(...cs.map((c) => c.session));
+      return new Map([['MOVED', ['/b']], ['TWO', ['/b', '/x']], ['GONE', ['/x', '/b']], ['IDLE', []], ['PLAIN', ['/b']]]);
+    };
+    const r = await scope({
+      ...base, own, worked, others: { ...none, sessions: new Set(['THEIRS']) },
+      candidates: [
+        ...['MOVED', 'TWO', 'GONE', 'IDLE', 'PLAIN'].map((s) => cand(s, { cwd: '/a' })), cand('LIFE'), cand('THEIRS'), cand('ses_oc', { agent: 'opencode', cwd: '/a' }),
+      ],
+      exclude: { repos: ['/x'], islands: ['i_life'] }, unrecorded: ['/b'], repoOf: repos({ '/a': '/a' }),
+    });
+    expect(read).toEqual(['MOVED', 'TWO', 'GONE', 'IDLE', 'PLAIN']);
+    expect(r.inScope.map((c) => [c.session, c.repo, c.repos])).toEqual([['MOVED', '/b', ['/b']], ['TWO', '/b', ['/b']], ['IDLE', '/a', ['/a']], ['PLAIN', '/b', ['/b']]]);
+    expect(r.counts).toMatchObject({ excluded: 2, otherFleets: 1, unrecorded: [{ repo: '/a', count: 1, picked: false }, { repo: '/b', count: 1, picked: true }] });
+  });
+
   it('trusts what a fleet recorded over the context a session names', async () => {
     const theirs = fs.realpathSync(makeHome());
     const r = await scope({
@@ -159,6 +178,24 @@ describe('scope', () => {
       candidates: [cand('S', { cwd: '/r', fleet: { home: theirs, island: 'i_x' } })], repoOf: repos({ '/r': '/r' }),
     });
     expect(r.inScope.map((c) => c.session)).toEqual(['S']);
+  });
+});
+
+describe('repoWork', () => {
+  it('places work in the repos written in, else run in, each with a fifth of it, asking git of checkouts alone', async () => {
+    const root = fs.realpathSync(makeHome());
+    const [a, b, c] = ['a', 'b', 'c'].map((n) => path.join(root, n));
+    const wt = path.join(a, '.claude', 'worktrees', 'wt');
+    for (const d of [a, b, c]) fs.mkdirSync(path.join(d, '.git'), { recursive: true });
+    fs.mkdirSync(wt, { recursive: true });
+    fs.writeFileSync(path.join(wt, '.git'), 'gitdir: elsewhere\n');
+    const asked: string[] = [];
+    const reposOf = repoWork(async (dir) => { asked.push(dir); return dir.startsWith(a) ? a : dir; });
+    const wrote = { [path.join(a, 'src')]: 3, [path.join(wt, 'src')]: 3, [path.join(a, 'gone', 'deep')]: 2, [b]: 3, [c]: 1, [path.join(root, 'scratch')]: 9 };
+    expect(await reposOf({ wrote, ran: { [c]: 50 } })).toEqual([a, b]);
+    expect(asked).toEqual([a, wt, a, b, c]);
+    expect(await reposOf({ wrote: { [path.join(root, 'scratch')]: 4 }, ran: { [c]: 4, [path.join(b, 'gone')]: 1 } })).toEqual([c, b]);
+    expect(await reposOf({ wrote: {}, ran: {} })).toEqual([]);
   });
 });
 

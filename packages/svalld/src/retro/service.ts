@@ -25,7 +25,7 @@ import { pack } from './pack.js';
 import { PRICES_CHECKED } from './prices.js';
 import { ghReady, prForBranch, prThread, type PrComment } from './prs.js';
 import { runPlan } from './run.js';
-import { discover, opencodeSessions, otherFleets, repoFinder, scope, type Candidate } from './scope.js';
+import { discover, opencodeSessions, otherFleets, repoFinder, repoWork, scope, type Candidate } from './scope.js';
 import { select } from './select.js';
 import { readSessions } from './sessions.js';
 import { inventory, isGitWithRemote, type Target } from './targets.js';
@@ -256,16 +256,33 @@ export class Retro {
     // OpenCode lists a project's sessions only from inside it: the folders this fleet's OpenCode sessions and the others ran in
     const dirs = [...new Set([...own.values()].filter((r) => r.agent === 'opencode' && r.cwd).map((r) => r.cwd!).concat(found.flatMap((c) => (c.cwd ? [c.cwd] : []))))];
     const candidates: Candidate[] = [...found, ...(await opencodeSessions(dirs)).filter((c) => !c.mtime || c.mtime >= span.from)];
+    const repoOf = repoFinder();
+    const reposOf = repoWork(repoOf);
+    const inline = this.d.inline && { inline: true as const };
+    const outline = async (sessions: Candidate[]) => (await indexSessions({
+      files: sessions.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })), span, skills: [], onDisk: [],
+    }, inline)).outlines;
+    // a session goes with the repos it worked in, which its outline holds
+    const read = new Map<string, Outline | undefined>();
+    const worked = async (sessions: Candidate[]) => {
+      for (const c of sessions) read.set(c.session, undefined);
+      const found = await outline(sessions);
+      for (const o of found) read.set(o.session, o);
+      return new Map(await Promise.all(found.map(async (o) => [o.session, await reposOf(o.work)] as const)));
+    };
     const { inScope, counts } = await scope({
       candidates, home: this.d.paths.home, own, others: otherFleets(this.d.paths.home, this.d.homedir), exclude: retro.exclude, unrecorded: retro.unrecorded,
-      islandName: (i) => state.islands[i]?.name, repoOf: repoFinder(), remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
+      islandName: (i) => state.islands[i]?.name, repoOf, worked, remote: Object.values(state.robots).filter((c) => c.machine && c.agent).length,
     });
-    const repos = [...new Set(inScope.flatMap((c) => (c.repo ? [c.repo] : [])))];
+    // an OpenCode session picked by its folder is read now
+    for (const o of await outline(inScope.filter((c) => !read.has(c.session)))) read.set(o.session, o);
+    const outlines = inScope.flatMap((c) => read.get(c.session) ?? []);
+    const repos = [...new Set(inScope.flatMap((c) => c.repos))];
     const targets = await this.inventory(repos, retro);
-    const { outlines, skillsSeen } = await indexSessions({
-      files: inScope.map((c) => ({ agent: c.agent, session: c.session, file: c.file, cwd: c.cwd, subagents: c.subagents })),
-      span, skills: targets.filter((t) => t.kind === 'skill').map((t) => t.name), onDisk: await this.onDisk(),
-    }, this.d.inline && { inline: true });
+    const skills = targets.filter((t) => t.kind === 'skill').map((t) => t.name);
+    // a run an outline holds counts too, an OpenCode session's among them
+    const seen = new Set([...outlines.flatMap((o) => o.skills.map((r) => r.name)), ...(await indexSessions({ files: [], span, skills, onDisk: await this.onDisk() }, inline)).skillsSeen]);
+    const skillsSeen = skills.filter((s) => seen.has(s));
     const gh = this.d.gh ?? { ready: () => ghReady(), thread: (url: string) => prThread(url), forBranch: (repo: string, branch: string) => prForBranch(repo, branch) };
     const ready = FOCUS_OF[focus].includes('review-tweaks') && await gh.ready();
     const { prOf, comments } = ready ? await this.prs(outlines, targets, inScope, gh) : { prOf: new Map<string, string>(), comments: new Map<string, PrComment[]>() };

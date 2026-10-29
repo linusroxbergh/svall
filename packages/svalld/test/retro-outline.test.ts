@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
@@ -121,6 +122,15 @@ describe('outlineClaude', () => {
       + assistant([{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'gh pr view https://bot:t0ken@github.com/acme/app/pull/6' } }], '2026-10-26T09:00:02.000Z');
     expect(outlineClaude(remote, file, span).prs).toEqual(['https://github.com/acme/app/pull/5', 'https://github.com/acme/app/pull/6']);
   });
+
+  it("notes where it worked: the folders of the files it edited and those its commands ran in, a subagent's too", () => {
+    const call = (name: string, input: object, cwd = '/w/a') =>
+      line({ type: 'assistant', cwd, message: { model: 'claude-opus-5-5', content: [{ type: 'tool_use', id: name, name, input }] }, timestamp: '2026-10-26T09:00:00.000Z' });
+    const text = call('Edit', { file_path: '/w/b/src/x.ts' }) + call('Write', { file_path: 'notes.md' }) + call('Read', { file_path: '/w/d/y.ts' })
+      + call('Bash', { command: 'cd /w/b && git commit -m x' }) + call('Bash', { command: 'git -C ~/c status' }) + call('Bash', { command: 'ls' });
+    const o = outlineClaude(text, file, span, [call('Write', { file_path: 'src/z.ts' }, '/w/b')]);
+    expect(o.work).toEqual({ wrote: { '/w/b/src': 2, '/w/a': 1 }, ran: { '/w/b': 1, [path.join(os.homedir(), 'c')]: 1, '/w/a': 1 } });
+  });
 });
 
 describe('outlineCodex', () => {
@@ -163,6 +173,17 @@ describe('outlineCodex', () => {
     const o = outlineCodex(meta('child', '/w/sub', 'sub', { parent_thread_id: 'parent' }) + meta('parent', '/w', 'main'), rollout, span);
     expect(o).toMatchObject({ session: 'child', cwd: '/w/sub', branch: 'sub' });
   });
+
+  it('notes the folders its commands ran in and those of the files its changes wrote', () => {
+    const item = (it: object) => line({ timestamp: '2026-10-26T10:00:00.000Z', type: 'event_msg', payload: { type: 'item_completed', item: it } });
+    const o = outlineCodex(
+      line({ timestamp: '2026-10-26T10:00:00.000Z', type: 'session_meta', payload: { id: 's', cwd: '/w/a' } })
+      + item({ type: 'CommandExecution', command: ['/bin/zsh', '-lc', 'pnpm test'], cwd: 'file:///w/b', status: 'completed', exit_code: 0 })
+      + item({ type: 'CommandExecution', command: ['/bin/zsh', '-lc', 'cd /w/c && git push'], status: 'completed', exit_code: 0 })
+      + item({ type: 'FileChange', changes: { '/w/b/src/x.ts': { type: 'update' }, 'README.md': { type: 'add' } } }),
+      rollout, span);
+    expect(o.work).toEqual({ wrote: { '/w/b/src': 1, '/w/a': 1 }, ran: { '/w/b': 1, '/w/c': 1 } });
+  });
 });
 
 describe('outlineOpencode', () => {
@@ -179,5 +200,18 @@ describe('outlineOpencode', () => {
     expect(o.commands).toEqual([{ text: 'pnpm lint', failed: true }]);
     expect(o.prs).toEqual(['https://github.com/acme/app/pull/9']);
     expect(o.turns.some((t) => /MARKER|old/.test(t.text))).toBe(false);
+  });
+
+  it('notes the folders of the files its tools wrote and those its shells ran in, from its directory', () => {
+    const tool = (name: string, input: object) => ({ type: 'tool', name, state: { status: 'completed', input } });
+    const o = outlineOpencode({
+      info: { id: 'ses_x', location: { directory: '/w/a' } },
+      messages: [{ type: 'assistant', time: { created: at('09:00:00.000') }, content: [
+        tool('write', { path: '/w/b/x.ts', content: '' }), tool('edit', { filePath: 'src/y.ts' }),
+        tool('apply_patch', { patchText: '*** Begin Patch\n*** Update File: /w/c/z.ts\n*** End Patch' }),
+        tool('shell', { command: 'cd /w/b && pnpm test' }), tool('bash', { command: 'ls' }), tool('read', { path: '/w/d/r.ts' }),
+      ] }],
+    }, span);
+    expect(o.work).toEqual({ wrote: { '/w/b': 1, '/w/a/src': 1, '/w/c': 1 }, ran: { '/w/b': 1, '/w/a': 1 } });
   });
 });
