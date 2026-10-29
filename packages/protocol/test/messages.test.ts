@@ -159,8 +159,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 34', () => {
-    expect(PROTOCOL_VERSION).toBe(34);
+  it('is 35', () => {
+    expect(PROTOCOL_VERSION).toBe(35);
   });
 
   it('machines.setup and machines.consent take and answer', () => {
@@ -307,7 +307,7 @@ describe('system.info and requests in parts', () => {
 describe('events', () => {
   // the compiler refuses a missing or a stray one
   it('names every event the union carries', () => {
-    expectTypeOf<Event['event']>().toEqualTypeOf<'state.patch' | 'term.output' | 'term.resync' | 'repo.changed' | 'mobile.phones'>();
+    expectTypeOf<Event['event']>().toEqualTypeOf<'state.patch' | 'term.output' | 'term.resync' | 'repo.changed' | 'mobile.phones' | 'app.show'>();
   });
 });
 

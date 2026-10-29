@@ -40,7 +40,8 @@ export const pruneIde = (ide: Record<string, IdeState>, f: FleetState, prev: Fle
   return ids.length === Object.keys(ide).length && ids.every((id) => next[id] === ide[id]) ? ide : next;
 };
 
-export type IdeSliceState = { ide: Record<string, IdeState> };
+// a markdown file `svall app show --preview` asked to see formatted; its editor clears the ask once it shows it
+export type IdeSliceState = { ide: Record<string, IdeState>; previewAsk?: { id: string; path: string } };
 
 export type IdeActions = {
   setPanes(id: string, panes: Panes): void;
@@ -52,10 +53,13 @@ export type IdeActions = {
   setTop(id: string, top: string): void;
   toggleFolder(id: string, path: string): void;
   markFile(id: string, path: string, flags: { dirty?: boolean; conflict?: boolean; failed?: boolean }): void;
+  askPreview(ask?: { id: string; path: string }): void;
 };
 
 export const createIdeSlice: StateCreator<App, [], [], IdeSliceState & IdeActions> = (set) => ({
   ide: {},
+  previewAsk: undefined,
+  askPreview: (previewAsk) => set({ previewAsk }),
   setPanes: (id, panes) => set((s) => ({ ide: { ...s.ide, [id]: { ...(s.ide[id] ?? emptyIde()), panes } } })),
   // a drag fires this on every mouse move; skip the render when the clamp or the snap gives the same ratio
   setRatio: (id, ratio) => set((s) => (s.ide[id]?.ratio === ratio ? {} : { ide: { ...s.ide, [id]: { ...(s.ide[id] ?? emptyIde()), ratio } } })),

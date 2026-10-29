@@ -303,6 +303,10 @@ final class ShellRouter {
         case .retitle:
             webView.window?.title = SvallHome.displayName
             awake.apply()
+        case .windowSize(let width, let height):
+            guard let window = webView.window else { return }
+            let size = window.frameRect(forContentRect: NSRect(x: 0, y: 0, width: width, height: height)).size
+            window.setFrame(NSRect(x: window.frame.minX, y: window.frame.maxY - size.height, width: size.width, height: size.height), display: true)
         case .awake(let reason):
             awake.hold(reason)
         }

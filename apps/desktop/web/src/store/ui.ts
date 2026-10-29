@@ -75,6 +75,8 @@ export type UiState = {
   mobileOpen: boolean;
   loadOpen: boolean;
   mobile?: MobileStatus;
+  // the QR a screenshot's phone panel shows in place of the fleet's, its link and logins hidden
+  phoneRedact?: string;
   // a panel closed by a click into the page leaves the keyboard where the click put it, so the
   // surface coming back out from under it does not take it
   keepPageFocus: boolean;
@@ -142,6 +144,7 @@ export type UiActions = {
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   setMobile(status?: MobileStatus): void;
   setPhones(phones: PhoneSession[]): void;
+  setPhoneRedact(qr?: string): void;
   pageFocusSettled(): void;
   setSettings(patch: Partial<Settings>): void;
   setHalfCard(size: HalfCard, persist?: boolean): void;
@@ -203,6 +206,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     mobileOpen: false,
     loadOpen: false,
     mobile: undefined,
+    phoneRedact: undefined,
     keepPageFocus: false,
     settings: storage?.getSettings() ?? DEFAULT_SETTINGS,
     halfCard: storage?.getHalfCard() ?? DEFAULT_HALF_CARD,
@@ -295,6 +299,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands
     setPhones: (phones) => set((s) => (s.mobile ? { mobile: { ...s.mobile, phones } } : {})),
+    setPhoneRedact: (phoneRedact) => set({ phoneRedact }),
     pageFocusSettled: () => set((s) => (s.keepPageFocus ? { keepPageFocus: false } : {})),
     setSettings: (patch) => set((s) => { const settings = { ...s.settings, ...patch }; storage?.setSettings(settings); return { settings }; }),
     setHalfCard: (size, persist = true) => set(() => { if (persist) storage?.setHalfCard(size); return { halfCard: size }; }),

@@ -14,11 +14,19 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
   const markdown = /\.(md|markdown)$/i.test(path);
   const [preview, setPreview] = useState(false);
   const [text, setText] = useState(() => getBuffer(id, path)?.state.doc.toString() ?? '');
+  const asked = useApp((s) => s.previewAsk?.id === id && s.previewAsk.path === path);
   // a worker's file is edited in the robot's terminal there
   const on = getBuffer(id, path)?.on;
   const cue = on && <span className="editor-far" data-testid="editor-read-only">read-only · on {on}</span>;
+  const showPreview = () => { setText(getBuffer(id, path)?.state.doc.toString() ?? ''); setPreview(true); };
 
   useEffect(() => markdown ? subscribeBuffer(id, path, setText) : undefined, [id, path, markdown]);
+
+  useEffect(() => {
+    if (!asked) return;
+    app.store.getState().askPreview(undefined);
+    if (markdown) showPreview();
+  }, [asked]);
 
   useEffect(() => {
     const el = host.current;
@@ -33,7 +41,7 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
     <div className="editor" data-testid="editor" data-path={path}>
       {markdown && <div className="editor-mode" role="group" aria-label="Markdown view">
         <button type="button" data-active={!preview} aria-pressed={!preview} onClick={() => setPreview(false)}>Text</button>
-        <button type="button" data-active={preview} aria-pressed={preview} onClick={() => { setText(getBuffer(id, path)?.state.doc.toString() ?? ''); setPreview(true); }}>Preview</button>
+        <button type="button" data-active={preview} aria-pressed={preview} onClick={showPreview}>Preview</button>
         {cue}
       </div>}
       {!markdown && cue && <div className="editor-mode">{cue}</div>}

@@ -20,7 +20,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { mobileDist, variant } from '../runtime.js';
-import { answer, dispatch, type Ctx } from './methods.js';
+import { answer, dispatch, type AppWindows, type Ctx } from './methods.js';
 import { serveBundle } from './static.js';
 
 type Opts = {
@@ -113,6 +113,8 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const refused = new Set<string>();
   // the desktop panel is the one surface that asks who is on the phone page, so the answer goes only there
   const desktops = new Set<Viewer>();
+  // the app windows among them: a page's socket says where it was opened from, and a CLI's says nothing
+  const pages = new Set<Viewer>();
   // a phone socket came in by the key, and turning the link on or off turns the key over: each has to come in again
   const phoneSockets = new Set<WebSocket>();
   const mobile: Mobile = {
@@ -123,7 +125,8 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return status;
     },
   };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro };
+  const apps: AppWindows = { show: (p) => { for (const v of pages) v.send({ event: 'app.show', data: p }); return pages.size; } };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro, apps };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
   ];
@@ -227,10 +230,10 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(UNPAIRED, 'phone not paired'); });
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login));
+    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login, req.headers.origin !== undefined));
   });
 
-  function connect(ws: WebSocket, login?: string): void {
+  function connect(ws: WebSocket, login: string | undefined, page: boolean): void {
     answered.add(ws);
     ws.on('pong', () => answered.add(ws));
     let unsub: (() => void) | undefined;
@@ -249,7 +252,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     };
     const admit = () => {
       unsub = store.subscribe((ops) => viewer.send({ event: 'state.patch', data: { ops } }));
-      if (login) { left = phones.add(login); phoneSockets.add(ws); } else desktops.add(viewer);
+      if (login) { left = phones.add(login); phoneSockets.add(ws); } else { desktops.add(viewer); if (page) pages.add(viewer); }
       ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } } satisfies HelloReply));
     };
 
@@ -286,7 +289,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(res));
     });
 
-    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); desktops.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
+    ws.on('close', () => { clearTimeout(authTimer); aborter.abort(); unsub?.(); left?.(); desktops.delete(viewer); pages.delete(viewer); phoneSockets.delete(ws); terminals.closeAll(viewer); workspace.unwatchAll(viewer); remoteWatches?.unwatchAll(viewer); });
     ws.on('error', (e) => log.error(`ws: ${String(e)}`));
   }
 

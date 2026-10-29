@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { WebSocketServer } from 'ws';
-import { emptyState, PROTOCOL_VERSION, type MachineId, type MobileStatus, type PhoneSession } from '@svall/protocol';
+import { emptyState, PROTOCOL_VERSION, type AppShow, type MachineId, type MobileStatus, type PhoneSession } from '@svall/protocol';
 import { expect, test } from './fixtures.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { SETTINGS_KEY } from '../src/store/index.js';
@@ -20,6 +20,7 @@ async function fakeDaemon() {
     tell: (phones: PhoneSession[]) => {
       for (const ws of wss.clients) ws.send(JSON.stringify({ event: 'mobile.phones', data: { phones } }));
     },
+    show: (data: AppShow) => { for (const ws of wss.clients) ws.send(JSON.stringify({ event: 'app.show', data })); },
     close: async () => { for (const ws of wss.clients) ws.terminate(); await new Promise((r) => wss.close(r)); },
   };
   wss.on('connection', (ws) => ws.on('message', (raw) => {
@@ -64,6 +65,28 @@ test('the phone panel says who is on the page, and hears them arrive and leave',
 
     fake.tell([]);
     await expect(here).toHaveText('nobody has this open');
+  } finally {
+    await fake.close();
+  }
+});
+
+test('a redacted phone panel shows the QR it was handed, and bars for the link and logins, until it closes', async ({ page }) => {
+  const fake = await fakeDaemon();
+  const [fleetQr, standIn] = ['data:image/png;base64,AAAA', 'data:image/png;base64,BBBB'];
+  try {
+    fake.status = { ...SERVING, qr: fleetQr, logins: ['me@example.com'] };
+    await open(page, fake.port);
+    fake.show({ panel: 'phone', redact: { qr: standIn } });
+    await expect(page.locator('.mob-qr')).toHaveAttribute('src', standIn);
+    await expect(page.getByTestId('mobile-url').locator('.mob-mask')).toHaveCount(2);
+    await expect(page.getByTestId('mobile-body')).not.toContainText(SERVING.url);
+    await expect(page.getByTestId('mobile-body')).not.toContainText('me@example.com');
+
+    fake.show({ panel: 'none' });
+    await page.getByTestId('mobile-tab').click();
+    await expect(page.locator('.mob-qr')).toHaveAttribute('src', fleetQr);
+    await expect(page.getByTestId('mobile-url')).toHaveText(SERVING.url);
+    await expect(page.getByTestId('mobile-body')).toContainText('Only me@example.com can connect');
   } finally {
     await fake.close();
   }
