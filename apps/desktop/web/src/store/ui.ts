@@ -1,4 +1,4 @@
-import type { MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
+import type { FeedbackKind, MachineId, MobileStatus, PhoneSession } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
@@ -22,6 +22,9 @@ export type MenuEntry = { title: string; run?: () => void; danger?: boolean; ite
 // a button's own menu, bare, leaves out the page's Reload
 export type PageMenu = { x: number; y: number; items: MenuEntry[]; bare?: boolean };
 export type MoveAsk = { id: string; to?: MachineId };
+
+export type FeedbackDraft = { kind: FeedbackKind; text: string; tick?: boolean };
+const EMPTY_DRAFT: FeedbackDraft = { kind: 'bug', text: '' };
 
 export type UiState = {
   view: View;
@@ -75,6 +78,8 @@ export type UiState = {
   mobileOpen: boolean;
   loadOpen: boolean;
   feedbackOpen: boolean;
+  // what the form holds, kept across the panel closing; a send clears it
+  feedbackDraft: FeedbackDraft;
   mobile?: MobileStatus;
   // a panel closed by a click into the page leaves the keyboard where the click put it, so the
   // surface coming back out from under it does not take it
@@ -142,6 +147,7 @@ export type UiActions = {
   toggleMobile(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleLoad(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
   toggleFeedback(open?: boolean, opts?: { keepPageFocus?: boolean }): void;
+  setFeedbackDraft(patch?: Partial<FeedbackDraft>): void;
   setMobile(status?: MobileStatus): void;
   setPhones(phones: PhoneSession[]): void;
   pageFocusSettled(): void;
@@ -205,6 +211,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     mobileOpen: false,
     loadOpen: false,
     feedbackOpen: false,
+    feedbackDraft: EMPTY_DRAFT,
     mobile: undefined,
     keepPageFocus: false,
     settings: storage?.getSettings() ?? DEFAULT_SETTINGS,
@@ -295,6 +302,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     toggleMobile: (open, opts) => toggleUtility('mobileOpen', open, opts),
     toggleLoad: (open, opts) => toggleUtility('loadOpen', open, opts),
     toggleFeedback: (open, opts) => toggleUtility('feedbackOpen', open, opts),
+    setFeedbackDraft: (patch) => set((s) => ({ feedbackDraft: patch ? { ...s.feedbackDraft, ...patch } : EMPTY_DRAFT })),
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { FEEDBACK_TEXT_MAX, type FeedbackKind } from '@svall/protocol';
 import { sendFeedback } from './feedback.js';
+import { useApp } from './hooks.js';
 
 const PLACEHOLDER: Record<FeedbackKind, string> = { bug: 'What happened, and what did you expect?', idea: 'What would you like Svall to do?' };
 
 /** The feedback form: Bug or Idea, free text, and the diagnostics it can attach, shown before they go. */
 export function FeedbackPanel({ diagnostics }: { diagnostics: () => Promise<string> }) {
-  const [kind, setKind] = useState<FeedbackKind>('bug');
-  const [text, setText] = useState('');
-  const [tick, setTick] = useState<boolean>();
+  const { kind, text, tick } = useApp((s) => s.feedbackDraft);
+  const setDraft = useApp((s) => s.setFeedbackDraft);
   const [diag, setDiag] = useState<string | null>();
   const [see, setSee] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,9 +31,9 @@ export function FeedbackPanel({ diagnostics }: { diagnostics: () => Promise<stri
     setError(undefined);
     try {
       await sendFeedback({ kind, text, ...(checked ? { diagnostics: diag } : {}) });
+      setDraft();
       if (!live.current) return;
       setSent(true);
-      setText('');
     } catch (e) {
       if (live.current) setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -46,13 +46,13 @@ export function FeedbackPanel({ diagnostics }: { diagnostics: () => Promise<stri
     <div className="fb">
       <div className="kb-seg">
         {(['bug', 'idea'] as const).map((k) => (
-          <button key={k} data-testid={`feedback-kind-${k}`} aria-pressed={kind === k} onClick={() => setKind(k)}>{k === 'bug' ? 'Bug' : 'Idea'}</button>
+          <button key={k} data-testid={`feedback-kind-${k}`} aria-pressed={kind === k} onClick={() => setDraft({ kind: k })}>{k === 'bug' ? 'Bug' : 'Idea'}</button>
         ))}
       </div>
       <textarea className="fld" data-testid="feedback-text" value={text} maxLength={FEEDBACK_TEXT_MAX} placeholder={PLACEHOLDER[kind]}
-        onChange={(e) => { setText(e.target.value); setSent(false); }} />
+        onChange={(e) => { setDraft({ text: e.target.value }); setSent(false); }} />
       <label className="fb-check">
-        <input type="checkbox" data-testid="feedback-diagnostics" checked={checked} disabled={typeof diag !== 'string'} onChange={(e) => setTick(e.target.checked)} />
+        <input type="checkbox" data-testid="feedback-diagnostics" checked={checked} disabled={typeof diag !== 'string'} onChange={(e) => setDraft({ tick: e.target.checked })} />
         <span>
           Include diagnostics
           <small className="fb-hint">

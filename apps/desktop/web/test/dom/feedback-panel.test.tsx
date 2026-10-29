@@ -3,13 +3,15 @@ import './setup.js';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { FeedbackPanel } from '../../src/FeedbackPanel.js';
+import { setAppStore } from '../../src/hooks.js';
+import { createAppStore } from '../../src/store/index.js';
 
 const DIAG = 'svall 0.22.0 · macOS 26.0\n\nsvalld.log, last 200 lines\nline';
 const ok = () => new Response('{"ok":true}', { status: 201 });
 let fetchMock: ReturnType<typeof vi.fn>;
 const posted = (i = 0) => JSON.parse(fetchMock.mock.calls[i][1].body as string);
 
-beforeEach(() => { fetchMock = vi.fn(async () => ok()); vi.stubGlobal('fetch', fetchMock); });
+beforeEach(() => { setAppStore(createAppStore()); fetchMock = vi.fn(async () => ok()); vi.stubGlobal('fetch', fetchMock); });
 afterEach(() => { vi.unstubAllGlobals(); });
 
 const shown = async (diagnostics: () => Promise<string> = async () => DIAG) => {

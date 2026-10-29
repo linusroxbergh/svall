@@ -78,3 +78,30 @@ test('the connect screen offers Send feedback, and its form previews the shell l
   expect(text).toContain('boom in ~/.svall/x');
   expect(text).not.toContain('ada');
 });
+
+test('closing the panel keeps the draft, and a send clears it', async () => {
+  const fetchMock = vi.fn(async () => new Response('{"ok":true}', { status: 201 }));
+  vi.stubGlobal('fetch', fetchMock);
+  try {
+    store.getState().toggleFeedback(true);
+    const { unmount } = render(<UtilityDock />);
+    fireEvent.click(screen.getByTestId('feedback-kind-idea'));
+    fireEvent.change(screen.getByTestId('feedback-text'), { target: { value: 'half written' } });
+    fireEvent.pointerDown(document.body);
+    expect(store.getState().feedbackOpen).toBe(false);
+    expect(screen.queryByTestId('feedback-panel')).toBeNull();
+    act(() => store.getState().toggleFeedback(true));
+    expect(screen.getByTestId('feedback-kind-idea').getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByTestId('feedback-text') as HTMLTextAreaElement).value).toBe('half written');
+    await waitFor(() => expect((screen.getByTestId('feedback-diagnostics') as HTMLInputElement).disabled).toBe(false));
+    fireEvent.click(screen.getByTestId('feedback-send'));
+    await screen.findByTestId('feedback-sent');
+    act(() => { store.getState().toggleFeedback(false); });
+    act(() => { store.getState().toggleFeedback(true); });
+    expect(screen.getByTestId('feedback-kind-bug').getAttribute('aria-pressed')).toBe('true');
+    expect((screen.getByTestId('feedback-text') as HTMLTextAreaElement).value).toBe('');
+    unmount();
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
