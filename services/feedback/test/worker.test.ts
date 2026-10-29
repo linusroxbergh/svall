@@ -60,12 +60,12 @@ test('OPTIONS answers the CORS preflight', async () => {
   expect(res.headers.get('access-control-allow-headers')).toBe('content-type');
 });
 
-test('a GET is 405, a 70 KiB body 413, bad JSON 400', async () => {
+test('a GET is 405, a 300 KiB body 413, bad JSON 400', async () => {
   const f = vi.fn();
   const get = await handle(new Request('https://svall.dev/api/feedback'), env, f);
   expect(get.status).toBe(405);
   expect(get.headers.get('access-control-allow-origin')).toBe('*');
-  expect((await handle(post('x'.repeat(70 * 1024)), env, f)).status).toBe(413);
+  expect((await handle(post('x'.repeat(300 * 1024)), env, f)).status).toBe(413);
   const bad = await handle(post('{nope'), env, f);
   expect(bad.status).toBe(400);
   expect(await bad.json()).toHaveProperty('error');

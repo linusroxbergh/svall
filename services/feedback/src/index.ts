@@ -6,7 +6,7 @@ export type Env = GithubEnv & {
   LIMITER: { limit(o: { key: string }): Promise<{ success: boolean }> };
 };
 
-const MAX_BODY = 64 * 1024;
+const MAX_BODY = 256 * 1024;
 const cors = { 'Access-Control-Allow-Origin': '*' };
 const reply = (status: number, body?: object) =>
   body ? Response.json(body, { status, headers: cors }) : new Response(null, { status, headers: cors });

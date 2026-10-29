@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import { issueOf, parseReport } from '../src/report.js';
+import { FEEDBACK_DIAGNOSTICS_MAX, FEEDBACK_TEXT_MAX } from '../../../packages/protocol/src/feedback.js';
 
 test('a valid report parses with text trimmed', () =>
   expect(parseReport({ kind: 'idea', text: '  hi  ' })).toEqual({ kind: 'idea', text: 'hi' }));
@@ -18,3 +19,10 @@ test('diagnostics sit in a collapsed block whose fence outlasts any backtick run
   expect(body).toMatch(/<details><summary>Diagnostics<\/summary>\n\n`{6,}text\nlog ````` end\n`{6,}\n\n<\/details>$/);
 });
 test('no diagnostics, no block', () => expect(issueOf({ kind: 'idea', text: 'x' }).body).toBe('x'));
+
+test('the limits are the client\'s', () => {
+  const ok = { kind: 'bug' as const, text: 'x'.repeat(FEEDBACK_TEXT_MAX), diagnostics: 'd'.repeat(FEEDBACK_DIAGNOSTICS_MAX) };
+  expect(parseReport(ok)).not.toHaveProperty('error');
+  expect(parseReport({ ...ok, text: ok.text + 'x' })).toHaveProperty('error');
+  expect(parseReport({ ...ok, diagnostics: ok.diagnostics + 'd' })).toHaveProperty('error');
+});
