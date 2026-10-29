@@ -167,6 +167,30 @@ export const ResourceSource = z.object({
 });
 export type ResourceSource = z.infer<typeof ResourceSource>;
 
+export const PaneKind = z.enum(['terminal', 'browser', 'files', 'changes']);
+export type PaneKind = z.infer<typeof PaneKind>;
+// what an app showing the fleet is asked to show; a field left out stays as the app has it
+export const AppShow = z.object({
+  id: z.string().optional(),
+  left: PaneKind.optional(),
+  right: z.union([PaneKind, z.literal('none')]).optional(),
+  ratio: z.number().min(0.25).max(0.75).optional(),
+  // a path as a terminal link gives it, opened in the robot's Files; preview shows a markdown file formatted
+  file: z.string().min(1).optional(),
+  preview: z.boolean().optional(),
+  tree: z.boolean().optional(),
+  card: z.enum(['half', 'full', 'closed']).optional(),
+  sidebar: z.boolean().optional(),
+  sideCard: z.boolean().optional(),
+  view: z.enum(['map', 'board']).optional(),
+  panel: z.enum(['phone', 'usage', 'load', 'none']).optional(),
+  // the window's content size in points
+  size: z.object({ w: z.number().int().min(400).max(10_000), h: z.number().int().min(300).max(10_000) }).optional(),
+  // for a screenshot: the phone panel hides its link and logins and shows this QR instead, until it closes
+  redact: z.object({ qr: z.string().max(64 * 1024).regex(/^data:image\/png;base64,/) }).optional(),
+});
+export type AppShow = z.infer<typeof AppShow>;
+
 /** A worker clone's root id on the home's shelf: the worker and the folder on its disk, as two workers may hold one path. */
 export const farRootId = (machine: MachineId, root: string): string => `r:${machine}:${root}`;
 const FAR_ROOT = /^r:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):(.+)$/i;
@@ -392,6 +416,8 @@ export const methods = {
   },
   'system.info': { params: z.object({}), result: SystemInfo },
   'feedback.preview': { params: z.object({}), result: z.object({ text: z.string() }) },
+  // apps is how many app windows on the fleet were told
+  'app.show': { params: AppShow, result: z.object({ apps: z.number().int() }) },
 } as const;
 
 export type MethodName = keyof typeof methods;
@@ -430,7 +456,8 @@ export type Event =
   | { event: 'term.output'; data: { id: string; data: string } }
   | { event: 'term.resync'; data: { id: string; screen: string } }
   | { event: 'repo.changed'; data: { id: string } }
-  | { event: 'mobile.phones'; data: { phones: PhoneSession[] } };
+  | { event: 'mobile.phones'; data: { phones: PhoneSession[] } }
+  | { event: 'app.show'; data: AppShow };
 
 export const Hello = z.object({ token: z.string() });
 export const HelloResult = z.object({ ok: z.literal(true), protocol: z.number().int() });
@@ -444,4 +471,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 34;
+export const PROTOCOL_VERSION = 35;

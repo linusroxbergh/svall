@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Svall</title>
 <meta name="description" content="A macOS map of your Claude Code, Codex and OpenCode agents. One look shows which are working, which need you and which are done.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://svall.dev/">
+<meta property="og:title" content="Svall">
+<meta property="og:description" content="A macOS map of your Claude Code, Codex and OpenCode agents. One look shows which are working, which need you and which are done.">
+<meta property="og:image" content="https://svall.dev/og.jpg">
+<meta property="og:image:width" content="2400">
+<meta property="og:image:height" content="1260">
+<meta property="og:image:alt" content="Your coding agents, on one map: islands of robot cards, each showing whether its agent is working, blocked or done">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#2B3645">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -279,8 +288,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <section class="features">
     <h2>What it does</h2>
     <ul>
-      <li><b>Clear overview:</b> the map keeps track of every agent, so you don't have to</li>
-      <li><b>Layered context:</b> per repo, island and agent, kept current for you</li>
+      <li><b>Clear overview:</b> the map keeps track of every agent</li>
+      <li><b>Layered context:</b> per repo, island and agent</li>
       <li><b>Persistence:</b> quit or reboot. Each agent resumes when you re-open</li>
       <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal</li>
       <li><b>Built-in editor:</b> edit files and review the diff in place</li>
@@ -294,21 +303,23 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <h2 id="views-h">Terminal, browser and files beside every agent.</h2>
   </div>
   <div class="tabs" role="tablist" aria-label="Views">
-    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Browser</button>
+    <button type="button" role="tab" aria-selected="true" aria-controls="shot" style="--dwell: 8s">Phone</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Board</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Browser</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Files</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Markdown</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1" style="--dwell: 8s">Phone</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/browser.avif?v=41ebe118" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
-    <img src="shots/files.avif?v=2459eb7b" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
-    <img src="shots/markdown.avif?v=da41ad8b" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
-    <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
-      <img src="shots/phone.avif?v=6e4dd86e" loading="lazy" alt="">
+    <div class="view-phone on" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
+      <img src="shots/phone.avif?v=0c31ea37" loading="lazy" alt="">
       <div class="phone">
-        <div class="phone-screen"><img src="shots/phone-list.avif?v=42165325" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=e63db485" loading="lazy" alt=""></div>
+        <div class="phone-screen"><img src="shots/phone-list.avif?v=47edf359" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=e74ec1b0" loading="lazy" alt=""></div>
       </div>
     </div>
+    <img src="shots/board.avif?v=457f01c6" loading="lazy" alt="The board: every robot as a card in the column its work has reached, the selected one's details beside it">
+    <img src="shots/browser.avif?v=b634d5c5" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
+    <img src="shots/files.avif?v=1f17e5f5" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
+    <img src="shots/markdown.avif?v=307b9865" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
   </div>
 </section>
 
@@ -400,7 +411,7 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 </section>
 </main>
 
-<footer class="wrap">Svall. <a href="https://github.com/linusroxbergh/svall/blob/main/LICENSE">Open source</a> · <a href="https://github.com/linusroxbergh/svall">Source</a> · <a href="https://github.com/linusroxbergh/svall/issues">Issues</a></footer>
+<footer class="wrap">Svall · <a href="https://github.com/linusroxbergh/svall">Source</a></footer>
 
 <div class="vignette" aria-hidden="true"></div>
 

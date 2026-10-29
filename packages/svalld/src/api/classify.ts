@@ -97,4 +97,6 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'term.attach': 'terminal',
   'system.info': 'read',
   'feedback.preview': 'read',
+  // the app is the home's
+  'app.show': 'mutation',
 };

@@ -39,8 +39,8 @@ class TestClient {
     });
     ws.on('close', (code) => { this.closeCode = code; });
   }
-  static async connect(port: number, token: string): Promise<TestClient> {
-    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+  static async connect(port: number, token: string, origin?: string): Promise<TestClient> {
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`, origin ? { origin } : {});
     await new Promise((r) => ws.once('open', r));
     const c = new TestClient(ws);
     ws.send(JSON.stringify({ token }));
@@ -193,6 +193,27 @@ runIf('API', () => {
     // the Vite dev server is Svall Dev's; the tests run as the release
     for (const origin of ['http://localhost:5173', 'http://127.0.0.1:5173']) expect(await open(origin)).toBe(403);
     for (const origin of [undefined, 'svall://app']) expect(await open(origin)).toBe(101);
+  });
+
+  it('tells the app windows what to show, and neither a CLI nor a phone', async () => {
+    const { api, store } = await boot();
+    const page = await TestClient.connect(api.port, 'secret', 'svall://app');
+    const cli = await TestClient.connect(api.port, 'secret');
+    const phone = await TestClient.phone(api.port);
+    await page.call('state.get');
+    const id = Object.keys(store.state.robots)[0];
+    const show = { id, right: 'files', file: 'README.md', preview: true, size: { w: 1280, h: 820 } };
+    expect(await cli.call('app.show', show)).toMatchObject({ result: { apps: 1 } });
+    await waitFor(() => page.events.some((e) => e.event === 'app.show'));
+    expect(page.events.find((e) => e.event === 'app.show')?.data).toEqual(show);
+    expect(cli.events.some((e) => e.event === 'app.show')).toBe(false);
+    expect(await cli.call('app.show', { id: 'c_nope' })).toMatchObject({ error: { code: 'not_found' } });
+    expect(await cli.call('app.show', { ratio: 0.9 })).toMatchObject({ error: { code: 'invalid_params' } });
+    expect(await phone.call('app.show', {})).toMatchObject({ error: { code: 'forbidden' } });
+    page.ws.close();
+    await waitFor(async () => ((await cli.call('app.show', {})) as { result: { apps: number } }).result.apps === 0);
+    cli.ws.close();
+    phone.ws.close();
   });
 
   it('names its protocol version in the handshake reply', async () => {

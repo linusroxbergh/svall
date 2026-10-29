@@ -78,6 +78,8 @@ export type ToShell =
   | { type: 'openFleet'; home: string; quit?: boolean }
   // the fleet was renamed, and the window title follows
   | { type: 'retitle' }
+  // the window's content size in points, its top left corner staying put
+  | { type: 'window.size'; width: number; height: number }
   | { type: 'setup.plan' }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
