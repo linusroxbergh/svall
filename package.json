@@ -24,6 +24,7 @@
     "site:build": "pnpm --filter @svall/desktop-web build:site",
     "site:shots": "node scripts/site-shots.mjs",
     "site:capture": "node scripts/site-capture.mjs",
+    "site:og": "node scripts/site-og.mjs",
     "site:deploy": "scripts/site-deploy.sh"
   },
   "devDependencies": {
