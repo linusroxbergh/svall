@@ -189,6 +189,9 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           onClick={() => update(id as MachineId, updates)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
         <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
+      ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !row.action && idle ? (
+        <button className="btn set-open" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
+          onClick={() => startHost('upgrade', { name })}>Set up</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
         <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}
           take={() => { setFailed(undefined); return take(); }} failed={(m) => fail(new Error(m))} />

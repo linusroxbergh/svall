@@ -273,6 +273,26 @@ test('a check that finds the machine on another release offers its upgrade on th
   expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
 });
 
+test("a check that finds the machine not running this fleet's robots offers the upgrade that sets it up, and not when another Mac holds it", () => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().setMachines([{ name: 'trift', id: MACHINE, ssh: 'ada@trift', platform: 'linux-x64' }]);
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    store.getState().hostDone('doctor', 1);
+  });
+  fireEvent.click(screen.getByTestId('host-worker'));
+  expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'upgrade', args: { name: 'trift' } });
+
+  act(() => {
+    store.getState().hostStarted('doctor', { name: 'trift' });
+    store.getState().hostStep('doctor', { step: 'worker', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift' });
+    store.getState().hostDone('doctor', 1);
+  });
+  expect(screen.queryByTestId('host-worker')).toBeNull();
+});
+
 test('a check row keeps what is wrong in its sentence and puts only the command behind details', () => {
   render(<HostSetup />);
   act(() => {

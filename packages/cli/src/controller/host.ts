@@ -672,7 +672,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
         ...(newer && { action: 'update svall on this Mac' }),
       });
       const refused = notOurs(v, entry.record.name, d);
-      found(refused ? { name: 'worker', status: 'fail', detail: `${refused.detail}; ${refused.action}` }
+      found(refused ? { name: 'worker', status: 'fail', detail: refused.detail, action: refused.action }
         : servesUs(v, d) ? { name: 'worker', status: 'ok', detail: "runs this fleet's robots" }
           : { name: 'worker', status: 'fail', detail: `does not run this fleet's robots yet: svall host upgrade ${entry.record.name} sets it up` });
     } catch (err) { found(failed('release', err)); }
@@ -803,9 +803,6 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
   await run.step('enrol', async () => {
     const { far, units, off } = await claimUnits(master, { name, home: entry.record.home, svallBase: entry.record.svallBase }, d);
     if (units.includes('worker') && servesUs(far, d)) return { value: undefined, status: off ? 'ok' as const : 'skip' as const, detail: `${name} serves this fleet as a worker${off}` };
-    if (!off && !units.includes('plain') && !units.includes('worker')) {
-      return { value: undefined, status: 'warn' as const, detail: `no unit of this fleet runs on ${name}`, action: `svall host add ${name} --ssh ${entry.record.ssh} again makes it this fleet's worker` };
-    }
     return enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase, off }, d);
   });
 }

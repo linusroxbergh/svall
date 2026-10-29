@@ -99,16 +99,16 @@ describe('host doctor', () => {
   });
 
   it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {
-    for (const [far, detail] of [
-      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, 'trift already serves bea-mbp as a worker; remove it from that Mac first; on bea-mbp, run svall host remove trift'],
-      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, "does not run this fleet's robots yet: svall host upgrade trift sets it up"],
+    for (const [far, row] of [
+      [{ worker: { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET } }, { detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action: 'on bea-mbp, run svall host remove trift' }],
+      [{ worker: { ...SERVES, fleetId: OTHER_FLEET } }, { detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" }],
     ] as const) {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
       ssh.reply(['svall-space'], { stdout: DF });
       ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...far }) });
-      expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail });
+      expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', ...row });
     }
   });
 
