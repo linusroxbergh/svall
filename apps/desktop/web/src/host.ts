@@ -156,8 +156,9 @@ export const OP_TITLE: Record<HostOp, string> = {
   add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove',
 };
 
-/** `done`: nothing is left to fix; `next`: the one step the panel offers; `setup`: the parts of the agent setup that will not work there yet. */
-export type RunOutcome = { text: string; done?: true; next?: 'rollback'; setup?: number };
+/** `note`: the agent setup, which never holds a robot back; `done`: nothing is left to fix; `next`: the one step the panel offers;
+ * `setup`: the parts of the agent setup that will not work there yet. */
+export type RunOutcome = { text: string; note?: string; done?: true; next?: 'rollback'; setup?: number };
 
 export const plural = (n: number, noun: string) => `${n} ${noun}${n === 1 ? '' : 's'}`;
 
@@ -176,14 +177,16 @@ export function outcomeOf(run: HostRun): RunOutcome {
   const gaps = named.filter((s) => !asideStep(s));
   const apart = asideLine(named.filter(asideStep).map(stepToRow), !gaps.length);
   const setup = gaps.length;
-  const parts = setup ? `${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}${apart ? `, and ${apart}` : ''}.` : apart ? `${apart}.` : '';
+  const note = setup ? `Optional: ${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}${apart ? `, and ${apart}` : ''}. `
+    + 'Robots still run there; set these up under Your agent setup when you need them.' : apart ? `${apart}.` : undefined;
+  const noted = note ? { note } : {};
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};
   if (run.op === 'add' || run.op === 'doctor' || run.op === 'upgrade') {
-    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix${setup ? `, and ${parts}` : apart ? `. ${parts}` : '.'}`, ...rollback, ...(setup > 0 && { setup }) };
+    if (left) return { text: `${name} has ${plural(left, 'thing')} to fix.`, ...noted, ...rollback, ...(setup > 0 && { setup }) };
     const warned = warnings(run);
     const ready = `${name} is ready${warned ? `, with ${plural(warned, 'warning')}` : ''}.`;
-    if (run.code === 0) return { text: `${ready} ${parts || 'Robots you move there keep working while this Mac sleeps.'}`, done: true, ...(setup > 0 && { setup }) };
+    if (run.code === 0) return { text: `${ready} Robots you move there keep working while this Mac sleeps.`, ...noted, done: true, ...(setup > 0 && { setup }) };
   }
   const failed = run.steps.find((s) => s.status === 'fail');
   if (failed) return { text: `${OP_TITLE[run.op]} stopped at ${stepLabel(failed.step)}${failed.detail ? `: ${failed.detail}` : ''}` };

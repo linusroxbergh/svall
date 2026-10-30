@@ -41,6 +41,26 @@ test('opened on a machine, the panel names it once and acts on it without asking
   // one run at a time
   expect((screen.getByTestId('machine-doctor') as HTMLButtonElement).disabled).toBe(true);
 });
+test('Done in a terminal goes back to where it was opened: out of the panel, or to its checks, which run again', () => {
+  store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
+  render(<HostSetup />);
+  act(() => store.getState().openHostTerminal('trift', 'claude auth login'));
+  expect(screen.getByTestId('host-terminal-done').getAttribute('data-tip')).toBe('Close the terminal');
+  fireEvent.click(screen.getByTestId('host-terminal-done'));
+  expect(store.getState().hostOpen).toBe(false);
+  expect(sent.some((m) => m.type === 'host.start')).toBe(false);
+
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().openHostTerminal('trift', 'claude auth login');
+  });
+  expect(screen.getByTestId('host-terminal-done').getAttribute('data-tip')).toBe('Close the terminal and check the machine again');
+  fireEvent.click(screen.getByTestId('host-terminal-done'));
+  expect(store.getState().hostOpen).toBe(true);
+  expect(screen.queryByTestId('host-terminal')).toBeNull();
+  expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'trift' } });
+});
+
 test('a step that failed shows what to do; a step of a run other than a check offers the run again, a check row leaves that to Check', () => {
   render(<HostSetup />);
   act(() => {
@@ -156,7 +176,9 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
   expect(screen.getByTestId('host-action-mirror:claude:mcp:linear').textContent).toBe("copy linear's keys to trift");
   expect(screen.getByTestId('host-details-mirror:claude:mcp:linear').textContent)
     .toBe('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides');
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. 1 part of your agent setup will not work there yet.Done');
+  // the agent setup holds no robot back, so it is a note under the verdict
+  expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.firstChild!.textContent).toBe('trift is ready. Robots you move there keep working while this Mac sleeps.');
+  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 1 part of your agent setup will not work there yet. Robots still run there; set these up under Your agent setup when you need them.');
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
   expect([box.type, box.checked, box.disabled]).toEqual(['checkbox', false, false]);
   // what ticking does is the sentence beside the box
@@ -442,7 +464,7 @@ test('the agent setup fold lists what runs only on a Mac, or is ticked as not ne
     store.getState().hostStep('doctor', { step: 'mirror:var:X', status: 'warn', action: 'set X on trift', run: 'svall worker env X', detail: 'ad reads X, which is not set on trift', gap: { name: 'X', what: 'not set; ad reads it' } });
     store.getState().hostDone('doctor', 0);
   });
-  expect(screen.getByTestId('host-outcome').textContent).toBe('trift is ready. 2 parts of your agent setup will not work there yet, and 1 runs only on a Mac.Done');
+  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 2 parts of your agent setup will not work there yet, and 1 runs only on a Mac. Robots still run there; set these up under Your agent setup when you need them.');
   fireEvent.click(screen.getByTestId('host-setup-fold'));
   const steps = () => [...document.querySelectorAll('[data-testid^="host-step-mirror"], [data-testid="host-aside"]')].map((e) => e.getAttribute('data-testid'));
   expect(steps()).toEqual(['host-step-mirror:runtime:adlc', 'host-step-mirror:var:X', 'host-aside', 'host-step-mirror:maconly:claude:chrome']);
@@ -464,7 +486,7 @@ test('a program row with an install command keeps Open terminal beside its not-n
   fireEvent.click(screen.getByTestId('host-setup-fold'));
   expect(screen.getByTestId('host-tick-mirror:runtime:npx')).toBeTruthy();
   fireEvent.click(screen.getByTestId('host-terminal-mirror:runtime:npx'));
-  expect(store.getState().hostTerminal).toEqual({ run: 'sudo apt install nodejs npm' });
+  expect(store.getState().hostTerminal).toEqual({ run: 'sudo apt install nodejs npm', fromPanel: true });
 });
 
 test('a variable row takes its value in a field, shown to no one, and Set sends it to the machine; this Mac\'s own copies without it; a refusal says why', async () => {

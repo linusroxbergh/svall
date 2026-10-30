@@ -14,8 +14,9 @@ export type HostState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
-  // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there
-  hostTerminal?: { run?: string; forward?: number };
+  // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
+  // `fromPanel`, opened from the panel itself, whose checks it goes back to
+  hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
   // the registry as the shell last read it, and why it could not
   machines?: MachineRow[];
   machinesError?: string;
@@ -46,9 +47,10 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
     const next = open ?? !s.hostOpen;
     return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined };
   }),
-  openHostTerminal: (machine, run, forward) => set({
-    hostOpen: true, hostMachine: machine, hostConfirm: undefined, hostTerminal: run ? { run, ...(forward !== undefined && { forward }) } : {},
-  }),
+  openHostTerminal: (machine, run, forward) => set((s) => ({
+    hostOpen: true, hostMachine: machine, hostConfirm: undefined,
+    hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...(s.hostOpen && { fromPanel: true as const }) },
+  })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),

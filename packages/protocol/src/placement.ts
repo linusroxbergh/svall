@@ -37,8 +37,8 @@ function size(n: number): string {
 const count = (n: number, one: string): string => `${n} ${one}${n === 1 ? '' : 's'}`;
 const base = (p: string): string => p.replace(/\/+$/, '').split('/').pop() ?? p;
 
-/** What a move carries, as one line: "session 4 MB · branch kanban: 2 commits not on origin, 3 changed files · …"; `repo` names the repository. */
-export function moveSummary(s: MoveSheet, repo: string | undefined, machine: string): string {
+/** What a move carries, a phrase each: "session 4 MB", "branch kanban: 2 commits not on origin, 3 changed files", …; `repo` names the repository. */
+export function moveParts(s: MoveSheet, repo: string | undefined, machine: string): string[] {
   const changed = s.changedFiles + s.untrackedFiles;
   const carried = [...(s.commits ? [`${count(s.commits, 'commit')} not on origin`] : []), ...(changed ? [count(changed, 'changed file')] : [])];
   return [
@@ -46,8 +46,11 @@ export function moveSummary(s: MoveSheet, repo: string | undefined, machine: str
     s.notInRepo ? 'in no repository: it moves with its session only' : `branch ${s.branch}${carried.length ? `: ${carried.join(', ')}` : ''}`,
     ...(repo && !s.notInRepo ? [`${repo} on ${machine}: ${s.clone === 'clone' ? 'will clone (first time)' : 'cloned already'}`] : []),
     ...s.stays,
-  ].join(' · ');
+  ];
 }
+
+/** What a move carries, as one line: "session 4 MB · branch kanban: 2 commits not on origin, 3 changed files · …". */
+export const moveSummary = (s: MoveSheet, repo: string | undefined, machine: string): string => moveParts(s, repo, machine).join(' · ');
 
 /** What becomes of a main checkout the move converts into a worktree. */
 export function convertLine(c: NonNullable<MoveSheet['converts']>): string {

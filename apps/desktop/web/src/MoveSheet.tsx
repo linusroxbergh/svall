@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveSummary, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
+  AGENT_LABEL, ApiError, convertLine, INTERRUPT_ACTIONS, MovePhase, moveParts, UPGRADE_ACTION, updatesIn, WORKTREE_ACTION,
   type AgentKind, type Blocker, type MachineId, type MoveSheet as What, type Moving, type Refusal,
 } from '@svall/protocol';
 import { app } from './boot.js';
@@ -101,6 +101,9 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [setup, setSetup] = useState<string>();
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? machineName(s.fleet, m) : 'this Mac'; });
   const host = useApp((s) => s.host);
+  const hostOpen = useApp((s) => s.hostOpen);
+  // a terminal opened from a blocker stands over the sheet
+  const [away, setAway] = useState(false);
   // the machine a refusal is about: the one the robot goes to, or the one it comes back from
   const far = to ? where : here;
   // a move that fails once the sheet is closed says so in a toast
@@ -112,8 +115,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const params = machine && { id, machine, ...(carry.length > 0 && { carry }), ...(interrupt && { interruptAfterMs: INTERRUPT_AFTER_MS }), ...(own && { ownWorktree: true }) };
   const close = () => store().setMoveSheet(undefined);
 
-  // the focus stays in the sheet: a button that goes, as Move once pressed, leaves it on the ×
-  useEffect(() => { if (!panel.current?.contains(document.activeElement)) shut.current?.focus(); });
+  // the focus stays in the sheet, but for a terminal over it: a button that goes, as Move once pressed, leaves it on the ×
+  useEffect(() => { if (!hostOpen && !panel.current?.contains(document.activeElement)) shut.current?.focus(); });
   useEffect(() => {
     shown.current = true;
     return () => { shown.current = false; };
@@ -148,6 +151,12 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   }, [machine, carry.join('\n'), interrupt, own, asked]);
   // a fix's end checks again from scratch
   const recheck = () => { setFix(undefined); setAnswer(undefined); setAsked((n) => n + 1); };
+  // the sheet checks again once the terminal over it closes
+  useEffect(() => {
+    if (!away || hostOpen) return;
+    setAway(false);
+    recheck();
+  }, [away, hostOpen]);
   // an upgrade that ran through but left things to do there ends non-zero, and the check says what they are
   useEffect(() => {
     if (!fix || !('upgrade' in fix) || host?.op !== 'upgrade' || host.args.name !== far || host.running) return;
@@ -216,25 +225,38 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               again();
             }} />
         )}
-        {!run && !answer && <div className="modal-note">Checking…</div>}
+        {!run && !answer && (
+          <div className="host-note" data-testid="move-checking">
+            <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
+            <ul className="move-checks">
+              <li>{far} is reachable and on this Mac's release</li>
+              {c.agent && <li>{AGENT_LABEL[c.agent.kind]} is installed, current and logged in on {where}</li>}
+              <li>{c.repo ? 'its branch, changes and session can travel' : 'its session can travel'}</li>
+            </ul>
+          </div>
+        )}
         {!run && sheet && (
           <>
             <div className="host-note">
-              <span data-testid="move-summary">{moveSummary(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where)}</span>
+              <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark">✓</span>Ready to move</span>
+              <ul data-testid="move-summary">
+                {moveParts(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where).map((p) => <li key={p}>{p}</li>)}
+              </ul>
               {sheet.converts && <span data-testid="move-converts">{convertLine(sheet.converts)}</span>}
               {sheet.question && <span data-testid="move-question">its open question is dropped; it asks again</span>}
             </div>
             {sheet.credentialFiles.map((f) => (
               <label key={f} className="move-pick"><input type="checkbox" checked={carry.includes(f)} onChange={() => pick(f)} />copy {f} to {where}</label>
             ))}
-            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} />{OWN_WORKTREE}{shared && `: ${shared}`}</label>}
-            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(false)} />{KEPT[interrupt]}{working && `: ${working}`}</label>}
+            {own && <label className="move-pick"><input type="checkbox" checked onChange={() => setOwn(false)} /><span>{OWN_WORKTREE}{shared && <span className="modal-sub">{shared}</span>}</span></label>}
+            {interrupt && <label className="move-pick"><input type="checkbox" checked onChange={() => setInterrupt(false)} /><span>{KEPT[interrupt]}{working && <span className="modal-sub">{working}</span>}</span></label>}
             <div className="acts"><button className="btn pri" data-testid="move-go" onClick={go}>Move</button></div>
           </>
         )}
         {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
         {!run && !doing && refusal && (
           <>
+            <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark">!</span>Not ready to move yet</span>
             {blockers.map((b, i) => {
               const answerable = interruptOf(b.action);
               const updates = b.run ? updatesIn(b.run) : undefined;
@@ -247,7 +269,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
                   onClick={() => update(updates, farId)}>Update {updates.map((k) => AGENT_LABEL[k]).join(' and ')}</button>
               ) : b.run ? (
                 <button className="btn pri" data-testid={at('move-action')} data-tip={`Opens a terminal on ${where} with ${b.run} typed, for you to run`}
-                  onClick={() => { close(); terminalOn(where, b.run); }}>Open terminal</button>
+                  onClick={() => { setAway(true); terminalOn(where, b.run); }}>Open terminal</button>
               ) : b.action === WORKTREE_ACTION ? (
                 <button className="btn pri" data-testid={at('move-action')} onClick={() => setOwn(true)}>{OWN_WORKTREE}</button>
               ) : answerable ? (
