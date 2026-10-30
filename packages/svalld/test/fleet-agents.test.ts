@@ -426,6 +426,25 @@ runIf('Fleet agents', () => {
     expect(fleet.robot(c.id).hint).toBeUndefined();
   });
 
+  it('does not warn on a fresh Codex welcome screen, but warns once a prompt was submitted', async () => {
+    const { fleet, tmux } = await boot();
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const list = tmux.listWindows.bind(tmux);
+    tmux.listWindows = async () => (await list()).map((w) => w.name === c.id ? { ...w, command: 'codex' } : w);
+    let submitted = false;
+    tmux.screen = async () => ({ command: 'codex', shown: true, cursor: submitted ? 2 : 1,
+      rows: submitted ? ['  >_ OpenAI Codex (v0.166.0)', '› Hello', '› '] : ['  >_ OpenAI Codex (v0.166.0)', '› Ask Codex to do anything'] });
+    await waitForPolls(fleet, 5);
+    expect(fleet.robot(c.id).hint).toBeUndefined();
+    // A warning raised while Codex was still drawing its welcome screen clears once it appears.
+    fleet['deps'].store.update((d) => { d.robots[c.id].hint = 'codex-silent'; });
+    await waitFor(() => fleet.robot(c.id).hint === undefined);
+    submitted = true;
+    await waitFor(() => fleet.robot(c.id).hint === 'codex-silent');
+    await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'codex', name: 'SessionStart', sessionId: '019eefb3-8d5c-7b00-ad02-80c4930f7426' } });
+    expect(fleet.robot(c.id).hint).toBeUndefined();
+  });
+
   it('says when a silent codex runs on the shared server, and not when it runs its own', async () => {
     const { fleet, tmux, procs } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

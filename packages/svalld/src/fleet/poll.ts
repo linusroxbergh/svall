@@ -138,7 +138,7 @@ export class Poll {
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
     if (this.stopped) return;
     const cwdChanged: string[] = [];
-    const silent: { id: string; pid: number }[] = [];
+    const silent: { id: string; pid: number; paneId: string }[] = [];
     const closing: { key: string; windowId: string; error: string }[] = [];
     const { resuming } = this.deps;
     const resumeMs = this.deps.resumeMs ?? RESUME_MS;
@@ -179,7 +179,7 @@ export class Poll {
         if (!c.agent && w.command === 'codex') {
           const n = (this.codexStreak.get(c.id) ?? 0) + 1;
           this.codexStreak.set(c.id, n);
-          if (n >= 3 && !c.hint) silent.push({ id: c.id, pid: w.panePid });
+          if (n >= 3) silent.push({ id: c.id, pid: w.panePid, paneId: w.paneId });
         } else {
           this.codexStreak.delete(c.id);
           delete c.hint;
@@ -251,13 +251,23 @@ export class Poll {
 
   // a plain `codex` on Codex's shared server is heard as the terminal that started the server, so its events are
   // dropped; any other codex is silent for its hooks' sake
-  private async markSilent(silent: { id: string; pid: number }[]): Promise<void> {
+  private async markSilent(silent: { id: string; pid: number; paneId: string }[]): Promise<void> {
     const procs = await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; });
     if (!procs || this.stopped) return;
+    const screens = await Promise.all(silent.map(({ paneId }) => this.deps.tmux.screen(paneId).catch(() => undefined)));
+    if (this.stopped) return;
     this.deps.store.update((d) => {
-      for (const { id, pid } of silent) {
+      for (const [{ id, pid, paneId }, screen] of silent.map((s, i) => [s, screens[i]] as const)) {
         const c = d.robots[id];
-        if (!c || c.agent || !this.codexStreak.has(id)) continue;
+        if (!c || c.tmux?.paneId !== paneId || c.agent || !this.codexStreak.has(id)) continue;
+        // Codex 0.166 delays SessionStart until the first prompt. Its untouched welcome screen is not a failed hook.
+        if (screen && screen.command === 'codex' && screen.shown && screen.rows.some((r) => r.includes('OpenAI Codex')) &&
+            /^\s*›/.test((screen.rows[screen.cursor] ?? '').replace(/\x1b\[[0-9;:]*m/g, '')) &&
+            screen.rows.filter((r) => /^\s*›/.test(r.replace(/\x1b\[[0-9;:]*m/g, ''))).length === 1) {
+          delete c.hint;
+          delete c.codexDaemon;
+          continue;
+        }
         c.hint = 'codex-silent';
         if (onSharedServer(pid, procs)) c.codexDaemon = true; else delete c.codexDaemon;
       }
