@@ -9,10 +9,16 @@ import { must, type GitRunner } from '../links/git.js';
 
 const exec = promisify(execFile);
 
-export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'];
-const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
+// matched by file name whatever its case
+export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', 'id_ed25519*', 'id_ecdsa*', 'id_dsa*', '*.tfvars', '*.key', '.netrc'];
+const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`, 'i'));
+/** CREDENTIAL_PATTERNS as git ignore patterns of either case, which git matches by case where core.ignoreCase is off, as on Linux. */
+export const CREDENTIAL_GLOBS = CREDENTIAL_PATTERNS.map((p) => p.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`));
 
 export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.test(path.posix.basename(p)));
+// what a left worktree's fingerprint recorded by Svall 0.24 or earlier leaves out, matched by case
+const CREDENTIAL_024 = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'].map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
+export const wasCredential = (p: string): boolean => CREDENTIAL_024.some((re) => re.test(path.posix.basename(p)));
 
 export const BUNDLE_MAX = 100 * 1024 * 1024;
 
@@ -80,7 +86,7 @@ export async function credentialsIn(root: string, git: GitRunner, listed: readon
 
 // the index and working tree against HEAD, and the untracked files but credentials, all by content; with `head`, those of a
 // new worktree at HEAD, which holds none
-async function digest(root: string, git: GitRunner, untracked: readonly { path: string; sha256: string }[], head = false): Promise<string> {
+async function digest(root: string, git: GitRunner, untracked: readonly { path: string; sha256: string }[], head = false, credential = isCredential): Promise<string> {
   const index = head ? '' : await must(git, ['diff', '--cached', ...RAW], root);
   const fields = head ? [] : (await must(git, ['diff', ...RAW], root)).split('\0');
   const worktree: (string | null)[][] = [];
@@ -89,18 +95,18 @@ async function digest(root: string, git: GitRunner, untracked: readonly { path: 
     const st = fs.lstatSync(file, { throwIfNoEntry: false });
     worktree.push([fields[i], fields[i + 1], st && !st.isDirectory() ? await contentSha(file, st) : null]);
   }
-  const files = untracked.filter((u) => !isCredential(u.path)).map((u) => [u.path, u.sha256]).sort(([a], [b]) => byCodeUnit(a, b));
+  const files = untracked.filter((u) => !credential(u.path)).map((u) => [u.path, u.sha256]).sort(([a], [b]) => byCodeUnit(a, b));
   return canonicalDigest({ index: sha256Hex(index), worktree, untracked: files });
 }
 
 /** What a worktree holds beyond its HEAD, the same on any machine holding the same index, working tree and untracked files but credentials. */
-export async function fingerprintOf(root: string, git: GitRunner): Promise<string> {
+export async function fingerprintOf(root: string, git: GitRunner, credential = isCredential): Promise<string> {
   const untracked: { path: string; sha256: string }[] = [];
-  for (const p of (await untrackedFiles(root, git)).filter((f) => !isCredential(f))) {
+  for (const p of (await untrackedFiles(root, git)).filter((f) => !credential(f))) {
     const file = path.join(root, p);
     untracked.push({ path: p, sha256: await contentSha(file, fs.lstatSync(file)) });
   }
-  return digest(root, git, untracked);
+  return digest(root, git, untracked, false, credential);
 }
 
 // the branch's commits past every commit of the worker's shas this machine holds too, as the worker holds each with its

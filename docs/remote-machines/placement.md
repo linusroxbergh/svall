@@ -99,8 +99,9 @@ and its own button or action, the first with its details behind it; `svall robot
    robot's lacks refuses too: "linus-vault has a branch kanban with commits this one lacks; merge or rename it there
    first". The move checks it again where it applies the branch, and fails before its commit.
 6. **What travels fits, and carries no tracked credential.** The patches, untracked files and carried commits come
-   to at most 100 MB. An untracked file in the worktree named like a credential (`.env*`, `*.pem`, `id_rsa*`,
-   `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick **copy .env to linus-vault** in the sheet (`--carry`); the
+   to at most 100 MB. An untracked file in the worktree named like a credential in any case (`.env*`, `*.pem`,
+   `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick
+   **copy .env to linus-vault** in the sheet (`--carry`); the
    CLI names it: ".env stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
    first". A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
    holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
@@ -129,8 +130,11 @@ Mission control's robots stay on this Mac and have no move button.
   until you tick it, and then travels as it is. Logins never travel. Nor do Claude Code's `hooks`, `statusLine` and `env` settings, which
   stay as the machine has them, the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
   `awsAuthRefresh`, `otelHeadersHelper`), or a git login in a plugin marketplace's URL. Nor does a credential file in
-  those folders or behind a link from them: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.env*`, `*.pem`,
-  `*.key`, Docker's `config.json`, gh's `hosts.yml`, or anything under `.aws`, `.ssh` or `.gnupg`. A file under
+  those folders or behind a link from them, named in any case: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`,
+  `.pgpass`, `.vault-token`, `.env*`, `*.pem`, `*.key`, `*.tfvars`, `*.p12`, `*.pfx`, `AuthKey_*.p8`, `id_rsa*`,
+  `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `credentials.json`, `credentials.toml`, `token.json`, `token.pickle`,
+  `service-account.json`, `client_secret_*.json`, Docker's `config.json`, gh's `hosts.yml`, or anything under `.aws`,
+  `.ssh`, `.gnupg`, `.kube`, `.azure` or gcloud's `~/.config/gcloud`, wherever a link puts those. A file under
   `mirror-overrides/` in the fleet's home on the worker (`~/.svall` for the private fleet, `~/.svall-<fleet>` for
   another) is merged last and wins. See
   [Your agent setup on the machine](setup.md#your-agent-setup-on-the-machine).

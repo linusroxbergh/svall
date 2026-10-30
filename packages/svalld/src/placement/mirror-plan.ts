@@ -65,13 +65,16 @@ export type MirrorPlan = {
 // OpenCode reads each folder by either name
 const OPENCODE_TREES = ['agent', 'agents', 'command', 'commands', 'plugin', 'plugins', 'skills'];
 // a key or a login by its name: a move's credential patterns and more
-const SECRET = [...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'auth.json', 'mcp-auth.json', 'id_ed25519*', '*.p12', '.git-credentials', '.npmrc', '.pypirc']
-  .map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
-const SECRET_DIRS = ['.aws', '.ssh', '.gnupg'];
+const SECRET = [
+  ...CREDENTIAL_PATTERNS, '.credentials.json', 'credentials.json', 'credentials.toml', 'auth.json', 'mcp-auth.json', 'token.json', 'token.pickle', 'service-account.json',
+  'client_secret_*.json', 'AuthKey_*.p8', '*.p12', '*.pfx', '.git-credentials', '.npmrc', '.pypirc', '.pgpass', '.vault-token',
+].map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`, 'i'));
+const SECRET_DIRS = ['.aws', '.ssh', '.gnupg', '.kube', '.azure', '.config/gcloud'];
 const SECRET_FILES = ['.docker/config.json', 'gh/hosts.yml'];
+// by any case, as the Mac's disk finds a folder whatever case a link spells it in
 const secret = (file: string): boolean => {
-  const parts = file.split(path.sep);
-  return SECRET.some((re) => re.test(path.basename(file))) || parts.some((p) => SECRET_DIRS.includes(p)) || SECRET_FILES.some((f) => file.endsWith(`${path.sep}${f}`));
+  const lower = file.toLowerCase();
+  return SECRET.some((re) => re.test(path.basename(file))) || SECRET_DIRS.some((d) => lower.includes(`${path.sep}${d}${path.sep}`)) || SECRET_FILES.some((f) => lower.endsWith(`${path.sep}${f}`));
 };
 const without = (doc: Doc, keys: readonly string[]): Doc => Object.fromEntries(Object.entries(doc).filter(([k]) => !keys.includes(k)));
 
@@ -329,9 +332,11 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     byPlugin.set(c.name, { fields: [...new Set([...row.fields, ...c.fields])], files: [...new Set([...row.files, c.file])] });
   }
   for (const [name, c] of byPlugin) whole(pluginKey(name), `${name}'s config`, c.fields, c.files);
+  // the home's credential folders where they really lie, a link into a dotfiles tree followed
+  const secretRoots = SECRET_DIRS.map((d) => realPath(path.join(o.homedir, d)));
   const keep = (file: string): boolean => {
     const real = realPath(file);
-    return !withheld.has(real) && ![file, real].some(secret);
+    return !withheld.has(real) && ![file, real].some(secret) && !secretRoots.some((r) => holds(r, real));
   };
   // `vet` may hold what it has seen, so `keep` is asked again after it
   const tree = (root: Root, top: string, under: string, also: (file: string) => boolean = () => true, vet: (found: string[]) => void = () => {}): void => {

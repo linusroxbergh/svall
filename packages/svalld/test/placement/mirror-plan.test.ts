@@ -32,7 +32,10 @@ describe('the agent configuration mirror', () => {
     fs.symlinkSync(path.join(mac.homedir, '.claude.json'), path.join(mac.claudeDir, 'skills/review/cfg.json'));
     fs.symlinkSync(path.join(mac.codexDir, 'auth.json'), path.join(mac.claudeDir, 'rules/codex.md'));
     fs.symlinkSync(path.join(mac.claudeDir, '.credentials.json'), path.join(mac.claudeDir, 'agents/login.md'));
-    for (const key of ['id_ed25519', 'id_ed25519.pub', 'deploy.p12', 'credentials.json', 'auth.json', 'server.pem']) put(path.join(mac.homedir, '.agents/skills/lint', key), 'secret\n');
+    for (const key of [
+      'id_ed25519', 'id_ed25519.pub', 'ID_RSA', 'id_ecdsa', 'id_dsa', 'deploy.p12', 'cert.pfx', 'credentials.json', 'credentials.toml', 'auth.json', 'server.pem', 'Deploy.KEY',
+      'token.json', 'token.pickle', 'AuthKey_ABC123.p8', 'service-account.json', 'client_secret_123.apps.googleusercontent.com.json', '.pgpass', '.vault-token',
+    ]) put(path.join(mac.homedir, '.agents/skills/lint', key), 'secret\n');
     put(path.join(mac.homedir, 'notes/house.md'), 'house style\n');
     fs.symlinkSync(path.join(mac.homedir, 'notes/house.md'), path.join(mac.claudeDir, 'rules/house.md'));
     expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/rules/house.md', 'claude/skills/pdf/SKILL.md'].sort());
@@ -43,11 +46,20 @@ describe('the agent configuration mirror', () => {
     const lint = path.join(mac.homedir, '.agents/skills/lint');
     for (const rel of [
       '.netrc', '.git-credentials', '.npmrc', '.pypirc', '.aws/credentials', '.aws/config', '.ssh/config', '.docker/config.json',
-      '.config/gh/hosts.yml', '.gnupg/pubring.kbx', 'cert.pem', 'tls.key', '.env', '.env.local',
+      '.config/gh/hosts.yml', '.gnupg/pubring.kbx', 'cert.pem', 'tls.key', '.env', '.env.local', '.ENV.production', '.kube/config', '.azure/msal_token_cache.json',
+      '.config/gcloud/application_default_credentials.json',
     ]) put(path.join(lint, rel), 'secret\n');
     put(path.join(mac.homedir, 'dotfiles/.aws/credentials'), 'secret\n');
     put(path.join(mac.homedir, 'dotfiles/notes.md'), 'notes\n');
     fs.symlinkSync(path.join(mac.homedir, 'dotfiles'), path.join(mac.claudeDir, 'skills/dotfiles'));
+    // links to the home's own: a folder that is itself a link into dotfiles, one spelled in another case, one as it is
+    put(path.join(mac.homedir, 'dotfiles/kube/config'), 'secret\n');
+    fs.symlinkSync(path.join(mac.homedir, 'dotfiles/kube'), path.join(mac.homedir, '.kube'));
+    put(path.join(mac.homedir, '.aws/config'), 'secret\n');
+    put(path.join(mac.homedir, '.config/gcloud/credentials.db'), 'secret\n');
+    fs.symlinkSync(path.join(mac.homedir, '.kube/config'), path.join(mac.claudeDir, 'skills/review/cluster.yaml'));
+    fs.symlinkSync(path.join(mac.homedir, '.AWS/config'), path.join(mac.claudeDir, 'skills/review/aws.ini'));
+    fs.symlinkSync(path.join(mac.homedir, '.config/gcloud'), path.join(mac.claudeDir, 'skills/cloud'));
     expect(mirrorPlan(mac).files.map((f) => f.to).sort()).toEqual([...PLANNED, 'claude/skills/dotfiles/notes.md'].sort());
   });
 
