@@ -1,4 +1,4 @@
-// Takes the landing page's seven shots and makes the views with site-shots.mjs: the fleet's app window in five layouts that
+// Takes the landing page's eight shots and makes the views with site-shots.mjs: the fleet's app window in six layouts that
 // `svall app show` sets, then its phone page's fleet list and a robot's terminal in Playwright's iPhone WebKit.
 // `pnpm site:capture [robot] [--profile demo] [--file src/App.tsx] [--phone-robot <robot>]`, with the robot's terminal,
 // browser tab and repo as they should show. It brings the window to the front for about 15 s; hands off meanwhile.
@@ -29,6 +29,7 @@ const VIEWS = [
   ['files', ['--right', 'files', '--tree', 'show', '--file', o.file]],
   ['markdown', ['--right', 'files', '--tree', 'hide', '--file', 'README.md', '--preview']],
   ['board', ['--view', 'board', '--card', 'closed']],
+  ['map', ['--card', 'closed']],
   ['phone', ['--card', 'closed', '--panel', 'phone', '--redact', 'https://svall.dev']],
 ];
 

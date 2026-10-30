@@ -288,9 +288,11 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   <section class="features">
     <h2>What it does</h2>
     <ul>
-      <li><b>Clear overview:</b> the map keeps track of every agent</li>
+      <li><b>Clear overview:</b> the map and board keep track of your work</li>
       <li><b>Layered context:</b> per repo, island and agent</li>
+      <li><b>In tmux:</b> each agent runs in its own tmux window</li>
       <li><b>Persistence:</b> quit or reboot. Each agent resumes when you re-open</li>
+      <li><b>Remote machines:</b> run agents on Linux over ssh while your Mac sleeps</li>
       <li><b>Built-in browser:</b> PRs, previews and docs beside the terminal</li>
       <li><b>Built-in editor:</b> edit files and review the diff in place</li>
       <li><b>On your phone:</b> every agent and terminal, over Tailscale</li>
@@ -303,23 +305,25 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <h2 id="views-h">Terminal, browser and files beside every agent.</h2>
   </div>
   <div class="tabs" role="tablist" aria-label="Views">
-    <button type="button" role="tab" aria-selected="true" aria-controls="shot" style="--dwell: 8s">Phone</button>
-    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Board</button>
+    <button type="button" role="tab" aria-selected="true" aria-controls="shot">Board</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Islands</button>
+    <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1" style="--dwell: 8s">Phone</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Browser</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Files</button>
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Markdown</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <div class="view-phone on" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
-      <img src="shots/phone.avif?v=0c31ea37" loading="lazy" alt="">
+    <img class="on" src="shots/board.avif?v=77fbea0c" loading="lazy" alt="The board: every robot as a card in the column its work has reached, the selected one's details beside it">
+    <img src="shots/map.avif?v=cc469748" loading="lazy" alt="The map: islands of robot cards, each with its agent's status, and mission control's island with the lighthouse at the foot">
+    <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
+      <img src="shots/phone.avif?v=1e0267b4" loading="lazy" alt="">
       <div class="phone">
-        <div class="phone-screen"><img src="shots/phone-list.avif?v=47edf359" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=e74ec1b0" loading="lazy" alt=""></div>
+        <div class="phone-screen"><img src="shots/phone-list.avif?v=2e8d5950" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=583b7187" loading="lazy" alt=""></div>
       </div>
     </div>
-    <img src="shots/board.avif?v=457f01c6" loading="lazy" alt="The board: every robot as a card in the column its work has reached, the selected one's details beside it">
-    <img src="shots/browser.avif?v=b634d5c5" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
-    <img src="shots/files.avif?v=1f17e5f5" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
-    <img src="shots/markdown.avif?v=307b9865" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
+    <img src="shots/browser.avif?v=18c873a8" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
+    <img src="shots/files.avif?v=673d0223" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
+    <img src="shots/markdown.avif?v=6ce145d9" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
   </div>
 </section>
 
@@ -389,8 +393,9 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </div>
   <ul>
     <li>Claude Code, Codex and OpenCode report to Svall through hooks, so a card changes the moment its agent starts, asks or finishes.</li>
-    <li>Each agent runs in its own tmux window.</li>
-    <li>Quitting stops the agents. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
+    <li>Each agent runs in its own tmux window, on a tmux server of Svall’s own that leaves yours and your <code>~/.tmux.conf</code> alone. The app, your phone and the <code>svall</code> CLI all reach that same window.</li>
+    <li>A robot moves to a Linux machine you reach over ssh, and back, with its conversation, branch and uncommitted changes. There it keeps working in tmux while your Mac sleeps. <code>svall host add</code> sets the machine up.</li>
+    <li>Quitting stops the agents on your Mac. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
     <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
     <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>
   </ul>
