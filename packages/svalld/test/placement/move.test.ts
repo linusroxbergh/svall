@@ -501,6 +501,17 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
 
+  it('a return refuses a worktree there mid-merge, whose bundle would carry none of it', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const merge = path.join(w.g(w.farWt, 'rev-parse', '--absolute-git-dir'), 'MERGE_HEAD');
+    fs.writeFileSync(merge, `${w.g(w.farWt, 'rev-parse', 'HEAD')}\n`);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `${w.farWt} is in the middle of a merge`, action: 'finish or abort it first' } });
+    fs.rmSync(merge);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
+  });
+
   it('a return whose OpenCode import fails puts back the copy this Mac held, and keeps no other', async () => {
     const w = open({ opencode: true });
     const home = await w.start();
