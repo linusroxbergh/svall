@@ -28,21 +28,27 @@ const CAST: Crew[] = ([
   { name: 'refund webhooks', figure: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
   { name: 'review #1', figure: 80, status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
   { name: 'changelog', figure: 8, status: 'working', ctx: 27, links: [] },
+  { name: 'sale banner', figure: 54, status: 'working', ctx: 41, links: [] },
+  { name: 'BF26 code', figure: 71, status: 'working', ctx: 38, links: [] },
+  { name: 'checkout load test', figure: 66, status: 'idle', ctx: 9, links: [] },
 ] satisfies Omit<Member, 'id'>[]).map((m) => ({ ...m, id: m.name, since: 0 }));
 
 const ISLANDS = [
   { id: 'storefront', name: 'storefront', seed: 568461961, crew: [0, 1, 2, 3] },
   { id: 'payments', name: 'payments api', seed: 1777050622, crew: [4, 5] },
   { id: 'docs', name: 'docs', seed: 171633796, crew: [6] },
+  { id: 'black-friday', name: 'black friday', seed: 913377, crew: [7, 8, 9] },
 ];
 // each island's footprint and where its crew stand, as svalld lays them out
 const GRIDS = ISLANDS.map((i) => crewGrid(i.crew.length));
 
-// wide: the text holds the left column and the islands cascade down the right; narrow: the same map under the text.
+// wide: the text holds the left column and the islands cascade down the right; narrow: the same map under the text;
+// og: the link preview's, when the page opens as #og, islands under and beside the headline for site-og.mjs to frame.
 // w and h are the world's box in px, k the most it is zoomed to, at each island's position in cells
-const LAYOUTS: Record<'wide' | 'narrow', { w: number; h: number; k: number; at: Cell[] }> = {
-  wide: { w: 1720, h: 1000, k: 0.72, at: [{ x: 24, y: 13 }, { x: 20, y: 4 }, { x: 30, y: 5 }] },
-  narrow: { w: 748, h: 866, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }] },
+const LAYOUTS: Record<'wide' | 'narrow' | 'og', { w: number; h: number; k: number; at: Cell[] }> = {
+  wide: { w: 2200, h: 1000, k: 0.72, at: [{ x: 20, y: 14 }, { x: 22, y: 4 }, { x: 33, y: 5 }, { x: 30, y: 15 }] },
+  narrow: { w: 748, h: 1290, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }, { x: 0, y: 23 }] },
+  og: { w: 2024, h: 1012, k: 0.72, at: [{ x: 11, y: 6 }, { x: 0, y: 11 }, { x: 23, y: 11 }, { x: 22, y: 0 }] },
 };
 
 const stage = document.querySelector<HTMLElement>('.stage')!;
@@ -119,7 +125,7 @@ const spanW = Math.max(...LAYOUTS.wide.at.map((c, i) => c.x + GRIDS[i].size.w)) 
 const root = createRoot(world);
 const wideMQ = matchMedia('(min-width: 960px)');
 function place() {
-  const wide = wideMQ.matches, L = wide ? LAYOUTS.wide : LAYOUTS.narrow;
+  const wide = wideMQ.matches, L = location.hash === '#og' ? LAYOUTS.og : wide ? LAYOUTS.wide : LAYOUTS.narrow;
   stage.classList.toggle('narrow', !wide);
   const pad = parseFloat(getComputedStyle(stage).paddingLeft);
   let k: number, left: string;

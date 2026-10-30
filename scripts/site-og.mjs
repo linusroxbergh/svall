@@ -1,5 +1,6 @@
 // Makes site/og.jpg, the picture a link to svall.dev shows in Slack, X or Hacker News: the page's own logo, headline
-// and demo map, the rest of the hero hidden. `pnpm site:og` after `pnpm site:build`, again whenever the headline changes.
+// and demo map in its og layout, the rest of the hero hidden. `pnpm site:og` after `pnpm site:build`, again whenever the
+// headline or the demo map changes.
 import fs from 'node:fs';
 import http from 'node:http';
 import { createRequire } from 'node:module';
@@ -25,20 +26,18 @@ const { chromium } = createRequire(path.join(root, 'apps/desktop/web/package.jso
 const browser = await chromium.launch();
 try {
   const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 2, colorScheme: 'dark' });
-  await page.goto(`http://localhost:${server.address().port}/`);
+  await page.goto(`http://localhost:${server.address().port}/#og`);
   await page.evaluate(() => document.fonts.ready);
   await page.addStyleTag({ content: 'header > a:last-child, .hero > :not(h1), .features { visibility: hidden }' });
-  // the headline sits mid-height on the left and the islands fill the right half, scaled down to fit
+  // the headline stays where the page puts it; the islands, laid out to leave it room, fill the frame
   await page.evaluate(({ W, H, PAD }) => {
-    const h1 = document.querySelector('.hero h1'), world = document.querySelector('.stage .world');
-    const r = h1.getBoundingClientRect();
-    h1.style.transform = `translateY(${H / 2 - (r.top + r.bottom) / 2}px)`;
+    const world = document.querySelector('.stage .world');
     const rs = [...world.querySelectorAll('.ilabel, .land')].map((e) => e.getBoundingClientRect());
     const box = { l: Math.min(...rs.map((b) => b.left)), t: Math.min(...rs.map((b) => b.top)), r: Math.max(...rs.map((b) => b.right)), b: Math.max(...rs.map((b) => b.bottom)) };
-    const from = r.right + PAD, s = Math.min((W - PAD - from) / (box.r - box.l), (H - 2 * PAD) / (box.b - box.t));
+    const s = Math.min((W - PAD) / (box.r - box.l), (H - PAD) / (box.b - box.t));
     // the world scales from its top left corner, which the added scale moves too
     const o = world.getBoundingClientRect();
-    const x = from + (W - PAD - from - (box.r - box.l) * s) / 2 - box.l * s + (s - 1) * o.left;
+    const x = (W - (box.r - box.l) * s) / 2 - box.l * s + (s - 1) * o.left;
     const y = (H - (box.b - box.t) * s) / 2 - box.t * s + (s - 1) * o.top;
     world.style.transform = `translate(${x}px, ${y}px) scale(${s}) ${world.style.transform}`;
   }, { W, H, PAD });
