@@ -16,6 +16,14 @@ export function promptsOf(said: string[], limit: number, pending?: Pending): str
   return list.slice(0, limit);
 }
 
+/** What the agent said after the newest turn's last tool call, a paragraph for each thing said; undefined when nothing. */
+export function lastSaid(events: Event[]): string | undefined {
+  let i = events.length;
+  while (i > 0 && events[i - 1].kind === 'agent') i--;
+  const said = events.slice(i).flatMap((e) => (e.kind === 'agent' ? [e.text] : []));
+  return said.length ? said.join('\n\n') : undefined;
+}
+
 // whether the log's text is the prompt a hook reported. The hook clips a long prompt, ends trimmed or not, and the log
 // does not, so one longer than that is matched on its head
 export const carries = (said: string | undefined, head: string): boolean =>

@@ -1,6 +1,6 @@
 import { trimEnd } from '@svall/protocol';
 import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
-import { carries } from './turns.js';
+import { carries, lastSaid, type Event } from './turns.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
 type Entry = {
@@ -101,6 +101,17 @@ export function userPromptsClaude(text: string, limit: number, pending?: Pending
   if (pending && leads(all, sent, pending)) list.unshift(clip(pending.text));
   return list.slice(0, limit);
 }
+
+// the session as lastSaid reads it: what the agent wrote and called, and anything that came in from the user side, a
+// tool's result or an interrupt included; Claude Code's own notes to the model are passed over
+const turnEvents = (text: string): Event[] => entries(text).filter((e) => !e.isSidechain && !e.isMeta).flatMap((e): Event[] => {
+  if (e.type !== 'assistant') return e.type === 'user' || carried(e) !== undefined ? [{ kind: 'user', text: '' }] : [];
+  const blocks = Array.isArray(e.message?.content) ? e.message.content : [];
+  return blocks.flatMap((b): Event[] => (b.type === 'tool_use' ? [{ kind: 'tool', name: b.name ?? 'tool', given: b.input }]
+    : b.type === 'text' && b.text?.trim() ? [{ kind: 'agent', text: b.text.trim() }] : []));
+});
+
+export const lastMessageClaude = (text: string): string | undefined => lastSaid(turnEvents(text));
 
 // toolLinks keeps the URLs tool calls were given or printed
 export function condenseTurnsClaude(text: string, turns: number, { toolLinks = false } = {}): string {

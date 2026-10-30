@@ -2,11 +2,11 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, randomPortrait, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, randomPortrait, robotMessage, robotSender, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
-import { condenseTurns, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
+import { condenseTurns, lastMessage, readTail, recordedCwd, userPrompts } from './agent/transcript.js';
 import { addColumn, checkCell, deleteColumn, moveRobot, placeOn, placeRobot, releaseRobot, renameColumn, reorderColumn, reorderRobot, starRobot, unstarRobot } from './arrange.js';
 import { robotKeyEnv, rendererEnv } from './claude.js';
 import { codexPaths } from './codex/install.js';
@@ -823,7 +823,8 @@ export class Fleet extends EventEmitter<Events> {
     fresh ??= unsaved(c);
     const gone = fresh === undefined && (c.revive?.interrupted || c.agent?.kind === 'codex') ? this.goneFolder(c) : undefined;
     const moved = gone ? { from: gone, to: cwd } : undefined;
-    if (c.revive?.interrupted && fresh === undefined) prompt = prompt ? `${resumeNote(moved)}\n\n${prompt}` : resumeNote(moved);
+    // a robot's message keeps its header first
+    if (c.revive?.interrupted && fresh === undefined) prompt = !prompt ? resumeNote(moved) : robotSender(prompt) ? `${prompt}\n\n${resumeNote(moved)}` : `${resumeNote(moved)}\n\n${prompt}`;
     const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], byMove, id) : undefined;
     try {
       const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
@@ -998,6 +999,12 @@ export class Fleet extends EventEmitter<Events> {
     return this.deps.remote?.forward(id, 'robot.run', { id, text, enter, term })?.then((r) => r.delivery) ?? this.prompts.run(id, text, enter, term);
   }
 
+  /** `text` as robot `from`'s message to robot `id`, for `run` to type; refused to itself. */
+  message(id: string, from: string, text: string): string {
+    if (from === id) throw new Invalid('a robot cannot message itself');
+    return robotMessage(this.robot(from), text);
+  }
+
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
     return this.deps.remote?.forward(id, 'robot.answer', { id, answer, promptId })?.then(() => {}) ?? this.prompts.answer(id, answer, promptId);
   }
@@ -1018,6 +1025,19 @@ export class Fleet extends EventEmitter<Events> {
     if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
     if (!agent.transcriptPath) return '';
     return condenseTurns(agent.kind, readTail(agent.transcriptPath, TRANSCRIPT_TAIL), turns);
+  }
+
+  /** What the agent said last, in full, or why its turn has nothing to show. */
+  readLast(id: string, term?: 2): string {
+    const c = this.robot(id);
+    const agent = term === 2 ? c.second?.agent : c.agent;
+    if (!agent) throw new Invalid(`${c.name} has no agent${term === 2 ? ' in its second terminal' : ''}`);
+    // what a turn under way says is said on its way, not its answer
+    if (agent.status === 'working' && !agent.background) return `[${c.name} is still working]`;
+    if (agent.status === 'blocked') return `[${c.name} is waiting on an answer${agent.prompt ? `: ${agent.prompt}` : ''}]`;
+    const said = agent.transcriptPath ? lastMessage(agent.kind, readTail(agent.transcriptPath, TRANSCRIPT_TAIL)) : undefined;
+    // StopFailure leaves the API error that ended the turn in prompt
+    return said ?? (agent.prompt ? `[its last turn ended on an error: ${agent.prompt}]` : '[its last turn ended without a final message: interrupted, or after a tool call]');
   }
 
   readPrompts(id: string, limit: number): string[] {

@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import type { AgentKind } from '@svall/protocol';
-import { condenseTurnsClaude, userPromptsClaude, type Pending } from './claude-transcript.js';
-import { condenseTurnsCodex, userPromptsCodex } from './codex-transcript.js';
-import { condenseTurnsOpencode, userPromptsOpencode } from './opencode-transcript.js';
+import { condenseTurnsClaude, lastMessageClaude, userPromptsClaude, type Pending } from './claude-transcript.js';
+import { condenseTurnsCodex, lastMessageCodex, userPromptsCodex } from './codex-transcript.js';
+import { condenseTurnsOpencode, lastMessageOpencode, userPromptsOpencode } from './opencode-transcript.js';
 
-const READERS: Record<AgentKind, { prompts: typeof userPromptsClaude; condense: typeof condenseTurnsClaude }> = {
-  claude: { prompts: userPromptsClaude, condense: condenseTurnsClaude },
-  codex: { prompts: userPromptsCodex, condense: condenseTurnsCodex },
-  opencode: { prompts: userPromptsOpencode, condense: condenseTurnsOpencode },
+const READERS: Record<AgentKind, { prompts: typeof userPromptsClaude; condense: typeof condenseTurnsClaude; last: typeof lastMessageClaude }> = {
+  claude: { prompts: userPromptsClaude, condense: condenseTurnsClaude, last: lastMessageClaude },
+  codex: { prompts: userPromptsCodex, condense: condenseTurnsCodex, last: lastMessageCodex },
+  opencode: { prompts: userPromptsOpencode, condense: condenseTurnsOpencode, last: lastMessageOpencode },
 };
 
 export function userPrompts(kind: AgentKind, text: string, limit: number, pending?: Pending): string[] {
@@ -16,6 +16,11 @@ export function userPrompts(kind: AgentKind, text: string, limit: number, pendin
 
 export function condenseTurns(kind: AgentKind, text: string, turns: number, opts: { toolLinks?: boolean } = {}): string {
   return READERS[kind].condense(text, turns, opts);
+}
+
+/** The agent's answer in the newest turn, unclipped; undefined when it ended without one. */
+export function lastMessage(kind: AgentKind, text: string): string | undefined {
+  return READERS[kind].last(text);
 }
 
 export function readTail(file: string, maxBytes = 512 * 1024): string {

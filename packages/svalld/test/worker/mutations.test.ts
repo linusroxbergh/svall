@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { HOME_ISLAND, Mutation, type FleetState, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
+import { pane } from '../fleet-boot.js';
 import { H, W, island, placed, robot, stopWorlds, until, world } from '../placement/world.js';
 
 afterEach(async () => {
@@ -137,6 +138,19 @@ describe('a worker serving its robots while the home is away', () => {
       { method: 'robot.run', params: { id: 'c_1', text: 'go on', enter: true }, delivery: 'delivered' },
       { method: 'robot.close', params: { id: 'c_1' } },
     ]);
+  });
+
+  it("robot.send to a robot here types another robot's message as a run, and journals it as one", async () => {
+    const { w, typed, call, mutations } = setup();
+    w.worker.store.update((d) => {
+      d.robots.c_lead = placed({ id: 'c_lead', name: 'lead' });
+      d.robots.c_1.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 };
+    });
+    w.worker.tmux.screen = async () => pane('claude-empty');
+    const text = '[from robot lead (c_lead); reply with svall robot send c_lead]\nreview it';
+    expect(await call('robot.send', { id: 'c_1', from: 'c_lead', text: 'review it' })).toEqual({ id: 1, result: { delivery: 'delivered' } });
+    expect(typed).toEqual([text]);
+    expect(mutations()).toMatchObject([{ method: 'robot.run', params: { id: 'c_1', text, enter: true }, delivery: 'delivered' }]);
   });
 
   it('an offline close is journaled before its robot is forgotten', async () => {

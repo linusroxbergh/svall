@@ -23,7 +23,7 @@ const NOT_HOME = 'mission control stays on this Mac; start it on another island'
 // the acknowledged mutations applied.ndjson keeps
 const APPLIED_KEPT = 500;
 
-type Served = 'robot.create' | 'robot.update' | 'robot.close' | 'robot.run' | 'robot.seen';
+type Served = 'robot.create' | 'robot.update' | 'robot.close' | 'robot.run' | 'robot.send' | 'robot.seen';
 
 /** What a worker serves from its own store for the CLI in its panes, its home linked or not, and journals for the home to apply. */
 export class WorkerMutations {
@@ -41,6 +41,8 @@ export class WorkerMutations {
       this.journal({ method: 'robot.run', params: p, delivery });
       return { delivery };
     },
+    // journaled as the run it types, which the home applies as any other
+    'robot.send': async (p) => this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true }),
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
   };
@@ -69,7 +71,7 @@ export class WorkerMutations {
     const id = (params as { id?: unknown }).id;
     const { robots } = this.o.store.state;
     if (typeof id !== 'string' || !Object.hasOwn(robots, id) || robots[id].machine !== this.o.me) return false;
-    return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run') && this.away());
+    return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run' || method === 'robot.send') && this.away());
   }
 
   serve<M extends MethodName>(method: M, params: ParsedParams<M>): Promise<Result<M>> {

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentKind } from '@svall/protocol';
+import type { AgentKind, Robot } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { markDormant, RESUME_NOTE } from '../src/dormancy.js';
 import { Dormant, Invalid } from '../src/errors.js';
@@ -26,6 +26,47 @@ runIf('Fleet prompts', () => {
     await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'Stop' } });
     await fleet.run(c.id, 'y', false);
     expect(store.state.robots[c.id].agent?.status).toBe('done');
+  });
+
+  it("tags a robot's message with its sender, refuses one to itself, and never types one into a plain shell", async () => {
+    const { fleet, tmux } = await boot({ pollMs: 60_000 });
+    const island = fleet.createIsland({ name: 'x' }).id;
+    const lead = await fleet.createRobot({ islandId: island, cwd: '/tmp', name: 'lead' });
+    const c = await fleet.createRobot({ islandId: island, cwd: '/tmp' });
+    const message = fleet.message(c.id, lead.id, 'hi\nrm -rf build');
+    expect(message).toBe(`[from robot lead (${lead.id}); reply with svall robot send ${lead.id}]\nhi\nrm -rf build`);
+    expect(() => fleet.message(c.id, c.id, 'hi')).toThrow('a robot cannot message itself');
+    const typed = vi.spyOn(tmux, 'sendLine');
+    await expect(fleet.run(c.id, message, true)).rejects.toThrow(`${c.name} runs no agent; svall robot run types into its terminal`);
+    expect(typed).not.toHaveBeenCalled();
+    // an agent that has not reported in yet, as a Codex or OpenCode before its first prompt, takes it
+    vi.spyOn(tmux, 'screen').mockResolvedValue(pane('codex-empty'));
+    expect(await fleet.run(c.id, message, true)).toBe('delivered');
+    expect(typed).toHaveBeenCalledWith(c.tmux!.paneId, message, true);
+  });
+
+  it("reads the agent's last answer in full, or says why there is none", async () => {
+    const { fleet, store, home } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    expect(() => fleet.readLast(c.id)).toThrow(`${c.name} has no agent`);
+    const line = (o: unknown) => JSON.stringify(o) + '\n';
+    const transcriptPath = path.join(home, 'session.jsonl');
+    const answer = 'x'.repeat(3000);
+    fs.writeFileSync(transcriptPath, line({ type: 'user', origin: { kind: 'human' }, message: { content: 'go' } }) + line({ type: 'assistant', message: { content: [{ type: 'text', text: answer }] } }));
+    await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: 'sess', transcriptPath } });
+    const agent = (patch: (a: NonNullable<Robot['agent']>) => void) => store.update((d) => { patch(d.robots[c.id].agent!); });
+    expect(fleet.readLast(c.id)).toBe(answer);
+    agent((a) => { a.status = 'working'; });
+    expect(fleet.readLast(c.id)).toBe(`[${c.name} is still working]`);
+    agent((a) => { a.background = true; });
+    expect(fleet.readLast(c.id)).toBe(answer);
+    agent((a) => { a.status = 'blocked'; delete a.background; a.prompt = 'Bash: rm -rf build'; });
+    expect(fleet.readLast(c.id)).toBe(`[${c.name} is waiting on an answer: Bash: rm -rf build]`);
+    fs.appendFileSync(transcriptPath, line({ type: 'user', origin: { kind: 'human' }, message: { content: 'again' } }));
+    agent((a) => { a.status = 'done'; a.prompt = 'API Error: 500'; });
+    expect(fleet.readLast(c.id)).toBe('[its last turn ended on an error: API Error: 500]');
+    agent((a) => { a.status = 'idle'; delete a.prompt; });
+    expect(fleet.readLast(c.id)).toBe('[its last turn ended without a final message: interrupted, or after a tool call]');
   });
 
   it('keeps a hook-driven status over the optimistic working', async () => {

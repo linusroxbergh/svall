@@ -1,6 +1,6 @@
 import type { Pending } from './claude-transcript.js';
 import { jsonLines } from './jsonl.js';
-import { condenseEvents, promptsOf, type Event } from './turns.js';
+import { condenseEvents, lastSaid, promptsOf, type Event } from './turns.js';
 
 // Svall's OpenCode plugin logs each session as the events themselves, one to a line
 const valid = (e: Partial<Event> & Record<string, unknown>): boolean =>
@@ -13,3 +13,5 @@ export const userPromptsOpencode = (text: string, limit: number, pending?: Pendi
 
 export const condenseTurnsOpencode = (text: string, turns: number, opts: { toolLinks?: boolean } = {}): string =>
   condenseEvents(events(text), turns, opts);
+
+export const lastMessageOpencode = (text: string): string | undefined => lastSaid(events(text));

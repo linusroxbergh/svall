@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pending } from './claude-transcript.js';
 import { jsonLines, orSkip } from './jsonl.js';
-import { condenseEvents, promptsOf, type Event } from './turns.js';
+import { condenseEvents, lastSaid, promptsOf, type Event } from './turns.js';
 
 export type RawRateWindow = { used_percent?: number; window_minutes?: number; resets_at?: number } | null;
 export type RawRateLimits = { primary?: RawRateWindow; secondary?: RawRateWindow; plan_type?: string | null };
@@ -50,6 +50,8 @@ function events(text: string): Event[] {
 export function userPromptsCodex(text: string, limit: number, pending?: Pending): string[] {
   return promptsOf(events(text).flatMap((e) => (e.kind === 'user' ? [e.text] : [])), limit, pending);
 }
+
+export const lastMessageCodex = (text: string): string | undefined => lastSaid(events(text));
 
 export function condenseTurnsCodex(text: string, turns: number, opts: { toolLinks?: boolean } = {}): string {
   return condenseEvents(events(text), turns, opts);

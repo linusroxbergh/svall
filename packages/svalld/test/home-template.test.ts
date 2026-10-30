@@ -53,6 +53,7 @@ describe('the home template', () => {
     const settings = path.join(mc, '.claude/settings.json');
     const allow = JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow;
     expect(allow).toContain('Bash(svall robot update:*)');
+    expect(allow).toContain('Bash(svall robot send:*)');
     expect(allow).not.toContain('Bash(svall:*)');
     expect(allow.some((a: string) => a.startsWith('Bash(svall robot new') || a.startsWith('Bash(svall robot run'))).toBe(false);
     for (const skill of ['svall-organise', 'svall-rename', 'svall-update-info', 'svall-status']) {

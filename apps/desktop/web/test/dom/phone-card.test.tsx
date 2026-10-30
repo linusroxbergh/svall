@@ -8,11 +8,13 @@ import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { chr, fleet } from '../fixtures.js';
 
 const calls: [string, Record<string, unknown>][] = [];
+// another robot's message, as the agent's transcript holds it
+const header = '[from robot lead (c_abc123); reply with svall robot send c_abc123]';
 let refuse: string | undefined;
 const call = (method: string, params: Record<string, unknown>) => {
   calls.push([method, params]);
   if (method === 'resources.get') return Promise.resolve({ sources: [] });
-  if (method === 'robot.prompts') return Promise.resolve({ prompts: ['second ask', 'first ask'] });
+  if (method === 'robot.prompts') return Promise.resolve({ prompts: [`${header}\nreview it`, 'second ask', `<pasted_content id="e0b1">\n${header}\na long one`, 'first ask'] });
   return refuse ? Promise.reject(new Error(refuse)) : Promise.resolve({});
 };
 let store: AppStore;
@@ -104,7 +106,7 @@ test('a refused edit says why beside it, and a refused ref goes back in the fiel
   expect(field.value).toBe('herdr.dev');
 });
 
-test('reads the prompts sent, newest first, and steps back through them', async () => {
+test("reads the prompts the user sent, newest first, without other robots' messages, and steps back through them", async () => {
   await act(async () => { open({ agent: { kind: 'claude', status: 'idle', sessionId: 's1', lastActivityAt: 0 } as never }); });
   expect(screen.getByText('second ask')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Earlier command' }));

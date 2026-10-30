@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type MoveSheet } from '@svall/protocol';
+import { AgentKind, ApiError, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type Delivery, type MoveSheet } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
@@ -49,6 +49,17 @@ function refuseMove(r: Refusal, json: boolean): void {
 /** `there`: how a machine is reached from this Mac's terminal, for the commands a move's list names. */
 export function robotCommands(connect: () => Promise<Client>, json: () => boolean, there: (machine: string) => There): Command {
   const cmd = new Command('robot').alias('char').description('manage robots');
+  // what run and send print: delivered or queued, or the refusal of an agent waiting on an answer, exiting 2
+  const deliver = async (send: () => Promise<{ delivery: Delivery }>): Promise<void> => {
+    try {
+      const r = await send();
+      printResult(r, json(), () => (r.delivery === 'queued' ? 'queued: it goes in once the prompt line is clear' : r.delivery));
+    } catch (e) {
+      if (!(e instanceof ApiError) || e.code !== 'blocked') throw e;
+      process.stderr.write(`refused: ${e.message}\n`);
+      process.exitCode = 2;
+    }
+  };
 
   cmd.command('list').description("list every robot, or one island's").option('--island <id>').action((o: { island?: string }) => withFleet(connect, async (_c, state) => {
     const island = o.island ? islandId(state, o.island) : undefined;
@@ -79,6 +90,7 @@ Handing work to a new robot:
   - New island: svall island create "<name>" --description "<one line>".
   - Wait (svall robot wait <id> --until done,blocked) only when you need the result; closing is the user's call.
   - Check its work: svall robot read <id> --transcript, and its cwd and branch in svall status --json.
+  - Message it, or any robot: svall robot send <id> "<text>"; it answers the same way. Its final message in full: svall robot read <id> --last.
   - Write ids out: a command holding $SVALL_ROBOT_ID asks the user for permission.`)
     .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
       if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
@@ -159,20 +171,22 @@ Handing work to a new robot:
     });
 
   cmd.command('run <id> <text...>').description("type text into a robot's terminal, then Enter; prints delivered or queued, exits 2 when refused").option('--no-enter', 'leave the text in the prompt line, where runs after it queue until it is sent or cleared').option('--term <n>', 'terminal to type into: 1 (default) or 2')
-    .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, async (c, state) => {
-      try {
-        const r = await c.call('robot.run', { id: robotId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) });
-        printResult(r, json(), () => (r.delivery === 'queued' ? 'queued: it goes in once the prompt line is clear' : r.delivery));
-      } catch (e) {
-        if (!(e instanceof ApiError) || e.code !== 'blocked') throw e;
-        process.stderr.write(`refused: ${e.message}\n`);
-        process.exitCode = 2;
-      }
-    }));
+    .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, (c, state) =>
+      deliver(() => c.call('robot.run', { id: robotId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) }))));
 
-  cmd.command('read <id>').description("print the end of a robot's screen, or of its transcript").option('--transcript').option('--lines <n>', 'screen lines, or turns with --transcript', '50').option('--term <n>', 'terminal to read: 1 (default) or 2')
-    .action((id: string, o: { transcript?: boolean; lines: string; term?: string }) => withFleet(connect, async (c, state) => {
-      const r = await c.call('robot.read', { id: robotId(state, id), source: o.transcript ? 'transcript' : 'screen', lines: int(o.lines, '--lines', { min: 1 }), term: termOf(o.term) });
+  cmd.command('send <id> <text...>').description('message a robot as this one, which can answer the same way; prints delivered or queued, exits 2 when refused')
+    .action((id: string, text: string[]) => {
+      // a session an older svalld started carries SVALL_CHAR_ID
+      const from = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
+      if (!from) throw new Error('run this inside a robot; svall robot run types as the user');
+      return withFleet(connect, (c, state) => deliver(() => c.call('robot.send', { id: robotId(state, id), from: robotId(state, from), text: text.join(' ') })));
+    });
+
+  cmd.command('read <id>').description("print the end of a robot's screen, or of its transcript, or its agent's last answer").option('--transcript')
+    .addOption(new Option('--last', "the final message of the agent's newest turn, in full").conflicts('transcript'))
+    .option('--lines <n>', 'screen lines, or turns with --transcript', '50').option('--term <n>', 'terminal to read: 1 (default) or 2')
+    .action((id: string, o: { transcript?: boolean; last?: boolean; lines: string; term?: string }) => withFleet(connect, async (c, state) => {
+      const r = await c.call('robot.read', { id: robotId(state, id), source: o.last ? 'last' : o.transcript ? 'transcript' : 'screen', lines: int(o.lines, '--lines', { min: 1 }), term: termOf(o.term) });
       printResult(r, json(), () => r.text);
     }));
 

@@ -252,6 +252,9 @@ runIf('API', () => {
     expect(await c.call('robot.read', { id: 'c_nope' })).toMatchObject({ error: { code: 'not_found' } });
     expect(await c.call('nope.method')).toMatchObject({ error: { code: 'unknown_method' } });
     expect(await c.call('robot.run', { id: ch.result.id })).toMatchObject({ error: { code: 'invalid_params' } });
+    expect(await c.call('robot.send', { id: ch.result.id, text: 'hi' })).toMatchObject({ error: { code: 'invalid_params' } });
+    expect(await c.call('robot.send', { id: ch.result.id, from: ch.result.id, text: 'hi' })).toMatchObject({ error: { code: 'invalid', message: 'a robot cannot message itself' } });
+    expect(await c.call('robot.read', { id: ch.result.id, source: 'last' })).toMatchObject({ error: { code: 'invalid', message: expect.stringMatching(/has no agent$/) } });
     c.ws.close();
   });
 

@@ -258,8 +258,10 @@ export const methods = {
   'robot.second': { params: Id, result: Robot },
   // an agent waiting on an answer refuses the text with `blocked`; one with a draft or a dialog on screen holds it, queued
   'robot.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
+  // robot `from`'s message, typed as robot.run types it after a line naming the sender (robotMessage)
+  'robot.send': { params: z.object({ id: z.string(), from: z.string(), text: z.string() }), result: z.object({ delivery: Delivery }) },
   'robot.read': {
-    params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
+    params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript', 'last']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
     result: z.object({ text: z.string() }),
   },
   'robot.prompts': {
