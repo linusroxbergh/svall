@@ -19,6 +19,10 @@ const Url = z.string().max(MAX_URL);
 // the brief cuts instructions here, so a request may not store more
 export const INSTRUCTIONS_MAX = 2_000;
 const Instructions = z.string().max(INSTRUCTIONS_MAX);
+// a worker journals both for its home, over a link whose lines stop at 2 MiB, and every robot's note goes in each snapshot
+export const ROBOT_NOTE_MAX = 16 * 1024;
+export const RUN_TEXT_MAX = 256 * 1024;
+const RunText = z.string().max(RUN_TEXT_MAX);
 
 // one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by;
 // at is when the agent reported a window read off its transcript, in ms, and a window read live has none
@@ -225,13 +229,13 @@ export const methods = {
     params: z.object({
       islandId: z.string(), cwd: z.string(), name: z.string().optional(),
       command: z.string().optional(), cell: Cell.optional(),
-      run: z.string().optional(), agentProfile: z.string().optional(),
+      run: RunText.optional(), agentProfile: z.string().optional(),
     }),
     result: Robot.extend({ runSent: z.boolean().optional() }),
   },
   'robot.update': {
     params: z.object({
-      id: z.string(), name: z.string().optional(), note: z.string().optional(),
+      id: z.string(), name: z.string().optional(), note: z.string().max(ROBOT_NOTE_MAX).optional(),
       islandId: z.string().optional(), context: z.array(ContextItem).optional(), instructions: Instructions.optional(),
       // the refs a person took off context, which the scribe and the branch lookup leave off until they are added again
       removed: z.array(z.string()).optional(),
@@ -257,9 +261,9 @@ export const methods = {
   // starts the robot's second terminal when it has none
   'robot.second': { params: Id, result: Robot },
   // an agent waiting on an answer refuses the text with `blocked`; one with a draft or a dialog on screen holds it, queued
-  'robot.run': { params: z.object({ id: z.string(), text: z.string(), enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
-  // robot `from`'s message, typed as robot.run types it after a line naming the sender (robotMessage)
-  'robot.send': { params: z.object({ id: z.string(), from: z.string(), text: z.string() }), result: z.object({ delivery: Delivery }) },
+  'robot.run': { params: z.object({ id: z.string(), text: RunText, enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
+  // robot `from`'s message, typed as robot.run types it after a line naming the sender (robotMessage), which its cap leaves room for
+  'robot.send': { params: z.object({ id: z.string(), from: z.string(), text: z.string().max(RUN_TEXT_MAX - 1024) }), result: z.object({ delivery: Delivery }) },
   'robot.read': {
     params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript', 'last']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
     result: z.object({ text: z.string() }),

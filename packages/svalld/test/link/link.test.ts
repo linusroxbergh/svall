@@ -398,26 +398,65 @@ describe('the link', () => {
     expect(tries.slice(before).map((t) => t - lostAt)).toEqual([1000]);
   });
 
-  it('keeps doubling the retry while each link fails after its hello, as one that cannot take a journaled entry does', async () => {
-    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
-    const w = world();
-    // an entry this home cannot read, as a worker on another release could journal
+  it("skips a report this svalld cannot read, saying so in its robot's note when that robot runs there, and the link goes on", async () => {
+    const logged: string[] = [];
+    const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
+    w.home.update((d) => { d.robots.r_2 = robot({ id: 'r_2', name: 'at home', machine: H }); });
+    // entries this home cannot read, as a worker on another build could journal
     w.outbox.append('robot.sync', { robotId: 'r_1' });
+    w.outbox.append('robot.sync', { robotId: 'r_2' });
+    w.outbox.append('robot.sync', report('/w/after'));
     await w.worker.start();
-    const tries: number[] = [];
-    const downs: number[] = [];
-    w.home.subscribe(() => {
-      const m = w.home.state.machines?.[W];
-      if (m && !m.reachable && m.since !== downs.at(-1)) downs.push(m.since);
-    });
-    const links = w.links(async (e) => { tries.push(Date.now()); return socketTo(w.workerPaths.linkSock)(e); });
+    const links = w.links();
     links.start();
-    for (const gap of [1000, 2000, 4000, 8000]) {
-      await until(() => expect(downs).toHaveLength(tries.length), 1);
+    await until(() => expect(w.outbox.acked()).toBe(3));
+    expect(links.for(W)?.connected()).toBe(true);
+    expect(w.reports).toEqual(['/w/after']);
+    const why = '✖ Invalid input: expected number, received undefined → at generation ✖ Invalid input: expected object, received undefined → at fields';
+    expect(w.home.state.robots.r_1).toMatchObject({ note: `vault sent a report on this robot that this Mac cannot read; it was skipped: ${why}`, noteSource: 'manual' });
+    expect(w.home.state.robots.r_2.note).toBe('');
+    expect(logged).toEqual([1, 2].map((seq) => `vault: event ${seq} (robot.sync) is a report this svalld cannot read; skipped: ${why}`));
+  });
+
+  it('an event that fails to apply the same way on every link, as on a full disk, is never skipped, and is taken once it passes', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    let tried = 0;
+    const w = world({ onEvent: async (kind) => { if (kind === 'docs.write' && ++tried <= 3) throw new Error('ENOSPC: no space left on device, write'); } });
+    w.outbox.append('docs.write', {});
+    await w.worker.start();
+    let downs = 0;
+    w.home.subscribe(() => { if (w.home.state.machines?.[W]?.reachable === false) downs++; });
+    const links = w.links();
+    links.start();
+    for (const gap of [1000, 2000, 4000]) {
+      const before = downs;
+      await until(() => expect(downs).toBeGreaterThan(before), 1);
+      expect(w.outbox.acked()).toBe(0);
       await vi.advanceTimersByTimeAsync(gap);
-      expect(tries.at(-1)! - downs.at(-1)!).toBe(gap);
     }
-    expect(w.outbox.acked()).toBe(0);
+    await until(() => expect(w.outbox.acked()).toBe(1), 1);
+    expect([tried, w.seen]).toEqual([4, ['event docs.write', 'inventory from vault last 1 acked 0 robots /w/now']]);
+  });
+
+  it("the worker journals an event up to the link's line limit, which the home takes, and refuses one past it; a report past it is logged", async () => {
+    const logged: string[] = [];
+    const w = world({ workerLog: { info() {}, error: (m) => logged.push(m) } });
+    const frame = (text: string) => Buffer.byteLength(JSON.stringify({ t: 'event', seq: Number.MAX_SAFE_INTEGER, kind: 'big', data: { text } }));
+    const fits = 'x'.repeat(MAX_LINE - frame(''));
+    const caught = (run: () => void): unknown => { try { run(); } catch (e) { return e; } };
+    expect(caught(() => w.worker.journal('big', { text: `${fits}x` }))).toMatchObject({ code: 'too_large', message: `this change is ${MAX_LINE + 1} bytes, over the ${MAX_LINE} the link to mac carries` });
+    expect(w.outbox.last()).toBe(0);
+    const over = report('/w/1');
+    w.worker.report({ ...over, fields: { ...over.fields, cwd: fits } });
+    expect(logged).toEqual([expect.stringMatching(/^link: r_1's report was not journaled: this change is \d+ bytes, over the 2097152 the link to mac carries$/)]);
+    expect(w.outbox.last()).toBe(0);
+
+    expect(w.worker.journal('big', { text: fits })).toBe(1);
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(w.outbox.acked()).toBe(1));
+    expect(w.seen).toContain('event big');
   });
 
   it('acks no event whose change did not reach the disk, and takes it once it does', async () => {

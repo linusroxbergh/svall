@@ -126,6 +126,14 @@ describe('a worker serving its robots while the home is away', () => {
     expect(mutations()).toHaveLength(1);
   });
 
+  it("robot.update past the link's line limit is refused before it changes the robot here, and journals nothing", async () => {
+    const { w, call, mutations } = setup();
+    const context = [{ kind: 'other', ref: 'https://example.com/spec', label: 'x'.repeat(2 * 1024 * 1024), source: 'manual' }];
+    expect(await call('robot.update', { id: 'c_1', note: 'kept out', context })).toMatchObject({ error: { code: 'too_large', message: expect.stringMatching(/^this change is \d+ bytes, over the 2097152 the link to \w+ carries$/) } });
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ note: '', context: [] });
+    expect(mutations()).toEqual([]);
+  });
+
   it('robot.close of a robot here kills its window, locks its worktree "closed robot <id>" and journals; robot.run types once and journals its delivery', async () => {
     const { w, clone, typed, killed, call, mutations } = setup();
     expect(await call('robot.run', { id: 'c_1', text: 'go on' })).toEqual({ id: 1, result: { delivery: 'delivered' } });

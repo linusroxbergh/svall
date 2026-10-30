@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
+import { MAX_LINE } from '../../src/link/stream.js';
 import { resolvePaths } from '../../src/paths.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -130,6 +131,22 @@ describe('Outbox', () => {
     expect(noEpoch.epoch()).not.toBe(noOutbox.epoch());
     expect([noEpoch.acked(), ...seqs(noEpoch)]).toEqual([0, 1]);
     expect(Outbox.open(paths).epoch()).toBe(noEpoch.epoch());
+  });
+
+  it("drops on open an entry an older build journaled past the link's line limit, saying so, and keeps the rest", () => {
+    const paths = resolvePaths(makeHome());
+    const first = Outbox.open(paths);
+    first.append('robot.sync', { n: 1 });
+    // as a build that journaled before it measured a frame
+    const data = { note: 'x'.repeat(MAX_LINE) };
+    fs.appendFileSync(paths.outbox, `${JSON.stringify({ seq: 2, kind: 'mutation', data })}\n`);
+    const logged: string[] = [];
+    const reopened = Outbox.open(paths, { error: (m) => logged.push(m) });
+    expect([reopened.last(), ...seqs(reopened)]).toEqual([1, 1]);
+    const bytes = Buffer.byteLength(JSON.stringify({ t: 'event', seq: 2, kind: 'mutation', data }));
+    expect(logged).toEqual([`journal: entry 2 (mutation) is ${bytes} bytes, over the link's limit of ${MAX_LINE}; dropped`]);
+    expect(fs.readFileSync(paths.outbox, 'utf8')).toBe(`${JSON.stringify({ seq: 1, kind: 'robot.sync', data: { n: 1 } })}\n`);
+    expect(reopened.append('robot.sync', { n: 3 })).toBe(2);
   });
 
   it('drops a last line a crash cut short, and the next append starts on a line of its own', () => {

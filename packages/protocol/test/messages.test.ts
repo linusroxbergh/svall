@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
   BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
-  PROTOCOL_VERSION, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, TerminalSlot, emptyState, methods, serverWait, type Event,
+  PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -62,6 +62,24 @@ describe('messages', () => {
     expect(methods['island.update'].params.parse({ id: 'i', size: { w: MAX_SIDE, h: MAX_SIDE } }).size).toEqual({ w: MAX_SIDE, h: MAX_SIDE });
     const island = { id: 'i', name: 'x', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 1000, h: 1000 }, seed: 1 };
     expect(FleetState.safeParse({ version: 12, islands: { i: island }, robots: {} }).success).toBe(true);
+  });
+  // a worker journals each for its home over a link whose lines stop at 2 MiB
+  it('refuses a note over ROBOT_NOTE_MAX and a text typed into a robot over RUN_TEXT_MAX', () => {
+    const note = 'x'.repeat(ROBOT_NOTE_MAX);
+    const text = 'x'.repeat(RUN_TEXT_MAX);
+    expect(methods['robot.update'].params.safeParse({ id: 'c', note }).success).toBe(true);
+    expect(methods['robot.update'].params.safeParse({ id: 'c', note: `${note}x` }).success).toBe(false);
+    // a state holding a longer one still loads
+    expect(Robot.shape.note.safeParse(`${note}x`).success).toBe(true);
+    expect(methods['robot.run'].params.safeParse({ id: 'c', text }).success).toBe(true);
+    expect(methods['robot.run'].params.safeParse({ id: 'c', text: `${text}x` }).success).toBe(false);
+    // a message leaves room for the line naming its sender, which robot.run types before it
+    const sent = text.slice(1024);
+    expect(methods['robot.send'].params.safeParse({ id: 'c', from: 'd', text: sent }).success).toBe(true);
+    expect(methods['robot.send'].params.safeParse({ id: 'c', from: 'd', text: `${sent}x` }).success).toBe(false);
+    expect(robotMessage({ name: 'n'.repeat(1000), id: 'c_abcdef' }, sent).length).toBeLessThanOrEqual(RUN_TEXT_MAX);
+    expect(methods['robot.create'].params.safeParse({ islandId: 'i', cwd: '/', run: text }).success).toBe(true);
+    expect(methods['robot.create'].params.safeParse({ islandId: 'i', cwd: '/', run: `${text}x` }).success).toBe(false);
   });
   // arranging for a window of no width at all would push every island out to Infinity, which the state cannot hold
   it('arranges for the shape of a real window, and refuses one of no width or no height', () => {

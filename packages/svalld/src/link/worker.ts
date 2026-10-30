@@ -12,7 +12,7 @@ import type { Store } from '../store.js';
 import type { Entry, Outbox } from '../worker/outbox.js';
 import { mergeSnapshot, ownedReport, Snapshot, type Inventory, type RobotSync } from '../worker/snapshot.js';
 import { HEARTBEAT_MS } from './home.js';
-import { answerCall, LinkStream, PART_REPLY } from './stream.js';
+import { answerCall, LinkStream, MAX_LINE, PART_REPLY } from './stream.js';
 
 // three beats with nothing from the home is a home gone without closing its stream, as a Mac asleep on a half-open connection
 export const SILENT_MS = 3 * HEARTBEAT_MS;
@@ -115,7 +115,11 @@ export class HomeConnection {
 
   // a report holds every field the worker owns of its robot, so the newest stands for those before it
   report(r: RobotSync): void {
-    this.journal('robot.sync', r, r.robotId);
+    try {
+      this.journal('robot.sync', r, r.robotId);
+    } catch (e) {
+      this.o.log.error(`link: ${r.robotId}'s report was not journaled: ${(e as Error).message}`);
+    }
   }
 
   /** Sends the home a notification, never journaled: dropped while the home is not linked, and one whose frame is over
@@ -153,9 +157,16 @@ export class HomeConnection {
 
   /** Puts an event in the outbox and sends it while the home is linked; returns its seq. */
   journal(kind: string, data: unknown, key?: string): number {
+    this.fits(kind, data);
     const seq = this.o.outbox.append(kind, data, key);
     if (this.link?.live) this.link.stream.send({ t: 'event', seq, kind, data });
     return seq;
+  }
+
+  /** Refuses with too_large an event whose frame would be over the link's line limit, which the home could never take. */
+  fits(kind: string, data: unknown): void {
+    const bytes = Buffer.byteLength(JSON.stringify({ t: 'event', seq: Number.MAX_SAFE_INTEGER, kind, data }));
+    if (bytes > MAX_LINE) throw new ApiError('too_large', `this change is ${bytes} bytes, over the ${MAX_LINE} the link to ${this.o.worker.homeName} carries`);
   }
 
   private unreachable(): ApiError {

@@ -8,7 +8,7 @@ import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
-import type { Staged } from '../placement/replay.js';
+import { addLine, oneLine, type Staged } from '../placement/replay.js';
 import { tokenFor } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
@@ -377,12 +377,16 @@ export class WorkerLink {
         if (!inventory) throw new Error('an event came before the inventory');
         this.last = Math.max(this.last, f.seq);
         if (f.seq > this.acked) {
-          const staged = f.kind === 'robot.sync' ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
+          // a report this svalld cannot read fails the same way on every link, so it is skipped and its robot's note says why
+          const report = f.kind === 'robot.sync' ? RobotSync.safeParse(f.data) : undefined;
+          if (report?.success === false) this.o.log.error(`${this.name}: event ${f.seq} (robot.sync) is a report this svalld cannot read; skipped: ${oneLine(report.error)}`);
+          const staged = report ? undefined : await this.o.onEvent(f.kind, f.data, this.machine).catch((e: unknown) => {
             if (!(e instanceof UnknownEvent)) throw e;
             this.o.log.error(`${this.name}: event ${f.seq} (${f.kind}) is not one this svalld takes; skipped`);
           });
           await this.o.store.withheld(async () => {
-            if (f.kind === 'robot.sync') this.o.onReport(RobotSync.parse(f.data), this.machine);
+            if (report?.success) this.o.onReport(report.data, this.machine);
+            else if (report) this.noteUnread(f.data, oneLine(report.error));
             else if (staged) staged.change();
             this.mark({ name: this.name, replayed: { epoch: inventory.epoch, seq: f.seq } });
           });
@@ -411,6 +415,12 @@ export class WorkerLink {
       this.o.log.error(`${this.name}: ${f.t === 'event' ? `event ${f.seq} (${f.kind})` : 'the inventory'} not taken, closing the link: ${(e as Error).message}`);
       stream.close();
     }
+  }
+
+  private noteUnread(data: unknown, why: string): void {
+    const id = (data as { robotId?: unknown } | null)?.robotId;
+    if (typeof id !== 'string' || this.o.store.state.robots[id]?.machine !== this.machine) return;
+    this.o.store.update((d) => addLine(d.robots[id], `${this.name} sent a report on this robot that this Mac cannot read; it was skipped: ${why}`));
   }
 
   private closed(err?: Error): void {
