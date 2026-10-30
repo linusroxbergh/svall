@@ -156,12 +156,21 @@ the machine are never replaced. Logins never travel: log each agent, and `gh`, i
 **Keys.** A key in your setup travels only once you tick it for that machine. Keys are an MCP server's `env` values,
 its headers, and a key in its URL or arguments, plus the key fields of `settings.json` (among them the headers a
 marketplace in `extraKnownMarketplaces` sends and the query of its URL, which are emptied in `known_marketplaces.json`
-too until ticked), `config.toml` and the OpenCode config. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
+too until ticked), `config.toml` and the OpenCode config. In a URL, and in a Codex provider's `query_params`, a query
+value is a key when its name says so (`api_key`, `token`) or it is shaped as a token: 20 or more URL-safe characters
+with a run of 8 or more letters and digits mixing both. In a server's URL or arguments, so is a path segment of that
+shape (`https://mcp.zapier.com/api/mcp/s/<key>/mcp`). In arguments, a key is the value after a flag named as one
+(`--api-key`, `--pat`, `-k`), a header's value (`-H 'Name: value'`, `--headers Name value`), an auth scheme's credential
+(`Bearer …`) and a string named as a key in a JSON argument. A string in an OpenCode provider's or agent's options,
+settings or request `body` is a key when its name says so or it carries an auth scheme's credential, and a URL there
+gives up its query keys. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
 holds its default as a key. Each server or file that holds one is a row under **Your agent setup**, such as "copy
 linear's keys to studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). A key in an argument is named
 by the flag before it, its own `--flag=` or `KEY=`, or its URL's scheme and host, such as `args[--api-key]` or
-`args[https://example.com].token`, and every argument of one name is that one key, as an `env` key is, so a tick
-follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
+`args[https://example.com].token`; a header's value by its flag and name, such as `args[--headers X-Api-Key]`; an auth
+scheme's credential by the flag of its argument; a key in JSON by that flag and its path there, such as
+`args[--config].token`; and a URL path key as `url.path` or `args[https://example.com].path`. Every argument of one
+name is that one key, as an `env` key is, so a tick follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
 agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code, `{env:LINEAR_API_KEY}` for
 OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable from its environment on
 the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
@@ -172,8 +181,8 @@ machine, ticking or unticking changes the copy there at once, whatever runs ther
 takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
 copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
 reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
-server or plugin config with settings Svall cannot copy one by one is a row "copy notion to studio as it is", and is
-copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
+server or plugin config with settings Svall cannot copy one by one, or a server that runs a shell's `-c` script, whose
+keys Svall cannot read, is a row "copy notion to studio as it is", and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
 `plugin.json`, or a file its marketplace entry names) with a key in a server's `env`, a marketplace's
 `marketplace.json` whose entries set `headers` or `headersHelper`, and a subagent, in `agents/`, a plugin's `agents/`
 or a file a plugin's `plugin.json` or marketplace entry names in `agents`, whose `mcpServers` defines a server with a

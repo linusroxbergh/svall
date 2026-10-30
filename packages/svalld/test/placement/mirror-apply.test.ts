@@ -171,8 +171,8 @@ describe('the agent configuration mirror', () => {
       json(h.claudeJson).mcpServers, (parseToml(read(path.join(h.codexDir, 'config.toml'))) as any).mcp_servers, json(path.join(h.claudeDir, 'settings.json')).env,
     ]).replaceAll(h.homedir, '~');
     expect(docs(taken)).toEqual(docs(untick));
-    expect(json(taken.claudeJson).mcpServers.env).toEqual({ type: 'http', url: 'https://x.test/mcp?token=&mode=', headers: { 'X-Key': '' } });
-    expect((parseToml(read(path.join(taken.codexDir, 'config.toml'))) as any).mcp_servers.env).toEqual({ url: 'https://c.test/mcp?key=&v=' });
+    expect(json(taken.claudeJson).mcpServers.env).toEqual({ type: 'http', url: 'https://x.test/mcp?token=&mode=a', headers: { 'X-Key': '' } });
+    expect((parseToml(read(path.join(taken.codexDir, 'config.toml'))) as any).mcp_servers.env).toEqual({ url: 'https://c.test/mcp?key=&v=1' });
   });
 
   it('takeBackCopies empties a ticked key in place in a file the agent needs, where it lies there: a marketplace list the worker moved and updated keeps its marketplaces, a subagent its servers and prompt', async () => {
