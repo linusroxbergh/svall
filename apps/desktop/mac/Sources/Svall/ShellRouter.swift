@@ -389,14 +389,21 @@ final class ShellRouter {
         let fd = Darwin.open(SvallHome.path, O_EVTONLY)
         guard fd >= 0 else { return }
         let watch = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
-        watch.setEventHandler { [weak self] in
-            guard let self, let connection = SvallHome.connection() else { return }
-            stopPortWatch()
-            bridge.send(.connection(connection))
-        }
+        watch.setEventHandler { [weak self] in self?.pushPort() }
         watch.setCancelHandler { close(fd) }
         portWatch = watch
         watch.resume()
+    }
+
+    private func pushPort(tries: Int = 20) {
+        guard portWatch != nil else { return }
+        if let connection = SvallHome.connection() {
+            stopPortWatch()
+            return bridge.send(.connection(connection))
+        }
+        // svalld makes the file before it writes the port into it, which stirs nothing in the home
+        guard tries > 0, FileManager.default.fileExists(atPath: SvallHome.path + "/port") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) { [weak self] in self?.pushPort(tries: tries - 1) }
     }
 
     private func stopPortWatch() {
