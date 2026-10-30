@@ -19,12 +19,29 @@ describe('routing calls for placed robots', () => {
     expect(asked).toEqual([{ id: 'c_1', text: 'go on', enter: true }]);
   });
 
+  it("robot.send on the home for a robot placed on w1 goes over the link as a run of the message, named for its sender", async () => {
+    const asked: unknown[] = [];
+    const target = { ...onW1, agent: { kind: 'claude' as const, sessionId: 's', status: 'idle' as const, lastActivityAt: 1 } };
+    const w = world({ home: { robots: { c_1: target, c_lead: robot({ id: 'c_lead', name: 'lead' }) } }, worker: { robots: { c_1: target } }, far: { 'robot.run': async (p) => { asked.push(p); return { delivery: 'delivered' }; } } });
+    await w.link();
+    expect(await dispatch({ id: 1, method: 'robot.send', params: { id: 'c_1', from: 'c_lead', text: 'review it' } }, w.home.ctx)).toEqual({ id: 1, result: { delivery: 'delivered' } });
+    expect(asked).toEqual([{ id: 'c_1', text: '[from robot lead (c_lead); reply with svall robot send c_lead]\nreview it', enter: true }]);
+  });
+
   it('robot.run while w1 is down answers not_reachable naming w1', async () => {
     const w = world({ home: { robots: { c_1: onW1 } }, connect: () => Promise.reject(new Error('connect ECONNREFUSED')) });
     w.home.links.start();
     await until(() => { if (w.home.store.state.machines?.[W]?.reachable !== false) throw new Error('w1 not marked down yet'); });
     expect(await dispatch({ id: 1, method: 'robot.run', params: { id: 'c_1', text: 'go on' } }, w.home.ctx))
       .toEqual({ id: 1, error: { code: 'not_reachable', message: 'w1 is not reachable' } });
+  });
+
+  it("on the worker, robot.read of a robot's last answer is read there with the home down", async () => {
+    const idle = { ...onW1, agent: { kind: 'claude' as const, sessionId: 's', status: 'idle' as const, lastActivityAt: 1 } };
+    const w = world({ worker: { robots: { c_1: idle }, machines: { [W]: { name: 'w1', reachable: true, since: 1 } } } });
+    await w.worker.connection.start();
+    expect(await dispatch({ id: 1, method: 'robot.read', params: { id: 'c_1', source: 'last' } }, w.worker.ctx))
+      .toEqual({ id: 1, result: { text: '[no final message: its last turn was interrupted or ended after a tool call, or it has not had one]' } });
   });
 
   it('on the worker, robot.read and robot.update of its note answer locally with the home down; robot.update of its figure is refused with the one sentence', async () => {

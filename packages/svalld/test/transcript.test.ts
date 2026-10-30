@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { condenseTurnsClaude as condenseTurns, interruptedAt, userPromptsClaude as userPrompts } from '../src/agent/claude-transcript.js';
+import { condenseTurnsClaude as condenseTurns, interruptedAt, lastMessageClaude, userPromptsClaude as userPrompts } from '../src/agent/claude-transcript.js';
 import { readTail, recordedCwd } from '../src/agent/transcript.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -252,5 +252,50 @@ describe('interruptedAt', () => {
     expect(interruptedAt(esc + at('2026-10-11T10:13:40Z', 'caveat', { isMeta: true }))).toBe(Date.parse('2026-10-11T10:13:39Z'));
     expect(interruptedAt(user('[Request interrupted by user]'))).toBeUndefined();
     expect(interruptedAt('')).toBeUndefined();
+  });
+});
+
+describe('lastMessageClaude', () => {
+  const typed = (text: string) => line({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: text } });
+  const said = (text: string) => assistant([{ type: 'text', text }]);
+  const tool = assistant([{ type: 'tool_use', name: 'Bash', input: { command: 'pnpm test' } }]);
+  const result = line({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', content: 'ok' }] } });
+
+  it("is what the agent wrote after the turn's last tool call, unclipped, each block a paragraph", () => {
+    const long = 'x'.repeat(5000);
+    const text = typed('run the tests') + said('Running them.') + tool + result + assistant([{ type: 'thinking', thinking: 'hm' }]) +
+      said('All pass.') + said(long) + line({ type: 'user', isMeta: true, message: { role: 'user', content: 'a note to the model' } }) +
+      line({ type: 'system', subtype: 'turn_duration' });
+    expect(lastMessageClaude(text)).toBe(`All pass.\n\n${long}`);
+  });
+
+  it('is the text of an API error that ended the turn', () => {
+    const error = line({ type: 'assistant', isApiErrorMessage: true, message: { role: 'assistant', model: '<synthetic>', content: [{ type: 'text', text: 'API Error: 529 overloaded' }] } });
+    expect(lastMessageClaude(typed('go') + tool + result + error)).toBe('API Error: 529 overloaded');
+  });
+
+  it('is undefined for a turn that ended on a tool call or an Esc, or has said nothing since its prompt', () => {
+    expect(lastMessageClaude(typed('go') + said('Running.') + tool + result)).toBeUndefined();
+    expect(lastMessageClaude(typed('go') + said('Running.') + user('[Request interrupted by user]'))).toBeUndefined();
+    expect(lastMessageClaude(typed('first') + said('done') + typed('second'))).toBeUndefined();
+    expect(lastMessageClaude('')).toBeUndefined();
+  });
+
+  it('keeps the answer past what Claude Code writes after it on its own: a compaction, a local command, a bash-mode line', () => {
+    const answered = typed('go') + tool + result + said('Done.');
+    const compacted = line({ type: 'system', subtype: 'compact_boundary' }) + line({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued…' } });
+    const model = line({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>' } }) +
+      user('<local-command-stdout>Set model to opus</local-command-stdout>');
+    const bash = user('<bash-input>git status</bash-input>') + user('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>');
+    for (const after of [compacted, model, bash]) expect(lastMessageClaude(answered + after)).toBe('Done.');
+    expect(lastMessageClaude(answered + model + typed('again'))).toBeUndefined();
+  });
+
+  it("leaves out a subagent's words, and starts the turn again at a prompt queued into it", () => {
+    const sub = line({ type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'sub says' }] } });
+    const queued = line({ type: 'attachment', attachment: { type: 'queued_command', commandMode: 'prompt', origin: { kind: 'human' }, prompt: 'also this' } });
+    expect(lastMessageClaude(typed('go') + said('main says') + sub)).toBe('main says');
+    expect(lastMessageClaude(typed('go') + said('before') + queued)).toBeUndefined();
+    expect(lastMessageClaude(typed('go') + said('before') + queued + said('both done'))).toBe('both done');
   });
 });

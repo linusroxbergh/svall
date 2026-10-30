@@ -222,7 +222,7 @@ export function workerCalls(o: {
   };
   return {
     'robot.run': on('robot.run', async (p) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) })),
-    'robot.read': on('robot.read', async (p) => ({ text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : fleet.readTranscript(p.id, p.lines, p.term) })),
+    'robot.read': on('robot.read', async (p) => ({ text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : p.source === 'last' ? fleet.readLast(p.id, p.term) : fleet.readTranscript(p.id, p.lines, p.term) })),
     'robot.wait': on('robot.wait', async (p) => ({ status: await fleet.waitFor(p.id, p.until, p.timeoutMs, undefined, p.term) })),
     'robot.revive': on('robot.revive', (p) => fleet.reviveRobot(p.id)),
     'robot.fresh': on('robot.fresh', (p) => fleet.startFresh(p.id, p.term)),

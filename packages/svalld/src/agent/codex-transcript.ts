@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pending } from './claude-transcript.js';
 import { jsonLines, orSkip } from './jsonl.js';
-import { condenseEvents, promptsOf, type Event } from './turns.js';
+import { condenseEvents, lastSaid, promptsOf, type Event } from './turns.js';
 
 export type RawRateWindow = { used_percent?: number; window_minutes?: number; resets_at?: number } | null;
 export type RawRateLimits = { primary?: RawRateWindow; secondary?: RawRateWindow; plan_type?: string | null };
@@ -36,9 +36,9 @@ function eventOf(l: Line): Event | undefined {
 }
 
 // a version that wrote what was said both ways would say it twice in a row
-function events(text: string): Event[] {
+function eventsOf(all: Line[]): Event[] {
   const out: Event[] = [];
-  for (const l of lines(text)) {
+  for (const l of all) {
     const e = orSkip(() => eventOf(l));
     const last = out.at(-1);
     if (!e || ('text' in e && last && 'text' in last && last.kind === e.kind && last.text === e.text)) continue;
@@ -47,8 +47,17 @@ function events(text: string): Event[] {
   return out;
 }
 
+const events = (text: string): Event[] => eventsOf(lines(text));
+
 export function userPromptsCodex(text: string, limit: number, pending?: Pending): string[] {
   return promptsOf(events(text).flatMap((e) => (e.kind === 'user' ? [e.text] : [])), limit, pending);
+}
+
+// an Esc ends a turn with turn_aborted, and what it said before then was said on its way
+export function lastMessageCodex(text: string): string | undefined {
+  const all = lines(text);
+  const aborted = all.map((l) => l.type === 'event_msg' && l.payload?.type === 'turn_aborted').lastIndexOf(true);
+  return lastSaid(eventsOf(all.slice(aborted + 1)));
 }
 
 export function condenseTurnsCodex(text: string, turns: number, opts: { toolLinks?: boolean } = {}): string {

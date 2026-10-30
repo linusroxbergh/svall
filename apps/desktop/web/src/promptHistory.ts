@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Robot } from '@svall/protocol';
+import { robotSender, type Robot } from '@svall/protocol';
 import type { Api } from './api.js';
 
 const PROMPT_HISTORY = 30;
@@ -12,13 +12,16 @@ export function usePromptHistory(api: () => Pick<Api, 'call'>, id: string, agent
   useEffect(() => {
     if (!agent) return;
     let live = true;
-    api().call('robot.prompts', { id, limit: PROMPT_HISTORY })
+    // asked for more than it shows, as other robots' messages count toward the limit
+    api().call('robot.prompts', { id, limit: PROMPT_HISTORY * 4 })
       .then((r) => {
         if (!live) return;
+        // another robot's message is not a command the user sent
+        const list = r.prompts.filter((p) => !robotSender(p)).slice(0, PROMPT_HISTORY);
         // a new prompt pushes the one being read down the list; follow the prompt, not the index
         setHist((h) => {
           const reading = h.list[h.at];
-          return { list: r.prompts, at: h.at === 0 ? 0 : Math.max(0, r.prompts.indexOf(reading)) };
+          return { list, at: h.at === 0 ? 0 : Math.max(0, list.indexOf(reading)) };
         });
       })
       .catch(() => { if (live) setHist({ list: [], at: 0 }); });

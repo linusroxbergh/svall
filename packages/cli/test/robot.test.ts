@@ -105,6 +105,66 @@ describe('robot new --run', () => {
   });
 });
 
+describe('robot send', () => {
+  afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+  const lead: Robot = { ...base, id: 'c_lead', name: 'lead' };
+  const send = async (answer: () => Promise<unknown>) => {
+    let out = '';
+    let err = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((s) => { out += String(s); return true; });
+    vi.spyOn(process.stderr, 'write').mockImplementation((s) => { err += String(s); return true; });
+    const calls: [string, unknown][] = [];
+    const client = { call: async (m: string, p: unknown) => { calls.push([m, p]); return m === 'state.get' ? { version: 12, islands: {}, robots: { c_a: base, c_lead: lead } } : answer(); }, close() {} };
+    await robotCommands(async () => client as unknown as Client, () => false, THERE).parseAsync(['node', 'robot', 'send', 'a', 'review', 'it']);
+    return { out, err, sent: calls.filter(([m]) => m === 'robot.send').map(([, p]) => p) };
+  };
+
+  it('sends as the robot whose terminal it runs in, and prints the delivery', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    expect(await send(async () => ({ delivery: 'queued' }))).toEqual({ out: 'queued: it goes in once the prompt line is clear\n', err: '', sent: [{ id: 'c_a', from: 'c_lead', text: 'review it' }] });
+  });
+
+  it('says why on stderr and exits 2 when the robot is waiting on an answer', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    const { out, err } = await send(async () => { throw new ApiError('blocked', 'a is waiting on an answer'); });
+    expect({ out, err }).toEqual({ out: '', err: 'refused: a is waiting on an answer\n' });
+    expect(process.exitCode).toBe(2);
+  });
+
+  it('sends as the robot a session an older svalld started names', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', undefined);
+    vi.stubEnv('SVALL_CHAR_ID', 'c_lead');
+    expect((await send(async () => ({ delivery: 'delivered' }))).sent).toEqual([{ id: 'c_a', from: 'c_lead', text: 'review it' }]);
+  });
+
+  it('refuses outside a robot, or from its second terminal, before it reaches the fleet', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', undefined);
+    vi.stubEnv('SVALL_CHAR_ID', undefined);
+    await expect(send(async () => ({ delivery: 'delivered' }))).rejects.toThrow('run this inside a robot; svall robot run types as the user');
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    vi.stubEnv('SVALL_TERM', '2');
+    await expect(send(async () => ({ delivery: 'delivered' }))).rejects.toThrow("send from the robot's first terminal, where an answer comes back");
+  });
+});
+
+describe('robot read --last', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const read = async (...flags: string[]) => {
+    vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const asked: unknown[] = [];
+    const client = { call: async (m: string, p: unknown) => { if (m !== 'state.get') asked.push(p); return m === 'state.get' ? { version: 12, islands: {}, robots: { c_a: base } } : { text: 'done' }; }, close() {} };
+    const cmd = robotCommands(async () => client as unknown as Client, () => false, THERE);
+    cmd.commands.find((c) => c.name() === 'read')!.exitOverride().configureOutput({ writeErr: () => {} });
+    await cmd.parseAsync(['node', 'robot', 'read', 'a', ...flags]);
+    return asked;
+  };
+
+  it("asks for the agent's last answer, and not together with the transcript", async () => {
+    expect(await read('--last')).toMatchObject([{ id: 'c_a', source: 'last' }]);
+    await expect(read('--last', '--transcript')).rejects.toThrow(/cannot be used with/);
+  });
+});
+
 describe('a robot command that stops on an error', () => {
   it('closes its connection to the fleet', async () => {
     const close = vi.fn();

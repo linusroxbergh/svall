@@ -257,6 +257,20 @@ runIf('Fleet revive', () => {
     expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
   });
 
+  it("wakes an interrupted agent with another robot's message, its header first and the note after", async () => {
+    const b = await boot();
+    const { c } = await withAgent(b);
+    const lead = await b.fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+    await b.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'PreToolUse', sessionId: SID } });
+    await b.fleet.stopAll();
+
+    const again = await boot({ opening: true, state: structuredClone(b.store.state) });
+    vi.spyOn(again.tmux, 'sendLine').mockResolvedValue();
+    const message = again.fleet.message(c.id, lead.id, 'review it');
+    expect(await again.fleet.run(c.id, message, true)).toBe('delivered');
+    expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(`${message}\n\n${RESUME_NOTE}`);
+  });
+
   it('records in the retro\'s file each session a hook brings, and each one a robot holds as the fleet starts', async () => {
     const sessions = (home: string) => fs.readFileSync(resolvePaths(home).retroSessions, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as object);
     const b = await boot();

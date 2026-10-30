@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { condenseTurnsCodex, lastTokenCount, lastWorkdir, userPromptsCodex } from '../src/agent/codex-transcript.js';
-import { condenseTurns, userPrompts } from '../src/agent/transcript.js';
+import { condenseTurnsCodex, lastMessageCodex, lastTokenCount, lastWorkdir, userPromptsCodex } from '../src/agent/codex-transcript.js';
+import { condenseTurns, lastMessage, userPrompts } from '../src/agent/transcript.js';
 
 const fixture = (name: string) => fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', name), 'utf8');
 // codex 0.142 writes what was said as user_message and agent_message events; 0.155 writes them as completed items
@@ -132,6 +132,33 @@ describe('a line of a shape the parser does not know', () => {
   });
 });
 
+describe('lastMessageCodex', () => {
+  const asked = line({ type: 'event_msg', payload: { type: 'user_message', message: 'go' } });
+  const output = line({ type: 'response_item', payload: { type: 'function_call_output', output: 'ok' } });
+  const item = (type: string, text: string, phase?: string) => line({ type: 'event_msg', payload: { type: 'item_completed', item: { type, content: [{ type: 'Text', text }], ...(phase && { phase }) } } });
+
+  it("is what the agent said after the turn's last tool call", () => {
+    expect(lastMessageCodex(asked + said('Looking.') + call + output + said('Two files changed.') + said('Ship it.'))).toBe('Two files changed.\n\nShip it.');
+  });
+
+  it('reads the final answer a newer codex writes as an item, past its commentary', () => {
+    const turn = item('UserMessage', 'go') + item('AgentMessage', 'Checking.', 'commentary') + call + output + item('AgentMessage', 'OK two.', 'final_answer');
+    expect(lastMessageCodex(turn)).toBe('OK two.');
+  });
+
+  it('is undefined for a turn an Esc ended after a tool call, or one with nothing said since its prompt', () => {
+    const aborted = line({ type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } });
+    expect(lastMessageCodex(asked + said('Looking.') + call + aborted)).toBeUndefined();
+    expect(lastMessageCodex(said('old') + asked)).toBeUndefined();
+  });
+
+  it("is undefined for a turn an Esc ended after its commentary, and the next turn's answer after one", () => {
+    const aborted = line({ type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } });
+    expect(lastMessageCodex(item('UserMessage', 'go') + item('AgentMessage', 'I will edit fleet.ts now.', 'commentary') + aborted)).toBeUndefined();
+    expect(lastMessageCodex(asked + said('Looking.') + aborted + asked + said('Done.'))).toBe('Done.');
+  });
+});
+
 describe('the transcript dispatcher', () => {
   const claude = line({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: 'plant the flag' } });
 
@@ -142,5 +169,7 @@ describe('the transcript dispatcher', () => {
     expect(userPrompts('codex', claude, 5)).toEqual([]);
     expect(condenseTurns('claude', claude, 5)).toBe('USER: plant the flag');
     expect(condenseTurns('codex', claude, 5)).toBe('');
+    expect(lastMessage('claude', claude + line({ type: 'assistant', message: { content: [{ type: 'text', text: 'planted' }] } }))).toBe('planted');
+    expect(lastMessage('codex', claude)).toBeUndefined();
   });
 });

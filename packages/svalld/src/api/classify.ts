@@ -24,6 +24,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'robot.seen': 'mutation',
   'robot.second': 'terminal',
   'robot.run': 'mutation',
+  'robot.send': 'mutation',
   'robot.read': 'read',
   'robot.prompts': 'read',
   'robot.show': 'read',

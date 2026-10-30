@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { Agent, AgentStatus, Delivery } from '@svall/protocol';
+import { robotSender, type Agent, type AgentStatus, type Delivery } from '@svall/protocol';
 import { agentInFront, readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
 import type { Config } from '../config.js';
@@ -49,6 +49,8 @@ export class Prompts {
     return this.inLane(lane, async () => {
       const t = fleet.terminal(id, term);
       const free = await this.free(c.name, id, term, t.tmux.paneId);
+      // a shell would run a robot's message as commands, its lines one by one
+      if (free === undefined && robotSender(text)) throw new Invalid(`${c.name} runs no agent; svall robot run types into its terminal`);
       // a shell, or a program other than an agent, takes the text as it comes
       if (free === undefined || (free && !this.held.has(lane))) {
         await this.send(id, text, enter, term);

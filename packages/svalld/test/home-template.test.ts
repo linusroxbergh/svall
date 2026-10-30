@@ -53,6 +53,7 @@ describe('the home template', () => {
     const settings = path.join(mc, '.claude/settings.json');
     const allow = JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow;
     expect(allow).toContain('Bash(svall robot update:*)');
+    expect(allow).toContain('Bash(svall robot send:*)');
     expect(allow).not.toContain('Bash(svall:*)');
     expect(allow.some((a: string) => a.startsWith('Bash(svall robot new') || a.startsWith('Bash(svall robot run'))).toBe(false);
     for (const skill of ['svall-organise', 'svall-rename', 'svall-update-info', 'svall-status']) {
@@ -198,6 +199,17 @@ describe('the home template', () => {
     fs.writeFileSync(settings, `${JSON.stringify({ permissions: { allow: ['Bash(svall status:*)'] } }, null, 2)}\n`);
     installHomeTemplate(mc, { replaceSettings: false });
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toEqual(['Bash(svall status:*)']);
+  });
+
+  it('settings that allow svall robot update gain svall robot send beside it, and so for char', () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped = fs.readFileSync(settings, 'utf8');
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    fs.writeFileSync(settings, `${JSON.stringify({ permissions: { allow: allow.filter((r) => !r.endsWith(' send:*)')) } }, null, 2)}\n`);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
   });
 
   // Claude Code asks before a command holding a shell variable even when a rule allows it

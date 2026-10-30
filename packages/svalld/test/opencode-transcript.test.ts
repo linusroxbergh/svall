@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { condenseTurnsOpencode, userPromptsOpencode } from '../src/agent/opencode-transcript.js';
-import { condenseTurns, userPrompts } from '../src/agent/transcript.js';
+import { condenseTurnsOpencode, lastMessageOpencode, userPromptsOpencode } from '../src/agent/opencode-transcript.js';
+import { condenseTurns, lastMessage, userPrompts } from '../src/agent/transcript.js';
 
 const log = (...lines: unknown[]): string => lines.map((l) => JSON.stringify(l)).join('\n') + '\n';
 const turn = log(
@@ -27,5 +27,11 @@ describe('the OpenCode session log', () => {
   it('is the reader for an opencode agent', () => {
     expect(condenseTurns('opencode', turn, 10)).toBe('USER: fix the flaky test\nAGENT: [tool: bash] fixed');
     expect(userPrompts('opencode', turn, 5)).toEqual(['fix the flaky test']);
+    expect(lastMessage('opencode', turn)).toBe('fixed');
+  });
+  it("gives the last answer: what the agent said after its last tool call, none when a tool call or a prompt came last", () => {
+    expect(lastMessageOpencode(turn + log({ kind: 'agent', text: 'and pushed' }))).toBe('fixed\n\nand pushed');
+    expect(lastMessageOpencode(log({ kind: 'user', text: 'go' }, { kind: 'agent', text: 'Looking.' }, { kind: 'tool', name: 'shell', given: '{}' }))).toBeUndefined();
+    expect(lastMessageOpencode(turn + log({ kind: 'user', text: 'now the docs' }))).toBeUndefined();
   });
 });

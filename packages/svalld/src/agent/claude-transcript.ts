@@ -1,6 +1,6 @@
 import { trimEnd } from '@svall/protocol';
 import { LINK, MAX_URLS, clip, clipLine, jsonLines, orSkip } from './jsonl.js';
-import { carries } from './turns.js';
+import { carries, lastSaid, type Event } from './turns.js';
 
 type Block = { type: string; text?: string; name?: string; input?: unknown; content?: unknown };
 type Entry = {
@@ -101,6 +101,23 @@ export function userPromptsClaude(text: string, limit: number, pending?: Pending
   if (pending && leads(all, sent, pending)) list.unshift(clip(pending.text));
   return list.slice(0, limit);
 }
+
+// a prompt, typed, queued or Claude Code's own, opens a turn and an interrupt cuts one short; a local command and its
+// output, a bash-mode line or a compaction summary written after an answer leaves it the answer
+const opens = (e: Entry): boolean => {
+  const text = textOf(e.message?.content);
+  return carried(e) !== undefined ? !COMMAND.test(text) : e.type === 'user' && text.startsWith(INTERRUPT);
+};
+
+// the session as lastSaid reads it: what the agent wrote and called, and what opened or cut short a turn
+const turnEvents = (text: string): Event[] => entries(text).filter((e) => !e.isSidechain && !e.isMeta).flatMap((e): Event[] => {
+  if (e.type !== 'assistant') return opens(e) ? [{ kind: 'user', text: '' }] : [];
+  const blocks = Array.isArray(e.message?.content) ? e.message.content : [];
+  return blocks.flatMap((b): Event[] => (b.type === 'tool_use' ? [{ kind: 'tool', name: b.name ?? 'tool', given: b.input }]
+    : b.type === 'text' && b.text?.trim() ? [{ kind: 'agent', text: b.text.trim() }] : []));
+});
+
+export const lastMessageClaude = (text: string): string | undefined => lastSaid(turnEvents(text));
 
 // toolLinks keeps the URLs tool calls were given or printed
 export function condenseTurnsClaude(text: string, turns: number, { toolLinks = false } = {}): string {
