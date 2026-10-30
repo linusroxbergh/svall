@@ -6,6 +6,11 @@ let KEEP = ["hook_event_name", "agent_id", "session_id", "transcript_path", "not
 let WAITS = [text("SessionStart"), text("UserPromptSubmit")]
 let ONCE = [text("PreToolUse"), text("PostToolUse"), text("PostToolUseFailure")]
 let RETRIES = 8
+// all hookLine reads of a payload; the rest, a tool's response above all, is only read through
+let READ = Keep.only(Dictionary(uniqueKeysWithValues: (KEEP + ["last_assistant_message", "error"]).map { ($0, Keep.all) }).merging([
+    "tool_input": .only(["description": .all, "command": .all, "questions": .all]),
+    "tool_response": .only(["taskId": .all]),
+]) { $1 })
 
 /// a ?? b: b where a is null or missing.
 func given(_ a: JSON?, _ b: @autoclosure () -> JSON?) -> JSON? {
@@ -89,7 +94,7 @@ func talk(_ fd: Int32, _ out: Bytes, _ event: Text?) -> Never {
 
 func hook(home: Bytes, robotId: Text, term: Bool, backend: String, pid: Double?) -> Never {
     exitAfter(1.5)
-    let h = Parser.parse(readAll(0)) ?? .object([])
+    let h = Parser.parse(readAll(0), keep: READ) ?? .object([])
     // the script throws on a payload of null before it writes anything
     if case .null = h { exit(0) }
     let event = h["hook_event_name"]?.string

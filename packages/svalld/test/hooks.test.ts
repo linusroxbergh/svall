@@ -434,6 +434,31 @@ describe.each(runners)('$name', (run) => {
     server.close();
   });
 
+  it('forwards none of a payload that is not JSON, even where it breaks in a field the daemon never reads', async () => {
+    const home = makeHome();
+    const lines: unknown[] = [];
+    const server = net.createServer((c) => {
+      let buf = '';
+      c.setEncoding('utf8');
+      c.on('data', (d) => { buf += d; });
+      c.on('end', () => lines.push(JSON.parse(buf)));
+    });
+    await new Promise<void>((r) => server.listen(path.join(home, 'hooks.sock'), r));
+    const broken = [
+      `{"hook_event_name":"PostToolUse","session_id":"${SID}","tool_name":"Monitor","tool_response":{"taskId":"b9x","x":[1,]}}`,
+      `{"hook_event_name":"PreToolUse","session_id":"${SID}","tool_name":"Write","tool_input":{"content":"a\u0001b"}}`,
+    ];
+    for (const payload of broken) {
+      await new Promise<void>((resolve, reject) => {
+        const p = execFile(...hook(), { env: { ...process.env, SVALL_HOME: home, SVALL_ROBOT_ID: 'c_9' } }, (err) => (err ? reject(err) : resolve()));
+        p.stdin!.end(payload);
+      });
+    }
+    await waitFor(() => lines.length === 2);
+    expect(lines).toEqual([{ robotId: 'c_9', backend: 'claude', hook: {} }, { robotId: 'c_9', backend: 'claude', hook: {} }]);
+    server.close();
+  });
+
   it('delivers a large PreToolUse whole, carrying only the fields the daemon reads', async () => {
     const home = makeHome();
     const events: SocketEvent[] = [];
