@@ -445,6 +445,23 @@ runIf('Fleet agents', () => {
     expect(fleet.robot(c.id).hint).toBeUndefined();
   });
 
+  it('runs ps for a silent codex once, not while it sits on its welcome screen or once it is hinted', async () => {
+    let listed = 0;
+    const { fleet, tmux } = await boot({ processes: async () => { listed++; return []; } });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    const list = tmux.listWindows.bind(tmux);
+    tmux.listWindows = async () => (await list()).map((w) => w.name === c.id ? { ...w, command: 'codex' } : w);
+    let submitted = false;
+    tmux.screen = async () => ({ command: 'codex', shown: true, cursor: submitted ? 2 : 1,
+      rows: submitted ? ['  >_ OpenAI Codex (v0.166.0)', '› Hello', '› '] : ['  >_ OpenAI Codex (v0.166.0)', '› Ask Codex to do anything'] });
+    await waitForPolls(fleet, 5);
+    expect(listed).toBe(0);
+    submitted = true;
+    await waitFor(() => fleet.robot(c.id).hint === 'codex-silent');
+    await waitForPolls(fleet, 5);
+    expect(listed).toBe(1);
+  });
+
   it('says when a silent codex runs on the shared server, and not when it runs its own', async () => {
     const { fleet, tmux, procs } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });

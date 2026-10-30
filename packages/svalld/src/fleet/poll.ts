@@ -14,7 +14,7 @@ import type { Logger } from '../log.js';
 import { secondName, snapshot, syncWindow } from '../reconcile.js';
 import type { Scribe } from '../scribe/scribe.js';
 import type { Store } from '../store.js';
-import { isShellCommand, type LiveWindow, type Tmux } from '../tmux/tmux.js';
+import { isShellCommand, type LiveWindow, type Screen, type Tmux } from '../tmux/tmux.js';
 
 // the ticks between looks for agents idle long enough to end
 const DORMANCY_EVERY = 20;
@@ -40,6 +40,12 @@ async function stoppedPids(pids: number[]): Promise<Set<number>> {
   const out = await exec('ps', ['-o', 'pid=,stat=', '-p', pids.join(',')], { timeout: 2000 }).then((r) => r.stdout, () => '');
   return new Set(out.split('\n').flatMap((line) => { const m = /^\s*(\d+)\s+\S*T/.exec(line); return m ? [Number(m[1])] : []; }));
 }
+
+// Codex 0.166 delays SessionStart until the first prompt. Its untouched welcome screen is not a failed hook.
+const onWelcome = (screen: Screen | undefined): boolean => !!screen && screen.command === 'codex' && screen.shown &&
+  screen.rows.some((r) => r.includes('OpenAI Codex')) &&
+  /^\s*›/.test((screen.rows[screen.cursor] ?? '').replace(/\x1b\[[0-9;:]*m/g, '')) &&
+  screen.rows.filter((r) => /^\s*›/.test(r.replace(/\x1b\[[0-9;:]*m/g, ''))).length === 1;
 
 const interrupt = <T extends Slot>(robotId: string, slot: T): T => applyHook(slot, { robotId, backend: 'claude', name: 'Interrupt' }, Date.now());
 
@@ -252,22 +258,23 @@ export class Poll {
   // a plain `codex` on Codex's shared server is heard as the terminal that started the server, so its events are
   // dropped; any other codex is silent for its hooks' sake
   private async markSilent(silent: { id: string; pid: number; paneId: string }[]): Promise<void> {
-    const procs = await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; });
-    if (!procs || this.stopped) return;
     const screens = await Promise.all(silent.map(({ paneId }) => this.deps.tmux.screen(paneId).catch(() => undefined)));
     if (this.stopped) return;
+    const welcome = screens.map(onWelcome);
+    // ps runs only for a robot yet to be hinted; one on its welcome screen or already hinted needs none
+    const judge = silent.map(({ id }, i) => !welcome[i] && !this.deps.store.state.robots[id]?.hint);
+    const procs = judge.includes(true) ? await this.deps.processes().catch((e) => { this.deps.log.error(`codex silent: ${String(e)}`); return undefined; }) : [];
+    if (!procs || this.stopped) return;
     this.deps.store.update((d) => {
-      for (const [{ id, pid, paneId }, screen] of silent.map((s, i) => [s, screens[i]] as const)) {
+      for (const [i, { id, pid, paneId }] of silent.entries()) {
         const c = d.robots[id];
         if (!c || c.tmux?.paneId !== paneId || c.agent || !this.codexStreak.has(id)) continue;
-        // Codex 0.166 delays SessionStart until the first prompt. Its untouched welcome screen is not a failed hook.
-        if (screen && screen.command === 'codex' && screen.shown && screen.rows.some((r) => r.includes('OpenAI Codex')) &&
-            /^\s*›/.test((screen.rows[screen.cursor] ?? '').replace(/\x1b\[[0-9;:]*m/g, '')) &&
-            screen.rows.filter((r) => /^\s*›/.test(r.replace(/\x1b\[[0-9;:]*m/g, ''))).length === 1) {
+        if (welcome[i]) {
           delete c.hint;
           delete c.codexDaemon;
           continue;
         }
+        if (!judge[i]) continue;
         c.hint = 'codex-silent';
         if (onSharedServer(pid, procs)) c.codexDaemon = true; else delete c.codexDaemon;
       }
