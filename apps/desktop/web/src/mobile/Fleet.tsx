@@ -1,7 +1,7 @@
 import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
-import { useApp } from '../hooks.js';
+import { memoByValue, useApp } from '../hooks.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
@@ -15,7 +15,7 @@ import { Settings } from './Settings.js';
 
 type RowProps = { c: Robot; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
-function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
+const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
   const status = useApp((s) => statusOf(c, s.fleet));
   const asks = useApp((s) => wantsUser(c, s.fleet));
   const sub = subtitle(c);
@@ -71,7 +71,7 @@ function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element 
         onClick={() => onClose(c.id)}>close</button>
     </div>
   );
-}
+});
 
 type Open = { kind: 'island' } | { kind: 'robot'; islandId: string } | { kind: 'islandMenu'; islandId: string } | { kind: 'settings' } | { kind: 'close'; id: string };
 
