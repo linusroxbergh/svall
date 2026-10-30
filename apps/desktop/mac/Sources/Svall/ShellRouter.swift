@@ -281,7 +281,7 @@ final class ShellRouter {
         case .hostStart(let op, let args):
             startHost(op: op, args: args)
         case .hostCancel:
-            hostRun?.cancel()
+            hostRun?.cancel(wait: false)
         case .hostList:
             listMachines()
         case .shellCutout(let rects, let passive):

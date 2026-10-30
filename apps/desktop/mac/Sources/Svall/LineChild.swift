@@ -10,6 +10,8 @@ final class LineChild {
     private var stderr = StderrTail()
     // the exit, and the end of each pipe read: a line read after the exit still comes before the end
     private let ended = DispatchGroup()
+    // one stop at a time, so a stop that waits also waits for one already under way
+    private let stopping = DispatchQueue(label: "svall.line-child.stop")
 
     var onLine: (String) -> Void = { _ in }
     /// The exit status and the last lines of stderr, on main after every line.
@@ -62,7 +64,12 @@ final class LineChild {
     }
 
     /// Ends the child within a bound: SIGTERM, then after two seconds SIGKILL. Its end still reaches `onExit`.
-    func stop() {
+    func stop() { stopping.sync { end() } }
+
+    /// `stop`, without waiting for the child to end.
+    func stopSoon() { stopping.async { self.end() } }
+
+    private func end() {
         guard process.isRunning else { return }
         process.terminate()
         if !exits(within: 2) { kill(process.processIdentifier, SIGKILL) }
