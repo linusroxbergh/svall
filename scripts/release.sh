@@ -1,5 +1,6 @@
 #!/bin/sh
-# Builds, signs, notarizes and packages Svall into dist/, writes its appcast and latest.json, and uploads them to svall.dev.
+# Builds, signs, notarizes and packages Svall into dist/, publishes the DMG as a GitHub release, and uploads the appcast and
+# latest.json that name it to svall.dev.
 # SVALL_RELEASE_KEY, which only --adhoc goes without, signs the controller and companions the app carries.
 # --adhoc does the same unsigned and stops before notarizing and uploading. SVALL_NOTES names a Markdown file the update
 # dialog shows as this version's notes, above those of every release since the installed one.
@@ -18,6 +19,8 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' apps/d
 BUILD="$(git rev-list --count HEAD)"
 ID="${SVALL_SIGN_ID:-Developer ID Application}"
 NOTARY="${SVALL_NOTARY_PROFILE:-svall-notary}"
+REPO=linusroxbergh/svall
+DOWNLOADS="https://github.com/$REPO/releases/download/v$VERSION"
 fail() { echo "release: $*" >&2; exit 1; }
 notarize() { xcrun notarytool submit "$1" --keychain-profile "$NOTARY" --wait | tee /dev/stderr | grep -q 'status: Accepted' || fail "notarization of $1 was not accepted"; }
 NOTES="${SVALL_NOTES:-}"
@@ -49,6 +52,7 @@ if [ -z "$ADHOC" ]; then
   node -e 'import(process.argv[1]).then((m) => m.releaseKey())' "$ROOT/scripts/release-stage.mjs" ||
     fail "SVALL_RELEASE_KEY cannot sign this release"
   : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
+  gh auth status >/dev/null 2>&1 || fail "gh is not signed in, and the DMG is published as a GitHub release; run gh auth login"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"
   case "$(printf '%s\n' "$LATEST" | tail -n 1)" in
@@ -59,8 +63,6 @@ if [ -z "$ADHOC" ]; then
   [ -z "$PUBLISHED" ] || [ "$BUILD" -gt "$PUBLISHED" ] || fail "build $BUILD is not above the published $PUBLISHED, so no installed copy would update"
   # the appcast is made from this build alone, so nothing from the server or a dry run is signed with the Sparkle key
   rm -rf dist/releases && mkdir -p dist/releases
-  ssh "$SVALL_HOST" "test ! -e '$SVALL_SITE_DIR/releases/Svall-$VERSION.dmg'" ||
-    fail "Svall-$VERSION.dmg is on the server already, or the server did not answer; a published DMG never changes, so bump CFBundleShortVersionString"
 else
   ID=-
 fi
@@ -103,7 +105,7 @@ if [ -z "$ADHOC" ]; then
 fi
 
 SHA="$(shasum -a 256 "$DMG" | cut -d' ' -f1)"
-printf '{"version":"%s","build":%s,"url":"https://svall.dev/releases/Svall-%s.dmg","sha256":"%s"}\n' "$VERSION" "$BUILD" "$VERSION" "$SHA" > dist/latest.json
+printf '{"version":"%s","build":%s,"url":"%s/Svall-%s.dmg","sha256":"%s"}\n' "$VERSION" "$BUILD" "$DOWNLOADS" "$VERSION" "$SHA" > dist/latest.json
 
 if [ -z "$ADHOC" ]; then
   # the Svall.dmg link stays out while the appcast is made, so the latest release is listed once
@@ -113,7 +115,7 @@ if [ -z "$ADHOC" ]; then
   rsync -a --include='Svall-*.md' --exclude='*' "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/notes/
   if [ -n "$NOTES" ]; then cp "$NOTES" "dist/notes/Svall-$VERSION.md"; else echo '- Small fixes and improvements.' > "dist/notes/Svall-$VERSION.md"; fi
   for f in $(ls dist/notes | sort -rV); do v="${f#Svall-}"; printf '## %s\n\n' "${v%.md}"; cat "dist/notes/$f"; echo; done > "dist/releases/Svall-$VERSION.md"
-  "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix https://svall.dev/releases/ dist/releases
+  "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix "$DOWNLOADS/" dist/releases
   mv dist/releases/appcast.xml dist/appcast.xml
   cp "dist/notes/Svall-$VERSION.md" dist/releases/
 fi
@@ -122,11 +124,12 @@ if [ -n "$ADHOC" ]; then
   echo "dry run done: $DMG and dist/latest.json; no appcast, notarization or upload"
   exit 0
 fi
-# the DMG is in place before the feeds that name it
-rsync -a "$DMG" "$SVALL_HOST:$SVALL_SITE_DIR/releases/"
-rsync -a dist/releases "$SVALL_HOST:$SVALL_SITE_DIR/"
-rsync -a dist/appcast.xml dist/latest.json scripts/install.sh "$SVALL_HOST:$SVALL_SITE_DIR/"
+# the release, with the DMG the feeds name, is public before the feeds; past the tag a second run refuses, so a failed step
+# is finished by hand. Svall.dmg is the copy svall.dev/download reaches through the latest release.
+FEEDS="rsync -a dist/releases/Svall-$VERSION.md $SVALL_HOST:$SVALL_SITE_DIR/releases/ && rsync -a dist/appcast.xml dist/latest.json scripts/install.sh $SVALL_HOST:$SVALL_SITE_DIR/"
 git tag "v$VERSION"
-# the release is public by now, and a second run refuses it, so a failed push is finished by hand
-git push origin "v$VERSION" || fail "Svall $VERSION is published, but its tag did not reach origin: run git push origin v$VERSION"
+git push origin "v$VERSION" || fail "nothing is published, but v$VERSION did not reach origin: run git tag -d v$VERSION and release again"
+gh release create "v$VERSION" --repo "$REPO" --verify-tag --title "v$VERSION" --notes-file "dist/notes/Svall-$VERSION.md" -- "$DMG" dist/releases/Svall.dmg ||
+  fail "v$VERSION is tagged, but its release lacks the DMG: run gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && $FEEDS"
+sh -c "$FEEDS" || fail "the v$VERSION release is on GitHub, but the feeds did not reach svall.dev: run $FEEDS"
 echo "released Svall $VERSION ($BUILD)"

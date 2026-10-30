@@ -515,7 +515,8 @@ send:
   versions, your agents and the end of the daemon's log, which can name your
   robots, islands and repos, with your home written as `~`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
-  svall.dev your IP address and the version you run. Svall Dev doesn't.
+  svall.dev your IP address and the version you run, and downloads an update
+  from its GitHub release. Svall Dev doesn't.
 - A move copies a robot's agent session, branch and changes, and your agent
   configuration with only the keys you tick, over ssh to the Linux machine you
   added.

@@ -21,6 +21,6 @@
 	# Caddy has no type for .dmg and sends none, which browsers under nosniff show as text
 	@disk path /releases/*.dmg
 	header @disk Content-Type application/x-apple-diskimage
-	redir /download /releases/Svall.dmg 302
+	redir /download https://github.com/linusroxbergh/svall/releases/latest/download/Svall.dmg 302
 	file_server
 }
