@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, emptyState, type FleetState, type LinkFrame, type Robot } from '@svall/protocol';
 import { HEARTBEAT_MS, HomeLinks, UnknownEvent, type Transport } from '../../src/link/home.js';
 import { LinkStream, MAX_LINE, PART_REPLY } from '../../src/link/stream.js';
-import { HomeConnection } from '../../src/link/worker.js';
+import { HomeConnection, SILENT_MS } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { resolvePaths } from '../../src/paths.js';
@@ -330,6 +330,37 @@ describe('the link', () => {
     await vi.advanceTimersByTimeAsync(1000);
     await until(() => expect(machine()?.reachable).toBe(true), 1);
     await until(() => expect(w.worker.connected()).toBe(true), 1);
+  });
+
+  it('the worker closes a linked stream that brings nothing for three heartbeats, as a Mac asleep leaves it, and serves its calls itself', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const logged: string[] = [];
+    const w = world({ workerLog: { info() {}, error: (m) => logged.push(m) } });
+    await w.worker.start();
+    const sock = net.connect(w.workerPaths.linkSock);
+    await once(sock, 'connect');
+    let pongs = 0;
+    let closed = false;
+    const stream = new LinkStream(sock, { onFrame: (f) => { if (f.t === 'pong') pongs++; }, onClose: () => { closed = true; } });
+    stream.send({ t: 'hello', token: tokenFor(w.homePaths, W)!, ...HELLO });
+    stream.send({ t: 'ack', seq: 0 });
+    await until(() => expect(w.worker.connected()).toBe(true), 1);
+    // a home that pings stays linked
+    for (let beat = 1; beat <= 6; beat++) {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      stream.send({ t: 'ping' });
+      await until(() => expect(pongs).toBe(beat), 1);
+    }
+    expect(w.worker.connected()).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(SILENT_MS - 5000);
+    expect(w.worker.connected()).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(w.worker.connected()).toBe(false);
+    expect(w.linked).toEqual([true, false]);
+    expect(logged).toEqual(["link: mac's stream closed: nothing arrived for 45 s"]);
+    await until(() => expect(closed).toBe(true), 1);
+    await expect(w.worker.call('robot.update', {})).rejects.toMatchObject({ code: 'not_reachable', message: 'mac is not reachable' });
   });
 
   it('retries a worker it cannot reach after 1 s, doubling to 60 s, and from 1 s again once it has linked', async () => {
@@ -877,6 +908,76 @@ describe('the link', () => {
     l.refresh();
     expect(l.for(SPARE)).toBeDefined();
     expect(l.for(W)).toBe(held);
+  });
+
+  it('refresh tries a link that is down again at once, its backoff from 1 s, and leaves one trying or linked as it is', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const w = world();
+    const tries: number[] = [];
+    let refuse = true;
+    let hold: Promise<void> | undefined;
+    const links = w.links(async (e) => {
+      tries.push(Date.now());
+      await hold;
+      if (refuse) throw new Error('ssh: connect to host vault port 22: Connection refused');
+      return socketTo(w.workerPaths.linkSock)(e);
+    });
+    const start = Date.now();
+    const at = () => tries.map((t) => (t - start) / 1000);
+    links.start();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(at()).toEqual([0, 1, 3, 7, 15]);
+    links.refresh();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at()).toEqual([0, 1, 3, 7, 15, 20, 21]);
+
+    // a refresh while a try waits on ssh starts no second one
+    let release!: () => void;
+    hold = new Promise((r) => { release = r; });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(at()).toEqual([0, 1, 3, 7, 15, 20, 21, 23]);
+    links.refresh();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(tries).toHaveLength(8);
+    hold = undefined;
+    release();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(at()).toEqual([0, 1, 3, 7, 15, 20, 21, 23, 24]);
+
+    refuse = false;
+    await w.worker.start();
+    links.refresh();
+    await until(() => expect(links.for(W)?.connected()).toBe(true), 1);
+    const linkedTries = tries.length;
+    links.refresh();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(tries).toHaveLength(linkedTries);
+    expect(links.for(W)?.connected()).toBe(true);
+  });
+
+  it('refresh links again a machine whose link stopped for want of a token, once it holds one', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const w = world();
+    await w.worker.start();
+    const sockets: net.Socket[] = [];
+    const links = w.links(async (e) => {
+      const r = await socketTo(w.workerPaths.linkSock)(e);
+      sockets.push(r.stream as net.Socket);
+      return r;
+    });
+    links.start();
+    await until(() => expect(links.for(W)?.connected()).toBe(true), 1);
+    const tokens = fs.readFileSync(w.homePaths.workersFile);
+    fs.writeFileSync(w.homePaths.workersFile, '{}');
+    sockets[0]!.destroy();
+    await until(() => expect(links.for(W)?.connected()).toBe(false), 1);
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(sockets).toHaveLength(1);
+
+    fs.writeFileSync(w.homePaths.workersFile, tokens);
+    links.refresh();
+    await until(() => expect(links.for(W)?.connected()).toBe(true), 1);
+    expect(sockets).toHaveLength(2);
   });
 
   it('call() answers not_reachable with the machine name while the link is down', async () => {

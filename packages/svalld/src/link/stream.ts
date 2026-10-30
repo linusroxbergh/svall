@@ -34,9 +34,13 @@ export class LinkStream {
   private nextHeld = 1;
   private closed = false;
   private readonly maxLine: number;
+  private idle?: NodeJS.Timeout;
 
-  constructor(private duplex: Duplex, private o: { onFrame(f: LinkFrame): void; onClose(err?: Error): void; maxLine?: number }) {
+  /** `idleMs`: the stream closes once nothing has arrived for that long. */
+  constructor(private duplex: Duplex, private o: { onFrame(f: LinkFrame): void; onClose(err?: Error): void; maxLine?: number; idleMs?: number }) {
     this.maxLine = o.maxLine ?? MAX_LINE;
+    const { idleMs } = o;
+    if (idleMs) this.idle = setTimeout(() => { this.finish(new Error(`nothing arrived for ${idleMs / 1000} s`)); this.duplex.destroy(); }, idleMs);
     duplex.on('error', (e) => this.finish(e));
     duplex.on('close', () => this.finish());
     void this.read();
@@ -171,6 +175,7 @@ export class LinkStream {
     let buf: Buffer = Buffer.alloc(0);
     try {
       for await (const chunk of this.duplex) {
+        this.idle?.refresh();
         buf = buf.length === 0 ? (chunk as Buffer) : Buffer.concat([buf, chunk as Buffer]);
         for (let nl = buf.indexOf(10); nl >= 0; nl = buf.indexOf(10)) {
           this.tooLong(nl);
@@ -226,6 +231,7 @@ export class LinkStream {
   private finish(err?: Error): void {
     if (this.closed) return;
     this.closed = true;
+    clearTimeout(this.idle);
     const why = gone(err);
     for (const p of [...this.pending.values()]) p.reject(why);
     for (const r of this.receivers.values()) { r.out.destroy(); r.reject(why); }

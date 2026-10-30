@@ -108,6 +108,8 @@ export class WorkerLink {
   private heartbeat?: NodeJS.Timeout;
   private retry?: NodeJS.Timeout;
   private retryMs = FIRST_RETRY_MS;
+  // an attempt waits on the transport
+  private connecting = false;
   private lastWhy?: string;
   private stopped = false;
   // a docs push runs, and another is due after it
@@ -149,6 +151,15 @@ export class WorkerLink {
   /** Greets a worker in mismatch again on its stream, as after its upgrade. */
   greetAgain(): void {
     if (this.odd && this.stream) this.greet(this.stream);
+  }
+
+  /** Tries a link that is down again at once, its backoff from the start; one under way keeps its try. */
+  retryNow(): void {
+    if (this.stopped || this.stream) return;
+    this.retryMs = FIRST_RETRY_MS;
+    if (this.connecting) return;
+    clearTimeout(this.retry);
+    void this.attempt();
   }
 
   via(): Via {
@@ -242,6 +253,7 @@ export class WorkerLink {
     this.retry = undefined;
     let token: string | undefined;
     let conn: Awaited<ReturnType<Transport>>;
+    this.connecting = true;
     try {
       // read at each try: issuing a new token replaces the one the worker accepts
       token = tokenFor(this.o.paths, this.machine);
@@ -249,6 +261,8 @@ export class WorkerLink {
       conn = await this.o.connect(this.entry);
     } catch (e) {
       return this.lost((e as Error).message);
+    } finally {
+      this.connecting = false;
     }
     const stream: LinkStream = new LinkStream(conn.stream, {
       onFrame: (f) => { if (stream === this.stream) this.take(stream, f); },
@@ -454,11 +468,12 @@ export class HomeLinks {
     this.unwatchDocs = this.o.docs?.watch((except) => { for (const l of this.links.values()) if (l.machine !== except) l.pushDocs(); });
   }
 
-  /** Links each machine in the registry that holds a token of this fleet's and is not linked yet, and greets each in mismatch again. */
+  /** Links each machine in the registry that holds a token of this fleet's and is not linked yet, tries each link that is
+   *  down again now, and greets each in mismatch again. */
   refresh(): void {
     const pushSoon = this.pushSoon;
     if (!pushSoon) return;
-    for (const link of this.links.values()) link.greetAgain();
+    for (const link of this.links.values()) { link.greetAgain(); link.retryNow(); }
     try {
       for (const entry of this.o.machines()) {
         if (this.links.has(entry.id) || !tokenFor(this.o.paths, entry.id)) continue;
