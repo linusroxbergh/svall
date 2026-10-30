@@ -123,7 +123,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   mask-composite: intersect; }
 .scene-map.out { opacity: 0; }
 .scene-map .home, .scene-map .res-islet { bottom: 64px; }
-.scene-map .res-islet { --lh: 100px; }
+.scene-map .res-islet { --lh: 120px; }
 .scene-map > .world { position: absolute; transform-origin: 0 0; filter: brightness(var(--map-tone)); }
 /* a new island rises out of the sea; a new card drops onto it */
 .rise, .pop { --k: inherit; --lk: inherit; }
@@ -139,7 +139,7 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
   background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); font: var(--text-md)/1.45 var(--sans); animation: lift .25s var(--ease-out) both; }
 @keyframes lift { from { opacity: 0; translate: 0 8px; } }
 .scene-map .kicker { font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool); }
-.scene-map .fld { min-height: 96px; padding: var(--sp-md) var(--sp-lg); border: 1px solid var(--sand); border-radius: var(--r-sm); background: var(--fill-1); color: var(--ink); }
+.scene-map .fld { min-height: 96px; padding: var(--sp-md) var(--sp-lg); font-size: var(--text-2xl); border: 1px solid var(--sand); border-radius: var(--r-sm); background: var(--fill-1); color: var(--ink); }
 .scene-map .fld[data-empty="true"] { color: var(--ink-3); }
 .scene-map .caret { display: inline-block; width: 1.5px; height: 1.1em; margin-left: 1px; vertical-align: -.18em; background: var(--sand); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }

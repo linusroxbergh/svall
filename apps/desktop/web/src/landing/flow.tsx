@@ -58,15 +58,15 @@ function script(): [number, (s: Scene) => Scene][] {
   at(1700, () => ({ keys: false }));
   const typing = 2200, per = 36;
   for (let i = 1; i <= PROMPT.length; i++) at(typing + i * per, () => ({ typed: i }));
-  const sent = typing + PROMPT.length * per + 1200;
+  const sent = typing + PROMPT.length * per + 900;
   at(sent, () => ({ send: true }));
   at(sent + 250, () => ({ modal: false, send: false, mc: MC }));
-  at(sent + 2600, () => ({ island: true }));
+  at(sent + 1950, () => ({ island: true }));
   CREW.forEach((m, i) => {
-    at(sent + 4000 + i * 1100, (s) => ({ crew: [...s.crew, m] }));
-    at(sent + 4900 + i * 1100, (s) => ({ crew: s.crew.map((c) => (c.id === m.id ? { ...c, status: 'working', ctx: 3 } : c)) }));
+    at(sent + 3000 + i * 825, (s) => ({ crew: [...s.crew, m] }));
+    at(sent + 3675 + i * 825, (s) => ({ crew: s.crew.map((c) => (c.id === m.id ? { ...c, status: 'working', ctx: 3 } : c)) }));
   });
-  const live = sent + 8200;
+  const live = sent + 6150;
   at(live, (s) => ({ mc: { ...s.mc!, status: 'done' } }));
   for (let b = 0; b < 10; b++) at(live + 300 + b * 1100, (s) => ({ crew: grow(s.crew, b), shore: grow(s.shore, b + 1) }));
   at(live + 7000, (s) => ({ crew: s.crew.map((c) => (c.id === '10' ? { ...c, status: 'done' } : c)) }));
