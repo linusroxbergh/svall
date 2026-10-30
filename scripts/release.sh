@@ -53,6 +53,8 @@ if [ -z "$ADHOC" ]; then
     fail "SVALL_RELEASE_KEY cannot sign this release"
   : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
   gh auth status >/dev/null 2>&1 || fail "gh is not signed in, and the DMG is published as a GitHub release; run gh auth login"
+  # the server is first used after notarizing, so one that does not answer stops the release here
+  ssh "$SVALL_HOST" "test -d '$SVALL_SITE_DIR/releases'" || fail "$SVALL_HOST did not answer, or has no $SVALL_SITE_DIR/releases"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"
   case "$(printf '%s\n' "$LATEST" | tail -n 1)" in
@@ -117,6 +119,8 @@ if [ -z "$ADHOC" ]; then
   for f in $(ls dist/notes | sort -rV); do v="${f#Svall-}"; printf '## %s\n\n' "${v%.md}"; cat "dist/notes/$f"; echo; done > "dist/releases/Svall-$VERSION.md"
   "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix "$DOWNLOADS/" dist/releases
   mv dist/releases/appcast.xml dist/appcast.xml
+  # installed copies download what the enclosure names, and a prefix without its slash would name a missing file
+  grep -qF "url=\"$DOWNLOADS/Svall-$VERSION.dmg\"" dist/appcast.xml || fail "the appcast does not name $DOWNLOADS/Svall-$VERSION.dmg"
   cp "dist/notes/Svall-$VERSION.md" dist/releases/
 fi
 ln -sf "Svall-$VERSION.dmg" dist/releases/Svall.dmg
@@ -124,14 +128,17 @@ if [ -n "$ADHOC" ]; then
   echo "dry run done: $DMG and dist/latest.json; no appcast, notarization or upload"
   exit 0
 fi
-# the release, with the DMG the feeds name, is public before the feeds; past the tag a second run refuses, so a failed step
-# prints what finishes it. Svall.dmg is the copy svall.dev/download reaches through the latest release.
+# the release, with the DMG the feeds name, is public before the feeds; past the tag a second run refuses, so a failed or
+# stopped step prints what finishes it, from the DMG the appcast signed. Svall.dmg is the copy svall.dev/download reaches
+# through the latest release.
 FEEDS="rsync -a dist/releases/Svall-$VERSION.md '$SVALL_HOST:$SVALL_SITE_DIR/releases/' && rsync -a dist/appcast.xml dist/latest.json scripts/install.sh '$SVALL_HOST:$SVALL_SITE_DIR/'"
-FINISH="gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && gh release edit v$VERSION --repo $REPO --draft=false && $FEEDS"
+FINISH="echo '$SHA  $DMG' | shasum -a 256 -c - && gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && gh release edit v$VERSION --repo $REPO --draft=false --latest --notes-file dist/notes/Svall-$VERSION.md && curl -fsIL -o /dev/null $DOWNLOADS/Svall-$VERSION.dmg && $FEEDS"
+REDO="gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then $FINISH"
 git tag "v$VERSION"
+trap 'fail "the release stopped past the v$VERSION tag: run git push origin v$VERSION, then $REDO"' INT TERM HUP
 git push origin "v$VERSION" || fail "nothing is published, but v$VERSION did not reach origin: run git tag -d v$VERSION and release again"
 gh release create "v$VERSION" --repo "$REPO" --verify-tag --title "v$VERSION" --notes-file "dist/notes/Svall-$VERSION.md" -- "$DMG" dist/releases/Svall.dmg ||
-  fail "v$VERSION is tagged, but its release lacks the DMG: run gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then $FINISH"
+  fail "v$VERSION is tagged, but its release lacks the DMG: run $REDO"
 # a draft, or a DMG that did not upload, would leave the feeds naming a download nobody can reach
 curl -fsIL -o /dev/null "$DOWNLOADS/Svall-$VERSION.dmg" || fail "Svall-$VERSION.dmg does not download from GitHub: run $FINISH"
 sh -c "$FEEDS" || fail "the v$VERSION release is on GitHub, but the feeds did not reach svall.dev: run $FEEDS"
