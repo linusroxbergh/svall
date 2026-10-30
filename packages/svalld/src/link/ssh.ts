@@ -59,8 +59,8 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
  */
 const REMOTE_HOST = 'svall-remote.invalid';
 
-// a session hands the master the forwards a `Host *` block of the user's config names, which it would bind
-const SESSION = ['-o', 'ClearAllForwardings=yes'];
+// a session would hand the master the forwards a `Host *` block of the user's config names, and run its RemoteCommand
+const SESSION = ['-o', 'ClearAllForwardings=yes', '-o', 'RemoteCommand=none'];
 
 function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
   return path.join(tmp, `svall-${process.getuid?.() ?? 0}`);
@@ -240,7 +240,8 @@ export class SshMaster {
 
   private async tunnel(command: 'forward' | 'cancel', localPort: number, remotePort: number): Promise<void> {
     const spec = `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`;
-    const r = await runProcess('ssh', this.argv(['-O', command, '-L', spec], []), { timeoutMs: CONTROL_TIMEOUT });
+    // with no config read, it asks the master for this forward alone, not those a `Host *` block names
+    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, '-L', spec], []), { timeoutMs: CONTROL_TIMEOUT });
     if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}: ${r.stderr.trim()}`);
   }
 

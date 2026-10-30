@@ -653,9 +653,10 @@ function agentSetup(ids, fx) {
 // the options a terminal's ssh to a robot on a worker runs with, as SurfaceManager.swift's AttachCommand builds it
 const ATTACH = '-o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt';
 const AGENT = 'echo "agent=${SSH_AUTH_SOCK:-none}"';
-// the ports the config forwards for remote and for every host, and a script that prints those bound on local
-const FORWARDED = [47201, 47203];
-const PROBE = `for port in ${FORWARDED.join(' ')}; do bash -c ": </dev/tcp/127.0.0.1/$port" 2>/dev/null && echo "$port bound"; done`;
+// the port the config forwards for remote, and one its `Host *` forwards that a listener on local already holds
+const FORWARDED = 47201;
+const HELD = 47203;
+const PROBE = `bash -c ': </dev/tcp/127.0.0.1/${FORWARDED}' 2>/dev/null && echo bound || echo free`;
 const bound = () => sh(L, PROBE, { ok: false }).stdout.trim();
 
 function sshConfig(ids, fx) {
@@ -666,14 +667,16 @@ function sshConfig(ids, fx) {
     const m = move(placed, 'remote');
     check('placed', m.code === 0 && m.res?.ok, () => `move exit ${m.code}: ${m.stderr.trim()}`);
   }
-  // the config forwards an agent of local's, binds ports on local and runs a command at every login there
-  sh(L, `ssh-agent -a /tmp/it-agent.sock >/dev/null && printf 'Host ${R}\\n  ForwardAgent /tmp/it-agent.sock\\n  LocalForward 127.0.0.1:${FORWARDED[0]} 127.0.0.1:22\\n`
-    + `  RemoteCommand echo the-config-ran\\nHost *\\n  LocalForward 127.0.0.1:${FORWARDED[1]} 127.0.0.1:22\\n' > ~/.ssh/config`);
+  // the config forwards an agent of local's, forwards ports on local and runs a command at every login
+  if (docker(['exec', '-d', '-u', 'svall', L, '/opt/it/node/bin/node', '-e', `require('net').createServer().listen(${HELD}, '127.0.0.1')`]).code !== 0) throw new Error('the listener did not start');
+  sh(L, `for i in $(seq 100); do bash -c ': </dev/tcp/127.0.0.1/${HELD}' 2>/dev/null && exit 0; sleep 0.1; done; exit 1`);
+  sh(L, `ssh-agent -a /tmp/it-agent.sock >/dev/null && printf 'Host ${R}\\n  ForwardAgent /tmp/it-agent.sock\\n  LocalForward 127.0.0.1:${FORWARDED} 127.0.0.1:22\\n`
+    + `  RemoteCommand echo the-config-ran\\nHost *\\n  LocalForward 127.0.0.1:${HELD} 127.0.0.1:22\\n  RemoteCommand echo every-host\\n' > ~/.ssh/config`);
   try {
     const since = linksOf()[ids.remote]?.since;
     sh(L, `systemctl --user restart ${UNIT}`);
     linked(ids, since);
-    check('the master binds nothing', bound() === '', bound);
+    check('the master binds nothing', bound() === 'free', `127.0.0.1:${FORWARDED} is bound on local`);
     const attach = call(L, 'term.attach', { id: placed });
     const { ssh: dest, controlSocket } = attach.via ?? {};
     check('via', dest && controlSocket, () => brief(attach));
@@ -685,14 +688,15 @@ function sshConfig(ids, fx) {
     // past the master's MaxSessions ssh logs in on its own, as it does here with no master on the socket; checked while it runs
     const own = sh(L, `ssh -S /tmp/it-no-master.sock ${ATTACH} -- ${dest} 'sleep 2; ${AGENT}' >/tmp/it-own.out 2>&1 & p=$!; sleep 1`
       + `; ${PROBE}; wait $p; echo "exit=$?"; cat /tmp/it-own.out`, { ok: false }).stdout;
-    check('a login of its own', /^exit=0\n/.test(own) && own.includes('agent=none'), () => own.trim());
-    check('the attaches bind nothing', bound() === '', bound);
-    // a forward a host command asks the master for, as SshMaster.forward does, reaches remote's sshd
-    const tunnel = (op) => `ssh -S ${controlSocket} -o BatchMode=yes -O ${op} -L 127.0.0.1:47202:127.0.0.1:22 -- svall-remote.invalid`;
-    const fwd = sh(L, `${tunnel('forward')} && head -c 7 </dev/tcp/127.0.0.1/47202; ${tunnel('cancel')}`, { ok: false });
-    check('a forward on the master', fwd.stdout.startsWith('SSH-2.0'), () => `exit ${fwd.code}: ${fwd.stdout.trim()} ${fwd.stderr.trim()}`);
+    check('a login of its own', /^free\nexit=0\n/.test(own) && own.includes('agent=none'), () => own.trim());
+    check('the attaches bind nothing', bound() === 'free', `127.0.0.1:${FORWARDED} is bound on local`);
+    // host add again runs its first ssh, a master of its own and its probe over a forward on that master, past the held port
+    const again = lines(sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false }).stdout);
+    const failed = again.filter((e) => e.step && e.status === 'fail');
+    const probe = again.find((e) => e.step === 'probe' && e.status !== 'start');
+    check('host add again', failed.length === 0 && probe?.status === 'ok', () => brief(failed.length ? failed : probe));
   } finally {
-    sh(L, 'rm -f ~/.ssh/config; pkill -f "^ssh-agent -a /tmp/it-agent.sock"', { ok: false });
+    sh(L, 'rm -f ~/.ssh/config; pkill -f "^ssh-agent -a /tmp/it-agent.sock"; pkill -f "^/opt/it/node/bin/node -e require"', { ok: false });
     const since = linksOf()[ids.remote]?.since;
     sh(L, `systemctl --user restart ${UNIT}`);
     linked(ids, since);
