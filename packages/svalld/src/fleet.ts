@@ -108,6 +108,8 @@ export class Fleet extends EventEmitter<Events> {
   private poll: Poll;
   private agentEvents: AgentEvents;
   private prompts: Prompts;
+  // a new server comes up only as the control client attaches afresh
+  private tmuxPid?: number;
 
   constructor(private deps: Deps) {
     super();
@@ -128,6 +130,7 @@ export class Fleet extends EventEmitter<Events> {
       track, processes: this.sleep.processes, sessions: deps.paths.retroSessions,
     });
     this.prompts = new Prompts({ fleet: this, store, tmux: deps.tmux, config, log, reviving: this.reviving });
+    this.on('control-reset', () => { this.tmuxPid = undefined; });
     if (deps.report) this.unwatch = watchOwned(store, runsHere, deps.report);
   }
 
@@ -295,7 +298,7 @@ export class Fleet extends EventEmitter<Events> {
       panes.set(c.id, ids.flatMap((id) => (id && pids.get(id)) || []));
     }
     const apps = new Set(procs.filter((p) => p.path.endsWith('/Contents/MacOS/Svall')).map((p) => p.pid));
-    const server = await this.deps.tmux.serverPid();
+    const server = (this.tmuxPid ??= await this.deps.tmux.serverPid());
     return { home: this.deps.paths.home, panes, appPid: appPid(this.deps.paths.home, { isApp: (pid) => apps.has(pid) }), own: [process.pid, ...(server ? [server] : [])] };
   }
 

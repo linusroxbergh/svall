@@ -280,6 +280,20 @@ runIf('Fleet', () => {
     expect(store.state.robots).toEqual({});
   });
 
+  it("asks tmux its server's pid once, and again for the server that replaces it", async () => {
+    const { fleet, tmux } = await boot();
+    const own = async () => (await fleet.loadScope([])).own;
+    const first = await own();
+    const asked = vi.spyOn(tmux, 'serverPid');
+    expect(await own()).toEqual(first);
+    expect(asked).not.toHaveBeenCalled();
+    expect(first).toEqual([process.pid, await tmux.serverPid()]);
+    await tmux.killServer();
+    // the listing fails until the recovery has started the next server
+    await waitFor(async () => (await own().catch(() => first))[1] !== first[1], 15_000);
+    expect(await own()).toEqual([process.pid, await tmux.serverPid()]);
+  });
+
   it('forgets what it kept outside the state when a robot closes', async () => {
     const { fleet } = await boot();
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
