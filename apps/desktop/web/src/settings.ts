@@ -14,7 +14,7 @@ export type Settings = {
   cardOpacity: number;
   fullOpacity: number;
   zoom: number;
-  // a fill button and ⌘⇧P in every browser tab, answered by the 1Password CLI
+  // a fill button in every browser tab, answered by the 1Password CLI
   onePassword: boolean;
   // the ◔ tab in the top right corner; the phone tab beside it follows whether the fleet is served
   usageTab: boolean;

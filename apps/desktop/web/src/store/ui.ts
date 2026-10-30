@@ -37,6 +37,7 @@ export type UiState = {
   sideCardCollapsed: boolean;
   namingRobot: boolean;
   missionPrompt: boolean;
+  palette: boolean;
   closingRobot?: string;
   // a working robot's sleep waits on the user's answer
   sleepingRobot?: string;
@@ -110,6 +111,7 @@ export type UiActions = {
   toggleSideCard(open?: boolean): void;
   setNamingRobot(open: boolean): void;
   setMissionPrompt(open: boolean): void;
+  setPalette(open: boolean): void;
   setClosingRobot(id?: string): void;
   setSleepingRobot(id?: string): void;
   setMoveSheet(ask?: MoveAsk): void;
@@ -186,6 +188,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     sideCardCollapsed: false,
     namingRobot: false,
     missionPrompt: false,
+    palette: false,
     closingRobot: undefined,
     sleepingRobot: undefined,
     moveSheet: undefined,
@@ -245,6 +248,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     toggleCardSize: () => set((s) => ({ cardSize: s.cardSize === 'half' ? 'full' : 'half' })),
     setNamingRobot: (open) => set({ namingRobot: open }),
     setMissionPrompt: (open) => set({ missionPrompt: open }),
+    setPalette: (open) => set({ palette: open }),
     setClosingRobot: (id) => set({ closingRobot: id }),
     setSleepingRobot: (id) => set({ sleepingRobot: id }),
     setMoveSheet: (ask) => set({ moveSheet: ask }),

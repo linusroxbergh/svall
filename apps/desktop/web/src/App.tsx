@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { Board } from './Board.js';
 import { revealFile, shim } from './bridge.js';
+import { CommandPalette } from './CommandPalette.js';
 import { ConfirmClose, ConfirmDeleteColumn, ConfirmDeleteIsland, ConfirmSleep } from './Confirm.js';
 import { ContextMenu } from './ContextMenu.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
@@ -114,6 +115,7 @@ function Screen() {
       </div>
       <NewRobot />
       <MissionPrompt />
+      <CommandPalette />
       <ConfirmClose />
       <ConfirmSleep />
       <ConfirmDeleteIsland />
