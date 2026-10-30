@@ -648,6 +648,57 @@ function agentSetup(ids, fx) {
   check('alpha key nowhere there', left === '', () => left);
 }
 
+// ---------------------------------------------------------------------------------------------- the user's ssh config
+
+// the options a terminal's ssh to a robot on a worker runs with, as SurfaceManager.swift's AttachCommand builds it
+const ATTACH = '-o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt';
+const AGENT = 'echo "agent=${SSH_AUTH_SOCK:-none}"';
+// the ports the config forwards for remote and for every host, and a script that prints those bound on local
+const FORWARDED = [47201, 47203];
+const PROBE = `for port in ${FORWARDED.join(' ')}; do bash -c ": </dev/tcp/127.0.0.1/$port" 2>/dev/null && echo "$port bound"; done`;
+const bound = () => sh(L, PROBE, { ok: false }).stdout.trim();
+
+function sshConfig(ids, fx) {
+  const app = fs.readFileSync(path.join(REPO, 'apps/desktop/mac/Sources/Svall/SurfaceManager.swift'), 'utf8');
+  check('the app attaches so', app.includes(ATTACH), 'SurfaceManager.swift no longer builds the attach with ATTACH');
+  const placed = snap(L, true).robots.find((c) => c.machine === ids.remote)?.id ?? fx.agent;
+  if (robotIn(snap(L, true), placed)?.machine !== ids.remote) {
+    const m = move(placed, 'remote');
+    check('placed', m.code === 0 && m.res?.ok, () => `move exit ${m.code}: ${m.stderr.trim()}`);
+  }
+  // the config forwards an agent of local's, binds ports on local and runs a command at every login there
+  sh(L, `ssh-agent -a /tmp/it-agent.sock >/dev/null && printf 'Host ${R}\\n  ForwardAgent /tmp/it-agent.sock\\n  LocalForward 127.0.0.1:${FORWARDED[0]} 127.0.0.1:22\\n`
+    + `  RemoteCommand echo the-config-ran\\nHost *\\n  LocalForward 127.0.0.1:${FORWARDED[1]} 127.0.0.1:22\\n' > ~/.ssh/config`);
+  try {
+    const since = linksOf()[ids.remote]?.since;
+    sh(L, `systemctl --user restart ${UNIT}`);
+    linked(ids, since);
+    check('the master binds nothing', bound() === '', bound);
+    const attach = call(L, 'term.attach', { id: placed });
+    const { ssh: dest, controlSocket } = attach.via ?? {};
+    check('via', dest && controlSocket, () => brief(attach));
+    const mux = sh(L, `ssh -S ${controlSocket} ${ATTACH} -- ${dest} '${AGENT}'`, { ok: false });
+    check('attach', mux.code === 0 && mux.stdout.includes('agent=none'), () => `exit ${mux.code}: ${mux.stdout.trim()} ${mux.stderr.trim()}`);
+    // a session that asks for the agent, as one through the user's config does
+    const asks = sh(L, `ssh -S ${controlSocket} -o ControlMaster=no -o BatchMode=yes -o RemoteCommand=none -o ClearAllForwardings=yes -- ${dest} '${AGENT}'`, { ok: false });
+    check('the master forwards no agent', asks.code === 0 && asks.stdout.includes('agent=none'), () => `exit ${asks.code}: ${asks.stdout.trim()} ${asks.stderr.trim()}`);
+    // past the master's MaxSessions ssh logs in on its own, as it does here with no master on the socket; checked while it runs
+    const own = sh(L, `ssh -S /tmp/it-no-master.sock ${ATTACH} -- ${dest} 'sleep 2; ${AGENT}' >/tmp/it-own.out 2>&1 & p=$!; sleep 1`
+      + `; ${PROBE}; wait $p; echo "exit=$?"; cat /tmp/it-own.out`, { ok: false }).stdout;
+    check('a login of its own', /^exit=0\n/.test(own) && own.includes('agent=none'), () => own.trim());
+    check('the attaches bind nothing', bound() === '', bound);
+    // a forward a host command asks the master for, as SshMaster.forward does, reaches remote's sshd
+    const tunnel = (op) => `ssh -S ${controlSocket} -o BatchMode=yes -O ${op} -L 127.0.0.1:47202:127.0.0.1:22 -- svall-remote.invalid`;
+    const fwd = sh(L, `${tunnel('forward')} && head -c 7 </dev/tcp/127.0.0.1/47202; ${tunnel('cancel')}`, { ok: false });
+    check('a forward on the master', fwd.stdout.startsWith('SSH-2.0'), () => `exit ${fwd.code}: ${fwd.stdout.trim()} ${fwd.stderr.trim()}`);
+  } finally {
+    sh(L, 'rm -f ~/.ssh/config; pkill -f "^ssh-agent -a /tmp/it-agent.sock"', { ok: false });
+    const since = linksOf()[ids.remote]?.since;
+    sh(L, `systemctl --user restart ${UNIT}`);
+    linked(ids, since);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------- the fault matrix
 
 // a drop lands only where the move needs the link: on the way back the prepare is this Mac's own, and the move runs on
@@ -748,10 +799,10 @@ function faults(ids, list) {
 const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
-  12: 'agent setup mirror',
+  12: 'agent setup mirror', 13: "the user's ssh config",
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 12, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 13, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
@@ -781,6 +832,7 @@ try {
   if (steps.includes(10)) step(`10. ${STEPS[10]}`, () => filesFar(ids, fx));
   if (steps.includes(11)) step(`11. ${STEPS[11]}`, () => deleteWorkerDown(ids, fx));
   if (steps.includes(12)) step(`12. ${STEPS[12]}`, () => agentSetup(ids, fx));
+  if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);

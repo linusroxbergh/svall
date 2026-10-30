@@ -36,7 +36,8 @@ export function interactiveEnv(o: { tty: boolean; platform: NodeJS.Platform; ask
 export function interactiveSsh(destination: string): Promise<{ code: number; stderr: string }> {
   const env = interactiveEnv({ tty: process.stdin.isTTY === true, platform: process.platform, askpass: askpassPath(), env: process.env });
   return new Promise((resolve, reject) => {
-    const child = spawn('ssh', ['--', destination, 'true'], { stdio: ['inherit', 'inherit', 'pipe'], env });
+    // a RemoteCommand in the user's config would refuse `true`. Not detached, so the app's Stop, sent to svall's process group, ends it
+    const child = spawn('ssh', ['-o', 'RemoteCommand=none', '--', destination, 'true'], { stdio: ['inherit', 'inherit', 'pipe'], env });
     let said = '';
     child.stderr.on('data', (chunk: Buffer) => { process.stderr.write(chunk); said = (said + chunk.toString()).slice(-2000); });
     child.on('error', reject);

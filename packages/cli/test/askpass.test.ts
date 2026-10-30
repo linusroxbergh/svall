@@ -32,6 +32,30 @@ describe('the first, interactive ssh', () => {
     expect(passed.join('')).toBe('one\ntwo\nthree\nHost key verification failed.\n');
   });
 
+  /** What interactiveSsh hands back from a fake ssh first on PATH that runs `body`. */
+  async function withFakeSsh(body: string): Promise<{ code: number; stderr: string }> {
+    const dir = makeHome();
+    fs.writeFileSync(path.join(dir, 'ssh'), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
+    const before = process.env.PATH;
+    process.env.PATH = `${dir}:${before}`;
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      return await interactiveSsh('trift.test');
+    } finally {
+      process.env.PATH = before;
+      vi.restoreAllMocks();
+    }
+  }
+
+  it("takes no RemoteCommand from the user's config, which would refuse the command it runs", async () => {
+    expect(await withFakeSsh('echo "$*" >&2')).toEqual({ code: 0, stderr: '-o RemoteCommand=none -- trift.test true' });
+  });
+
+  it("runs in this process's group, which the app's Stop signals whole", async () => {
+    const here = execFileSync('ps', ['-o', 'pgid=', '-p', String(process.pid)], { encoding: 'utf8' }).trim();
+    expect((await withFakeSsh('ps -o pgid= -p $$ >&2')).stderr).toBe(here);
+  });
+
   it('asks in the terminal when there is one, and leaves Linux alone', () => {
     expect(interactiveEnv({ tty: true, platform: 'darwin', askpass: '/r/bin/svall-askpass', env })).toEqual(env);
     expect(interactiveEnv({ tty: false, platform: 'linux', askpass: '/r/bin/svall-askpass', env })).toEqual(env);

@@ -51,9 +51,9 @@ enum AttachCommand {
             // ssh joins the words after the destination into one line for the far login shell, which
             // splits it again, so the tmux, socket and session are quoted a second time for that shell
             let far = "\(attach.tmux.map { quote(quote($0)) } ?? "tmux") -S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
-            // past sshd's MaxSessions on the master, ssh opens a login of its own, without a prompt.
+            // past sshd's MaxSessions on the master, ssh opens a login of its own, without a prompt; neither takes the agent, X11, forwards or RemoteCommand of the user's config.
             // Linux ships no xterm-ghostty terminfo, and libghostty's `exec -l` would run a bare TERM= as the program, so env sets it
-            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -tt -- \(quote(route.destination)) \(far)"
+            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt -- \(quote(route.destination)) \(far)"
         }
     }
 }
