@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
+import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
@@ -424,6 +424,32 @@ function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undef
   return undefined;
 }
 
+// a development build's release ends in git describe's count of commits past its tag, which semver ranks below the tag
+const newerRelease = (a: string, b: string): boolean => compareVersions(a.replace(/-.*/, ''), b.replace(/-.*/, '')) === 1;
+
+/** Why the machine `ssh` reaches is not one to add as `name`: this Mac lists it under another name. */
+function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh: string }): StepError | undefined {
+  const listed = registry.get(id);
+  if (!listed || listed.record.name === o.name) return undefined;
+  return new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in this Mac's list`,
+    `svall host upgrade ${listed.record.name} sets it up again, or svall host remove ${listed.record.name} --forget and add it as ${o.name}`);
+}
+
+/**
+ * Refuses, before anything is uploaded, a machine this Mac lists under another name, a fleet home there that serves
+ * another Mac, and a release there newer than `version`, which installing would take back; a machine whose svall does
+ * not answer has nothing to refuse yet.
+ */
+async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string }, d: HostDeps): Promise<void> {
+  const far = await farHome(master, o.svallBase, d).catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
+  if (!far) return;
+  const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
+  if (refused) throw refused;
+  if (newerRelease(far.release, o.version)) {
+    throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
+  }
+}
+
 /** Refuses a fleet home there that serves another Mac, then stops and removes the gateway unit there; `off` is what the enrol detail adds. */
 async function claimUnits(master: SshMaster, o: { name: string; home: string; svallBase: string }, d: HostDeps): Promise<{ far: RemoteVersion; units: string[]; off: string }> {
   const unitDir = unitDirOf(o.home);
@@ -541,7 +567,11 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       await run.step('space', async () => spaceProbe(await probe(master, sh('svall-space', 'df -Pk "$HOME"'), 'df -Pk $HOME')));
       await run.step('linger', async () => lingerProbe(await probe(master, sh('svall-linger', SELF_LINGER), 'loginctl show-user'), user, o.ssh));
 
-      const companion = await run.step('release', () => companionFor(o, d, arch));
+      const companion = await run.step('release', async () => {
+        const c = await companionFor(o, d, arch);
+        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version }, d);
+        return c;
+      });
       const remote = remotePaths(home, companion.version);
 
       await run.step('upload', async () => {
@@ -567,6 +597,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
             `point ${o.ssh} back at ${o.name}, or svall host remove ${o.name} --forget and add it again`);
         }
+        const listed = listedAs(d.registry, id.data, o);
+        if (listed) throw listed;
         if (v.release !== companion.version) {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
@@ -663,7 +695,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
       const talks = v.protocol === d.controller.protocol;
       // an upgrade there would go back to this Mac's older release
-      const newer = !same && compareVersions(v.release, d.controller.release) === 1;
+      const newer = !same && newerRelease(v.release, d.controller.release);
       found({
         name: 'release', status: same && talks ? 'ok' : 'fail',
         detail: same && talks ? `${v.release}, as on this Mac`
@@ -748,7 +780,11 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
     try {
       // a machine added on an older Ubuntu than this release runs on stays on its release
       await run.step('os', () => osProbe(master));
-      const companion = await run.step('release', () => companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch));
+      const companion = await run.step('release', async () => {
+        const c = await companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch);
+        await mayInstall(master, { name, ssh: entry.record.ssh, svallBase: entry.record.svallBase, version: c.value.version }, d);
+        return c;
+      });
       const remote = remotePaths(entry.record.home, companion.version);
       await run.step('upload', async () => {
         await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
@@ -906,6 +942,35 @@ export async function consentHost(name: string, o: { item: string; on: boolean; 
 const TAKE_BACK = /the mirror copied|the mirror's keys|mirror blobs? left/;
 const KEYS_LEFT = /^(could not|left) /;
 
+// $1 the far home: each fleet home's worker.json there on a line of its own, after the home's folder and a tab
+const WORKERS = `cd "$1" || exit 1
+for f in .svall/worker.json .svall-*/worker.json; do
+  [ -e "$f" ] || continue
+  printf '%s\\t' "\${f%/worker.json}"; tr '\\n' ' ' < "$f" || exit 1; echo
+done
+exit 0`;
+
+const ServedBy = WorkerFile.pick({ homeMachineId: true, homeName: true });
+
+/** Refuses the far uninstall, which stops every fleet there, while a fleet home there serves another Mac or one cannot be read. */
+async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Promise<void> {
+  const { name, ssh, home } = entry.record;
+  const forget = `svall host remove ${name} --forget drops the route and leaves the machine untouched; once no other Mac uses it, ${onThere(ssh, 'svall uninstall')}`;
+  const unread = (why: string) => new StepError(`${why}, so whether ${name} serves another Mac is not known, and svall uninstall there stops every fleet on it`, forget);
+  const out = await probe(master, sh('svall-workers', WORKERS, home), 'the worker.json files there').catch((err: Error) => { throw unread(err.message); });
+  const others = new Set<string>();
+  for (const line of out.split('\n').filter(Boolean)) {
+    const at = line.indexOf('\t');
+    let worker: Pick<WorkerFile, 'homeMachineId' | 'homeName'>;
+    // the file holds that fleet's token, so what fails to parse is never quoted
+    try { worker = ServedBy.parse(JSON.parse(line.slice(at + 1))); } catch { throw unread(`${path.posix.join(home, line.slice(0, at), 'worker.json')} cannot be read`); }
+    if (worker.homeMachineId !== d.machineId()) others.add(worker.homeName || worker.homeMachineId);
+  }
+  if (others.size) {
+    throw new StepError(`${name} also serves ${[...others].join(' and ')} as a worker: svall uninstall there would stop ${others.size === 1 ? 'that fleet' : 'those fleets'} too`, forget);
+  }
+}
+
 /**
  * `svall host remove`: the remote uninstall first, and the route only after it, or only on --forget; then what the
  * uninstall did with the keys the mirror copied there.
@@ -924,6 +989,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       try {
         master = await d.openMaster(entry.record.ssh);
         await sameMachine(master, entry);
+        await sharedWith(master, entry, d);
         const r = await master.run([shq(svallExe(entry.record.svallBase)), 'uninstall'], { timeoutMs: PROBE_TIMEOUT });
         if (r.code !== 0) {
           throw new StepError(`svall uninstall exited ${r.code} on ${entry.record.ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,

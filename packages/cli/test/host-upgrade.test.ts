@@ -476,7 +476,7 @@ esac
     expect(fs.existsSync(systemctl)).toBe(false);
   });
 
-  it('enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {
+  it('uploads, installs and enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {
     const action = 'on bea-mbp, run svall host remove trift';
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
     const systemctl = farSystemctl();
@@ -485,12 +485,23 @@ esac
     events.length = 0;
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
-    expect(out).toEqual({ result: 'actions', stopped: 'enrol', actions: [action] });
-    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
-    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(out).toEqual({ result: 'actions', stopped: 'release', actions: [action] });
+    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: 'trift already serves bea-mbp as a worker; remove it from that Mac first', action });
+    expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup') || w.includes('enroll'))).toBe(false);
+    expect(far.now()).toBe('1.2.2');
     expect(JSON.parse(fs.readFileSync(path.join(fleet, 'fleet.json'), 'utf8'))).toEqual({ id: FLEET, gatewayMachineId: REMOTE });
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(true);
     expect(fs.existsSync(systemctl)).toBe(false);
+  });
+
+  it('uploads and installs nothing on a machine that runs a newer release than this Mac, which installing would take back', async () => {
+    const far = await farMachine({ releases: [['1.10.0', PROTOCOL_VERSION]] });
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'actions', stopped: 'release', actions: ['update svall on this Mac'] });
+    expect(step('release').at(-1)).toMatchObject({ status: 'fail', detail: 'trift runs release 1.10.0, newer than 1.2.3, the one this Mac would install' });
+    expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
+    expect(far.now()).toBe('1.10.0');
   });
 
   it('enrols a worker unit there whose worker.json names another fleet of this Mac', async () => {

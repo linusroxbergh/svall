@@ -132,12 +132,12 @@ describe('host doctor', () => {
   });
 
   it('the release row says the release there as on this Mac, older than it, newer than it, or one that cannot talk to it', async () => {
-    const release = async (version: Record<string, unknown>) => {
+    const release = async (version: Record<string, unknown>, mine = '1.2.3') => {
       ssh.clearReplies();
       ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
       ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...version }) });
       ssh.reply(['svall-space'], { stdout: DF });
-      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: work, signed: true } }));
+      const report = await doctorHost('trift', deps({ registry: registered(), controller: { release: mine, protocol: PROTOCOL_VERSION, releaseRoot: work, signed: true } }));
       const { name: _, ...row } = report.checks.find((c) => c.name === 'release')!;
       return row;
     };
@@ -145,6 +145,8 @@ describe('host doctor', () => {
     expect(await release({ release: '1.2.2' })).toEqual({ status: 'fail', detail: '1.2.2 there; this Mac runs 1.2.3' });
     expect(await release({ release: '1.2.4' })).toEqual({ status: 'fail', detail: "1.2.4 there, newer than this Mac's 1.2.3", action: 'update svall on this Mac' });
     expect(await release({ protocol: PROTOCOL_VERSION - 1 })).toEqual({ status: 'fail', detail: "1.2.3 there, a build that cannot talk to this Mac's" });
+    // a development build past the tag the machine runs is this Mac's to install there
+    expect(await release({}, '1.2.3-4-gabcdef0')).toEqual({ status: 'fail', detail: '1.2.3 there; this Mac runs 1.2.3-4-gabcdef0' });
   });
 
   it('host doctor lists the rows as checks with action, tick and forward; the verdict counts each warn row with an action', async () => {
