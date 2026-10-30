@@ -129,9 +129,19 @@ function stopProxy(opts) {
   fs.rmSync(file, { force: true });
 }
 
-// ssh joins the remote argv into one line and a login shell splits it again: these are the words
+// the end of the first single-quoted word holding `\\` or ending in `\`, which fish, unlike sh, reads as escapes
+function fishEscape(line) {
+  for (const [, quoted] of line.matchAll(/\\.|'([^']*)'|"(?:[^"\\]|\\.)*"|[^'"\\]+/gs)) {
+    const at = quoted?.search(/\\(\\|$)/) ?? -1;
+    if (at >= 0) return quoted.slice(Math.max(0, at - 60), at + 2);
+  }
+}
+
+// ssh joins the remote argv into one line and a login shell, sh or fish, splits it again: these are the words
 // that shell is left holding
 function shellWords(line) {
+  const escape = fishEscape(line);
+  if (escape !== undefined) die(`fish: a single-quoted word holds \\\\ or ends in \\, which fish reads as an escape: …${escape}`, 1);
   try {
     return execFileSync('/bin/sh', ['-c', `printf '%s\\0' ${line}`], { encoding: 'utf8' }).split('\0').slice(0, -1);
   } catch {

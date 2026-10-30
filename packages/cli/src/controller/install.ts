@@ -110,7 +110,8 @@ export async function uploadArchive(master: SshMaster, o: { archive: string; rem
 // $1 archive, $2 staging folder, $3 release asked for, $4 far svallBase or empty to skip the signature. Every member must
 // be a path in releases/$3, spelled one way and listed once. The installed release's pinned signers check SHA256SUMS
 // before anything else is extracted and again after, as GNU tar writes a member under a link over a file it extracted by
-// name; a signers file of only comments pins no key. PATH is system folders only, so no relative entry reaches a tool the upload carries
+// name; a signers file of only comments pins no key. PATH is system folders only, so no relative entry reaches a tool the upload carries.
+// awk spells a backslash sprintf("%c", 92): a fish login shell reads two inside single quotes as one
 const UNPACK = `PATH=/usr/bin:/bin:/usr/sbin:/sbin; export PATH
 dir="$2/releases/$3"
 signers="$4/current/release/allowed_signers"
@@ -120,7 +121,7 @@ printf '%s\\n' "$members" | awk -v r="releases/$3" '
   function no(why) { printf "the uploaded archive holds \\"%s\\"%s\\n", $0, why > "/dev/stderr"; exit 1 }
   { n = $0; sub("/$", "", n); k = split(n, s, "/")
     for (i = 1; i <= k; i++) if (s[i] == "" || s[i] == "." || s[i] == "..") no(", which is not a path in " r)
-    if (index(n, "\\\\") || (n != "releases" && n != r && index(n, r "/") != 1)) no(", which is not a path in " r)
+    if (index(n, sprintf("%c", 92)) || (n != "releases" && n != r && index(n, r "/") != 1)) no(", which is not a path in " r)
     if (seen[n]++) no(" twice") }' || exit 9
 pinned=
 if [ -z "$4" ]; then
