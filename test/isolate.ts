@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll } from 'vitest';
+import { sweepAtExit } from './sweep.js';
 
 // tests often run inside a live fleet's terminal: keep them off its home, its tmux server and the machine's own CLIs
-const home = fs.mkdtempSync('/tmp/svall-home-');
+const home = sweepAtExit(fs.mkdtempSync('/tmp/svall-home-'));
 const bin = path.join(home, 'bin');
 fs.mkdirSync(bin);
 fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\necho "no pull requests found" >&2\nexit 1\n', { mode: 0o755 });

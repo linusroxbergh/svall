@@ -42,8 +42,9 @@ export async function startDaemon(home: string): Promise<DaemonInfo> {
   const portFile = path.join(home, 'port');
   fs.rmSync(portFile, { force: true });
   const log = fs.openSync(path.join(home, 'e2e-svalld.log'), 'a');
-  // node itself runs svalld, so the pid stopDaemon signals is the daemon's own and not a launcher's
-  const child = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'packages/svalld/src/bin.ts')], {
+  // node itself runs svalld, so the pid stopDaemon signals is the daemon's own and not a launcher's. The home in its argv,
+  // which svalld ignores, is how the reaper finds a daemon a worker restarted and then outlived
+  const child = spawn(process.execPath, ['--import', 'tsx', path.join(ROOT, 'packages/svalld/src/bin.ts'), home], {
     // a fake `claude` first on PATH and a HOME of its own: nothing svalld spawns may reach the real account or files
     env: {
       ...process.env, HOME: path.join(home, 'home'), SVALL_HOME: home, CLAUDE_CONFIG_DIR: path.join(home, 'claude'), CODEX_HOME: path.join(home, 'codex'),
