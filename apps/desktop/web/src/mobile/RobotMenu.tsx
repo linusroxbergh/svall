@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
-import { contextKind, type Robot, type ContextItem, type Params } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, contextKind, type Robot, type ContextItem, type Params } from '@svall/protocol';
 import { webUrl } from '../bridge.js';
 import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
@@ -63,7 +63,7 @@ function Note({ c, saving }: { c: Robot; saving: RefObject<Promise<boolean> | un
   return (
     <div className="m-sec">
       <h4>Note</h4>
-      <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this robot is doing" value={c.note}
+      <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this robot is doing" value={c.note} maxLength={ROBOT_NOTE_MAX}
         onSave={(v) => { if (v !== c.note) saving.current = save({ note: v }); }} />
       {error && <p className="sheet-error">{error}</p>}
     </div>

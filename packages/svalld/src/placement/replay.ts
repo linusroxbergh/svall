@@ -32,9 +32,12 @@ export function sharedBranch(state: FleetState, id: string, homedir: string | un
 }
 
 // a line the replay writes is the user's, so the scribe leaves the note as it stands
-const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
+export const addLine = (c: Robot, line: string): void => setNote(c, withLine(c.note, line));
 // a reason on one line, as a note keeps it
-const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.prettifyError(e) : e instanceof Error ? e.message : String(e)).replace(/\s*\n\s*/g, ' ');
+export const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.prettifyError(e) : e instanceof Error ? e.message : String(e)).replace(/\s*\n\s*/g, ' ');
+
+// a journaled update is taken whatever its note's length, which caps only what a request may ask for
+const Update = methods['robot.update'].params.extend({ note: z.string().optional() });
 
 const DID: Record<Mutation['method'], string> = {
   'robot.create': 'started this robot', 'robot.update': 'changed this robot', 'robot.close': 'closed this robot', 'robot.run': 'sent this robot a prompt',
@@ -79,7 +82,7 @@ export class Replay {
       return { change() {}, after() {} };
     }
     const m = parsed.data;
-    const p = m.method === 'robot.update' ? methods['robot.update'].params.safeParse(m.params) : undefined;
+    const p = m.method === 'robot.update' ? Update.safeParse(m.params) : undefined;
     const settled = p?.success && p.data.context ? this.settle(p.data.id, p.data.context) : undefined;
     const later: (() => void)[] = [];
     const log: Logger = { info: (s) => later.push(() => this.o.log.info(s)), error: (s) => later.push(() => this.o.log.error(s)) };

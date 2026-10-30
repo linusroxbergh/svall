@@ -1,4 +1,4 @@
-import type { Robot, ContextItem, MachineId, Params } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, type Robot, type ContextItem, type MachineId, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveRobot, saveRobotContext, setStar } from './actions.js';
@@ -121,7 +121,7 @@ export function SideCard({ id }: { id: string }) {
       <div className="side-secs">
         {placed && isPlaced(c) && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>

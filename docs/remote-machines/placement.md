@@ -226,7 +226,10 @@ islands, moves, browser tabs, a robot's figure or island, and calls about robots
 this Mac as away once 45 seconds pass with nothing from it.
 
 The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
-the last 500 this Mac has acknowledged, with what each changed. Once the fleet it last sent is an hour old, a robot's
+the last 500 this Mac has acknowledged, with what each changed. A note set with `svall robot update` or in the app holds
+at most 16,384 characters and a text typed into a robot at most 262,144, on either machine, so that each change fits
+the 2 MiB a link carries at once. One still over it, such as a context with very long labels, is refused on the worker:
+"this change is 2400000 bytes, over the 2097152 the link to ada-mac carries". Once the fleet it last sent is an hour old, a robot's
 brief there says so under its heading: "context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable".
 
 Once this Mac answers, what the worker did lands here once each, in the order it was done:
@@ -244,8 +247,11 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
   notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
   Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
-  here since; it stays".
-- A change this Mac cannot apply is skipped, and the robot's note says why.
+  here since; it stays". A doc over 1 MB, or with a name a tar cannot carry (over 100 bytes), stays on the machine it is
+  on, the log saying so. A path that is a file on one machine and a folder on the other stops the link until one of them
+  changes it.
+- A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
+  cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:
   "shares branch kb with board".
 

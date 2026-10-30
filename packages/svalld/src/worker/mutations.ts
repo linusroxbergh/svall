@@ -50,7 +50,7 @@ export class WorkerMutations {
   private starting = new Set<object>();
 
   constructor(private o: {
-    store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
+    store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'fits' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
     me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>;
   }) {}
 
@@ -131,14 +131,20 @@ export class WorkerMutations {
     if (named.some((k) => !(UPDATE_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name));
     const held = this.o.fleet.robot(p.id);
     const base = Object.fromEntries(named.map((k) => [k, held[k as keyof Robot]]));
+    const mutation = this.stamp({ method: 'robot.update', params: p, base });
+    // refused before the change is made here, as the home could never take it
+    this.o.connection.fits('mutation', mutation);
     const robot = this.o.fleet.updateRobot(p.id, p);
-    this.journal({ method: 'robot.update', params: p, base });
+    this.o.connection.journal('mutation', mutation);
     return robot;
   }
 
   private journal(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'base' | 'delivery'>): void {
-    const mutation: Mutation = { id: newMutationId(), ...m, snapshotVersion: this.o.connection.snapshotVersion(), at: Date.now() };
-    this.o.connection.journal('mutation', mutation);
+    this.o.connection.journal('mutation', this.stamp(m));
+  }
+
+  private stamp(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'base' | 'delivery'>): Mutation {
+    return { id: newMutationId(), ...m, snapshotVersion: this.o.connection.snapshotVersion(), at: Date.now() };
   }
 }
 

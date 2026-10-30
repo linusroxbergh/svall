@@ -246,7 +246,7 @@ async function start(opts: Options): Promise<Daemon> {
     ...(homeDocs && { docs: homeDocs }),
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
-  const outbox = worker && Outbox.open(paths);
+  const outbox = worker && Outbox.open(paths, log);
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),

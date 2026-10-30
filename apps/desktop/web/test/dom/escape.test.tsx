@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ROBOT_NOTE_MAX } from '@svall/protocol';
 import { bridge, call, freshStore, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
@@ -17,6 +18,13 @@ beforeEach(() => {
   off = installKeyHandlers({ store, api: { call } as never, bridge });
 });
 afterEach(() => off());
+
+test('the new-robot dialog takes a note no longer than the fleet does', () => {
+  store.getState().setNamingRobot(true);
+  render(<NewRobot />);
+  fireEvent.click(screen.getByTestId('new-robot-more'));
+  expect((screen.getByTestId('new-robot-note') as HTMLTextAreaElement).maxLength).toBe(ROBOT_NOTE_MAX);
+});
 
 test('Esc in the new-robot dialog closes the dialog and leaves the map card open', () => {
   store.getState().focus('c0');

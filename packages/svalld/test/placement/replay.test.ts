@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Duplex, Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Mutation, cellKey, isLand, type FleetState, type Island, type Robot } from '@svall/protocol';
+import { Mutation, ROBOT_NOTE_MAX, cellKey, isLand, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir } from '../../src/docs.js';
 import { blockedCells } from '../../src/layout.js';
@@ -152,6 +152,14 @@ describe('the home replaying what a worker did while it slept', () => {
     // the scribe leaves a lost value where it was written
     await apply({ id: 'mu_0000000003', method: 'robot.update', params: { id: 'c_2', note: 'mine' }, base: { note: '' }, snapshotVersion: 0, at: 2 });
     expect(w.home.store.state.robots.c_2).toMatchObject({ note: 'the scribe\'s\nw1 set note to "mine" while this Mac slept; it had changed here since', noteSource: 'manual' });
+  });
+
+  it('an update journaled with a note past the cap a request may ask for still applies', async () => {
+    const { w, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } } } });
+    const note = 'x'.repeat(ROBOT_NOTE_MAX + 1);
+    await apply({ id: 'mu_0000000002', method: 'robot.update', params: { id: 'c_1', note }, base: { note: '' }, snapshotVersion: 0, at: 1 });
+    expect(w.home.store.state.robots.c_1.note).toBe(note);
+    expect(logged).toEqual([]);
   });
 
   it('a create whose id is not a robot id is logged and not applied', async () => {

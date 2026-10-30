@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ROBOT_NOTE_MAX } from '@svall/protocol';
 import { newNamedRobot, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
@@ -51,7 +52,7 @@ export function NewRobot() {
         )}
         {more && (
           <>
-            <textarea className="fld desc" placeholder="note" value={note} data-testid="new-robot-note"
+            <textarea className="fld desc" placeholder="note" value={note} maxLength={ROBOT_NOTE_MAX} data-testid="new-robot-note"
               onChange={(e) => setNote(e.target.value)} />
             <textarea className="fld" placeholder="links or paths, one per line" value={links} data-testid="new-robot-links" {...AS_TYPED}
               onChange={(e) => setLinks(e.target.value)} />

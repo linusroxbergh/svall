@@ -14,7 +14,7 @@ import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
-import { packTar } from './bundle.js';
+import { packTar, ustarFits } from './bundle.js';
 import { unpack } from './move-steps.js';
 import { homeRootOf } from './repo-key.js';
 import { withLine } from './replay.js';
@@ -25,6 +25,8 @@ const DOCS_MAX = 20 * 1024 * 1024;
 const DOCS_QUIET_MS = 2_000;
 // a docs.write rides one line of the link, its bytes in base64
 const NOTE_MAX = 1024 * 1024;
+// what a docs tar can carry, which leaves out any other name; its 100-byte names leave room for a write's temp name
+const packable = (rel: string): boolean => ustarFits(Buffer.from(`./${rel}`));
 
 // what a change was made on: the home's sha as its last tar brought it, and while no tar has come since, the worker's
 // own last change there (null for a removal); an older release journaled neither, nor an id
@@ -143,6 +145,8 @@ export class HomeDocs {
   // what each path holds by a worker's last event there, so a write it made is not sent back to it
   private applied = new Map<string, { sha256?: string; machine: MachineId }>();
   private oversize = false;
+  // the docs here whose names a tar cannot carry, said once until they change
+  private unpacked = '';
 
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
@@ -213,6 +217,9 @@ export class HomeDocs {
 
   /** Sends the docs to `link`, packed once its events up to `seq` are applied here; one tar over the limit is said once and not sent. */
   async push(link: Pick<WorkerLink, 'call' | 'sendBlob'>, seq: number): Promise<void> {
+    const unpacked = filesIn(this.dir).filter((rel) => !packable(rel)).join(', ');
+    if (unpacked && unpacked !== this.unpacked) this.log.error(`docs: ${unpacked} reach no worker, a tar cannot carry their names`);
+    this.unpacked = unpacked;
     const tar = await docsTar(this.dir);
     if (tar.length > DOCS_MAX) {
       if (!this.oversize) this.log.error(`docs: ${this.dir} packs to ${(tar.length / 2 ** 20).toFixed(1)} MB, over the ${DOCS_MAX / 2 ** 20} MB a worker takes; no worker gets it`);
@@ -267,8 +274,9 @@ export class WorkerDocs {
   // a doc's content, unless the home has it coming already: this machine's last change to it, or else the home's last tar
   private journal(rel: string, data?: Buffer): void {
     const sha256 = data && sha256Hex(data);
-    if (data && sha256 && data.length > NOTE_MAX) {
-      if (this.refused.get(rel) !== sha256) this.o.log.error(`docs: ${path.join(this.o.dir, rel)} is over ${NOTE_MAX / 2 ** 20} MB and stays on this machine`);
+    const over = !data ? undefined : data.length > NOTE_MAX ? `is over ${NOTE_MAX / 2 ** 20} MB` : !packable(rel) ? 'has a name the home\'s docs cannot carry' : undefined;
+    if (data && sha256 && over) {
+      if (this.refused.get(rel) !== sha256) this.o.log.error(`docs: ${path.join(this.o.dir, rel)} ${over} and stays on this machine`);
       this.refused.set(rel, sha256);
       return;
     }

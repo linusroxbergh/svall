@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import type { ContextItem } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, type ContextItem } from '@svall/protocol';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
@@ -69,6 +69,11 @@ const typeNote = (value: string) => {
   return note;
 };
 const dismiss = () => act(async () => { fireEvent.pointerDown(document.querySelector('.sheet-back')!); });
+
+test('the note takes no more than the fleet does', () => {
+  open();
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).maxLength).toBe(ROBOT_NOTE_MAX);
+});
 
 test('a note being typed is saved when the sheet is dismissed', async () => {
   const onClose = open();
