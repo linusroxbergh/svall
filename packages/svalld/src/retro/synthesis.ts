@@ -36,7 +36,7 @@ export const SYNTHESIS_SYSTEM = [
   '- `target` is a SKILLS or RULES id, or the path a new file would go to; `subject` the skill or rule it is about.',
   '- `nearest` holds the ids of existing skills or rules it could extend; a new skill or rule always names them. Prefer repairing an existing instruction over adding a near-duplicate.',
   '- Skip the dismissed categories.',
-  'Also write `overview`, one line on how the span went using the session numbers, and `works`, one line on what ran without a correction.',
+  'Also write `overview`, one line on what stood out in the span, leaving out the totals shown beside it, and `works`, one line on what ran without a correction.',
 ].join('\n');
 
 function groupText(g: Group, agg: Aggregate): string {

@@ -44,15 +44,21 @@ the commands this skill names, never a command or diff from a finding.
        svall retro findings r_1761562980
        svall robot update c_abc123 --note "retro r_1761562980: 5 findings; svall retro findings r_1761562980 prints them"
 
-5. Act only on what the user says, by the printed numbers:
-   - "more 2": `svall retro show 2 r_1761562980`, shown as printed.
-   - "report": give the report's path from the first line of the findings.
-   - "fix 2, 4": `svall retro mark fix 2 4`. A fix that comes back as `apply`
-     changes a local file: show its diff, and run `svall retro apply <id>`
-     with the id `mark` printed, only after the user OKs that diff. Show a
-     `proposal` or `robot` one to the user; change no file yourself.
+5. Act only on what the user says, by the printed numbers. Write for someone
+   who never saw the report: name a finding by its number and title, never
+   its id, and leave out scores, verdict words and example ids.
+   - "more 2": `svall retro show 2 r_1761562980`, then say in a few lines what
+     went wrong, with two or three of its examples, and what the fix changes.
+   - "report": give the path on the findings' `Report:` line.
+   - "fix 2, 4": `svall retro mark fix 2 4`. Per finding, under its number and
+     title: the file, what the change does in one sentence, and only the lines
+     it adds or removes, in a fence. An `apply` one changes its file only after
+     the user OKs it: then run the `svall retro apply` command `mark` printed.
+     A `proposal` is for the user to make by hand and a `robot` one opens a
+     PR; change no file yourself.
    - "dismiss 3 wrong": `svall retro mark dismiss 3 --reason wrong`. With no
      reason given, ask: wrong, or not worth it (`--reason not-worth-it`).
    - "later 5": `svall retro mark later 5`.
 
-   Say what each mark did, one line each.
+   Say what each mark did, and end with the one question left, such as which
+   changes to apply.

@@ -1,8 +1,8 @@
 import os from 'node:os';
-import type { Finding, RetroReport } from '@svall/protocol';
+import { AGENT_LABEL, type Finding, type RetroReport } from '@svall/protocol';
 import { day } from './synthesis.js';
 
-const SHOWN = 5, WORKS = 4, LINE = 160, UNUSED = 15;
+const SHOWN = 5, WORKS = 4, KINDS = 3, LINE = 160, UNUSED = 15;
 const LANDS: Record<NonNullable<Finding['target']>['class'], string> = {
   repo: 'a robot opens a PR', local: 'applied on your OK', 'agent-settings': 'a proposal: settings are yours to change',
   synced: 'a proposal: a local edit would be overwritten at the next sync', svall: "a proposal: Svall's own files are rewritten on start",
@@ -27,6 +27,8 @@ const hours = (ms: number): string => `${Math.round(ms / 3_600_000)}h`;
 const minutes = (ms: number): string => (ms >= 3_600_000 ? `~${hours(ms)}` : ms >= 60_000 ? `~${Math.round(ms / 60_000)}m` : '–');
 const plural = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 const clip = (s: string, n = LINE): string => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
+// a code span of text that holds no backtick of its own
+const code = (s: string): string => `\`${flat(s).replace(/`/g, "'")}\``;
 const cell = (s: string | number): string => flat(String(s)).replace(/\|/g, '\\|');
 const table = (head: string[], rows: (string | number)[][]): string[] => (rows.length
   ? [`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`, ...rows.map((r) => `| ${r.map(cell).join(' | ')} |`)] : ['None.']);
@@ -57,15 +59,34 @@ function reviewLine(v: RetroReport['reviews']): string {
   for (const t of v.themes) themes.set(t.theme, (themes.get(t.theme) ?? 0) + t.confirmed);
   const top = [...themes].sort((a, b) => b[1] - a[1])[0];
   const misses = v.confirmed
-    ? `${plural(v.confirmed, 'confirmed miss', 'confirmed misses')} in ${v.missPrs} of ${plural(v.prs, 'reviewed PR')}${top?.[1] ? `, most ${top[0]}` : ''}`
-    : `no confirmed misses in ${plural(v.prs, 'reviewed PR')}`;
-  return `Reviews: ${misses} · ${plural(v.later, 'later comment')}${v.unknown ? `, ${v.unknown} unknown` : ''}`;
+    ? `${v.confirmed} of the ${plural(v.later, 'later comment')} ${v.confirmed === 1 ? 'was a miss' : 'were misses'} the review could have caught and that got fixed, in ${v.missPrs} of ${plural(v.prs, 'PR')}${top?.[1] ? `, most ${top[0]}` : ''}`
+    : `none of the ${plural(v.later, 'later comment')} on ${plural(v.prs, 'PR')} was a miss the review could have caught`;
+  return `${misses}${v.unknown ? `; ${v.unknown} unclear` : ''}`;
 }
 
+// what was read: the sessions by agent, the repos and hours, the kinds of work most sessions did, and the PR comments
 function readLine(r: RetroReport): string {
-  const all = r.coverage.sessions.length;
-  const read = r.coverage.sessions.filter((s) => s.status !== 'failed').length;
-  return `${read === all ? `All ${plural(all, 'session')} read` : `${read} of ${plural(all, 'session')} read (${all - read} in the report's coverage)`} · ${spent(r)}`;
+  const all = r.coverage.sessions;
+  const failed = all.filter((s) => s.status === 'failed').length;
+  const agents = new Map<string, number>();
+  for (const s of all) agents.set(AGENT_LABEL[s.agent], (agents.get(AGENT_LABEL[s.agent]) ?? 0) + 1);
+  const sessions = agents.size === 1 ? `${all.length} ${[...agents.keys()][0]} ${all.length === 1 ? 'session' : 'sessions'}`
+    : `${plural(all.length, 'session')}${agents.size ? ` (${[...agents].sort((a, b) => b[1] - a[1]).map(([a, n]) => `${a} ${n}`).join(', ')})` : ''}`;
+  const kinds = new Map<string, number>();
+  for (const m of r.overview.mix) kinds.set(m.kind, (kinds.get(m.kind) ?? 0) + m.sessions);
+  const mix = [...kinds].sort((a, b) => b[1] - a[1]).slice(0, KINDS).map(([k, n]) => `${k} ${n}`).join(' · ');
+  return [
+    `${sessions} in ${plural(r.overview.repos, 'repo')}, ${hours(r.overview.activeMs)} active${mix ? `: ${mix}` : ''}`,
+    failed ? `; ${failed} could not be read` : '',
+    r.reviews.prs ? `. Also the ${plural(r.reviews.later, 'comment')} others left later on ${plural(r.reviews.prs, 'PR')} the agents reviewed` : '',
+  ].join('');
+}
+
+// how the run read and judged them, with the models and the tokens each spent
+function howLine(r: RetroReport): string {
+  const p = r.preset;
+  return `${p.read} read each session into a card (what was asked, where you corrected the agent, rules you typed, time lost to errors, how each skill ran)${r.reviews.prs ? ' and labelled each later PR comment' : ''}. `
+    + `Code counted what repeats; ${p.judge} turned each repeat into a finding with a proposed change, and ${p.verify} checked each against the raw sessions${r.dropped.length ? `, dropping ${r.dropped.length}` : ''}. ${spent(r)}.`;
 }
 
 function moreLine(r: RetroReport): string | undefined {
@@ -81,26 +102,46 @@ function moreLine(r: RetroReport): string | undefined {
   return line || undefined;
 }
 
-/** The chat's summary: at most 25 lines, the top five findings, no session ids or line numbers. */
+// the verifier's change replaces the judge's, whose fix line would then say what no longer lands
+const fixText = (f: Finding): string => flat(f.verdict.change === 'ok' ? f.fix : f.change.summary);
+const lands = (f: Finding): string => {
+  const how = f.target && f.change.kind === 'diff' ? LANDS[f.target.class] : 'a proposal to make by hand';
+  return `${f.effort}${f.target ? ` in ${code(short(f.target.path))}` : ''}, ${how}`;
+};
+
+function findingLines(f: Finding, n: number): string[] {
+  return [
+    `**${n}. ${flat(f.title)}** · ${f.value.badge} · ${flat(f.value.reason)}`,
+    `- **Issue:** ${flat(f.problem)}`,
+    `- **Fix:** ${fixText(f)}`,
+    `- **Change:** ${lands(f)}`,
+    '',
+  ];
+}
+
+/** The chat's summary in markdown: what the run read and how, how the span went, and the top five findings, each with its
+ *  issue, fix and where the change lands; no session ids or line numbers. */
 export function summary(r: RetroReport, reportPath: string): string {
   const error = r.errors.find((e) => !e.expected);
   const lines = [
-    `Retro · ${spanText(r.span)} · ${plural(r.overview.sessions, 'session')} in ${plural(r.overview.repos, 'repo')} · report: ${short(reportPath)}`,
+    `**Retro · ${spanText(r.span)}** · ${flat(r.span.label)}`,
     '',
-    clip(`The span: ${flat(r.overview.text).replace(/\.$/, '') || 'no sessions'} · ${hours(r.overview.activeMs)} active`),
-    ...(r.reviews.prs ? [reviewLine(r.reviews)] : []),
-    ...(error ? [clip(`Errors: ${error.key}, ${plural(error.failures, 'failure')} in ${plural(error.sessions, 'session')}: ${flat(error.signature)}`)] : []),
+    "What keeps going wrong across the agents' sessions, with a change to a skill, rule or setting proposed for each.",
+    '',
+    `- **Read:** ${readLine(r)}.`,
+    `- **How:** ${howLine(r)}`,
+    ...(flat(r.overview.text) ? [`- **What stood out:** ${flat(r.overview.text)}`] : []),
+    ...(r.reviews.prs ? [`- **Reviews:** ${reviewLine(r.reviews)}`] : []),
+    ...(error ? [`- **Errors:** ${code(error.key)} failed ${error.failures === 1 ? 'once' : `${error.failures} times`} in ${plural(error.sessions, 'session')}: ${code(clip(flat(error.signature)))}`] : []),
     ...(r.works.skills.length || r.works.text
-      ? ['', 'Ran without a correction', `  ${r.works.skills.length ? r.works.skills.slice(0, WORKS).map((w) => `${w.skill} ${w.clean} of ${w.runs} runs`).join(' · ') : clip(flat(r.works.text))}`]
+      ? [`- **Ran without a correction:** ${r.works.skills.length ? r.works.skills.slice(0, WORKS).map((w) => `${w.skill} ${w.clean} of ${w.runs} runs`).join(' · ') : flat(r.works.text)}`]
       : []),
-    '', 'Worth fixing',
-    ...(r.findings.length
-      ? r.findings.slice(0, SHOWN).flatMap((f, i) => [`  ${i + 1} ${f.value.badge.padEnd(4)}  ${clip(flat(f.title))}`, `          ${clip(`${flat(f.value.reason)} → ${flat(f.fix)} · ${f.effort}`)}`])
-      : ['  Nothing recurs often enough to fix.']),
+    '', '**Worth fixing**', '',
+    ...(r.findings.length ? r.findings.slice(0, SHOWN).flatMap((f, i) => findingLines(f, i + 1)) : ['Nothing recurs often enough to fix.', '']),
+    ...[moreLine(r)].filter((l): l is string => !!l).flatMap((l) => [l, '']),
+    `Report: ${code(short(reportPath))}`,
     '',
-    ...[moreLine(r)].filter((l): l is string => !!l),
-    readLine(r),
-    'Reply "fix 1 3", "more 2", "dismiss 4 wrong"',
+    'Reply "fix 1 3", "more 2", "dismiss 4 wrong" or "later 5"',
   ];
   return lines.join('\n');
 }
@@ -156,7 +197,7 @@ export function reportMd(r: RetroReport, reportPath: string): string {
   const u = r.usage.byStage;
   return [
     `# Retro · ${spanText(r.span)}`, '',
-    '## Summary', '', fenced(summary(r, reportPath), '', 'text'), '',
+    '## Summary', '', summary(r, reportPath), '',
     '## Findings', '',
     ...(r.findings.length ? r.findings.flatMap((f, i) => findingMd(f, i + 1)) : ['Nothing recurs often enough to fix.', '']),
     ...(r.previous.length ? ['## Fixed since the last retro', '', ...r.previous.map((f) => `- ${flat(f.title)}: ${f.measure.before ? `${f.measure.before.count} of ${f.measure.before.of}` : '–'} → ${f.measure.after ? `${f.measure.after.count} of ${f.measure.after.of}` : 'not measured yet'}`), ''] : []),
@@ -171,7 +212,7 @@ export function reportMd(r: RetroReport, reportPath: string): string {
     ...(r.works.text ? [flat(r.works.text), ''] : []),
     ...table(['Skill', 'Runs', ...WENT], r.skills.map((s) => [s.skill, s.runs, ...WENT.map((w) => s.went[w] ?? 0)])), '',
     '## Review feedback', '',
-    ...(r.reviews.prs ? [reviewLine(r.reviews).replace(/^Reviews: /, ''), ''] : []),
+    ...(r.reviews.prs ? [`${reviewLine(r.reviews)}.`, ''] : []),
     ...table(['Theme', 'Severity', 'Later feedback', 'Confirmed misses', 'Unknown'], r.reviews.themes.map((t) => [t.theme, t.severity, t.later, t.confirmed, t.unknown])), '',
     '## Repeated asks and sequences', '',
     ...table(['Kind', 'What', 'Sessions'], r.asks.map((a) => [a.kind, a.key, a.sessions])), '',

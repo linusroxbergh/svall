@@ -33,7 +33,7 @@ export const VERIFY_SYSTEM = [
   '',
   'Answer with one verdict per candidate, `candidate` set to its n:',
   '- `verdict`: holds when the evidence shows the problem as stated, partly when it shows some of it, no when it does not; `reason` says why in one line.',
-  "- `change`: ok when it is right as it is; edited when it needs correcting, with the whole corrected change in `edited` (a proposal for a target whose text you have becomes a unified diff against that text, its context lines exact); extend when a nearest skill or rule should carry it instead, with that one's id in `extend` and the change rewritten against it in `edited`.",
+  "- `change`: ok when it is right as it is; edited when it needs correcting, with the whole corrected change in `edited`, its `summary` the corrected fix on its own rather than what you changed (a proposal for a target whose text you have becomes a unified diff against that text, its context lines exact); extend when a nearest skill or rule should carry it instead, with that one's id in `extend` and the change rewritten against it in `edited`.",
   '- `rule`: for a candidate about a rule, active when its text was in force for the evidence, preference when no rule says it; else null.',
 ].join('\n');
 

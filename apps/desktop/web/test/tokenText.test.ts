@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Robot } from '@svall/protocol';
-import { ago, hintLabel, hintText, linkText, retroText, statusWord } from '../src/map/tokenText.js';
+import { ago, hintLabel, hintText, linkText, statusWord } from '../src/map/tokenText.js';
 
 describe('linkText', () => {
   it('shows a file or folder by its last segment', () => {
@@ -18,22 +18,6 @@ describe('linkText', () => {
     expect(linkText({ kind: 'pr', ref: 'https://github.com/o/svall/pull/614', label: 'the redesign', source: 'manual' })).toBe('the redesign');
     expect(linkText({ kind: 'pr', ref: 'https://gitea.example/o/r/pulls/9', label: '#9', source: 'manual' })).toBe('#9');
     expect(linkText({ kind: 'pr', ref: 'github.com/o/svall/pull/614', label: '', source: 'manual' })).toBe('svall #614');
-  });
-});
-
-describe('retroText', () => {
-  it('names the stage of a retro on the card of the robot that runs it, and on no other', () => {
-    const retro = { run: 'r_1', stage: 'reading' as const, done: 7, total: 18, robot: 'c0' };
-    expect(retroText(retro, 'c0')).toBe('retro reading 7/18');
-    expect(retroText({ ...retro, stage: 'judging' }, 'c0')).toBe('retro judging');
-    expect(retroText({ ...retro, stage: 'done' }, 'c0')).toBe('retro done');
-    expect(retroText({ ...retro, stage: 'failed' }, 'c0')).toBe('retro failed');
-    // with the tokens used so far
-    expect(retroText({ ...retro, done: 84, total: 194, used: 410_000 }, 'c0')).toBe('retro reading 84/194 · 410k');
-    expect(retroText({ ...retro, stage: 'judging', used: 1_640_000 }, 'c0')).toBe('retro judging · 1.6M');
-    expect(retroText(retro, 'c1')).toBeUndefined();
-    expect(retroText({ ...retro, robot: undefined }, 'c0')).toBeUndefined();
-    expect(retroText(undefined, 'c0')).toBeUndefined();
   });
 });
 

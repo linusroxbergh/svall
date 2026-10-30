@@ -213,10 +213,9 @@
 .mline>span{overflow:hidden;text-overflow:ellipsis}
 .mline b{font-weight:inherit}
 .mline .ind-glyph{flex:none;width:1em;height:1em}
-/* the worker or retro band tops the card, theme.token.band tall: the card grows up by it, so everything else keeps its place */
+/* the worker band tops the card, theme.token.band tall: the card grows up by it, so everything else keeps its place */
 .tok .mach{flex:none;justify-content:center;gap:calc(var(--tok)*.08);height:calc(var(--tok)*.38);padding:0 calc(var(--tok)*.1);
   background:var(--away);color:var(--ink-on-away);font-size:calc(var(--tok)*.22);font-weight:var(--w-bold);letter-spacing:var(--track-loose);text-transform:uppercase}
-.tok .mach.retro{background:var(--surface-2);color:var(--ink)}
 .tok:has(.mach) .card{height:calc(var(--card-h) + var(--tok)*.38);margin-top:calc(var(--tok)*-.38)}
 .tok:has(.mach) .card::before{top:calc(var(--tok)*.63)}
 .tok:has(.mach) .corner{top:calc(var(--tok)*-.38)}
