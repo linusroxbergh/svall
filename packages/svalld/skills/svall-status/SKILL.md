@@ -12,26 +12,32 @@ Change nothing except your own note.
    something, run `svall robot read <name>`, and
    `svall robot read <name> --transcript --lines 30` when the screen is not
    enough.
-3. Print a one-line count, then these sections in this order, skipping empty
-   ones. Plain text, no markdown: the report is also your card note.
+3. Print a one-line count, then these sections in this order, a blank line
+   between them, skipping empty ones. Write each robot's name as a link to its
+   id, which selects it on click:
 
        12 robots: 1 needs you, 2 to review, 2 working, 7 quiet
 
        Needs you
-         bob — asks whether to drop the failing auth test (SV-41)
+       - [bob](svall://robot/c_abc123) — asks whether to drop the failing auth test (SV-41)
+
        Ready to review
-         review-472 — PR #472 waiting for your review
-         deploy — done, unread
+       - [review-472](svall://robot/c_def456) — reviewed PR #472, 2 blocking comments
+       - [deploy](svall://robot/c_ghi789) — shipped 0.8.1 to svall.dev
+
        Working
-         api-tests, docs
+       - [api-tests](svall://robot/c_jkl012), [docs](svall://robot/c_mno345)
+
        Quiet
-         6 dormant, 1 idle
+       - 6 dormant, 1 idle
 
    Needs you: blocked, or asking a question. Ready to review: done or unread,
-   PRs waiting on the user, failures only the user can fix. Working: one line
-   each only when notable, else one comma list. Quiet: one count line.
-4. Save the whole report as your own note, so it shows on your card. Your id is
-   the `c_…` in the `svall robot show` line that ends your Svall context.
+   PRs waiting on the user, failures only the user can fix. Each of these gets
+   a very short line on what it asks or did. Working: one line each only when
+   notable, else one comma list. Quiet: one count line.
+4. Save the same report as your own note, so it shows on your card. The card
+   shows the note as plain text, so write the names there without links. Your
+   id is the `c_…` in the `svall robot show` line that ends your Svall context.
    Write the id out: a command holding `$SVALL_ROBOT_ID` waits for the user's
    approval. The quoted heredoc keeps quotes and backticks copied from other
    agents intact:
@@ -40,9 +46,11 @@ Change nothing except your own note.
        3 robots: 1 needs you, 1 to review, 1 quiet
 
        Needs you
-         bob — asks whether to drop the failing auth test (SV-41)
+       - bob — asks whether to drop the failing auth test (SV-41)
+
        Ready to review
-         review-472 — PR #472 waiting for your review
+       - review-472 — reviewed PR #472, 2 blocking comments
+
        Quiet
-         1 dormant
+       - 1 dormant
        EOF
