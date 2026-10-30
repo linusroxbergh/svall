@@ -76,6 +76,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             NSLog("no web bundle in %@ and no SVALL_DEV_URL", Bundle.main.resourceURL?.path ?? "")
             missingBundle = true
         }
+        // the page asks for the daemon once its script runs; asking now has it listening sooner
+        if !missingBundle { FleetDaemon.start() }
 
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
