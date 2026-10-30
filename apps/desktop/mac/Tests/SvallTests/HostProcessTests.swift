@@ -169,6 +169,24 @@ final class HostProcessTests: XCTestCase {
         XCTAssertFalse(process.isRunning)
     }
 
+    /// The page's Stop leaves main free while the child ends; a quit's cancel after it returns only once the child is gone.
+    func testAStopThatDoesNotWaitLeavesMainFreeAndAQuitStillWaitsForTheEnd() throws {
+        let helper = try fakeHelper(prints: [], then: "trap '' TERM\nprintf '%s\\n' '\(step)'\nwhile :; do sleep 1; done")
+        addTeardownBlock { pkill(helper) }
+        let process = HostProcess(executable: helper, arguments: ["host", "doctor", "studio", "--json"])
+        let stepped = expectation(description: "step")
+        process.onStep = { _ in stepped.fulfill() }
+        try process.start()
+        wait(for: [stepped], timeout: 5)
+        let began = Date()
+        process.cancel(wait: false)
+        XCTAssertLessThan(Date().timeIntervalSince(began), 0.5)
+        XCTAssertTrue(process.isRunning)
+        process.cancel()
+        XCTAssertFalse(process.isRunning)
+        XCTAssertGreaterThan(Date().timeIntervalSince(began), 1.5)
+    }
+
     /// The end of a run reaches the page only after every step the child printed before it exited.
     func testEveryStepArrivesBeforeTheEndOfTheRun() throws {
         let many = (0..<200).map { #"{"step":"s\#($0)","status":"ok"}"# }

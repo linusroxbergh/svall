@@ -125,7 +125,6 @@ final class HostProcess {
     }
 
     private let child: LineChild
-    private var cancelled = false
     private var sawFailure = false
 
     var onStep: (Step) -> Void = { _ in }
@@ -143,11 +142,9 @@ final class HostProcess {
         try child.start()
     }
 
-    /// The page gave up on this run; the child holds an ssh master, so it is not left behind.
-    func cancel() {
-        guard !cancelled else { return }
-        cancelled = true
-        child.stop()
+    /// The page gave up on this run; the child holds an ssh master, so it is not left behind. `wait` returns once it is gone.
+    func cancel(wait: Bool = true) {
+        if wait { child.stop() } else { child.stopSoon() }
     }
 
     /// A line that is no step, as the result or report a run ends with, is not the page's.

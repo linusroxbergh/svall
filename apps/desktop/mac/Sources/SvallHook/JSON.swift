@@ -31,6 +31,25 @@ enum JSON {
 
 // MARK: JSON.parse
 
+/// What a reader looks at in a value: all of it, nothing (it is still read through, so what JSON.parse refuses is refused),
+/// or of an object only the members named.
+enum Keep {
+    case all, none
+    case members([Text: Keep])
+
+    static func only(_ names: [String: Keep]) -> Keep { .members(Dictionary(uniqueKeysWithValues: names.map { (text($0.key), $0.value) })) }
+
+    var builds: Bool { if case .none = self { return false }; return true }
+
+    func member(_ key: Text) -> Keep {
+        switch self {
+        case .all: return .all
+        case .none: return .none
+        case .members(let names): return names[key] ?? .none
+        }
+    }
+}
+
 func appendScalar(_ cp: UInt32, _ out: inout Text) {
     if cp < 0x10000 { out.append(UInt16(cp)); return }
     out.append(UInt16(0xD800 + ((cp - 0x10000) >> 10)))
@@ -96,9 +115,9 @@ struct Parser {
     var i = 0
     var depth = 0
 
-    static func parse(_ b: Bytes) -> JSON? {
+    static func parse(_ b: Bytes, keep: Keep = .all) -> JSON? {
         var p = Parser(b: b)
-        guard let v = p.value() else { return nil }
+        guard let v = p.value(keep) else { return nil }
         p.space()
         return p.i == b.count ? v : nil
     }
@@ -109,17 +128,19 @@ struct Parser {
 
     func at(_ c: UInt8) -> Bool { i < b.count && b[i] == c }
 
-    mutating func value() -> JSON? {
+    mutating func value(_ keep: Keep = .all) -> JSON? {
         space()
         guard i < b.count else { return nil }
+        // a value that is no object has none of the members a reader looks for; null it tells apart
+        if case .members = keep, b[i] != UInt8(ascii: "{"), b[i] != UInt8(ascii: "n") { return value(.none).map { _ in .array([]) } }
         switch b[i] {
-        case UInt8(ascii: "{"): return object()
-        case UInt8(ascii: "["): return array()
-        case UInt8(ascii: "\""): return string().map { .string($0) }
+        case UInt8(ascii: "{"): return object(keep)
+        case UInt8(ascii: "["): return array(keep)
+        case UInt8(ascii: "\""): return string(keep.builds).map { .string($0) }
         case UInt8(ascii: "t"): return word("true", .bool(true))
         case UInt8(ascii: "f"): return word("false", .bool(false))
         case UInt8(ascii: "n"): return word("null", .null)
-        default: return number()
+        default: return number(keep.builds)
         }
     }
 
@@ -136,7 +157,7 @@ struct Parser {
         return i > start
     }
 
-    mutating func number() -> JSON? {
+    mutating func number(_ build: Bool = true) -> JSON? {
         let start = i
         if at(UInt8(ascii: "-")) { i += 1 }
         if at(UInt8(ascii: "0")) { i += 1 } else if !digits() { return nil }
@@ -146,47 +167,48 @@ struct Parser {
             if at(UInt8(ascii: "+")) || at(UInt8(ascii: "-")) { i += 1 }
             guard digits() else { return nil }
         }
+        guard build else { return .null }
         let token = Array(b[start..<i]) + [0]
         return .number(token.withUnsafeBufferPointer { $0.withMemoryRebound(to: CChar.self) { strtod($0.baseAddress!, nil) } })
     }
 
-    mutating func string() -> Text? {
+    mutating func string(_ build: Bool = true) -> Text? {
         i += 1
         var out = Text()
         var run = i
         while i < b.count {
             let c = b[i]
-            if c == UInt8(ascii: "\"") { decodeUTF8(b[run..<i], &out); i += 1; return out }
+            if c == UInt8(ascii: "\"") { if build { decodeUTF8(b[run..<i], &out) }; i += 1; return out }
             if c < 0x20 { return nil }
             guard c == UInt8(ascii: "\\") else { i += 1; continue }
-            decodeUTF8(b[run..<i], &out)
+            if build { decodeUTF8(b[run..<i], &out) }
             i += 1
             guard i < b.count else { return nil }
+            var unit: UInt16 = 0
             switch b[i] {
-            case UInt8(ascii: "\""), UInt8(ascii: "\\"), UInt8(ascii: "/"): out.append(UInt16(b[i]))
-            case UInt8(ascii: "b"): out.append(0x08)
-            case UInt8(ascii: "f"): out.append(0x0C)
-            case UInt8(ascii: "n"): out.append(0x0A)
-            case UInt8(ascii: "r"): out.append(0x0D)
-            case UInt8(ascii: "t"): out.append(0x09)
+            case UInt8(ascii: "\""), UInt8(ascii: "\\"), UInt8(ascii: "/"): unit = UInt16(b[i])
+            case UInt8(ascii: "b"): unit = 0x08
+            case UInt8(ascii: "f"): unit = 0x0C
+            case UInt8(ascii: "n"): unit = 0x0A
+            case UInt8(ascii: "r"): unit = 0x0D
+            case UInt8(ascii: "t"): unit = 0x09
             case UInt8(ascii: "u"):
                 guard i + 4 < b.count else { return nil }
-                var unit: UInt16 = 0
                 for k in 1...4 {
                     guard let d = hexDigit(b[i + k]) else { return nil }
                     unit = unit << 4 | d
                 }
-                out.append(unit)
                 i += 4
             default: return nil
             }
+            if build { out.append(unit) }
             i += 1
             run = i
         }
         return nil
     }
 
-    mutating func array() -> JSON? {
+    mutating func array(_ keep: Keep = .all) -> JSON? {
         i += 1
         depth += 1
         defer { depth -= 1 }
@@ -195,8 +217,8 @@ struct Parser {
         space()
         if at(UInt8(ascii: "]")) { i += 1; return .array(items) }
         while true {
-            guard let v = value() else { return nil }
-            items.append(v)
+            guard let v = value(keep) else { return nil }
+            if keep.builds { items.append(v) }
             space()
             if at(UInt8(ascii: ",")) { i += 1; continue }
             guard at(UInt8(ascii: "]")) else { return nil }
@@ -205,7 +227,7 @@ struct Parser {
         }
     }
 
-    mutating func object() -> JSON? {
+    mutating func object(_ keep: Keep = .all) -> JSON? {
         i += 1
         depth += 1
         defer { depth -= 1 }
@@ -216,13 +238,16 @@ struct Parser {
         if at(UInt8(ascii: "}")) { i += 1; return .object(members) }
         while true {
             space()
-            guard at(UInt8(ascii: "\"")), let key = string() else { return nil }
+            guard at(UInt8(ascii: "\"")), let key = string(keep.builds) else { return nil }
             space()
             guard at(UInt8(ascii: ":")) else { return nil }
             i += 1
-            guard let v = value() else { return nil }
+            let wanted = keep.member(key)
+            guard let v = value(wanted) else { return nil }
             // a repeated key keeps its first place and takes the last value
-            if let n = index[key] { members[n].value = v } else { index[key] = members.count; members.append((key, v)) }
+            if wanted.builds {
+                if let n = index[key] { members[n].value = v } else { index[key] = members.count; members.append((key, v)) }
+            }
             space()
             if at(UInt8(ascii: ",")) { i += 1; continue }
             guard at(UInt8(ascii: "}")) else { return nil }
