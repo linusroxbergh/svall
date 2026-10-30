@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
-import { farRootId, type MachineId, type ResourceSource, type Robot } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, farRootId, type MachineId, type ResourceSource, type Robot } from '@svall/protocol';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
 import { figureOf, figureUrl, stepFigure } from '../../src/portraits.js';
@@ -57,6 +57,11 @@ beforeEach(() => {
   load = undefined;
   freshStore();
   store.getState().select('c0', true);
+});
+
+test('the note takes no more than the fleet does', () => {
+  render(<Side />);
+  expect(field('side-note').maxLength).toBe(ROBOT_NOTE_MAX);
 });
 
 test('a draft in one robot\'s instructions never shows or saves on the next one', () => {

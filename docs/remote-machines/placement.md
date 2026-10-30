@@ -247,7 +247,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
   notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
   Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
-  here since; it stays".
+  here since; it stays". A change at a path this Mac's docs cannot hold, such as under a file of that name here, is
+  skipped: "linus-vault changed robots/c_4f2k9a/plan/a.md, which this Mac's docs cannot hold; it was skipped: ENOTDIR: …".
 - A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
   cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:

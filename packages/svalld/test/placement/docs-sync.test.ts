@@ -311,6 +311,26 @@ describe('a doc changed on both machines', () => {
     expect(infos.filter((l) => l.endsWith('carries no id, as an older release journaled it'))).toHaveLength(2);
   });
 
+  it('a change at a path the docs here cannot hold, under a file or past a name\'s length, is skipped, logged and said in the note', () => {
+    const home = path.join(makeHome(), 'docs');
+    put(path.join(home, 'robots/c_1/a'), 'a file\n');
+    const logged: string[] = [];
+    const docs = new HomeDocs(home, { info() {}, error: (m) => { logged.push(m); } }, () => 'w1', () => true);
+    const store = homeStore();
+    const text = (t: string) => ({ id: newMutationId(), data: Buffer.from(t).toString('base64'), sha256: sha256Hex(Buffer.from(t)), prev: null });
+    const under = docs.apply('docs.write', { path: 'robots/c_1/a/b.md', ...text('b\n') }, W)!;
+    const long = docs.apply('docs.write', { path: `robots/c_1/${'n'.repeat(250)}.md`, ...text('n\n') }, W)!;
+    expect(under).toEqual({ file: 'robots/c_1/a/b.md', refused: expect.stringMatching(/^ENOTDIR: not a directory/) });
+    expect(long).toEqual({ file: `robots/c_1/${'n'.repeat(250)}.md`, refused: expect.stringMatching(/^ENAMETOOLONG: name too long/) });
+    for (const c of [under, long]) noteConflict(store, W, c, '/Users/ada');
+    expect(store.state.robots.c_1.note.split('\n')).toEqual([
+      `w1 changed robots/c_1/a/b.md, which this Mac's docs cannot hold; it was skipped: ${under.refused}`,
+      `w1 changed robots/c_1/${'n'.repeat(250)}.md, which this Mac's docs cannot hold; it was skipped: ${long.refused}`,
+    ]);
+    expect(logged).toEqual([`docs: docs.write of robots/c_1/a/b.md from w1 skipped: ${under.refused}`, `docs: docs.write of robots/c_1/${'n'.repeat(250)}.md from w1 skipped: ${long.refused}`]);
+    expect(read(path.join(home, 'robots/c_1/a'))).toBe('a file\n');
+  });
+
   it('changes made one after another on the worker apply at home in turn, across restarts of the home, a delete and a new file at that path included', async () => {
     const { home, note, events, next } = await journaling('v1\n');
     await next(() => put(note, 'v2\n'));

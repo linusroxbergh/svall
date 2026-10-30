@@ -93,6 +93,8 @@ export class HomeConnection {
   call<T>(method: string, params: unknown, o?: { timeoutMs?: number; signal?: AbortSignal }): Promise<T> {
     const link = this.link;
     if (!link?.live) return Promise.reject(this.unreachable());
+    const big = this.overLine({ t: 'call', id: Number.MAX_SAFE_INTEGER, method, params });
+    if (big) return Promise.reject(big);
     // a not_reachable the home answers is its own, about another machine
     return link.stream.call<T>(method, params, o).catch((e: unknown) => {
       throw e instanceof ApiError && e.code === 'not_reachable' && this.link !== link ? this.unreachable() : e;
@@ -165,8 +167,14 @@ export class HomeConnection {
 
   /** Refuses with too_large an event whose frame would be over the link's line limit, which the home could never take. */
   fits(kind: string, data: unknown): void {
-    const bytes = Buffer.byteLength(JSON.stringify({ t: 'event', seq: Number.MAX_SAFE_INTEGER, kind, data }));
-    if (bytes > MAX_LINE) throw new ApiError('too_large', `this change is ${bytes} bytes, over the ${MAX_LINE} the link to ${this.o.worker.homeName} carries`);
+    const big = this.overLine({ t: 'event', seq: Number.MAX_SAFE_INTEGER, kind, data });
+    if (big) throw big;
+  }
+
+  // too_large for a frame over the link's line limit, whose line would close the link at the home
+  private overLine(frame: object): ApiError | undefined {
+    const bytes = Buffer.byteLength(JSON.stringify(frame));
+    return bytes > MAX_LINE ? new ApiError('too_large', `this change is ${bytes} bytes, over the ${MAX_LINE} the link to ${this.o.worker.homeName} carries`) : undefined;
   }
 
   private unreachable(): ApiError {

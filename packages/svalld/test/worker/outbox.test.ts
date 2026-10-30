@@ -149,6 +149,19 @@ describe('Outbox', () => {
     expect(reopened.append('robot.sync', { n: 3 })).toBe(2);
   });
 
+  it('keeps an older build\'s create past the line limit without its run text, as its robot still runs there', () => {
+    const paths = resolvePaths(makeHome());
+    Outbox.open(paths);
+    const create = { id: 'mu_0000000001', method: 'robot.create', params: { islandId: 'i_1', cwd: '/w', run: 'x'.repeat(MAX_LINE) }, robot: { id: 'c_1' } };
+    fs.appendFileSync(paths.outbox, `${JSON.stringify({ seq: 1, kind: 'mutation', data: create })}\n`);
+    const logged: string[] = [];
+    const reopened = Outbox.open(paths, { error: (m) => logged.push(m) });
+    const { run: _, ...params } = create.params;
+    expect(reopened.after(0)).toEqual([{ seq: 1, kind: 'mutation', data: { ...create, params } }]);
+    expect(logged).toEqual([expect.stringMatching(/^journal: entry 1 \(mutation\) is \d+ bytes, over the link's limit of 2097152; kept without its run text$/)]);
+    expect(Outbox.open(paths).after(0)).toEqual(reopened.after(0));
+  });
+
   it('drops a last line a crash cut short, and the next append starts on a line of its own', () => {
     const paths = resolvePaths(makeHome());
     Outbox.open(paths).append('robot.sync', { n: 1 });

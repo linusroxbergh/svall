@@ -410,7 +410,7 @@ describe('the link', () => {
     const links = w.links();
     links.start();
     await until(() => expect(w.outbox.acked()).toBe(3));
-    expect(links.for(W)?.connected()).toBe(true);
+    expect([links.for(W)?.connected(), w.home.state.machines?.[W]?.replayed?.seq]).toEqual([true, 3]);
     expect(w.reports).toEqual(['/w/after']);
     const why = '✖ Invalid input: expected number, received undefined → at generation ✖ Invalid input: expected object, received undefined → at fields';
     expect(w.home.state.robots.r_1).toMatchObject({ note: `vault sent a report on this robot that this Mac cannot read; it was skipped: ${why}`, noteSource: 'manual' });
@@ -418,24 +418,41 @@ describe('the link', () => {
     expect(logged).toEqual([1, 2].map((seq) => `vault: event ${seq} (robot.sync) is a report this svalld cannot read; skipped: ${why}`));
   });
 
-  it('an event that fails to apply the same way on every link, as on a full disk, is never skipped, and is taken once it passes', async () => {
+  it('an event that fails to apply the same way on every link, as on a full disk, is never skipped, its retry doubling, and is taken once it passes', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
     let tried = 0;
     const w = world({ onEvent: async (kind) => { if (kind === 'docs.write' && ++tried <= 3) throw new Error('ENOSPC: no space left on device, write'); } });
     w.outbox.append('docs.write', {});
     await w.worker.start();
-    let downs = 0;
-    w.home.subscribe(() => { if (w.home.state.machines?.[W]?.reachable === false) downs++; });
-    const links = w.links();
+    const tries: number[] = [];
+    const downs: number[] = [];
+    w.home.subscribe(() => {
+      const m = w.home.state.machines?.[W];
+      if (m && !m.reachable && m.since !== downs.at(-1)) downs.push(m.since);
+    });
+    const links = w.links(async (e) => { tries.push(Date.now()); return socketTo(w.workerPaths.linkSock)(e); });
     links.start();
+    // each link fails after its hello, so its backoff keeps growing
     for (const gap of [1000, 2000, 4000]) {
-      const before = downs;
-      await until(() => expect(downs).toBeGreaterThan(before), 1);
+      await until(() => expect(downs).toHaveLength(tries.length), 1);
       expect(w.outbox.acked()).toBe(0);
       await vi.advanceTimersByTimeAsync(gap);
+      expect(tries.at(-1)! - downs.at(-1)!).toBe(gap);
     }
     await until(() => expect(w.outbox.acked()).toBe(1), 1);
     expect([tried, w.seen]).toEqual([4, ['event docs.write', 'inventory from vault last 1 acked 0 robots /w/now']]);
+  });
+
+  it("the worker refuses a call to the home past the link's line limit, and the link stays up", async () => {
+    const w = world();
+    await w.worker.start();
+    const links = w.links();
+    links.start();
+    await until(() => expect(w.worker.connected()).toBe(true));
+    await expect(w.worker.call('robot.update', { id: 'r_1', note: 'x'.repeat(MAX_LINE) })).rejects.toMatchObject({
+      code: 'too_large', message: expect.stringMatching(/^this change is \d+ bytes, over the 2097152 the link to mac carries$/),
+    });
+    expect([w.worker.connected(), links.for(W)?.connected()]).toEqual([true, true]);
   });
 
   it("the worker journals an event up to the link's line limit, which the home takes, and refuses one past it; a report past it is logged", async () => {
@@ -663,7 +680,7 @@ describe('the link', () => {
     w.home.update((d) => { d.robots.r_1.note = 'x'.repeat(MAX_LINE); });
     await expect(links.pushSnapshot()).rejects.toMatchObject({ code: 'too_large' });
     await expect(links.pushSnapshot()).rejects.toMatchObject({ code: 'too_large' });
-    expect(logged).toEqual([expect.stringMatching(new RegExp(`^the fleet's snapshot is \\d+ bytes, over the link's limit of ${MAX_LINE}; no worker gets it$`))]);
+    expect(logged).toEqual([expect.stringMatching(new RegExp(`^the fleet's snapshot is \\d+ bytes, over the link's limit of ${MAX_LINE}; no worker gets it; the longest notes are named at home \\(${MAX_LINE}\\)$`))]);
     expect(links.for(W)?.connected()).toBe(true);
     expect(w.store.state.robots.r_1.note).toBe('');
 

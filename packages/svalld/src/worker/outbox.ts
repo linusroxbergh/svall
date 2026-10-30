@@ -15,22 +15,38 @@ const readOr = (file: string, missing: string): string => {
   try { return fs.readFileSync(file, 'utf8'); } catch (e) { if ((e as NodeJS.ErrnoException).code === 'ENOENT') return missing; throw e; }
 };
 
+const frameBytes = (e: Entry): number => Buffer.byteLength(JSON.stringify({ t: 'event', seq: e.seq, kind: e.kind, data: e.data }));
+
+// a robot an older build started still runs here, so its create keeps all but the text it was started with
+function withoutRun(e: Entry): Entry | undefined {
+  const m = e.data as { method?: unknown; params?: { run?: unknown } } | null;
+  if (e.kind !== 'mutation' || m?.method !== 'robot.create' || m.params?.run === undefined) return undefined;
+  const { run: _, ...params } = m.params;
+  return { ...e, data: { ...m, params } };
+}
+
 const lines = (entries: Entry[]): Buffer => Buffer.from(entries.map((e) => `${JSON.stringify(e)}\n`).join(''));
 
 /** What a worker did that the home has yet to acknowledge, in sequence: each entry is on disk before its seq is returned. */
 export class Outbox {
   private constructor(private paths: Paths, private epochId: string, private entries: Entry[], private lastSeq: number, private ackedSeq: number) {}
 
-  /** An entry an older build journaled past the link's line limit is dropped, and `log` hears of it: the home could never take it. */
+  /** An entry an older build journaled past the link's line limit, which the home could never take, is dropped, or a create
+   *  kept without its run text, and `log` hears of it. */
   static open(paths: Paths, log?: Pick<Logger, 'error'>): Outbox {
     const acked = z.coerce.number().int().nonnegative().parse(readOr(paths.acked, '0').trim());
     const text = readOr(paths.outbox, '');
     // what follows the last newline is an append a crash cut short, which never returned its seq
     const read = text.split('\n').slice(0, -1).map((line) => Entry.parse(JSON.parse(line))).filter((e) => e.seq > acked);
-    const entries = read.filter((e) => {
-      const bytes = Buffer.byteLength(JSON.stringify({ t: 'event', seq: e.seq, kind: e.kind, data: e.data }));
-      if (bytes > MAX_LINE) log?.error(`journal: entry ${e.seq} (${e.kind}) is ${bytes} bytes, over the link's limit of ${MAX_LINE}; dropped`);
-      return bytes <= MAX_LINE;
+    let changed = false;
+    const entries = read.flatMap((e) => {
+      const bytes = frameBytes(e);
+      if (bytes <= MAX_LINE) return [e];
+      changed = true;
+      const cut = withoutRun(e);
+      const kept = cut && frameBytes(cut) <= MAX_LINE;
+      log?.error(`journal: entry ${e.seq} (${e.kind}) is ${bytes} bytes, over the link's limit of ${MAX_LINE}; ${kept ? 'kept without its run text' : 'dropped'}`);
+      return kept ? [cut] : [];
     });
     const epoch = readOr(paths.epoch, '').trim();
     // seqs count within an epoch: a journal missing its acked seq or its entries starts a new one with the entries past the
@@ -42,7 +58,7 @@ export class Outbox {
       writeDurable(paths.acked, Buffer.from('0\n'));
       return new Outbox(paths, fresh, entries, entries.at(-1)?.seq ?? 0, 0);
     }
-    if (entries.length < read.length || (text && !text.endsWith('\n'))) writeDurable(paths.outbox, lines(entries));
+    if (changed || (text && !text.endsWith('\n'))) writeDurable(paths.outbox, lines(entries));
     return new Outbox(paths, epoch, entries, entries.at(-1)?.seq ?? acked, acked);
   }
 

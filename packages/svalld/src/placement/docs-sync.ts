@@ -114,9 +114,13 @@ const keptIn = (dir: string, stem: string): string[] => {
 
 const keptLine = (file: string, worker: string, kept: string) => `${file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${path.basename(kept)}`;
 const stayedLine = (file: string, worker: string) => `${worker} deleted ${file}, which changed here since; it stays`;
+const refusedLine = (file: string, worker: string, why: string) => `${worker} changed ${file}, which this Mac's docs cannot hold; it was skipped: ${why}`;
+// what the docs folder answers the same way on every try for a path it cannot hold, as one under a file or past a name's length
+const UNHELD = new Set(['ENOTDIR', 'EISDIR', 'ERR_FS_EISDIR', 'ENAMETOOLONG']);
 
-/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, or a delete refused. */
-export type Conflict = { file: string; kept?: string };
+/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, a delete refused, or
+ *  a change at a path the docs cannot hold, `refused` with why. */
+export type Conflict = { file: string; kept?: string; refused?: string };
 // `made` is the sha the change was made on, none for no file
 type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made?: string; prev?: string | null };
 
@@ -133,7 +137,7 @@ export function concerns(rel: string, state: FleetState, machine: MachineId, hom
 /** Says a conflict in the note of each robot it concerns, as the user's line, so the scribe leaves it. */
 export function noteConflict(store: Store, machine: MachineId, c: Conflict, homedir: string): void {
   const name = store.state.machines?.[machine]?.name ?? machine;
-  const line = c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
+  const line = c.refused ? refusedLine(c.file, name, c.refused) : c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
   const ids = concerns(c.file, store.state, machine, homedir);
   if (ids.length) store.update((d) => { for (const id of ids) setNote(d.robots[id], withLine(d.robots[id].note, line)); });
 }
@@ -147,17 +151,25 @@ export class HomeDocs {
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
   /** Takes a worker's change made on this Mac's copy or already held, else answers the conflict. A malformed event, or one in
-   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox. */
+   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox, but at a path
+   *  the docs cannot hold, which no retry changes. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
     const { file, bytes, sha256, made } = named;
-    const here = shaOf(file);
-    if (here !== sha256 && here !== made) return this.conflict(named, machine);
-    if (!bytes) fs.rmSync(file, { force: true });
-    else if (here !== sha256) {
-      fs.mkdirSync(path.dirname(file), { recursive: true });
-      writeDurable(file, bytes);
+    try {
+      const here = shaOf(file);
+      if (here !== sha256 && here !== made) return this.conflict(named, machine);
+      if (!bytes) fs.rmSync(file, { force: true });
+      else if (here !== sha256) {
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        writeDurable(file, bytes);
+      }
+    } catch (e) {
+      if (!UNHELD.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
+      const rel = path.relative(this.dir, file);
+      this.log.error(`docs: ${kind} of ${rel} from ${this.nameOf(machine)} skipped: ${(e as Error).message}`);
+      return { file: rel, refused: (e as Error).message };
     }
     this.applied.set(path.relative(this.dir, file), { sha256, machine });
     return undefined;

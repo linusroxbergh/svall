@@ -556,7 +556,9 @@ export class HomeLinks {
     const bytes = Buffer.byteLength(line);
     if (bytes > MAX_LINE) {
       const why = `the fleet's snapshot is ${bytes} bytes, over the link's limit of ${MAX_LINE}`;
-      if (!this.oversize) this.o.log.error(`${why}; no worker gets it`);
+      // a note stored past what a request may ask for is the likeliest to fill it
+      const notes = Object.values(snap.state.robots).sort((a, b) => b.note.length - a.note.length).slice(0, 3).map((r) => `${r.name} (${r.note.length})`);
+      if (!this.oversize) this.o.log.error(`${why}; no worker gets it; the longest notes are ${notes.join(', ')}`);
       this.oversize = true;
       throw new ApiError('too_large', why);
     }
