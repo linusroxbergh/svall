@@ -5,6 +5,7 @@ import type { Logger } from '../log.js';
 import { secondName } from '../reconcile.js';
 import type { Store } from '../store.js';
 import type { ControlClient } from '../tmux/control.js';
+import { unescapeOutput } from '../tmux/parse.js';
 import type { Tmux } from '../tmux/tmux.js';
 
 export type PaneEvents = {
@@ -44,7 +45,12 @@ export class ControlLink {
   private async attach(): Promise<void> {
     const { events } = this.deps;
     const c = this.deps.tmux.connect();
-    c.on('output', (paneId, data) => { const id = this.robotByPane(paneId); if (id && this.streaming.has(id)) events.emit('output', id, data); });
+    // most panes stream to no viewer, so their output is dropped before it is looked up or decoded
+    c.on('output', (paneId, escaped) => {
+      if (!this.streaming.size) return;
+      const id = this.robotByPane(paneId);
+      if (id && this.streaming.has(id)) events.emit('output', id, unescapeOutput(escaped));
+    });
     c.on('pause', (paneId) => { const id = this.robotByPane(paneId); if (id) events.emit('pause', id); });
     c.on('continue', (paneId) => { const id = this.robotByPane(paneId); if (id) events.emit('continue', id); });
     c.on('window-close', (windowId) => { this.deps.track(this.windowClosed(windowId), `window ${windowId} closed`); });

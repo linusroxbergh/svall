@@ -3,7 +3,8 @@ import { EventEmitter } from 'node:events';
 import { parseLine } from './parse.js';
 
 type Events = {
-  output: [paneId: string, data: Buffer];
+  // as tmux escapes it; unescapeOutput gives the pane's bytes
+  output: [paneId: string, escaped: string];
   'window-close': [windowId: string];
   pause: [paneId: string];
   continue: [paneId: string];
@@ -105,7 +106,7 @@ export class ControlClient extends EventEmitter<Events> {
     }
     switch (ev.type) {
       case 'begin': this.inReply = true; break;
-      case 'output': this.emit('output', ev.paneId, ev.data); break;
+      case 'output': this.emit('output', ev.paneId, ev.escaped); break;
       case 'window-close': this.emit('window-close', ev.windowId); break;
       case 'pause': this.emit('pause', ev.paneId); break;
       case 'continue': this.emit('continue', ev.paneId); break;
