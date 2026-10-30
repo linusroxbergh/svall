@@ -17,6 +17,7 @@ import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
+import { clean, realPath } from '../path-tools.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, wasCredential } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
@@ -51,6 +52,8 @@ export const MoveJournal = z.object({
     worktree: z.literal(true).optional(),
     // the clone's main checkout let go of the branch
     detached: z.literal(true).optional(),
+    // the main checkout converted to the robot's worktree, which the robot keeps whatever the move does next
+    converted: z.literal(true).optional(),
     // the branch as it was: its sha, or null for none
     branch: ObjectName.nullable().optional(),
     // the session files that were not here
@@ -293,6 +296,93 @@ export async function changedSince(left: LeftBehind, where: string, git: GitRunn
   const same = async (credential: (p: string) => boolean): Promise<boolean> => await fingerprintOf(left.path, git, credential) === left.fingerprint;
   if (!await same(isCredential) && !await same(wasCredential)) return { reason: `changes ${where} in ${left.path} since the move`, action: 'stash or commit them' };
   return undefined;
+}
+
+/** The worktree the robot left on `me` that a move into `root` there takes back: one it left at `root`, whose folder is still there. */
+export const takenBack = (left: LeftBehind | undefined, root: string, me: MachineId): LeftBehind | undefined =>
+  (left?.machine === me && clean(left.path) === clean(root) && fs.existsSync(root) ? left : undefined);
+
+/** The worktree that has `branch` checked out in the repository at `repo`, or is rebasing or bisecting it, if one has. */
+export async function holding(repo: string, branch: string, git: GitRunner): Promise<string | undefined> {
+  const ref = `refs/heads/${branch}`;
+  for (const e of (await must(git, ['worktree', 'list', '--porcelain'], repo)).split('\n\n').map((x) => x.split('\n'))) {
+    const at = e[0].slice('worktree '.length);
+    if (e.includes(`branch ${ref}`)) return at;
+    if (!e.includes('detached') || !fs.existsSync(at)) continue;
+    // a rebase or bisect under way lists its worktree detached, and holds the branch it started from as git counts it
+    const dir = (await git(['rev-parse', '--absolute-git-dir'], at)).stdout.trim();
+    const read = (f: string): string => (dir && fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8').trim() : '');
+    if (read('rebase-merge/head-name') === ref || read('rebase-apply/head-name') === ref || [branch, ref].includes(read('BISECT_START'))) return at;
+  }
+  return undefined;
+}
+
+export type Made = NonNullable<MoveJournal['made']>;
+
+/**
+ * A worktree at `root` in the clone at `clone` for bundle `m`, at a commit the clone holds, each change journaled with `made`
+ * before it is made; with `detach`, a main checkout with no tracked changes lets go of the branch. `where` names this machine.
+ */
+export async function newWorktree(o: { clone: string; root: string; m: BundleManifest; detach: boolean; where: string; git: GitRunner; made: (m: Made) => void }): Promise<void> {
+  const { clone, root, m, git, where } = o;
+  if (fs.lstatSync(root, { throwIfNoEntry: false })) throw new Error(`${root} on ${where} is in the way; move it out of the way there first`);
+  const holder = await holding(clone, m.branch, git);
+  if (holder) {
+    // a rebase or bisect there holds the branch detached, and never counts as idle
+    const onIt = (await git(['symbolic-ref', '-q', 'HEAD'], clone)).stdout.trim() === `refs/heads/${m.branch}`;
+    const idle = o.detach && holder === realPath(clone) && onIt && !(await must(git, ['status', '--porcelain', '--untracked-files=no'], clone)).trim();
+    if (!idle) throw new Error(`${m.branch} is checked out in ${holder} on ${where}; check out another branch there first`);
+    o.made({ detached: true });
+    await must(git, ['checkout', '-q', '--detach'], clone);
+  }
+  // at a commit the clone holds; the bundle's commits and the branch come with its apply
+  const start = m.commits ? m.commits.prerequisites[0] ?? 'HEAD' : m.base;
+  o.made({ worktree: true });
+  await must(git, ['worktree', 'add', '-q', '--detach', root, start], clone);
+}
+
+/**
+ * Puts back what `made` records a move did in the clone at `clone` for bundle `m`: its worktree at `root` removed, the branch
+ * as it was; `still` takes what is left to undo after each step.
+ */
+export async function removeWorktree(clone: string, root: string, m: BundleManifest, made: Made, git: GitRunner, still: (m: Made) => void = () => {}): Promise<void> {
+  const undone = (k: 'worktree' | 'branch' | 'detached'): void => { const { [k]: _, ...rest } = made; made = rest; still(made); };
+  if (made.worktree) {
+    if (fs.existsSync(root)) await must(git, ['worktree', 'remove', '--force', root], clone);
+    undone('worktree');
+  }
+  if (made.branch === null) {
+    const there = await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}`], clone);
+    if (there.code === 0 && !(await holding(clone, m.branch, git))) await must(git, ['branch', '-q', '-D', m.branch], clone);
+    undone('branch');
+  } else if (made.branch) {
+    await must(git, ['update-ref', `refs/heads/${m.branch}`, made.branch], clone);
+    undone('branch');
+  }
+  if (made.detached) {
+    await must(git, ['checkout', '-q', m.branch], clone);
+    undone('detached');
+  }
+}
+
+/** One move at a time in each clone, so two moves into one serialize. */
+export class CloneLocks {
+  private locks = new Map<string, Promise<void>>();
+
+  async run<T>(clone: string, step: () => Promise<T>): Promise<T> {
+    const key = clean(clone);
+    const before = this.locks.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const tail = before.then(() => new Promise<void>((resolve) => { release = resolve; }));
+    this.locks.set(key, tail);
+    await before;
+    try {
+      return await step();
+    } finally {
+      release();
+      if (this.locks.get(key) === tail) this.locks.delete(key);
+    }
+  }
 }
 
 /** Unlocks the worktree a robot left at `root` and resets it to `sha`, cleaned, for the bundle that brings the robot back. */

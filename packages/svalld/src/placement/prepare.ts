@@ -5,7 +5,6 @@ import { ApiError, LeftBehind, MoveId, ObjectName, Sha256, type AgentKind, type 
 import { processes as allProcesses, runsAgent } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { boundary } from '../failpoints.js';
-import { clean, realPath } from '../path-tools.js';
 import type { RestDeps } from './rest.js';
 import { cliRunner, type AgentProber } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
@@ -18,8 +17,8 @@ import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, branchAhead, fileSha, holdsWhole, verifyBundle } from './bundle.js';
 import { carriedFrom } from './checks.js';
 import {
-  blobIds, changedSince, checkSessions, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused, restRobot, serversLeft, takeBack, unpack, wake,
-  type ReturnSheet,
+  blobIds, changedSince, checkSessions, CloneLocks, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree, packMove, placeSessions, refused,
+  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Made, type ReturnSheet,
 } from './move-steps.js';
 import { seedTrust } from './trust.js';
 
@@ -63,20 +62,11 @@ const Compare = z.object({ left: LeftBehind });
 // branch: the home's branch of the robot's branch's name, which the way back would reset
 const Sheet = z.object({ robotId: z.string(), have: z.array(z.string()), branch: z.object({ name: z.string(), sha: ObjectName }).optional() });
 
-type Made = NonNullable<MoveJournal['made']>;
-
 const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
   const p = schema.safeParse(raw);
   if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
   return p.data;
 };
-
-// the worktree that has `branch` checked out in the repository at `repo`, if one has
-async function holding(repo: string, branch: string, git: GitRunner): Promise<string | undefined> {
-  const entries = (await must(git, ['worktree', 'list', '--porcelain'], repo)).split('\n\n');
-  const entry = entries.find((e) => e.split('\n').includes(`branch refs/heads/${branch}`));
-  return entry?.split('\n')[0].slice('worktree '.length);
-}
 
 /**
  * A worker's side of every move: it takes a robot into a worktree of its clone and starts it once the home has
@@ -85,7 +75,7 @@ async function holding(repo: string, branch: string, git: GitRunner): Promise<st
 export class PrepareService {
   readonly handlers: Handlers;
   private files: MoveFiles;
-  private locks = new Map<string, Promise<void>>();
+  private clones = new CloneLocks();
   private receipts = new Map<string, Promise<[{ sha256: string } | undefined, { sha256: string }]>>();
   private busy = new Map<string, Promise<unknown>>();
 
@@ -137,22 +127,6 @@ export class PrepareService {
     return p;
   }
 
-  // one move at a time in each clone, so two moves into one serialize
-  private async repoLock<T>(clone: string, step: () => Promise<T>): Promise<T> {
-    const key = clean(clone);
-    const before = this.locks.get(key) ?? Promise.resolve();
-    let release!: () => void;
-    const tail = before.then(() => new Promise<void>((resolve) => { release = resolve; }));
-    this.locks.set(key, tail);
-    await before;
-    try {
-      return await step();
-    } finally {
-      release();
-      if (this.locks.get(key) === tail) this.locks.delete(key);
-    }
-  }
-
   private journal(id: string): MoveJournal {
     const j = this.files.read(id);
     if (!j) throw new ApiError('not_found', `no move ${id} here`);
@@ -197,7 +171,7 @@ export class PrepareService {
     if (bundle?.sha256 !== blobs.bundle || session.sha256 !== blobs.session) throw new Error(`the files of move ${id} did not arrive as they left`);
     const stage = this.files.stage(id);
     const run = this.d.cli ?? cliRunner();
-    return this.repoLock(j.plan.clone, async () => {
+    return this.clones.run(j.plan.clone, async () => {
       let cur = j;
       const made = (m: Made): void => { cur = { ...cur, made: { ...cur.made, ...m } }; this.save(cur); };
       const m = j.manifest;
@@ -236,32 +210,20 @@ export class PrepareService {
   // here, unchanged since, or a new one, the branch let go of first
   private async worktree(j: MoveJournal, made: (m: Made) => void): Promise<void> {
     const { clone, remote, paths } = j.plan;
-    const m = j.manifest!;
     const git = this.d.git;
     if (!fs.existsSync(clone)) {
       if (!remote) throw new Error(`${clone} is not on ${this.name}`);
       fs.mkdirSync(path.dirname(clone), { recursive: true });
       await must(this.d.cloneGit ?? cloneGit, ['clone', '-q', '--', remote, clone], path.dirname(clone));
     }
-    const left = j.robot?.left;
-    if (left?.machine === this.d.me && clean(left.path) === clean(paths.root) && fs.existsSync(paths.root)) {
-      const changed = await changedSince(left, `on ${this.name}`, git);
+    const back = takenBack(j.robot?.left, paths.root, this.d.me);
+    if (back) {
+      const changed = await changedSince(back, `on ${this.name}`, git);
       if (changed) throw refused(changed);
       made({ unlocked: true });
-      return takeBack(paths.root, left.branchSha, git);
+      return takeBack(paths.root, back.branchSha, git);
     }
-    if (fs.existsSync(paths.root)) throw new Error(`${paths.root} on ${this.name} is in the way; move it out of the way there first`);
-    const holder = await holding(clone, m.branch, git);
-    if (holder) {
-      const idle = holder === realPath(clone) && !(await must(git, ['status', '--porcelain', '--untracked-files=no'], clone)).trim();
-      if (!idle) throw new Error(`${m.branch} is checked out in ${holder} on ${this.name}; check out another branch there first`);
-      made({ detached: true });
-      await must(git, ['checkout', '-q', '--detach'], clone);
-    }
-    // at a commit the clone holds; the bundle's commits and the branch come with its apply
-    const start = m.commits ? m.commits.prerequisites[0] ?? 'HEAD' : m.base;
-    made({ worktree: true });
-    await must(git, ['worktree', 'add', '-q', '--detach', paths.root, start], clone);
+    await newWorktree({ clone, root: paths.root, m: j.manifest!, detach: true, where: this.name, git, made });
   }
 
   // what the home's commit made this machine's: trust for the clone, the robot's terminals opened, its agent watched
@@ -306,7 +268,7 @@ export class PrepareService {
     if (j.from === this.d.me) return this.reopen(j);
     if (j.phase === 'activate' || j.phase === 'done') throw new ApiError('invalid', `${j.robot?.name ?? j.robotId} already runs on ${this.name}`);
     this.receipts.delete(id);
-    const fingerprint = await this.repoLock(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
+    const fingerprint = await this.clones.run(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
     fs.rmSync(this.files.stage(id), { recursive: true, force: true });
     this.save({ ...j, phase: 'aborted', ...(fingerprint && { fingerprint }) });
     return fingerprint ? { fingerprint } : {};
@@ -319,14 +281,7 @@ export class PrepareService {
     const git = this.d.git;
     let fingerprint: string | undefined;
     if (m && made.unlocked && left) fingerprint = await leaveAgain(paths.root, left.branchSha, `moved to ${this.d.homeName} ${left.moveId}`, git);
-    else if (m) {
-      if (made.worktree && fs.existsSync(paths.root)) await must(git, ['worktree', 'remove', '--force', paths.root], clone);
-      if (made.branch === null) {
-        const there = await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}`], clone);
-        if (there.code === 0 && !(await holding(clone, m.branch, git))) await must(git, ['branch', '-q', '-D', m.branch], clone);
-      } else if (made.branch) await must(git, ['update-ref', `refs/heads/${m.branch}`, made.branch], clone);
-      if (made.detached) await must(git, ['checkout', '-q', m.branch], clone);
-    }
+    else if (m) await removeWorktree(clone, paths.root, m, made, git);
     for (const f of made.files ?? []) fs.rmSync(f, { force: true });
     this.d.store.update((d) => {
       const c = d.robots[j.robotId];

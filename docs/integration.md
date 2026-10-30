@@ -95,8 +95,12 @@ each machine's daemon and unit logs.
     the home restarts under it. The link comes up, its master binds nothing and forwards the agent to no session on it,
     even one that asks; a terminal's attach, over the master or as a login of its own, gets no agent, runs its own
     command and binds nothing; and `host add` of remote again passes, its probe over a forward past the held port.
+14. **A robot started on the worker comes home.** `svall robot new` on remote starts `scout` in a worktree of its
+    own there, which commits and changes files; moved to the Mac, it lands in a new worktree of the Mac's clone at
+    the same place, with the worker's commit, changes and session, the Mac's main checkout still on `main`, and its
+    worktree on remote locked.
 
-Steps 1, 2, 5 and 6 also check that the bare repository on remote is untouched: a move never pushes.
+Steps 1, 2, 5, 6 and 14 also check that the bare repository on remote is untouched: a move never pushes.
 
 ### The fault matrix
 

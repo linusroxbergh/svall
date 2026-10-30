@@ -582,6 +582,43 @@ function deleteWorkerDown(ids, fx) {
   check('worktree locked', w.locks['src/app/.claude/worktrees/review'] === `closed robot ${reviewer}`, () => brief(w.locks));
 }
 
+/** A robot started on remote in a worktree of its own there comes home into a new worktree of the Mac's clone, with all it holds. */
+function bornOnWorker(ids, fx) {
+  const rel = 'src/app/.claude/worktrees/scout';
+  sh(R, 'git -C ~/src/app worktree add -q -b scout .claude/worktrees/scout');
+  const id = JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]}/${rel} --name scout --claude`).stdout).id;
+  sh(L, `svall robot wait ${id} --until idle --timeout 60`);
+  turn(ids, { scout: id }, 'scout', 'a turn on remote');
+  // its work there
+  sh(R, String.raw`set -eu
+cd ~/src/app/.claude/worktrees/scout
+printf 'scout commit
+' > s.txt && git add s.txt && git -c user.name=Integration -c user.email=integration@example.invalid commit -qm 'a commit on the worker' -- s.txt
+printf 'scout staged
+' >> lib/c.txt && git add lib/c.txt
+printf 'scout unstaged
+' >> a.txt
+printf 'scout untracked
+' > s-untracked.txt
+`);
+  const w0 = snap(R);
+  const sessionId = robotIn(w0, id)?.agent?.sessionId;
+  const m = move(id, 'local');
+  check('returned', m.code === 0 && m.res?.ok, () => `exit ${m.code}: ${m.stderr.trim()} ${brief(m.res)}`);
+  const [l, w] = [snap(L), snap(R)];
+  sameWork('mac worktree', l, w0, rel);
+  check('mac unlocked', l.locks[rel] === null, () => brief(l.locks));
+  check('worker locked', /^moved to .+ mv_[0-9a-z]{10}$/.test(w.locks[rel] ?? '') && w.locks[rel].endsWith(m.res?.moveId), () => brief(w.locks));
+  check('mac main on its branch', l.git['src/app'].branch === 'refs/heads/main', () => brief(l.git['src/app']));
+  const c = robotIn(l, id);
+  check('home record', !c?.machine && c?.left?.machine === ids.remote && c.left.path === `${HOMES[R]}/${rel}` && c.cwd === `${HOMES[L]}/${rel}`, () => brief(c));
+  check('journals', l.moves[m.res?.moveId]?.phase === 'done' && w.moves[m.res?.moveId]?.phase === 'done', () => brief([l.moves[m.res?.moveId], w.moves[m.res?.moveId]]));
+  runsOn('mac', ids, l, w, id, 'local', sessionId);
+  check('session back', transcriptOf(l, sessionId)?.sha === transcriptOf(w0, sessionId)?.sha, () => `${brief(transcriptOf(l, sessionId))} vs ${brief(transcriptOf(w0, sessionId))}`);
+  turn(ids, { scout: id }, 'scout', 'a turn back on the Mac');
+  originUntouched();
+}
+
 // ---------------------------------------------------------------------------------------------- the agent setup mirror
 
 /** The user-scope MCP servers `~/.claude.json` holds on `machine`. */
@@ -803,15 +840,17 @@ function faults(ids, list) {
 const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
-  12: 'agent setup mirror', 13: "the user's ssh config",
+  12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 13, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 14, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
 if (steps.some((s) => s >= 7 && s <= 11) && !steps.includes(2)) steps.unshift(2);
 if ((steps.includes(8) || steps.includes(11)) && !steps.includes(7)) steps.push(7);
+// 14 starts its robot in the clone the second move makes there
+if (steps.includes(14) && !steps.includes(2)) steps.unshift(2);
 
 let code = 0;
 try {
@@ -837,6 +876,7 @@ try {
   if (steps.includes(11)) step(`11. ${STEPS[11]}`, () => deleteWorkerDown(ids, fx));
   if (steps.includes(12)) step(`12. ${STEPS[12]}`, () => agentSetup(ids, fx));
   if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
+  if (steps.includes(14)) step(`14. ${STEPS[14]}`, () => bornOnWorker(ids, fx));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);
