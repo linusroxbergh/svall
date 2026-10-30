@@ -15,7 +15,7 @@ import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
-import { awayLine, isPlaced, machineOf } from './placement.js';
+import { answers, awayLine, isPlaced, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -84,7 +84,7 @@ export function SideCard({ id }: { id: string }) {
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
-  const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => m.reachable);
+  const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => answers(m));
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;

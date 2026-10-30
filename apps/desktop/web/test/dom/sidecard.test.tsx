@@ -425,6 +425,14 @@ test('a robot here offers a move to each worker within reach, which opens the mo
   expect(store.getState().moveSheet).toEqual({ id: 'c0', to: VAULT });
 });
 
+test('a worker on another build answers, so a robot here still offers to move there', () => {
+  const f = fleet();
+  f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } };
+  act(() => store.getState().setFleet(f));
+  render(<Side />);
+  expect(moves()).toEqual(['Move to linus-vault']);
+});
+
 test('a placed robot wears its machine, moves back to this Mac, and its folder buttons act there', async () => {
   load = { at: 0, cores: 8, total: { cpu: 1, mem: 1, procs: 1 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: { c0: { cpu: 0.5, mem: 1e8, procs: 3, shellOnly: false, sleepable: false } } };
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });

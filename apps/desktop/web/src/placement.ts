@@ -1,4 +1,4 @@
-import { farRootOf, type FleetState, type MachineId, type Robot } from '@svall/protocol';
+import { farRootOf, type FleetState, type MachineId, type MachineLink, type Robot } from '@svall/protocol';
 
 type Machines = Pick<FleetState, 'machines'>;
 
@@ -12,6 +12,9 @@ export const destinationName = (f: Machines, to: MachineId): string => f.machine
 export const isPlaced = (c: Pick<Robot, 'machine'>): c is { machine: MachineId } => c.machine !== undefined;
 
 export const machineOf = (f: Machines, c: Pick<Robot, 'machine'>): string | undefined => (isPlaced(c) ? machineName(f, c.machine) : undefined);
+
+/** A worker that answers: linked, or on a build this Mac cannot read, whose move check says which side to upgrade. */
+export const answers = (m: MachineLink | undefined): boolean => !!m && (m.reachable || m.mismatch === true);
 
 /** The worker a workspace id's files are on, by name: a placed robot's, or a worker clone's on the shelf. */
 export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string): string | undefined => {

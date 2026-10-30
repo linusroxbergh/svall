@@ -22,7 +22,7 @@ export function terminalOn(machine: string, run?: string, forward?: number): voi
 type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
 const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
-const KEPT: Record<Interrupt, string> = { agent: 'Interrupt after this turn', command: 'Move anyway and end it' };
+const KEPT: Record<Interrupt, string> = { agent: 'Interrupt it now', command: 'Move anyway and end it' };
 // a credential file's box says whether it stays
 const staying = (w: What): What => ({ ...w, stays: w.stays.filter((x) => !w.credentialFiles.some((f) => x === `${f} stays here`)) });
 const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice(1)}`;

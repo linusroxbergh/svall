@@ -62,7 +62,7 @@ Select the Claude robot and open its side card.
 ## 4. Moving it back
 
 1. Give the Claude robot a task that takes a few minutes, and choose **Move to this Mac** on its card while it works.
-   - The sheet, "Move <robot> to this Mac", refuses with "<robot> is working" and **Interrupt after this turn**.
+   - The sheet, "Move <robot> to this Mac", refuses with "<robot> is working" and **Interrupt it now**.
    - Choose it, then **Move**.
 2. When it completes:
    - The card's badge is gone, and the terminal reopens on the Mac with the same conversation. Ask for the code word:
