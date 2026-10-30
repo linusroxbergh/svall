@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
-import { hooklessGit } from '../../src/links/git.js';
+import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, waitForPolls } from '../helpers.js';
@@ -23,6 +23,55 @@ const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w =
 
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
 const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ 1. No, exit', '   2. Yes, I trust this folder'];
+
+const SID3 = '2d3e4f50-6172-4384-95a6-c7d8e9f0a1b2';
+
+/**
+ * A robot w1's fleet started in a new worktree `slug` of its clone, with a Claude session, which worked on there: a commit,
+ * staged, unstaged and untracked changes. Its paths as the worker's home spells them, which this test's HOME, under macOS's
+ * /tmp, spells otherwise than git.
+ */
+async function bornThere(w: MoveWorld, slug: string): Promise<{ id: string; far: string; mac: string; transcript: string }> {
+  if (!fs.existsSync(w.clone)) w.g(w.base, 'clone', '-q', w.origin, w.clone);
+  const far = path.join(w.clone, '.claude/worktrees', slug);
+  w.g(w.clone, 'worktree', 'add', '-q', '-b', slug, far);
+  fs.writeFileSync(path.join(far, `${slug}.txt`), `${slug}\n`);
+  w.g(far, 'add', '.');
+  w.g(far, 'commit', '-qm', `${slug} work`);
+  fs.appendFileSync(path.join(far, 'a.txt'), 'staged\n');
+  w.g(far, 'add', 'a.txt');
+  fs.appendFileSync(path.join(far, 'b.txt'), 'unstaged\n');
+  fs.writeFileSync(path.join(far, 'notes.md'), 'untracked\n');
+  const transcript = `projects/-${slug}/${SID3}.jsonl`;
+  fs.mkdirSync(path.dirname(path.join(w.farClaude, transcript)), { recursive: true });
+  fs.writeFileSync(path.join(w.farClaude, transcript), `${JSON.stringify({ type: 'user', cwd: far, sessionId: SID3 })}\n`);
+  const { id } = await w.worker.fleet.createRobot({ islandId: 'i_1', cwd: far });
+  await until(() => { expect(w.home.store.state.robots[id]?.repo).toBeDefined(); });
+  for (const s of [w.worker.store, w.home.store]) {
+    s.update((d) => {
+      Object.assign(d.robots[id], {
+        cwd: far, panePath: far, repo: { root: far, mainRoot: w.clone, branch: slug, isWorktree: true },
+        agent: { kind: 'claude', sessionId: SID3, transcriptPath: path.join(w.farClaude, transcript), status: 'idle', lastActivityAt: 0 },
+      });
+    });
+  }
+  return { id, far, mac: path.join(w.main, '.claude/worktrees', slug), transcript };
+}
+
+// lib: an origin, this Mac's clone and w1's, and a worktree tidy there that robot c_1 goes on in
+function libThere(w: MoveWorld): { mac: string; farWt: string } {
+  const origin = path.join(w.base, 'origins/lib.git');
+  const [mac, far] = [path.join(w.mac, 'code/lib'), path.join(w.far, 'code/lib')];
+  w.g(w.base, 'init', '-q', '--bare', origin);
+  w.g(w.base, 'clone', '-q', origin, mac);
+  w.g(mac, 'commit', '-q', '--allow-empty', '-m', 'lib');
+  w.g(mac, 'push', '-q', 'origin', 'HEAD');
+  w.g(w.base, 'clone', '-q', origin, far);
+  const farWt = path.join(far, '.claude/worktrees/tidy');
+  w.g(far, 'worktree', 'add', '-q', '-b', 'tidy', farWt);
+  for (const s of [w.worker.store, w.home.store]) s.update((d) => { Object.assign(d.robots.c_1, { cwd: farWt, repo: { root: farWt, mainRoot: far, branch: 'tidy', isWorktree: true } }); });
+  return { mac, farWt };
+}
 
 // fires `then` at a step's edge, once
 const at = (name: Failpoint, edge: Edge, then: () => void): void => {
@@ -265,7 +314,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
   });
 
-  it('two prepares into one clone serialize under repoLock', async () => {
+  it('two prepares into one clone serialize under its lock', async () => {
     const w = open({ second: true });
     const home = await w.start();
     const steps: string[] = [];
@@ -696,6 +745,30 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.existsSync(w.farWt)).toBe(false);
   });
 
+  it('a move refuses a worker clone\'s main checkout that is rebasing or bisecting the robot\'s branch, and leaves it where it stopped', async () => {
+    const w = open();
+    w.g(w.base, 'clone', '-q', w.origin, w.clone);
+    w.g(w.clone, 'fetch', '-q', w.main, 'kanban:kanban');
+    w.g(w.clone, 'checkout', '-q', 'kanban');
+    let side = w.g(w.clone, 'rev-parse', 'HEAD');
+    for (const n of ['1', '2', '3']) side = w.g(w.clone, 'commit-tree', 'HEAD^{tree}', '-p', side, '-m', n);
+    w.g(w.clone, 'update-ref', 'refs/heads/side', side);
+    const home = await w.start();
+
+    for (const [stop, done] of [[['rebase', '-q', '-x', 'false', 'HEAD~1'], ['rebase', '--abort']], [['bisect', 'start', 'side', 'HEAD'], ['bisect', 'reset']]]) {
+      try { w.g(w.clone, ...stop); } catch { /* the rebase stops at its failing exec */ }
+      const head = w.g(w.clone, 'rev-parse', 'HEAD');
+
+      await expect(home.placement.start('c_1', W)).rejects.toThrow(`kanban is checked out in ${fs.realpathSync(w.clone)} on w1; check out another branch there first`);
+
+      expect(w.g(w.clone, 'rev-parse', 'HEAD')).toBe(head);
+      expect(() => w.g(w.clone, 'symbolic-ref', '-q', 'HEAD')).toThrow();
+      expect(listed(w, w.clone, w.farWt)).toBeUndefined();
+      expect(home.store.state.robots.c_1.machine).toBeUndefined();
+      w.g(w.clone, ...done);
+    }
+  });
+
   it('a return refused at prepare leaves the Mac worktree\'s changes as they are and the robot running on the worker', async () => {
     const w = open();
     const home = await w.start();
@@ -721,16 +794,6 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(home.store.state.robots.c_1.moving).toBeUndefined();
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
     expect(w.vault.opened).toEqual(['c_1', 'c_1']);
-
-    // one whose Mac worktree is gone by then unwinds the same way
-    fs.writeFileSync(a, held);
-    fs.rmSync(path.join(w.wt, 'mine.md'));
-    at('move.journal.prepare', 'after', () => { fs.renameSync(w.wt, `${w.wt}.away`); });
-    await expect(home.placement.start('c_1', H)).rejects.toThrow();
-    fs.renameSync(`${w.wt}.away`, w.wt);
-    expect(home.store.state.robots.c_1.moving).toBeUndefined();
-    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
-    expect(w.vault.opened).toEqual(['c_1', 'c_1', 'c_1']);
     expect(w.mac1.opened).toEqual([]);
   });
 
@@ -773,5 +836,386 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     expect(atBundle).toBe(2);
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
+  it('a robot started on the worker comes home into a new worktree of this Mac\'s clone with all it holds there, and its worktree there is left locked', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    const there = state(w, b.far);
+    const fingerprint = await fingerprintOf(b.far, hooklessGit);
+    const check = await home.placement.check(b.id, H);
+    if (!check.ok) throw new Error(check.refusal.reason);
+    expect(check.sheet).toMatchObject({ commits: 1, changedFiles: 2, untrackedFiles: 1, clone: 'warm' });
+    expect(check.plan.have.sort()).toEqual([...new Set(w.g(w.main, 'for-each-ref', '--format=%(objectname)').split('\n'))].sort());
+
+    const id = await home.placement.start(b.id, H);
+
+    expect(state(w, b.mac)).toEqual(there);
+    expect(await fingerprintOf(b.mac, hooklessGit)).toBe(fingerprint);
+    expect(listed(w, w.main, b.mac)).toEqual({});
+    expect(w.g(w.main, 'symbolic-ref', '--short', 'HEAD')).toBe('main');
+    expect(fs.readFileSync(path.join(w.macClaude, b.transcript), 'utf8')).toBe(fs.readFileSync(path.join(w.farClaude, b.transcript), 'utf8'));
+    const here = home.store.state.robots[b.id];
+    expect(here).toMatchObject({ cwd: b.mac, placement: { generation: 1 }, repo: { root: b.mac, mainRoot: w.main, branch: 'scout', isWorktree: true } });
+    expect(here.machine).toBeUndefined();
+    expect(here.left).toEqual({ moveId: id, machine: W, path: b.far, branch: 'scout', branchSha: there.head, fingerprint });
+    expect(listed(w, w.clone, b.far)).toEqual({ locked: `moved to mac ${id}` });
+    expect(w.mac1.opened).toEqual([b.id]);
+    expect(home.placement.status(id).phase).toBe('done');
+    await until(() => { expect(w.worker.store.state.robots[b.id]?.machine).toBeUndefined(); });
+  });
+
+  it('a robot that went on in another worktree on the worker comes home into a new one, and the worktree it left here is unlocked as it was', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const left = state(w, w.wt);
+    const other = path.join(w.clone, '.claude/worktrees/other');
+    w.g(w.clone, 'worktree', 'add', '-q', '-b', 'other', other);
+    fs.writeFileSync(path.join(other, 'other.md'), 'other\n');
+    for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots.c_1, { cwd: other, repo: { root: other, mainRoot: w.clone, branch: 'other', isWorktree: true } }); });
+    const there = state(w, other);
+    // a commit that stops once the record of the worktree it left is gone, and a retry
+    at('move.commit.state', 'after', () => { throw new Error('the disk is full'); });
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    const id = home.store.state.robots.c_1.moving!.id;
+    disarm?.();
+    await home.placement.retry(id);
+
+    const mac = path.join(w.main, '.claude/worktrees/other');
+    expect(state(w, mac)).toEqual(there);
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: mac, left: { moveId: id, machine: W, path: other, branch: 'other' } });
+    expect(listed(w, w.main, w.wt)).toEqual({});
+    expect(state(w, w.wt)).toEqual(left);
+    expect(listed(w, w.clone, other)).toEqual({ locked: `moved to mac ${id}` });
+  });
+
+  it('a return refuses while git lists the worktree the robot left here and its folder is gone, which it leaves alone, and comes home into a new one once that is cleared', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    // the robot rewrites the commit it left with there, which this Mac's kanban still names
+    w.g(w.farWt, 'commit', '-q', '--amend', '-m', 'kanban work, amended');
+    const there = state(w, w.farWt);
+    const away = `${w.wt}.away`;
+    fs.renameSync(w.wt, away);
+    const copy = state(w, away);
+    const gone = { reason: `git on this Mac still lists ${w.wt}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else git worktree unlock '${w.wt}' && git worktree remove '${w.wt}'` };
+
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: gone });
+    expect(state(w, away)).toEqual(copy);
+    // repaired, the copy holds the branch; taken away, the robot comes home
+    w.g(away, 'worktree', 'repair');
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `kanban is checked out in ${away} on this Mac` } });
+    w.g(w.main, 'worktree', 'unlock', away);
+    w.g(w.main, 'worktree', 'remove', '--force', away);
+    const id = await home.placement.start('c_1', H);
+
+    expect(state(w, w.wt)).toEqual(there);
+    expect(listed(w, w.main, w.wt)).toEqual({});
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: w.wt, left: { moveId: id, machine: W, path: w.farWt } });
+    expect(w.mac1.opened).toEqual(['c_1']);
+
+    // one deleted after the checks passed stops the return at prepare, and the robot stays on the worker
+    await home.placement.start('c_1', W);
+    at('move.journal.prepare', 'after', () => { fs.rmSync(w.wt, { recursive: true, force: true }); });
+    await expect(home.placement.start('c_1', H)).rejects.toThrow(`kanban is checked out in ${w.wt} on this Mac; check out another branch there first`);
+    disarm?.();
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: gone });
+  });
+
+  it('a return into a new worktree refuses, before anything rests, whatever would stop it there', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    const { name } = home.store.state.robots[b.id];
+    const refusal = async () => {
+      const r = await home.placement.check(b.id, H);
+      return r.ok ? undefined : { reason: r.refusal.reason, action: r.refusal.action };
+    };
+    const onMain = { root: w.clone, mainRoot: w.clone, branch: 'main', isWorktree: false };
+    for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: w.clone, repo: onMain }); });
+    expect(await refusal()).toEqual({ reason: `${name} works in app's main checkout on w1`, action: 'give it its own worktree on w1 first' });
+    for (const s of [w.worker.store, home.store]) s.update((d) => { Object.assign(d.robots[b.id], { cwd: b.far, repo: { root: b.far, mainRoot: w.clone, branch: 'scout', isWorktree: true } }); });
+
+    // no clone here, named by the worker's origin without its token; another repository, folder or origin there
+    w.g(w.clone, 'remote', 'set-url', 'origin', 'https://ada:ghp_secret@github.com/ada/app.git');
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    fs.renameSync(w.main, `${w.main}.away`);
+    expect(await refusal()).toEqual({ reason: 'app is not cloned on this Mac', action: `git clone 'https://github.com/ada/app.git' '${w.main}'` });
+    w.g(w.clone, 'remote', 'set-url', 'origin', w.origin);
+    fs.mkdirSync(w.main);
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    w.g(w.main, 'init', '-q');
+    w.g(w.main, 'commit', '-q', '--allow-empty', '-m', 'another history');
+    w.g(w.main, 'remote', 'add', 'origin', w.origin);
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    fs.rmSync(w.main, { recursive: true });
+    fs.renameSync(`${w.main}.away`, w.main);
+
+    const inTheWay = { reason: `${b.mac} on this Mac is in the way`, action: 'move it out of the way first' };
+    fs.mkdirSync(b.mac);
+    expect(await refusal()).toEqual(inTheWay);
+    fs.rmdirSync(b.mac);
+    fs.symlinkSync(path.join(w.base, 'nowhere'), b.mac);
+    expect(await refusal()).toEqual(inTheWay);
+    fs.unlinkSync(b.mac);
+
+    // a worktree git still lists at that place, or on that branch, locked or not, whose folder is gone
+    const elsewhere = path.join(w.main, '.claude/worktrees/elsewhere');
+    for (const [at, args, locked] of [[b.mac, ['--detach'], false], [elsewhere, ['-b', 'scout'], false], [b.mac, ['--detach'], true]] as const) {
+      w.g(w.main, 'worktree', 'add', '-q', ...args, at);
+      if (locked) w.g(w.main, 'worktree', 'lock', at);
+      fs.rmSync(at, { recursive: true });
+      const remove = `${locked ? `git worktree unlock '${at}' && ` : ''}git worktree remove '${at}'`;
+      expect(await refusal()).toEqual({ reason: `git on this Mac still lists ${at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${remove}` });
+      if (locked) w.g(w.main, 'worktree', 'unlock', at);
+      w.g(w.main, 'worktree', 'remove', at);
+    }
+    w.g(w.main, 'branch', '-q', '-D', 'scout');
+
+    // its branch checked out here, in the main checkout too, or rebased or bisected there; one this Mac holds ahead; one it
+    // cannot keep beside it
+    const held = { reason: `scout is checked out in ${w.main} on this Mac`, action: 'check out another branch there first' };
+    w.g(w.main, 'checkout', '-q', '-b', 'scout');
+    expect(await refusal()).toEqual(held);
+    for (const n of ['1', '2', '3']) w.g(w.main, 'commit', '-q', '--allow-empty', '-m', n);
+    expect(() => w.g(w.main, 'rebase', '-q', '-x', 'false', 'HEAD~2')).toThrow();
+    expect(await refusal()).toEqual(held);
+    w.g(w.main, 'rebase', '--abort');
+    w.g(w.main, 'bisect', 'start', 'HEAD', 'HEAD~3');
+    expect(await refusal()).toEqual(held);
+    w.g(w.main, 'bisect', 'reset');
+    w.g(w.main, 'checkout', '-q', 'main');
+    w.g(w.main, 'branch', '-q', '-D', 'scout');
+    w.g(w.main, 'update-ref', 'refs/heads/scout', w.g(w.main, 'commit-tree', 'HEAD^{tree}', '-p', 'HEAD', '-m', 'on the Mac'));
+    expect(await refusal()).toEqual({ reason: 'this Mac has a branch scout with commits this one lacks', action: 'merge or rename it there first' });
+    w.g(w.main, 'branch', '-q', '-D', 'scout');
+    for (const other of ['Scout', 'scout/old', 'SCOUT/old']) {
+      w.g(w.main, 'branch', other);
+      expect(await refusal()).toEqual({ reason: `this Mac has a branch ${other}, which it cannot keep beside scout`, action: 'rename one of them first' });
+      w.g(w.main, 'branch', '-q', '-D', other);
+    }
+
+    expect(await refusal()).toBeUndefined();
+    expect(w.vault.keys).toEqual([]);
+    expect(w.worker.store.state.robots[b.id].tmux).toBeDefined();
+  });
+
+  it('a return whose branch this Mac\'s main checkout took after the checks leaves that checkout on it, and the robot on the worker', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    at('move.journal.prepare', 'after', () => { w.g(w.main, 'checkout', '-q', '-b', 'scout'); });
+
+    await expect(home.placement.start(b.id, H)).rejects.toThrow(`scout is checked out in ${w.main} on this Mac; check out another branch there first`);
+
+    expect(w.g(w.main, 'symbolic-ref', '--short', 'HEAD')).toBe('scout');
+    expect(fs.existsSync(b.mac)).toBe(false);
+    expect(home.store.state.robots[b.id].machine).toBe(W);
+    await until(() => { expect(w.worker.store.state.robots[b.id]?.tmux).toBeDefined(); });
+  });
+
+  it('a return that finds a branch here after the checks that this Mac cannot keep beside the robot\'s refuses before it makes anything', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    at('move.journal.prepare', 'after', () => { w.g(w.main, 'branch', 'Scout'); });
+
+    await expect(home.placement.start(b.id, H)).rejects.toMatchObject({ code: 'refused', message: 'this Mac has a branch Scout, which it cannot keep beside scout; rename one of them first' });
+
+    expect(w.g(w.main, 'rev-parse', 'Scout')).toBe(w.g(w.main, 'rev-parse', 'main'));
+    expect(fs.existsSync(b.mac)).toBe(false);
+    expect(home.store.state.robots[b.id].machine).toBe(W);
+  });
+
+  it('a return whose prepare fails after its new worktree takes that worktree away here and puts its branch back, and the robot reopens on the worker', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    // this Mac's scout, which the worker's holds whole
+    w.g(w.main, 'branch', 'scout');
+    const sha = w.g(w.main, 'rev-parse', 'scout');
+    at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+
+    await expect(home.placement.start(b.id, H)).rejects.toThrow('the disk is full');
+
+    expect(fs.existsSync(b.mac)).toBe(false);
+    expect(listed(w, w.main, b.mac)).toBeUndefined();
+    expect(w.g(w.main, 'rev-parse', 'scout')).toBe(sha);
+    expect(home.store.state.robots[b.id]).toMatchObject({ machine: W });
+    expect(home.store.state.robots[b.id].moving).toBeUndefined();
+    await until(() => { expect(w.worker.store.state.robots[b.id]?.tmux).toBeDefined(); });
+    expect(w.mac1.opened).toEqual([]);
+    expect(listed(w, w.clone, b.far)).toEqual({});
+  });
+
+  it('two robots coming home into one clone here at once make their worktrees one after the other', async () => {
+    const w = open();
+    const home = await w.start();
+    const [one, two] = [await bornThere(w, 'scout'), await bornThere(w, 'probe')];
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    const steps: string[] = [];
+    let slow = true;
+    d.git = async (args, cwd) => {
+      if (args[0] === 'worktree' && args[1] === 'add') {
+        steps.push(path.basename(args.at(-2)!));
+        if (slow) { slow = false; await new Promise((resolve) => setTimeout(resolve, 500)); }
+      }
+      if (args[0] === 'checkout' && args.includes('-B')) steps.push(path.basename(cwd));
+      return git(args, cwd);
+    };
+
+    await Promise.all([home.placement.start(one.id, H), home.placement.start(two.id, H)]);
+
+    expect([steps[0], steps[2]].sort()).toEqual(['probe', 'scout']);
+    expect(steps).toEqual([steps[0], steps[0], steps[2], steps[2]]);
+    for (const b of [one, two]) expect(home.store.state.robots[b.id]).toMatchObject({ cwd: b.mac });
+  });
+
+  it('a return aborted while the worker was out of reach undoes what it made here once, and leaves what a later return made at that place', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    const call = home.links.call.bind(home.links);
+    let silent = true;
+    home.links.call = ((m, method, params, o) => {
+      if (method === 'move.abort' && silent) { silent = false; return Promise.reject(new Error('w1 did not answer')); }
+      return call(m, method, params, o);
+    }) as typeof home.links.call;
+    at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+    const first = await home.placement.start(b.id, H).catch((e: { data: { moveId: string } }) => e.data.moveId);
+    disarm?.();
+    expect(fs.existsSync(b.mac)).toBe(false);
+    expect(home.placement.status(first)).toMatchObject({ phase: 'prepare' });
+    expect(home.placement.status(first).made).toBeUndefined();
+
+    await home.placement.start(b.id, H);
+    fs.writeFileSync(path.join(b.mac, 'mine.md'), 'mine\n');
+    // recovered once the worker has taken this Mac's record of the later return, as a link that comes back has
+    await until(() => { expect(w.worker.store.state.robots[b.id]?.machine).toBeUndefined(); });
+    await home.placement.recoverMoves();
+
+    expect(home.placement.status(first).phase).toBe('aborted');
+    expect(fs.readFileSync(path.join(b.mac, 'mine.md'), 'utf8')).toBe('mine\n');
+    expect(w.g(b.mac, 'symbolic-ref', '--short', 'HEAD')).toBe('scout');
+    expect(home.store.state.robots[b.id].machine).toBeUndefined();
+  });
+
+  it('a return abort whose undo fails part way journals what is left to undo, and undoes none of it once a later return has landed there', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    const call = home.links.call.bind(home.links);
+    let silent = true;
+    home.links.call = ((m, method, params, o) => {
+      if (method === 'move.abort' && silent) { silent = false; return Promise.reject(new Error('w1 did not answer')); }
+      return call(m, method, params, o);
+    }) as typeof home.links.call;
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    let fail: string | undefined;
+    d.git = async (args, cwd) => {
+      if (fail && args.join(' ').startsWith(fail)) { fail = undefined; return { code: 1, stdout: '', stderr: 'fatal: busy' }; }
+      return git(args, cwd);
+    };
+    const abort = async (step: string): Promise<string> => {
+      fail = step;
+      at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+      const id = await home.placement.start(b.id, H).catch((e: { data: { moveId: string } }) => e.data.moveId);
+      disarm?.();
+      return id;
+    };
+
+    // the branch is let go of after the worktree, which the journal no longer names
+    const one = await abort('branch -q -D scout');
+    expect(home.placement.status(one).made).toEqual({ branch: null });
+    expect(fs.existsSync(b.mac)).toBe(false);
+    w.g(w.main, 'branch', '-q', '-D', 'scout');
+
+    // the worktree stays and the journal names both; taken away by hand, a later return lands there
+    silent = true;
+    const two = await abort('worktree remove --force');
+    expect(home.placement.status(two).made).toEqual({ worktree: true, branch: null });
+    w.g(w.main, 'worktree', 'remove', '--force', b.mac);
+    await home.placement.start(b.id, H);
+    fs.writeFileSync(path.join(b.mac, 'mine.md'), 'mine\n');
+    await until(() => { expect(w.worker.store.state.robots[b.id]?.machine).toBeUndefined(); });
+    await home.placement.recoverMoves();
+
+    expect([home.placement.status(one).phase, home.placement.status(two).phase]).toEqual(['aborted', 'aborted']);
+    expect(fs.readFileSync(path.join(b.mac, 'mine.md'), 'utf8')).toBe('mine\n');
+    expect(w.g(b.mac, 'symbolic-ref', '--short', 'HEAD')).toBe('scout');
+  });
+
+  it('a main checkout a move converts and a robot coming home into that clone make their worktrees one after the other', async () => {
+    const w = open();
+    const home = await w.start();
+    const b = await bornThere(w, 'scout');
+    home.store.update((d) => { Object.assign(d.robots.c_1, { cwd: w.main, repo: { root: w.main, mainRoot: w.main, branch: 'main', isWorktree: false } }); });
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    const steps: string[] = [];
+    d.git = async (args, cwd) => {
+      if (args[0] !== 'worktree' || args[1] !== 'add') return git(args, cwd);
+      const who = args.includes('--detach') ? 'return' : 'convert';
+      steps.push(`${who} starts`);
+      if (who === 'convert') await new Promise((resolve) => setTimeout(resolve, 1500));
+      const r = await git(args, cwd);
+      steps.push(`${who} ends`);
+      return r;
+    };
+
+    await Promise.all([home.placement.start('c_1', W), new Promise((resolve) => setTimeout(resolve, 200)).then(() => home.placement.start(b.id, H))]);
+
+    expect(steps).toEqual(['convert starts', 'convert ends', 'return starts', 'return ends']);
+  });
+
+  it('a main checkout a move converts fails the move when a folder is at its new worktree\'s place after the checks, and the robot stays in main', async () => {
+    const w = open();
+    const home = await w.start();
+    const onMain = { root: w.main, mainRoot: w.main, branch: 'main', isWorktree: false };
+    home.store.update((d) => { Object.assign(d.robots.c_1, { cwd: w.main, repo: onMain }); });
+    const r = await home.placement.check('c_1', W);
+    const root = path.join(w.main, '.claude/worktrees', r.ok ? r.plan.convert!.slug : '');
+    at('move.journal.bundle', 'after', () => { w.g(w.main, 'worktree', 'add', '-q', '-b', 'scout', root); });
+
+    await expect(home.placement.start('c_1', W)).rejects.toThrow(`${root} on this Mac is in the way; move it out of the way first`);
+
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: w.main, repo: onMain });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.g(root, 'symbolic-ref', '--short', 'HEAD')).toBe('scout');
+  });
+
+  it('a robot that went on in a worktree of another repository on the worker comes home into it, and the worktree it left here is unlocked', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const { mac, farWt } = libThere(w);
+
+    await home.placement.start('c_1', H);
+
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: path.join(mac, '.claude/worktrees/tidy'), left: { machine: W, path: farWt } });
+    expect(listed(w, w.main, w.wt)).toEqual({});
+  });
+
+  it('a worktree the robot left here whose folder is gone stays locked when the robot comes home into another, so a prune keeps a copy moved away', async () => {
+    const w = open();
+    const home = await w.start();
+    const id = await home.placement.start('c_1', W);
+    const away = `${w.wt}.away`;
+    fs.renameSync(w.wt, away);
+    const before = state(w, away);
+    libThere(w);
+
+    await home.placement.start('c_1', H);
+
+    expect(listed(w, w.main, w.wt)).toEqual({ locked: `moved to w1 ${id}` });
+    w.g(w.main, 'worktree', 'prune');
+    expect(state(w, away)).toEqual(before);
   });
 });

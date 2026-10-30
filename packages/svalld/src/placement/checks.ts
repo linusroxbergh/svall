@@ -86,7 +86,7 @@ const originOf = async (dir: string, git: GitRunner): Promise<string | undefined
 
 // a remote without the token an http URL may carry as its user or password, so the worker reads it with its own
 // credentials; an ssh URL keeps its user, and an scp-style one is no URL
-function withoutToken(remote: string): string {
+export function withoutToken(remote: string): string {
   let u: URL;
   try { u = new URL(remote); } catch { return remote; }
   const http = /^https?:$/.test(u.protocol);
@@ -103,7 +103,7 @@ const rootOf = async (dir: string, git: GitRunner): Promise<string | undefined> 
 };
 
 // a remote as any of its spellings, scp or url, with or without .git, names it
-const remoteKey = (r?: string): string | undefined => r && (webUrl(r) ?? r);
+export const remoteKey = (r?: string): string | undefined => r && (webUrl(r) ?? r);
 
 /**
  * What the worker holds at `path`: a clone with its origin, root commit and ref shas, something else, or nothing, with

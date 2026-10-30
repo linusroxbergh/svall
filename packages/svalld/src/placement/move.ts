@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type MoveSheet, type SystemInfo } from '@svall/protocol';
+import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { boundary, type Failpoint } from '../failpoints.js';
@@ -15,14 +15,17 @@ import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
+import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
-import { converted, homesOf, MovePlan, moveChecks, reach, refusalOf, restCheck, type CheckDeps, type CheckResult } from './checks.js';
+import {
+  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, withoutToken, type CheckDeps, type CheckResult, type RepoProbe,
+} from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths } from './paths.js';
 import {
-  blobIds, changedSince, checkSessions, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, packMove, placeSessions, refused,
-  restRobot, serversLeft, takeBack, unpack, wake, type Failure, type RestSide, type ReturnSheet,
+  blobIds, changedSince, checkSessions, CloneLocks, holding, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree,
+  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Failure, type Made, type RestSide, type ReturnSheet,
 } from './move-steps.js';
 
 const JOURNALED: Record<MovePhase, Failpoint> = {
@@ -49,6 +52,17 @@ const sheetRefusal = (e: Error, name: string): Failure => {
 
 // a move undone before its commit rejects with the phase it failed at, which the move sheet names
 const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
+
+// two branch names this Mac cannot hold side by side: one a folder of the other, or spelled alike but for case, which APFS
+// takes for one
+function clash(a: string, b: string): boolean {
+  const [x, y] = [a.split('/'), b.split('/')];
+  for (let k = 0; k < Math.min(x.length, y.length); k++) {
+    if (x[k].toLowerCase() !== y[k].toLowerCase()) return false;
+    if (x[k] !== y[k]) return true;
+  }
+  return x.length !== y.length;
+}
 
 const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b % 36).toString(36)).join('')}`;
 
@@ -84,6 +98,7 @@ export class Placement {
   private files: MoveFiles;
   private running = new Map<string, Promise<void>>();
   private linked = new Set<MachineId>();
+  private clones = new CloneLocks();
   private unsubscribe: () => void;
 
   constructor(private d: PlacementDeps) {
@@ -259,7 +274,7 @@ export class Placement {
       if (j.phase === 'bundle') {
         // the agent there is the one the user talks to here; a mirror that does not go is logged, and the move goes on
         await this.d.links.pushMirror(j.to);
-        await this.convert(j);
+        j = await this.convert(j);
         const c = this.robot(j.robotId);
         const packed = await packMove(c, j, this.files.stage(j.id), this.d.git, this.d.cli);
         j = this.enter({ ...j, robot: structuredClone(c), ...packed }, 'prepare');
@@ -276,17 +291,24 @@ export class Placement {
   }
 
   // a main checkout becomes the robot's worktree once, and the robot moves into it, whatever the move does next
-  private async convert(j: MoveJournal): Promise<void> {
+  private async convert(j: MoveJournal): Promise<MoveJournal> {
     const cv = j.plan.convert;
-    if (!cv) return;
-    if (!fs.existsSync(path.join(cv.main, WORKTREES, cv.slug))) await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, head: cv.head });
+    if (!cv) return j;
+    await this.clones.run(cv.main, async () => {
+      const root = path.join(cv.main, WORKTREES, cv.slug);
+      if (fs.lstatSync(root, { throwIfNoEntry: false })) throw new Error(`${root} on this Mac is in the way; move it out of the way first`);
+      j = { ...j, made: { ...j.made, converted: true } };
+      this.save(j);
+      await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, head: cv.head });
+    });
     this.settleConversion(j);
+    return j;
   }
 
   private settleConversion(j: MoveJournal): void {
     const cv = j.plan.convert;
     const c = this.d.store.state.robots[j.robotId];
-    if (!cv || !c?.repo) return;
+    if (!cv || !c?.repo || !j.made?.converted) return;
     const root = path.join(cv.main, WORKTREES, cv.slug);
     if (clean(c.repo.root) === clean(root) || !fs.existsSync(root)) return;
     this.d.store.update((d) => { d.robots[j.robotId] = converted(d.robots[j.robotId], c.repo!, cv.slug); });
@@ -388,47 +410,74 @@ export class Placement {
     return MoveJournal.parse({ ...j, robot: r.robot, manifest: r.manifest, branchSha: r.branchSha, sessions: r.sessions ?? [], rest: r.rest });
   }
 
-  // the worktree the robot left here, as it was then, takes what comes back: reset to its base, cleaned, applied, once
-  // all that comes is checked
+  // what comes back lands, once all that comes is checked, in the worktree the robot left here, as it was then, reset to its
+  // base and cleaned, or in a new worktree of this Mac's clone
   private async prepareHere(j: MoveJournal): Promise<MoveJournal> {
     const c = this.robot(j.robotId);
     const stage = this.files.stage(j.id);
-    const { left } = c;
+    const { clone, paths } = j.plan;
+    const left = c.left?.machine === this.d.me ? c.left : undefined;
+    const back = takenBack(left, paths.root, this.d.me);
     const m = j.manifest;
     const [dir, sessions] = [path.join(stage, 'bundle'), path.join(stage, 'session')];
     const run = this.d.cli ?? cliRunner();
-    if (left && !m) throw new Error(`${c.name} comes back without the worktree it left`);
-    if (left && m) {
-      const changed = await changedSince(left, 'on this Mac', this.d.git);
+    const git = this.d.git;
+    if (clone && !m) throw new Error(`${c.name} comes back without its worktree`);
+    if (back) {
+      const changed = await changedSince(back, 'on this Mac', git);
       if (changed) throw refused(changed);
+    }
+    if (m) {
       await unpack(path.join(stage, 'bundle.tar'), dir);
       await verifyBundle(dir, m);
     }
     await unpack(path.join(stage, 'session.tar'), sessions);
-    await checkSessions(j.sessions ?? [], sessions, j.plan.paths, run, 'on this Mac');
-    if (left && m) {
-      j = { ...j, made: { unlocked: true } };
-      this.save(j);
-      await takeBack(left.path, left.branchSha, this.d.git);
-      await applyBundle(left.path, dir, m, this.d.git, { machine: 'this Mac', ...(left.branch === m.branch && { keep: left.branchSha }) });
+    await checkSessions(j.sessions ?? [], sessions, paths, run, 'on this Mac');
+    if (m) {
+      const made = (x: Made): void => { j = { ...j, made: { ...j.made, ...x } }; this.save(j); };
+      await this.clones.run(clone, async () => {
+        const twin = await this.clashing(m.branch, back?.path ?? clone);
+        if (twin) throw refused(twin);
+        if (back) {
+          made({ unlocked: true });
+          await takeBack(back.path, back.branchSha, git);
+          return applyBundle(back.path, dir, m, git, { machine: 'this Mac', ...(back.branch === m.branch && { keep: back.branchSha }) });
+        }
+        await newWorktree({ clone, root: paths.root, m, detach: false, where: 'this Mac', git, made });
+        made({ branch: (await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null });
+        await applyBundle(paths.root, dir, m, git, { machine: 'this Mac', ...(left?.branch === m.branch && { keep: left.branchSha }) });
+      });
     }
     placeSessions(j.sessions ?? [], sessions);
-    await importSessions(j.sessions ?? [], sessions, j.plan.paths, path.join(this.files.dir, 'held'), run);
+    await importSessions(j.sessions ?? [], sessions, paths, path.join(this.files.dir, 'held'), run);
     fs.rmSync(stage, { recursive: true, force: true });
     return j;
   }
 
-  // before the commit: a worktree this return took back is locked again as the robot left it, and the worker reopens the
-  // robot, told once it is back if out of reach; a step that fails is logged and the rest still run
+  // before the commit: a worktree this return took back is locked again as the robot left it, one it made goes, and the
+  // worker reopens the robot, told once it is back if out of reach; a step that fails is logged and the rest still run
   private async abortBack(failed: MoveJournal, error: Error): Promise<void> {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
-    const j = this.readable(failed.id) ?? failed;
-    const left = this.d.store.state.robots[j.robotId]?.left;
+    let j = this.readable(failed.id) ?? failed;
+    // what is left to undo, journaled after each step, so an abort run again undoes nothing twice
+    const still = (made: Made): void => {
+      const { made: _, ...rest } = j;
+      j = Object.keys(made).length ? { ...rest, made } : rest;
+      this.save(j);
+    };
+    const c = this.d.store.state.robots[j.robotId];
+    // what this return made here is its to undo only until a later move of the robot lands
+    if (j.made && (c?.machine !== j.from || (c.placement?.generation ?? 0) >= j.generation)) still({});
+    const { left } = c ?? {};
     if (left && j.made?.unlocked) {
       await leaveAgain(left.path, left.branchSha, `moved to ${this.name(j.from)} ${left.moveId}`, this.d.git).then(
-        (fingerprint) => this.d.store.update((d) => { d.robots[j.robotId].left = { ...left, fingerprint }; }),
+        (fingerprint) => { this.d.store.update((d) => { d.robots[j.robotId].left = { ...left, fingerprint }; }); still({}); },
         (e: Error) => this.d.log.error(`move ${j.id}: ${left.path} was not locked again: ${e.message}`),
       );
+    } else if (j.manifest && j.made) {
+      const [{ clone, paths }, m, made] = [j.plan, j.manifest, j.made];
+      await this.clones.run(clone, () => removeWorktree(clone, paths.root, m, made, this.d.git, still))
+        .catch((e: Error) => this.d.log.error(`move ${j.id}: ${paths.root} was not removed: ${e.message}`));
     }
     const told = await this.d.links.call(j.from, 'move.abort', { id: j.id }).then(() => true, (e: Error) => {
       this.d.log.error(`move ${j.id}: ${this.name(j.from)} was not told to reopen ${j.robotId}: ${e.message}`);
@@ -449,16 +498,18 @@ export class Placement {
     if ('failure' in reached) return fail(reached.failure);
     const { hello } = reached;
     if (c.moving) return fail({ reason: `moving to ${this.name(c.moving.to)}`, action: 'wait for the move to finish' });
-    if (c.repo && !c.left) throw new Invalid(`${c.name} left no worktree on this Mac to come back to`);
-    if (c.left) {
-      const changed = await changedSince(c.left, 'on this Mac', this.d.git);
+    const planned = await this.returnPlan(c, from, hello);
+    if ('failure' in planned) return fail(planned.failure);
+    const { plan, back } = planned;
+    if (back) {
+      const changed = await changedSince(back, 'on this Mac', this.d.git);
       if (changed) return fail(changed);
     }
-    const plan = await this.returnPlan(c, from, hello);
-    // this Mac's branch of the robot's branch's name, which the way back would reset, but the one it left here, compared above
+    // this Mac's branch of the robot's branch's name, which the way back would reset, but at the commit the robot left it at
     const name = c.repo?.branch;
-    const sha = name && c.left && c.left.branch !== name ? (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${name}^{commit}`], c.left.path)).stdout.trim() : '';
-    const branch = sha ? { name: name!, sha } : undefined;
+    const left = c.left?.machine === this.d.me ? c.left : undefined;
+    const sha = name ? (await this.d.git(['rev-parse', '--verify', '-q', `refs/heads/${name}^{commit}`], back?.path ?? plan.clone)).stdout.trim() : '';
+    const branch = sha && !(left?.branchSha === sha && left.branch === name) ? { name: name!, sha } : undefined;
     const answer = await this.d.links.call<ReturnSheet | { refusal: Failure }>(from, 'move.sheet', { robotId: c.id, have: plan.have, ...(branch && { branch }) }, { timeoutMs: SHEET_MS })
       .catch((e: Error) => ({ refusal: sheetRefusal(e, this.name(from)) }));
     if ('refusal' in answer) return fail(answer.refusal);
@@ -475,14 +526,60 @@ export class Placement {
     return { ok: true, sheet, plan: { ...plan, ...(interruptAfterMs !== undefined && { interruptAfterMs }) } };
   }
 
-  private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<MovePlan> {
+  // where the robot lands here, in this Mac's clone at the worker's clone's place, whose refs the bundle builds on
+  private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<{ plan: MovePlan; back?: LeftBehind } | { failure: Failure }> {
     const info = await this.d.links.call<SystemInfo>(from, 'system.info', {});
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, await this.d.agents());
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
-    if (c.left && clean(paths.root) !== clean(c.left.path)) throw new Error(`${c.name} would come back to ${paths.root}, not to ${c.left.path} where it left from`);
-    const have = c.left ? [...new Set((await must(this.d.git, ['for-each-ref', '--format=%(objectname)'], c.left.path)).split('\n').filter(Boolean))] : [];
-    return { clone: main, paths, have, carry: [] };
+    const plan: MovePlan = { clone: main, paths, have: [], carry: [] };
+    if (!c.repo) return { plan };
+    const back = takenBack(c.left, paths.root, this.d.me);
+    const failure = await this.landingRefusal(c, c.repo, back, from, main, paths.root);
+    if (failure) return { failure };
+    const have = (await must(this.d.git, ['for-each-ref', '--format=%(objectname)'], back?.path ?? main)).split('\n').filter(Boolean);
+    return { plan: { ...plan, have: [...new Set(have)] }, ...(back && { back }) };
+  }
+
+  // why the robot cannot come back into `back`, the worktree it left at `root`, or else a new one at `root` in its clone `main`
+  private async landingRefusal(c: Robot, repo: Repo, back: LeftBehind | undefined, from: MachineId, main: string, root: string): Promise<Failure | undefined> {
+    const repoName = path.posix.basename(clean(repo.mainRoot));
+    const { branch } = repo;
+    const git = this.d.git;
+    if (!back) {
+      if (!repo.isWorktree) return { reason: `${c.name} works in ${repoName}'s main checkout on ${this.name(from)}`, action: `give it its own worktree on ${this.name(from)} first` };
+      const far = await this.d.links.call<RepoProbe>(from, 'repo.probe', { path: repo.mainRoot }).catch((e: Error) => e);
+      if (far instanceof Error) return { reason: far.message, action: 'try again when it is awake' };
+      const here = await probeRepo({ path: main }, git);
+      if (here.state === 'none') {
+        const remote = far.remote && withoutToken(far.remote);
+        return { reason: `${repoName} is not cloned on this Mac`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
+      }
+      if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote) || here.rootCommit !== far.rootCommit) {
+        return { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
+      }
+    }
+    const twin = await this.clashing(branch, back?.path ?? main);
+    if (twin || back) return twin;
+    if (fs.lstatSync(root, { throwIfNoEntry: false })) return { reason: `${root} on this Mac is in the way`, action: 'move it out of the way first' };
+    // a worktree git lists at that place or on that branch whose folder is gone, moved or deleted, which git cannot tell apart
+    const entries = (await must(git, ['worktree', 'list', '--porcelain'], main)).split('\n\n').map((e) => e.split('\n'));
+    const stale = entries.map((e) => ({ at: e[0].slice('worktree '.length), e })).find(({ at, e }) =>
+      (clean(at) === clean(root) || e.includes(`branch refs/heads/${branch}`)) && !fs.existsSync(at));
+    if (stale) {
+      const unlock = stale.e.some((l) => l === 'locked' || l.startsWith('locked ')) ? `git worktree unlock ${shq(stale.at)} && ` : '';
+      return { reason: `git on this Mac still lists ${stale.at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${unlock}git worktree remove ${shq(stale.at)}` };
+    }
+    const holder = await holding(main, branch, git);
+    if (holder) return { reason: `${branch} is checked out in ${holder} on this Mac`, action: 'check out another branch there first' };
+    return undefined;
+  }
+
+  // a branch of this Mac's, in the clone at `at`, that it cannot keep beside `branch`
+  private async clashing(branch: string, at: string): Promise<Failure | undefined> {
+    const names = (await must(this.d.git, ['for-each-ref', '--format=%(refname:strip=2)', 'refs/heads'], at)).split('\n');
+    const twin = names.find((b) => b && b !== branch && clash(b, branch));
+    return twin ? { reason: `this Mac has a branch ${twin}, which it cannot keep beside ${branch}`, action: 'rename one of them first' } : undefined;
   }
 
   // ---- from the commit on, both ways
@@ -510,6 +607,13 @@ export class Placement {
   private async commit(j: MoveJournal): Promise<void> {
     const back = j.to === this.d.me;
     const c = this.robot(j.robotId);
+    // the worktree it left here, when it comes back into another, is unlocked while the record of it is still there; one
+    // whose folder is gone stays locked, so no prune drops the record of a copy moved elsewhere
+    const beside = back && c.left?.machine === this.d.me && clean(c.left.path) !== clean(j.plan.paths.root) && fs.existsSync(c.left.path) ? c.left : undefined;
+    if (beside) {
+      const r = await this.d.git(['worktree', 'unlock', beside.path], beside.path);
+      if (r.code !== 0 && !/is not locked/.test(r.stderr)) this.d.log.error(`move ${j.id}: ${beside.path} was not unlocked: ${r.stderr.trim()}`);
+    }
     if (c.placement?.generation !== j.generation || (c.machine ?? this.d.me) !== j.to) {
       boundary('move.commit.state', () => this.d.store.update((d) => {
         const cur = d.robots[j.robotId];

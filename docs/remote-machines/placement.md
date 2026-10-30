@@ -79,7 +79,8 @@ and its own button or action, the first with its details behind it; `svall robot
    checkout the sheet says so ("your 3 changed files in svall's main checkout move to a new branch kanban"): after
    you confirm and the agent rests, the move makes a worktree under `.claude/worktrees/<robot>` on a new branch
    `<robot>`, carries main's index, working-tree changes and untracked files into it, staged against unstaged as they
-   were, and leaves main clean on its branch. The stash list is never touched. A robot that shares its main checkout
+   were, and leaves main clean on its branch. The stash list is never touched, and a folder found at that place once
+   the move gets there stops it with main as it was. A robot that shares its main checkout
    with another gets its own worktree at main's HEAD instead, which leaves main as it is, since neither robot alone
    can claim its changes: the sheet ticks **Give it its own worktree: two robots share svall's main checkout** and
    says so ("it leaves svall's main checkout for a new branch kanban; the checkout keeps its 3 changed files").
@@ -164,6 +165,9 @@ recorded:
 - A branch that moved refuses: "kanban moved on this Mac since the move; merge or rename it".
 - Another branch of the robot's branch's name on this Mac, holding commits the worker's lacks, refuses: "this Mac has
   a branch fix-login with commits this one lacks; merge or rename it there first".
+- A branch on this Mac that git cannot keep beside the robot's, one spelled the same but for case, which macOS's file
+  system takes for one, or one whose name is a folder of the other's, refuses: "this Mac has a branch Fix-login, which
+  it cannot keep beside fix-login; rename one of them first".
 - A worktree that changed refuses: "changes on this Mac in /Users/ada/code/app/.claude/worktrees/kanban since the
   move; stash or commit them".
 - An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
@@ -180,6 +184,27 @@ recorded:
 Otherwise the worktree is reset to the commit it was left at, unlocked, and the robot's work from the worker is
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the
 worker is then locked the same way, and the next move there takes it back by the same rules.
+
+A robot started on the worker, one that went on in another worktree there, or one whose worktree on this Mac is gone
+and no longer listed by git comes back into a new worktree of this Mac's clone, at the place the worker's has in its
+clone, and its work is applied to it the same way. A worktree it left elsewhere on this Mac is unlocked and kept as it
+is; one whose folder is gone stays locked, so no prune drops git's record of a copy moved elsewhere. Before anything
+moves, the way back refuses:
+
+- A robot in the worker clone's main checkout: "scout works in app's main checkout on linus-vault; give it its own
+  worktree on linus-vault first".
+- No clone at that place: "app is not cloned on this Mac; git clone 'git@github.com:ada/app.git' '/Users/ada/code/app'".
+- Something else there: "/Users/ada/code/app on this Mac is not a clone of app; move it out of the way first".
+- A folder at the worktree's place: "/Users/ada/code/app/.claude/worktrees/scout on this Mac is in the way; move it out
+  of the way first".
+- A worktree git still lists at that place, or on the robot's branch, whose folder is gone, the one the robot left
+  included: "git on this Mac still lists /Users/ada/code/app/.claude/worktrees/kanban, whose folder is gone; git
+  worktree repair <its new place> if you moved it, else git worktree unlock '/Users/ada/code/app/.claude/worktrees/kanban'
+  && git worktree remove '/Users/ada/code/app/.claude/worktrees/kanban'", the unlock only for a locked one. Git cannot
+  tell a folder moved from one deleted, so the way back leaves its record alone.
+- The robot's branch checked out on this Mac, its main checkout included, or being rebased or bisected there: "scout
+  is checked out in /Users/ada/code/app on this Mac; check out another branch there first". The way back never changes
+  a checkout's branch here.
 
 ## While this Mac sleeps
 
