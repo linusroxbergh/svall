@@ -51,7 +51,7 @@
   font-family: var(--mono); font-size: var(--text-sm); color: var(--ink-2); word-break: break-all; text-align: left; }
 .mob-url:hover { color: var(--ink); background: var(--fill-2); }
 /* a screenshot's grey bars over the link and the logins */
-.mob-mask { display: block; height: .8em; margin: .3em 0; border-radius: 3px; background: var(--fill-3); }
+.mob-mask { display: block; height: .8em; margin: .3em 0; border-radius: var(--r-xs); background: var(--fill-3); }
 .mob-mask + .mob-mask { width: 60%; }
 .use-note .mob-mask { display: inline-block; width: 9em; margin: 0; vertical-align: middle; }
 .mob-here { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); overflow-wrap: anywhere; }
