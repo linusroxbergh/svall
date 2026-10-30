@@ -192,7 +192,8 @@ the worker:
   changes this Mac has yet to take over it.
 
 Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": new
-islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines.
+islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes
+this Mac as away once 45 seconds pass with nothing from it.
 
 The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
 the last 500 this Mac has acknowledged, with what each changed. Once the fleet it last sent is an hour old, a robot's

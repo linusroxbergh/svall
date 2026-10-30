@@ -11,7 +11,11 @@ import { claudePaths, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import type { Entry, Outbox } from '../worker/outbox.js';
 import { mergeSnapshot, ownedReport, Snapshot, type Inventory, type RobotSync } from '../worker/snapshot.js';
+import { HEARTBEAT_MS } from './home.js';
 import { answerCall, LinkStream, PART_REPLY } from './stream.js';
+
+// three beats with nothing from the home is a home gone without closing its stream, as a Mac asleep on a half-open connection
+export const SILENT_MS = 3 * HEARTBEAT_MS;
 
 const HomeHello = z.object({ t: z.literal('hello'), token: z.string(), schema: z.number().optional(), protocol: z.number().optional() });
 
@@ -167,11 +171,13 @@ export class HomeConnection {
 
   private accept(socket: net.Socket): void {
     const stream: LinkStream = new LinkStream(socket, {
+      idleMs: SILENT_MS,
       onFrame: (f) => { if (this.link?.stream === stream) this.take(this.link, f); else this.greet(stream, f); },
-      onClose: () => {
+      onClose: (err) => {
         this.streams.delete(stream);
         const link = this.link;
         if (link?.stream !== stream) return;
+        if (err) this.o.log.error(`link: ${this.o.worker.homeName}'s stream closed: ${err.message}`);
         this.link = undefined;
         this.away();
         if (link.live) this.o.onLink?.(false);

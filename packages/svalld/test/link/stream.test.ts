@@ -182,6 +182,26 @@ describe('LinkStream', () => {
     expect(expired.e).toMatchObject({ code: 'timeout', message: "big's reply expired before it all arrived; try again" });
   });
 
+  it('with idleMs closes once nothing has arrived for that long, any bytes meanwhile keeping it open', async () => {
+    vi.useFakeTimers();
+    const [da, db] = pair();
+    const closed: (Error | undefined)[] = [];
+    const got: LinkFrame[] = [];
+    new LinkStream(da, { onFrame: (f) => got.push(f), onClose: (e) => closed.push(e), idleMs: 45_000 });
+    // the far end, written to by hand, errors as this one tears down the pipes they share
+    db.on('error', () => {});
+    // one frame across two reads, 80 s after the stream opened
+    await vi.advanceTimersByTimeAsync(40_000);
+    db.write('{"t":"pi');
+    await vi.advanceTimersByTimeAsync(40_000);
+    db.write('ng"}\n');
+    await vi.advanceTimersByTimeAsync(44_999);
+    expect([got, closed]).toEqual([[{ t: 'ping' }], []]);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(closed).toEqual([new Error('nothing arrived for 45 s')]);
+    expect(da.destroyed).toBe(true);
+  });
+
   it('backlog reports the bytes not yet written to the duplex', async () => {
     const [da, db] = pair();
     const a = new LinkStream(da, { onFrame: () => {}, onClose: () => {} });
