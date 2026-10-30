@@ -6,7 +6,7 @@ final class SurfaceViewTests: XCTestCase {
         let screen = """
             Last login: Mon Oct 20 09:12:01 on ttys004
             open terminal failed: missing or unsuitable terminal: xterm-ghostty
-            Shared connection to 100.117.42.24 closed.
+            Shared connection to 100.64.0.7 closed.
 
             """
         XCTAssertEqual(SurfaceView.lastLine(of: screen), "open terminal failed: missing or unsuitable terminal: xterm-ghostty")
