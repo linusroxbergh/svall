@@ -4,8 +4,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
-import { applyBundle, BUNDLE_MAX, buildBundle, fingerprintOf, trackedCredentials, verifyBundle } from '../../src/placement/bundle.js';
-import { lockWorktree, takeBack } from '../../src/placement/move-steps.js';
+import { MachineId, MoveId } from '@svall/protocol';
+import { applyBundle, BUNDLE_MAX, buildBundle, fingerprintOf, trackedCredentials, verifyBundle, wasCredential } from '../../src/placement/bundle.js';
+import { changedSince, lockWorktree, takeBack } from '../../src/placement/move-steps.js';
 import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -225,15 +226,18 @@ describe.skipIf(!hasGit)('bundle', () => {
     // as git has it on Linux
     g(src, 'config', 'core.ignoreCase', 'false');
     put(src, 'a.txt', 'a\n');
+    put(src, '.gitignore', '.env\n.envs/\n');
     g(src, 'add', '.');
     g(src, 'commit', '-qm', 'base');
     const head = g(src, 'rev-parse', 'HEAD');
     const wt = at('wt');
     g(src, 'worktree', 'add', '-q', '-b', 'wt', wt);
-    const keys = ['.ENV', '.envs/.env.local', 'ID_RSA', 'Server.PEM', 'deploy.KEY', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'keys/id_ed25519.pub'];
-    // files named like nothing, the second in a folder named like a credential
-    const plain = ['.envs/notes.md', 'notes.txt'];
-    for (const k of [...keys, ...plain]) put(wt, k, 'secret\n');
+    const keys = ['.ENV.prod', 'ID_RSA', 'Server.PEM', 'certs.KEY/server.pem', 'deploy.KEY', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'keys/id_ed25519.pub'];
+    // files named like nothing, the first in a folder named like a credential
+    const plain = ['certs.KEY/notes.md', 'notes.txt'];
+    // ignored folders named like a credential: a virtualenv and a settings tree
+    const ignored = ['.env/bin/python', '.env/prod', '.envs/.production/.django'];
+    for (const k of [...keys, ...plain, ...ignored]) put(wt, k, 'secret\n');
 
     const manifest = await buildBundle(wt, { git: hooklessGit, into: at('bundle'), have: [head], carry: [] });
     expect(manifest.credentialFiles).toEqual([...keys].sort());
@@ -243,6 +247,26 @@ describe.skipIf(!hasGit)('bundle', () => {
     await takeBack(wt, head, hooklessGit);
     expect(keys.filter((k) => fs.existsSync(path.join(wt, k)))).toEqual(keys);
     expect(plain.filter((p) => fs.existsSync(path.join(wt, p)))).toEqual([]);
+    expect(ignored.filter((p) => fs.existsSync(path.join(wt, p)))).toEqual(ignored);
+  });
+
+  it('a worktree a robot left is unchanged since by the fingerprint Svall 0.24 recorded, which counted a file only today\'s credential names match; a change since still shows', async () => {
+    const { at, g } = scratch();
+    const src = at('src');
+    g(at(''), 'init', '-q', src);
+    put(src, 'a.txt', 'a\n');
+    g(src, 'add', '.');
+    g(src, 'commit', '-qm', 'base');
+    put(src, 'Deploy.KEY', 'secret\n');
+    put(src, 'notes.txt', 'notes\n');
+    const recorded = await fingerprintOf(src, hooklessGit, wasCredential);
+    expect(recorded).not.toBe(await fingerprintOf(src, hooklessGit));
+    const left = { moveId: MoveId.parse('mv_0123456789'), machine: MachineId.parse(crypto.randomUUID()), path: src, branch: 'main', branchSha: g(src, 'rev-parse', 'HEAD'), fingerprint: recorded };
+
+    expect(await changedSince(left, 'on this Mac', hooklessGit)).toBeUndefined();
+    expect(await changedSince({ ...left, fingerprint: await fingerprintOf(src, hooklessGit) }, 'on this Mac', hooklessGit)).toBeUndefined();
+    put(src, 'later.txt', 'later\n');
+    expect(await changedSince(left, 'on this Mac', hooklessGit)).toEqual({ reason: `changes on this Mac in ${src} since the move`, action: 'stash or commit them' });
   });
 
   it('refuses an untracked path or link target ustar cannot hold, which bsdtar would leave out, before packing', async () => {
