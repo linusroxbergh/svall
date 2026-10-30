@@ -11,7 +11,6 @@ robots on different machines share its islands, cards and map.
 | [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what a robot does while this Mac sleeps, what goes wrong, and limitations |
 | [Blockers, warnings and errors](errors.md) | Every code `svall host` and `svall doctor` report, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |
-| [Release notes](release-notes.md) | What this release adds and changes |
 
 ## In short
 

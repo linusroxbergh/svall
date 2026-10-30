@@ -48,7 +48,7 @@ fleet's `config.json` in two:
 3. `fleet.json` gets every other key it knows and a new fleet `id`.
 4. A key neither file knows stays only in `config.json.bak`.
 
-The [README's configuration table](../../README.md#configuration) says which key lives in which file. From then on
+The [configuration table](../configuration.md) says which key lives in which file. From then on
 `config.json` is not read. A dotfile manager such as stow or home-manager may link it back to the file
 `config.json.bak` links to; that link is left alone, with a line in the daemon's log, so link `fleet.json` and
 `node.json` from your dotfiles instead. Any other `config.json` beside `fleet.json`, such as the one an older

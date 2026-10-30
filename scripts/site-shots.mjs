@@ -1,5 +1,6 @@
 // Turns six window screenshots into the landing page's views, in order: browser, files, markdown, board, map, phone;
-// then two phone screenshots, the fleet list and a terminal, for the phone standing over the last view.
+// then two phone screenshots, the fleet list and a terminal, for the phone standing over the last view; then the README's
+// two images from them.
 // `pnpm site:shots [eight .png files]`; with none, the eight PNGs in site/shots-in, oldest first. Needs ImageMagick.
 import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
@@ -71,3 +72,5 @@ for (const name of NAMES) {
   html = html.replace(new RegExp(`shots/${name}\\.avif(\\?v=\\w+)?"`), `shots/${name}.avif?v=${v}"`);
 }
 fs.writeFileSync(page, html);
+
+execFileSync('node', [path.join(root, 'scripts/readme-shots.mjs')], { stdio: 'inherit' });

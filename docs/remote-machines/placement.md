@@ -243,6 +243,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - No platform or filter checks: a robot whose work needs Xcode moves and finds out.
 - A second terminal moves as a shell in the same worktree; a command running in it ends.
 - The phone cannot see a worker's robots while the Mac sleeps.
+- Robots move one at a time; an island does not move as a whole.
+- A dev server a robot runs on a worker is not forwarded to this Mac.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while this Mac is awake to ask for it.
 - A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.
