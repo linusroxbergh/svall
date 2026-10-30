@@ -25,6 +25,8 @@ const DOCS_MAX = 20 * 1024 * 1024;
 const DOCS_QUIET_MS = 2_000;
 // a docs.write rides one line of the link, its bytes in base64
 const NOTE_MAX = 1024 * 1024;
+// a longer name leaves no room in 255 bytes for the temp name a write takes or a conflict's copy beside it
+const NAME_MAX = 160;
 
 // what a change was made on: the home's sha as its last tar brought it, and while no tar has come since, the worker's
 // own last change there (null for a removal); an older release journaled neither, nor an id
@@ -103,6 +105,10 @@ const shaOf = (file: string): string | undefined => {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
     throw e;
   }
+};
+
+const isFolder = (file: string): boolean => {
+  try { return fs.statSync(file).isDirectory(); } catch { return false; }
 };
 
 const keptIn = (dir: string, stem: string): string[] => {
@@ -279,8 +285,9 @@ export class WorkerDocs {
   // a doc's content, unless the home has it coming already: this machine's last change to it, or else the home's last tar
   private journal(rel: string, data?: Buffer): void {
     const sha256 = data && sha256Hex(data);
-    if (data && sha256 && data.length > NOTE_MAX) {
-      if (this.refused.get(rel) !== sha256) this.o.log.error(`docs: ${path.join(this.o.dir, rel)} is over ${NOTE_MAX / 2 ** 20} MB and stays on this machine`);
+    const over = !data ? undefined : data.length > NOTE_MAX ? `is over ${NOTE_MAX / 2 ** 20} MB` : Buffer.byteLength(path.basename(rel)) > NAME_MAX ? `has a name over ${NAME_MAX} bytes` : undefined;
+    if (data && sha256 && over) {
+      if (this.refused.get(rel) !== sha256) this.o.log.error(`docs: ${path.join(this.o.dir, rel)} ${over} and stays on this machine`);
       this.refused.set(rel, sha256);
       return;
     }
@@ -321,23 +328,43 @@ export class WorkerDocs {
   private settle(from: string, seq: number): void {
     this.catchUp();
     const theirs = new Set(filesIn(from));
-    for (const rel of new Set([...theirs, ...filesIn(this.o.dir), ...Object.keys(this.synced)])) {
+    const folders = new Set([...theirs].flatMap((rel) => {
+      const parts = rel.split('/');
+      return parts.slice(1).map((_, i) => parts.slice(0, i + 1).join('/'));
+    }));
+    // a path that is a file on one machine and a folder on the other, or that this machine cannot hold, stays as it is here
+    // with what is under it, taken as synced so that it is not journaled again
+    const kept: string[] = [];
+    const keep = (rel: string, why?: string) => {
+      if (why) { kept.push(rel); this.o.log.error(`docs: ${rel} stays as this machine has it: ${why}`); }
+      const file = path.join(this.o.dir, rel);
+      if (fs.existsSync(file) && !isFolder(file)) this.synced[rel] = sha256Hex(fs.readFileSync(file));
+      else delete this.synced[rel];
+    };
+    for (const rel of [...new Set([...theirs, ...filesIn(this.o.dir), ...Object.keys(this.synced)])].sort()) {
       const last = this.pending.get(rel);
       if ((last?.seq ?? 0) > seq || this.refused.has(rel)) continue;
+      if (kept.some((k) => rel.startsWith(`${k}/`))) { keep(rel); continue; }
       const file = path.join(this.o.dir, rel);
-      if (!theirs.has(rel)) {
-        fs.rmSync(file, { force: true });
-        delete this.synced[rel];
-        continue;
+      if (theirs.has(rel) ? isFolder(file) : folders.has(rel)) { keep(rel, 'a file on one machine is a folder on the other'); continue; }
+      try {
+        if (!theirs.has(rel)) {
+          fs.rmSync(file, { force: true });
+          delete this.synced[rel];
+          continue;
+        }
+        const data = fs.readFileSync(path.join(from, rel));
+        const sha256 = sha256Hex(data);
+        // caught up, the file holds the last change journaled or else what the last tar brought
+        if ((last ? last.sha256 : this.synced[rel]) !== sha256) {
+          fs.mkdirSync(path.dirname(file), { recursive: true });
+          writeDurable(file, data);
+        }
+        this.synced[rel] = sha256;
+      } catch (e) {
+        if (!UNHELD.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
+        keep(rel, (e as Error).message);
       }
-      const data = fs.readFileSync(path.join(from, rel));
-      const sha256 = sha256Hex(data);
-      // caught up, the file holds the last change journaled or else what the last tar brought
-      if ((last ? last.sha256 : this.synced[rel]) !== sha256) {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        writeDurable(file, data);
-      }
-      this.synced[rel] = sha256;
     }
     for (const [rel, { seq: s }] of this.pending) if (s <= seq) this.pending.delete(rel);
     this.save();

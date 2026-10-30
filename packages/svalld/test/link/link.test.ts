@@ -402,20 +402,20 @@ describe('the link', () => {
     const logged: string[] = [];
     const w = world({ log: { info() {}, error: (m) => logged.push(m) } });
     w.home.update((d) => { d.robots.r_2 = robot({ id: 'r_2', name: 'at home', machine: H }); });
-    // entries this home cannot read, as a worker on another build could journal
-    w.outbox.append('robot.sync', { robotId: 'r_1' });
+    // a report this home can read, then two it cannot, as a worker on another build could journal
+    w.outbox.append('robot.sync', report('/w/before'));
     w.outbox.append('robot.sync', { robotId: 'r_2' });
-    w.outbox.append('robot.sync', report('/w/after'));
+    w.outbox.append('robot.sync', { robotId: 'r_1' });
     await w.worker.start();
     const links = w.links();
     links.start();
     await until(() => expect(w.outbox.acked()).toBe(3));
     expect([links.for(W)?.connected(), w.home.state.machines?.[W]?.replayed?.seq]).toEqual([true, 3]);
-    expect(w.reports).toEqual(['/w/after']);
+    expect(w.reports).toEqual(['/w/before']);
     const why = '✖ Invalid input: expected number, received undefined → at generation ✖ Invalid input: expected object, received undefined → at fields';
     expect(w.home.state.robots.r_1).toMatchObject({ note: `vault sent a report on this robot that this Mac cannot read; it was skipped: ${why}`, noteSource: 'manual' });
     expect(w.home.state.robots.r_2.note).toBe('');
-    expect(logged).toEqual([1, 2].map((seq) => `vault: event ${seq} (robot.sync) is a report this svalld cannot read; skipped: ${why}`));
+    expect(logged).toEqual([2, 3].map((seq) => `vault: event ${seq} (robot.sync) is a report this svalld cannot read; skipped: ${why}`));
   });
 
   it('an event that fails to apply the same way on every link, as on a full disk, is never skipped, its retry doubling, and is taken once it passes', async () => {

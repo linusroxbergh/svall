@@ -249,6 +249,7 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
   here since; it stays". A change at a path this Mac's docs cannot hold, such as under a file of that name here, is
   skipped: "linus-vault changed robots/c_4f2k9a/plan/a.md, which this Mac's docs cannot hold; it was skipped: ENOTDIR: …".
+  The worker keeps its own copy there, and a doc over 1 MB or with a name over 160 bytes stays on the worker alone.
 - A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
   cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:

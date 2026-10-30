@@ -248,6 +248,36 @@ describe('a doc changed on both machines', () => {
     expect(pushes).toHaveBeenCalledTimes(2);
   });
 
+  it('a doc whose name this Mac\'s docs could not hold stays on the worker, never journaled, through the tars after it', async () => {
+    const { w, dir, farDir } = apart('v1\n');
+    const long = `${'n'.repeat(230)}.md`;
+    put(path.join(farDir, long), 'only here\n');
+    await w.link();
+    await until(() => { if (!w.worker.connection.connected()) throw new Error('not live yet'); });
+    put(path.join(dir, 'notes.md'), 'v2 from this Mac\n');
+    await until(() => expect(read(path.join(farDir, 'notes.md'))).toBe('v2 from this Mac\n'));
+    expect(read(path.join(farDir, long))).toBe('only here\n');
+    expect(fs.existsSync(path.join(dir, long))).toBe(false);
+    expect(w.worker.outbox.after(0).filter((e) => (e.data as { path?: string }).path?.endsWith(long))).toEqual([]);
+  });
+
+  it('a path that is a file on this Mac and a folder on the worker stays as the worker has it, and the worker goes on taking this Mac\'s docs', async () => {
+    const { w, dir, farDir } = apart('v1\n');
+    const a = 'robots/c_1/a';
+    put(path.join(dir, 'a'), 'a v1\n');
+    put(path.join(farDir, 'a'), 'a v1\n');
+    put(w.worker.paths.docsSynced, JSON.stringify({ [NOTE]: sha256Hex(Buffer.from('v1\n')), [a]: sha256Hex(Buffer.from('a v1\n')) }));
+    // this Mac changes a, while the worker makes it a folder
+    put(path.join(dir, 'a'), 'a v2, changed here\n');
+    fs.rmSync(path.join(farDir, 'a'));
+    put(path.join(farDir, 'a/b.md'), 'b\n');
+    await w.link();
+    await until(() => expect(w.home.store.state.robots.c_1.note).toContain(`w1 changed ${a}/b.md, which this Mac's docs cannot hold`));
+    put(path.join(dir, 'later.md'), 'later\n');
+    await until(() => expect(read(path.join(farDir, 'later.md'))).toBe('later\n'));
+    expect([read(path.join(farDir, 'a/b.md')), read(path.join(dir, 'a'))]).toEqual(['b\n', 'a v2, changed here\n']);
+  });
+
   it('a write whose base is the home\'s current content applies, and a replay of it is nothing', async () => {
     const { w, dir, farDir } = apart('v1\n');
     const applied = vi.spyOn(w.home.docs!, 'apply');
