@@ -15,10 +15,20 @@ const version = /<key>CFBundleShortVersionString<\/key><string>([^<]+)</.exec(pl
 if (!version) throw new Error('Info.plist has no CFBundleShortVersionString');
 const count = execFileSync('git', ['-C', root, 'rev-list', '--count', 'HEAD'], { encoding: 'utf8' }).trim();
 
+// zod's errors read the en locale it imports itself; z.locales, which nothing here reads, would bring every other one
+const zodEnOnly = {
+  name: 'zod-en-only',
+  setup(b) {
+    b.onResolve({ filter: /^\.\.\/locales\/index\.js$/ }, (args) => (args.importer.includes(`${path.sep}zod${path.sep}`)
+      ? { path: path.join(args.resolveDir, '../locales/index.js'), namespace: 'zod-en-only' } : undefined));
+    b.onLoad({ filter: /.*/, namespace: 'zod-en-only' }, (args) => ({ contents: "export { default as en } from './en.js';", resolveDir: path.dirname(args.path) }));
+  },
+};
+
 fs.rmSync(out, { recursive: true, force: true });
 await build({
   absWorkingDir: root,
-  entryPoints: { svalld: 'packages/svalld/src/bin.ts', svall: 'packages/cli/src/main.ts', 'retro-index': 'packages/svalld/src/retro/index-worker.ts' },
+  entryPoints: { 'svalld-main': 'packages/svalld/src/bin.ts', 'svall-main': 'packages/cli/src/main.ts', 'retro-index': 'packages/svalld/src/retro/index-worker.ts' },
   outdir: out,
   outExtension: { '.js': '.mjs' },
   bundle: true,
@@ -30,8 +40,13 @@ await build({
   banner: { js: "import { createRequire as svallRequire } from 'node:module'; const require = svallRequire(import.meta.url);" },
   // ws loads these native speedups when they are installed and runs without them
   external: ['bufferutil', 'utf-8-validate'],
+  plugins: [zodEnOnly],
   logLevel: 'warning',
 });
+// each runs its bundle with V8's code cache in the temp folder; it sets no env var, and an unwritable folder only turns it off
+for (const name of ['svalld', 'svall']) {
+  fs.writeFileSync(path.join(out, `${name}.mjs`), `import module from 'node:module';\ntry { module.enableCompileCache(); } catch {}\nawait import('./${name}-main.mjs');\n`);
+}
 for (const dir of ['hooks', 'home', 'skills', 'agent-profiles']) {
   fs.cpSync(path.join(root, 'packages/svalld', dir), path.join(out, dir), { recursive: true });
 }
