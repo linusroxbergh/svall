@@ -172,9 +172,18 @@ typeset +x FPATH
 
 ### Migrating from Herdr
 
-Ask your agent to move your Herdr workspaces into Svall. Each workspace becomes
-an island, and each Claude, Codex or OpenCode pane a robot in the same
-directory. `herdr --skill` and `svall <command> --help` tell it how.
+Ask your agent to move your Herdr workspaces into Svall.
+`~/.config/herdr/session.json`, or `sessions/<name>/session.json` there for a
+named session, lists each workspace with its folder, and each agent pane with
+its folder and session id. Each workspace becomes an island, and each agent pane
+a robot that resumes its conversation:
+
+```sh
+svall island create "<workspace>"
+svall robot new --island <id> --cwd <folder> --command "claude --resume <session id>"
+```
+
+Close the panes in Herdr first, so one session doesn't run in both.
 
 ## Build from source (Svall Dev)
 
