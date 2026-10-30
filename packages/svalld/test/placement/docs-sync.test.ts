@@ -41,6 +41,17 @@ function apart(text: string) {
   return { w, dir, farDir };
 }
 
+// c_1's docs with a file a that this Mac changes while the worker makes a a folder holding b.md
+function clashing() {
+  const { w, dir, farDir } = apart('v1\n');
+  for (const d of [dir, farDir]) put(path.join(d, 'a'), 'a v1\n');
+  put(w.worker.paths.docsSynced, JSON.stringify({ [NOTE]: sha256Hex(Buffer.from('v1\n')), 'robots/c_1/a': sha256Hex(Buffer.from('a v1\n')) }));
+  put(path.join(dir, 'a'), 'a v2, changed here\n');
+  fs.rmSync(path.join(farDir, 'a'));
+  put(path.join(farDir, 'a/b.md'), 'b\n');
+  return { w, dir, farDir };
+}
+
 type DocsEvent = { kind: 'docs.write' | 'docs.delete'; data: unknown };
 
 // the worker's docs, last given `text` as c_1's note by the home, journaling into `events` with no home to send them to
@@ -248,9 +259,9 @@ describe('a doc changed on both machines', () => {
     expect(pushes).toHaveBeenCalledTimes(2);
   });
 
-  it('a doc whose name this Mac\'s docs could not hold stays on the worker, never journaled, through the tars after it', async () => {
+  it('a doc whose name a docs tar cannot carry stays on the worker, never journaled, through the tars after it', async () => {
     const { w, dir, farDir } = apart('v1\n');
-    const long = `${'n'.repeat(230)}.md`;
+    const long = `${'n'.repeat(130)}.md`;
     put(path.join(farDir, long), 'only here\n');
     await w.link();
     await until(() => { if (!w.worker.connection.connected()) throw new Error('not live yet'); });
@@ -276,6 +287,42 @@ describe('a doc changed on both machines', () => {
     put(path.join(dir, 'later.md'), 'later\n');
     await until(() => expect(read(path.join(farDir, 'later.md'))).toBe('later\n'));
     expect([read(path.join(farDir, 'a/b.md')), read(path.join(dir, 'a'))]).toEqual(['b\n', 'a v2, changed here\n']);
+    // once this Mac drops its file, the worker's folder reaches it
+    fs.rmSync(path.join(dir, 'a'));
+    await until(() => expect(read(path.join(dir, 'a/b.md'))).toBe('b\n'));
+    await nap(300);
+    expect(read(path.join(farDir, 'a/b.md'))).toBe('b\n');
+  });
+
+  it('a folder the worker held while this Mac had a file there meets this Mac\'s own folder as a conflict, the worker\'s copy kept beside', async () => {
+    const { w, dir, farDir } = clashing();
+    await w.link();
+    await until(() => expect(w.home.store.state.robots.c_1.note).toContain('which this Mac\'s docs cannot hold'));
+    fs.rmSync(path.join(dir, 'a'));
+    put(path.join(dir, 'a/b.md'), 'b from this Mac\n');
+    const kept = () => fs.readdirSync(path.join(dir, 'a')).filter((n) => n.endsWith('.conflict.md'));
+    await until(() => expect(kept()).toHaveLength(1));
+    expect([read(path.join(dir, 'a/b.md')), read(path.join(dir, 'a', kept()[0]!))]).toEqual(['b from this Mac\n', 'b\n']);
+    await until(() => expect(read(path.join(farDir, 'a', kept()[0]!))).toBe('b\n'));
+  });
+
+  it('a path only this Mac turned from a file into a folder, or the worker into a folder while this Mac dropped it, settles without a hold', async () => {
+    const { w, dir, farDir } = apart('v1\n');
+    const synced = { [NOTE]: sha256Hex(Buffer.from('v1\n')), 'robots/c_1/x': sha256Hex(Buffer.from('x\n')), 'robots/c_1/a': sha256Hex(Buffer.from('a\n')) };
+    for (const d of [dir, farDir]) { put(path.join(d, 'x'), 'x\n'); put(path.join(d, 'a'), 'a\n'); }
+    put(w.worker.paths.docsSynced, JSON.stringify(synced));
+    // this Mac makes x a folder; the worker makes a a folder while this Mac drops a
+    fs.rmSync(path.join(dir, 'x'));
+    put(path.join(dir, 'x/y.md'), 'y\n');
+    fs.rmSync(path.join(dir, 'a'));
+    fs.rmSync(path.join(farDir, 'a'));
+    put(path.join(farDir, 'a/b.md'), 'b\n');
+    await w.link();
+    await until(() => expect(read(path.join(farDir, 'x/y.md'))).toBe('y\n'));
+    await until(() => expect(read(path.join(dir, 'a/b.md'))).toBe('b\n'));
+    put(path.join(dir, 'later.md'), 'later\n');
+    await until(() => expect(read(path.join(farDir, 'later.md'))).toBe('later\n'));
+    expect(read(path.join(farDir, 'a/b.md'))).toBe('b\n');
   });
 
   it('a write whose base is the home\'s current content applies, and a replay of it is nothing', async () => {
