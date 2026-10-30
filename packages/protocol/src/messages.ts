@@ -289,7 +289,7 @@ export const methods = {
     params: z.object({}),
     result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
   },
-  // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran
+  // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran, and tries each link that is down again now
   'machines.refresh': { params: z.object({}), result: z.object({}) },
   // the setup rows of a machine's agent configuration, once its link is up or waitMs has passed; with robot, those its agents use
   'machines.setup': {

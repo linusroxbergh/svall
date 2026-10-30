@@ -18,7 +18,8 @@ import { Inventory, RobotSync, Snapshot } from '../worker/snapshot.js';
 import { SshMaster } from './ssh.js';
 import { answerCall, LinkStream, MAX_LINE } from './stream.js';
 
-/** How often the home pings a worker; a ping still unanswered at the next beat closes the link. */
+/** How often the home pings a worker; a ping still unanswered at the next beat closes the link. A worker closes a link
+ *  silent for three beats, so a change here needs a new PROTOCOL_VERSION. */
 export const HEARTBEAT_MS = 15_000;
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 60_000;
@@ -153,11 +154,11 @@ export class WorkerLink {
     if (this.odd && this.stream) this.greet(this.stream);
   }
 
-  /** Tries a link that is down again at once, its backoff from the start; one under way keeps its try. */
+  /** Tries a link that is down again at once; one not linked has its backoff from the start, and one under way keeps its try. */
   retryNow(): void {
-    if (this.stopped || this.stream) return;
-    this.retryMs = FIRST_RETRY_MS;
-    if (this.connecting) return;
+    if (this.stopped) return;
+    if (!this.peer) this.retryMs = FIRST_RETRY_MS;
+    if (this.stream || this.connecting) return;
     clearTimeout(this.retry);
     void this.attempt();
   }

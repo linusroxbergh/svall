@@ -332,7 +332,7 @@ describe('the link', () => {
     await until(() => expect(w.worker.connected()).toBe(true), 1);
   });
 
-  it('the worker closes a linked stream that brings nothing for three heartbeats, as a Mac asleep leaves it, and serves its calls itself', async () => {
+  it('the worker closes a linked stream that brings nothing for three heartbeats, as a Mac asleep leaves it, and forwards no call after', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
     const logged: string[] = [];
     const w = world({ workerLog: { info() {}, error: (m) => logged.push(m) } });
@@ -910,7 +910,7 @@ describe('the link', () => {
     expect(l.for(W)).toBe(held);
   });
 
-  it('refresh tries a link that is down again at once, its backoff from 1 s, and leaves one trying or linked as it is', async () => {
+  it('refresh tries a link that is down again at once, its backoff from 1 s, starts no second try beside one under way, and leaves a linked one as it is', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
     const w = world();
     const tries: number[] = [];
@@ -953,6 +953,27 @@ describe('the link', () => {
     await vi.advanceTimersByTimeAsync(5000);
     expect(tries).toHaveLength(linkedTries);
     expect(links.for(W)?.connected()).toBe(true);
+  });
+
+  it('refresh restarts the backoff of a link whose stream is open but not linked yet', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+    const w = world();
+    const tries: number[] = [];
+    // a far `svall worker link` that has yet to answer, as one whose svalld is starting
+    const silent = Duplex.from({ readable: new PassThrough(), writable: new PassThrough() });
+    const links = w.links(async () => {
+      tries.push(Date.now());
+      if (tries.length < 5) throw new Error('ssh: connect to host vault port 22: Connection refused');
+      return { stream: silent, via };
+    });
+    const start = Date.now();
+    links.start();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(tries.map((t) => (t - start) / 1000)).toEqual([0, 1, 3, 7, 15]);
+    links.refresh();
+    silent.destroy();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(tries.map((t) => (t - start) / 1000)).toEqual([0, 1, 3, 7, 15, 16]);
   });
 
   it('refresh links again a machine whose link stopped for want of a token, once it holds one', async () => {
