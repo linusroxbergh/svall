@@ -377,7 +377,7 @@ describe('the worker\'s report over the link', () => {
   });
 
   it('a key in an arg under the Mac\'s home, unticked, reads as the mirror left it there, moved, and not as the worker\'s own', async () => {
-    editJson(mac.claudeJson, (j) => { j.mcpServers.run = { command: 'sh', args: ['-c', `${mac.homedir}/run.sh https://u:pw_1234567890@host.test/x`] }; });
+    editJson(mac.claudeJson, (j) => { j.mcpServers.run = { command: 'runner', args: ['--exec', `${mac.homedir}/run.sh https://u:pw_1234567890@host.test/x`] }; });
     await push();
     expect(await rowOf('claude:mcp:run')).toMatchObject({ status: 'warn', action: "copy run's keys to w1" });
   });

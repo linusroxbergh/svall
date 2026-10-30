@@ -152,6 +152,14 @@ describe('the last line a run prints', () => {
     ]);
   });
 
+  it('cuts a what past 80 characters, so one long row does not pad every other', async () => {
+    const { setupList } = await import('../src/commands/host.js');
+    const what = `keys not copied (${Array.from({ length: 2000 }, (_, i) => `providers.p.body.k${i}`).join(', ')})`;
+    const [long, short] = setupList([{ ...unticked('opencode:config'), gap: { name: 'opencode', what } }, varRow('GAMMA_TOKEN')], 'trift', THERE);
+    expect(long).toBe(`  opencode     ${what.slice(0, 79)}…  → svall host consent trift opencode:config on`);
+    expect(short).toBe(`  GAMMA_TOKEN  ${'not set; gamma reads it'.padEnd(80)}  → ssh trift.test, then svall worker env GAMMA_TOKEN`);
+  });
+
   it('asks to set up what will not work there: yes asks for each key, copies the ones said yes to, and prints the commands to run there; no leaves it', async () => {
     const { setUpNow } = await import('../src/commands/host.js');
     const rows = [unticked('claude:mcp:linear'), unticked('codex:mcp:github'), varRow('GAMMA_TOKEN')].map(rowStep);

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { z } from 'zod';
-import { ApiError, aside, asideLine, checksAgain, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, aside, asideLine, checksAgain, ellipsis, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
@@ -115,9 +115,12 @@ function gapAction(r: Gapped, machine: string, there: There): string | undefined
   return r.action;
 }
 
+// a row's `what` is cut past this, so one long row does not pad every other
+const WHAT_MAX = 80;
+
 /** What will not work on `machine` yet, a line each: its name, what it lacks, and the one thing to do from here. */
 export function setupList(rows: Gapped[], machine: string, there: There): string[] {
-  const listed = rows.flatMap((r) => (r.gap ? [{ ...r.gap, action: gapAction(r, machine, there) }] : []));
+  const listed = rows.flatMap((r) => (r.gap ? [{ ...r.gap, what: ellipsis(r.gap.what, WHAT_MAX), action: gapAction(r, machine, there) }] : []));
   const [name, what] = [Math.max(0, ...listed.map((l) => l.name.length)), Math.max(0, ...listed.map((l) => l.what.length))];
   return listed.map((l) => `  ${l.name.padEnd(name)}  ${l.action ? `${l.what.padEnd(what)}  → ${l.action}` : l.what}`);
 }
