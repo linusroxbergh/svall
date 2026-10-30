@@ -8,6 +8,7 @@ import type { Fleet } from '../src/fleet.js';
 import type { Fleets } from '../src/fleets.js';
 import type { Daemon, startDaemon } from '../src/main.js';
 import type { Mobile } from '../src/mobile.js';
+import { sweepAtExit } from '../../../test/sweep.js';
 
 // the root config's test/isolate.ts moves HOME; a run without it would reach the real HOME and the live fleet
 if (!process.env.HOME?.startsWith('/tmp/svall-home-')) throw new Error('run these tests through the root vitest config (pnpm test)');
@@ -15,7 +16,7 @@ if (!process.env.HOME?.startsWith('/tmp/svall-home-')) throw new Error('run thes
 const homes: string[] = [];
 
 export function makeHome(): string {
-  const dir = fs.mkdtempSync('/tmp/svall-t-');
+  const dir = sweepAtExit(fs.mkdtempSync('/tmp/svall-t-'));
   homes.push(dir);
   return dir;
 }

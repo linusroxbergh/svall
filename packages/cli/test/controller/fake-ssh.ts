@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+import { sweepAtExit } from '../../../../test/sweep.js';
 
 const FIXTURE = path.join(import.meta.dirname, '../fixtures/ssh.mjs');
 
@@ -28,7 +29,7 @@ export type FakeSsh = {
 
 /** Puts a stand-in for ssh first on PATH and hands back what it recorded. */
 export function installFakeSsh(): FakeSsh {
-  const dir = fs.mkdtempSync(`/tmp/svall-ssh-${crypto.randomBytes(3).toString('hex')}-`);
+  const dir = sweepAtExit(fs.mkdtempSync(`/tmp/svall-ssh-${crypto.randomBytes(3).toString('hex')}-`));
   const bin = path.join(dir, 'bin');
   const state = path.join(dir, 'state');
   const socketDir = path.join(dir, 'sockets');
