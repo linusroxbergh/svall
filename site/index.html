@@ -392,8 +392,8 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
   </div>
   <ul>
     <li>Claude Code, Codex and OpenCode report to Svall through hooks, so a card changes the moment its agent starts, asks or finishes.</li>
-    <li>Each agent runs in its own tmux window, on a tmux server of Svall’s own that leaves yours and your <code>~/.tmux.conf</code> alone. The app, your phone and the <code>svall</code> CLI all reach that same window.</li>
-    <li>A robot moves to a Linux machine you reach over ssh, and back, with its conversation, branch and uncommitted changes. There it keeps working in tmux while your Mac sleeps. <code>svall host add</code> sets the machine up.</li>
+    <li>Each agent runs in its own tmux window, on a separate tmux server that leaves yours alone. The app, your phone and the <code>svall</code> CLI all reach that window.</li>
+    <li>A robot moves to a Linux machine you reach over ssh, and back, with its conversation, branch and uncommitted changes. There it keeps working in tmux while your Mac sleeps.</li>
     <li>Quitting stops the agents on your Mac. Opening a robot again resumes its conversation with <code>claude --resume</code>, <code>codex resume</code> or <code>opencode -s</code>.</li>
     <li>No account and no telemetry. Setup adds Svall’s hook to Claude Code and Codex and its plugin to OpenCode, and <code>svall uninstall</code> takes them out.</li>
     <li>Setup, the <code>svall</code> CLI and every file Svall writes are covered in the README on <a href="https://github.com/linusroxbergh/svall">GitHub</a>.</li>
