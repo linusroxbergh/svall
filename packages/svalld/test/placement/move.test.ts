@@ -84,6 +84,8 @@ describe.skipIf(!hasGit)('the move transaction', () => {
   it('a robot sharing a main checkout, given its own worktree, moves on a new branch at HEAD, and main keeps its changes and the robot that stays', async () => {
     const w = open();
     const home = await w.start();
+    // which marks each file of the worktree the move makes assume-unchanged too
+    w.g(w.main, 'config', 'core.ignoreStat', 'true');
     fs.writeFileSync(path.join(w.main, 'a.txt'), 'one\nstaged\n');
     w.g(w.main, 'add', 'a.txt');
     fs.writeFileSync(path.join(w.main, 'notes.md'), 'untracked\n');
@@ -499,6 +501,38 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: 'w1 runs a release without move.sheet', action: 'upgrade it under Machines' } });
     w.worker.handlers['move.sheet'] = sheet;
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
+  });
+
+  it('a return refuses a worktree there mid-merge, whose bundle would carry none of it', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const merge = path.join(w.g(w.farWt, 'rev-parse', '--absolute-git-dir'), 'MERGE_HEAD');
+    fs.writeFileSync(merge, `${w.g(w.farWt, 'rev-parse', 'HEAD')}\n`);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `${w.farWt} is in the middle of a merge`, action: 'finish or abort it first' } });
+    fs.rmSync(merge);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
+  });
+
+  it('a merge started while the agent rests undoes the move at the bundle, either way, and stays where it was started', async () => {
+    const w = open();
+    const home = await w.start();
+    const merging = (wt: string): string => {
+      const merge = path.join(w.g(wt, 'rev-parse', '--absolute-git-dir'), 'MERGE_HEAD');
+      at('move.bundle', 'before', () => fs.writeFileSync(merge, `${w.g(wt, 'rev-parse', 'HEAD')}\n`));
+      return merge;
+    };
+    let merge = merging(w.wt);
+    await expect(home.placement.start('c_1', W)).rejects.toThrow(`${w.wt} is in the middle of a merge; finish or abort it first`);
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(fs.existsSync(merge)).toBe(true);
+    fs.rmSync(merge);
+
+    await home.placement.start('c_1', W);
+    merge = merging(w.farWt);
+    await expect(home.placement.start('c_1', H)).rejects.toThrow(`${w.farWt} is in the middle of a merge; finish or abort it first`);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(fs.existsSync(merge)).toBe(true);
   });
 
   it('a return whose OpenCode import fails puts back the copy this Mac held, and keeps no other', async () => {

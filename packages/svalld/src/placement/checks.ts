@@ -219,6 +219,7 @@ export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run:
   if (!c.repo) return { sessionBytes: session, commits: 0, changedFiles: 0, untrackedFiles: 0 };
   const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
   try {
+    await refuseUncarried(c.repo.root, git);
     const manifest = await buildBundle(c.repo.root, { git, into, have, carry: [] });
     return { sessionBytes: session, commits: manifest.commits?.count ?? 0, changedFiles: await changedFiles(c.repo.root, git), untrackedFiles: manifest.untracked.length };
   } catch (e) {
@@ -294,13 +295,16 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       const sharing = Object.values(s.robots).some((r) => r.id !== c.id && (r.machine ?? d.me) === d.me && r.repo && !r.repo.isWorktree && clean(r.repo.root) === clean(repo.root));
       if (sharing) fail({ reason: `two robots share ${repoName}'s main checkout`, action: WORKTREE_ACTION });
     }
-    if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'check out a branch first' });
-    if (onMain) {
+    // main given its own worktree keeps an operation under way, which a bundle or conversion would drop
+    if (!keep) {
       try {
-        if (!keep) await refuseUncarried(repo.mainRoot, d.git);
+        await refuseUncarried(repo.root, d.git);
       } catch (e) {
         fail(split((e as Error).message));
       }
+    }
+    if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'check out a branch first' });
+    if (onMain) {
       const head = keep ? (await d.git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], repo.mainRoot)).stdout.trim() : '';
       convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }), ...(head && { head }) };
     }

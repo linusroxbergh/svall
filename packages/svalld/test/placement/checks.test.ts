@@ -320,6 +320,67 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.paths.root).toBe(`${t.far}/code/svall/.claude/worktrees/kb`);
   });
 
+  it('check 3: refuses a worktree robot mid-merge, mid-rebase, mid-cherry-pick or with an assume-unchanged file, whose bundle would carry none of it', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    const wt = `${root}/.claude/worktrees/kb`;
+    t.g(root, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    t.g(root, 'checkout', '-q', '-b', 'side');
+    put(root, 'a.txt', 'side\n');
+    t.g(root, 'commit', '-qam', 'side');
+    put(root, 'c.txt', 'three\n');
+    t.g(root, 'add', 'c.txt');
+    t.g(root, 'commit', '-qm', 'side two');
+    t.g(root, 'checkout', '-q', 'main');
+    const c = on(wt, { main: root, branch: 'kb' });
+
+    // main's merge stays in main
+    fs.writeFileSync(path.join(root, '.git/MERGE_HEAD'), `${t.g(root, 'rev-parse', 'HEAD')}\n`);
+    await sheet(depsOf(t, [c]));
+    fs.rmSync(path.join(root, '.git/MERGE_HEAD'));
+
+    t.g(wt, 'merge', '-q', '--no-commit', '--no-ff', 'side');
+    expect(await refusal(depsOf(t, [c]))).toEqual({ reason: `${wt} is in the middle of a merge`, action: 'finish or abort it first', details: [] });
+    // its own worktree keeps only a main checkout's operation
+    expect(await refusal(depsOf(t, [c]), { ownWorktree: true })).toMatchObject({ reason: `${wt} is in the middle of a merge` });
+    t.g(wt, 'merge', '--abort');
+
+    put(wt, 'a.txt', 'kb\n');
+    t.g(wt, 'commit', '-qam', 'kb');
+    expect(() => t.g(wt, 'rebase', '-q', 'side')).toThrow();
+    // the rebase's detached HEAD is refused too, behind the rebase
+    expect(await refusal(depsOf(t, [on(wt, { main: root, branch: 'HEAD' })]))).toEqual({
+      reason: `${wt} is in the middle of a rebase`, action: 'finish or abort it first', details: [], more: [{ reason: 'kanban is on a detached HEAD', action: 'check out a branch first' }],
+    });
+    t.g(wt, 'rebase', '--abort');
+
+    // a pick of two whose first conflict was resolved and committed holds only the sequencer, with the second to come
+    expect(() => t.g(wt, 'cherry-pick', 'side~1', 'side')).toThrow();
+    put(wt, 'a.txt', 'kb\nside\n');
+    t.g(wt, 'commit', '-qam', 'resolved');
+    expect(await refusal(depsOf(t, [c]))).toEqual({ reason: `${wt} is in the middle of a cherry-pick or revert`, action: 'finish or abort it first', details: [] });
+    t.g(wt, 'cherry-pick', '--quit');
+
+    t.g(wt, 'update-index', '--assume-unchanged', 'b.txt');
+    put(wt, 'b.txt', 'hidden\n');
+    expect(await refusal(depsOf(t, [c]))).toEqual({
+      reason: `b.txt in ${wt} is marked assume-unchanged, so its edits would be lost`, action: 'run git update-index --no-assume-unchanged on it first', details: [],
+    });
+    t.g(wt, 'update-index', '--no-assume-unchanged', 'b.txt');
+
+    // core.ignoreStat marks each file git adds, so the refusal clears them all at once
+    t.g(wt, 'config', 'core.ignoreStat', 'true');
+    put(wt, 'd.txt', 'four\n');
+    t.g(wt, 'add', 'd.txt');
+    expect(await refusal(depsOf(t, [c]))).toEqual({
+      reason: `${wt} sets core.ignoreStat, which marks each file git adds assume-unchanged, so their edits would be lost`,
+      action: 'run git config core.ignoreStat false && git ls-files -z | xargs -0 git update-index --no-assume-unchanged there first', details: [],
+    });
+    t.g(wt, 'config', 'core.ignoreStat', 'false');
+    t.g(wt, 'update-index', '--no-assume-unchanged', 'd.txt');
+    expect((await sheet(depsOf(t, [c]))).sheet.changedFiles).toBe(2);
+  });
+
   it('check 3: a robot sharing a main checkout given its own worktree travels on a new branch at HEAD with HEAD\'s commits alone, and main keeps the rest', async () => {
     const t = machines();
     const root = t.repo('code/svall');

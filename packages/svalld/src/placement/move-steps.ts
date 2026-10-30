@@ -20,6 +20,7 @@ import type { Store } from '../store.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
 import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, wasCredential } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
+import { refuseUncarried } from './convert.js';
 import { sessionLanding } from './paths.js';
 import { answerTrustPrompt, nap } from './trust.js';
 
@@ -138,6 +139,8 @@ export function packMove(c: Robot, j: MoveJournal, stage: string, git: GitRunner
     fs.rmSync(stage, { recursive: true, force: true });
     let packed: Pick<MoveJournal, 'manifest' | 'branchSha'> = {};
     if (c.repo) {
+      // a worktree the move just converted into holds no operation, though core.ignoreStat marks its every file
+      if (!j.plan.convert) await refuseUncarried(c.repo.root, git);
       const manifest = await buildBundle(c.repo.root, { git, into: path.join(stage, 'bundle'), have: j.plan.have, carry: j.plan.carry });
       const branchSha = (await must(git, ['rev-parse', '--verify', `refs/heads/${manifest.branch}^{commit}`], c.repo.root)).trim();
       await pack(path.join(stage, 'bundle'), path.join(stage, 'bundle.tar'));

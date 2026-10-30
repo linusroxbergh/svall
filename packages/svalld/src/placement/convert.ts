@@ -19,15 +19,21 @@ export async function worktreeSlug(name: string, branch: string, o: { main: stri
   }
 }
 
-// what a reset of main would drop uncarried: an operation under way, or edits git is told not to look at
-const UNDER_WAY: Record<string, string> = { MERGE_HEAD: 'merge', CHERRY_PICK_HEAD: 'cherry-pick', REVERT_HEAD: 'revert', 'rebase-merge': 'rebase', 'rebase-apply': 'rebase' };
+// what neither a bundle nor a reset of main carries: an operation under way, or edits git is told not to look at
+const UNDER_WAY: Record<string, string> = {
+  MERGE_HEAD: 'merge', CHERRY_PICK_HEAD: 'cherry-pick', REVERT_HEAD: 'revert', 'rebase-merge': 'rebase', 'rebase-apply': 'rebase', sequencer: 'cherry-pick or revert',
+};
 
-export async function refuseUncarried(main: string, git: GitRunner): Promise<void> {
-  const gitDir = (await must(git, ['rev-parse', '--absolute-git-dir'], main)).trim();
+export async function refuseUncarried(root: string, git: GitRunner): Promise<void> {
+  const gitDir = (await must(git, ['rev-parse', '--absolute-git-dir'], root)).trim();
   const under = Object.keys(UNDER_WAY).find((f) => fs.existsSync(path.join(gitDir, f)));
-  if (under) throw new Error(`${main} is in the middle of a ${UNDER_WAY[under]}; finish or abort it first`);
-  const hidden = (await must(git, ['ls-files', '-v', '-z'], main)).split('\0').find((e) => /^[a-z] /.test(e));
-  if (hidden) throw new Error(`${hidden.slice(2)} in ${main} is marked assume-unchanged, so its edits would be lost; run git update-index --no-assume-unchanged on it first`);
+  if (under) throw new Error(`${root} is in the middle of a ${UNDER_WAY[under]}; finish or abort it first`);
+  const hidden = (await must(git, ['ls-files', '-v', '-z'], root)).split('\0').find((e) => /^[a-z] /.test(e));
+  if (!hidden) return;
+  if ((await git(['config', '--bool', 'core.ignoreStat'], root)).stdout.trim() === 'true') {
+    throw new Error(`${root} sets core.ignoreStat, which marks each file git adds assume-unchanged, so their edits would be lost; run git config core.ignoreStat false && git ls-files -z | xargs -0 git update-index --no-assume-unchanged there first`);
+  }
+  throw new Error(`${hidden.slice(2)} in ${root} is marked assume-unchanged, so its edits would be lost; run git update-index --no-assume-unchanged on it first`);
 }
 
 // a carried file and each folder that leaves empty, up to the checkout

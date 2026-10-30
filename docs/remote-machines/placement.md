@@ -87,8 +87,11 @@ and its own button or action, the first with its details behind it; `svall robot
    the commit the check found, whatever the robot that stays commits meanwhile; the offer is refused while another
    robot moves out of that checkout ("board is moving out of svall's main checkout; wait for the move to finish") or
    for a robot whose folder that commit lacks ("web/new is not in svall's last commit; commit it first"). "kanban is
-   on a detached HEAD; check out a branch first". A robot in no repository, such as a shell in `~`, skips checks 3 to
-   6 and moves with its session only.
+   on a detached HEAD; check out a branch first". A merge, cherry-pick, revert or rebase under way, or a file marked
+   assume-unchanged, refuses, as the move carries none of it: "/Users/ada/code/app/.claude/worktrees/kanban is in the
+   middle of a merge; finish or abort it first". A robot on a main checkout given its own worktree moves anyway, and
+   main keeps its operation. A robot in no repository, such as a shell in `~`, skips checks 3 to 6 and moves with its
+   session only.
 4. **The repository is known to the worker.** At the main checkout's place there (`/Users/ada/code/app` on the Mac is
    `/home/ada/code/app` on the worker) it has a clone of the same repository, or nothing and a remote it can fetch
    from with its own credentials. "svall has no remote; push svall to a remote first". "linus-vault cannot read
@@ -166,6 +169,8 @@ recorded:
 - An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
   since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
   worker's copy.
+- A git operation under way in the worktree there, or a file marked assume-unchanged, refuses as check 3 does on the
+  way out.
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
   working; interrupt it now", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
   interrupts what still runs there after that long, then rests it.
