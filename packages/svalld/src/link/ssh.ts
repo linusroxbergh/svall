@@ -59,6 +59,9 @@ export function classifyExit(r: Pick<RunResult, 'code' | 'signal' | 'stderr'>, o
  */
 const REMOTE_HOST = 'svall-remote.invalid';
 
+// a session would hand the master the forwards a `Host *` block of the user's config names, and run its RemoteCommand
+const SESSION = ['-o', 'ClearAllForwardings=yes', '-o', 'RemoteCommand=none'];
+
 function defaultSocketDir(tmp: string = process.env.TMPDIR ?? os.tmpdir()): string {
   return path.join(tmp, `svall-${process.getuid?.() ?? 0}`);
 }
@@ -143,9 +146,11 @@ export class SshMaster {
   }
 
   private async spawn(): Promise<SshMaster> {
-    // in a session of its own, so a terminal's Ctrl-C reaches only this process, which ends it on exit
+    // in a session of its own, so a terminal's Ctrl-C reaches only this process, which ends it on exit.
+    // The user's ssh config for the destination neither forwards the agent or X11 to any session on it nor binds its forwards
     const child = spawn('ssh', [
       '-M', '-S', this.socket, '-N', '-o', 'BatchMode=yes', '-o', 'ControlPersist=no',
+      '-o', 'ForwardAgent=no', '-o', 'ForwardX11=no', '-o', 'ClearAllForwardings=yes',
       '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', '--', this.destination,
     ], { stdio: ['ignore', 'ignore', 'pipe'], detached: true });
     let stderr = '';
@@ -202,12 +207,12 @@ export class SshMaster {
    * shell as a word. That shell gets the argv as one line, so anything but a literal flag goes through `shq` first.
    */
   run(argv: string[], o: { timeoutMs?: number; signal?: AbortSignal; maxOutputBytes?: number; input?: string | Uint8Array } = {}): Promise<RunResult> {
-    return runProcess('ssh', this.argv([], argv), { ...o, timeoutMs: o.timeoutMs ?? RUN_TIMEOUT });
+    return runProcess('ssh', this.argv(SESSION, argv), { ...o, timeoutMs: o.timeoutMs ?? RUN_TIMEOUT });
   }
 
   /** Runs a command on the far machine with its stdin and stdout as one stream; ending the stream ends ssh. */
   stream(argv: string[]): { stream: Duplex; exited: Promise<Pick<RunResult, 'code' | 'signal' | 'stderr'>> } {
-    const child = spawn('ssh', this.argv([], argv), { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
+    const child = spawn('ssh', this.argv(SESSION, argv), { stdio: ['pipe', 'pipe', 'pipe'], detached: true });
     let stderr = '';
     child.stderr.on('data', (chunk: Buffer) => { stderr = (stderr + chunk.toString()).slice(-4096); });
     const stream = Duplex.from({ readable: child.stdout, writable: child.stdin });
@@ -235,7 +240,8 @@ export class SshMaster {
 
   private async tunnel(command: 'forward' | 'cancel', localPort: number, remotePort: number): Promise<void> {
     const spec = `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`;
-    const r = await runProcess('ssh', this.argv(['-O', command, '-L', spec], []), { timeoutMs: CONTROL_TIMEOUT });
+    // with no config read, it asks the master for this forward alone, not those a `Host *` block names
+    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, '-L', spec], []), { timeoutMs: CONTROL_TIMEOUT });
     if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}: ${r.stderr.trim()}`);
   }
 

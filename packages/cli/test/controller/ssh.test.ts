@@ -116,6 +116,7 @@ describe('SshMaster', () => {
     // the spawn and the checks that wait for it race to the log, so only what was spawned is compared
     expect(ssh.calls().filter((c) => c.includes('-M'))).toEqual([[
       '-M', '-S', master.socket, '-N', '-o', 'BatchMode=yes', '-o', 'ControlPersist=no',
+      '-o', 'ForwardAgent=no', '-o', 'ForwardX11=no', '-o', 'ClearAllForwardings=yes',
       '-o', 'ServerAliveInterval=15', '-o', 'ServerAliveCountMax=3', '-o', 'ConnectTimeout=10', '--', 'trift',
     ]]);
     expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'check', '--', 'svall-remote.invalid']);
@@ -248,7 +249,7 @@ describe('SshMaster', () => {
     await master.run(remote);
     const call = ssh.calls().at(-1) as string[];
     // one `--`, before the destination: a second would reach the far shell as a word
-    expect(call).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '--', 'svall-remote.invalid', ...remote]);
+    expect(call).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-o', 'ClearAllForwardings=yes', '-o', 'RemoteCommand=none', '--', 'svall-remote.invalid', ...remote]);
     expect(call.filter((a) => a === '--')).toHaveLength(1);
     const words = ssh.remoteCalls().at(-1) as string[];
     expect(words[0]).toBe('/opt/svall/current/bin/svall');
@@ -263,7 +264,7 @@ describe('SshMaster', () => {
     cat.stream.write('over the link\n');
     const [chunk] = await once(cat.stream, 'data');
     expect(String(chunk)).toBe('over the link\n');
-    expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '--', 'svall-remote.invalid', 'cat']);
+    expect(ssh.calls()).toContainEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-o', 'ClearAllForwardings=yes', '-o', 'RemoteCommand=none', '--', 'svall-remote.invalid', 'cat']);
     cat.stream.end();
     expect(await cat.exited).toMatchObject({ code: 0 });
     // a stream let go of mid-command takes ssh with it
@@ -278,9 +279,9 @@ describe('SshMaster', () => {
     const master = await open('trift');
     const forward = await master.forward(4711);
     expect(forward.localPort).toBeGreaterThan(0);
-    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'forward', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'svall-remote.invalid']);
+    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-F', 'none', '-O', 'forward', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'svall-remote.invalid']);
     await forward.cancel();
-    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'cancel', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'svall-remote.invalid']);
+    expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-F', 'none', '-O', 'cancel', '-L', `127.0.0.1:${forward.localPort}:127.0.0.1:4711`, '--', 'svall-remote.invalid']);
     await master.close();
     expect(ssh.calls().at(-1)).toEqual(['-S', master.socket, '-o', 'BatchMode=yes', '-O', 'exit', '--', 'svall-remote.invalid']);
   });

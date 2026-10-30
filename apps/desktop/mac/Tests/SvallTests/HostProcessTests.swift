@@ -122,6 +122,35 @@ final class HostProcessTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(began), 5)
     }
 
+    /// `host add`'s first ssh is the child's own child and holds its stdout: a cancel ends it too, and with it the run.
+    func testCancellingEndsWhatTheChildRunsAndTheRunWithIt() throws {
+        let helper = try fakeHelper(prints: [], then: #"""
+            sleep 30 &
+            printf '{"step":"ssh","status":"start","detail":"%s"}\n' "$!"
+            wait
+            """#)
+        let process = HostProcess(executable: helper, arguments: ["host", "add", "studio", "--json"])
+        var ssh: pid_t?
+        let stepped = expectation(description: "step")
+        let done = expectation(description: "exit")
+        process.onStep = { step in
+            guard ssh == nil else { return }
+            ssh = step.detail.flatMap { pid_t($0) }
+            stepped.fulfill()
+        }
+        process.onExit = { _ in done.fulfill() }
+        try process.start()
+        wait(for: [stepped], timeout: 5)
+        let pid = try XCTUnwrap(ssh)
+        addTeardownBlock { kill(pid, SIGKILL) }
+        process.cancel()
+        wait(for: [done], timeout: 5)
+        // an orphan stays a zombie until launchd reaps it
+        let deadline = Date().addingTimeInterval(2)
+        while kill(pid, 0) == 0, Date() < deadline { usleep(10_000) }
+        XCTAssertNotEqual(kill(pid, 0), 0)
+    }
+
     /// A child that holds SIGTERM off is killed after a bounded wait, so a cancel never hangs the window.
     func testCancellingKillsAChildThatHoldsSIGTERMOff() throws {
         let helper = try fakeHelper(prints: [step], then: "trap '' TERM\nwhile :; do sleep 1; done")

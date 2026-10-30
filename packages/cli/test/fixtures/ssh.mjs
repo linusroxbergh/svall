@@ -14,7 +14,7 @@ const remoteLog = process.env.SVALL_FAKE_SSH_REMOTE_LOG;
 const replies = process.env.SVALL_FAKE_SSH_REPLIES;
 const exec = process.env.SVALL_FAKE_SSH_EXEC;
 
-const TAKES_VALUE = new Set(['-S', '-o', '-O', '-L', '-l', '-p', '-i', '-b', '-c', '-e', '-m', '-w']);
+const TAKES_VALUE = new Set(['-S', '-F', '-o', '-O', '-L', '-l', '-p', '-i', '-b', '-c', '-e', '-m', '-w']);
 const FLAGS = new Set(['-M', '-N', '-T', '-t', '-tt', '-q', '-v', '-n', '-f', '-g', '-x', '-A', '-4', '-6']);
 
 const FAIL = {

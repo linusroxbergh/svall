@@ -90,6 +90,11 @@ each machine's daemon and unit logs.
 12. **The agent setup mirror.** The home's Claude has two MCP servers with keys and one that reads a variable. One
     key is ticked for remote and the variable set there with `svall worker env`; a robot moves there; the key is
     unticked while it runs. No file on remote ever holds a key not ticked.
+13. **The user's ssh config.** Local's `~/.ssh/config` for remote forwards an agent, binds a port on local and runs a
+    `RemoteCommand`, its `Host *` forwards a port a listener on local already holds and runs a command of its own, and
+    the home restarts under it. The link comes up, its master binds nothing and forwards the agent to no session on it,
+    even one that asks; a terminal's attach, over the master or as a login of its own, gets no agent, runs its own
+    command and binds nothing; and `host add` of remote again passes, its probe over a forward past the held port.
 
 Steps 1, 2, 5 and 6 also check that the bare repository on remote is untouched: a move never pushes.
 
