@@ -222,10 +222,11 @@ jobs:
           ssh-keygen -Y sign -f "$RUNNER_TEMP/release-key" -n svall-release SHA256SUMS
           ssh-keygen -Y verify -f "$GITHUB_WORKSPACE/scripts/release/allowed_signers" -I svall-release \
             -n svall-release -s SHA256SUMS.sig < SHA256SUMS
-          # scripts/release.sh makes the release, with the DMG, as it pushes the tag
+          # scripts/release.sh makes the release, with the DMG, as it pushes the tag; one made here has no DMG for
+          # svall.dev/download, so it stays off Latest until release.sh's finish command adds the DMG
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber -- *.tar.gz SHA256SUMS SHA256SUMS.sig
           else
-            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" \
+            gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" --latest=false \
               -- *.tar.gz SHA256SUMS SHA256SUMS.sig
           fi
