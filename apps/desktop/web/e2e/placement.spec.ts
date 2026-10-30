@@ -136,7 +136,7 @@ test('a robot sharing a main checkout gets its own worktree in the one sheet, an
   const sheet = page.getByTestId('move-sheet');
   await expect(sheet.getByTestId('move-converts')).toHaveText("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
   await expect(sheet.getByTestId('move-refusal')).toHaveCount(0);
-  await expect(sheet.getByLabel("Give it its own worktree: two robots share svall's main checkout")).toBeChecked();
+  await expect(sheet.getByLabel(/^Give it its own worktree/)).toBeChecked();
   await sheet.getByTestId('move-go').click();
   await expect(sheet.getByTestId('move-through')).toHaveText('ada runs on linus-vault.');
   expect(asked.at(-1)).toEqual({ method: 'robot.moveTo', params: { id, machine: VAULT, ownWorktree: true } });

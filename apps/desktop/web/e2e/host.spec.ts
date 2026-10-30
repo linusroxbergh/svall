@@ -252,7 +252,7 @@ test('the setup page ends in one line: ready, parts of the agent setup that will
   await expect(panel.getByTestId('host-step-mirror:claude:mcp:linear')).toHaveCount(0);
   await panel.getByTestId('host-setup-fold').click();
   // two servers whose keys are not copied are two parts, each with its own sentence and tick
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Done');
+  await expect(panel.getByTestId('host-outcome-note')).toHaveText('Optional: 2 parts of your agent setup will not work there yet. None of it stops a move there; set it up under Your agent setup when you need it.');
   await expect(panel.getByTestId('host-action-mirror:claude:mcp:linear')).toHaveText("copy linear's keys to studio");
   await expect(panel.getByTestId('host-action-mirror:codex:mcp:github')).toHaveText("copy github's keys to studio");
   for (const step of ['mirror:claude:mcp:linear', 'mirror:codex:mcp:github']) await expect(panel.getByTestId(`host-tick-${step}`)).not.toBeChecked();
@@ -305,7 +305,7 @@ test('a mirror row shows one sentence, a checkbox and details; ticking calls mac
   await details.locator('summary').click();
   await expect(details).toHaveJSProperty('open', true);
   await expect(details).toHaveText('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on studio in ~/.svall/mirror-overrides');
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 1 part of your agent setup will not work there yet.Done');
+  await expect(panel.getByTestId('host-outcome-note')).toHaveText('Optional: 1 part of your agent setup will not work there yet. None of it stops a move there; set it up under Your agent setup when you need it.');
 
   await panel.getByTestId('host-tick-mirror:claude:mcp:linear').click();
   await expect.poll(() => asked).toEqual([{ machine: MACHINE, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true }]);
@@ -331,7 +331,7 @@ test('a row with a run opens the terminal with its forward', async ({ page, sval
   const panel = await checking(page, svall);
   await doctor(page, [...PASSED, ...logins]);
   // each login is its own part, as the CLI lists them: one terminal forwards one sign-in's port
-  await expect(panel.getByTestId('host-outcome')).toHaveText('studio is ready. 2 parts of your agent setup will not work there yet.Done');
+  await expect(panel.getByTestId('host-outcome-note')).toHaveText('Optional: 2 parts of your agent setup will not work there yet. None of it stops a move there; set it up under Your agent setup when you need it.');
   await panel.getByTestId('host-setup-fold').click();
   await expect(panel.getByTestId('host-step-mirror:oauth:claude:mcp:linear').locator('.host-name')).toHaveText('linear login');
 

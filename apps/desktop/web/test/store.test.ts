@@ -781,12 +781,17 @@ describe('the machines robots run on', () => {
     store.getState().toggleHost(false);
     expect(isVeiled(store.getState())).toBe(false);
   });
-  it('opens the panel on a terminal there, which closing the panel lets go of', () => {
+  it('opens the panel on a terminal there, from the panel or not, which closing the panel lets go of', () => {
     const store = createAppStore();
     store.getState().openHostTerminal('studio', 'codex login');
     expect(store.getState()).toMatchObject({ hostOpen: true, hostMachine: 'studio', hostTerminal: { run: 'codex login' } });
+    expect(store.getState().hostTerminal?.fromPanel).toBeUndefined();
     store.getState().openHostTerminal('studio', 'claude', 3334);
+    // opened again over a terminal, it keeps where the first came from
     expect(store.getState().hostTerminal).toEqual({ run: 'claude', forward: 3334 });
+    store.getState().closeHostTerminal();
+    store.getState().openHostTerminal('studio', 'claude', 3334);
+    expect(store.getState().hostTerminal).toEqual({ run: 'claude', forward: 3334, fromPanel: true });
     store.getState().toggleHost(false);
     store.getState().toggleHost(true, 'box');
     expect(store.getState().hostTerminal).toBeUndefined();

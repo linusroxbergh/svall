@@ -103,7 +103,7 @@ function Outcome({ run }: { run: HostRun }) {
   const name = run.args.name;
   return (
     <div className="host-foot" data-testid="host-outcome">
-      <span className="host-verdict">{o.text}</span>
+      <span className="host-verdict">{o.text}{o.note && <span className="modal-sub" data-testid="host-outcome-note">{o.note}</span>}</span>
       <div className="acts">
         {o.next === 'rollback' && (
           <button className="btn" data-testid="host-rollback" data-tip="Put back the release the machine ran before"
@@ -171,7 +171,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   };
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
-      <span className="host-mark">{MARK[row.status]}</span>
+      <span className="host-mark">{isSetup(row) && row.status === 'warn' ? '○' : MARK[row.status]}</span>
       <span className="host-name" data-tip={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
         {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
@@ -257,10 +257,10 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
         </button>
       )}
       {rows.length > 0 && (
-        <div className="host-phase">
+        <div className="host-phase host-setup-rows">
           <div className="kicker">
             <button type="button" className="sec-fold" data-testid="host-setup-fold" aria-expanded={setup} onClick={() => unfold({ fine, setup: !setup })}>
-              <Caret open={setup} />Your agent setup
+              <Caret open={setup} />Your agent setup{' '}<span className="host-optional">optional</span>
             </button>
           </div>
           {setup && rows.filter((r) => !asideStep(r)).map(row)}
@@ -337,8 +337,10 @@ export function HostSetup() {
   // a machine an add has yet to put in the registry is added again, not acted on
   const adding = !machine || (!known && shown?.op === 'add');
   const term = terminal && machine && ssh;
-  // the logins and fixes made there are what the machine's own checks look at again
+  // a terminal opened from the panel goes back to its checks, which look again at the logins and fixes made there; one
+  // opened from elsewhere closes the panel, back to where it was opened
   const ended = () => {
+    if (!terminal?.fromPanel) { app.store.getState().toggleHost(false); return; }
     app.store.getState().closeHostTerminal();
     if (known && machine && !running) startHost('doctor', { name: machine });
   };
@@ -355,7 +357,7 @@ export function HostSetup() {
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         <div className="host-body">
-          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} onEnd={ended} /> : (
+          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
               {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
               {confirm && (

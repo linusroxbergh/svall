@@ -4,8 +4,8 @@ import { rectOf } from './bridge.js';
 import { loginForward } from './host.js';
 
 /** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
- * `onEnd` once the user is done with it or its shell exits. */
-export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name: string; ssh: string; run?: string; forward?: number; onEnd: () => void }) {
+ * `onEnd` once the user is done with it or its shell exits, `back` when that goes back to the machine's checks. */
+export function MachineTerminal({ name, ssh, run, forward: port, back, onEnd }: { name: string; ssh: string; run?: string; forward?: number; back: boolean; onEnd: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
@@ -63,7 +63,7 @@ export function MachineTerminal({ name, ssh, run, forward: port, onEnd }: { name
       )}
       <div ref={ref} className="host-term-surface" data-testid="host-terminal-surface" />
       <div className="acts">
-        <button className="btn" data-testid="host-terminal-done" data-tip="Close the terminal and go back to the checks" onClick={onEnd}>Done</button>
+        <button className="btn" data-testid="host-terminal-done" data-tip={back ? 'Close the terminal and check the machine again' : 'Close the terminal'} onClick={onEnd}>Done</button>
       </div>
     </div>
   );

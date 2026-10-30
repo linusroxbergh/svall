@@ -88,7 +88,7 @@ describe('the end of a run', () => {
     endRun(steps.reduce((run, s) => applyStep(run, s), beginRun(op, { name: 'box', ...args })), code);
   const ready = 'box is ready. Robots you move there keep working while this Mac sleeps.';
 
-  it('the outcome line reads ready when nothing is left to fix, counts the things to fix otherwise, then the parts of the agent setup that will not work there', () => {
+  it('the outcome line reads ready when nothing is left to fix and counts the things to fix otherwise, with the agent setup in an optional note', () => {
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), step('enrol', 'ok')]))).toEqual({ text: ready, done: true });
     // a warning that names nothing to do here leaves the machine ready, and says so
     expect(outcomeOf(ended('add', 0, [step('ssh', 'ok'), step('tmux', 'warn'), step('probe', 'ok'), step('registry', 'ok')])))
@@ -102,25 +102,28 @@ describe('the end of a run', () => {
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
     expect(outcomeOf(blocked)).toEqual({ text: 'box has 2 things to fix.' });
     // the agent setup is nothing to fix: a row naming a gap is a part that will not work there, though two read alike, and one that only asks to check again is none
+    const still = ' None of it stops a move there; set it up under Your agent setup when you need it.';
     const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
     const gap = (key: string, name: string) => step(`mirror:${key}`, 'warn', { action: `copy ${name}'s keys to box`, gap: { name, what: 'keys not copied (env.KEY)' } });
     const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'), gap('claude:mcp:github', 'github'), gap('codex:mcp:github', 'github')]);
-    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn'), gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready, with 1 warning. 1 part of your agent setup will not work there yet.');
-    const parts = 'box is ready. 2 parts of your agent setup will not work there yet.';
-    expect(outcomeOf(mirrored)).toEqual({ text: parts, done: true, setup: 2 });
+    expect(outcomeOf(ended('doctor', 0, [step('tmux', 'warn'), gap('claude:mcp:linear', 'linear')])))
+      .toMatchObject({ text: 'box is ready, with 1 warning. Robots you move there keep working while this Mac sleeps.', note: `Optional: 1 part of your agent setup will not work there yet.${still}` });
+    expect(outcomeOf(mirrored)).toEqual({ text: ready, note: `Optional: 2 parts of your agent setup will not work there yet.${still}`, done: true, setup: 2 });
     expect(outcomeOf(ended('upgrade', 0, [step('probe', 'ok'), gap('claude:mcp:linear', 'linear')])))
-      .toEqual({ text: 'box is ready. 1 part of your agent setup will not work there yet.', done: true, setup: 1 });
+      .toEqual({ text: ready, note: `Optional: 1 part of your agent setup will not work there yet.${still}`, done: true, setup: 1 });
     expect(outcomeOf(ended('add', 1, [step('claude', 'warn', { action: 'log in' }), step('registry', 'ok'), gap('claude:mcp:linear', 'linear')])))
-      .toEqual({ text: 'box has 1 thing to fix, and 1 part of your agent setup will not work there yet.', setup: 1 });
+      .toEqual({ text: 'box has 1 thing to fix.', note: `Optional: 1 part of your agent setup will not work there yet.${still}`, setup: 1 });
     // a part with nothing to do about it, as a file this Mac cannot read, will not work there, not yet
     const unread = step('mirror:unreadable:/Users/ada/.claude.json', 'warn', { gap: { name: '.claude.json', what: 'not copied: this Mac cannot read it' } });
-    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), unread]))).toEqual({ text: 'box is ready. 1 part of your agent setup will not work there.', done: true, setup: 1 });
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), unread])))
+      .toEqual({ text: ready, note: `Optional: 1 part of your agent setup will not work there.${still}`, done: true, setup: 1 });
     // a server that runs only on a Mac, or a program ticked as not needed there, stands aside: counted after the parts, named when alone
     const macOnly = step('mirror:maconly:claude:chrome', 'skip', { gap: { name: 'chrome', what: 'runs only on a Mac' } });
     const skipped = step('mirror:runtime:adlc', 'skip', { tick: { item: 'runtime:adlc', fields: ['skip'], on: true, preview: [] }, gap: { name: 'adlc', what: 'not needed there, you ticked' } });
-    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly, skipped]))).toEqual({ text: 'box is ready. chrome runs only on a Mac, and adlc is not needed there.', done: true });
-    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).text).toBe('box is ready. 1 part of your agent setup will not work there yet, and 1 runs only on a Mac.');
-    expect(outcomeOf(ended('doctor', 1, [step('systemd', 'fail'), macOnly])).text).toBe('box has 1 thing to fix. chrome runs only on a Mac.');
+    expect(outcomeOf(ended('doctor', 0, [step('ssh', 'ok'), macOnly, skipped]))).toEqual({ text: ready, note: 'chrome runs only on a Mac, and adlc is not needed there.', done: true });
+    expect(outcomeOf(ended('doctor', 0, [macOnly, gap('claude:mcp:linear', 'linear')])).note)
+      .toBe(`Optional: 1 part of your agent setup will not work there yet, and 1 runs only on a Mac.${still}`);
+    expect(outcomeOf(ended('doctor', 1, [step('systemd', 'fail'), macOnly]))).toEqual({ text: 'box has 1 thing to fix.', note: 'chrome runs only on a Mac.' });
     // one stopped part way said nothing it left to do
     expect(outcomeOf(ended('add', 143, [step('ssh', 'ok'), step('tmux', 'ok')]))).toEqual({ text: 'Add machine ended with exit 143' });
     expect(outcomeOf(ended('add', 1, [step('registry', 'ok'), step('probe', 'fail')]))).toEqual({ text: 'box has 1 thing to fix.' });

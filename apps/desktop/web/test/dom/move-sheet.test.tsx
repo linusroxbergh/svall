@@ -57,11 +57,12 @@ const MOVE = 'mv_0123456789';
 const lines = () => [...screen.getByTestId('move-steps').querySelectorAll('li')].map((li) => `${li.getAttribute('data-state')} ${li.lastElementChild!.textContent}`);
 const bar = () => [...screen.getByTestId('move-bar').children].map((i) => i.getAttribute('data-state'));
 
-test('the sheet says what travels in one line, re-asks with a ticked credential file, and Move starts the move', async () => {
+test('the sheet says it is ready and what travels, a line each, re-asks with a ticked credential file, and Move starts the move', async () => {
   await open(VAULT);
   expect(screen.getByTestId('move-title').textContent).toBe('Move ada to linus-vault');
-  expect(screen.getByTestId('move-summary').textContent)
-    .toBe('session 4 MB · branch kanban-board: 2 commits not on origin, 3 changed files · svall on linus-vault: will clone (first time)');
+  expect(screen.getByTestId('move-ready').textContent).toBe('✓Ready to move');
+  expect([...screen.getByTestId('move-summary').children].map((li) => li.textContent))
+    .toEqual(['session 4 MB', 'branch kanban-board: 2 commits not on origin, 3 changed files', 'svall on linus-vault: will clone (first time)']);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }]);
 
   answers = [{ ok: true, sheet: sheet({ stays: [] }) }];
@@ -75,6 +76,27 @@ test('the sheet says what travels in one line, re-asks with a ticked credential 
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: VAULT, carry: ['.env'] });
   expect(screen.queryByTestId('move-summary')).toBeNull();
+});
+
+test('while it checks, the sheet says what it checks', async () => {
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/agent', value: { kind: 'claude', sessionId: 's1', status: 'idle' } }]));
+  call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : Promise.resolve({})));
+  await open(VAULT);
+  expect(screen.getByTestId('move-checking').querySelector('.move-state')!.textContent).toBe('Checking that ada can move…');
+  expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent)).toEqual([
+    "linus-vault is reachable and on this Mac's release", 'Claude Code is installed, current and logged in on linus-vault', 'its branch, changes and session can travel',
+  ]);
+});
+
+test('on the way back, the sheet checks only that the machine it is on answers', async () => {
+  act(() => store.getState().applyPatch([
+    { op: 'add', path: '/robots/c0/machine', value: VAULT },
+    { op: 'add', path: '/robots/c0/agent', value: { kind: 'claude', sessionId: 's1', status: 'idle' } },
+  ]));
+  call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : method === 'system.info' ? Promise.resolve({ machineId: HOME }) : Promise.resolve({})));
+  await open();
+  expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent))
+    .toEqual(['linus-vault is reachable', 'its branch, changes and session can travel']);
 });
 
 test('a running move shows one line per step as it gets there under a bar of six, and once through Done closes the sheet', async () => {
@@ -319,8 +341,9 @@ test('a shared main checkout second in the list still takes its own worktree in 
   await open(VAULT);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }, { id: 'c0', machine: VAULT, interruptAfterMs: 0, ownWorktree: true }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
-  expect((screen.getByLabelText("Give it its own worktree: two robots share svall's main checkout") as HTMLInputElement).checked).toBe(true);
-  expect((screen.getByLabelText('Interrupt after this turn: ada is working') as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Give it its own worktree/) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Interrupt after this turn/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByLabelText(/^Give it its own worktree/).closest('label')!.querySelector('.modal-sub')!.textContent).toBe("two robots share svall's main checkout");
 });
 
 test('a working robot is interrupted after its turn in the one sheet, whose box says why; unticked, the move refuses with the interrupt as its button', async () => {
@@ -329,7 +352,7 @@ test('a working robot is interrupted after its turn in the one sheet, whose box 
   await open(VAULT);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, interruptAfterMs: 0 }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
-  await act(async () => fireEvent.click(screen.getByLabelText('Interrupt after this turn: ada is working')));
+  await act(async () => fireEvent.click(screen.getByLabelText(/^Interrupt after this turn/)));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
   // the button says what to do, so no line does
   expect(screen.getByTestId('move-refusal').textContent).toBe('ada is working');
@@ -344,7 +367,7 @@ test('a command running in its shell is ended by the move, as its box says', asy
   answers = [{ ok: false, refusal: { reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] } }, { ok: true, sheet: sheet({ interrupts: true }) }];
   await open(VAULT);
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, interruptAfterMs: 0 });
-  expect((screen.getByLabelText('Move anyway and end it: a command is running') as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Move anyway and end it/) as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByLabelText(/^Interrupt after this turn/)).toBeNull();
 });
 
@@ -357,7 +380,7 @@ test('a robot sharing a main checkout gets its own worktree in the one sheet, wh
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
   expect(screen.getByTestId('move-converts').textContent).toBe("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
-  expect((screen.getByLabelText("Give it its own worktree: two robots share svall's main checkout") as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Give it its own worktree/) as HTMLInputElement).checked).toBe(true);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: VAULT, ownWorktree: true });
 });
@@ -369,22 +392,28 @@ test('unticking its own worktree asks again without it', async () => {
     { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } },
   ];
   await open(VAULT);
-  await act(async () => fireEvent.click(screen.getByLabelText("Give it its own worktree: two robots share svall's main checkout")));
+  await act(async () => fireEvent.click(screen.getByLabelText(/^Give it its own worktree/)));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
   expect(screen.getByTestId('move-action').textContent).toBe('Give it its own worktree');
 });
 
-test('a refusal with a command to run opens a terminal there with it typed', async () => {
-  answers = [{ ok: false, refusal: { reason: 'claude is not logged in on linus-vault', action: 'log claude in there', run: 'claude auth login', details: [] } }];
+test('a refusal with a command to run opens a terminal there with it typed, over the sheet, which checks again once it closes', async () => {
+  answers = [{ ok: false, refusal: { reason: 'claude is not logged in on linus-vault', action: 'log claude in there', run: 'claude auth login', details: [] } }, { ok: true, sheet: sheet() }];
   await open(VAULT);
+  expect(screen.getByTestId('move-blocked').textContent).toBe('!Not ready to move yet');
   expect(screen.queryByTestId('move-details')).toBeNull();
   expect(screen.getByTestId('move-action').textContent).toBe('Open terminal');
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
-  expect(screen.queryByTestId('move-sheet')).toBeNull();
+  expect(screen.getByTestId('move-sheet')).toBeTruthy();
   expect(sent).toContainEqual({ type: 'host.list' });
   expect(store.getState().hostOpen).toBe(true);
   expect(store.getState().hostMachine).toBe('linus-vault');
   expect(store.getState().hostTerminal).toEqual({ run: 'claude auth login' });
+  expect(checks()).toHaveLength(1);
+
+  await act(async () => store.getState().toggleHost(false));
+  expect(checks()).toHaveLength(2);
+  expect(screen.getByTestId('move-ready')).toBeTruthy();
 });
 
 test('an agent older there is updated from the sheet, which says so and then checks again; an update that fails says why', async () => {

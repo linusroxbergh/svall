@@ -48,6 +48,11 @@ test('a placed robot\'s card lists what of its agent setup will not work on its 
   fireEvent.click(screen.getByTestId('side-gap-terminal-oauth:claude:mcp:notion'));
   expect(sent).toContainEqual({ type: 'host.list' });
   expect([store.getState().hostMachine, store.getState().hostTerminal]).toEqual(['vault', { run: 'MCP_OAUTH_CALLBACK_PORT=3118 claude', forward: 3118 }]);
+  // the login made there shows once the panel closes
+  rows = [chrome];
+  await act(async () => store.getState().toggleHost(false));
+  expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(3);
+  expect(shown()).toEqual(['chrome runs only on a Mac']);
 });
 
 test('a copy the machine did not take says why, and a robot whose agent setup all works there shows no section', async () => {

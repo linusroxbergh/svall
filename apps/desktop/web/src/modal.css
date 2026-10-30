@@ -32,6 +32,11 @@
 .modal-pick { display: flex; flex-direction: column; gap: var(--sp-sm); }
 .modal .acts { display: flex; gap: var(--sp-md); }
 .modal .acts .btn { flex: 1; }
+/* where a move stands before it starts: checking, ready, or not yet */
+.move-state { display: flex; align-items: baseline; gap: var(--sp-md); color: var(--ink); font-weight: var(--w-semibold); }
+.move-state[data-state="ready"] > .move-mark { color: var(--done); }
+.move-state[data-state="blocked"] > .move-mark { color: var(--working); }
+.move-checks { color: var(--ink-3); }
 /* a choice the move sheet asks about again as it changes */
 .move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
 /* a running move: a bar of its steps, and a line for each */
@@ -79,6 +84,7 @@
   margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-3xl)); padding: var(--sp-xs) var(--sp-3xl); }
 .host-foot { flex: none; margin-inline: calc(-1 * var(--sp-3xl)); padding: var(--sp-xl) var(--sp-3xl) 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-lg); }
 .host-verdict { font-size: var(--text-lg); font-weight: var(--w-semibold); line-height: var(--lh); color: var(--ink); overflow-wrap: anywhere; }
+.host-verdict .modal-sub { margin-top: var(--sp-xs); font-weight: var(--w-regular); }
 .host-form { display: flex; flex-direction: column; gap: var(--sp-md); }
 .machine { display: flex; flex-direction: column; gap: var(--sp-xs); padding-bottom: var(--sp-md); }
 .machine-acts { position: relative; display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
@@ -119,6 +125,13 @@
 /* a box stands on the text's baseline, so it is lowered onto the middle of the line */
 .host-body .host-step > input[type="checkbox"] { flex: none; margin: 0; translate: 0 2px; accent-color: var(--sand); }
 .host-body .host-step > .btn { flex: none; }
+/* a variable's field goes on a line of its own under the sentence, lined up with it */
+.host-body .host-step:has(> .var-field) { display: grid; grid-template-columns: 12px 120px minmax(0, 1fr); }
+.host-body .host-step > .var-field { grid-column: 3; }
+.host-body .host-step > .var-field .fld { flex: 1; width: auto; min-width: 0; }
+/* the agent setup never holds a robot back, so its rows wait rather than warn */
+.host-optional { margin-left: var(--sp-sm); color: var(--ink-3); font-weight: var(--w-regular); letter-spacing: normal; text-transform: none; }
+.host-setup-rows .host-step[data-status="warn"] .host-mark { color: var(--ink-3); }
 .host-failed { display: block; color: var(--danger); }
 .host-fine { align-self: flex-start; font-size: var(--text-sm); color: var(--ink-3); }
 /* a terminal on the machine, wide enough for a login's long link; the shell draws it over the surface */
