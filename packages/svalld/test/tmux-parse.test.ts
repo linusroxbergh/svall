@@ -29,7 +29,7 @@ describe('parseLine', () => {
     expect(parseLine('%pause %1')).toEqual({ type: 'pause', paneId: '%1' });
     expect(parseLine('%continue %1')).toEqual({ type: 'continue', paneId: '%1' });
     expect(parseLine('%exit server exited')).toEqual({ type: 'exit', reason: 'server exited' });
-    expect(parseLine('%begin 1 2 0')).toEqual({ type: 'begin' });
+    expect(parseLine('%begin 1 2 0')).toEqual({ type: 'begin', guard: '1 2 0' });
     expect(parseLine('%end 1 2 0')).toEqual({ type: 'end' });
     expect(parseLine('%error 1 2 0')).toEqual({ type: 'error' });
     expect(parseLine('%session-changed $0 fleet')).toEqual({ type: 'other', raw: '%session-changed $0 fleet' });

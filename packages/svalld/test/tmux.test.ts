@@ -487,6 +487,53 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     c.stop();
   });
 
+  it('answers listings, screens and captures on the control client as a client of their own would, pane text that reads as a guard included', async () => {
+    const t = await boot();
+    const spawned = new Tmux(t.socket, `${lastHome}/tmux.conf`, t.binary);
+    const text = `${lastHome}/text`;
+    fs.writeFileSync(text, Buffer.from('%end 1 2 1\r\n%error 1 2 1\r\n%begin 1 2 1\r\ncaf\xc3\xa9 \xff tab\there \x1b[31mred\x1b[0m\r\n' + 'x'.repeat(3000), 'latin1'));
+    const w = await t.newWindow('c_one', '/tmp', {});
+    await t.run('respawn-pane', '-k', '-t', w.paneId, 'cat', text, '-');
+    await t.newWindow('we;ird #{x} back\\slash ü', `${lastHome}`, {});
+    // a client outside a UTF-8 locale
+    for (const k of ['LANG', 'LC_ALL', 'LC_CTYPE']) vi.stubEnv(k, '');
+    cleanup.push(async () => { vi.unstubAllEnvs(); });
+    const c = t.connect();
+    await c.start();
+    c.send('refresh-client -f pause-after=3');
+    await waitFor(async () => (await spawned.capture(w.paneId, 10)).includes('red'));
+    const call = vi.spyOn(t as unknown as { call: () => Promise<string> }, 'call');
+    expect(await t.listWindows()).toEqual(await spawned.listWindows());
+    expect(await t.listSessions()).toEqual(await spawned.listSessions());
+    expect(await t.screen(w.paneId)).toEqual(await spawned.screen(w.paneId));
+    expect(await t.capture(w.paneId, 100)).toEqual(await spawned.capture(w.paneId, 100));
+    expect(call).not.toHaveBeenCalled();
+    c.stop();
+  });
+
+  it('asks a client of its own what the control client fails, cannot answer in time, or is gone for, and keeps later replies in order', async () => {
+    const t = await boot();
+    const spawned = new Tmux(t.socket, `${lastHome}/tmux.conf`, t.binary);
+    const w = await t.newWindow('c_one', '/tmp', {});
+    const c = t.connect();
+    await c.start();
+    const error = (p: Promise<unknown>) => p.then(() => 'resolved', (e: Error) => e.message);
+    expect(await error(t.capture('%999', 10))).toBe(await error(spawned.capture('%999', 10)));
+    // a command that waits holds up every reply behind it
+    c.send("run-shell 'sleep 2'");
+    const call = vi.spyOn(t as unknown as { call: () => Promise<string> }, 'call');
+    expect(await t.listWindows()).toEqual(await spawned.listWindows());
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(c.answering).toBe(false);
+    await waitFor(() => c.answering);
+    expect(await t.screen(w.paneId)).toEqual(await spawned.screen(w.paneId));
+    expect(call).toHaveBeenCalledTimes(1);
+    const asked = t.listSessions();
+    c.stop();
+    expect(await asked).toEqual(await spawned.listSessions());
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
   it('emits exit once when the server dies under an attached client', async () => {
     const t = await boot();
     const c = t.connect();

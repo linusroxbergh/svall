@@ -1,6 +1,7 @@
 type ControlLine =
   | { type: 'output'; paneId: string; escaped: string }
-  | { type: 'begin' | 'end' | 'error' }
+  | { type: 'begin'; guard: string }
+  | { type: 'end' | 'error' }
   | { type: 'window-close'; windowId: string }
   | { type: 'pause' | 'continue'; paneId: string }
   | { type: 'exit'; reason: string }
@@ -39,7 +40,8 @@ export function parseLine(line: string): ControlLine {
       const sep = tail.indexOf(' : ');
       return { type: 'output', paneId, escaped: sep === -1 ? '' : tail.slice(sep + 3) };
     }
-    case '%begin': return { type: 'begin' };
+    // the reply's time, command number and flags, which its %end or %error repeats
+    case '%begin': return { type: 'begin', guard: rest };
     case '%end': return { type: 'end' };
     case '%error': return { type: 'error' };
     case '%window-close':
