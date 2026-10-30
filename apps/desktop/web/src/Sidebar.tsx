@@ -185,7 +185,7 @@ const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c
 // a row in Starred drops before or after its midpoint; the header, or a folded section, takes it first
 type StarHover = { id?: string; after: boolean };
 
-function StarredRow({ c, machine, hover, zone }: { c: Robot; machine?: string; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
+const StarredRow = memoByValue(function StarredRow({ c, machine, hover, zone }: { c: Robot; machine?: string; hover?: StarHover; zone: ReturnType<typeof starZone> }) {
   const selected = useApp((s) => s.selectedId === c.id);
   const island = useApp((s) => s.fleet.islands[c.islandId]?.name);
   // a Finder file over this robot; a reorder over its tree row carries `after` and leaves this row be
@@ -208,7 +208,7 @@ function StarredRow({ c, machine, hover, zone }: { c: Robot; machine?: string; h
       <StarButton c={c} testid={`sb-star-toggle-${c.id}`} />
     </div>
   );
-}
+});
 
 const draggedStar = (e: React.DragEvent) => e.dataTransfer.types.includes(STAR_DRAG) || e.dataTransfer.types.includes(ROBOT_DRAG);
 

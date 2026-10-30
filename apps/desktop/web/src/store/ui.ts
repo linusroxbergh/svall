@@ -25,6 +25,7 @@ export type MoveAsk = { id: string; to?: MachineId };
 
 export type FeedbackDraft = { kind: FeedbackKind; text: string; tick?: boolean };
 const EMPTY_DRAFT: FeedbackDraft = { kind: 'bug', text: '' };
+const sameRect = (a: Rect, b: Rect) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 
 export type UiState = {
   view: View;
@@ -257,13 +258,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setFleetPicker: (mode) => set({ fleetPicker: mode }),
     toggleSideCard: (open) => set((s) => { const next = open ?? !s.sideCardOpen; return { sideCardOpen: next, sideCardCollapsed: !next }; }),
     termOpened: (id, rect) => set((s) => ({ terminals: { ...s.terminals, [id]: { id, rect } } })),
-    termMoved: (id, rect) => set((s) => (s.terminals[id] ? { terminals: { ...s.terminals, [id]: { ...s.terminals[id], rect } } } : {})),
+    termMoved: (id, rect) => set((s) => (s.terminals[id] && !sameRect(s.terminals[id].rect, rect) ? { terminals: { ...s.terminals, [id]: { ...s.terminals[id], rect } } } : s)),
     termGone: (id) => set((s) => { const terminals = { ...s.terminals }; delete terminals[id]; return { terminals }; }),
     termFailed: (id, message) => set((s) => ({ terminalErrors: { ...s.terminalErrors, [id]: message } })),
     termRetry: (id) => set((s) => { const terminalErrors = { ...s.terminalErrors }; delete terminalErrors[id]; return { terminalErrors }; }),
     webviewOpened: (tab, rect) => set((s) => ({ webviews: { ...s.webviews, [tab]: { tab, rect, url: '', title: '', loading: false, canGoBack: false, canGoForward: false } } })),
-    webviewMoved: (tab, rect) => set((s) => (s.webviews[tab] ? { webviews: { ...s.webviews, [tab]: { ...s.webviews[tab], rect } } } : {})),
-    webviewState: (tab, patch) => set((s) => (s.webviews[tab] ? { webviews: { ...s.webviews, [tab]: { ...s.webviews[tab], ...patch } } } : {})),
+    webviewMoved: (tab, rect) => set((s) => (s.webviews[tab] && !sameRect(s.webviews[tab].rect, rect) ? { webviews: { ...s.webviews, [tab]: { ...s.webviews[tab], rect } } } : s)),
+    webviewState: (tab, patch) => set((s) => (s.webviews[tab] ? { webviews: { ...s.webviews, [tab]: { ...s.webviews[tab], ...patch } } } : s)),
     webviewGone: (tab) => set((s) => { const webviews = { ...s.webviews }; delete webviews[tab]; return { webviews }; }),
     focusAddress: () => set({ addressFocus: true }),
     addressFocused: () => set({ addressFocus: false }),
@@ -314,9 +315,9 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     // the panel carries the switch, so it stays open across turning the link off; only a link that cannot be made at all shuts it
     setMobile: (mobile) => set((s) => ({ mobile, mobileOpen: mobile && !mobile.error ? s.mobileOpen : false })),
     // the daemon says who is on the page as they come and go; the rest of the status stands
-    setPhones: (phones) => set((s) => (s.mobile ? { mobile: { ...s.mobile, phones } } : {})),
+    setPhones: (phones) => set((s) => (s.mobile ? { mobile: { ...s.mobile, phones } } : s)),
     setPhoneRedact: (phoneRedact) => set({ phoneRedact }),
-    pageFocusSettled: () => set((s) => (s.keepPageFocus ? { keepPageFocus: false } : {})),
+    pageFocusSettled: () => set((s) => (s.keepPageFocus ? { keepPageFocus: false } : s)),
     setSettings: (patch) => set((s) => { const settings = { ...s.settings, ...patch }; storage?.setSettings(settings); return { settings }; }),
     setHalfCard: (size, persist = true) => set(() => { if (persist) storage?.setHalfCard(size); return { halfCard: size }; }),
     setSideWidths: (widths, persist = true) => set(() => { const w = clampSides(widths); if (persist) storage?.setSideWidths(w); return { sideWidths: w }; }),
@@ -328,6 +329,6 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       return { sections };
     }),
     // a Finder drag fires this on every mouse move; skip the render when the target has not changed
-    setDropHover: (t) => set((s) => (s.dropHover?.kind === t?.kind && s.dropHover?.id === t?.id && s.dropHover?.after === t?.after ? {} : { dropHover: t })),
+    setDropHover: (t) => set((s) => (s.dropHover?.kind === t?.kind && s.dropHover?.id === t?.id && s.dropHover?.after === t?.after ? s : { dropHover: t })),
   };
 };

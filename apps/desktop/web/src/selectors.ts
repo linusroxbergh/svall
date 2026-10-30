@@ -8,7 +8,7 @@ export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 
 // a stable identity, so a selector defaulting to "no CLIs found" does not retrigger on every render
 export const NO_AGENTS: AgentKind[] = [];
 
-export const islandsSorted = (f: FleetState): Island[] => Object.values(f.islands).sort(byIslandOrder);
+export const islandsSorted = (f: Pick<FleetState, 'islands'>): Island[] => Object.values(f.islands).sort(byIslandOrder);
 
 // the islands the map draws in the panned world; home is drawn in screen space, and a folded island not at all
 export const mapIslands = (f: FleetState): Island[] => Object.values(f.islands).filter((i) => i.kind !== 'home' && !i.collapsed);

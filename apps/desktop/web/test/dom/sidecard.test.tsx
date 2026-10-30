@@ -444,6 +444,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(moves()).toEqual(['Move to this Mac']);
   expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
+  expect(calls().some(([m]) => m === 'load.get')).toBe(false);
   // what of its agent setup will not work there, which here is nothing
   expect(calls()).toContainEqual(['machines.setup', { machine: VAULT, robot: 'c0' }]);
   expect(document.querySelector('[data-section="robot.machine"]')).toBeNull();

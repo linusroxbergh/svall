@@ -63,15 +63,22 @@ function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' 
   );
 }
 
+// last activity counts on while a busy agent sends nothing
+function LastActivity({ at }: { at: number }) {
+  useTick(10_000);
+  return <div className="row"><span>last activity</span><b className="tnum">{ago(at)} ago</b></div>;
+}
+
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
-  const fleet = useApp((s) => s.fleet);
+  const machines = useApp((s) => s.fleet.machines);
+  const islands = useApp((s) => s.fleet.islands);
+  const fleet = { machines, islands };
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
-  // last activity counts on while a busy agent sends nothing
-  useTick(10_000);
   const details = useApp((s) => !s.sections['robot.details']?.shut);
   const active = useApp((s) => s.active);
-  const load = useLoad(details && active).load?.robots?.[id];
+  // only a robot on this Mac shows its load
+  const load = useLoad(details && active && !!c && !isPlaced(c)).load?.robots?.[id];
   const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
   const hostRunning = useApp((s) => !!s.host?.running);
@@ -149,7 +156,7 @@ export function SideCard({ id }: { id: string }) {
                 </div>
               </div>
             )}
-            <div className="row"><span>last activity</span><b className="tnum">{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+            <LastActivity at={c.agent?.lastActivityAt ?? c.shell.lastOutputAt} />
             {load && !placed && (
               <>
                 <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{coresText(load.cpu)} cores</b></div>
