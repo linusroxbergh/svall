@@ -23,6 +23,8 @@ final class ShellRouter {
     private var presses: Any?
     // whether the page has sent .connection since it last loaded
     private var listening = false
+    // the home, watched while the page waits for a daemon that has written no port yet
+    private var portWatch: DispatchSourceFileSystemObject?
     private var pendingNotify: [FromShell] = []
     // since when the app has sat in the background or minimised, until its page is offered a fresh start
     private var awaySince: Date?
@@ -125,6 +127,7 @@ final class ShellRouter {
         notifier.clearAll()
         awake.release()
         listening = false
+        stopPortWatch()
         quitFlow.pageGone()
     }
 
@@ -174,7 +177,9 @@ final class ShellRouter {
             // the daemon runs while the window is open: started with it, and again if it stops on its own
             if !quitFlow.stopping { FleetDaemon.start() }
             sendShellInfo()
-            bridge.send(.connection(SvallHome.connection()))
+            let connection = SvallHome.connection()
+            bridge.send(.connection(connection))
+            if connection == nil { watchForPort() } else { stopPortWatch() }
             sendAppActive()
             notifier.refreshPermission()
             bridge.send(.updateAvailable(Updates.shared.waiting))
@@ -376,6 +381,34 @@ final class ShellRouter {
             listing = nil
             bridge.send(.hostMachines(machines: [], error: "\(error)"))
         }
+    }
+
+    /// The page asks again for a port it was not given, every 250 ms at first; one written before then reaches it at once.
+    private func watchForPort() {
+        guard portWatch == nil else { return }
+        let fd = Darwin.open(SvallHome.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let watch = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        watch.setEventHandler { [weak self] in self?.pushPort() }
+        watch.setCancelHandler { close(fd) }
+        portWatch = watch
+        watch.resume()
+    }
+
+    private func pushPort(tries: Int = 20) {
+        guard portWatch != nil else { return }
+        if let connection = SvallHome.connection() {
+            stopPortWatch()
+            return bridge.send(.connection(connection))
+        }
+        // svalld makes the file before it writes the port into it, which stirs nothing in the home
+        guard tries > 0, FileManager.default.fileExists(atPath: SvallHome.path + "/port") else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.005) { [weak self] in self?.pushPort(tries: tries - 1) }
+    }
+
+    private func stopPortWatch() {
+        portWatch?.cancel()
+        portWatch = nil
     }
 
     private func sendShellInfo() {

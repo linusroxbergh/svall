@@ -21,6 +21,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             return
         }
         for e in runtime.configErrors { NSLog("ghostty config: %@", e) }
+        let web = Bundle.main.resourceURL?.appendingPathComponent("web")
+        let bundled = web.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        // the page asks for the daemon once its script runs; asking now has it listening sooner. A window with no page never asks
+        if Self.devURL != nil || bundled { FleetDaemon.start() }
 
         // a fleet has one window, so View carries none of AppKit's tab items
         NSWindow.allowsAutomaticWindowTabbing = false
@@ -50,7 +54,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         if SvallHome.bare {
             config.userContentController.addUserScript(WKUserScript(source: "window.__svallBare = true;", injectionTime: .atDocumentStart, forMainFrameOnly: true))
         }
-        if let dir = Bundle.main.resourceURL?.appendingPathComponent("web"), FileManager.default.fileExists(atPath: dir.path) {
+        if bundled, let dir = web {
             let assets = WebAssets(root: dir)
             self.assets = assets
             config.setURLSchemeHandler(assets, forURLScheme: WebAssets.scheme)
