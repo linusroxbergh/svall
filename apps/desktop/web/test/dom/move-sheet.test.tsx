@@ -283,8 +283,8 @@ test('a move the daemon refuses at its own check fails at Check, and Check again
   const move = heldMove();
   await open(VAULT);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
-  await move.settle(new ApiError('refused', 'ada is working; interrupt after this turn', { refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } }));
-  expect(lines()).toEqual(['failed Check failed: ada is working; interrupt after this turn.']);
+  await move.settle(new ApiError('refused', 'ada is working; interrupt it now', { refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } }));
+  expect(lines()).toEqual(['failed Check failed: ada is working; interrupt it now.']);
   expect(screen.queryByTestId('move-run-details')).toBeNull();
   answers = [{ ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } }];
   call.mockImplementation((method: string) => Promise.resolve(method === 'robot.moveCheck' ? answers[0] : {}));
@@ -342,21 +342,21 @@ test('a shared main checkout second in the list still takes its own worktree in 
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }, { id: 'c0', machine: VAULT, interruptAfterMs: 0, ownWorktree: true }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
   expect((screen.getByLabelText(/^Give it its own worktree/) as HTMLInputElement).checked).toBe(true);
-  expect((screen.getByLabelText(/^Interrupt after this turn/) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Interrupt it now/) as HTMLInputElement).checked).toBe(true);
   expect(screen.getByLabelText(/^Give it its own worktree/).closest('label')!.querySelector('.modal-sub')!.textContent).toBe("two robots share svall's main checkout");
 });
 
-test('a working robot is interrupted after its turn in the one sheet, whose box says why; unticked, the move refuses with the interrupt as its button', async () => {
+test('a working robot is interrupted at once from the one sheet, whose box says why; unticked, the move refuses with the interrupt as its button', async () => {
   const working: Refusal = { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] };
   answers = [{ ok: false, refusal: working }, { ok: true, sheet: sheet({ interrupts: true }) }, { ok: false, refusal: working }];
   await open(VAULT);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, interruptAfterMs: 0 }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
-  await act(async () => fireEvent.click(screen.getByLabelText(/^Interrupt after this turn/)));
+  await act(async () => fireEvent.click(screen.getByLabelText(/^Interrupt it now/)));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
   // the button says what to do, so no line does
   expect(screen.getByTestId('move-refusal').textContent).toBe('ada is working');
-  expect(screen.getByTestId('move-action').textContent).toBe('Interrupt after this turn');
+  expect(screen.getByTestId('move-action').textContent).toBe('Interrupt it now');
   answers = [{ ok: true, sheet: sheet({ interrupts: true }) }];
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
@@ -368,7 +368,7 @@ test('a command running in its shell is ended by the move, as its box says', asy
   await open(VAULT);
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, interruptAfterMs: 0 });
   expect((screen.getByLabelText(/^Move anyway and end it/) as HTMLInputElement).checked).toBe(true);
-  expect(screen.queryByLabelText(/^Interrupt after this turn/)).toBeNull();
+  expect(screen.queryByLabelText(/^Interrupt it now/)).toBeNull();
 });
 
 test('a robot sharing a main checkout gets its own worktree in the one sheet, which says why and that the checkout keeps its changes', async () => {
@@ -487,7 +487,7 @@ test('the way back asks about this Mac by the id the daemon gives itself', async
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: HOME });
 });
 
-test('the way back of a working robot moves it after its turn', async () => {
+test('the way back of a working robot interrupts it at once', async () => {
   act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: VAULT }]));
   answers = [{ ok: false, refusal: { reason: 'ada is working', action: INTERRUPT_ACTIONS.agent, details: [] } }, { ok: true, sheet: sheet({ interrupts: true }) }];
   await open();

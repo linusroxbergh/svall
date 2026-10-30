@@ -190,7 +190,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
       more: [
         { reason: 'linus-vault is not reachable', action: 'try again when it is awake' },
         { reason: 'kanban is on a detached HEAD', action: 'check out a branch first' },
-        { reason: 'kanban is working', action: 'interrupt after this turn' },
+        { reason: 'kanban is working', action: 'interrupt it now' },
         { reason: 'a command is running', action: 'move anyway and it ends' },
       ],
     });
@@ -541,7 +541,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const t = machines();
     const c = shellIn(t, { agent: claude('working') });
     const working = depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-working' }, { robotId: 'c_9', class: 'foreground' }] });
-    expect(await refusal(working)).toEqual({ reason: 'kanban is working', action: 'interrupt after this turn', details: [] });
+    expect(await refusal(working)).toEqual({ reason: 'kanban is working', action: 'interrupt it now', details: [] });
     const moved = await sheet(working, { interruptAfterMs: 60_000 });
     expect(moved.sheet).toMatchObject({ interrupts: true, question: false });
     expect(moved.plan.interruptAfterMs).toBe(60_000);
@@ -552,7 +552,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     // a later failure follows in more, its details behind the first's sentence
     const both = depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-working' }, { robotId: 'c_1', term: 2, class: 'foreground' }] });
     expect(await refusal(both)).toEqual({
-      reason: 'kanban is working', action: 'interrupt after this turn', details: ['wait for it'], more: [{ reason: 'a command is running', action: 'move anyway and it ends' }],
+      reason: 'kanban is working', action: 'interrupt it now', details: ['wait for it'], more: [{ reason: 'a command is running', action: 'move anyway and it ends' }],
     });
 
     const idle = await sheet(depsOf(t, [c], { terminals: [{ robotId: 'c_1', class: 'agent-ready' }] }), { interruptAfterMs: 0 });

@@ -104,10 +104,10 @@ and its own button or action, the first with its details behind it; `svall robot
    CLI names it: ".env stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
    first". A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
    holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
-7. **The agent is idle, or you choose Interrupt after this turn.** "kanban is working; interrupt after this turn". "a
-   command is running; move anyway and it ends". In the app the sheet ticks the box for it, **Interrupt after this
-   turn: kanban is working** or **Move anyway and end it: a command is running**, and **Move** takes it; unticked, the
-   move refuses as above. A robot waiting on a question moves too: it resumes idle, and asks again when prompted.
+7. **The agent is idle, or you choose Interrupt it now.** "kanban is working; interrupt it now". "a command is
+   running; move anyway and it ends". In the app the sheet ticks the box for it, **Interrupt it now: kanban is
+   working** or **Move anyway and end it: a command is running**, and **Move** takes it; unticked, the move refuses as
+   above. A robot waiting on a question moves too: it resumes idle, and asks again when prompted.
 
 Mission control's robots stay on this Mac and have no move button.
 
@@ -163,8 +163,8 @@ recorded:
   since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
   worker's copy.
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
-  working; interrupt after this turn", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
-  rests the robot there after its turn.
+  working; interrupt it now", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
+  interrupts what still runs there after that long, then rests it.
 - A worker that sends no sheet of what comes back refuses: "linus-vault did not answer the move sheet in 30 s; try
   again", or on a release without one, "linus-vault runs a release without move.sheet; upgrade it under Machines".
 

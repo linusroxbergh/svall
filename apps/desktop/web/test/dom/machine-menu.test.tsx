@@ -11,10 +11,10 @@ const { MachineActions } = await import('../../src/HostSetup.js');
 
 const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
 
-function setup(reachable: boolean | undefined, placed: number) {
+function setup(reachable: boolean | undefined, placed: number, mismatch?: true) {
   freshStore();
   const f = fleet();
-  if (reachable !== undefined) f.machines = { [VAULT]: { name: 'vault', reachable, since: 0 } };
+  if (reachable !== undefined) f.machines = { [VAULT]: { name: 'vault', reachable, since: 0, mismatch } };
   for (let i = 0; i < placed; i++) f.robots[`c${i}`] = chr(`c${i}`, 'i_b', { x: 1, y: 1 }, { name: `r${i}`, machine: VAULT });
   store.getState().setFleet(f);
   act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64' }]));
@@ -49,7 +49,7 @@ test('opening the menu focuses its first item; arrows step; Escape and an outsid
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
 });
 
-test('Remove names how many robots hold it back; Forget is offered only for a machine that is not reachable', () => {
+test('Remove names how many robots hold it back; Forget is offered only for a machine that does not answer', () => {
   setup(undefined, 1);
   fireEvent.click(more());
   expect((screen.getByTestId('machine-remove') as HTMLButtonElement).disabled).toBe(true);
@@ -61,5 +61,18 @@ test('several robots, and a reachable machine', () => {
   setup(true, 2);
   fireEvent.click(more());
   expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toBe('2 robots are placed there; move them back first');
+  expect(screen.queryByTestId('machine-forget')).toBeNull();
+});
+
+test('a machine that is down is offered Forget', () => {
+  setup(false, 0);
+  fireEvent.click(more());
+  expect(screen.getByTestId('machine-forget')).toBeTruthy();
+});
+
+test('a machine on another build answers, so it is not offered Forget', () => {
+  setup(false, 0, true);
+  fireEvent.click(more());
+  expect(screen.getByTestId('machine-remove')).toBeTruthy();
   expect(screen.queryByTestId('machine-forget')).toBeNull();
 });

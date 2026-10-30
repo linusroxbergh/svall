@@ -10,6 +10,7 @@ import {
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
 import { MachineTerminal } from './MachineTerminal.js';
+import { answers } from './placement.js';
 import { placeTip } from './settings.js';
 import { Caret } from './Sidebar.js';
 import { VarField } from './VarField.js';
@@ -26,7 +27,7 @@ export function MachineActions({ name }: { name: string }) {
   const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
   const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
-  const up = useApp((s) => !!id && s.fleet.machines?.[id as MachineId]?.reachable === true);
+  const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
   const [open, setOpen] = useState(false);
   const [place, setPlace] = useState<CSSProperties>();
   const box = useRef<HTMLSpanElement>(null);

@@ -13,7 +13,7 @@ export const Refusal = Blocker.extend({ details: z.array(z.string()), more: z.ar
 export type Refusal = z.infer<typeof Refusal>;
 
 /** The actions of the refusals a move clears by interrupting: an agent at work, and a command running in a shell. */
-export const INTERRUPT_ACTIONS = { agent: 'interrupt after this turn', command: 'move anyway and it ends' } as const;
+export const INTERRUPT_ACTIONS = { agent: 'interrupt it now', command: 'move anyway and it ends' } as const;
 
 /** The action of the refusal a move clears by leaving a shared main checkout for a new worktree at its HEAD. */
 export const WORKTREE_ACTION = 'give it its own worktree';

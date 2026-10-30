@@ -284,7 +284,7 @@ describe('robot move to a machine', () => {
     sessionBytes: 4_200_000, branch: 'kanban-board', commits: 2, changedFiles: 2, untrackedFiles: 1, clone: 'clone', credentialFiles: ['.env'], stays: ['.env stays here'],
     interrupts: false, question: false, notInRepo: false,
   };
-  const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt after this turn'] };
+  const refusal: Refusal = { reason: 'linus-vault is not reachable', action: 'try again when it is awake', details: ['kanban is working; interrupt it now'] };
 
   const HOME = '0f1e2d3c-4b5a-4697-8877-665544332211';
   function daemon(o: { check?: unknown; moveTo?: () => unknown; robots?: Record<string, Robot>; answers?: string; setup?: SetupRow[] | Error } = {}) {
@@ -374,8 +374,8 @@ describe('robot move to a machine', () => {
   });
 
   it('says a refusal the move itself answers as the checks do, and gives either as one JSON object with --json', async () => {
-    const late = () => { throw new ApiError('refused', 'kanban is working; interrupt after this turn', { refusal: { reason: 'kanban is working', action: 'interrupt after this turn', details: [] } }); };
-    expect((await run(daemon({ moveTo: late }), ['c_1', '--machine', 'linus-vault'])).err).toBe('refused: kanban is working\n  → interrupt after this turn\n');
+    const late = () => { throw new ApiError('refused', 'kanban is working; interrupt it now', { refusal: { reason: 'kanban is working', action: 'interrupt it now', details: [] } }); };
+    expect((await run(daemon({ moveTo: late }), ['c_1', '--machine', 'linus-vault'])).err).toBe('refused: kanban is working\n  → interrupt it now\n');
     expect(process.exitCode).toBe(2);
     process.exitCode = 0;
 
