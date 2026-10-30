@@ -467,7 +467,7 @@ export class Retro {
     }
   }
 
-  // the card of the crew member who started the run shows its stage and tokens, until a while after it ends
+  // the fleet state holds the run's stage and tokens until a while after it ends
   private card(s: RetroStatus, robot?: string): void {
     this.d.store.update((d) => { d.retro = { run: s.run, stage: s.stage, done: s.done, total: s.total, ...(s.used !== undefined && { used: s.used }), ...(robot && { robot }) }; });
     if (!ENDED.has(s.stage)) return;

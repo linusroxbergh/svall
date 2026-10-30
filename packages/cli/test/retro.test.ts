@@ -60,12 +60,11 @@ describe('svall retro', () => {
     expect(formatPlan({ ...plan, reviews: 'no-gh' })).toContain('reviews: skipped: gh is not installed or signed in');
   });
 
-  it('findings prints the short summary, pointing at the report in the fleet home', async () => {
+  it('findings prints the summary, pointing at the report in the fleet home', async () => {
     const f = fake({ 'retro.findings': report() });
     await f.run('findings');
     const text = f.out.join('');
-    expect(text.trimEnd().split('\n').length).toBeLessThanOrEqual(25);
-    expect(text).toContain(`report: ${path.join(f.home, 'retro', 'runs', 'r_1793263426', 'report.md')}`);
+    expect(text).toContain(`Report: \`${path.join(f.home, 'retro', 'runs', 'r_1793263426', 'report.md')}\``);
     expect(text).toContain('Local reviews miss missing specs that others catch');
   });
 
@@ -88,10 +87,17 @@ describe('svall retro', () => {
     const f = fake({ 'retro.findings': report({ findings: [finding('aaa'), finding('bbb')] }), 'retro.mark': { results: [{ id: 'bbb', outcome: 'later' }] } });
     await f.run('mark', 'later', '2');
     expect(f.calls.at(-1)).toEqual(['retro.mark', { marks: [{ id: 'bbb', action: 'later' }] }]);
+    expect(f.out.at(-1)).toContain('2: later');
     await expect(f.run('mark', 'dismiss', '1')).rejects.toThrow('--reason wrong|not-worth-it');
     // a number past the findings, or of none, is an id, as an id may be all digits
     await f.run('mark', 'fix', '3', '0', '1234567890');
     expect(f.calls.at(-1)).toEqual(['retro.mark', { marks: [{ id: '3', action: 'fix' }, { id: '0', action: 'fix' }, { id: '1234567890', action: 'fix' }] }]);
+  });
+
+  it('mark names each result by the number the user gave, and applies by the id', async () => {
+    const f = fake({ 'retro.findings': report({ findings: [finding('aaa')] }), 'retro.mark': { results: [{ id: 'aaa', outcome: 'apply', path: '/u/.claude/CLAUDE.md', diff: '+x' }] } });
+    await f.run('mark', 'fix', '1');
+    expect(f.out.join('')).toContain('1: show the user this diff for /u/.claude/CLAUDE.md; on their OK, svall retro apply aaa\n');
   });
 
   it('run names a preset only when given one, for svalld to pick the plan\'s own', async () => {

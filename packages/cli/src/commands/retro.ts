@@ -124,13 +124,15 @@ export function retroCommands(connect: () => Promise<Client>, json: () => boolea
         const ids = await resolveIds(c, refs);
         return c.call('retro.mark', { marks: ids.map((id) => ({ id, action, ...(o.reason && { reason: o.reason }) })) });
       });
-      printResult(r, json(), () => r.results.map((x) => {
+      // one result per mark, in order, each named as the user named it; apply takes the id, which a newer run can't renumber
+      printResult(r, json(), () => r.results.map((x, i) => {
         const at = flat(short(x.path ?? ''));
-        if (x.outcome === 'robot') return `${x.id}: robot ${x.robot} opens a PR for ${at}`;
-        if (x.outcome === 'apply') return `${x.id}: show the user this diff for ${at}; on their OK, svall retro apply ${x.id}\n${fenced(x.diff ?? '', '   ')}`;
-        if (x.outcome === 'proposal') return `${x.id}: a proposal; make the change by hand${x.path ? ` in ${at}` : ''}\n${fenced(x.diff ?? '', '   ')}`;
-        if (x.outcome === 'fixed') return `${x.id}: a robot already took this fix for ${at}`;
-        return `${x.id}: ${x.outcome}`;
+        const ref = refs[i] ?? x.id;
+        if (x.outcome === 'robot') return `${ref}: robot ${x.robot} opens a PR for ${at}`;
+        if (x.outcome === 'apply') return `${ref}: show the user this diff for ${at}; on their OK, svall retro apply ${x.id}\n${fenced(x.diff ?? '', '   ')}`;
+        if (x.outcome === 'proposal') return `${ref}: a proposal; make the change by hand${x.path ? ` in ${at}` : ''}\n${fenced(x.diff ?? '', '   ')}`;
+        if (x.outcome === 'fixed') return `${ref}: a robot already took this fix for ${at}`;
+        return `${ref}: ${x.outcome}`;
       }).join('\n'));
     });
 
