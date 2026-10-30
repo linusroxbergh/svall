@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { PROTOCOL_VERSION, emptyState } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { removeHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
-import { BASE, FLEET, HOME, MAC, OTHER_MAC, REMOTE, SVALL, deps, events, fleet, ssh, step, useHostWorld, work } from './controller/host-world.js';
+import { BASE, FLEET, HOME, MAC, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, TOKEN, deps, events, fleet, ssh, step, useHostWorld, work } from './controller/host-world.js';
 
 useHostWorld();
 
@@ -18,6 +18,8 @@ describe('host remove', () => {
     }, REMOTE);
     return registry;
   };
+  // the fleet homes there: this fleet's, as this Mac's worker
+  beforeEach(() => { ssh.reply(['svall-workers'], { stdout: `.svall\t${JSON.stringify({ ...SERVES, token: TOKEN })}\n` }); });
 
   it('uninstalls nothing while a robot of a fleet here is on the machine or moving to it, and names them; --forget still drops the route', async () => {
     const ada = {
@@ -101,6 +103,46 @@ describe('host remove', () => {
     expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(`trift.test now reaches machine ${OTHER_MAC}, not trift (${REMOTE})`) });
     expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
     expect(registry.get('trift')).toBeDefined();
+  });
+
+  it('uninstalls nothing on a machine where a fleet home serves another Mac, or whose fleet homes cannot be read, as svall uninstall there stops every fleet on it', async () => {
+    ssh.clearReplies();
+    const far = path.join(work, 'far');
+    const base = `${far}/.local/share/svall`;
+    fs.mkdirSync(`${base}/current/bin`, { recursive: true });
+    fs.writeFileSync(`${base}/current/bin/svall`, `#!/bin/sh\ncase "$1" in version) printf '%s\\n' '${JSON.stringify({ machineId: REMOTE }, null, 2)}' ;; uninstall) echo removed ;; esac\n`, { mode: 0o755 });
+    const serving = (dir: string, worker: object) => {
+      fs.mkdirSync(path.join(far, dir), { recursive: true });
+      fs.writeFileSync(path.join(far, dir, 'worker.json'), JSON.stringify({ ...worker, token: TOKEN }, null, 2));
+    };
+    serving('.svall', SERVES);
+    serving('.svall-work', { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+    fs.mkdirSync(path.join(far, '.svall-idle'));
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: far, svallBase: base }, REMOTE);
+    ssh.execute({});
+    const action = 'svall host remove trift --forget drops the route and leaves the machine untouched; once no other Mac uses it, ssh trift.test, then svall uninstall';
+    const refused = async (detail: unknown) => {
+      events.length = 0;
+      expect(await removeHost('trift', {}, deps({ registry }))).toEqual({ result: 'actions', stopped: 'uninstall', actions: [action] });
+      expect(step('uninstall').at(-1)).toMatchObject({ status: 'fail', detail, action });
+      expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
+      expect(registry.get('trift')).toBeDefined();
+    };
+
+    await refused('trift also serves bea-mbp as a worker: svall uninstall there would stop that fleet too');
+    for (const text of [`{"homeMachineId": "${OTHER_MAC}", "tok`, 'null', '{"homeName": "bea-mbp"}']) {
+      fs.writeFileSync(path.join(far, '.svall-work', 'worker.json'), text);
+      await refused(`${far}/.svall-work/worker.json cannot be read, so whether trift serves another Mac is not known, and svall uninstall there stops every fleet on it`);
+    }
+    fs.rmSync(path.join(far, '.svall-work', 'worker.json'));
+    fs.mkdirSync(path.join(far, '.svall-work', 'worker.json'));
+    await refused(expect.stringMatching(/^the worker\.json files there exited 1: .*, so whether trift serves another Mac is not known, and svall uninstall there stops every fleet on it$/));
+
+    fs.rmSync(path.join(far, '.svall-work'), { recursive: true });
+    expect(await removeHost('trift', {}, deps({ registry }))).toEqual({ result: 'ready', actions: [] });
+    expect(ssh.remoteCalls().filter((w) => w.includes('uninstall'))).toEqual([[`${base}/current/bin/svall`, 'uninstall']]);
+    expect(registry.get('trift')).toBeUndefined();
   });
 
   it('keeps the route for a machine it cannot reach', async () => {
