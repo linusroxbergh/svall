@@ -111,11 +111,11 @@ describe('host add', () => {
   });
 
   it('uploads nothing to a machine that runs a newer release than this Mac, which installing would take back, and takes a development build past the release it runs', async () => {
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.3.0', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.10.0', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
     healthy();
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
     expect(out).toEqual({ result: 'actions', stopped: 'release', actions: ['update svall on this Mac'] });
-    expect(step('release').at(-1)).toMatchObject({ status: 'fail', detail: 'trift runs release 1.3.0, newer than 1.2.3, the one this Mac would install' });
+    expect(step('release').at(-1)).toMatchObject({ status: 'fail', detail: 'trift runs release 1.10.0, newer than 1.2.3, the one this Mac would install' });
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
 
     ssh.clearReplies();
@@ -128,16 +128,42 @@ describe('host add', () => {
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"'))).toBe(true);
   });
 
-  it('enrols nothing on a machine this Mac already lists under another name, and keeps its one record', async () => {
+  it('uploads and enrols nothing on a machine this Mac already lists under another name, and keeps its one record', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'vault', ssh: 'vault.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
     healthy();
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     const action = 'svall host upgrade vault sets it up again, or svall host remove vault --forget and add it as trift';
-    expect(out).toEqual({ result: 'actions', stopped: 'identity', actions: [action] });
-    expect(step('identity').at(-1)).toEqual({ step: 'identity', status: 'fail', detail: "trift.test reaches vault, a machine already in this Mac's list", action });
-    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(out).toEqual({ result: 'actions', stopped: 'release', actions: [action] });
+    expect(step('release').at(-1)).toEqual({ step: 'release', status: 'fail', detail: "trift.test reaches vault, a machine already in this Mac's list", action });
+    expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup') || w.includes('enroll'))).toBe(false);
     expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+    expect(registry.list().filter((m) => m.id === REMOTE).map((m) => m.record.name)).toEqual(['vault']);
+  });
+
+  it('stops at identity on a machine with no svall to ask that this Mac lists under another name, and enrols nothing', async () => {
+    const far = path.join(work, 'far');
+    const base = `${far}/.local/share/svall`;
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'vault', ssh: 'vault.test', platform: 'linux', arch: 'arm64', home: far, svallBase: base }, REMOTE);
+    for (const [match, stdout] of [
+      [['uname', '-sm'], 'Linux aarch64\n'], [['cat', '/etc/os-release'], OS_RELEASE], [['svall-home'], `${far}\nlinus\n`],
+      [['svall-tools'], ['tailscale', 'git', 'systemctl', 'loginctl'].map((t) => `${t} yes\n`).join('')],
+      [['svall-tmux-version'], OWN_TMUX], [['svall-space'], DF], [['svall-linger'], 'Linger=yes\n'],
+    ] as [string[], string][]) ssh.reply(match, { stdout });
+    ssh.execute({});
+    const svall = `#!/bin/sh
+case "$1" in
+  version) printf '%s\\n' '${JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE })}' ;;
+  doctor) printf '%s\\n' '${DOCTOR}' ;;
+  setup) mkdir -p '${base}' && tar -xzf "$3" -C '${base}' && ln -sfn '${base}/releases/1.2.3' '${base}/current' ;;
+esac
+`;
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: companionArchive(work, { signedBy: signer.key, svall }) }, deps({ registry }));
+    expect(step('release').at(-1)).toMatchObject({ status: 'ok' });
+    expect(out).toMatchObject({ result: 'actions', stopped: 'identity' });
+    expect(step('identity').at(-1)).toMatchObject({ status: 'fail', detail: "trift.test reaches vault, a machine already in this Mac's list" });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(registry.list().filter((m) => m.id === REMOTE).map((m) => m.record.name)).toEqual(['vault']);
   });
 

@@ -140,6 +140,12 @@ describe('host remove', () => {
     await refused(expect.stringMatching(/^the worker\.json files there exited 1: .*, so whether trift serves another Mac is not known, and svall uninstall there stops every fleet on it$/));
 
     fs.rmSync(path.join(far, '.svall-work'), { recursive: true });
+    // the private fleet there serves another Mac, and this Mac's fleet is a named one
+    serving('.svall', { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET });
+    serving('.svall-work', SERVES);
+    await refused('trift also serves bea-mbp as a worker: svall uninstall there would stop that fleet too');
+
+    serving('.svall', SERVES);
     expect(await removeHost('trift', {}, deps({ registry }))).toEqual({ result: 'ready', actions: [] });
     expect(ssh.remoteCalls().filter((w) => w.includes('uninstall'))).toEqual([[`${base}/current/bin/svall`, 'uninstall']]);
     expect(registry.get('trift')).toBeUndefined();

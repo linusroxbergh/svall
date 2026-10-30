@@ -495,13 +495,13 @@ esac
   });
 
   it('uploads and installs nothing on a machine that runs a newer release than this Mac, which installing would take back', async () => {
-    const far = await farMachine({ releases: [['1.3.0', PROTOCOL_VERSION]] });
+    const far = await farMachine({ releases: [['1.10.0', PROTOCOL_VERSION]] });
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
     await far.close();
     expect(out).toEqual({ result: 'actions', stopped: 'release', actions: ['update svall on this Mac'] });
-    expect(step('release').at(-1)).toMatchObject({ status: 'fail', detail: 'trift runs release 1.3.0, newer than 1.2.3, the one this Mac would install' });
+    expect(step('release').at(-1)).toMatchObject({ status: 'fail', detail: 'trift runs release 1.10.0, newer than 1.2.3, the one this Mac would install' });
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
-    expect(far.now()).toBe('1.3.0');
+    expect(far.now()).toBe('1.10.0');
   });
 
   it('enrols a worker unit there whose worker.json names another fleet of this Mac', async () => {

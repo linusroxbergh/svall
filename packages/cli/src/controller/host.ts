@@ -427,14 +427,23 @@ function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undef
 // a development build's release ends in git describe's count of commits past its tag, which semver ranks below the tag
 const newerRelease = (a: string, b: string): boolean => compareVersions(a.replace(/-.*/, ''), b.replace(/-.*/, '')) === 1;
 
+/** Why the machine `ssh` reaches is not one to add as `name`: this Mac lists it under another name. */
+function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh: string }): StepError | undefined {
+  const listed = registry.get(id);
+  if (!listed || listed.record.name === o.name) return undefined;
+  return new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in this Mac's list`,
+    `svall host upgrade ${listed.record.name} sets it up again, or svall host remove ${listed.record.name} --forget and add it as ${o.name}`);
+}
+
 /**
- * Refuses, before anything is uploaded, a fleet home there that serves another Mac and a release there newer than
- * `version`, which installing would take back; a machine whose svall does not answer has nothing to refuse yet.
+ * Refuses, before anything is uploaded, a machine this Mac lists under another name, a fleet home there that serves
+ * another Mac, and a release there newer than `version`, which installing would take back; a machine whose svall does
+ * not answer has nothing to refuse yet.
  */
-async function mayInstall(master: SshMaster, o: { name: string; svallBase: string; version: string }, d: HostDeps): Promise<void> {
+async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string }, d: HostDeps): Promise<void> {
   const far = await farHome(master, o.svallBase, d).catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
   if (!far) return;
-  const refused = notOurs(far, o.name, d);
+  const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
   if (refused) throw refused;
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
@@ -560,7 +569,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const companion = await run.step('release', async () => {
         const c = await companionFor(o, d, arch);
-        await mayInstall(master, { name: o.name, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version }, d);
+        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version }, d);
         return c;
       });
       const remote = remotePaths(home, companion.version);
@@ -588,11 +597,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           throw new StepError(`${o.ssh} now reaches machine ${id.data}, not ${o.name} (${held.id})`,
             `point ${o.ssh} back at ${o.name}, or svall host remove ${o.name} --forget and add it again`);
         }
-        const listed = d.registry.get(id.data);
-        if (listed && listed.record.name !== o.name) {
-          throw new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in this Mac's list`,
-            `svall host upgrade ${listed.record.name} sets it up again, or svall host remove ${listed.record.name} --forget and add it as ${o.name}`);
-        }
+        const listed = listedAs(d.registry, id.data, o);
+        if (listed) throw listed;
         if (v.release !== companion.version) {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
@@ -689,7 +695,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const same = d.controller.release === 'dev' || v.release === d.controller.release;
       const talks = v.protocol === d.controller.protocol;
       // an upgrade there would go back to this Mac's older release
-      const newer = !same && compareVersions(v.release, d.controller.release) === 1;
+      const newer = !same && newerRelease(v.release, d.controller.release);
       found({
         name: 'release', status: same && talks ? 'ok' : 'fail',
         detail: same && talks ? `${v.release}, as on this Mac`
@@ -776,7 +782,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
       await run.step('os', () => osProbe(master));
       const companion = await run.step('release', async () => {
         const c = await companionFor({ name, ssh: entry.record.ssh, ...o }, d, entry.record.arch);
-        await mayInstall(master, { name, svallBase: entry.record.svallBase, version: c.value.version }, d);
+        await mayInstall(master, { name, ssh: entry.record.ssh, svallBase: entry.record.svallBase, version: c.value.version }, d);
         return c;
       });
       const remote = remotePaths(entry.record.home, companion.version);
