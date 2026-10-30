@@ -334,6 +334,11 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     t.g(root, 'checkout', '-q', 'main');
     const c = on(wt, { main: root, branch: 'kb' });
 
+    // main's merge stays in main
+    fs.writeFileSync(path.join(root, '.git/MERGE_HEAD'), `${t.g(root, 'rev-parse', 'HEAD')}\n`);
+    await sheet(depsOf(t, [c]));
+    fs.rmSync(path.join(root, '.git/MERGE_HEAD'));
+
     t.g(wt, 'merge', '-q', '--no-commit', '--no-ff', 'side');
     expect(await refusal(depsOf(t, [c]))).toEqual({ reason: `${wt} is in the middle of a merge`, action: 'finish or abort it first', details: [] });
     // its own worktree keeps only a main checkout's operation
@@ -362,7 +367,18 @@ describe.skipIf(!hasGit)('moveChecks', () => {
       reason: `b.txt in ${wt} is marked assume-unchanged, so its edits would be lost`, action: 'run git update-index --no-assume-unchanged on it first', details: [],
     });
     t.g(wt, 'update-index', '--no-assume-unchanged', 'b.txt');
-    expect((await sheet(depsOf(t, [c]))).sheet.changedFiles).toBe(1);
+
+    // core.ignoreStat marks each file git adds, so the refusal clears them all at once
+    t.g(wt, 'config', 'core.ignoreStat', 'true');
+    put(wt, 'd.txt', 'four\n');
+    t.g(wt, 'add', 'd.txt');
+    expect(await refusal(depsOf(t, [c]))).toEqual({
+      reason: `${wt} sets core.ignoreStat, which marks each file git adds assume-unchanged, so their edits would be lost`,
+      action: 'run git config core.ignoreStat false && git ls-files -z | xargs -0 git update-index --no-assume-unchanged there first', details: [],
+    });
+    t.g(wt, 'config', 'core.ignoreStat', 'false');
+    t.g(wt, 'update-index', '--no-assume-unchanged', 'd.txt');
+    expect((await sheet(depsOf(t, [c]))).sheet.changedFiles).toBe(2);
   });
 
   it('check 3: a robot sharing a main checkout given its own worktree travels on a new branch at HEAD with HEAD\'s commits alone, and main keeps the rest', async () => {

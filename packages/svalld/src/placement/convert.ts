@@ -29,7 +29,11 @@ export async function refuseUncarried(root: string, git: GitRunner): Promise<voi
   const under = Object.keys(UNDER_WAY).find((f) => fs.existsSync(path.join(gitDir, f)));
   if (under) throw new Error(`${root} is in the middle of a ${UNDER_WAY[under]}; finish or abort it first`);
   const hidden = (await must(git, ['ls-files', '-v', '-z'], root)).split('\0').find((e) => /^[a-z] /.test(e));
-  if (hidden) throw new Error(`${hidden.slice(2)} in ${root} is marked assume-unchanged, so its edits would be lost; run git update-index --no-assume-unchanged on it first`);
+  if (!hidden) return;
+  if ((await git(['config', '--bool', 'core.ignoreStat'], root)).stdout.trim() === 'true') {
+    throw new Error(`${root} sets core.ignoreStat, which marks each file git adds assume-unchanged, so their edits would be lost; run git config core.ignoreStat false && git ls-files -z | xargs -0 git update-index --no-assume-unchanged there first`);
+  }
+  throw new Error(`${hidden.slice(2)} in ${root} is marked assume-unchanged, so its edits would be lost; run git update-index --no-assume-unchanged on it first`);
 }
 
 // a carried file and each folder that leaves empty, up to the checkout
