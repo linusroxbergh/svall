@@ -162,12 +162,15 @@ with a run of 8 or more letters and digits mixing both. In a server's URL or arg
 shape (`https://mcp.zapier.com/api/mcp/s/<key>/mcp`). In arguments, a key is the value after a flag named as one
 (`--api-key`, `--pat`, `-k`), a header's value (`-H 'Name: value'`, `--headers Name value`), an auth scheme's credential
 (`Bearer …`) and a string named as a key in a JSON argument. A string in an OpenCode provider's or agent's options,
-settings or request `body` is a key when its name says so. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
+settings or request `body` is a key when its name says so or it carries an auth scheme's credential, and a URL there
+gives up its query keys. A reference with a default, `${LINEAR_API_KEY:-lin_…}`,
 holds its default as a key. Each server or file that holds one is a row under **Your agent setup**, such as "copy
 linear's keys to studio", with a box and the keys masked (`env.LINEAR_API_KEY lin…f2`). A key in an argument is named
 by the flag before it, its own `--flag=` or `KEY=`, or its URL's scheme and host, such as `args[--api-key]` or
-`args[https://example.com].token`, a key in JSON by its flag and its path there, such as `args[--config].token`, and every argument of one name is that one key, as an `env` key is, so a tick
-follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
+`args[https://example.com].token`; a header's value by its flag and name, such as `args[--headers X-Api-Key]`; an auth
+scheme's credential by the flag of its argument; a key in JSON by that flag and its path there, such as
+`args[--config].token`; and a URL path key as `url.path` or `args[https://example.com].path`. Every argument of one
+name is that one key, as an `env` key is, so a tick follows its name when the arguments move. Unticked, the server is copied without them: each `env` key becomes the
 agent's reference to a variable of the same name (`${LINEAR_API_KEY}` for Claude Code, `{env:LINEAR_API_KEY}` for
 OpenCode, the name in the server's `env_vars` for Codex), so the server reads that variable from its environment on
 the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left

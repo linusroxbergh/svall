@@ -72,7 +72,7 @@ const OPENCODE_OPTIONS = [
   'providers.*.models.*.variants.*.settings.**', 'providers.*.body.**', 'providers.*.models.*.body.**', 'providers.*.models.*.variants.*.body.**', 'agents.*.request.body.**',
 ];
 
-const SECRET_FLAG = /(?:^|-)(api[-_]?key|token|secret|password|passwd|auth(?:orization)?|key|credential|bearer|pat|pass|passphrase|pwd|sig|signature)s?$/i;
+const SECRET_FLAG = /(?:^|-)(api[-_]?key|token|secret|password|passwd|auth(?:orization)?|key|credential|bearer|pat|pass|passphrase|sig|signature)s?$/i;
 // an OpenCode provider option that is a key by its name, beside those SECRET_FLAG names
 const PROVIDER_KEY = /^(private[-_]?key|accessKeyId|secretAccessKey|sessionToken)$/i;
 const HEADER_FLAG = /^(--header|-H)$/;
@@ -342,20 +342,38 @@ const URL_END = /([\s"<>\\]|[,;](?=[a-z][a-z0-9+.-]{0,31}:\/\/))/i;
 // `source` as its URLs at even places and what lies between them at odd ones; a URL field is one URL whole
 const urlParts = (source: string, arg: boolean): string[] => (arg ? source.split(URL_END) : [source]);
 
-// each URL's query params in `source`
-function params(source: string, arg: boolean): { name: string; value: string }[] {
-  return urlParts(source, arg).filter((_, i) => i % 2 === 0).flatMap((url) => {
-    const query = url.split('#')[0].split('?').slice(1).join('?');
-    return query.split('&').flatMap((kv) => (kv.indexOf('=') > 0 ? [{ name: kv.slice(0, kv.indexOf('=')), value: kv.slice(kv.indexOf('=') + 1) }] : []));
+// where each URL piece's query lies: after its ?, or after the first & of a piece a space or a , ; split from a query; a quote,
+// bracket or backslash ends a query
+function queryRanges(pieces: string[]): ([from: number, to: number] | undefined)[] {
+  let open = false;
+  return pieces.map((p, i) => {
+    if (i % 2) {
+      if (/["<>\\]/.test(p)) open = false;
+      return undefined;
+    }
+    const end = p.includes('#') ? p.indexOf('#') : p.length;
+    const q = p.slice(0, end).indexOf('?');
+    const amp = p.slice(0, end).indexOf('&');
+    const from = q >= 0 ? q + 1 : open ? (amp >= 0 ? amp + 1 : end) : -1;
+    open = from >= 0 && end === p.length;
+    return from >= 0 ? [from, end] : undefined;
   });
 }
 
-// a value shaped as a token: 20 or more URL-safe characters, among them a run of 8 or more letters and digits mixing both
-const tokenShaped = (v: string): boolean =>
-  v.length >= 20 && /^[\w.~+=:%-]+$/.test(v) && v.split(/[^A-Za-z0-9]/).some((p) => p.length >= 8 && /\d/.test(p) && /[A-Za-z]/.test(p));
+// each URL's query params in `source`
+function params(source: string, arg: boolean): { name: string; value: string }[] {
+  const pieces = urlParts(source, arg);
+  return queryRanges(pieces).flatMap((r, i) => (r ? pieces[i].slice(...r).split('&') : []))
+    .flatMap((kv) => (kv.indexOf('=') > 0 ? [{ name: kv.slice(0, kv.indexOf('=')), value: kv.slice(kv.indexOf('=') + 1) }] : []));
+}
 
-// a query value is a key when its name says so or it is shaped as a token
-const queryKey = (name: string, value: string): boolean => keyName(name) || tokenShaped(value);
+// a value shaped as a token: 20 or more URL-safe characters, among them a run of 8 or more letters and digits mixing both, a
+// %XX escape apart
+const tokenShaped = (v: string): boolean =>
+  v.length >= 20 && /^[\w.~+=:%-]+$/.test(v) && v.split(/%[0-9a-f]{2}|[^a-z0-9]/i).some((p) => p.length >= 8 && /\d/.test(p) && /[A-Za-z]/.test(p));
+
+// a query value is a key when its name says so, Azure Functions' code among them, or it is shaped as a token
+const queryKey = (name: string, value: string): boolean => keyName(name) || name === 'code' || tokenShaped(value);
 
 function urlSecrets(source: string, field: string, arg = false): Secret[] {
   const values = params(source, arg).filter((p) => queryKey(p.name, p.value) && !isReferenceOnly(p.value)).map((p) => ({ field: `${field}.${p.name}`, value: p.value }));
@@ -385,17 +403,17 @@ const withoutPathKeys = (source: string): string => pathKeys(source).reduceRight
 function urlWithout(source: string, field: string, drop: ReadonlySet<string>, arg = false): string {
   const bare = drop.has(`${field}.path`) ? withoutPathKeys(source) : source;
   const u = drop.has(`${field}.userinfo`) ? withoutCredentials(bare) : bare;
-  return urlParts(u, arg).map((url, i) => {
-    if (i % 2) return url;
-    const end = url.includes('#') ? url.indexOf('#') : url.length;
-    const q = url.slice(0, end).indexOf('?');
-    if (q < 0) return url;
-    const query = url.slice(q + 1, end).split('&').map((kv) => {
+  const pieces = urlParts(u, arg);
+  const ranges = queryRanges(pieces);
+  return pieces.map((p, i) => {
+    const r = ranges[i];
+    if (!r) return p;
+    const query = p.slice(...r).split('&').map((kv) => {
       const eq = kv.indexOf('=');
       const [name, value] = [kv.slice(0, eq), kv.slice(eq + 1)];
       return eq > 0 && drop.has(`${field}.${name}`) && queryKey(name, value) ? `${name}=${asReference(value) ?? ''}` : kv;
     });
-    return `${url.slice(0, q + 1)}${query.join('&')}${url.slice(end)}`;
+    return `${p.slice(0, r[0])}${query.join('&')}${p.slice(r[1])}`;
   }).join('');
 }
 
@@ -418,46 +436,31 @@ const flagValue = (args: string[], i: number): boolean => {
 };
 
 // arg `i` as a header's value, its name the arg before it: after --headers any name, after -H, which is also a host flag,
-// Authorization or an X- name
+// Authorization, an X- name or one that names a key
 const headerPair = (args: string[], i: number): boolean => !isFlag(args[i]) && /^\w[\w-]*$/.test(args[i - 1] ?? '')
-  && (args[i - 2] === '--headers' || (args[i - 2] === '-H' && /^(x-|authorization$)/i.test(args[i - 1])));
+  && (args[i - 2] === '--headers' || (args[i - 2] === '-H' && (/^(x-|authorization$)/i.test(args[i - 1]) || keyName(args[i - 1]))));
 
-// where the credential after an auth scheme in `v` lies: 8 or more characters holding a digit, or 20 or more
-function schemeKey(v: string): { from: number; to: number } | undefined {
-  for (const m of v.matchAll(SCHEME_KEY)) {
-    const to = m.index + m[0].length;
-    if (m[1].length >= 20 || (m[1].length >= 8 && /\d/.test(m[1]))) return { from: to - m[1].length, to };
-  }
-  return undefined;
-}
+// where each credential after an auth scheme in `v` lies: 8 or more characters holding a digit, or 20 or more
+const schemeKeys = (v: string): { from: number; to: number }[] => [...v.matchAll(SCHEME_KEY)]
+  .filter((m) => m[1].length >= 20 || (m[1].length >= 8 && /\d/.test(m[1])))
+  .map((m) => ({ from: m.index + m[0].length - m[1].length, to: m.index + m[0].length }));
 
-// the JSON object or list an arg holds after any --flag=
-function jsonArg(a: string): { keep: string; doc: object } | undefined {
+// the JSON object or list an arg holds after any --flag=, as its text
+function jsonArg(a: string): { keep: string; text: string } | undefined {
   const keep = /^--?[^=]+=/.exec(a)?.[0] ?? '';
-  if (!/^\s*[[{]/.test(a.slice(keep.length))) return undefined;
+  const text = a.slice(keep.length);
+  if (!/^\s*[[{]/.test(text)) return undefined;
   try {
-    const doc: unknown = JSON.parse(a.slice(keep.length));
-    return typeof doc === 'object' && doc !== null ? { keep, doc } : undefined;
+    const doc: unknown = JSON.parse(text);
+    return typeof doc === 'object' && doc !== null ? { keep, text } : undefined;
   } catch { return undefined; }
 }
 
-// a JSON arg's strings; none for one nested too deep to walk
-function jsonLeaves(doc: object): (Leaf & Secret)[] {
-  try { return strings(at(doc, ['**'])); } catch { return []; }
-}
+type JsonString = { path: string[]; value: string; from: number; to: number };
 
-// a string of a JSON arg that is a key: named as one, or carrying an auth scheme's credential
-const jsonKey = (l: Leaf & Secret): boolean => (keyName(lastName(l.place)) || schemeKey(l.value) !== undefined) && !isReferenceOnly(l.value);
-
-// the keys of a JSON arg by their path in it
-function jsonKeys(a: string): Secret[] {
-  const json = jsonArg(a);
-  return (json ? jsonLeaves(json.doc) : []).filter(jsonKey).map((l) => ({ field: `.${l.field}`, value: l.value }));
-}
-
-// where each string lies in the JSON text `t`, by its path as at() names it; a key given twice lies in both places
-function stringSpans(t: string): Map<string, [number, number][]> {
-  const spans = new Map<string, [number, number][]>();
+// each string in the JSON text `t` with its path and where it lies; a key given twice lies in both places
+function jsonStrings(t: string): JsonString[] {
+  const found: JsonString[] = [];
   let i = 0;
   const skip = (): void => { while (i < t.length && ' \t\n\r'.includes(t[i])) i++; };
   const string = (): string => {
@@ -470,8 +473,7 @@ function stringSpans(t: string): Map<string, [number, number][]> {
     skip();
     if (t[i] === '"') {
       const from = i;
-      string();
-      spans.set(path.join('.'), [...(spans.get(path.join('.')) ?? []), [from, i]]);
+      found.push({ path, value: string(), from, to: i });
     } else if (t[i] === '{' || t[i] === '[') {
       const list = t[i] === '[';
       for (let n = 0; ; n++) {
@@ -491,18 +493,27 @@ function stringSpans(t: string): Map<string, [number, number][]> {
     } else while (i < t.length && !',]} \t\n\r'.includes(t[i])) i++;
   };
   value([]);
-  return spans;
+  return found;
 }
+
+// a JSON arg's strings that are keys, named as one or carrying an auth scheme's credential, each where it lies; none read
+// from one nested too deep to walk
+function jsonKeyStrings(a: string): { keep: string; text: string; keys: JsonString[] } | undefined {
+  const json = jsonArg(a);
+  if (!json) return undefined;
+  let strings: JsonString[] = [];
+  try { strings = jsonStrings(json.text); } catch { /* too deep */ }
+  return { ...json, keys: strings.filter((j) => (keyName(lastName(j.path)) || schemeKeys(j.value).length > 0) && !isReferenceOnly(j.value)) };
+}
+
+const jsonKeys = (a: string): Secret[] => (jsonKeyStrings(a)?.keys ?? []).map((j) => ({ field: `.${j.path.join('.')}`, value: j.value }));
 
 // arg `a`, the value of `field`, with each key of its JSON that `drop` names emptied in place, the rest of its text as it is
 function jsonWithout(a: string, field: string, drop: ReadonlySet<string>): string {
-  const json = jsonArg(a);
-  const dropped = json ? jsonLeaves(json.doc).filter((l) => jsonKey(l) && drop.has(`${field}.${l.field}`)) : [];
-  if (!json || !dropped.length) return a;
-  const text = a.slice(json.keep.length);
-  const spans = stringSpans(text);
-  const cuts = dropped.flatMap((l) => (spans.get(l.field) ?? []).map(([from, to]) => ({ from, to, bare: JSON.stringify(asReference(l.value) ?? '') })));
-  return `${json.keep}${cuts.sort((x, y) => y.from - x.from).reduce((t, c) => `${t.slice(0, c.from)}${c.bare}${t.slice(c.to)}`, text)}`;
+  const json = jsonKeyStrings(a);
+  const cut = json?.keys.filter((j) => drop.has(`${field}.${j.path.join('.')}`)) ?? [];
+  if (!json || !cut.length) return a;
+  return `${json.keep}${cut.sort((x, y) => y.from - x.from).reduce((t, j) => `${t.slice(0, j.from)}${JSON.stringify(asReference(j.value) ?? '')}${t.slice(j.to)}`, json.text)}`;
 }
 
 // a header `Name: value` after `keep`, as the part that stays and its value
@@ -545,9 +556,9 @@ const argFields = (args: string[]): string[] => args.map((_, i) => `args[${argNa
 
 const argIndices = (args: string[], field: string): number[] => argFields(args).flatMap((f, i) => (field === f || field.startsWith(`${f}.`) ? [i] : []));
 
-// arg `i` as the part that stays, the value a secret there would be and what stays after it; undefined where none could
-// be, a JSON arg's strings read one by one
-function argValue(args: string[], i: number): [keep: string, value: string, after?: string] | undefined {
+// arg `i` as the part that stays and the value a secret there would be; undefined where none could be, a JSON arg's
+// strings and an auth scheme's credentials read one by one
+function argValue(args: string[], i: number): [keep: string, value: string] | undefined {
   const a = args[i];
   if (flagValue(args, i)) return ['', a];
   if (HEADER_FLAG.test(args[i - 1] ?? '') && a.includes(':')) return header('', a);
@@ -559,18 +570,21 @@ function argValue(args: string[], i: number): [keep: string, value: string, afte
   if (HEADER_FLAG.test(keep.slice(0, -1)) && rest.includes(':')) return header(keep, rest);
   const key = ENV_KEY.exec(rest)?.[1];
   if (key !== undefined && rest.length > key.length + 1 && (UPPER_KEY.test(key) || secretFlag(key))) return [`${keep}${key}=`, rest.slice(key.length + 1)];
-  const credential = jsonArg(a) ? undefined : schemeKey(rest);
-  return credential && [`${keep}${rest.slice(0, credential.from)}`, rest.slice(credential.from, credential.to), rest.slice(credential.to)];
+  return undefined;
 }
 
-// an arg's value whole, or else the keys in its JSON and each URL's query, credentials and path keys in it; the args are
-// named only once one holds a secret
+// each auth scheme's credential in arg `a` that is not only references
+const argSchemeKeys = (a: string): { from: number; to: number }[] => (jsonArg(a) ? [] : schemeKeys(a).filter(({ from, to }) => !isReferenceOnly(a.slice(from, to))));
+
+// an arg's value whole, or else its auth schemes' credentials, the keys in its JSON and each URL's query, credentials and path
+// keys in it; the args are named only once one holds a secret
 function argsSecrets(args: string[]): Secret[] {
   const found = args.flatMap((a, i) => {
     const kv = argValue(args, i);
     if (kv && !isReferenceOnly(kv[1])) return [{ i, part: '', value: kv[1] }];
+    const schemes = argSchemeKeys(a).map(({ from, to }) => ({ field: '', value: a.slice(from, to) }));
     const urls = hasUrl(a) ? [...urlSecrets(a, '', true), ...pathSecrets(a, '')] : [];
-    return [...jsonKeys(a), ...urls].map((u) => ({ i, part: u.field, value: u.value }));
+    return [...schemes, ...jsonKeys(a), ...urls].map((u) => ({ i, part: u.field, value: u.value }));
   });
   const fields = found.length ? argFields(args) : [];
   return found.map(({ i, part, value }) => ({ field: `${fields[i]}${part}`, value }));
@@ -578,7 +592,10 @@ function argsSecrets(args: string[]): Secret[] {
 
 function argWithout(args: string[], i: number, field: string, drop: ReadonlySet<string>): string {
   const kv = argValue(args, i);
-  return kv && drop.has(field) ? `${kv[0]}${asReference(kv[1]) ?? ''}${kv[2] ?? ''}` : urlWithout(jsonWithout(args[i], field, drop), field, drop, true);
+  if (kv && !isReferenceOnly(kv[1]) && drop.has(field)) return `${kv[0]}${asReference(kv[1]) ?? ''}`;
+  const a = args[i];
+  const bare = drop.has(field) ? argSchemeKeys(a).reduceRight((t, { from, to }) => `${t.slice(0, from)}${asReference(t.slice(from, to)) ?? ''}${t.slice(to)}`, a) : a;
+  return urlWithout(jsonWithout(bare, field, drop), field, drop, true);
 }
 
 /** The values in `s` that are secrets, each by its field; a value that is only references is none. */
@@ -709,11 +726,12 @@ function at(doc: unknown, pattern: string[], field: string[] = []): Leaf[] {
 const strings = (leaves: Leaf[]): (Leaf & Secret)[] => leaves.filter((l): l is Leaf & Secret => typeof l.value === 'string');
 const SECRET_PATHS: Record<AgentKind, readonly string[]> = { claude: [MARKETPLACE_HEADERS], codex: CODEX_SECRET_PATHS, opencode: OPENCODE_SECRET_PATHS };
 
-// OpenCode's options, settings and request bodies: each string named as a key, and the query keys of their baseURL
+// OpenCode's options, settings and request bodies: each string named as a key or carrying an auth scheme's credential, and
+// the query keys of each URL in one
 function providerSecrets(doc: Record<string, unknown>): Secret[] {
   const options = OPENCODE_OPTIONS.flatMap((p) => strings(at(doc, p.split('.'))));
-  const named = options.filter((l) => keyName(lastName(l.place)));
-  const queries = options.filter((l) => l.field.endsWith('.options.baseURL')).flatMap((l) => urlSecrets(l.value, l.field).filter((s) => !s.field.endsWith('.userinfo')));
+  const named = options.filter((l) => keyName(lastName(l.place)) || schemeKeys(l.value).length > 0);
+  const queries = options.filter((l) => hasUrl(l.value)).flatMap((l) => urlSecrets(l.value, l.field).filter((s) => !s.field.endsWith('.userinfo')));
   return [...named, ...queries];
 }
 

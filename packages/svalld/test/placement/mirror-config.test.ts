@@ -461,24 +461,47 @@ describe('reading agent configs and finding secrets by field', () => {
       '--config', '{"githubPersonalAccessToken":"ghp_fake_1","owner":"ada","nested":{"keys":["k_fake_2"]},"ref":"${GH}","token":"${GH_TOKEN}","apiKey":"${AK:-ak_fake_3}"}',
       '--headers', 'X-Api-Key', 'xk_fake_4', '-H', 'Authorization', 'Bearer sk_fake_5', '-k', 'k_fake_6', '--pat', 'pat_fake_7', '--oauth2Bearer', 'ob_fake_8',
       '--extra', 'X-Auth: Token tk_fake_9 ; X-Org: acme', '--opts={"h":"Basic b_fake_10", "channel":1234567890123456789,"ratio":1.0}', '--servers', '[{"name":"gh","apiKey":"ak_fake_11"}]',
-      '--name', 'Token', 'Bearer ${TOKEN_2}', '--dup', '{"token":"tk_fake_12","token":"tk_fake_13"}',
+      '--name', 'Token', 'Bearer ${TOKEN_2}', '--dup', '{"token":"tk_fake_12","token":"tk_fake_13"}', '--ref', '{"token":"tk_fake_14","token":"${T}"}',
+      '--dots', '{"a.token":"x_fake_15","a":{"token":"y_fake_16"},"keep":1}',
     ] });
     expect(secretsOf(s).map((f) => [f.field, f.value])).toEqual([
       ['args[--config].githubPersonalAccessToken', 'ghp_fake_1'], ['args[--config].nested.keys.0', 'k_fake_2'], ['args[--config].apiKey', '${AK:-ak_fake_3}'],
       ['args[--headers X-Api-Key]', 'xk_fake_4'], ['args[-H Authorization]', 'Bearer sk_fake_5'], ['args[-k]', 'k_fake_6'], ['args[--pat]', 'pat_fake_7'],
       ['args[--oauth2Bearer]', 'ob_fake_8'], ['args[--extra]', 'tk_fake_9'], ['args[--opts].h', 'Basic b_fake_10'], ['args[--servers].0.apiKey', 'ak_fake_11'],
-      ['args[--dup].token', 'tk_fake_13'],
+      ['args[--dup].token', 'tk_fake_12'], ['args[--dup].token', 'tk_fake_13'], ['args[--ref].token', 'tk_fake_14'], ['args[--dots].a.token', 'x_fake_15'],
+      ['args[--dots].a.token', 'y_fake_16'],
     ]);
     const bare = redacted(s, new Set());
     expect(bare.args).toEqual([
       '--config', '{"githubPersonalAccessToken":"","owner":"ada","nested":{"keys":[""]},"ref":"${GH}","token":"${GH_TOKEN}","apiKey":"${AK}"}', '--headers', 'X-Api-Key', '',
       '-H', 'Authorization', '', '-k', '', '--pat', '', '--oauth2Bearer', '', '--extra', 'X-Auth: Token  ; X-Org: acme', '--opts={"h":"", "channel":1234567890123456789,"ratio":1.0}',
-      '--servers', '[{"name":"gh","apiKey":""}]', '--name', 'Token', 'Bearer ${TOKEN_2}', '--dup', '{"token":"","token":""}',
+      '--servers', '[{"name":"gh","apiKey":""}]', '--name', 'Token', 'Bearer ${TOKEN_2}', '--dup', '{"token":"","token":""}', '--ref', '{"token":"","token":"${T}"}',
+      '--dots', '{"a.token":"","a":{"token":""},"keep":1}',
     ]);
     // the worker's report finds each key where the emptied copy holds it
     for (const f of new Set(secretsOf(s).map((x) => x.field))) expect(fieldPlace('claude', bare, f)).toEqual(fieldPlace('claude', s.raw, f));
     expect((redacted(s, new Set(['args[--config].githubPersonalAccessToken'])).args as string[])[1]).toContain('"githubPersonalAccessToken":"ghp_fake_1"');
     expect(secretsOf(server('claude', { args: ['--config', `${'{"a":'.repeat(5000)}1${'}'.repeat(5000)}`] }))).toEqual([]);
+  });
+
+  it('every auth scheme\'s credential in an arg is a key, a URL after one is still read, and a header -H names as a key, --pass, --passphrase and --signature are keys', () => {
+    const s = server('claude', { args: [
+      '--proxy', 'X-Auth: Token tk_fake_1 ; Proxy-Authorization: Bearer sk_fake_2', '--with-url', 'Authorization: Bearer sk_fake_3 https://h.test/x?token=tk_fake_4',
+      '--auth-header=Bearer sk_fake_5', '--auth-header=Bearer ${TOKEN1} https://h.test/y?api_key=ak_fake_6', '--long', 'Bearer abcdefghijklmnopqrstuvwxyz',
+      '-H', 'Private-Token', 'glpat_fake_7', '-H', 'DD-API-KEY', 'dd_fake_8', '--pass', 'p_fake_9', '--passphrase', 'pp_fake_10', '--signature', 'sg_fake_11',
+    ] });
+    expect(secretsOf(s).map((f) => [f.field, f.value])).toEqual([
+      ['args[--proxy]', 'tk_fake_1'], ['args[--proxy]', 'sk_fake_2'], ['args[--with-url]', 'sk_fake_3'], ['args[--with-url].token', 'tk_fake_4'],
+      ['args[--auth-header]', 'sk_fake_5'], ['args[--auth-header].api_key', 'ak_fake_6'], ['args[--long]', 'abcdefghijklmnopqrstuvwxyz'],
+      ['args[-H Private-Token]', 'glpat_fake_7'], ['args[-H DD-API-KEY]', 'dd_fake_8'], ['args[--pass]', 'p_fake_9'], ['args[--passphrase]', 'pp_fake_10'],
+      ['args[--signature]', 'sg_fake_11'],
+    ]);
+    expect(redacted(s, new Set()).args).toEqual([
+      '--proxy', 'X-Auth: Token  ; Proxy-Authorization: Bearer ', '--with-url', 'Authorization: Bearer  https://h.test/x?token=', '--auth-header=Bearer ',
+      '--auth-header=Bearer ${TOKEN1} https://h.test/y?api_key=', '--long', 'Bearer ', '-H', 'Private-Token', '', '-H', 'DD-API-KEY', '', '--pass', '', '--passphrase', '',
+      '--signature', '',
+    ]);
+    expect(secretsOf(server('claude', { args: ['--pwd', '/home/me/proj', '--config', '{"pwd":"/home/me/proj"}'] }))).toEqual([]);
   });
 
   it('prose that names an auth scheme, a host after -H and a flag after a key flag or a header\'s name are no keys', () => {
@@ -516,34 +539,44 @@ describe('reading agent configs and finding secrets by field', () => {
 
   it('a URL query value is a key by its name or a token\'s shape, in a URL inside JSON or a list too, a Codex query param as a URL\'s is, and a string in an OpenCode request body by its name; the rest travel as they are', () => {
     const s = server('claude', {
-      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=ak_fake_1&session=3fa85f64-5717-4562-b3fc-2c963f66afa6&pwd=pw_fake&sig=sg_fake&id=abc12345def6789xyz1&ref=abc12345def6789xyz12',
+      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=ak_fake_1&session=3fa85f64-5717-4562-b3fc-2c963f66afa6&sig=sg_fake&id=abc12345def6789xyz1&ref=abc12345def6789xyz12&code=AbC/dE_fake==&title=Getting%20Started%20Guide',
       args: [
         '--config', '{"endpoint":"https://h.test/sse?customerId=c8f2a91b7d3e4f60a1b2","other":"https://o.test/x?api_key=ak_fake_2","mode":"fast"}',
         '--endpoints=https://a.test/x?sid=c8f2a91b7d3e4f60a1b2,https://b.test/y', 'https://c.test/x?a=1;b=2&api_key=ak_fake_3', "https://d.test/x?q=it's&token=tk_fake_4",
-        '--cfg', '{"sid":"display-name","url":"https://e.test/sse?sid=c8f2a91b7d3e4f60a1b2"}',
+        '--cfg', '{"sid":"display-name","url":"https://e.test/sse?sid=c8f2a91b7d3e4f60a1b2"}', 'https://f.test/mcp?origins=https://a.com,https://b.com&api_key=ak_fake_5',
+        'https://g.test/sse?name=My Server&token=tk_fake_6',
       ],
     });
     expect(secretsOf(s).map((f) => f.field)).toEqual([
-      'url.api_key', 'url.session', 'url.pwd', 'url.sig', 'url.ref', 'args[--config].customerId', 'args[--config].api_key', 'args[https://a.test].sid',
-      'args[https://c.test].api_key', 'args[https://d.test].token', 'args[--cfg].sid',
+      'url.api_key', 'url.session', 'url.sig', 'url.ref', 'url.code', 'args[--config].customerId', 'args[--config].api_key', 'args[https://a.test].sid',
+      'args[https://c.test].api_key', 'args[https://d.test].token', 'args[--cfg].sid', 'args[https://f.test].api_key', 'args[https://g.test].token',
     ]);
     expect(redacted(s, new Set())).toMatchObject({
-      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=&session=&pwd=&sig=&id=abc12345def6789xyz1&ref=',
+      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=&session=&sig=&id=abc12345def6789xyz1&ref=&code=&title=Getting%20Started%20Guide',
       args: [
         '--config', '{"endpoint":"https://h.test/sse?customerId=","other":"https://o.test/x?api_key=","mode":"fast"}', '--endpoints=https://a.test/x?sid=,https://b.test/y',
         'https://c.test/x?a=1;b=2&api_key=', "https://d.test/x?q=it's&token=", '--cfg', '{"sid":"display-name","url":"https://e.test/sse?sid="}',
+        'https://f.test/mcp?origins=https://a.com,https://b.com&api_key=', 'https://g.test/sse?name=My Server&token=',
       ],
     });
     const exa = server('claude', { url: 'https://mcp.exa.ai/mcp?tools=web_search,crawl&exaApiKey=ex_fake_1' });
     expect([secretsOf(exa).map((f) => f.field), redacted(exa, new Set()).url]).toEqual([['url.exaApiKey'], 'https://mcp.exa.ai/mcp?tools=web_search,crawl&exaApiKey=']);
-    const oc = { providers: { vercel: { body: { providerOptions: { gateway: { order: ['anthropic'] } }, reasoningEffort: 'high', apiKey: 'oc_fake_1' } } } };
-    expect(configSecrets('opencode', oc).map((f) => f.field)).toEqual(['providers.vercel.body.apiKey']);
-    expect(configRedacted(oc, ['providers.vercel.body.apiKey'])).toEqual({ providers: { vercel: { body: { ...oc.providers.vercel.body, apiKey: '' } } } });
+    const oc = { providers: { vercel: { body: {
+      providerOptions: { gateway: { order: ['anthropic'] } }, reasoningEffort: 'high', apiKey: 'oc_fake_1', upstream: 'Bearer sk_fake_2abcdef', hook: 'https://x.test/v?mode=a&token=tk_fake_3',
+    } } } };
+    const ocFields = configSecrets('opencode', oc).map((f) => f.field);
+    expect(ocFields).toEqual(['providers.vercel.body.apiKey', 'providers.vercel.body.upstream', 'providers.vercel.body.hook.token']);
+    expect(configRedacted(oc, ocFields)).toEqual({ providers: { vercel: { body: { ...oc.providers.vercel.body, apiKey: '', upstream: '', hook: 'https://x.test/v?mode=a&token=' } } } });
     const codex = { model_providers: {
-      azure: { base_url: 'https://a.openai.azure.com/openai?api-version=2025-04-01-preview', query_params: { 'api-version': '2025-04-01-preview', 'api-key': 'az_fake_1' } },
+      azure: {
+        base_url: 'https://a.openai.azure.com/openai?api-version=2025-04-01-preview',
+        query_params: { 'api-version': '2025-04-01-preview', 'api-key': 'az_fake_1', deployment: 'dep3fa85f645717x4562b3' },
+      },
       g: { base_url: 'https://g.test/v1?scopes=a,b&key=cx_fake_2' },
     } };
-    expect(configSecrets('codex', codex).map((f) => f.field)).toEqual(['model_providers.azure.query_params.api-key', 'model_providers.g.base_url.key']);
+    expect(configSecrets('codex', codex).map((f) => f.field)).toEqual([
+      'model_providers.azure.query_params.api-key', 'model_providers.azure.query_params.deployment', 'model_providers.g.base_url.key',
+    ]);
     expect(configRedacted(codex, ['model_providers.g.base_url.key']).model_providers).toMatchObject({ g: { base_url: 'https://g.test/v1?scopes=a,b&key=' } });
   });
 });
