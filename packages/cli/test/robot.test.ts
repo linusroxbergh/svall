@@ -131,10 +131,19 @@ describe('robot send', () => {
     expect(process.exitCode).toBe(2);
   });
 
-  it('refuses outside a robot, before it reaches the fleet', async () => {
+  it('sends as the robot a session an older svalld started names', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', undefined);
+    vi.stubEnv('SVALL_CHAR_ID', 'c_lead');
+    expect((await send(async () => ({ delivery: 'delivered' }))).sent).toEqual([{ id: 'c_a', from: 'c_lead', text: 'review it' }]);
+  });
+
+  it('refuses outside a robot, or from its second terminal, before it reaches the fleet', async () => {
     vi.stubEnv('SVALL_ROBOT_ID', undefined);
     vi.stubEnv('SVALL_CHAR_ID', undefined);
     await expect(send(async () => ({ delivery: 'delivered' }))).rejects.toThrow('run this inside a robot; svall robot run types as the user');
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    vi.stubEnv('SVALL_TERM', '2');
+    await expect(send(async () => ({ delivery: 'delivered' }))).rejects.toThrow("send from the robot's first terminal, where an answer comes back");
   });
 });
 

@@ -40,7 +40,9 @@ control buttons; each finishes its task and stays `done` until closed.
 | note what it is doing | `svall robot update bob --note "rewriting the auth helpers"` |
 | add links | `svall robot update bob --context "https://github.com/x/y/pull/472 PR 472"` |
 | see what it is doing | `svall robot read bob --transcript --lines 30` |
+| read its final answer in full | `svall robot read bob --last` |
 | type into it | `svall robot run bob "run the tests again"` |
+| message it, which it can answer the same way | `svall robot send bob "the PR is merged"` |
 | wait for it | `svall robot wait bob --until done,blocked` |
 | reach its second terminal | add `--term 2` to `read`, `run` or `wait` |
 | new island (the scribe describes and links it) | `svall island create review` |

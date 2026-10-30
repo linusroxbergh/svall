@@ -41,7 +41,7 @@ describe('routing calls for placed robots', () => {
     const w = world({ worker: { robots: { c_1: idle }, machines: { [W]: { name: 'w1', reachable: true, since: 1 } } } });
     await w.worker.connection.start();
     expect(await dispatch({ id: 1, method: 'robot.read', params: { id: 'c_1', source: 'last' } }, w.worker.ctx))
-      .toEqual({ id: 1, result: { text: '[its last turn ended without a final message: interrupted, or after a tool call]' } });
+      .toEqual({ id: 1, result: { text: '[no final message: its last turn was interrupted or ended after a tool call, or it has not had one]' } });
   });
 
   it('on the worker, robot.read and robot.update of its note answer locally with the home down; robot.update of its figure is refused with the one sentence', async () => {

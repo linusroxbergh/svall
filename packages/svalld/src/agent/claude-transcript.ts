@@ -102,10 +102,16 @@ export function userPromptsClaude(text: string, limit: number, pending?: Pending
   return list.slice(0, limit);
 }
 
-// the session as lastSaid reads it: what the agent wrote and called, and anything that came in from the user side, a
-// tool's result or an interrupt included; Claude Code's own notes to the model are passed over
+// a prompt, typed, queued or Claude Code's own, opens a turn and an interrupt cuts one short; a local command and its
+// output, a bash-mode line or a compaction summary written after an answer leaves it the answer
+const opens = (e: Entry): boolean => {
+  const text = textOf(e.message?.content);
+  return carried(e) !== undefined ? !COMMAND.test(text) : e.type === 'user' && text.startsWith(INTERRUPT);
+};
+
+// the session as lastSaid reads it: what the agent wrote and called, and what opened or cut short a turn
 const turnEvents = (text: string): Event[] => entries(text).filter((e) => !e.isSidechain && !e.isMeta).flatMap((e): Event[] => {
-  if (e.type !== 'assistant') return e.type === 'user' || carried(e) !== undefined ? [{ kind: 'user', text: '' }] : [];
+  if (e.type !== 'assistant') return opens(e) ? [{ kind: 'user', text: '' }] : [];
   const blocks = Array.isArray(e.message?.content) ? e.message.content : [];
   return blocks.flatMap((b): Event[] => (b.type === 'tool_use' ? [{ kind: 'tool', name: b.name ?? 'tool', given: b.input }]
     : b.type === 'text' && b.text?.trim() ? [{ kind: 'agent', text: b.text.trim() }] : []));

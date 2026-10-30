@@ -281,6 +281,16 @@ describe('lastMessageClaude', () => {
     expect(lastMessageClaude('')).toBeUndefined();
   });
 
+  it('keeps the answer past what Claude Code writes after it on its own: a compaction, a local command, a bash-mode line', () => {
+    const answered = typed('go') + tool + result + said('Done.');
+    const compacted = line({ type: 'system', subtype: 'compact_boundary' }) + line({ type: 'user', isCompactSummary: true, message: { role: 'user', content: 'This session is being continued…' } });
+    const model = line({ type: 'user', origin: { kind: 'human' }, message: { role: 'user', content: '<command-name>/model</command-name>\n<command-message>model</command-message>\n<command-args></command-args>' } }) +
+      user('<local-command-stdout>Set model to opus</local-command-stdout>');
+    const bash = user('<bash-input>git status</bash-input>') + user('<bash-stdout>clean</bash-stdout><bash-stderr></bash-stderr>');
+    for (const after of [compacted, model, bash]) expect(lastMessageClaude(answered + after)).toBe('Done.');
+    expect(lastMessageClaude(answered + model + typed('again'))).toBeUndefined();
+  });
+
   it("leaves out a subagent's words, and starts the turn again at a prompt queued into it", () => {
     const sub = line({ type: 'assistant', isSidechain: true, message: { role: 'assistant', content: [{ type: 'text', text: 'sub says' }] } });
     const queued = line({ type: 'attachment', attachment: { type: 'queued_command', commandMode: 'prompt', origin: { kind: 'human' }, prompt: 'also this' } });

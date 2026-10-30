@@ -91,7 +91,9 @@ export function installHomeTemplate(cwd: string, o: { replaceSettings: boolean; 
   const robot = read && !read.includes('"Bash(svall robot ') ? read.replace(/^(\s*)"Bash\(svall char ([^"]+)\)"/gm, '$1"Bash(svall robot $2)",\n$1"Bash(svall char $2)"') : read;
   const retro = robot && o.addRetro ? withRetro(robot, shipped) : robot;
   // settings that allow `svall retro findings` gain `svall retro show`, which prints one of its findings
-  const current = retro && !retro.includes('"Bash(svall retro show:') ? retro.replace(/^(\s*)"Bash\(svall retro findings:\*\)"/m, '$1"Bash(svall retro findings:*)",\n$1"Bash(svall retro show:*)"') : retro;
+  const shown = retro && !retro.includes('"Bash(svall retro show:') ? retro.replace(/^(\s*)"Bash\(svall retro findings:\*\)"/m, '$1"Bash(svall retro findings:*)",\n$1"Bash(svall retro show:*)"') : retro;
+  // settings that allow `svall robot update` gain `svall robot send`, which messages a robot as this one, and so for `char`
+  const current = shown && !shown.includes('"Bash(svall robot send:') ? shown.replace(/^(\s*)"Bash\(svall (robot|char) update:\*\)"/gm, '$1"Bash(svall $2 update:*)",\n$1"Bash(svall $2 send:*)"') : shown;
   if (current !== read) {
     writeDurable(settings, Buffer.from(current!), { mode: 0o644 });
     done.push(`home settings -> ${settings}`);

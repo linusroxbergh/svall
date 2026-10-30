@@ -151,6 +151,12 @@ describe('lastMessageCodex', () => {
     expect(lastMessageCodex(asked + said('Looking.') + call + aborted)).toBeUndefined();
     expect(lastMessageCodex(said('old') + asked)).toBeUndefined();
   });
+
+  it("is undefined for a turn an Esc ended after its commentary, and the next turn's answer after one", () => {
+    const aborted = line({ type: 'event_msg', payload: { type: 'turn_aborted', reason: 'interrupted' } });
+    expect(lastMessageCodex(item('UserMessage', 'go') + item('AgentMessage', 'I will edit fleet.ts now.', 'commentary') + aborted)).toBeUndefined();
+    expect(lastMessageCodex(asked + said('Looking.') + aborted + asked + said('Done.'))).toBe('Done.');
+  });
 });
 
 describe('the transcript dispatcher', () => {

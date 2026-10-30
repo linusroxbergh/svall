@@ -201,6 +201,17 @@ describe('the home template', () => {
     expect(JSON.parse(fs.readFileSync(settings, 'utf8')).permissions.allow).toEqual(['Bash(svall status:*)']);
   });
 
+  it('settings that allow svall robot update gain svall robot send beside it, and so for char', () => {
+    const mc = path.join(makeHome(), 'mc');
+    installHomeTemplate(mc, { replaceSettings: false });
+    const settings = path.join(mc, '.claude/settings.json');
+    const shipped = fs.readFileSync(settings, 'utf8');
+    const allow: string[] = JSON.parse(shipped).permissions.allow;
+    fs.writeFileSync(settings, `${JSON.stringify({ permissions: { allow: allow.filter((r) => !r.endsWith(' send:*)')) } }, null, 2)}\n`);
+    installHomeTemplate(mc, { replaceSettings: false });
+    expect(fs.readFileSync(settings, 'utf8')).toBe(shipped);
+  });
+
   // Claude Code asks before a command holding a shell variable even when a rule allows it
   it('lets the buttons run every svall command their skills name without asking, deleting an island, applying a retro finding and changing its config aside', () => {
     const svalld = path.join(repoRoot, 'packages/svalld');

@@ -62,11 +62,13 @@ runIf('Fleet prompts', () => {
     expect(fleet.readLast(c.id)).toBe(answer);
     agent((a) => { a.status = 'blocked'; delete a.background; a.prompt = 'Bash: rm -rf build'; });
     expect(fleet.readLast(c.id)).toBe(`[${c.name} is waiting on an answer: Bash: rm -rf build]`);
-    fs.appendFileSync(transcriptPath, line({ type: 'user', origin: { kind: 'human' }, message: { content: 'again' } }));
+    // an error ends the turn past what it said on its way, which OpenCode's log holds without the error
     agent((a) => { a.status = 'done'; a.prompt = 'API Error: 500'; });
     expect(fleet.readLast(c.id)).toBe('[its last turn ended on an error: API Error: 500]');
+    fs.appendFileSync(transcriptPath, line({ type: 'user', origin: { kind: 'human' }, message: { content: 'again' } }));
     agent((a) => { a.status = 'idle'; delete a.prompt; });
-    expect(fleet.readLast(c.id)).toBe('[its last turn ended without a final message: interrupted, or after a tool call]');
+    expect(fleet.readLast(c.id)).toBe('[no final message: its last turn was interrupted or ended after a tool call, or it has not had one]');
+    expect(() => fleet.readLast(c.id, 2)).toThrow(`${c.name} has no agent in its second terminal`);
   });
 
   it('keeps a hook-driven status over the optimistic working', async () => {

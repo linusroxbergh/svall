@@ -320,6 +320,8 @@ and `input` are ignored.
     svall robot run <id> "review the failing tests in src/api"
     svall robot wait <id> --until done,blocked     # exits 0 on a match, 2 on timeout, 3 when it has no terminal
     svall robot read <id> --transcript --lines 20
+    svall robot read <id> --last                   # its agent's final answer, in full
+    svall robot send <id> "<text>"                 # from inside a robot: a message it can answer
     svall robot revive <id>                        # a dormant robot, resumed
     svall robot show <id>                          # the brief its agent gets
 

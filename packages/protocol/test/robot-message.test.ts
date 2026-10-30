@@ -7,6 +7,12 @@ describe('robotMessage', () => {
   it('puts a line naming the sender and how to answer it before the text', () => {
     expect(robotMessage(from, 'tests pass\nPR is up')).toBe('[from robot #472 auth (review)] (c_abc123); reply with svall robot send c_abc123]\ntests pass\nPR is up');
   });
+
+  it("keeps the header one line a 2000-character clip still holds, whatever the name, and drops control bytes from the text", () => {
+    expect(robotSender(robotMessage({ name: 'lead\nx\r\ty', id: 'c_abc123' }, 'hi'))).toBe('c_abc123');
+    expect(robotMessage({ name: 'lead\u001b[201~', id: 'c_abc123' }, 'a\r\nb\rc\u001b[201~\r!echo\td\u009b')).toBe('[from robot lead[201~ (c_abc123); reply with svall robot send c_abc123]\na\nb\nc[201~\n!echo\td');
+    expect(robotSender(robotMessage({ name: 'x'.repeat(5000), id: 'c_abc123' }, 'hi').slice(0, 2000))).toBe('c_abc123');
+  });
 });
 
 describe('robotSender', () => {

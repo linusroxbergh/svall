@@ -1035,9 +1035,10 @@ export class Fleet extends EventEmitter<Events> {
     // what a turn under way says is said on its way, not its answer
     if (agent.status === 'working' && !agent.background) return `[${c.name} is still working]`;
     if (agent.status === 'blocked') return `[${c.name} is waiting on an answer${agent.prompt ? `: ${agent.prompt}` : ''}]`;
+    // StopFailure leaves the API error that ended the turn in prompt; what the turn said before it was said on its way
+    if (agent.prompt) return `[its last turn ended on an error: ${agent.prompt}]`;
     const said = agent.transcriptPath ? lastMessage(agent.kind, readTail(agent.transcriptPath, TRANSCRIPT_TAIL)) : undefined;
-    // StopFailure leaves the API error that ended the turn in prompt
-    return said ?? (agent.prompt ? `[its last turn ended on an error: ${agent.prompt}]` : '[its last turn ended without a final message: interrupted, or after a tool call]');
+    return said ?? '[no final message: its last turn was interrupted or ended after a tool call, or it has not had one]';
   }
 
   readPrompts(id: string, limit: number): string[] {

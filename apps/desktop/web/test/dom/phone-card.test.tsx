@@ -11,10 +11,11 @@ const calls: [string, Record<string, unknown>][] = [];
 // another robot's message, as the agent's transcript holds it
 const header = '[from robot lead (c_abc123); reply with svall robot send c_abc123]';
 let refuse: string | undefined;
+let prompts: string[];
 const call = (method: string, params: Record<string, unknown>) => {
   calls.push([method, params]);
   if (method === 'resources.get') return Promise.resolve({ sources: [] });
-  if (method === 'robot.prompts') return Promise.resolve({ prompts: [`${header}\nreview it`, 'second ask', `<pasted_content id="e0b1">\n${header}\na long one`, 'first ask'] });
+  if (method === 'robot.prompts') return Promise.resolve({ prompts });
   return refuse ? Promise.reject(new Error(refuse)) : Promise.resolve({});
 };
 let store: AppStore;
@@ -37,6 +38,7 @@ function open(extra: Parameters<typeof chr>[3] = {}, onClosed = () => {}) {
 beforeEach(() => {
   calls.length = 0;
   refuse = undefined;
+  prompts = [`${header}\nreview it`, 'second ask', `<pasted_content id="e0b1">\n${header}\na long one`, 'first ask'];
   store = createAppStore();
   setAppStore(store);
 });
@@ -112,6 +114,22 @@ test("reads the prompts the user sent, newest first, without other robots' messa
   fireEvent.click(screen.getByRole('button', { name: 'Earlier command' }));
   expect(screen.getByText('first ask')).toBeTruthy();
   expect(screen.getByText('2/2')).toBeTruthy();
+});
+
+test("keeps the command being read as a newer one comes in among other robots' messages", async () => {
+  prompts = ['third ask', 'second ask', 'first ask'];
+  const agent = { kind: 'claude', status: 'idle', sessionId: 's1', lastActivityAt: 0 };
+  await act(async () => { open({ agent: agent as never }); });
+  fireEvent.click(screen.getByRole('button', { name: 'Earlier command' }));
+  expect(screen.getByText('2/3')).toBeTruthy();
+  prompts = ['fourth ask', `${header}\nreview it`, 'third ask', 'second ask', 'first ask'];
+  await act(async () => {
+    const f = fleet();
+    f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { context: [pr, plan], agent: { ...agent, lastPrompt: { id: 'p4', text: 'fourth ask', at: 1 } } as never });
+    store.getState().setFleet(f);
+  });
+  expect(screen.getByText('second ask')).toBeTruthy();
+  expect(screen.getByText('3/4')).toBeTruthy();
 });
 
 test('closing the robot asks once, says what goes with it, then closes it', async () => {

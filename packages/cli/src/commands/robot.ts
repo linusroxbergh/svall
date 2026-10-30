@@ -179,6 +179,8 @@ Handing work to a new robot:
       // a session an older svalld started carries SVALL_CHAR_ID
       const from = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
       if (!from) throw new Error('run this inside a robot; svall robot run types as the user');
+      // the header names the robot, not the terminal, so an answer goes to its first
+      if (process.env.SVALL_TERM === '2') throw new Error("send from the robot's first terminal, where an answer comes back");
       return withFleet(connect, (c, state) => deliver(() => c.call('robot.send', { id: robotId(state, id), from: robotId(state, from), text: text.join(' ') })));
     });
 
