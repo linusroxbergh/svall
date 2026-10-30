@@ -17,6 +17,9 @@ const { values: o, positionals } = parseArgs({
 });
 const robot = positionals[0] ?? 'flaky e2e';
 const svall = (...args) => execFileSync('svall', ['-p', o.profile, ...args], { encoding: 'utf8' });
+// app show runs from this checkout, as the release fleet's CLI, so the redacted QR is drawn as the checkout draws it
+const show = (...args) => execFileSync(path.join(root, 'node_modules/.bin/tsx'), [path.join(root, 'packages/cli/src/main.ts'), '-p', o.profile, 'app', 'show', ...args],
+  { encoding: 'utf8', env: { ...process.env, SVALL_VARIANT: 'release' } });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // the window's content size; site-shots.mjs scales every capture to 2400 px wide, so a larger window shows more, smaller
@@ -46,6 +49,8 @@ function findWindow() {
 // each fleet's window is its own instance of the app, so it is brought forward by its process; an inactive one shows grey lights
 const front = (pid) => execFileSync('osascript', ['-l', 'JavaScript', '-e',
   `ObjC.import('AppKit'); $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}).activateWithOptions($.NSApplicationActivateAllWindows)`]);
+const frontmost = () => Number(execFileSync('osascript', ['-l', 'JavaScript', '-e',
+  `ObjC.import('AppKit'); $.NSWorkspace.sharedWorkspace.frontmostApplication.processIdentifier`], { encoding: 'utf8' }));
 
 // a fleet's first questions open over the window until they are answered
 const state = JSON.parse(svall('--json', 'status'));
@@ -62,14 +67,20 @@ svall();
 await sleep(2000);
 const { id, pid } = findWindow();
 for (const [name, flags] of VIEWS) {
-  svall('app', 'show', robot, ...BASE, ...flags);
+  show(robot, ...BASE, ...flags);
   front(pid);
   await sleep(SETTLE_MS);
+  // another app taking the front while the panes settle would grey the lights, so the window is brought back first
+  for (let i = 0; frontmost() !== pid; i++) {
+    if (i === 5) throw new Error('the fleet window would not stay in front; keep off the keyboard and mouse');
+    front(pid);
+    await sleep(500);
+  }
   const to = path.join(tmp, `${shots.length + 1}-${name}.png`);
   execFileSync('screencapture', ['-x', '-o', `-l${id}`, to]);
   shots.push(to);
 }
-svall('app', 'show', robot, '--panel', 'none');
+show(robot, '--panel', 'none');
 
 const { webkit, devices } = createRequire(path.join(root, 'apps/desktop/web/package.json'))('@playwright/test');
 const browser = await webkit.launch();
