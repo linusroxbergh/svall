@@ -71,7 +71,7 @@ elif ! scripts/ghostty-kit.sh current; then
       GHOSTTY_CHECK="$(scripts/ghostty-build.sh --check 2>&1)" || missing "$NO_KIT, and building it needs:
 $GHOSTTY_CHECK"
     else
-      missing "$NO_KIT, and building it needs Xcode 26 or newer, the Metal toolchain and zig: see Building Ghostty from source in the README"
+      missing "$NO_KIT, and building it needs Xcode 26 or newer, the Metal toolchain and zig: see Building Ghostty from source in CONTRIBUTING.md"
     fi
   fi
 fi

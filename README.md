@@ -118,6 +118,15 @@ The scribe and mission control run the main agent's CLI, so a Codex-only
 install needs no Claude login. The Usage panel shows Claude and Codex plan
 limits, not API spending.
 
+### Codex and OpenCode
+
+A Codex or OpenCode robot gets the same status, context gauge, revive, brief
+and scribe as a Claude Code one. Codex runs only hooks you trust: choose "Trust
+all and continue" on its startup dialog, or trust the hook later with `/hooks`,
+and do so again whenever it changes. Until then the robot stays a plain shell
+with a warning. [docs/agents.md](docs/agents.md) covers what Svall changes in
+how each agent runs.
+
 ### Updating
 
 Svall checks for updates on its own. When one is out, the private fleet's window
@@ -170,61 +179,8 @@ directory. `herdr --skill` and `svall <command> --help` tell it how.
 ## Build from source (Svall Dev)
 
 A checkout builds `Svall Dev.app`, which runs beside the release without
-touching its fleets: it uses `~/.svall-dev`, the `svall-dev` command and port
-47900. It needs macOS 15.6 or newer and the Command Line Tools for Xcode 26 or
-newer. An Intel Mac also needs Xcode; see
-[Building Ghostty from source](#building-ghostty-from-source).
-
-1. Install the tools, and the Claude Code CLI, the Codex CLI or OpenCode:
-
-       brew install node tmux pnpm gh   # skip node if you have 24 or newer
-       gh auth login                    # resolves PR links
-
-   If `xcrun --show-sdk-version` prints a version below 26, update the Command
-   Line Tools in System Settings → General → Software Update. pnpm must be 12
-   or newer.
-
-2. Clone and install:
-
-       git clone https://github.com/linusroxbergh/svall && cd svall
-       pnpm desktop:install
-
-   The installer lists anything missing before it builds. Without admin rights,
-   run this instead:
-
-       mkdir -p ~/Applications && SVALL_APP_DEST=~/Applications pnpm desktop:install
-
-   If your shell can't find `svall-dev` afterwards, add `~/.local/bin` to your
-   PATH:
-
-       echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc   # then open a new terminal
-
-3. Run `svall-dev`, or open Svall Dev from Spotlight, and use it as in the
-   Quickstart. While no release is installed, Svall Dev also installs `svall`.
-
-`svall-dev` and the daemon run from the clone, so run `pnpm desktop:install`
-again after moving it. Run `svall-dev uninstall` before you delete the clone, or
-its hooks, command and launchd agents stay behind.
-
-### Updating Svall Dev
-
-    git pull && pnpm desktop:install
-
-If pnpm fails to switch versions, update it to 12 or newer the way you
-installed it. If Node is unsupported, run `brew upgrade node`.
-
-### Building Ghostty from source
-
-The installer downloads GhosttyKit, the terminal engine, prebuilt. It builds it
-from source instead on an Intel Mac, or when no build of the Ghostty version
-this checkout records has been published and pinned. That needs Xcode 26 or
-newer from the App Store. Open Xcode once to accept its license, then run:
-
-    sudo xcode-select -s /Applications/Xcode.app
-    xcodebuild -downloadComponent MetalToolchain
-    brew install zig@0.15
-
-The first build takes several minutes and about 1.5 GB of disk.
+touching its fleets. [`CONTRIBUTING.md`](CONTRIBUTING.md#build-from-source-svall-dev)
+has the steps.
 
 ## Concepts
 
@@ -257,6 +213,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   swap them, or onto water to make a new island. Drag an island's label to move
   it and its corner to resize it. On mission control, `arrange` packs the fleet
   into the window, and `update info`, `status` and `retro` start a helper agent.
+  A retro reads what your agents did over a span and proposes changes to your
+  skills, reviews and instructions; it shows its cost and asks before it runs.
 - **Board** (Cmd+M, or the Map/Board switch at the top left): every robot as a
   card in a column: To do, In progress, In review and Done until you rename,
   reorder, add or delete them. Drag a card, or right-click → Move to, to place
@@ -360,11 +318,8 @@ and `input` are ignored.
   their logins and yours in `mobile.logins` and restart the daemon. To unpair
   every phone, delete `mobile-pass` in the fleet's folder and restart it; a
   Home Screen app is then removed and added again from the QR code's link.
-- Each fleet is its own Home Screen app on its own port: 443 for the private
-  fleet, and for each other fleet the first free port from 8443 up, which the
-  private fleet takes too while something else serves 443. The port is kept in
-  `mobile.httpsPort`; if something else serves a kept port, turning the link on
-  says so.
+- Each fleet is its own Home Screen app, on its own port;
+  [`mobile.httpsPort`](docs/configuration.md) says which.
 
 ## Remote machines
 
@@ -380,83 +335,8 @@ needs (Ubuntu, at any account you reach with ssh), adding it with
 
 A fleet keeps everything in its home: `~/.svall` for the private fleet
 and `~/.svall-<name>` for the others, unless `SVALL_HOME` says otherwise.
-Its `fleet.json` holds the fleet's own settings, and `node.json` what
-belongs to this machine alone:
-
-| Key | File | What it does |
-| --- | --- | --- |
-| `name` | `fleet.json` | What the window title and `svall <name>` call the fleet: lowercase letters, digits and dashes, starting with a letter, not an `svall` command, and not `dev` or `dev-…`. Absent, the directory names it. Set from Settings. |
-| `port`, `host` | `node.json` | Where the daemon listens: `127.0.0.1`, on `47800` for the private fleet and any free port for the others. Absent, a free port stands in while another program holds `47800`; a port set here that is taken keeps the daemon from starting. Any address off loopback sends the API token in plain text. |
-| `defaultCwd` | `fleet.json` | Where a new robot starts when no robot beside it gives it a directory (default `~`). Set by the setup screen's projects folder or `svall setup --projects`. |
-| `shell` | `node.json` | The shell a terminal runs, if not your login shell. |
-| `linear` | `fleet.json` | `{ "workspace": "acme", "teamKeys": ["ENG"] }` links a branch named after a Linear issue to that issue. |
-| `mainAgent` | `fleet.json` | `claude`, `codex` or `opencode`: what the scribe, mission control's crew and `svall robot new --run` run by default. Absent, the private fleet's, else `claude` when it is installed or no CLI is, else the first CLI found. Set from the app or with `svall agent <name>`. |
-| `agentsOff` | `node.json` | The agents the private fleet's setup leaves off, writing no hooks or plugin for them. Every other agent found is on. Set by the setup screen or `svall setup --agents`. |
-| `integrations` | `node.json` | The agents left on, of `claude` and `codex`, read when there is no `agentsOff`; `opencode` counts as on. Setup replaces it with `agentsOff`. |
-| `home` | `fleet.json` | Mission control: `cwd` for its crew (`~/.svall/home` unless set; a new profile fleet in `~/.svall-<name>` gets `~/.svall-<name>/home` here), the `command` that starts an agent (default the main agent's: `claude --model opus`, `codex` or `opencode`), `model`, a model for each CLI, as `{ "claude": "sonnet" }` (default `opus` for Claude, Codex's own; OpenCode's TUI takes none; set in Settings), and `actions`, one `{ "label", "prompt" }` per button. A button's `/name` prompt reaches a Codex crew as `$name`. `offered` names the buttons Svall has added once, with their rules in the crew's settings, so one you delete stays deleted. |
-| `scribe` | `fleet.json` | `agent` (default the main agent) and `model`, a model for each CLI as in `home`, or one model of `agent`'s CLI, or of Claude's when `agent` is unset (default `haiku` for Claude, `gpt-6-luna` at low effort for Codex, the CLI's own for OpenCode; set in Settings, OpenCode's only here). |
-| `mobile` | `fleet.json` | `logins` to let in (only yours when empty), extra page `origins` allowed to open a socket, and a `pushContact` (https: or mailto:) for push services. |
-| `mobile.httpsPort` | `node.json` | The tailscale serve port this fleet is reached on, which Svall saves. |
-
-- The daemon reads both files when it starts. To restart the private
-  fleet's daemon, run
-  `launchctl kickstart -k gui/$(id -u)/io.github.linusroxbergh.svall.svalld`,
-  adding `.<name>` for another fleet. While either file doesn't parse, the daemon
-  logs why and waits for it to change; `svall doctor` shows the error too.
-- Mission control's folder, `home.cwd`, is rewritten on each daemon start from
-  that fleet's release, apart from `CLAUDE.md`, which is yours, and
-  `.claude/settings.json`, which only `svall setup` resets, in the private
-  fleet's folder, keeping a `.bak` copy. A Codex crew reads your `CLAUDE.md`
-  through the `AGENTS.md` built from it. The skills behind the buttons live
-  there too; list `/svall-organise` or `/svall-rename` in `home.actions` to give
-  them a button. Claude Code and Codex each ask once whether to trust the
-  folder. Fleets whose `fleet.json` names no `home.cwd` share `~/.svall/home`,
-  and a fleet that shares its folder cannot be handed over: set `home.cwd` in
-  one's `fleet.json` to give it its own, such as `~/.svall-work/home` for the
-  fleet in `~/.svall-work`. Its crew already open keeps working in the old
-  folder, so copy over any notes you want in the new one.
-- The daemon runs under launchd, without your shell's environment. The fleet's
-  `.env` gives the Claude scribe every value in it, and gives new robot
-  shells only `ANTHROPIC_API_KEY` and `OPENAI_API_KEY`.
-- Robot shells start Claude Code in its fullscreen renderer
-  (`CLAUDE_CODE_NO_FLICKER=1`), which keeps its own scrollback through a resize,
-  even where Claude Code turned fullscreen off after failed starts. A `tui` key
-  in your Claude Code `settings.json`, such as `"tui": "default"`, keeps the
-  renderer it names.
-
-### Codex
-
-A Codex robot gets the same status, context gauge, revive, brief and scribe
-as a Claude Code one. Codex runs only hooks you trust: choose "Trust all and
-continue" on its startup dialog, or trust the hook later with `/hooks`, and do
-so again whenever it changes. Until then the robot stays a plain shell with
-a warning. `svall doctor` says whether the hook is trusted.
-
-A plain `codex` runs on Codex's shared background server, whose hooks carry the
-terminal that started that server, so Svall ignores them. A robot's zsh
-starts from `~/.svall/zsh`, which hands startup back to your own files and makes
-`codex` mean `codex --no-daemon`; the agents Svall starts and revives get the
-flag too. In bash, fish, or a zsh started inside the robot, type
-`codex --no-daemon` yourself, or the card asks for it.
-
-### OpenCode
-
-An OpenCode robot gets the same status, context gauge, revive, brief and
-scribe as a Claude Code one. OpenCode has no hooks; Svall's plugin in
-`~/.config/opencode/plugins` reports to it, needs no trust step, and does
-nothing outside a robot. The brief rides along as system text. OpenCode
-reports no plan limits, so the Usage panel shows none for it.
-
-A robot's terminals run OpenCode with `OPENCODE_CONFIG_DIR` set to
-`~/.svall/opencode-config`: links to your config beside a `service.json` that
-turns OpenCode's shared background server off, so a plain `opencode` reports
-too. A setting OpenCode saves there moves to `~/.config/opencode` when the next
-robot window opens, and the copy it replaces, or the older one when yours
-is newer, is kept in `~/.svall/opencode-config-replaced`. Run `opencode service`
-and `opencode pair` outside a robot. Session tabs are off in a robot,
-since every OpenCode in a folder shares one tab strip; `/sessions` still
-switches. Change the tab mode outside a robot: set in one, it is saved but
-has no effect there.
+[docs/configuration.md](docs/configuration.md) lists the keys of its
+`fleet.json` and `node.json`, and what mission control's folder keeps.
 
 ## What setup changes
 
@@ -502,6 +382,9 @@ send:
 - Mission control's buttons start the main agent, and the Usage panel asks
   Claude Code for your plan's limits. The Claude scribe and the Usage panel get
   every value in the fleet's `.env`.
+- A retro sends compacted excerpts of your agents' sessions in its span, with
+  the tokens it recognizes masked, and the comments on their PRs, which it
+  reads with `gh`, to the main agent's provider.
 - For each robot in a repository, the daemon runs `gh pr view` to find its
   branch's PR.
 - `svall mobile` serves the fleet to your tailnet with `tailscale serve`. The
@@ -530,50 +413,10 @@ send:
 Importing Chrome's cookies sends nothing, but it signs the fleet's browser in
 to every site the Chrome profile is signed in to.
 
-## How it works
-
-- A daemon, `svalld`, runs each fleet while its window is open. It owns one
-  private tmux server holding every robot's terminals, follows their output
-  over a single control-mode client and is the only writer of the fleet's
-  `state.json`.
-- The app, the CLI and the phone talk to the daemon over one loopback
-  WebSocket: a full snapshot, then JSON-patch events. The app and the CLI
-  present a token; the phone comes through `tailscale serve`, which vouches for
-  its login, and holds the pass the QR code gave it in a cookie.
-- Agent status comes from hooks writing to the fleet's `hooks.sock`, and
-  Claude Code's context use and model come from its statusline. Both do
-  nothing without the `SVALL_ROBOT_ID` a robot sets, so `claude` run
-  elsewhere is unaffected.
-- On start, the daemon matches `state.json` against the live tmux windows.
-  Robots whose window is gone turn dormant, ready to revive.
-
-## Development
-
-    pnpm test            # needs tmux and swiftc (the Command Line Tools) on PATH
-    pnpm typecheck
-    swift test --package-path apps/desktop/mac   # the app's Swift tests, once a build has linked GhosttyKit
-    pnpm e2e             # Playwright against a temporary daemon
-    pnpm desktop:dev     # Vite dev server plus a debug app; SVALL_HOME picks the daemon, unless it names a release fleet
-    pnpm desktop:build   # an ad-hoc signed apps/desktop/mac/build.noindex/Svall Dev.app
-    pnpm app:build       # apps/desktop/mac/build.noindex/Svall.app, with its own node, tmux, daemon and CLI; the first needs docker, for the Linux companions' tmux
-    pnpm ghostty:build   # GhosttyKit from vendor/ghostty into vendor/ghostty-kit
-    pnpm ghostty:publish # build GhosttyKit and upload it for installs to download
-    mkdir -p /tmp/svall-dev && echo '{ "port": 0 }' > /tmp/svall-dev/node.json
-    SVALL_HOME=/tmp/svall-dev pnpm svalld   # port 0 keeps it off the private fleets' 47800 and 47900
-
-The first `pnpm e2e` needs
-`pnpm --filter @svall/desktop-web exec playwright install chromium`.
-
-- `packages/protocol`: state types and message schemas (zod).
-- `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).
-- `packages/cli`: the `svall` client.
-- `apps/desktop`: a Swift/AppKit shell hosting a React app in a WKWebView with
-  libghostty terminals; `web/src/mobile` is the phone view over the same store.
-- TypeScript on Node 24, pnpm workspaces, vitest.
-
 ## Contributing
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md). There is no CLA.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) covers building from source, the tests
+and how Svall works. There is no CLA.
 
 ## License
 
