@@ -159,8 +159,9 @@ test('arrange gives mission control a spare slot past its crew where the map has
 });
 
 test('Cmd+G sends a prompt to a fresh mission control agent', async ({ page, svall }) => {
+  const { sent, receive } = await svall.nativeShell();
   await svall.open('map');
-  await page.keyboard.press('Meta+g');
+  await receive({ type: 'key', chord: 'cmd+g' });
   await expect(page.getByTestId('mission-prompt')).toBeVisible();
 
   await page.getByTestId('mission-prompt-text').fill('regroup the fleet');
@@ -182,6 +183,9 @@ test('Cmd+G sends a prompt to a fresh mission control agent', async ({ page, sva
   expect(await page.evaluate(() => (window as unknown as { __order: string[] }).__order)).toEqual(['closed', 'answered']);
   const crew = Object.values((await svall.api.call('state.get', {})).robots).find((c) => c.islandId === 'home');
   expect(crew).toBeDefined();
+  // the answered crew member is chosen, and its terminal takes the keys
+  await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', crew!.id);
+  await expect.poll(async () => (await sent()).some((m) => m.type === 'term.focus' && m.id === crew!.id)).toBe(true);
   await expect.poll(async () => (await svall.api.call('robot.read', { id: crew!.id, source: 'transcript', lines: 5 })).text, { timeout: 15_000 })
     .toContain('regroup the fleet');
 });

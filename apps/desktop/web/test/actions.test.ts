@@ -497,6 +497,39 @@ describe('home', () => {
     await startHomeRobot({ api, store }, { prompt: 'regroup the fleet' });
     expect(store.getState().selectedId).toBe('c_new');
   });
+
+  it('opens the terminal of a prompted crew member once the daemon answers, if it is still chosen', async () => {
+    const store = createAppStore(undefined);
+    store.getState().setFleet(fleet());
+    store.getState().focus('c0');
+    let settle = (v: unknown) => { void v; };
+    const api = { call: () => new Promise((r) => { settle = r; }) } as unknown as Api;
+    const started = startHomeRobot({ api, store }, { prompt: 'regroup the fleet', focus: true });
+    const f = fleet();
+    f.robots.c_new = chr('c_new', 'home', { x: 1, y: 1 });
+    store.getState().setFleet(f);
+    // the agent is still booting, so its terminal waits
+    expect(store.getState()).toMatchObject({ selectedId: 'c_new', card: 'c0' });
+    settle({ id: 'c_new', name: 'bright otter', runSent: true });
+    await started;
+    expect(store.getState()).toMatchObject({ selectedId: 'c_new', card: 'c_new' });
+  });
+
+  it('leaves the terminal of a robot the user went back to while a prompted crew member was starting', async () => {
+    const store = createAppStore(undefined);
+    store.getState().setFleet(fleet());
+    store.getState().focus('c0');
+    let settle = (v: unknown) => { void v; };
+    const api = { call: () => new Promise((r) => { settle = r; }) } as unknown as Api;
+    const started = startHomeRobot({ api, store }, { prompt: 'regroup the fleet', focus: true });
+    const f = fleet();
+    f.robots.c_new = chr('c_new', 'home', { x: 1, y: 1 });
+    store.getState().setFleet(f);
+    store.getState().focus('c0');
+    settle({ id: 'c_new', name: 'bright otter', runSent: true });
+    await started;
+    expect(store.getState()).toMatchObject({ selectedId: 'c0', card: 'c0' });
+  });
 });
 
 describe('a new island or robot', () => {
@@ -539,6 +572,12 @@ describe('a new robot', () => {
     const c = made();
     await startHomeRobot(c, { prompt: 'hi' });
     expect(c.store.getState()).toMatchObject({ card: undefined, selectedId: 'c_new', sideCardOpen: true });
+  });
+
+  it('opens the terminal and side card of a crew member the mission prompt started', async () => {
+    const c = made();
+    await startHomeRobot(c, { prompt: 'hi', focus: true });
+    expect(c.store.getState()).toMatchObject({ card: 'c_new', selectedId: 'c_new', sideCardOpen: true });
   });
 
   it('starts the home command on mission control, and a shell anywhere else', async () => {
