@@ -18,7 +18,7 @@ import type { Logger } from '../log.js';
 import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
-import { BundleManifest, buildBundle, CREDENTIAL_PATTERNS, fingerprintOf } from './bundle.js';
+import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
 import { sessionLanding } from './paths.js';
 import { answerTrustPrompt, nap } from './trust.js';
@@ -275,7 +275,7 @@ export async function lockWorktree(root: string, reason: string, git: GitRunner)
 
 /** Empties a worktree of what git does not ignore and it does not track, but for credential files, which stay where they were. */
 const cleanWorktree = (root: string, git: GitRunner): Promise<string> =>
-  must(git, ['clean', '-q', '-f', '-d', ...CREDENTIAL_PATTERNS.flatMap((p) => ['-e', p])], root);
+  must(git, ['clean', '-q', '-f', '-d', ...CREDENTIAL_GLOBS.flatMap((p) => ['-e', p, '-e', `!${p}/`])], root);
 
 export type Failure = Omit<Refusal, 'details'>;
 export const refused = (f: Failure): ApiError => new ApiError('refused', `${f.reason}; ${f.action}`, { refusal: { ...f, details: [] } });

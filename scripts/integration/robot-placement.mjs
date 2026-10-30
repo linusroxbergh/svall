@@ -155,6 +155,7 @@ printf 'wt staged\n' >> lib/c.txt && git add lib/c.txt
 printf 'wt unstaged\n' >> a.txt
 printf 'wt untracked\n' > wt-untracked.txt
 printf 'SECRET=integration\n' > .env
+printf 'KEY\n' > Deploy.KEY
 cd ../app-faults
 printf 'fault\n' > f.txt && git add f.txt && git commit -qm 'a commit not on origin'
 printf 'fault untracked\n' > f-untracked.txt
@@ -224,7 +225,7 @@ const call = (machine, method, params = {}) => JSON.parse(sh(machine, `/opt/it/n
 // ---------------------------------------------------------------------------------------------- assertions
 
 // a repo's state as both machines' git shows it, its untracked credential files left out, which never travel
-const credential = /(^|\/)(\.env[^/]*|[^/]*\.pem|id_rsa[^/]*|[^/]*\.tfvars|[^/]*\.key|\.netrc)$/;
+const credential = /(^|\/)(\.env[^/]*|[^/]*\.pem|id_(rsa|ed25519|ecdsa|dsa)[^/]*|[^/]*\.tfvars|[^/]*\.key|\.netrc)$/i;
 const statusOf = (g) => g?.status.split('\n').filter((l) => l && !l.startsWith('# ') && !(l.startsWith('? ') && credential.test(l.slice(2))));
 // a checkout writes files by its daemon's umask, so a file's mode is compared by its executable bits, as git keeps it
 const treeOf = (t) => t && Object.fromEntries(Object.entries(t).filter(([k]) => !credential.test(k))
@@ -300,7 +301,8 @@ function moveDirty(ids, fx) {
     () => treeDiff(l.trees['src/app-wt'], base.trees['src/app-wt']));
   check('stash stays', l.git['src/app'].stash === base.git['src/app'].stash && w.git['src/app'].stash === '', () => `${l.git['src/app'].stash} / ${w.git['src/app'].stash}`);
   sameWork('worker worktree', w, base, 'src/app-wt');
-  check('no .env on worker', !Object.hasOwn(w.trees['src/app-wt'] ?? {}, '.env') && Object.hasOwn(l.trees['src/app-wt'], '.env'), () => brief(Object.keys(w.trees['src/app-wt'] ?? {})));
+  check('no credentials on worker', ['.env', 'Deploy.KEY'].every((k) => !Object.hasOwn(w.trees['src/app-wt'] ?? {}, k) && Object.hasOwn(l.trees['src/app-wt'], k)),
+    () => brief(Object.keys(w.trees['src/app-wt'] ?? {})));
   runsOn('worker', ids, l, w, id, 'remote', sessionId);
   check('agent folder', agentsOf(w, id)[0]?.cwd === `${HOMES[R]}/src/app-wt`, () => brief(agentsOf(w, id)));
   // the agent on the worker posts its hooks there, and the home's state shows them
@@ -425,7 +427,7 @@ printf 'worker untracked
   check('branch sha', l.git['src/app-wt'].head === w0.git['src/app-wt'].head && l.git['src/app-wt'].head !== head && l.git['src/app-wt'].branch === 'refs/heads/feature',
     () => `${l.git['src/app-wt'].head} vs the worker's ${w0.git['src/app-wt'].head}, before the move ${head}`);
   sameWork('mac worktree', l, w0, 'src/app-wt');
-  check('.env kept', Object.hasOwn(l.trees['src/app-wt'], '.env'), '.env is gone from the Mac');
+  check('credentials kept', ['.env', 'Deploy.KEY'].every((k) => Object.hasOwn(l.trees['src/app-wt'], k)), () => brief(Object.keys(l.trees['src/app-wt'])));
   check('mac unlocked', l.locks['src/app-wt'] === null, () => brief(l.locks));
   check('worker locked', /^moved to .+ mv_[0-9a-z]{10}$/.test(w.locks['src/app-wt'] ?? '') && w.locks['src/app-wt'].endsWith(m.res?.moveId), () => brief(w.locks));
   const c = robotIn(l, id);

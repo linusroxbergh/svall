@@ -5,6 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { applyBundle, BUNDLE_MAX, buildBundle, fingerprintOf, trackedCredentials, verifyBundle } from '../../src/placement/bundle.js';
+import { lockWorktree, takeBack } from '../../src/placement/move-steps.js';
 import { git, hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -215,6 +216,33 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(fs.existsSync(path.join(dst, 'node_modules'))).toBe(false);
 
     expect(await trackedCredentials(src, hooklessGit, manifest)).toEqual(['.env.example', 'id_rsa.pub']);
+  });
+
+  it('a file named like a credential in any case, or like any ssh key, stays behind, and a worktree a move takes back keeps it where git matches ignore patterns by case', async () => {
+    const { at, g } = scratch();
+    const src = at('src');
+    g(at(''), 'init', '-q', src);
+    // as git has it on Linux
+    g(src, 'config', 'core.ignoreCase', 'false');
+    put(src, 'a.txt', 'a\n');
+    g(src, 'add', '.');
+    g(src, 'commit', '-qm', 'base');
+    const head = g(src, 'rev-parse', 'HEAD');
+    const wt = at('wt');
+    g(src, 'worktree', 'add', '-q', '-b', 'wt', wt);
+    const keys = ['.ENV', '.envs/.env.local', 'ID_RSA', 'Server.PEM', 'deploy.KEY', 'id_dsa', 'id_ecdsa', 'id_ed25519', 'keys/id_ed25519.pub'];
+    // files named like nothing, the second in a folder named like a credential
+    const plain = ['.envs/notes.md', 'notes.txt'];
+    for (const k of [...keys, ...plain]) put(wt, k, 'secret\n');
+
+    const manifest = await buildBundle(wt, { git: hooklessGit, into: at('bundle'), have: [head], carry: [] });
+    expect(manifest.credentialFiles).toEqual([...keys].sort());
+    expect(manifest.untracked.map((u) => u.path)).toEqual(plain);
+
+    await lockWorktree(wt, 'moved', hooklessGit);
+    await takeBack(wt, head, hooklessGit);
+    expect(keys.filter((k) => fs.existsSync(path.join(wt, k)))).toEqual(keys);
+    expect(plain.filter((p) => fs.existsSync(path.join(wt, p)))).toEqual([]);
   });
 
   it('refuses an untracked path or link target ustar cannot hold, which bsdtar would leave out, before packing', async () => {

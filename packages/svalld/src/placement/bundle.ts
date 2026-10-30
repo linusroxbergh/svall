@@ -9,8 +9,11 @@ import { must, type GitRunner } from '../links/git.js';
 
 const exec = promisify(execFile);
 
-export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'];
-const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
+// matched by file name whatever its case
+export const CREDENTIAL_PATTERNS = ['.env*', '*.pem', 'id_rsa*', 'id_ed25519*', 'id_ecdsa*', 'id_dsa*', '*.tfvars', '*.key', '.netrc'];
+const CREDENTIAL = CREDENTIAL_PATTERNS.map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`, 'i'));
+/** CREDENTIAL_PATTERNS as git ignore patterns of either case, which git matches by case where core.ignoreCase is off, as on Linux. */
+export const CREDENTIAL_GLOBS = CREDENTIAL_PATTERNS.map((p) => p.replace(/[a-z]/g, (c) => `[${c}${c.toUpperCase()}]`));
 
 export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.test(path.posix.basename(p)));
 

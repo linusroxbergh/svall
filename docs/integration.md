@@ -56,16 +56,16 @@ each machine's daemon and unit logs.
   `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
   Claude. There is no Codex or `gh`, so `host add` advises installing them.
 - **The fixture.** Repo `~/src/app` on local, whose remote is a bare repository on remote, with a stash, a linked
-  worktree `~/src/app-wt` holding staged, unstaged, untracked and `.env` changes, main with changes of its own and an
-  ignored `node_modules/`, and a worktree `~/src/app-faults` with a commit not on the remote. Three Claude robots run
-  in them: `agent` in `app-wt`, `kanban` on main and `faults` in `app-faults`.
+  worktree `~/src/app-wt` holding staged, unstaged and untracked changes, `.env` and `Deploy.KEY`, main with changes
+  of its own and an ignored `node_modules/`, and a worktree `~/src/app-faults` with a commit not on the remote. Three
+  Claude robots run in them: `agent` in `app-wt`, `kanban` on main and `faults` in `app-faults`.
 
 ### What it checks
 
 1. **Move the dirty robot.** `agent` moves to remote. The sheet says `.env stays here` and that remote clones the
-   repository. On remote the worktree has the branch, commits, index, status and files the Mac's had, without `.env`,
-   and the agent resumes its session there; the Mac's worktree is kept as it was and locked `moved to remote <move
-   id>`, and the stash stays on the Mac. A turn on remote reaches the home's state and transcript.
+   repository. On remote the worktree has the branch, commits, index, status and files the Mac's had, without `.env`
+   and `Deploy.KEY`, and the agent resumes its session there; the Mac's worktree is kept as it was and locked `moved
+   to remote <move id>`, and the stash stays on the Mac. A turn on remote reaches the home's state and transcript.
 2. **Move the robot on main.** `kanban` moves, and the move converts main into a worktree on a new branch `kanban`,
    staged and unstaged apart, leaving main clean with its stash; `node_modules` is named and never travels.
 3. **Worker restart.** A restart of the worker's unit keeps each agent's process. One that stops tmux too, as a
@@ -74,8 +74,8 @@ each machine's daemon and unit logs.
    home starts, it takes each once and in order, from its first answer on.
 5. **The fault matrix**, below.
 6. **Return through a dirty Mac worktree.** A return refuses an edit made on the Mac since the move, with its exact
-   sentence. Once it is undone, `agent` comes back with the worker's commit and changes, `.env` still on the Mac, the
-   Mac's worktree unlocked, the worker's locked, and the session as the worker left it.
+   sentence. Once it is undone, `agent` comes back with the worker's commit and changes, `.env` and `Deploy.KEY`
+   still on the Mac, the Mac's worktree unlocked, the worker's locked, and the session as the worker left it.
 7. **A reviewer started while the Mac sleeps.** With the home stopped, `svall` on remote, as `kanban`'s agent would
    run it there, starts a reviewer and four more robots and refuses a sixth, and the worker journals each; the home
    applies them in order once it is back, each in a cell of its own.
