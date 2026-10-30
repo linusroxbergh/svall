@@ -23,7 +23,7 @@ export function MissionPrompt() {
     const prompt = text.trim();
     if (!prompt) return;
     close();
-    void startHomeRobot(deps(), { prompt }).then((ok) => {
+    void startHomeRobot(deps(), { prompt, focus: true }).then((ok) => {
       if (ok) return;
       setText((t) => t || prompt);
       if (covered(app.store.getState())) return;

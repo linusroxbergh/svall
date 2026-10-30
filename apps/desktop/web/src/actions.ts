@@ -252,8 +252,9 @@ function selectOnArrival(d: ActionDeps, before: string | undefined): () => void 
   return stop;
 }
 
-// without a label the daemon names it; false when the fleet refused, the reason already on a toast
-export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?: string }): Promise<boolean> {
+// without a label the daemon names it; false when the fleet refused, the reason already on a toast.
+// With focus, the crew member still chosen once the daemon answers opens its terminal
+export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?: string; focus?: boolean }): Promise<boolean> {
   closeSettings(d);
   const { home } = d.store.getState().fleet;
   const before = d.store.getState().selectedId;
@@ -263,7 +264,9 @@ export async function startHomeRobot(d: ActionDeps, p: { prompt: string; label?:
     const c = await d.api.call('robot.create', { islandId: HOME_ISLAND, cwd: home.cwd, ...(p.label ? { name: p.label } : {}), command: home.command, run: p.prompt });
     // a crew member the mirror already has was chosen for, or yielded, on arrival
     const s = d.store.getState();
-    if (s.selectedId === before && !s.fleet.robots[c.id]) showCreated(d, c.id, 'select');
+    const arrived = Boolean(s.fleet.robots[c.id]);
+    const chosen = s.selectedId === (arrived ? c.id : before);
+    if (chosen && (p.focus || !arrived)) showCreated(d, c.id, p.focus ? 'focus' : 'select');
     // an agent that never reported in was booting slowly or is waiting on a question of its own; either
     // way the crew member is there and the prompt is still the user's to send, so it is not thrown away
     if (!unfound) {
