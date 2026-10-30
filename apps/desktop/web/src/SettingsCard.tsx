@@ -373,7 +373,6 @@ function Machine() {
 
 function Browser() {
   const onePassword = useApp((s) => s.settings.onePassword);
-  const fillKey = keyLabel('fillLogin', useApp((s) => s.settings.bindings));
   const op = useApp((s) => !!s.shell?.op);
   const fills = useApp(canFill);
   const shell = app.bridge.present;
@@ -381,7 +380,7 @@ function Browser() {
     <>
       <div className="rows">
         <div className="row">
-          <span>1Password<Info id="1password">The key button by the address bar{fillKey && `, or ${fillKey},`} fills the saved login or one-time code.</Info></span>
+          <span>1Password<Info id="1password">The key button by the address bar fills the saved login or one-time code.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={fills} data-testid="set-1password" disabled={!op}
             onClick={() => set({ onePassword: !onePassword })}>{fills ? 'on' : 'off'}</button></b>
         </div>

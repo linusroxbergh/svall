@@ -132,3 +132,23 @@ test('Enter opens the selection after a button was pressed with the mouse', asyn
   await page.keyboard.press('Enter');
   await expect(page.getByTestId('terminal-card')).toHaveAttribute('data-robot', c.id);
 });
+
+test('Cmd+Shift+P finds a command by name and runs it, and Esc puts the palette away', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('palette') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'kp' });
+  await svall.open('map');
+  await page.getByTestId(`token-${c.id}`).click();
+
+  await page.keyboard.press('Meta+Shift+P');
+  await expect(page.getByTestId('palette-query')).toBeFocused();
+  await page.keyboard.type('map or');
+  await expect(page.getByTestId('palette-row')).toHaveText(['Map or board⌘M']);
+  await page.keyboard.press('Enter');
+  await expect(page.getByTestId('palette')).toHaveCount(0);
+  await expect(page.getByTestId('board')).toBeVisible();
+
+  await page.keyboard.press('Meta+Shift+P');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('palette')).toHaveCount(0);
+  await expect(page.getByTestId(`kc-${c.id}`)).toHaveAttribute('data-selected', 'true');
+});

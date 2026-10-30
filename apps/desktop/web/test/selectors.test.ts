@@ -91,10 +91,11 @@ describe('selectors', () => {
     }
   });
   it('anything the page spreads over a surface hides it first', () => {
-    const base = { namingRobot: false, missionPrompt: false, closingRobot: undefined, resourcesOpen: false, hostOpen: false, fleet: fleet() };
+    const base = { namingRobot: false, missionPrompt: false, palette: false, closingRobot: undefined, resourcesOpen: false, hostOpen: false, fleet: fleet() };
     expect(isVeiled(base)).toBe(false);
     expect(isVeiled({ ...base, missionPrompt: true })).toBe(true);
     expect(isVeiled({ ...base, namingRobot: true })).toBe(true);
+    expect(isVeiled({ ...base, palette: true })).toBe(true);
     expect(isVeiled({ ...base, closingRobot: 'c0' })).toBe(true);
     expect(isVeiled({ ...base, deletingIsland: 'i_e' })).toBe(true);
     expect(isVeiled({ ...base, hostOpen: true })).toBe(true);
@@ -104,7 +105,7 @@ describe('selectors', () => {
     expect(isVeiled({ ...base, view: 'map', fleet: { ...fleet(), placingAsk: true } })).toBe(false);
   });
   it('veils while the resources shelf is open', () => {
-    expect(isVeiled({ namingRobot: false, missionPrompt: false, resourcesOpen: true, hostOpen: false, fleet: fleet() })).toBe(true);
+    expect(isVeiled({ namingRobot: false, missionPrompt: false, palette: false, resourcesOpen: true, hostOpen: false, fleet: fleet() })).toBe(true);
   });
 });
 

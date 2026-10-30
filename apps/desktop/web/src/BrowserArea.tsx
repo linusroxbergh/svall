@@ -5,7 +5,6 @@ import { app, deps } from './boot.js';
 import { rectOf } from './bridge.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
-import { keyTip } from './keys.js';
 import { canFill } from './settings.js';
 import { isVeiled } from './selectors.js';
 
@@ -14,7 +13,6 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
   const veiled = useApp(isVeiled);
   // read as the veil lifts, from the render that lifted it
   const keepPageFocus = useApp((s) => s.keepPageFocus);
-  const bindings = useApp((s) => s.settings.bindings);
   const active = c?.browser?.active;
   const view = useApp((s) => (active ? s.webviews[active] : undefined));
   const failure = view?.error;
@@ -100,7 +98,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
         {failure && <span className="baddr-err" data-testid="browser-error" data-tip={failure}>{ellipsis(failure, 40)}</span>}
-        {fills && <button data-testid="browser-fill" disabled={!active} data-tip={keyTip('Fill from 1Password', 'fillLogin', bindings)} aria-label="Fill from 1Password"
+        {fills && <button data-testid="browser-fill" disabled={!active} data-tip="Fill from 1Password" aria-label="Fill from 1Password"
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>
       {active ? (

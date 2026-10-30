@@ -271,8 +271,8 @@ The first build takes several minutes and about 1.5 GB of disk.
   context, docs, last prompts, model, directory and context use.
 - **Browser** (Cmd+2): tabs survive a relaunch, and the agent sees their
   addresses. Sign in once per fleet by importing Chrome's cookies, or fill
-  logins from 1Password with Cmd+Shift+P once you turn it on in Settings and
-  install the 1Password CLI.
+  logins from 1Password with the key button by the address bar once you turn it
+  on in Settings and install the 1Password CLI.
 - **Files** (Cmd+3): an editor for the robot's directory. A file the agent
   rewrites reloads unless you have changed it.
 - **Changes** (Cmd+4): each file's diff against HEAD, or against the point
@@ -300,7 +300,7 @@ Svall first launches stays with Ghostty until you claim it there.
 | Cmd+I | Side card | Cmd+Enter | Card size |
 | Cmd+1 to 4 | Terminal, browser, files, changes | Cmd+B | Browser beside the terminal |
 | Cmd+L | Address bar | Cmd+G | Prompt mission control |
-| Cmd+Shift+R | Resources | Cmd+Shift+P | Fill a login from 1Password |
+| Cmd+Shift+R | Resources | Cmd+Shift+P | Every command, by name |
 | Cmd+, | Settings | Cmd+- / = / 0 | Zoom |
 | Cmd+Shift+A | Arrange the fleet | Cmd+U | First link beside the terminal |
 | Cmd+Shift+O | Open a fleet | Cmd+Q | Quit |

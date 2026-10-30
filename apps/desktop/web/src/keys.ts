@@ -19,7 +19,7 @@ export type KeyAction =
   | { type: 'toggleBrowser' }
   | { type: 'focusAddress' }
   | { type: 'openLink' }
-  | { type: 'fillLogin' }
+  | { type: 'palette' }
   | { type: 'openFleets' }
   | { type: 'none' };
 
@@ -28,7 +28,7 @@ export type ActionId =
   | 'prevRobot' | 'nextRobot' | 'nextIsland'
   | 'toggleView' | 'toggleSideCard' | 'toggleSides' | 'toggleCardSize' | 'toggleSettings' | 'toggleResources'
   | 'paneTerminal' | 'paneBrowser' | 'paneFiles' | 'paneChanges'
-  | 'toggleBrowser' | 'focusAddress' | 'openLink' | 'fillLogin' | 'openFleets'
+  | 'toggleBrowser' | 'focusAddress' | 'openLink' | 'openFleets' | 'palette'
   | 'zoomIn' | 'zoomOut' | 'zoomReset'
   | 'quit';
 
@@ -58,8 +58,8 @@ export const ACTIONS: Record<ActionId, ActionSpec> = {
   toggleBrowser: { label: 'Browser on the right', action: { type: 'toggleBrowser' }, chord: 'cmd+b' },
   focusAddress: { label: 'Address bar', action: { type: 'focusAddress' }, chord: 'cmd+l' },
   openLink: { label: 'Open the first link', action: { type: 'openLink' }, chord: 'cmd+u' },
-  fillLogin: { label: 'Fill a login', action: { type: 'fillLogin' }, chord: 'cmd+shift+p' },
   openFleets: { label: 'Open a fleet', action: { type: 'openFleets' }, chord: 'cmd+shift+o' },
+  palette: { label: 'Commands', action: { type: 'palette' }, chord: 'cmd+shift+p' },
   // the key that carries + and the one that carries = , so the layout in use does not matter
   zoomIn: { label: 'Zoom in', action: { type: 'zoom', steps: 1 }, chord: 'cmd+=', also: ['cmd++', 'cmd+shift++'] },
   zoomOut: { label: 'Zoom out', action: { type: 'zoom', steps: -1 }, chord: 'cmd+-' },

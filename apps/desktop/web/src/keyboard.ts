@@ -4,7 +4,7 @@ import { commitFocused } from './Field.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
 import { robotsOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
-import { canFill, zoomBy } from './settings.js';
+import { zoomBy } from './settings.js';
 import type { AppState, AppStore } from './store/index.js';
 import { secondKey, viewedId } from './terminals.js';
 
@@ -59,7 +59,7 @@ export async function closeRobot(ctx: Deps, id: string): Promise<void> {
 
 function closeAllModals(store: AppStore): void {
   const s = store.getState();
-  s.setNamingRobot(false); s.setMissionPrompt(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setMoveSheet(undefined); s.setDeletingIsland(undefined); s.setDeletingColumn(undefined); s.setFleetPicker(undefined);
+  s.setNamingRobot(false); s.setMissionPrompt(false); s.setPalette(false); s.setClosingRobot(undefined); s.setSleepingRobot(undefined); s.setMoveSheet(undefined); s.setDeletingIsland(undefined); s.setDeletingColumn(undefined); s.setFleetPicker(undefined);
   // a dialog over the settings takes the keys from a shortcut row still waiting for one
   s.setCapturingKey(undefined);
 }
@@ -74,7 +74,7 @@ export function openFleetPicker(store: AppStore, mode: 'menu' | 'new' = 'menu'):
 }
 
 export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void> {
-  const { store, bridge } = ctx;
+  const { store } = ctx;
   const s = store.getState();
   const f = s.fleet;
   const current = currentOf(s);
@@ -93,6 +93,12 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
     case 'newRobot': closeModals(); store.getState().setNamingRobot(true); return;
     case 'missionControl': closeModals(); store.getState().setMissionPrompt(true); return;
     case 'openFleets': openFleetPicker(store); return;
+    case 'palette': {
+      const open = s.palette;
+      closeModals();
+      if (!open) store.getState().setPalette(true);
+      return;
+    }
     case 'arrange': if (s.view === 'map') store.getState().askArrange(); return;
     case 'closeRobot': {
       // a second Cmd+W answers the dialog the first one opened
@@ -162,12 +168,6 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
     case 'openLink': {
       const item = current ? f.robots[current]?.context.find(opensInside) : undefined;
       if (current && item && ctx.browser) openBeside(store, ctx.browser, current, item.ref);
-      return;
-    }
-    case 'fillLogin': {
-      const id = viewedId(s);
-      const tab = id ? f.robots[id]?.browser?.active : undefined;
-      if (tab && shows(panesOf(s, id), 'browser') && canFill(s) && bridge.present) bridge.send({ type: 'browser.fill', tab });
       return;
     }
     case 'none': return;

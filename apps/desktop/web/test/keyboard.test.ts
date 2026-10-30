@@ -299,30 +299,6 @@ describe('dispatchKey', () => {
     expect(panes(c)).toEqual({ left: 'terminal' });
   });
 
-  it('Cmd+Shift+P asks the shell to fill the tab on show, once 1Password is on and the shell has the CLI', async () => {
-    const c = ctx(true);
-    c.store.getState().setView('board');
-    const f = fleet();
-    const id = Object.keys(f.robots)[0];
-    f.robots[id] = { ...f.robots[id], browser: { tabs: [{ id: 't_1', url: 'https://github.com/login', title: '' }], active: 't_1' } };
-    c.store.getState().setFleet(f);
-    c.store.getState().focus(id);
-    c.store.getState().setPanes('c1', { left: 'terminal', right: 'browser' });
-    await dispatchKey({ type: 'fillLogin' }, c);
-    expect(c.sent).toEqual([]);
-    // the setting alone is not enough: the switch reads off without the CLI, and the chord is off with it
-    c.store.getState().setSettings({ onePassword: true });
-    c.store.getState().setShell({ home: '/tmp/fleet-x', log: [], op: false });
-    await dispatchKey({ type: 'fillLogin' }, c);
-    expect(c.sent).toEqual([]);
-    c.store.getState().setShell({ home: '/tmp/fleet-x', log: [], op: true });
-    await dispatchKey({ type: 'fillLogin' }, c);
-    expect(c.sent).toEqual([{ type: 'browser.fill', tab: 't_1' }]);
-    c.store.getState().setPanes('c1', { left: 'terminal' });
-    await dispatchKey({ type: 'fillLogin' }, c);
-    expect(c.sent).toHaveLength(1);
-  });
-
   it('Cmd+1 to Cmd+4 act on the left pane and leave the right one be', async () => {
     const c = ctx(true);
     onBoard(c);
