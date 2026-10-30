@@ -107,10 +107,6 @@ const shaOf = (file: string): string | undefined => {
   }
 };
 
-const isFolder = (file: string): boolean => {
-  try { return fs.statSync(file).isDirectory(); } catch { return false; }
-};
-
 const keptIn = (dir: string, stem: string): string[] => {
   try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.startsWith(stem) && d.name.endsWith('.conflict.md')).map((d) => path.join(dir, d.name)); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
@@ -120,13 +116,9 @@ const keptIn = (dir: string, stem: string): string[] => {
 
 const keptLine = (file: string, worker: string, kept: string) => `${file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${path.basename(kept)}`;
 const stayedLine = (file: string, worker: string) => `${worker} deleted ${file}, which changed here since; it stays`;
-const refusedLine = (file: string, worker: string, why: string) => `${worker} changed ${file}, which this Mac's docs cannot hold; it was skipped: ${why}`;
-// what the docs folder answers the same way on every try for a path it cannot hold, as one under a file or past a name's length
-const UNHELD = new Set(['ENOTDIR', 'EISDIR', 'ERR_FS_EISDIR', 'ENAMETOOLONG']);
 
-/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, a delete refused, or
- *  a change at a path the docs cannot hold, `refused` with why. */
-export type Conflict = { file: string; kept?: string; refused?: string };
+/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, or a delete refused. */
+export type Conflict = { file: string; kept?: string };
 // `made` is the sha the change was made on, none for no file
 type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made?: string; prev?: string | null };
 
@@ -143,7 +135,7 @@ export function concerns(rel: string, state: FleetState, machine: MachineId, hom
 /** Says a conflict in the note of each robot it concerns, as the user's line, so the scribe leaves it. */
 export function noteConflict(store: Store, machine: MachineId, c: Conflict, homedir: string): void {
   const name = store.state.machines?.[machine]?.name ?? machine;
-  const line = c.refused ? refusedLine(c.file, name, c.refused) : c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
+  const line = c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
   const ids = concerns(c.file, store.state, machine, homedir);
   if (ids.length) store.update((d) => { for (const id of ids) setNote(d.robots[id], withLine(d.robots[id].note, line)); });
 }
@@ -159,25 +151,17 @@ export class HomeDocs {
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
   /** Takes a worker's change made on this Mac's copy or already held, else answers the conflict. A malformed event, or one in
-   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox, but at a path
-   *  the docs cannot hold, which no retry changes. */
+   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
     const { file, bytes, sha256, made } = named;
-    try {
-      const here = shaOf(file);
-      if (here !== sha256 && here !== made) return this.conflict(named, machine);
-      if (!bytes) fs.rmSync(file, { force: true });
-      else if (here !== sha256) {
-        fs.mkdirSync(path.dirname(file), { recursive: true });
-        writeDurable(file, bytes);
-      }
-    } catch (e) {
-      if (!UNHELD.has((e as NodeJS.ErrnoException).code ?? '')) throw e;
-      const rel = path.relative(this.dir, file);
-      this.log.error(`docs: ${kind} of ${rel} from ${this.nameOf(machine)} skipped: ${(e as Error).message}`);
-      return { file: rel, refused: (e as Error).message };
+    const here = shaOf(file);
+    if (here !== sha256 && here !== made) return this.conflict(named, machine);
+    if (!bytes) fs.rmSync(file, { force: true });
+    else if (here !== sha256) {
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      writeDurable(file, bytes);
     }
     this.applied.set(path.relative(this.dir, file), { sha256, machine });
     return undefined;
@@ -261,9 +245,6 @@ export class WorkerDocs {
   private pending = new Map<string, { seq: number; sha256?: string }>();
   // a doc too large to journal, by the sha256 it was refused at, so it is said once
   private refused = new Map<string, string>();
-  // the docs under a path that is a file on one machine and a folder on the other, kept as they are here, neither journaled
-  // nor taken as synced, until the home's tar agrees on the path again
-  private held = new Set<string>();
   private queue: Promise<void> = Promise.resolve();
   private unwatch?: () => void;
 
@@ -292,7 +273,6 @@ export class WorkerDocs {
 
   // a doc's content, unless the home has it coming already: this machine's last change to it, or else the home's last tar
   private journal(rel: string, data?: Buffer): void {
-    if (this.held.has(rel)) return;
     const sha256 = data && sha256Hex(data);
     const over = !data ? undefined : data.length > NOTE_MAX ? `is over ${NOTE_MAX / 2 ** 20} MB` : !packable(rel) ? 'has a name the home\'s docs cannot carry' : undefined;
     if (data && sha256 && over) {
@@ -337,46 +317,12 @@ export class WorkerDocs {
   private settle(from: string, seq: number): void {
     this.catchUp();
     const theirs = new Set(filesIn(from));
-    const here = new Set(filesIn(this.o.dir));
-    const folders = new Set([...theirs].flatMap((rel) => {
-      const parts = rel.split('/');
-      return parts.slice(1).map((_, i) => parts.slice(0, i + 1).join('/'));
-    }));
-    const all = [...new Set([...theirs, ...here, ...Object.keys(this.synced)])].sort();
-    const under = (k: string, rel: string) => k === rel || k.startsWith(`${rel}/`);
-    const sha = (rel: string) => sha256Hex(fs.readFileSync(path.join(this.o.dir, rel)));
-    // a path that is a file on one machine and a folder on the other; this machine holds it if it changed it since the last
-    // tar, and else follows the home
-    const clashes = all.filter((rel) => (theirs.has(rel) ? isFolder(path.join(this.o.dir, rel)) : folders.has(rel) && here.has(rel)));
-    const holds = clashes.filter((rel) => [...this.pending.keys()].some((k) => under(k, rel))
-      || [...here].some((k) => under(k, rel) && sha(k) !== this.synced[k])
-      || Object.keys(this.synced).some((k) => under(k, rel) && !here.has(k)));
-    const isHeld = (k: string) => holds.some((h) => under(k, h));
-    // a hold whose path the tar agrees on again ends, and the home takes this machine's copy or keeps it beside its own
-    for (const k of this.held) {
-      if (isHeld(k)) continue;
-      this.held.delete(k);
-      if (here.has(k)) this.journal(k, fs.readFileSync(path.join(this.o.dir, k)));
-    }
-    // what this machine dropped under a hold was journaled once, and is not again
-    for (const k of Object.keys(this.synced)) if (isHeld(k) && !here.has(k)) delete this.synced[k];
-    for (const k of here) {
-      if (!isHeld(k) || this.held.has(k)) continue;
-      this.held.add(k);
-      this.o.log.error(`docs: ${k} stays as this machine has it while its path is a file on one machine and a folder on the other`);
-    }
-    for (const rel of all) {
-      if (isHeld(rel)) continue;
-      const file = path.join(this.o.dir, rel);
-      if (clashes.includes(rel)) {
-        fs.rmSync(file, { recursive: true, force: true });
-        delete this.synced[rel];
-      }
+    for (const rel of new Set([...theirs, ...filesIn(this.o.dir), ...Object.keys(this.synced)])) {
       const last = this.pending.get(rel);
       if ((last?.seq ?? 0) > seq || this.refused.has(rel)) continue;
+      const file = path.join(this.o.dir, rel);
       if (!theirs.has(rel)) {
-        // a folder here is its files' to settle
-        if (!isFolder(file)) fs.rmSync(file, { force: true });
+        fs.rmSync(file, { force: true });
         delete this.synced[rel];
         continue;
       }
