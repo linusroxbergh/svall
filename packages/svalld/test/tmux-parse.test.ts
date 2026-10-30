@@ -13,13 +13,13 @@ describe('unescapeOutput', () => {
 
 describe('parseLine', () => {
   it('parses %output', () => {
-    expect(parseLine('%output %1 hi\\015\\012')).toEqual({ type: 'output', paneId: '%1', data: Buffer.from('hi\r\n') });
+    expect(parseLine('%output %1 hi\\015\\012')).toEqual({ type: 'output', paneId: '%1', escaped: 'hi\\015\\012' });
   });
   it('parses %extended-output', () => {
-    expect(parseLine('%extended-output %1 0 : a : b')).toEqual({ type: 'output', paneId: '%1', data: Buffer.from('a : b') });
+    expect(parseLine('%extended-output %1 0 : a : b')).toEqual({ type: 'output', paneId: '%1', escaped: 'a : b' });
   });
   it('parses empty output', () => {
-    expect(parseLine('%output %3 ')).toEqual({ type: 'output', paneId: '%3', data: Buffer.alloc(0) });
+    expect(parseLine('%output %3 ')).toEqual({ type: 'output', paneId: '%3', escaped: '' });
   });
   it('parses window events, both linked and unlinked forms', () => {
     expect(parseLine('%window-close @2')).toEqual({ type: 'window-close', windowId: '@2' });

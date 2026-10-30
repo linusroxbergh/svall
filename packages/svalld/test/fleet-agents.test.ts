@@ -19,9 +19,12 @@ runIf('Fleet agents', () => {
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const got: string[] = [];
     fleet.on('output', (id, data) => { if (id === c.id) got.push(data.toString()); });
+    // with no pane streamed, output is dropped before a robot is looked up for it
+    const lookups = vi.spyOn(fleet['link'] as unknown as { robotByPane(paneId: string): string | undefined }, 'robotByPane');
     await fleet.run(c.id, 'echo silent', true);
     await waitFor(async () => (await fleet.readScreen(c.id, 20)).includes('silent'));
     expect(got.join('')).not.toMatch(/silent/);
+    expect(lookups).not.toHaveBeenCalled();
     fleet.setPaneOutput(c.id, true);
     await fleet.run(c.id, 'echo loud', true);
     await waitFor(() => got.join('').includes('loud'));

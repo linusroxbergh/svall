@@ -50,6 +50,11 @@ export class LinkStream {
     this.write(f);
   }
 
+  /** Sends a frame's JSON as made once for several streams. */
+  sendLine(json: string): void {
+    if (!this.closed) this.duplex.write(`${json}\n`);
+  }
+
   /** Calls `method` on the far end; a result replied in parts arrives whole. */
   async call<T>(method: string, params: unknown, o: { timeoutMs?: number; signal?: AbortSignal } = {}): Promise<T> {
     const ms = o.timeoutMs ?? CALL_TIMEOUT;

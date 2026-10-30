@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Config } from '../src/config.js';
 import { tmuxConfText, tmuxTooOld } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
+import { unescapeOutput } from '../src/tmux/parse.js';
 import { SESSION, Tmux, isShellCommand, parseViewerScreen, rawPasteArgs, resolveTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -470,7 +471,7 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     const w = await t.newWindow('c_one', '/tmp', {});
     const c = t.connect();
     const got: string[] = [];
-    c.on('output', (paneId, data) => { if (paneId === w.paneId) got.push(data.toString()); });
+    c.on('output', (paneId, escaped) => { if (paneId === w.paneId) got.push(unescapeOutput(escaped).toString()); });
     await c.start();
     c.send(`refresh-client -A '${w.paneId}:off'`);
     await t.sendLine(w.paneId, 'echo quiet', true);

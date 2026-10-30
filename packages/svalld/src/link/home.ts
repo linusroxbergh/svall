@@ -206,11 +206,11 @@ export class WorkerLink {
     return this.stream.receiveBlob(id, into);
   }
 
-  /** Sends `snap` to a synced worker; settles once the worker has taken it or the link is gone. */
-  push(snap: Snapshot): Promise<void> {
+  /** Sends a snapshot's line to a synced worker; settles once the worker has taken `version` or the link is gone. */
+  push(version: number, line: string): Promise<void> {
     if (!this.synced || !this.stream) return Promise.resolve();
-    this.stream.send({ t: 'snapshot', version: snap.version, data: snap });
-    return new Promise((done) => this.waiting.push({ version: snap.version, done }));
+    this.stream.sendLine(line);
+    return new Promise((done) => this.waiting.push({ version, done }));
   }
 
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
@@ -541,8 +541,9 @@ export class HomeLinks {
 
   private async send(): Promise<number> {
     const snap = this.o.snapshot();
-    // a line over the limit would close every link it went out on
-    const bytes = Buffer.byteLength(JSON.stringify({ t: 'snapshot', version: snap.version, data: snap }));
+    // one line for every worker; a line over the limit would close every link it went out on
+    const line = JSON.stringify({ t: 'snapshot', version: snap.version, data: snap });
+    const bytes = Buffer.byteLength(line);
     if (bytes > MAX_LINE) {
       const why = `the fleet's snapshot is ${bytes} bytes, over the link's limit of ${MAX_LINE}`;
       if (!this.oversize) this.o.log.error(`${why}; no worker gets it`);
@@ -550,7 +551,7 @@ export class HomeLinks {
       throw new ApiError('too_large', why);
     }
     this.oversize = false;
-    await Promise.all([...this.links.values()].map((l) => l.push(snap)));
+    await Promise.all([...this.links.values()].map((l) => l.push(snap.version, line)));
     return snap.version;
   }
 }

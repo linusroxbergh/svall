@@ -1,5 +1,5 @@
 type ControlLine =
-  | { type: 'output'; paneId: string; data: Buffer }
+  | { type: 'output'; paneId: string; escaped: string }
   | { type: 'begin' | 'end' | 'error' }
   | { type: 'window-close'; windowId: string }
   | { type: 'pause' | 'continue'; paneId: string }
@@ -31,13 +31,13 @@ export function parseLine(line: string): ControlLine {
   const [tag, rest] = splitFirst(line);
   switch (tag) {
     case '%output': {
-      const [paneId, data] = splitFirst(rest);
-      return { type: 'output', paneId, data: unescapeOutput(data) };
+      const [paneId, escaped] = splitFirst(rest);
+      return { type: 'output', paneId, escaped };
     }
     case '%extended-output': {
       const [paneId, tail] = splitFirst(rest);
       const sep = tail.indexOf(' : ');
-      return { type: 'output', paneId, data: unescapeOutput(sep === -1 ? '' : tail.slice(sep + 3)) };
+      return { type: 'output', paneId, escaped: sep === -1 ? '' : tail.slice(sep + 3) };
     }
     case '%begin': return { type: 'begin' };
     case '%end': return { type: 'end' };
