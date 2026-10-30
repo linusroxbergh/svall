@@ -173,9 +173,9 @@ export function SideCard({ id }: { id: string }) {
         {movable && (placed || workers.length > 0) && (
           <div className="moves">
             {placed
-              ? <button className="btn" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}>Move to this Mac</button>
+              ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><MoveGlyph home /><span>Move to this Mac</span><MoveGo /></button>
               : workers.map(([m, w]) => (
-                <button key={m} className="btn" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>Move to {w.name}</button>
+                <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><MoveGlyph /><span>Move to {w.name}</span><MoveGo /></button>
               ))}
           </div>
         )}
@@ -186,6 +186,21 @@ export function SideCard({ id }: { id: string }) {
     </aside>
   );
 }
+
+// where the robot goes: a worker's rack, or this Mac
+const MoveGlyph = ({ home }: { home?: boolean }) => (
+  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {home
+      ? <><rect x="3" y="3" width="10" height="7" rx="1.2" /><path d="M1.5 12.5h13" /></>
+      : <><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2" /><rect x="2.5" y="9" width="11" height="4.5" rx="1.2" /><path d="M5 4.75h.01M5 11.25h.01" strokeWidth="2" /></>}
+  </svg>
+);
+
+const MoveGo = () => (
+  <svg className="move-go" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M3.5 2 6.5 5 3.5 8" />
+  </svg>
+);
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
 function AwayLine({ name, line, running }: { name: string; line: string; running: boolean }) {

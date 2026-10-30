@@ -128,6 +128,14 @@
 .side > .acts > .moves { grid-column: 1 / -1; gap: var(--sp-md); }
 .side > .acts .btn { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side > .acts > :only-child, .side > .acts > .moves > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* a move stands apart in the worker's blue: a hairline, the machine it goes to, and a chevron that leans on hover */
+.side > .acts .btn.move { display: flex; align-items: center; justify-content: center; gap: var(--sp-sm);
+  background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--away) 50%, transparent); }
+.side > .acts .btn.move:hover { background: color-mix(in srgb, var(--away) 9%, transparent); }
+.btn.move > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.btn.move svg { flex: none; width: 13px; height: 13px; color: var(--away); }
+.btn.move .move-go { width: 10px; height: 10px; transition: transform var(--dur) var(--ease); }
+.btn.move:hover .move-go { transform: translateX(2px); }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }
