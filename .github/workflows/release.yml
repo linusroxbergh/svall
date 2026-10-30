@@ -224,7 +224,7 @@ jobs:
             -n svall-release -s SHA256SUMS.sig < SHA256SUMS
           # scripts/release.sh makes the release, with the DMG, as it pushes the tag
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" -- *.tar.gz SHA256SUMS SHA256SUMS.sig
+            gh release upload "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --clobber -- *.tar.gz SHA256SUMS SHA256SUMS.sig
           else
             gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$GITHUB_REF_NAME" \
               -- *.tar.gz SHA256SUMS SHA256SUMS.sig

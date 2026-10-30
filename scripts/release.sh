@@ -125,11 +125,14 @@ if [ -n "$ADHOC" ]; then
   exit 0
 fi
 # the release, with the DMG the feeds name, is public before the feeds; past the tag a second run refuses, so a failed step
-# is finished by hand. Svall.dmg is the copy svall.dev/download reaches through the latest release.
-FEEDS="rsync -a dist/releases/Svall-$VERSION.md $SVALL_HOST:$SVALL_SITE_DIR/releases/ && rsync -a dist/appcast.xml dist/latest.json scripts/install.sh $SVALL_HOST:$SVALL_SITE_DIR/"
+# prints what finishes it. Svall.dmg is the copy svall.dev/download reaches through the latest release.
+FEEDS="rsync -a dist/releases/Svall-$VERSION.md '$SVALL_HOST:$SVALL_SITE_DIR/releases/' && rsync -a dist/appcast.xml dist/latest.json scripts/install.sh '$SVALL_HOST:$SVALL_SITE_DIR/'"
+FINISH="gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && gh release edit v$VERSION --repo $REPO --draft=false && $FEEDS"
 git tag "v$VERSION"
 git push origin "v$VERSION" || fail "nothing is published, but v$VERSION did not reach origin: run git tag -d v$VERSION and release again"
 gh release create "v$VERSION" --repo "$REPO" --verify-tag --title "v$VERSION" --notes-file "dist/notes/Svall-$VERSION.md" -- "$DMG" dist/releases/Svall.dmg ||
-  fail "v$VERSION is tagged, but its release lacks the DMG: run gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && $FEEDS"
+  fail "v$VERSION is tagged, but its release lacks the DMG: run gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then $FINISH"
+# a draft, or a DMG that did not upload, would leave the feeds naming a download nobody can reach
+curl -fsIL -o /dev/null "$DOWNLOADS/Svall-$VERSION.dmg" || fail "Svall-$VERSION.dmg does not download from GitHub: run $FINISH"
 sh -c "$FEEDS" || fail "the v$VERSION release is on GitHub, but the feeds did not reach svall.dev: run $FEEDS"
 echo "released Svall $VERSION ($BUILD)"
