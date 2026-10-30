@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import http, { type IncomingMessage, type ServerResponse } from 'node:http';
+import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createRequire } from 'node:module';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, UNPAIRED, type Event, type HelloReply } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
@@ -22,6 +23,9 @@ import type { Workspace } from '../workspace/workspace.js';
 import { mobileDist, variant } from '../runtime.js';
 import { answer, dispatch, type AppWindows, type Ctx } from './methods.js';
 import { serveBundle } from './static.js';
+
+// node:http's ES module face reads every export, and its WebSocket getter loads all of undici
+const http: typeof import('node:http') = createRequire(import.meta.url)('node:http');
 
 type Opts = {
   host: string; port: number; token: string;
