@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { aside, asideLine, notNeeded, toTick, type MachineId, type SetupRow } from '@svall/protocol';
 import { app } from './boot.js';
+import { useApp } from './hooks.js';
 import { terminalOn } from './MoveSheet.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
@@ -12,7 +13,9 @@ import { VarField } from './VarField.js';
 export function OnMachine({ id, machine, name }: { id: string; machine: MachineId; name: string }) {
   const [rows, setRows] = useState<SetupRow[]>([]);
   const read = () => app.api().call('machines.setup', { machine, robot: id }).then((r) => setRows(r.rows.filter((x) => x.gap)), () => {});
-  useEffect(() => { void read(); }, [id, machine]);
+  // read again once the Machines panel closes, as a login in a terminal there changes the rows
+  const hostOpen = useApp((s) => s.hostOpen);
+  useEffect(() => { if (!hostOpen) void read(); }, [id, machine, hostOpen]);
   const tick = ({ item, fields }: NonNullable<SetupRow['tick']>) => app.api().call('machines.consent', { machine, item, fields, on: true })
     .then(read, (e: Error) => app.store.getState().showToast(e.message, 'error'));
   if (!rows.length) return null;

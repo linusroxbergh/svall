@@ -49,7 +49,8 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   }),
   openHostTerminal: (machine, run, forward) => set((s) => ({
     hostOpen: true, hostMachine: machine, hostConfirm: undefined,
-    hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...(s.hostOpen && { fromPanel: true as const }) },
+    // a terminal opened again over one keeps where the first came from
+    hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...((s.hostTerminal ? s.hostTerminal.fromPanel : s.hostOpen) && { fromPanel: true as const }) },
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   // the panel follows the machine its run is about, an add's included

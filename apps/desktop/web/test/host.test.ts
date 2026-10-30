@@ -102,7 +102,7 @@ describe('the end of a run', () => {
     const blocked = ended('doctor', 1, [step('tmux', 'warn'), step('release', 'fail', { detail: '0.4.0, protocol 3' }), step('systemd', 'fail', { detail: 'inactive' })]);
     expect(outcomeOf(blocked)).toEqual({ text: 'box has 2 things to fix.' });
     // the agent setup is nothing to fix: a row naming a gap is a part that will not work there, though two read alike, and one that only asks to check again is none
-    const still = ' Robots still run there; set these up under Your agent setup when you need them.';
+    const still = ' None of it stops a move there; set it up under Your agent setup when you need it.';
     const again = (key: string) => step(`mirror:${key}`, 'warn', { action: 'check box again', detail: 'not checked: box is not reachable' });
     const gap = (key: string, name: string) => step(`mirror:${key}`, 'warn', { action: `copy ${name}'s keys to box`, gap: { name, what: 'keys not copied (env.KEY)' } });
     const mirrored = ended('doctor', 0, [step('ssh', 'ok'), again('claude:mcp:linear'), again('var:X'), gap('claude:mcp:github', 'github'), gap('codex:mcp:github', 'github')]);

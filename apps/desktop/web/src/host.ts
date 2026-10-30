@@ -178,7 +178,7 @@ export function outcomeOf(run: HostRun): RunOutcome {
   const apart = asideLine(named.filter(asideStep).map(stepToRow), !gaps.length);
   const setup = gaps.length;
   const note = setup ? `Optional: ${plural(setup, 'part')} of your agent setup will not work there${gaps.some(wayOn) ? ' yet' : ''}${apart ? `, and ${apart}` : ''}. `
-    + 'Robots still run there; set these up under Your agent setup when you need them.' : apart ? `${apart}.` : undefined;
+    + 'None of it stops a move there; set it up under Your agent setup when you need it.' : apart ? `${apart}.` : undefined;
   const noted = note ? { note } : {};
   // an upgrade puts the release before back on its own; only a rollback that failed leaves one to ask for
   const rollback = run.op === 'upgrade' && run.steps.some((s) => s.step === 'rollback' && s.status === 'fail') ? { next: 'rollback' as const } : {};

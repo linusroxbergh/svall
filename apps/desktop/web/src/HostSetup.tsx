@@ -260,7 +260,7 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
         <div className="host-phase host-setup-rows">
           <div className="kicker">
             <button type="button" className="sec-fold" data-testid="host-setup-fold" aria-expanded={setup} onClick={() => unfold({ fine, setup: !setup })}>
-              <Caret open={setup} />Your agent setup<span className="host-optional">optional</span>
+              <Caret open={setup} />Your agent setup{' '}<span className="host-optional">optional</span>
             </button>
           </div>
           {setup && rows.filter((r) => !asideStep(r)).map(row)}
@@ -357,7 +357,7 @@ export function HostSetup() {
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         <div className="host-body">
-          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel} onEnd={ended} /> : (
+          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
               {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
               {confirm && (

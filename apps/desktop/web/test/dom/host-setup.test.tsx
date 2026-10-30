@@ -178,7 +178,7 @@ test('a mirror row is one sentence, a tick and its details; the tick asks svalld
     .toBe('detailscopied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, or set them on trift in ~/.svall/mirror-overrides');
   // the agent setup holds no robot back, so it is a note under the verdict
   expect(screen.getByTestId('host-outcome').querySelector('.host-verdict')!.firstChild!.textContent).toBe('trift is ready. Robots you move there keep working while this Mac sleeps.');
-  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 1 part of your agent setup will not work there yet. Robots still run there; set these up under Your agent setup when you need them.');
+  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 1 part of your agent setup will not work there yet. None of it stops a move there; set it up under Your agent setup when you need it.');
   const box = screen.getByTestId('host-tick-mirror:claude:mcp:linear') as HTMLInputElement;
   expect([box.type, box.checked, box.disabled]).toEqual(['checkbox', false, false]);
   // what ticking does is the sentence beside the box
@@ -464,7 +464,7 @@ test('the agent setup fold lists what runs only on a Mac, or is ticked as not ne
     store.getState().hostStep('doctor', { step: 'mirror:var:X', status: 'warn', action: 'set X on trift', run: 'svall worker env X', detail: 'ad reads X, which is not set on trift', gap: { name: 'X', what: 'not set; ad reads it' } });
     store.getState().hostDone('doctor', 0);
   });
-  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 2 parts of your agent setup will not work there yet, and 1 runs only on a Mac. Robots still run there; set these up under Your agent setup when you need them.');
+  expect(screen.getByTestId('host-outcome-note').textContent).toBe('Optional: 2 parts of your agent setup will not work there yet, and 1 runs only on a Mac. None of it stops a move there; set it up under Your agent setup when you need it.');
   fireEvent.click(screen.getByTestId('host-setup-fold'));
   const steps = () => [...document.querySelectorAll('[data-testid^="host-step-mirror"], [data-testid="host-aside"]')].map((e) => e.getAttribute('data-testid'));
   expect(steps()).toEqual(['host-step-mirror:runtime:adlc', 'host-step-mirror:var:X', 'host-aside', 'host-step-mirror:maconly:claude:chrome']);

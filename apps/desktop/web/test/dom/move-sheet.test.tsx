@@ -88,6 +88,17 @@ test('while it checks, the sheet says what it checks', async () => {
   ]);
 });
 
+test('on the way back, the sheet checks only that the machine it is on answers', async () => {
+  act(() => store.getState().applyPatch([
+    { op: 'add', path: '/robots/c0/machine', value: VAULT },
+    { op: 'add', path: '/robots/c0/agent', value: { kind: 'claude', sessionId: 's1', status: 'idle' } },
+  ]));
+  call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : method === 'system.info' ? Promise.resolve({ machineId: HOME }) : Promise.resolve({})));
+  await open();
+  expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent))
+    .toEqual(['linus-vault is reachable', 'its branch, changes and session can travel']);
+});
+
 test('a running move shows one line per step as it gets there under a bar of six, and once through Done closes the sheet', async () => {
   const move = heldMove();
   await open(VAULT);
@@ -330,8 +341,9 @@ test('a shared main checkout second in the list still takes its own worktree in 
   await open(VAULT);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }, { id: 'c0', machine: VAULT, interruptAfterMs: 0, ownWorktree: true }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
-  expect((screen.getByLabelText("Give it its own worktreetwo robots share svall's main checkout") as HTMLInputElement).checked).toBe(true);
-  expect((screen.getByLabelText('Interrupt after this turnada is working') as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Give it its own worktree/) as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Interrupt after this turn/) as HTMLInputElement).checked).toBe(true);
+  expect(screen.getByLabelText(/^Give it its own worktree/).closest('label')!.querySelector('.modal-sub')!.textContent).toBe("two robots share svall's main checkout");
 });
 
 test('a working robot is interrupted after its turn in the one sheet, whose box says why; unticked, the move refuses with the interrupt as its button', async () => {
@@ -340,7 +352,7 @@ test('a working robot is interrupted after its turn in the one sheet, whose box 
   await open(VAULT);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, interruptAfterMs: 0 }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
-  await act(async () => fireEvent.click(screen.getByLabelText('Interrupt after this turnada is working')));
+  await act(async () => fireEvent.click(screen.getByLabelText(/^Interrupt after this turn/)));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
   // the button says what to do, so no line does
   expect(screen.getByTestId('move-refusal').textContent).toBe('ada is working');
@@ -355,7 +367,7 @@ test('a command running in its shell is ended by the move, as its box says', asy
   answers = [{ ok: false, refusal: { reason: 'a command is running', action: INTERRUPT_ACTIONS.command, details: ['wait for it'] } }, { ok: true, sheet: sheet({ interrupts: true }) }];
   await open(VAULT);
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT, interruptAfterMs: 0 });
-  expect((screen.getByLabelText('Move anyway and end ita command is running') as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Move anyway and end it/) as HTMLInputElement).checked).toBe(true);
   expect(screen.queryByLabelText(/^Interrupt after this turn/)).toBeNull();
 });
 
@@ -368,7 +380,7 @@ test('a robot sharing a main checkout gets its own worktree in the one sheet, wh
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }, { id: 'c0', machine: VAULT, ownWorktree: true }]);
   expect(screen.queryByTestId('move-refusal')).toBeNull();
   expect(screen.getByTestId('move-converts').textContent).toBe("it leaves svall's main checkout for a new branch ada; the checkout keeps its 3 changed files");
-  expect((screen.getByLabelText("Give it its own worktreetwo robots share svall's main checkout") as HTMLInputElement).checked).toBe(true);
+  expect((screen.getByLabelText(/^Give it its own worktree/) as HTMLInputElement).checked).toBe(true);
   await act(async () => fireEvent.click(screen.getByTestId('move-go')));
   expect(call).toHaveBeenCalledWith('robot.moveTo', { id: 'c0', machine: VAULT, ownWorktree: true });
 });
@@ -380,7 +392,7 @@ test('unticking its own worktree asks again without it', async () => {
     { ok: false, refusal: { reason: "two robots share svall's main checkout", action: WORKTREE_ACTION, details: [] } },
   ];
   await open(VAULT);
-  await act(async () => fireEvent.click(screen.getByLabelText("Give it its own worktreetwo robots share svall's main checkout")));
+  await act(async () => fireEvent.click(screen.getByLabelText(/^Give it its own worktree/)));
   expect(checks().at(-1)).toEqual({ id: 'c0', machine: VAULT });
   expect(screen.getByTestId('move-action').textContent).toBe('Give it its own worktree');
 });
