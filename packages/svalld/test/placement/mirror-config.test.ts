@@ -385,16 +385,18 @@ describe('reading agent configs and finding secrets by field', () => {
 
   it('Codex keys in a provider\'s base_url query, an otel endpoint\'s query and a provider\'s auth args are secret fields of codex:config, emptied unless ticked', () => {
     const doc = {
-      model_providers: { g: { base_url: 'https://u:p_fake@g.test/v1?key=cx_fake_1', auth: { command: 'helper', args: ['--secret', 'cx_fake_2', '--org=acme', 'https://x.test/t?token=cx_fake_3'] } } },
+      model_providers: { g: { base_url: 'https://u:p_fake@g.test/v1?key=cx_fake_1', auth: { command: 'helper', args: [
+        '--secret', 'cx_fake_2', '--org=acme', 'https://x.test/t?token=cx_fake_3', '--extra', 'X-Auth: Token cx_fake_5 https://y.test/t?token=cx_fake_6',
+      ] } } },
       otel: { exporter: { 'otlp-http': { endpoint: 'https://o.test/v1?api_key=cx_fake_4' } } },
     };
     const fields = configSecrets('codex', doc).map((f) => f.field);
     expect([...fields].sort()).toEqual([
-      'model_providers.g.auth.args[--secret]', 'model_providers.g.auth.args[https://x.test].token', 'model_providers.g.base_url.key', 'model_providers.g.base_url.userinfo',
-      'otel.exporter.otlp-http.endpoint.api_key',
+      'model_providers.g.auth.args[--extra]', 'model_providers.g.auth.args[--extra].token', 'model_providers.g.auth.args[--secret]',
+      'model_providers.g.auth.args[https://x.test].token', 'model_providers.g.base_url.key', 'model_providers.g.base_url.userinfo', 'otel.exporter.otlp-http.endpoint.api_key',
     ]);
     expect(configRedacted(doc, fields)).toEqual({
-      model_providers: { g: { base_url: 'https://g.test/v1?key=', auth: { command: 'helper', args: ['--secret', '', '--org=acme', 'https://x.test/t?token='] } } },
+      model_providers: { g: { base_url: 'https://g.test/v1?key=', auth: { command: 'helper', args: ['--secret', '', '--org=acme', 'https://x.test/t?token=', '--extra', 'X-Auth: Token  https://y.test/t?token='] } } },
       otel: { exporter: { 'otlp-http': { endpoint: 'https://o.test/v1?api_key=' } } },
     });
     expect(configPlace(doc, 'model_providers.g.auth.args[--secret]')).toEqual([['model_providers', 'g', 'auth', 'args', '1']]);
@@ -489,17 +491,19 @@ describe('reading agent configs and finding secrets by field', () => {
       '--proxy', 'X-Auth: Token tk_fake_1 ; Proxy-Authorization: Bearer sk_fake_2', '--with-url', 'Authorization: Bearer sk_fake_3 https://h.test/x?token=tk_fake_4',
       '--auth-header=Bearer sk_fake_5', '--auth-header=Bearer ${TOKEN1} https://h.test/y?api_key=ak_fake_6', '--long', 'Bearer abcdefghijklmnopqrstuvwxyz',
       '-H', 'Private-Token', 'glpat_fake_7', '-H', 'DD-API-KEY', 'dd_fake_8', '--pass', 'p_fake_9', '--passphrase', 'pp_fake_10', '--signature', 'sg_fake_11',
+      '--chain', 'Token tk_live_11111111;Bearer sk_live_22222222', '--list', 'Authorization: Bearer aaaa11111111, Bearer bbbb22222222',
     ] });
     expect(secretsOf(s).map((f) => [f.field, f.value])).toEqual([
       ['args[--proxy]', 'tk_fake_1'], ['args[--proxy]', 'sk_fake_2'], ['args[--with-url]', 'sk_fake_3'], ['args[--with-url].token', 'tk_fake_4'],
       ['args[--auth-header]', 'sk_fake_5'], ['args[--auth-header].api_key', 'ak_fake_6'], ['args[--long]', 'abcdefghijklmnopqrstuvwxyz'],
       ['args[-H Private-Token]', 'glpat_fake_7'], ['args[-H DD-API-KEY]', 'dd_fake_8'], ['args[--pass]', 'p_fake_9'], ['args[--passphrase]', 'pp_fake_10'],
-      ['args[--signature]', 'sg_fake_11'],
+      ['args[--signature]', 'sg_fake_11'], ['args[--chain]', 'tk_live_11111111'], ['args[--chain]', 'sk_live_22222222'], ['args[--list]', 'aaaa11111111'],
+      ['args[--list]', 'bbbb22222222'],
     ]);
     expect(redacted(s, new Set()).args).toEqual([
       '--proxy', 'X-Auth: Token  ; Proxy-Authorization: Bearer ', '--with-url', 'Authorization: Bearer  https://h.test/x?token=', '--auth-header=Bearer ',
       '--auth-header=Bearer ${TOKEN1} https://h.test/y?api_key=', '--long', 'Bearer ', '-H', 'Private-Token', '', '-H', 'DD-API-KEY', '', '--pass', '', '--passphrase', '',
-      '--signature', '',
+      '--signature', '', '--chain', 'Token ;Bearer ', '--list', 'Authorization: Bearer , Bearer ',
     ]);
     expect(secretsOf(server('claude', { args: ['--pwd', '/home/me/proj', '--config', '{"pwd":"/home/me/proj"}'] }))).toEqual([]);
   });
@@ -539,7 +543,7 @@ describe('reading agent configs and finding secrets by field', () => {
 
   it('a URL query value is a key by its name or a token\'s shape, in a URL inside JSON or a list too, a Codex query param as a URL\'s is, and a string in an OpenCode request body by its name; the rest travel as they are', () => {
     const s = server('claude', {
-      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=ak_fake_1&session=3fa85f64-5717-4562-b3fc-2c963f66afa6&sig=sg_fake&id=abc12345def6789xyz1&ref=abc12345def6789xyz12&code=AbC/dE_fake==&title=Getting%20Started%20Guide',
+      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=ak_fake_1&session=3fa85f64-5717-4562-b3fc-2c963f66afa6&sig=sg_fake&id=abc12345def6789xyz1&ref=abc12345def6789xyz12&code=AbC/dE_fake==&title=Getting%20Started%20Guide&pwd=hunter2',
       args: [
         '--config', '{"endpoint":"https://h.test/sse?customerId=c8f2a91b7d3e4f60a1b2","other":"https://o.test/x?api_key=ak_fake_2","mode":"fast"}',
         '--endpoints=https://a.test/x?sid=c8f2a91b7d3e4f60a1b2,https://b.test/y', 'https://c.test/x?a=1;b=2&api_key=ak_fake_3', "https://d.test/x?q=it's&token=tk_fake_4",
@@ -548,11 +552,11 @@ describe('reading agent configs and finding secrets by field', () => {
       ],
     });
     expect(secretsOf(s).map((f) => f.field)).toEqual([
-      'url.api_key', 'url.session', 'url.sig', 'url.ref', 'url.code', 'args[--config].customerId', 'args[--config].api_key', 'args[https://a.test].sid',
+      'url.api_key', 'url.session', 'url.sig', 'url.ref', 'url.code', 'url.pwd', 'args[--config].customerId', 'args[--config].api_key', 'args[https://a.test].sid',
       'args[https://c.test].api_key', 'args[https://d.test].token', 'args[--cfg].sid', 'args[https://f.test].api_key', 'args[https://g.test].token',
     ]);
     expect(redacted(s, new Set())).toMatchObject({
-      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=&session=&sig=&id=abc12345def6789xyz1&ref=&code=&title=Getting%20Started%20Guide',
+      url: 'https://x.test/mcp?referrer_ide=vscode&plugin_version=1.2.3&api_key=&session=&sig=&id=abc12345def6789xyz1&ref=&code=&title=Getting%20Started%20Guide&pwd=',
       args: [
         '--config', '{"endpoint":"https://h.test/sse?customerId=","other":"https://o.test/x?api_key=","mode":"fast"}', '--endpoints=https://a.test/x?sid=,https://b.test/y',
         'https://c.test/x?a=1;b=2&api_key=', "https://d.test/x?q=it's&token=", '--cfg', '{"sid":"display-name","url":"https://e.test/sse?sid="}',

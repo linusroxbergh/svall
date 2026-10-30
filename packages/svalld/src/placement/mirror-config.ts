@@ -76,10 +76,10 @@ const SECRET_FLAG = /(?:^|-)(api[-_]?key|token|secret|password|passwd|auth(?:ori
 // an OpenCode provider option that is a key by its name, beside those SECRET_FLAG names
 const PROVIDER_KEY = /^(private[-_]?key|accessKeyId|secretAccessKey|sessionToken)$/i;
 const HEADER_FLAG = /^(--header|-H)$/;
-// an Authorization scheme where a string starts or after a quote, : or =
-const SCHEME = /(?<=^|[:="']\s*)(?:[Bb]earer|Basic|Token)\b/;
+// an Authorization scheme where a string starts or after a quote, :, =, , or ;
+const SCHEME = /(?<=^|[:="',;]\s*)(?:[Bb]earer|Basic|Token)\b/;
 // such a scheme and the credential after it
-const SCHEME_KEY = /(?<=^|[:="']\s*)(?:[Bb]earer|Basic|Token)\s+([\w~+/.=:${}-]+)/g;
+const SCHEME_KEY = /(?<=^|[:="',;]\s*)(?:[Bb]earer|Basic|Token)\s+([\w~+/.=:${}-]+)/g;
 const SHELLS = ['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'csh', 'tcsh'];
 const ENV_KEY = new RegExp(`^(${NAME})=`);
 // an upper-case KEY=, as an env assignment is, holds a key whatever it is named
@@ -372,8 +372,8 @@ function params(source: string, arg: boolean): { name: string; value: string }[]
 const tokenShaped = (v: string): boolean =>
   v.length >= 20 && /^[\w.~+=:%-]+$/.test(v) && v.split(/%[0-9a-f]{2}|[^a-z0-9]/i).some((p) => p.length >= 8 && /\d/.test(p) && /[A-Za-z]/.test(p));
 
-// a query value is a key when its name says so, Azure Functions' code among them, or it is shaped as a token
-const queryKey = (name: string, value: string): boolean => keyName(name) || name === 'code' || tokenShaped(value);
+// a query value is a key when its name says so, Azure Functions' code and Zoom's pwd among them, or it is shaped as a token
+const queryKey = (name: string, value: string): boolean => keyName(name) || name === 'code' || name === 'pwd' || tokenShaped(value);
 
 function urlSecrets(source: string, field: string, arg = false): Secret[] {
   const values = params(source, arg).filter((p) => queryKey(p.name, p.value) && !isReferenceOnly(p.value)).map((p) => ({ field: `${field}.${p.name}`, value: p.value }));
@@ -824,10 +824,12 @@ export function configPlace(doc: unknown, field: string): string[][] {
 export function configRedacted(doc: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
   const out = structuredClone(doc);
   for (const f of fields) {
-    const arg = argOf(out, f);
+    // `doc` names the args, so a key emptied earlier in the pass cannot rename them
+    const arg = argOf(doc, f);
     if (arg) {
       const own = argFields(arg.args);
-      const emptied = argIndices(arg.args, arg.field).map((i) => [i, argWithout(arg.args, i, own[i], new Set([arg.field]))] as const);
+      const now = getAt(out, arg.list) as string[];
+      const emptied = argIndices(arg.args, arg.field).map((i) => [i, argWithout(now, i, own[i], new Set([arg.field]))] as const);
       for (const [i, a] of emptied) setAt(out, [...arg.list, i], a);
       continue;
     }
