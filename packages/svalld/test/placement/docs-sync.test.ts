@@ -457,9 +457,10 @@ function tars() {
   const home = path.join(base, 'home-docs');
   const journaled: [string, string][] = [];
   const errors: string[] = [];
+  const infos: string[] = [];
   let tar: Buffer = Buffer.alloc(0);
   const docs = new WorkerDocs({
-    dir, file: path.join(base, 'cache/docs-synced.json'), stage: path.join(base, 'cache'), log: { info() {}, error: (m) => { errors.push(m); } }, quietMs: 50,
+    dir, file: path.join(base, 'cache/docs-synced.json'), stage: path.join(base, 'cache'), log: { info: (m) => { infos.push(m); }, error: (m) => { errors.push(m); } }, quietMs: 50,
     connection: {
       journal: (kind, data) => journaled.push([kind, (data as { path: string }).path]),
       receiveBlob: async (_id, into) => { fs.writeFileSync(into, tar); return { sha256: sha256Hex(tar) }; },
@@ -469,7 +470,7 @@ function tars() {
   stops.push(() => docs.stop());
   let n = 0;
   return {
-    journaled, errors,
+    journaled, errors, infos,
     here: (rel: string) => path.join(dir, 'robots/c_1', rel),
     there: (rel: string) => path.join(home, 'robots/c_1', rel),
     ours: () => tree(path.join(dir, 'robots/c_1')),
@@ -582,18 +583,21 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     });
   }
 
-  it('a write under a doc journaled before the doc\'s delete, as an older release did, lands once this Mac has removed the doc, and the delete finds nothing to remove', async () => {
-    const { w, dir, farDir, settled } = both({ a: 'v1\n' });
-    fs.rmSync(path.join(dir, 'a'));
-    fs.rmSync(path.join(farDir, 'a'));
-    put(path.join(farDir, 'a/b.md'), 'b from w1\n');
-    w.worker.connection.journal('docs.write', write('robots/c_1/a/b.md', 'b from w1\n'));
-    w.worker.connection.journal('docs.delete', { path: 'robots/c_1/a', id: newMutationId(), base: sha256Hex(Buffer.from('v1\n')) });
-    await w.link();
-    await settled();
-    expect(tree(dir)).toEqual({ 'a/b.md': 'b from w1\n' });
-    expect(w.home.store.state.robots.c_1.note).toBe('');
-  });
+  for (const removed of [true, false]) {
+    it(`a write under a doc journaled before the doc's delete, as the previous release did, drains where this Mac ${removed ? 'has removed the doc' : 'still has the doc, leaving a copy and a note'}`, async () => {
+      const { w, dir, farDir, settled } = both({ a: 'v1\n' });
+      if (removed) fs.rmSync(path.join(dir, 'a'));
+      fs.rmSync(path.join(farDir, 'a'));
+      put(path.join(farDir, 'a/b.md'), 'b from w1\n');
+      w.worker.connection.journal('docs.write', write('robots/c_1/a/b.md', 'b from w1\n'));
+      w.worker.connection.journal('docs.delete', { path: 'robots/c_1/a', id: newMutationId(), base: sha256Hex(Buffer.from('v1\n')) });
+      await w.link();
+      await settled();
+      const [copy] = conflicts(dir);
+      expect(tree(dir)).toEqual({ 'a/b.md': 'b from w1\n', ...(!removed && { [copy]: 'b from w1\n' }) });
+      expect(w.home.store.state.robots.c_1.note).toBe(removed ? '' : `w1 wrote robots/c_1/a/b.md, but robots/c_1/a is a file on this Mac; w1's version is kept as robots/c_1/${copy}`);
+    });
+  }
 
   it('a conflict copy of a doc with a long name has a name a tar carries, and reaches the worker', async () => {
     const name = `${'k'.repeat(77)}.md`;
@@ -609,8 +613,8 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     expect(read(path.join(farDir, copy))).toBe('theirs\n');
   });
 
-  it('one tar makes a file here a folder and a folder a file', async () => {
-    const { journaled, errors, there, ours, send } = tars();
+  it('one tar makes a file here a folder and a folder a file, and a link here at a doc of the home\'s that doc', async () => {
+    const { journaled, errors, here, there, ours, send } = tars();
     put(there('x'), 'x1\n');
     put(there('z/y.md'), 'y1\n');
     put(there('z/c/d.md'), 'd1\n');
@@ -619,8 +623,14 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     put(there('x/y.md'), 'xy\n');
     fs.rmSync(there('z'), { recursive: true });
     put(there('z'), 'z1\n');
+    const outside = path.join(makeHome(), 'mine.md');
+    put(outside, 'not a doc\n');
+    fs.symlinkSync(outside, here('l'));
+    put(there('l'), 'l from home\n');
     await send(0);
-    expect(ours()).toEqual({ 'x/y.md': 'xy\n', z: 'z1\n' });
+    expect(ours()).toEqual({ 'x/y.md': 'xy\n', z: 'z1\n', l: 'l from home\n' });
+    expect(fs.lstatSync(here('l')).isFile()).toBe(true);
+    expect(read(outside)).toBe('not a doc\n');
     await nap(300);
     expect(journaled).toEqual([]);
     expect(errors).toEqual([]);
@@ -634,11 +644,13 @@ describe('a path that is a file on one machine and a folder on the other', () =>
 
     // a folder made here while the home changed the file
     fs.rmSync(here('z'));
+    fs.mkdirSync(here('z/aaa/b'), { recursive: true });
     put(here('z/w.md'), 'w from here\n');
     await until(() => expect(journaled).toEqual([['docs.delete', 'robots/c_1/z'], ['docs.write', 'robots/c_1/z/w.md']]));
     put(there('z'), 'z2, changed at home\n');
     await send(1);
     expect(ours()).toEqual({ 'x/y.md': 'y1\n', 'z/w.md': 'w from here\n' });
+    expect(fs.existsSync(here('z/aaa/b'))).toBe(true);
     put(there('z-w.w1.mu_0000000000.conflict.md'), 'w from here\n');
     await send(2);
     expect(ours()).toEqual({ 'x/y.md': 'y1\n', z: 'z2, changed at home\n', 'z-w.w1.mu_0000000000.conflict.md': 'w from here\n' });
@@ -658,8 +670,8 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     expect(errors).toEqual([]);
   });
 
-  it('a doc too large to send stays on the worker and holds its place, and a delete the home took is journaled once', async () => {
-    const { journaled, errors, here, there, ours, send } = tars();
+  it('a doc too large to send stays on the worker and holds its place, said once, and a delete the home took is journaled once', async () => {
+    const { journaled, errors, infos, here, there, ours, send } = tars();
     put(there('gone.md'), 'g\n');
     await send(0);
     put(here('big'), 'b'.repeat(1024 * 1024 + 1));
@@ -673,6 +685,7 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     await nap(300);
     expect(journaled).toEqual([['docs.delete', 'robots/c_1/gone.md']]);
     expect(errors).toEqual([`docs: ${here('big')} is over 1 MB and stays on this machine`]);
+    expect(infos).toEqual(['docs: the home\'s robots/c_1/big/x.md is not taken while a doc of this machine\'s holds its place']);
   });
 
   it('a conflict copy in a folder too deep for a tar to carry it with its name is kept a folder up, named in the note by its path', () => {
@@ -689,26 +702,60 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     expect(store.state.robots.c_1.note).toBe(`${deep}/n.md changed on both w1 and this Mac; w1's version is kept as ${c.kept}`);
   });
 
-  it('this Mac takes a write where it holds only folders, keeps one where a folder holds a doc at any depth or a link is, and finds nothing to delete at a folder or under a file', () => {
+  it('this Mac takes a write where it holds only folders and a crashed write\'s temp, removing them, keeps one where a folder holds a doc at any depth, leaving its folders, and finds nothing to delete at a folder or under a file', () => {
     const home = path.join(makeHome(), 'docs');
-    fs.mkdirSync(path.join(home, 'robots/c_1/a/b/c'), { recursive: true });
-    put(path.join(home, 'robots/c_1/x/c/y.md'), 'y\n');
-    put(path.join(home, 'robots/c_1/f'), 'f\n');
-    fs.symlinkSync(path.join(home, 'robots/c_1/x'), path.join(home, 'robots/c_1/l'));
+    const at = (rel: string) => path.join(home, 'robots/c_1', rel);
+    fs.mkdirSync(at('a/b/c'), { recursive: true });
+    put(at('a/b/y.md.durable-1-0123abcd.tmp'), 'half a write\n');
+    for (const f of ['aaa', 'bbb/ccc', 'mmm', 'spec/drafts']) fs.mkdirSync(at(f), { recursive: true });
+    put(at('plan/zzz.md'), 'z\n');
+    for (const f of ['aaa', 'bbb/ccc', 'mmm']) fs.mkdirSync(at(`plan/${f}`), { recursive: true });
+    put(at('x/c/y.md'), 'y\n');
+    put(at('f'), 'f\n');
     const docs = new HomeDocs(home, silentLogger, () => 'w1', () => true);
-    const link = newMutationId();
-    expect(docs.apply('docs.write', write('robots/c_1/l', 'l from w1\n', { id: link }), W)).toEqual({ file: 'robots/c_1/l', kept: `robots/c_1/l.w1.${link}.conflict.md`, under: 'robots/c_1/l' });
-    expect(fs.lstatSync(path.join(home, 'robots/c_1/l')).isSymbolicLink()).toBe(true);
-    // a doc in the linked folder is one there, as the tar has it
-    expect(docs.apply('docs.write', write('robots/c_1/l/c/z.md', 'z from w1\n'), W)).toBeUndefined();
     expect(docs.apply('docs.write', write('robots/c_1/a', 'a from w1\n'), W)).toBeUndefined();
-    const id = newMutationId();
-    expect(docs.apply('docs.write', write('robots/c_1/x', 'x from w1\n', { id }), W)).toEqual({ file: 'robots/c_1/x', kept: `robots/c_1/x.w1.${id}.conflict.md`, under: 'robots/c_1/x' });
+    const ids = [newMutationId(), newMutationId(), newMutationId()];
+    expect(docs.apply('docs.write', write('robots/c_1/x', 'x from w1\n', { id: ids[0] }), W)).toEqual({ file: 'robots/c_1/x', kept: `robots/c_1/x.w1.${ids[0]}.conflict.md`, under: 'robots/c_1/x' });
+    expect(docs.apply('docs.write', write('robots/c_1/plan', 'plan from w1\n', { id: ids[1] }), W)).toEqual({ file: 'robots/c_1/plan', kept: `robots/c_1/plan.w1.${ids[1]}.conflict.md`, under: 'robots/c_1/plan' });
+    // made on a doc this Mac removed since, leaving only folders
+    expect(docs.apply('docs.write', write('robots/c_1/spec', 'spec from w1\n', { id: ids[2], base: sha256Hex(Buffer.from('v1\n')) }), W)).toEqual({ file: 'robots/c_1/spec', kept: `robots/c_1/spec.w1.${ids[2]}.conflict.md` });
     expect(docs.apply('docs.delete', { path: 'robots/c_1/x', id: newMutationId(), base: sha256Hex(Buffer.from('x\n')) }, W)).toBeUndefined();
+    expect(docs.apply('docs.delete', { path: 'robots/c_1/mmm', id: newMutationId(), base: sha256Hex(Buffer.from('m\n')) }, W)).toBeUndefined();
     expect(docs.apply('docs.delete', { path: 'robots/c_1/f/g.md', id: newMutationId(), base: sha256Hex(Buffer.from('g\n')) }, W)).toBeUndefined();
     expect(tree(path.join(home, 'robots/c_1'))).toEqual({
-      a: 'a from w1\n', 'x/c/y.md': 'y\n', 'x/c/z.md': 'z from w1\n', 'l/c/y.md': 'y\n', 'l/c/z.md': 'z from w1\n', f: 'f\n',
-      [`x.w1.${id}.conflict.md`]: 'x from w1\n', [`l.w1.${link}.conflict.md`]: 'l from w1\n',
+      a: 'a from w1\n', 'x/c/y.md': 'y\n', 'plan/zzz.md': 'z\n', f: 'f\n',
+      [`x.w1.${ids[0]}.conflict.md`]: 'x from w1\n', [`plan.w1.${ids[1]}.conflict.md`]: 'plan from w1\n', [`spec.w1.${ids[2]}.conflict.md`]: 'spec from w1\n',
+    });
+    for (const f of ['plan/aaa', 'plan/bbb/ccc', 'plan/mmm', 'spec/drafts', 'aaa', 'bbb/ccc', 'mmm']) expect(fs.statSync(at(f)).isDirectory()).toBe(true);
+  });
+
+  it('this Mac follows a link: one to a file is that file, one to a folder holds its place, a dangling one is nothing, and no folder through one is removed outside the docs', () => {
+    const home = path.join(makeHome(), 'docs');
+    const at = (rel: string) => path.join(home, 'robots/c_1', rel);
+    const outside = makeHome();
+    put(path.join(outside, 'f.md'), 'v1\n');
+    fs.mkdirSync(path.join(outside, 'Projects/2026/q4'), { recursive: true });
+    put(at('x/c/y.md'), 'y\n');
+    fs.mkdirSync(at('.'), { recursive: true });
+    fs.symlinkSync(path.join(outside, 'f.md'), at('lf'));
+    fs.symlinkSync(at('x'), at('l'));
+    fs.symlinkSync(path.join(outside, 'gone'), at('dl'));
+    fs.symlinkSync(outside, at('ext'));
+    const docs = new HomeDocs(home, silentLogger, () => 'w1', () => true);
+    expect(docs.apply('docs.write', write('robots/c_1/lf', 'lf from w1\n', { base: sha256Hex(Buffer.from('v1\n')) }), W)).toBeUndefined();
+    expect(docs.apply('docs.write', write('robots/c_1/dl', 'dl from w1\n'), W)).toBeUndefined();
+    const ids = [newMutationId(), newMutationId()];
+    expect(docs.apply('docs.write', write('robots/c_1/l', 'l from w1\n', { id: ids[0] }), W)).toEqual({ file: 'robots/c_1/l', kept: `robots/c_1/l.w1.${ids[0]}.conflict.md`, under: 'robots/c_1/l' });
+    // a doc in a linked folder is one there, as the tar has it
+    expect(docs.apply('docs.write', write('robots/c_1/l/c/z.md', 'z from w1\n'), W)).toBeUndefined();
+    expect(docs.apply('docs.write', write('robots/c_1/ext/Projects', 'p from w1\n', { id: ids[1] }), W)).toMatchObject({ under: 'robots/c_1/ext/Projects' });
+    expect(docs.apply('docs.delete', { path: 'robots/c_1/ext/Projects', id: newMutationId(), base: sha256Hex(Buffer.from('p\n')) }, W)).toBeUndefined();
+    expect(fs.statSync(path.join(outside, 'Projects/2026/q4')).isDirectory()).toBe(true);
+    expect(read(path.join(outside, 'f.md'))).toBe('v1\n');
+    expect(fs.lstatSync(at('lf')).isFile()).toBe(true);
+    expect(fs.lstatSync(at('l')).isSymbolicLink()).toBe(true);
+    expect(tree(path.join(home, 'robots/c_1'))).toMatchObject({
+      lf: 'lf from w1\n', dl: 'dl from w1\n', 'x/c/z.md': 'z from w1\n', 'l/c/z.md': 'z from w1\n', [`l.w1.${ids[0]}.conflict.md`]: 'l from w1\n',
     });
   });
 
@@ -730,6 +777,12 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     expect(read(path.join(home, g.kept!))).toBe('Y\n');
     expect(read(path.join(home, fg.kept!))).toBe('Z\n');
     expect(read(path.join(home, one.kept!))).toBe('X\n');
+    expect(conflicts(path.join(home, 'robots/c_1'))).toHaveLength(4);
+    // this Mac removed the file in its place, and the next change there goes into the same copy
+    fs.rmSync(path.join(home, 'robots/c_1/f'));
+    expect(docs.apply('docs.write', write('robots/c_1/f/g.md', 'V\n', { prev: sha('Y\n') }), W)).toEqual({ file: 'robots/c_1/f/g.md', kept: g.kept });
+    expect(read(path.join(home, g.kept!))).toBe('V\n');
+    expect(fs.existsSync(path.join(home, 'robots/c_1/f'))).toBe(false);
     expect(conflicts(path.join(home, 'robots/c_1'))).toHaveLength(4);
   });
 });
