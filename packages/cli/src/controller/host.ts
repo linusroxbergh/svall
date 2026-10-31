@@ -538,7 +538,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       } catch (err) {
         if (err instanceof SshError && err.kind === 'auth') {
           throw new StepError(`ssh refused the login to ${o.ssh}: every step from here logs in without a password or passphrase prompt`,
-            `install a key there with ssh-copy-id ${o.ssh} and keep its passphrase in the agent with ssh-add --apple-use-keychain, then add the machine again`);
+            `install a key there with ssh-copy-id ${o.ssh}, keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart, then add the machine again`);
         }
         throw new StepError((err as Error).message, `ssh ${o.ssh} and see what it answers`);
       }

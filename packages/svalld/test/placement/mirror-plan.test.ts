@@ -316,6 +316,16 @@ describe('the agent configuration mirror', () => {
     expect([plan.unreadInstalls.length, plan.vars.filter((v) => v === 'HELD_PLUGIN_VAR' || v === 'PDF_KEY')]).toEqual([1, []]);
   });
 
+  it('a Codex server with enabled_tools, disabled_tools or startup_timeout_ms is known: it travels with them, its key emptied', () => {
+    const mac = macHome();
+    const toml = path.join(mac.codexDir, 'config.toml');
+    put(toml, fs.readFileSync(toml, 'utf8').replace('args = ["-y", "github-mcp"]', 'args = ["-y", "github-mcp"]\nenabled_tools = ["search"]\ndisabled_tools = ["delete_repo"]\nstartup_timeout_ms = 20000'));
+    const github = mirrorPlan(mac, new Set()).servers.find((s) => s.agent === 'codex' && s.name === 'github')!;
+    expect([github.known, github.entry]).toEqual([
+      true, expect.objectContaining({ enabled_tools: ['search'], disabled_tools: ['delete_repo'], startup_timeout_ms: 20000, env: {}, env_vars: ['GITHUB_TOKEN'] }),
+    ]);
+  });
+
   it('a file the mirror writes itself is left out over 5 MB too', () => {
     const mac = macHome();
     const mcp = path.join(mac.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');

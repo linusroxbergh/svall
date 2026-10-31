@@ -9,7 +9,8 @@ Robots on different machines share islands, cards, the map, the board and the ke
 its machine on its board card, token, sidebar row, side card and terminal card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
 Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
-opens a terminal in its folder. The Usage panel counts the robots on each worker too, read on the worker where their
+opens a terminal on the worker with a `cd` to its folder typed at the prompt: press Return to go there. The Usage
+panel counts the robots on each worker too, read on the worker where their
 transcripts are; a worker that does not answer within 5 seconds is left out, and this Mac's own limits still show. The
 scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the
 worker reads the transcript, and this Mac writes the answer.
@@ -131,8 +132,9 @@ Mission control's robots stay on this Mac and have no move button.
   `AGENTS.md`; and the fleet's agent profiles. A key in them, such as an MCP server's `env` value, travels only once
   you tick it for that worker; until then the rest travels without it. A file whose keys Svall cannot leave out, such
   as a plugin's LSP config with a key in its `env` or a subagent defining an MCP server with one, stays on this Mac
-  until you tick it, and then travels as it is. Logins never travel. Nor do Claude Code's `hooks`, `statusLine` and `env` settings, which
-  stay as the machine has them, the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
+  until you tick it, and then travels as it is. Logins never travel. Nor do Claude Code's `hooks` and `statusLine` settings, which
+  stay as the machine has them, its `env` values until you tick them (a ticked one never replaces a value the machine
+  set itself), the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
   `awsAuthRefresh`, `otelHeadersHelper`), or a git login in a plugin marketplace's URL. Nor does a credential file in
   those folders or behind a link from them, named in any case: `.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`,
   `.pgpass`, `.vault-token`, `.env*`, `*.pem`, `*.key`, `*.tfvars`, `*.p12`, `*.pfx`, `AuthKey_*.p8`, `id_rsa*`,
