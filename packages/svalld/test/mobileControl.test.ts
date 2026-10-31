@@ -608,6 +608,20 @@ describe('a worker\'s phone link', () => {
     expect(after.turns.n).toBe(0);
   });
 
+  it('watches a link first turned on while its daemon runs, so a look tailscale fails is tried again', async () => {
+    const file = path.join(makeHome(), 'phone.json');
+    const { d, phone } = worker({ file, saved: [8443], web: { [servePort('private')]: SITE, 8443: 'http://127.0.0.1:47000/abcdef' } });
+    const stop = phone.watch(50);
+    expect(d.calls).toEqual([]);
+    const run = d.run;
+    d.run = () => Promise.reject(new Error('tailscaled is wedged'));
+    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('tailscale') });
+    d.run = run;
+    await vi.waitFor(() => expect(phone.served()).toBe('https://mac.tailnet.ts.net:8443/'));
+    expect(d.web[8443]).toBe(TARGET);
+    stop();
+  });
+
   it('looks at nothing while its home has not turned it on, and says why tailscale would not serve', async () => {
     const file = path.join(makeHome(), 'phone.json');
     const { d, phone } = worker({ file });

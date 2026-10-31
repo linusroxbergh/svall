@@ -29,6 +29,8 @@ type Link = Pick<Mobile, 'get' | 'set'> & { served(): string | undefined };
 export class WorkerPhone {
   private held?: PhoneOn;
   private link: Link;
+  // how often a look that fails is tried again, once watched, and the look under way while the link is on
+  private watching?: { ms: number; stop?: () => void };
 
   /** `link`: this worker's own phone link, taking the logins it lets through. */
   constructor(private o: { file: string; link: (logins: () => string[]) => Link; pass: string; log: (msg: string) => void }) {
@@ -36,9 +38,17 @@ export class WorkerPhone {
     this.link = o.link(() => this.logins());
   }
 
-  /** Looks at the link while it is on, as a daemon starts on another port: it follows under the same key. The returned function stops it. */
+  /** Looks at the link each time it turns on, and at once if it is: a daemon on another port is followed under the same key.
+   *  The returned function stops it. */
   watch(ms: number): () => void {
-    return this.held ? watchServed(this.link, () => this.on, ms) : () => {};
+    this.watching = { ms };
+    this.look();
+    return () => { this.watching?.stop?.(); this.watching = undefined; };
+  }
+
+  private look(): void {
+    const w = this.watching;
+    if (w && !w.stop && this.held) w.stop = watchServed(this.link, () => this.on, w.ms);
   }
 
   get on(): boolean {
@@ -90,12 +100,15 @@ export class WorkerPhone {
     if (!p.data.on) {
       const was = this.held;
       this.held = undefined;
+      this.watching?.stop?.();
+      if (this.watching) this.watching.stop = undefined;
       fs.rmSync(this.o.file, { force: true });
       if (!was) return {};
       const s = await this.link.set(false);
       return s.error ? { error: s.error } : {};
     }
     this.write(p.data);
+    this.look();
     let s = await this.link.get();
     if (!s.serving && !s.error) s = await this.link.set(true);
     return s.serving ? { url: s.url, pass: this.o.pass } : { error: s.error ?? `tailscale serve did not take port ${s.port}` };
