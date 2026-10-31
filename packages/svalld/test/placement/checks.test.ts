@@ -210,6 +210,21 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(mute)).toEqual({ reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines', details: [] });
   });
 
+  it('a worker that gives no answer in time is named, with what to do, and not the call it left unanswered', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    for (const method of ['system.info', 'repo.probe']) {
+      const d = depsOf(t, [on(root)]);
+      const call = d.links.call;
+      d.links.call = (m, asked, params) => (asked === method ? Promise.reject(new ApiError('timeout', `${method} got no reply in 30000 ms`)) : call(m, asked, params));
+      expect(await refusal(d)).toEqual({ reason: 'linus-vault did not answer', action: 'try again; if it keeps happening, Check it under Machines', details: [] });
+    }
+    // any other failure is shown as it is
+    const d = depsOf(t, [on(root)]);
+    d.links.call = () => Promise.reject(new ApiError('not_reachable', 'the link closed: reset'));
+    expect(await refusal(d)).toEqual({ reason: 'the link closed: reset', action: 'try again when it is awake', details: [] });
+  });
+
   it('a blocked agent is not refused: question is true and interrupts follows the choice', async () => {
     const t = machines();
     const terminals = [{ robotId: 'c_1', class: 'agent-blocked' as const }];

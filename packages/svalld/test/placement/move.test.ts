@@ -552,6 +552,34 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
 
+  it('a check names a worker that gives no answer in time, on the way back, out again, and home into a new worktree', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const silent = { ok: false, refusal: { reason: 'w1 did not answer', action: 'try again; if it keeps happening, Check it under Machines' } };
+    // `method` hangs there, and its call here is cut short
+    const call = home.links.call.bind(home.links);
+    const hang = (method: string): (() => void) => {
+      const was = w.worker.handlers[method];
+      w.worker.handlers[method] = () => new Promise(() => {});
+      home.links.call = ((m, asked, params, o) => call(m, asked, params, asked === method ? { ...o, timeoutMs: 100 } : o)) as typeof home.links.call;
+      return () => { w.worker.handlers[method] = was; home.links.call = call; };
+    };
+
+    let answer = hang('system.info');
+    expect(await home.placement.check('c_1', H)).toMatchObject(silent);
+    answer();
+    await home.placement.start('c_1', H);
+    answer = hang('move.compare');
+    expect(await home.placement.check('c_1', W)).toMatchObject(silent);
+    answer();
+    const b = await bornThere(w, 'scout');
+    answer = hang('repo.probe');
+    expect(await home.placement.check(b.id, H)).toMatchObject(silent);
+    answer();
+    expect(await home.placement.check(b.id, H)).toMatchObject({ ok: true });
+  });
+
   it('a return refuses a worktree there mid-merge, whose bundle would carry none of it', async () => {
     const w = open();
     const home = await w.start();

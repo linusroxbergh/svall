@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  AgentKind, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type Blocker, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo,
+  AgentKind, ApiError, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type Blocker, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo,
 } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
@@ -78,6 +78,11 @@ export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'>
   if (!odd) return { failure: { reason: `${name} is not reachable`, action: 'try again when it is awake' } };
   return { failure: odd.release === release ? { reason: `${name} runs a different build`, action: UPGRADE_ACTION } : releaseFailure(name, odd.release, release) };
 }
+
+/** Why a check's call to worker `name` failed: one it gave no answer in time names the worker, not the call. */
+export const unanswered = (e: Error, name: string): Failure => (e instanceof ApiError && e.code === 'timeout'
+  ? { reason: `${name} did not answer`, action: 'try again; if it keeps happening, Check it under Machines' }
+  : { reason: e.message, action: 'try again when it is awake' });
 
 const originOf = async (dir: string, git: GitRunner): Promise<string | undefined> => {
   const r = await git(['remote', 'get-url', 'origin'], dir);
@@ -246,7 +251,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     try {
       return await d.links.call<T>(to, method, params);
     } catch (e) {
-      if (!quiet) fail({ reason: (e as Error).message, action: 'try again when it is awake' });
+      if (!quiet) fail(unanswered(e as Error, name));
       return undefined;
     }
   };

@@ -19,7 +19,7 @@ import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, withoutToken, type CheckDeps, type CheckResult, type RepoProbe,
+  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, unanswered, withoutToken, type CheckDeps, type CheckResult, type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths } from './paths.js';
@@ -127,7 +127,7 @@ export class Placement {
     // the worktree the robot left there is the one it goes back into, as it left it
     if (!checked.ok || c.left?.machine !== to) return checked;
     const { refusal } = await this.d.links.call<{ refusal?: Failure }>(to, 'move.compare', { left: c.left })
-      .catch((e: Error) => ({ refusal: { reason: e.message, action: 'try again when it is awake' } }));
+      .catch((e: Error) => ({ refusal: unanswered(e, this.name(to)) }));
     return refusal ? { ok: false, refusal: { ...refusal, details: [] } } : checked;
   }
 
@@ -528,7 +528,8 @@ export class Placement {
 
   // where the robot lands here, in this Mac's clone at the worker's clone's place, whose refs the bundle builds on
   private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<{ plan: MovePlan; back?: LeftBehind } | { failure: Failure }> {
-    const info = await this.d.links.call<SystemInfo>(from, 'system.info', {});
+    const info = await this.d.links.call<SystemInfo>(from, 'system.info', {}).catch((e: Error) => e);
+    if (info instanceof Error) return { failure: unanswered(info, this.name(from)) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, await this.d.agents());
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
@@ -549,7 +550,7 @@ export class Placement {
     if (!back) {
       if (!repo.isWorktree) return { reason: `${c.name} works in ${repoName}'s main checkout on ${this.name(from)}`, action: `give it its own worktree on ${this.name(from)} first` };
       const far = await this.d.links.call<RepoProbe>(from, 'repo.probe', { path: repo.mainRoot }).catch((e: Error) => e);
-      if (far instanceof Error) return { reason: far.message, action: 'try again when it is awake' };
+      if (far instanceof Error) return unanswered(far, this.name(from));
       const here = await probeRepo({ path: main }, git);
       if (here.state === 'none') {
         const remote = far.remote && withoutToken(far.remote);
