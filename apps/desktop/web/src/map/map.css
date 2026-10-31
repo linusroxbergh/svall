@@ -188,15 +188,6 @@
   transition: width var(--dur-meter) var(--ease-out), background-color var(--dur-status) var(--ease); }
 .tok .nm { flex: none; height: calc(var(--tok) * .7); padding-top: calc(var(--tok) * .14); }
 .tok .stage { position: relative; flex: 1; min-height: 0; }
-/* a disc behind the robot in a tint of its own colour; mission control's crew stand in an arch instead */
-.tok .stage::before { content: ''; position: absolute; pointer-events: none;
-  left: calc(50% - var(--tok) * .975); top: calc(var(--tok) * .06); width: calc(var(--tok) * 1.95); height: calc(var(--tok) * 1.95); border-radius: 50%;
-  background: color-mix(in srgb, var(--robot, var(--card-band)) 30%, var(--card-0));
-  box-shadow: inset 0 0 0 calc(var(--tok) * .06) color-mix(in srgb, var(--robot, var(--card-band)) 46%, var(--card-0)); }
-.home .tok .stage::before { left: calc(var(--tok) * .2); right: calc(var(--tok) * .2); top: calc(var(--tok) * .03); bottom: calc(var(--tok) * .07);
-  width: auto; height: auto; border-radius: calc(var(--tok) * 1.1) calc(var(--tok) * 1.1) calc(var(--tok) * .05) calc(var(--tok) * .05); }
-.home .tok .stage::after { bottom: calc(var(--tok) * .1); }
-.home .tok .card::before { display: none; }
 .tok .stage::after { content: ''; position: absolute; left: 50%; bottom: calc(var(--tok) * .04); transform: translateX(-50%);
   width: calc(var(--tok) * 1.3); height: calc(var(--tok) * .14); border-radius: 50%;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent); }
