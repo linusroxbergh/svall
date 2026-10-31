@@ -58,7 +58,9 @@
   --sel: #8ED0FF;
   --star: var(--pt-sun);
   /* a PR waiting on its reviewers */
-  --review: #C3A8C9; --ink-on-review: #33253A;
+  --review: #D5A1E5; --ink-on-review: #33253A;
+  /* a monitor the agent left running */
+  --monitor: #6AC9E9; --ink-on-monitor: #1B2A36;
   /* an error, or a destructive control's word, on the dark chrome */
   --danger: color-mix(in srgb, var(--blocked) 70%, var(--ink));
 
