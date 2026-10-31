@@ -18,10 +18,10 @@ const SIZES = [9, 10, 11, 13];
 const SIZE_KEY = 'svall.mobile.fontSize';
 
 const tokenOf = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-// xterm parses its own colours, so the selection's alpha rides as a hex byte on the token
+// xterm parses its own colours, so the selection's alpha rides as a hex byte on the token: 40 is the editor's 25%
 const theme = () => ({
-  background: tokenOf('--surface-0'), foreground: tokenOf('--ink'), cursor: tokenOf('--sel'),
-  selectionBackground: `${tokenOf('--sel')}4d`,
+  background: tokenOf('--surface-0'), foreground: tokenOf('--ink'), cursor: tokenOf('--sand'),
+  selectionBackground: `${tokenOf('--sel')}40`,
 });
 
 // a browser with site data switched off throws rather than returning nothing

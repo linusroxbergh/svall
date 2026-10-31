@@ -113,7 +113,7 @@ textarea.fld { padding-block: var(--sp-md); }
 .caret { transition: rotate var(--dur) var(--ease-out); }
 .caret[data-open="false"] { rotate: -90deg; }
 /* a section's label */
-.kicker, .sb-head, .ide-root, .res-subh, .load-grp, .load-tot span, .setup h2 {
+.kicker, .sb-head, .ide-root, .res-subh, .res-list h4, .load-grp, .load-tot span, .setup h2 {
   font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);
 }
 /* an icon control's target is the height of the bar or tab it sits in, never the glyph's own line box.
@@ -135,7 +135,16 @@ textarea.fld { padding-block: var(--sp-md); }
 /* a focus ring closes in on its control as it lands */
 @keyframes ring-in { from { outline-color: transparent; outline-offset: 6px; } }
 @keyframes ring-fade { from { outline-color: transparent; } }
-@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* reduced motion keeps fades, colour changes and the spinners and glows that report a state; what slides, lifts, swells or pulses stops */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-name: none !important; transition-property: opacity, color, background-color, border-color, box-shadow !important; }
+  .starting, .tour-ring, .tour, .modal-back, .modal-back > .modal { animation-name: fade-in !important; }
+  :focus-visible { animation-name: ring-fade !important; }
+  .kb-chip[data-busy="true"] svg, .move-spin { animation-name: spin !important; }
+  .kc[data-arrived="true"] { animation-name: kc-arrive !important; }
+  /* a robot that needs you wears its attention ring still, half grown */
+  [data-attention="true"] .sdot::after { transform: scale(calc(1 + var(--sp-sm) / var(--dot))); opacity: .35; }
+}
 /* the map under a full card, and the map and sidebar while the app is in the background, hold their loops still.
    An svg's own parts are left alone: restyling them all costs a frame, and motion.ts stills the robots. A focus ring still lands,
    as a full card's controls sit under the map */

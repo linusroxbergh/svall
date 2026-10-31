@@ -21,8 +21,7 @@
 .res-car { flex: none; width: 10px; font-style: normal; font-size: var(--text-2xs); color: var(--ink-3); text-align: center; }
 .res-node-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .res-node .n { flex: none; font-size: var(--text-xs); color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.res-subh { padding: var(--sp-sm) var(--sp-md) var(--sp-2xs) calc(var(--sp-md) + var(--sp-2xl)); font-size: var(--text-xs);
-  letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-3); }
+.res-subh { padding: var(--sp-sm) var(--sp-md) var(--sp-2xs) calc(var(--sp-md) + var(--sp-2xl)); }
 .res-glyph { flex: none; width: 12px; text-align: center; font-style: normal; }
 /* one pick a column: bright in the column that has the keys, plain in one the walk came through */
 .res-node[aria-pressed="true"], .res-item[data-active="true"] { background: var(--fill-2); }
@@ -40,8 +39,7 @@
 .res-list { width: var(--list-w); flex: none; border-left: 1px solid var(--line-soft); padding: var(--sp-xl) var(--sp-lg) 0 var(--sp-xl); display: flex; flex-direction: column; min-height: 0; }
 .res-find { margin-bottom: var(--sp-sm); }
 .res-rows { flex: 1; min-height: 0; overflow: hidden auto; padding-bottom: var(--sp-xl); }
-.res-list h4 { display: flex; align-items: center; gap: var(--sp-md); margin: var(--sp-xl) var(--sp-md) var(--sp-xs); font-size: var(--text-xs);
-  font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-2); }
+.res-list h4 { display: flex; align-items: center; gap: var(--sp-md); margin: var(--sp-xl) var(--sp-md) var(--sp-xs); }
 .res-list h4 .n { margin-left: auto; font-weight: var(--w-medium); letter-spacing: 0; color: var(--ink-3); font-variant-numeric: tabular-nums; }
 .res-item { display: block; width: 100%; padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); border: 0; background: none;
   text-align: left; font-family: inherit; color: inherit; cursor: pointer; min-width: 0; }

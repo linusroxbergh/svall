@@ -12,7 +12,7 @@
 .map > :is(.map-grain, .map-grid, .map-sea, .map-world), .map-overlay > :is(.home, .res-islet), .board > .kb-ground { transition: opacity var(--dur) var(--ease-out); }
 @starting-style { .map > :is(.map-grain, .map-grid, .map-sea, .map-world), .map-overlay > :is(.home, .res-islet), .board > .kb-ground { opacity: 0; } }
 /* the view switch stands where the board's bar holds it, so switching moves it nowhere */
-.map-view { position: absolute; top: 0; left: 0; z-index: var(--z-furniture); height: 52px; box-sizing: border-box; border-bottom: 1px solid transparent; padding: 0 var(--sp-2xl); display: flex; align-items: center; }
+.map-view { position: absolute; top: 0; left: 0; z-index: var(--z-furniture); height: var(--bar-h); box-sizing: border-box; border-bottom: 1px solid transparent; padding: 0 var(--sp-2xl); display: flex; align-items: center; }
 .map-view .kb-seg { pointer-events: auto; background: var(--glass); backdrop-filter: blur(var(--blur)); }
 .map-grain { position: absolute; inset: 0; pointer-events: none;
   background: url('../assets/map-grain.png') repeat, radial-gradient(125% 95% at 50% 8%, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%);
@@ -62,7 +62,7 @@
 @starting-style { .ctx-menu, .side-profile-menu, .linkask { opacity: 0; scale: .96; } }
 .ctx-item { display: flex; align-items: center; gap: var(--sp-xl); padding: var(--sp-sm) var(--sp-md); border-radius: var(--r-sm); cursor: default; }
 .ctx-mark { margin-left: auto; color: var(--ink-3); }
-.ctx-check { color: var(--sel); }
+.ctx-check { color: var(--sand); }
 .ctx-note { font-size: var(--text-xs); }
 .ctx-note + .ctx-check { margin-left: 0; }
 .ctx-item[data-active="true"] { background: var(--fill-2); }

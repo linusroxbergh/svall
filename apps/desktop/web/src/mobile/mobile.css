@@ -218,7 +218,9 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .m-add button:disabled { opacity: var(--disabled); }
 .m-text { margin: 0; font-size: var(--text-lg); color: var(--ink-2); white-space: pre-wrap; word-break: break-word; }
 .m-nav { display: flex; align-items: center; gap: var(--sp-2xs); letter-spacing: 0; text-transform: none; }
-.m-nav button { min-width: 32px; min-height: 28px; font-size: var(--text-xl); color: var(--ink-2); }
+.m-nav button { position: relative; min-width: 32px; min-height: 28px; font-size: var(--text-xl); color: var(--ink-2); }
+/* a finger's 44px target round the small button, spilling into the row's padding rather than growing it */
+.m-nav button::before { content: ''; position: absolute; top: 50%; left: 50%; width: max(100%, 44px); height: max(100%, 44px); translate: -50% -50%; }
 .m-nav button:disabled { opacity: var(--disabled); }
 .m-nav b { font-weight: var(--w-medium); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .m-rows > div { display: flex; justify-content: space-between; gap: var(--sp-xl); padding: var(--sp-lg) 0; border-bottom: 1px solid var(--line-soft); font-size: var(--text-lg); }
