@@ -403,7 +403,7 @@ describe('doctor on Linux', () => {
   const showOf = (u: string) => `systemctl --user show ${u} --property=LoadState --property=ActiveState --property=SubState --property=UnitFileState`;
   const show = showOf(unit);
   const running = 'LoadState=loaded\nActiveState=active\nSubState=running\nUnitFileState=enabled\n';
-  const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string>; found?: AgentKind[] } = {}) => fake({
+  const linux = (commands: Record<string, string | Error> = {}, o: { daemonEnv?: Record<string, string>; files?: Record<string, string>; found?: AgentKind[]; agentPath?: string } = {}) => fake({
     platform: 'linux',
     commands: {
       [show]: running,
@@ -426,6 +426,19 @@ describe('doctor on Linux', () => {
     const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { daemonEnv: env, files: { '/u/.config/systemd/user/svall-svalld@work.service': '[Service]\n' } }).deps));
     expect(named['daemon env']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host upgrade <this machine> from the controller$/) });
     expect(named['daemon env']).not.toHaveProperty('run');
+  });
+
+  it("warns when the unit's PATH is not where the login shell now finds the agents, as after nvm moves to another node", async () => {
+    const file = `/u/.config/systemd/user/${unit}`;
+    const agentPath = '/u/.local/share/svall/current/node/bin:/u/.local/share/svall/current/bin:/u/.nvm/versions/node/v24.1.0/bin:/u/.local/bin';
+    const was = `[Service]\n${unitEnv('PATH', agentPath.replace('v24.1.0', 'v22.11.0'))}\n`;
+    expect(byName(await doctor(priv, linux({}, { agentPath, files: { [file]: was } }).deps))['daemon path'])
+      .toMatchObject({ status: 'warn', detail: `the PATH in ${file} is not where this account's login shell finds the agent CLIs: svall setup`, run: 'svall setup' });
+    expect(byName(await doctor(priv, linux({}, { agentPath, files: { [file]: `[Service]\n${unitEnv('PATH', agentPath)}\n` } }).deps))['daemon path'].status).toBe('ok');
+    const named = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({}, { agentPath, files: { '/u/.config/systemd/user/svall-svalld@work.service': was } }).deps));
+    expect(named['daemon path']).toMatchObject({ status: 'warn', detail: expect.stringMatching(/svall host upgrade <this machine> from the controller$/) });
+    expect(named['daemon path']).not.toHaveProperty('run');
+    expect(byName(await doctor(adhoc, linux({}, { agentPath }).deps))['daemon path'].status).toBe('skip');
   });
 
   it('names OpenCode\'s config and data homes beside Claude\'s and Codex\'s', async () => {
@@ -595,6 +608,25 @@ describe('svall doctor on Linux', () => {
     expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
     expect(byName(report).gh).toMatchObject({ status: 'ok', detail: 'logged in' });
     expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir, XDG_CONFIG_HOME: configDir });
+  });
+
+  it("finds an agent in the folder only the login shell's PATH holds, as nvm puts it, and reports the PATH it asked on", async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    const nvm = path.join(home, '.nvm', 'versions', 'node', 'v22.11.0', 'bin');
+    fs.mkdirSync(nvm, { recursive: true });
+    fs.writeFileSync(path.join(nvm, 'claude'), '#!/bin/sh\n[ "$1" = auth ] && echo \'{"loggedIn":true}\' || echo "2.1.300 (Claude Code)"\n', { mode: 0o755 });
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport PATH='${nvm}':"$PATH"\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
+    const report = JSON.parse(out.join('')) as Report;
+    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
+    const unit = svalldUnit({ runtime: ownRuntime(), homedir: home, prefix: DEFAULT_PREFIX, fleet: 'private', home: path.join(home, '.svall'), agentDirs: [nvm] });
+    expect(report.daemonPath).toBe(/^Environment="PATH=(.*)"$/m.exec(unit.text)![1]);
   });
 
   it('checks the OpenCode plugin where the unit\'s XDG_CONFIG_HOME points, which only the login shell names', async () => {

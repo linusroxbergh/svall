@@ -47,14 +47,18 @@ each machine's daemon and unit logs.
 - **Two homes.** The account is `svall` on both, at `/Users/svall` on local, as on a Mac, and `/home/svall` on remote,
   so each move relocates every path from one home to the other. Local reaches remote with its own key, made when the
   run starts.
-- **Node.** Neither machine has Node on PATH. The release brings its own. The harness keeps a copy of the release's
-  node at `/opt/it/node`, which the mocked agents and the in-machine checks (`scripts/integration/machine.mjs`) run on.
+- **Node.** Local has no Node on PATH, and remote has one only in an interactive shell, the stand-in nvm's (below).
+  The release brings its own. The harness keeps a copy of the release's node at `/opt/it/node`, which the mocked
+  agents and the in-machine checks (`scripts/integration/machine.mjs`) run on.
 - **Tailscale.** The containers have no tailnet, so `tailscale` is a double that answers its version and nothing else.
 - **Mocked Claude.** `scripts/integration/claude.mjs` is a hook-speaking Claude. It posts its hooks to
   `$SVALL_HOME/hooks.sock` and keeps a Claude Code 2.1.x transcript. As Claude Code does after its folder moved, it
   resumes a session from the transcript under its cwd's slug, or else the newest of that id in another project folder.
-  `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads as
-  Claude. There is no Codex or `gh`, so `host add` advises installing them.
+  On local, `~/.local/bin/claude` execs node on it, so `ps` shows `node …/claude.mjs`, which the rest classifier reads
+  as Claude. On remote it is where `npm i -g` under nvm puts Claude Code: `~/.nvm/versions/node/v22.11.0/bin/claude`,
+  a `#!/usr/bin/env node` script beside a `node`, on a PATH only `~/.bashrc`'s nvm lines set, so `host add` must find
+  it through the login shell, and `ps` shows `node …/bin/claude`. There is no Codex or `gh`, so `host add` advises
+  installing them.
 - **The fixture.** Repo `~/src/app` on local, whose remote is a bare repository on remote, with a stash, a linked
   worktree `~/src/app-wt` holding staged, unstaged and untracked changes, `.env` and `Deploy.KEY`, main with changes
   of its own and an ignored `node_modules/`, and a worktree `~/src/app-faults` with a commit not on the remote. Three

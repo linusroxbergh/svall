@@ -112,7 +112,7 @@ and adds what only this Mac can check. A check that fails makes the command exit
 | `launchd` | Mac | The fleet's launchd agent is loaded. |
 | `launchd plist` | Mac | The fleet's launchd plist runs this build. |
 | `daemon node` | Mac | The Node the launchd agent runs is still there. |
-| `daemon path` | Mac | The launchd agent's program is there and its PATH finds the agents. |
+| `daemon path` | both | The launchd agent's program is there and its PATH finds the agents; on Linux, the unit's PATH holds the folders your login shell finds the agents in, which setup writes. |
 | `daemon env` | both | The fleet's launchd agent, or on Linux its systemd unit, has the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME` and `XDG_DATA_HOME` your login shell sets. |
 | `doctor` | host doctor | The companion's doctor answered. |
 | `release` | host doctor | The machine runs this Mac's release and protocol. |

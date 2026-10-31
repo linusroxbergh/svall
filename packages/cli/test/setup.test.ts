@@ -120,6 +120,24 @@ describe('svall setup on Linux', () => {
       .toContain(`Environment="CLAUDE_CONFIG_DIR=${claudeDir}"\nEnvironment="CODEX_HOME=${codexDir}"\n`);
   });
 
+  it("puts the folder the login shell finds claude in, as nvm's, on the unit's PATH right after the runtime", async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    const nvm = path.join(home, '.nvm', 'versions', 'node', 'v22.11.0', 'bin');
+    fs.mkdirSync(nvm, { recursive: true });
+    fs.writeFileSync(path.join(nvm, 'claude'), '#!/bin/sh\necho "2.1.300 (Claude Code)"\n', { mode: 0o755 });
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho "tmux 3.5a"\n', { mode: 0o755 });
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport PATH='${nvm}':"$PATH"\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await setupCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux')
+      .parseAsync(['--no-launchctl'], { from: 'user' });
+    const unit = fs.readFileSync(path.join(home, '.config', 'systemd', 'user', 'svall-svalld@private.service'), 'utf8');
+    expect(/^Environment="PATH=(.*)"$/m.exec(unit)?.[1].split(':')[1]).toBe(nvm);
+  });
+
   // under the same name the daemon still runs the tree the install replaced, and no other release may be kept
   it.each(['1.0.0', '1.1.0'])('restarts every fleet daemon onto a release installed over %s, and asks each from it', async (was) => {
     const home = process.env.HOME!;

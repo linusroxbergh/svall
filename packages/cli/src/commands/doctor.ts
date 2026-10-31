@@ -13,7 +13,7 @@ import { BWRAP_COMMAND, BWRAP_DENIED, BWRAP_PROFILE, USERNS_RESTRICTED, codexPat
 import { Config, configRefusal, configStray, parseConfig, peekConfig } from '@svall/svalld/config';
 import { launchdEnv, plistEnv, plistFile, plistRun } from '@svall/svalld/launchd';
 import { lingerState, unitStatus, type Run } from '@svall/svalld/linux/service';
-import { agentHomesEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
+import { agentLoginEnv, svalldUnitName, unitDirOf, unitEnv } from '@svall/svalld/linux/setup';
 import { configDir, copiedRemedy, hardwareId, rebindMachine } from '@svall/svalld/machine';
 import { opencodePaths, opencodePluginCurrent, type OpencodePaths } from '@svall/svalld/opencode/install';
 import { claudePaths, resolvePaths, userPaths } from '@svall/svalld/paths';
@@ -29,8 +29,8 @@ import type { Target } from '../target.js';
 import { checkoutVersion } from '../version.js';
 import { missing, preflight, realPreflightDeps, type PreflightDeps } from './preflight.js';
 
-// daemonEnv: the agent homes setup hands a fleet's daemon from this account, which the agent checks ran with
-export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] }; daemonEnv?: Record<string, string> };
+// daemonEnv and daemonPath: the agent homes and PATH setup hands a fleet's daemon from this account, which the agent checks ran with
+export type Report = { version?: string; home: string; config: { fleet: string; node: string }; checks: Check[]; log: { path: string; lines: string[] }; daemonEnv?: Record<string, string>; daemonPath?: string };
 
 export type DoctorDeps = PreflightDeps & {
   read(file: string): string | undefined;
@@ -258,6 +258,17 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
 }
 
+// the unit's PATH holds the agents' folders setup found through the login shell, which an agent moved since leaves stale
+function unitDaemonPath(t: Target, d: DoctorDeps): Check {
+  if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
+  const file = path.join(d.unitDir, svalldUnitName(t.name));
+  const text = d.read(file);
+  if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${file}` };
+  return text.includes(unitEnv('PATH', d.agentPath ?? ''))
+    ? { name: 'daemon path', status: 'ok', detail: 'it finds the agent CLIs where this account\'s login shell does' }
+    : { name: 'daemon path', status: 'warn', detail: `the PATH in ${file} is not where this account's login shell finds the agent CLIs: ${unitFix(t)}`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
+}
+
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
 const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
 
@@ -387,7 +398,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await svalld(t, d),
     await hookReceiver(t, d),
     ...(linux
-      ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
+      ? [await systemd(t, d), daemonEnv(t, d), unitDaemonPath(t, d), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),
@@ -453,11 +464,12 @@ export function doctorCommand(target: () => Target, json: () => boolean, platfor
     try { integrations = peekConfig(resolvePaths(profileHome(PRIVATE))).integrations; } catch { /* the private fleet's doctor reports it */ }
     const { launchAgents, shimDir } = userPaths();
     // a login shell asked over ssh must leave host add's doctor its own time to answer
-    const daemonEnv = platform === 'linux' ? await agentHomesEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : launchdEnv();
-    const pre = realPreflightDeps(t.home, platform, platform === 'linux' ? daemonEnv : {});
+    const login = platform === 'linux' ? await agentLoginEnv((cmd, args) => execFileP(cmd, args, { timeout: 10_000 })) : { homes: launchdEnv(), agentDirs: [] };
+    const daemonEnv = login.homes;
+    const pre = realPreflightDeps(t.home, platform, platform === 'linux' ? daemonEnv : {}, login.agentDirs);
     // the hooks are checked where the daemon's agents read them, which an ssh command's env may not name
     const codex = codexPaths(daemonEnv);
-    const report: Report = { version: checkoutVersion(), ...(platform === 'linux' && { daemonEnv }), ...await doctor(t, {
+    const report: Report = { version: checkoutVersion(), ...(platform === 'linux' && { daemonEnv, daemonPath: pre.agentPath }), ...await doctor(t, {
       ...pre,
       read: readOrUndefined,
       connect: (home) => Client.connect(home),

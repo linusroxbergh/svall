@@ -11,6 +11,10 @@ import { cleanHomes, hasTmux, waitFor, waitForPolls } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
+// the prompt a launch file hands its agent: its last word, as bash, zsh and fish read it
+const promptOf = (file: string): string => /(?:--|--prompt) ((?:'[^']*'|\\.)+)\n$/.exec(fs.readFileSync(file, 'utf8'))![1]
+  .replace(/'([^']*)'|\\(.)/g, (_, quoted: string | undefined, escaped: string) => quoted ?? escaped);
+
 runIf('Fleet revive', () => {
   afterEach(async () => { await stopFleets(); cleanHomes(); });
 
@@ -253,8 +257,8 @@ runIf('Fleet revive', () => {
     await again.fleet.resumeInterrupted();
     expect(again.store.state.robots[c.id].tmux).toBeDefined();
     const file = path.join(again.home, `${c.id}.prompt`);
-    expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
-    expect(fs.readFileSync(file, 'utf8')).toBe(RESUME_NOTE);
+    expect(typed).toEqual([`. '${file}'`]);
+    expect(promptOf(file)).toBe(RESUME_NOTE);
   });
 
   it("wakes an interrupted agent with another robot's message, its header first and the note after", async () => {
@@ -268,7 +272,7 @@ runIf('Fleet revive', () => {
     vi.spyOn(again.tmux, 'sendLine').mockResolvedValue();
     const message = again.fleet.message(c.id, lead.id, 'review it');
     expect(await again.fleet.run(c.id, message, true)).toBe('delivered');
-    expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(`${message}\n\n${RESUME_NOTE}`);
+    expect(promptOf(path.join(again.home, `${c.id}.prompt`))).toBe(`${message}\n\n${RESUME_NOTE}`);
   });
 
   it('records in the retro\'s file each session a hook brings, and each one a robot holds as the fleet starts', async () => {
@@ -290,7 +294,7 @@ runIf('Fleet revive', () => {
       const again = await boot({ opening: true, state: structuredClone(b.store.state) });
       vi.spyOn(again.tmux, 'sendLine').mockImplementation(async () => {});
       await again.fleet.resumeInterrupted();
-      return fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8');
+      return promptOf(path.join(again.home, `${c.id}.prompt`));
     };
     expect(await note('/nonexistent/app')).toBe(resumeNote({ from: '/nonexistent/app', to: '/tmp' }));
     // a folder the shell went into that is still here moved nowhere
@@ -330,7 +334,7 @@ runIf('Fleet revive', () => {
     await again.fleet.resumeInterrupted();
     expect(again.store.state.robots[c.id].tmux).toBeDefined();
     expect(typed).toHaveLength(1);
-    expect(fs.readFileSync(path.join(again.home, `${c.id}.prompt`), 'utf8')).toBe(RESUME_NOTE);
+    expect(promptOf(path.join(again.home, `${c.id}.prompt`))).toBe(RESUME_NOTE);
   });
 
   it("starts a dormant terminal whose resume failed afresh in its folder, told what its old session held, and leaves that session's files", async () => {
@@ -350,8 +354,8 @@ runIf('Fleet revive', () => {
     const fresh = await b.fleet.startFresh(c.id);
 
     const file = path.join(b.home, `${c.id}.prompt`);
-    expect(typed).toEqual([`claude --effort 'high' -- "$(cat '${file}'; rm -f '${file}')"`]);
-    const brief = fs.readFileSync(file, 'utf8');
+    expect(typed).toEqual([`. '${file}'`]);
+    const brief = promptOf(file);
     expect(brief).toMatch(/^This is a new Claude Code session\. The earlier session /);
     expect(brief).toContain(SID);
     expect(brief).toContain('MARBLE-mac');
@@ -389,8 +393,8 @@ runIf('Fleet revive', () => {
     const fresh = await b.fleet.startFresh(c.id, 2);
 
     const file = path.join(b.home, `${c.id}-2.prompt`);
-    expect(typed).toEqual([`opencode --standalone --auto --prompt "$(cat '${file}'; rm -f '${file}')"`]);
-    expect(fs.readFileSync(file, 'utf8')).toMatch(/^This is a new OpenCode session. The earlier session ses_0123456789abCDEFGHIJKLMNop/);
+    expect(typed).toEqual([`. '${file}'`]);
+    expect(promptOf(file)).toMatch(/^This is a new OpenCode session. The earlier session ses_0123456789abCDEFGHIJKLMNop/);
     expect(fresh.second).toMatchObject({ tmux: expect.anything() });
     expect(fresh.second?.agent).toBeUndefined();
     expect(fresh.second?.resumeError).toBeUndefined();
