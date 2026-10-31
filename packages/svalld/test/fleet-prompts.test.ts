@@ -573,8 +573,8 @@ runIf('Fleet prompts', () => {
 
   it('hands claude its prompt as an argument rather than typing it into a booting composer', async () => {
     const bin = makeHome();
-    // a stand-in claude that keeps its arguments and never reports in
-    fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\nprintf "%s " "$1" "$2" "$3" > "$SVALL_HOME/argv"\nfor a; do last=$a; done\nprintf "%s" "$last" > "$SVALL_HOME/got"\n', { mode: 0o755 });
+    // a stand-in claude that keeps its arguments and never reports in; the prompt is renamed into `got`, so it appears whole
+    fs.writeFileSync(path.join(bin, 'claude'), '#!/bin/sh\nprintf "%s " "$1" "$2" "$3" > "$SVALL_HOME/argv"\nfor a; do last=$a; done\nprintf "%s" "$last" > "$SVALL_HOME/got.part"\nmv "$SVALL_HOME/got.part" "$SVALL_HOME/got"\n', { mode: 0o755 });
     vi.stubEnv('PATH', `${bin}:${process.env.PATH}`);
     cleanup.push(async () => { vi.unstubAllEnvs(); });
     const { fleet, home } = await boot({ runTimeoutMs: 300 });
