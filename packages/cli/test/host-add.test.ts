@@ -218,7 +218,7 @@ esac
   });
 
   /** A far setup of 1.2.3 whose new daemon did not answer: it goes back to 1.2.2, and still exits 0. */
-  async function wentBack(registry: MachineRegistry) {
+  async function wentBack(registry: MachineRegistry, runs?: (release: string) => void) {
     ssh.reply(['setup'], {
       stdout: [
         'release 1.2.3 installed', 'systemctl --user restart svall-svalld@private.service',
@@ -230,14 +230,17 @@ esac
     healthy();
     const d = await daemon({ release: () => '1.2.2' });
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.2', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...(runs && { runs }) }));
     await d.close();
     return out;
   }
 
   it('stops at identity over an install whose setup went back to the release it ran, naming that release, and registers nothing', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
-    const out = await wentBack(registry);
+    const runs = vi.fn();
+    const out = await wentBack(registry, runs);
+    // the release it went back to is the one it runs, for a name already in the registry to keep
+    expect(runs.mock.calls).toEqual([['1.2.2']]);
     const action = 'ssh trift.test and read the daemon log; trift runs release 1.2.2, the one its setup went back to; then add the machine again';
     expect(out).toEqual({ result: 'actions', actions: [action], stopped: 'identity' });
     expect(step('identity').at(-1)).toEqual({

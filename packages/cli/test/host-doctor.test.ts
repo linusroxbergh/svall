@@ -230,6 +230,15 @@ describe('host doctor', () => {
     expect(Date.now() - lastChecks(config)[REMOTE]!.at).toBeLessThan(60_000);
   });
 
+  it('counts what an add, upgrade or rollback found as a check does: its steps but the agent setup, and a release not this Mac\'s as failed', async () => {
+    const { runCheck } = await import('../src/commands/host.js');
+    const steps = new Map([['install', 'ok'], ['probe', 'warn'], ['rollback', 'warn'], ['mirror:github', 'warn']]);
+    const controller = { ...deps().controller, release: '1.2.3' };
+    expect(runCheck(steps, '1.2.2', controller)).toEqual({ at: expect.any(Number), failed: 1, warned: 2, release: '1.2.2' });
+    expect(runCheck(steps, '1.2.3', controller)).toEqual({ at: expect.any(Number), failed: 0, warned: 2, release: '1.2.3' });
+    expect(runCheck(steps, '1.2.2', { ...controller, release: 'dev' })).toMatchObject({ failed: 0 });
+  });
+
   it('with --steps prints each step as an NDJSON line as it goes, then the same report', async () => {
     const config = path.join(work, 'config');
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });

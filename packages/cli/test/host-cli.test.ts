@@ -267,6 +267,23 @@ describe('the last line a run prints', () => {
   });
 });
 
+describe('the last check', () => {
+  it('stays as it was after an add that never reached the machine', async () => {
+    const config = path.join(work, 'config');
+    const registry = MachineRegistry.load(config);
+    registry.add({ name: 'trift', ssh: 'refused.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    registry.save();
+    const before = { [REMOTE]: { at: 1, failed: 0, warned: 0, release: '1.2.3' } };
+    fs.writeFileSync(path.join(config, 'checks.json'), JSON.stringify(before));
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
+    try {
+      await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['add', 'trift', '--ssh', 'refused.test'], { from: 'user' });
+    } finally { vi.restoreAllMocks(); process.exitCode = 0; }
+    expect(lastChecks(config)).toEqual(before);
+  });
+});
+
 describe('ndjson output', () => {
   it('writes one event per line and a final result', async () => {
     const out: string[] = [];

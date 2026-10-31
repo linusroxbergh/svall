@@ -602,12 +602,12 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         }
         const listed = listedAs(d.registry, id.data, o);
         if (listed) throw listed;
+        d.runs?.(v.release);
         if (v.release !== companion.version) {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
-        d.runs?.(v.release);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
       await run.step('enrol', async () => {
@@ -673,6 +673,9 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 
 const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
 
+/** Whether a machine on `release` runs this Mac's, as a development build takes any release for its own. */
+export const sameRelease = (release: string, controller: HostDeps['controller']): boolean => controller.release === 'dev' || release === controller.release;
+
 /** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
@@ -698,7 +701,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     try {
       const v = await farHome(master, base, d);
       release = v.release;
-      const same = d.controller.release === 'dev' || v.release === d.controller.release;
+      const same = sameRelease(v.release, d.controller);
       const talks = v.protocol === d.controller.protocol;
       // an upgrade there would go back to this Mac's older release
       const newer = !same && newerRelease(v.release, d.controller.release);
@@ -860,14 +863,18 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
     const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
     const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
-    const runs = async (): Promise<string> => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${await currentRelease(master, base)}; ${rollbackTo(name)}`;
+    const runs = (now: string): string => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}; ${rollbackTo(name)}`;
     try {
       const now = await run.step('rollback', async () => {
         const from = await currentRelease(master, base);
         const refused = await rollbackRefusal(master, { svallBase: base, home: entry.record.home, from, ...(o.to !== undefined && { to: o.to }) });
         if (refused) throw new StepError(`${refused}; ${name} stays on release ${from}`);
         const out = await remoteRollback(master, { svallBase: base, from, ...(o.to !== undefined && { to: o.to }) })
-          .catch(async (err: Error) => { throw new StepError(err.message, await runs()); });
+          .catch(async (err: Error) => {
+            const now = await currentRelease(master, base);
+            d.runs?.(now);
+            throw new StepError(err.message, runs(now));
+          });
         return { value: await currentRelease(master, base), detail: out.trim().split('\n').join('; ') };
       });
       d.runs?.(now);
@@ -877,7 +884,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           // the release gone back to may speak an older protocol than this controller, and its system.info still names it
           await endToEnd(master, entry, { release: now, anyProtocol: true });
         } catch (err) {
-          throw new StepError((err as Error).message, await runs());
+          throw new StepError((err as Error).message, runs(now));
         }
         return { value: undefined, detail: `${name} answers on release ${now}` };
       });
