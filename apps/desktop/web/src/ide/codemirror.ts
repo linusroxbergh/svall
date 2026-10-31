@@ -24,11 +24,16 @@ const editorTheme: Extension = [
     '.cm-searchMatch': { backgroundColor: 'color-mix(in srgb, var(--pt-sun) 35%, transparent)' },
     '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: 'color-mix(in srgb, var(--pt-sun) 60%, transparent)' },
     '.cm-selectionMatch': { backgroundColor: 'color-mix(in srgb, var(--sel) 15%, transparent)' },
-    '.cm-changedLine': { backgroundColor: 'transparent' },
+    // the merge view's own diff colours, in the app's: its selectors are matched so these win
+    '&.cm-merge-b .cm-changedLine, .cm-inlineChangedLine': { backgroundColor: 'transparent' },
     '.cm-insertedLine': { backgroundColor: 'color-mix(in srgb, var(--syntax-string) 14%, transparent)' },
     '.cm-deletedChunk': { backgroundColor: 'color-mix(in srgb, var(--blocked) 14%, transparent)' },
     '.cm-deletedChunk del': { textDecoration: 'none', color: 'var(--ink-2)' },
     '.cm-changedText': { background: 'color-mix(in srgb, var(--syntax-string) 35%, transparent)' },
+    '.cm-deletedChunk .cm-deletedText, &.cm-merge-b .cm-deletedText': { background: 'linear-gradient(color-mix(in srgb, var(--danger) 40%, transparent), color-mix(in srgb, var(--danger) 40%, transparent)) bottom/100% 2px no-repeat' },
+    '&.cm-merge-b .cm-changedLineGutter': { background: 'var(--syntax-string)' },
+    '.cm-deletedLineGutter': { background: 'var(--danger)' },
+    '.cm-inlineChangedLineGutter': { background: 'var(--working)' },
     '.cm-collapsedLines': { color: 'var(--ink-3)', backgroundColor: 'var(--fill-1)', padding: '2px 12px' },
   }, { dark: true }),
   syntaxHighlighting(HighlightStyle.define([

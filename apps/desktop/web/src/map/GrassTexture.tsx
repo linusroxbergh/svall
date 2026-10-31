@@ -3,7 +3,6 @@ import meadowUrl from '../assets/meadow.png';
 import { theme } from '../theme.js';
 import { seedNum } from './coast.js';
 
-const DEEP = '85 112 79';
 // the meadow tile is a small blurred bitmap drawn large: soft patches cost one scaled image, not a gradient each
 const MEADOW = 640;
 
@@ -24,7 +23,7 @@ function ground(seed: string, shape: string, w: number, h: number): React.CSSPro
   const r = rng(seed + 'grass');
   const x = Math.round(r() * MEADOW), y = Math.round(r() * MEADOW);
   const mid = `radial-gradient(${(w + 2 * m) * 0.48}px ${(h + 2 * m) * 0.46}px at ${theme.pad + w / 2}px ${theme.pad + h / 2}px, `
-    + `rgb(${DEEP} / .22), rgb(${DEEP} / .12) 50%, rgb(${DEEP} / 0))`;
+    + 'color-mix(in srgb, var(--grass-deep) 22%, transparent), color-mix(in srgb, var(--grass-deep) 12%, transparent) 50%, transparent)';
   return {
     clipPath: `path("${shape}")`,
     backgroundImage: `${mid}, url(${meadowUrl})`,

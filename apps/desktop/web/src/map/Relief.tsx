@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { frame, paint, RES, type Glow } from './glow.js';
+import { frame, glowFills, paint, RES, type Glow } from './glow.js';
 
 const CONTOURS: [number, string][] = [
   [1.2, 'var(--contour-2)'],
@@ -11,6 +11,8 @@ const around = (k: number, cx: number, cy: number) => `translate(${cx},${cy}) sc
 
 type Drawn = Glow | null | undefined;
 const glows = new Map<string, Drawn>();
+let fills: string[] | undefined;
+const colours = () => (fills ??= glowFills((t) => getComputedStyle(document.documentElement).getPropertyValue(t).trim()));
 
 // drawn once per coast into a bitmap: WebKit redoes a live SVG blur in software whenever anything restyles its path, a
 // stalled frame for every island on the map; a canvas shadow blurs, because WebKit's canvas has no filter
@@ -22,7 +24,7 @@ function draw(key: string, sand: string, cx: number, cy: number): Drawn {
     canvas.width = f.w; canvas.height = f.h;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      paint(ctx, sand, cx, cy, f);
+      paint(ctx, sand, cx, cy, f, colours());
       // the canvas lives in WebKit's GPU process and reads back 'data:,' when that process is replaced for not answering
       // within 15 s: null is not kept, so the next call draws it again
       const href = canvas.toDataURL();
@@ -70,7 +72,7 @@ function drawOff(key: string, sand: string, cx: number, cy: number): Promise<Dra
   }
   return new Promise((done) => {
     jobs.set(++jobId, { key, sand, cx, cy, done });
-    workers[jobId % workers.length].postMessage({ id: jobId, sand, cx, cy });
+    workers[jobId % workers.length].postMessage({ id: jobId, sand, cx, cy, fills: colours() });
   });
 }
 
@@ -107,12 +109,12 @@ export function Seabed({ sand, cx, cy, bank }: { sand: string; cx: number; cy: n
       {CONTOURS.map(([k, colour], i) => (
         <path key={i} d={sand} fill="none" stroke={colour} strokeWidth={(1 / k).toFixed(3)} strokeDasharray="7 9" strokeLinecap="round" transform={around(k, cx, cy)} />
       ))}
-      <path d={sand} fill="rgba(70,58,34,.2)" transform="translate(0,7.5)" />
+      <path d={sand} fill="color-mix(in srgb, var(--ink-sand) 20%, transparent)" transform="translate(0,7.5)" />
       <path d={sand} fill={bank} transform="translate(0,6.5)" />
     </>
   );
 }
 
 export function Waterline({ sand }: { sand: string }) {
-  return <path d={sand} fill="none" stroke="rgba(252,246,230,.3)" strokeWidth="1.4" />;
+  return <path d={sand} fill="none" stroke="color-mix(in srgb, var(--cream) 30%, transparent)" strokeWidth="1.4" />;
 }

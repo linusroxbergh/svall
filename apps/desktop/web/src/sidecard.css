@@ -133,7 +133,7 @@
 .set-nav button { color: var(--ink-2); font-weight: var(--w-medium); }
 .set-nav button:hover { color: var(--ink); }
 .set-nav button[aria-selected="true"] { color: var(--sand); }
-.set-nav i { width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--sel); }
+.set-nav i { width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--sand); }
 .set-win .side { width: auto; padding: var(--sp-2xl) var(--sp-3xl); }
 .set-win .side > .rows:first-child { border-top: 0; padding-top: 0; }
 /* the explanation waits behind the mark, so the panel reads as a list of controls rather than a page of prose */

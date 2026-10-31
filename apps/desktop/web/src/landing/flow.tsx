@@ -125,13 +125,13 @@ function Islet({ place, count }: { place: Placement; count: number }) {
             <clipPath id="c-res"><path d={rock} /></clipPath>
           </defs>
           <Seabed sand={rock} cx={bw / 2} cy={bh / 2} bank="var(--rock-bank)" />
-          <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
+          <path className="land" d={rock} fill="url(#s-res)" stroke="color-mix(in srgb, var(--rock-ink) 28%, transparent)" strokeWidth="1" />
           <g clipPath="url(#c-res)">
-            <path d={rock} fill="none" stroke="rgba(58,52,42,.13)" strokeWidth="14" />
-            <path d={face} fill="rgba(255,250,236,.2)" transform="translate(0,-3)" />
+            <path d={rock} fill="none" stroke="color-mix(in srgb, var(--rock-ink) 13%, transparent)" strokeWidth="14" />
+            <path d={face} fill="color-mix(in srgb, var(--cream) 20%, transparent)" transform="translate(0,-3)" />
             <g className="res-plinth" transform={`translate(${bw / 2},${pad + ISLET.visible - ISLET.foot})`}>
-              <ellipse className="res-plinth-side" fill="var(--rock-plinth)" stroke="rgba(58,52,42,.16)" />
-              <ellipse className="res-plinth-top" fill="var(--rock-plinth-top)" />
+              <ellipse className="res-plinth-side" fill="var(--rock-plinth)" stroke="color-mix(in srgb, var(--rock-ink) 16%, transparent)" />
+              <ellipse className="res-plinth-top" fill="var(--rock-0)" />
             </g>
           </g>
           <Waterline sand={rock} />

@@ -14,6 +14,7 @@
   --home-bank: #8B7B58;
   --grass: #71876C;
   --grass-hi: #8C9F86;
+  --grass-deep: #55704F;
   /* the darker ground a card stands pressed into */
   --grass-press: color-mix(in srgb, var(--grass) 45%, var(--ink-land));
   --home-sand-press: color-mix(in srgb, var(--home-sand-deep) 55%, var(--home-bank));
@@ -25,13 +26,13 @@
   --surface-2: #243140;
   --glass: rgba(22,32,44,.66);
   --glass-hi: rgba(32,46,62,.94);
-  --panel: rgba(38,52,66,.86);
+  --panel: rgba(38,52,66,.92);
   --panel-hi: rgba(48,66,82,.9);
 
   /* cream on dark: hairlines, then fills from hover to selected */
   --line: rgba(240,230,206,.13);
   --line-soft: rgba(240,230,206,.07);
-  --line-strong: rgba(240,230,206,.3);
+  --line-strong: rgba(240,230,206,.45);
   --fill-1: rgba(240,230,206,.06);
   --fill-2: rgba(240,230,206,.10);
   --fill-3: rgba(240,230,206,.17);
@@ -40,18 +41,18 @@
 
   --ink: #F4EEDF;
   --ink-2: #CCC5B1;
-  --ink-3: #A39D89;
-  --ink-cool: #8EA0B0;
+  --ink-3: #B5AF9A;
+  --ink-cool: #9FB1C1;
   --ink-land: #2C3B31;
   --ink-sand: #3D3418;
 
   --working: #FFC95C;
-  --blocked: #FF6F5E;
+  --blocked: #FF7766;
   --done: #63D7C0;
   --idle: #8A9CAB;
   --shell: #EAF1EE;
   /* a robot between machines, and one on a worker this Mac cannot reach */
-  --moving: #A8B8C6;
+  --moving: var(--away);
   --unknown: #A6A094;
   /* a robot that runs on a worker, and the ink on its band where that is filled */
   --away: #9CB3F0; --ink-on-away: #18213D;
@@ -67,9 +68,9 @@
   --pt-sky: #78B0C4;
   --pt-sun: #E0BB55;
   --pt-coral: #DD7364;
-  --pt-earth: #A6734C;
+  --pt-earth: #B8835C;
   --pt-moss: #8CAE68;
-  --pt-slate: #4E6A6E;
+  --pt-slate: #779498;
 
   --sans: 'Funnel Sans', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
   --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Menlo, monospace;
@@ -150,7 +151,6 @@
 
   /* ink on a status fill */
   --ink-on-working: #3A2406; --ink-on-blocked: #3A0E09; --ink-on-done: #06231E;
-  --ink-on-moving: #1C2833; --ink-on-unknown: #26231E;
   /* the statuses printed on a card's cream paper: darker than the lit ones so they hold contrast there */
   --working-ink: #EB992E; --blocked-ink: #C94A45; --done-ink: #4BB3A1;
   --moving-ink: #5F7282; --unknown-ink: #6E685E;
@@ -159,12 +159,14 @@
   --cream: #FFFDF4;
   --white: #FFFFFF;
   --card-0: #EDE5CF; --card-1: #E2D7BE; --card-2: #D4C6A7;
-  --card-tint: #786844; --card-band: #B4A175;
+  --card-tint: #786844; --card-band: #C4B184;
   --shell-dim: #9AA7B2;
   --lamp: #FFE28C;
   --map-0: #4B5F72; --map-1: #374959; --map-2: #26303D;
+  /* the shoals lightening the sea round a coast; glow.ts paints them on a canvas, so they stay literal */
+  --shoal: rgba(140,190,215,.13); --shoal-2: rgba(205,225,230,.08);
   /* the lighthouse's rock and the footing under it */
-  --rock-0: #BDB5A6; --rock-1: #928B7B; --rock-bank: #766E5E; --rock-plinth: #9E9685; --rock-plinth-top: #BCB3A1;
+  --rock-0: #BDB5A6; --rock-1: #928B7B; --rock-bank: #766E5E; --rock-plinth: #9E9685; --rock-ink: #3A342A;
 
   /* code */
   --syntax-string: #9BBA86; --syntax-op: #BAD1A2;

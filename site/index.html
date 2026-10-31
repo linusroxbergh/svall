@@ -179,9 +179,9 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
 .view-phone { position: relative; }
-.phone { position: absolute; right: 6cqw; bottom: 3cqw; width: 21cqw; aspect-ratio: 300 / 620; padding: 1cqw; border-radius: 4.4cqw; background: #0D1116;
-  box-shadow: 0 0 0 1.5px #39424D, 0 40px 80px -24px var(--shade-2); }
-.phone-screen { display: grid; height: 100%; border-radius: 3.4cqw; overflow: hidden; background: #0D1116; }
+.phone { position: absolute; right: 6cqw; bottom: 3cqw; width: 21cqw; aspect-ratio: 300 / 620; padding: 1cqw; border-radius: 4.4cqw; background: var(--surface-0);
+  box-shadow: 0 0 0 1.5px var(--line), 0 40px 80px -24px var(--shade-2); }
+.phone-screen { display: grid; height: 100%; border-radius: 3.4cqw; overflow: hidden; background: var(--surface-0); }
 .phone-screen img { grid-area: 1 / 1; width: 100%; height: 100%; object-fit: cover; object-position: top; }
 /* the phone shows the fleet, then a terminal, 4 s each, from the fleet whenever the view opens */
 .phone-screen img + img { opacity: 0; }
