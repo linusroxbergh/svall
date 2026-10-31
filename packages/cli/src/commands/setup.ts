@@ -12,7 +12,7 @@ import { opencodePaths, opencodePluginCurrent } from '@svall/svalld/opencode/ins
 import { peekConfig, saveConfig } from '@svall/svalld/config';
 import { kickstart, plistCurrent, runningPid, takenOverBy } from '@svall/svalld/launchd';
 import { realRun } from '@svall/svalld/linux/service';
-import { agentHomesEnv, fleetOf, ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@svall/svalld/linux/setup';
+import { agentLoginEnv, fleetOf, ourUnits, restartUnits, setupLinuxRelease, unitDirOf } from '@svall/svalld/linux/setup';
 import { claudePaths, expandHome, resolvePaths, userPaths, type Paths } from '@svall/svalld/paths';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
 import { LAUNCHD_LABEL, PRIVATE, SHIM, profileHome, profileLabel, profileOf } from '@svall/svalld/profile';
@@ -206,8 +206,8 @@ export async function daemonRuns(release: string, connect: () => Promise<Daemon>
 
 async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void> {
   // the agent homes the daemon is given, where its agents read their hooks: the login shell's, which an ssh command's env may not name
-  const env = await agentHomesEnv(realRun);
-  const pre = realPreflightDeps(t.home, 'linux', env);
+  const { homes: env, agentDirs } = await agentLoginEnv(realRun);
+  const pre = realPreflightDeps(t.home, 'linux', env, agentDirs);
   const checks = await preflight(pre);
   const settingsPath = path.join(claudePaths(env).dir, 'settings.json');
   // the agent CLIs the daemon's unit finds, which an ssh login's PATH may not reach
@@ -254,6 +254,7 @@ async function linuxSetup(t: Target, o: LinuxFlags, json: boolean): Promise<void
     replaceSettings: o.replaceSettings === true,
     agents,
     env,
+    agentDirs,
     fleet: t.name,
     homedir: os.homedir(),
     prefix: DEFAULT_PREFIX,

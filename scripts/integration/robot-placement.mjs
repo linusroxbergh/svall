@@ -72,10 +72,13 @@ function up() {
     }
     // the harness's own node, from the release under test: the mocked agent and the in-machine checks run on it
     sh(m, 'cd /opt/it && tar -xzf svall-companion-*.tar.gz --wildcards "releases/*/node" && mv releases/*/node node && rm -rf releases && chmod -R a+rX /opt/it', { root: true });
-    // a wrapper that execs node on the mock, so ps shows `node …/claude.mjs` as the rest classifier reads a Claude
-    sh(m, 'mkdir -p ~/.local/bin && printf \'#!/bin/sh\\nexec /opt/it/node/bin/node /opt/it/claude.mjs "$@"\\n\' > ~/.local/bin/claude && chmod 755 ~/.local/bin/claude');
-    sh(m, 'printf \'#!/bin/bash\\nexec -a opencode /opt/it/node/bin/node /opt/it/opencode.mjs "$@"\\n\' > ~/.local/bin/opencode && chmod 755 ~/.local/bin/opencode');
+    // local's a wrapper that execs node on the mock, so ps shows `node …/claude.mjs` as the rest classifier reads a Claude;
+    // remote's where npm puts it under nvm, a script whose env node is the release's, on a PATH only ~/.bashrc sets
+    sh(m, m === L ? 'mkdir -p ~/.local/bin && printf \'#!/bin/sh\\nexec /opt/it/node/bin/node /opt/it/claude.mjs "$@"\\n\' > ~/.local/bin/claude && chmod 755 ~/.local/bin/claude' : NVM);
+    sh(m, 'mkdir -p ~/.local/bin && printf \'#!/bin/bash\\nexec -a opencode /opt/it/node/bin/node /opt/it/opencode.mjs "$@"\\n\' > ~/.local/bin/opencode && chmod 755 ~/.local/bin/opencode');
   }
+  // a login shell that is not interactive, as an ssh command's, stops at ~/.bashrc's guard before nvm's lines, as on Ubuntu
+  sh(R, '! command -v claude');
   sh(L, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519');
   // remote logs in to itself too, as its clone fetches from the bare repository it holds
   sh(R, 'mkdir -m 700 -p ~/.ssh && ssh-keygen -q -t ed25519 -N "" -f ~/.ssh/id_ed25519 && cp ~/.ssh/id_ed25519.pub ~/.ssh/authorized_keys');
@@ -86,6 +89,16 @@ function up() {
   }
   if (docker(['exec', '-d', R, '/opt/it/node/bin/node', '/opt/it/machine.mjs', 'link', '7070']).code !== 0) throw new Error('the link agent did not start');
 }
+
+// what nvm's installer and `npm i -g @anthropic-ai/claude-code` leave, nvm.sh standing in for `nvm use default`
+const NVM_BIN = '~/.nvm/versions/node/v22.11.0/bin';
+const NVM = [
+  'pkg=~/.nvm/versions/node/v22.11.0/lib/node_modules/@anthropic-ai/claude-code && mkdir -p $pkg ' + NVM_BIN,
+  'printf \'#!/usr/bin/env node\\nimport("/opt/it/claude.mjs");\\n\' > $pkg/cli.js && chmod 755 $pkg/cli.js',
+  `ln -s ../lib/node_modules/@anthropic-ai/claude-code/cli.js ${NVM_BIN}/claude && ln -s /opt/it/node/bin/node ${NVM_BIN}/node`,
+  'printf \'export PATH="$NVM_DIR/versions/node/v22.11.0/bin:$PATH"\\n\' > ~/.nvm/nvm.sh',
+  'printf \'\\nexport NVM_DIR="$HOME/.nvm"\\n[ -s "$NVM_DIR/nvm.sh" ] && \\\\. "$NVM_DIR/nvm.sh"\\n\' >> ~/.bashrc',
+].join(' && ');
 
 function install() {
   const setup = sh(L, 'rm -rf /tmp/it-release && mkdir /tmp/it-release && tar -xzf /opt/it/svall-companion-*.tar.gz -C /tmp/it-release'
@@ -117,6 +130,10 @@ function install() {
   const worker = JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout);
   check('worker.json', worker.homeMachineId === ids.local && worker.fleetId === ids.fleet, () => brief({ ...worker, token: undefined }));
   check('worker unit', /--worker/.test(sh(R, `systemctl --user cat ${UNIT}`).stdout), 'the fleet unit on remote does not run svalld --worker');
+  // nvm's folder after the release's node and bin, as the login shell found claude there
+  const unitPath = (/(?:^|\s)PATH=(\S+)/.exec(sh(R, `systemctl --user show -p Environment --value ${UNIT}`).stdout)?.[1] ?? '').split(':');
+  check('worker unit PATH', unitPath[0].endsWith('/current/node/bin') && unitPath.indexOf(NVM_BIN.replace('~', HOMES[R])) > 1, unitPath.join(':'));
+  check('host add claude under nvm', steps.findLast((s) => s.step === 'claude')?.status === 'ok', () => brief(steps.findLast((s) => s.step === 'claude')));
   for (const m of [L, R]) {
     const oom = sh(m, `systemctl --user show -p OOMPolicy --value ${UNIT}`).stdout.trim();
     check(`${m} OOMPolicy`, oom === 'continue', oom);

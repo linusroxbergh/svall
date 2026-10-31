@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AgentKind } from '@svall/protocol';
 import { readCodexHooks, requireWritableHooks } from '../agent-hooks.js';
+import { AGENT_KINDS, AGENTS, onPath } from '../agents.js';
 import { codexPaths, type CodexPaths } from '../codex/install.js';
 import { peekConfig } from '../config.js';
 import { installOpencodePlugin, opencodePaths, removeOpencodePlugin } from '../opencode/install.js';
@@ -45,21 +46,25 @@ function render(name: string, values: Record<string, string>): string {
   });
 }
 
-/** `env`: the agent homes the daemon is given, as `agentHomesEnv` reads them. */
-export type UnitOptions = { runtime: Runtime; homedir: string; prefix: string; env?: Record<string, string> };
+/** `env` and `agentDirs`: the agent homes the daemon is given and the folders of its agent CLIs, as `agentLoginEnv` reads them. */
+export type UnitOptions = { runtime: Runtime; homedir: string; prefix: string; env?: Record<string, string>; agentDirs?: string[] };
 
 export const unitEnv = (key: string, value: string): string => `Environment="${key}=${esc(value)}"`;
 
 const MARK = 'svall-agent-homes';
 
-/** The agents' home variables from this process, else its login shell, since a setup over ssh runs in a shell that read no
- *  profile; systemd gives a unit none of them. */
-export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
+export type AgentLoginEnv = { homes: Record<string, string>; agentDirs: string[] };
+
+/** The agents' home variables from this process, else its login shell, and the folders where that shell, else this
+ *  process, finds the agent CLIs (nvm's, Linuxbrew's), since a setup over ssh runs in a shell that read no profile;
+ *  systemd gives a unit none of them. */
+export async function agentLoginEnv(run: Run): Promise<AgentLoginEnv> {
   let said: string[] = [];
   try {
-    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$OPENCODE_DB"`])).stdout.split('\n');
+    // fish joins a quoted PATH with colons too
+    const out = (await run(process.env.SHELL || '/bin/sh', ['-lic', `printf '\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n%s\\n' ${MARK} "$CLAUDE_CONFIG_DIR" "$CODEX_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$OPENCODE_DB" "$PATH"`])).stdout.split('\n');
     const at = out.lastIndexOf(MARK);
-    if (at >= 0) said = out.slice(at + 1, at + 6);
+    if (at >= 0) said = out.slice(at + 1, at + 7);
   } catch { /* a shell that cannot be asked sets none */ }
   const claude = process.env.CLAUDE_CONFIG_DIR || said[0];
   const codex = process.env.CODEX_HOME || said[1];
@@ -67,21 +72,34 @@ export async function agentHomesEnv(run: Run): Promise<Record<string, string>> {
   const data = process.env.XDG_DATA_HOME || said[3];
   // OpenCode reads a relative one against its data folder
   const db = process.env.OPENCODE_DB || said[4];
-  return {
+  const search = [said[5], process.env.PATH].filter(Boolean).join(':');
+  const homes = {
     ...(claude && { CLAUDE_CONFIG_DIR: claudePaths({ CLAUDE_CONFIG_DIR: claude }).dir }),
     ...(codex && { CODEX_HOME: codexPaths({ CODEX_HOME: codex }).dir }),
     ...(config && { XDG_CONFIG_HOME: path.resolve(config) }),
     ...(data && { XDG_DATA_HOME: path.resolve(data) }),
     ...(db && { OPENCODE_DB: db }),
   };
+  // in the order that shell searches them, so each agent resolves to the copy it runs
+  const found = new Set(AGENT_KINDS.flatMap((k) => onPath(AGENTS[k].bin, search) ?? []));
+  return { homes, agentDirs: [...new Set(search.split(':'))].filter((d) => found.has(d)) };
 }
 
-// the release's own runtime and tmux first, so the daemon and its terminals start what it was built with; OpenCode's
-// installer puts it in ~/.opencode/bin, which the Mac's plist reaches through the login shell's PATH
-export const unitPath = (o: UnitOptions): string => [
-  ...(o.runtime.release ? [path.join(o.runtime.release, 'node', 'bin'), path.join(o.runtime.release, 'bin')] : [path.dirname(process.execPath)]),
-  path.join(o.homedir, '.local', 'bin'), path.join(o.homedir, '.opencode', 'bin'), '/usr/local/bin', '/usr/bin', '/bin',
-].join(':');
+export const agentHomesEnv = async (run: Run): Promise<Record<string, string>> => (await agentLoginEnv(run)).homes;
+
+// the release's runtime and tmux first, so the daemon, its terminals and an agent script's env node use what it was built
+// with; then the agents' folders up to the last one the fixed folders lack, so a fixed one moves only to beat it; then
+// those, with ~/.opencode/bin, where OpenCode's installer puts it
+export const unitPath = (o: UnitOptions): string => {
+  const fixed = [path.join(o.homedir, '.local', 'bin'), path.join(o.homedir, '.opencode', 'bin'), '/usr/local/bin', '/usr/bin', '/bin'];
+  const dirs = o.agentDirs ?? [];
+  let n = dirs.length;
+  while (n && fixed.includes(dirs[n - 1])) n--;
+  return [...new Set([
+    ...(o.runtime.release ? [path.join(o.runtime.release, 'node', 'bin'), path.join(o.runtime.release, 'bin')] : [path.dirname(process.execPath)]),
+    ...dirs.slice(0, n), ...fixed,
+  ])].join(':');
+};
 
 const logFile = (o: UnitOptions, unit: string): string =>
   path.join(o.prefix, 'log', `${unit.replace(/\.service$/, '')}.log`);
@@ -163,7 +181,7 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const settings = claudeWanted ? readJsonSettings(o.settingsPath) : undefined;
   const codexHooks = readCodexHooks(o.codex, codexWanted);
   requireWritableHooks(o.home, settings, codexHooks);
-  const env = o.env ?? await agentHomesEnv(o.run);
+  const { homes: env, agentDirs } = o.env ? { homes: o.env, agentDirs: o.agentDirs } : await agentLoginEnv(o.run);
   // the plugin goes where the daemon's own OpenCode paths say, as the daemon rewrites it at every start
   const opencode = opencodePaths(env, o.homedir);
   const opencodeWanted = (peekConfig(resolvePaths(o.home)).integrations?.includes('opencode') ?? true)
@@ -176,8 +194,8 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
   const units = [svalldUnitName(o.fleet), ...named.map(svalldUnitName)];
   const unitText = (u: string) => readOrUndefined(path.join(o.unitDir, u));
   const before = units.map(unitText);
-  done.push(...writeUnits({ ...o, env }));
-  for (const fleet of named) done.push(...writeUnits({ ...o, env, fleet, home: profileHome(fleet, o.homedir) }));
+  done.push(...writeUnits({ ...o, env, agentDirs }));
+  for (const fleet of named) done.push(...writeUnits({ ...o, env, agentDirs, fleet, home: profileHome(fleet, o.homedir) }));
   if (!o.systemctl) return { done, started: false };
   const start = await startUnit(o, units.filter((u, i) => before[i] !== undefined && before[i] !== unitText(u)));
   if (!start.started) return { done: [...done, start.reason], started: false };
@@ -187,7 +205,8 @@ export async function setupLinux(o: LinuxSetup): Promise<LinuxSetupResult> {
 /** The fleet's unit written again, which runs svalld --worker once worker.json is in its home, and its daemon restarted onto it. */
 export async function serveAsWorker(o: UnitOptions & { fleet: string; home: string; unitDir: string; run: Run }): Promise<string[]> {
   const unit = svalldUnitName(o.fleet);
-  const done = writeUnits({ ...o, env: o.env ?? await agentHomesEnv(o.run) });
+  const { homes: env, agentDirs } = o.env ? { homes: o.env, agentDirs: o.agentDirs } : await agentLoginEnv(o.run);
+  const done = writeUnits({ ...o, env, agentDirs });
   await daemonReload(o.run);
   await restartUnit(o.run, unit);
   await enableUnit(o.run, unit);

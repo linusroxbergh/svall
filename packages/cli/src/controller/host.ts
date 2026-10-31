@@ -229,8 +229,8 @@ async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[
   }
 }
 
-// daemonEnv: the agent homes the login shell there sets, which setup hands the daemon; a doctor from before it says none
-type RemoteDoctor = { checks: Check[]; daemonEnv?: Record<string, string> };
+// daemonEnv and daemonPath: the agent homes and PATH setup hands the daemon there from its login shell; an older doctor says none
+type RemoteDoctor = { checks: Check[]; daemonEnv?: Record<string, string>; daemonPath?: string };
 type RemoteVersion = {
   release: string; protocol: number; machineId: string; signed?: boolean;
   worker?: { homeMachineId: string; homeName: string; fleetId: string };
@@ -246,7 +246,7 @@ function serviceOutcome(report: RemoteDoctor, destination: string): Outcome<Remo
   return { value: report, detail: unit.detail, ...(command ? { status: 'warn' as const, ...there(destination, command) } : {}) };
 }
 
-/** The PATH the companion's units run with, and so the one its daemon finds tmux and the agent CLIs on. */
+/** The PATH the companion's units run with, less the agents' folders setup adds there, which its doctor reports as daemonPath. */
 const unitPathOf = (home: string, svallBase: string): string =>
   unitPath({ runtime: releaseRuntime(path.posix.join(svallBase, 'current')), homedir: home, prefix: svallBase });
 
@@ -295,7 +295,7 @@ type FarVersions = Partial<Record<AgentKind, string>>;
 
 /** Runs an agent CLI there on the PATH and with the agent homes the companion's units run it with, which a login over ssh does not see all of. */
 function agentCall(master: SshMaster, o: { home: string; svallBase: string; report?: RemoteDoctor }): AgentCall {
-  const PATH = unitPathOf(o.home, o.svallBase);
+  const PATH = typeof o.report?.daemonPath === 'string' ? o.report.daemonPath : unitPathOf(o.home, o.svallBase);
   const homes = Object.entries(o.report?.daemonEnv ?? {}).filter(([k]) => /^[A-Z][A-Z0-9_]*$/.test(k)).map(([k, v]) => shq(`${k}=${v}`));
   return (bin, args) => master.run(['env', shq(`PATH=${PATH}`), ...homes, bin, ...args], { timeoutMs: PROBE_TIMEOUT });
 }

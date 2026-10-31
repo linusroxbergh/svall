@@ -23,7 +23,8 @@ const HOME = os.homedir();
 const FLEET = path.join(HOME, '.svall');
 // the tmux the release carries, which serves the fleet's socket; Ubuntu's older client cannot talk to it
 const TMUX = path.join(HOME, '.local/share/svall/current/bin/tmux');
-const MOCK = '/opt/it/claude.mjs';
+// the mocked Claude as the home's wrapper runs it, and as npm's script under nvm runs it on remote
+const MOCKS = ['/opt/it/claude.mjs', '/.nvm/versions/node/v22.11.0/bin/claude'];
 const REPOS = ['src/app', 'src/app-wt'];
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const sha = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
@@ -230,7 +231,7 @@ async function snap(o) {
     })).sort((a, b) => a.id.localeCompare(b.id)) : state,
     machines: state.machines ?? {},
     windows,
-    agents: processes(MOCK).filter((p) => !p.args.includes('--version') && !p.args.includes('auth') && !p.args.includes('-p')).map((p) => ({ kind: 'claude', ...p })),
+    agents: MOCKS.flatMap(processes).filter((p) => !p.args.includes('--version') && !p.args.includes('auth') && !p.args.includes('-p')).map((p) => ({ kind: 'claude', ...p })),
     ...(!o.light && {
       git: Object.fromEntries(repos().map((r) => [r, gitOf(path.join(HOME, r))])),
       trees: Object.fromEntries(repos().map((r) => [r, walk(path.join(HOME, r), new Set(['.git', '.claude']))])),

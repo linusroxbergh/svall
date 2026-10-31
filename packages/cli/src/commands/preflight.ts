@@ -125,11 +125,12 @@ export function requireReady(checks: Check[]): string[] {
 const execFileP = promisify(execFile);
 
 // a login over ssh sees less of the machine than the unit the daemon runs in
-const unitAgentPath = (): string =>
-  unitPath({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX });
+const unitAgentPath = (agentDirs: string[]): string =>
+  unitPath({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, agentDirs });
 
-/** `agentEnv`: the agent homes the daemon is given, which every call on the daemon's PATH runs with. */
-export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform, agentEnv: Record<string, string> = {}): PreflightDeps {
+/** `agentEnv` and `agentDirs`: the agent homes the daemon is given, which every call on the daemon's PATH runs with, and
+ *  the folders of its agent CLIs on that PATH. */
+export function realPreflightDeps(home: string, platform: NodeJS.Platform = process.platform, agentEnv: Record<string, string> = {}, agentDirs: string[] = []): PreflightDeps {
   let mainAgent: AgentKind | undefined;
   try { mainAgent = fleetMainAgent(home, configuredMainAgent(resolvePaths(home))); } catch { /* doctor's config check reports it */ }
   // a Linux machine runs Svall only as a worker; a registry that cannot be read may list one
@@ -143,7 +144,7 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
     })).stdout,
     node: process.version,
     pathEnv: process.env.PATH ?? '',
-    ...(platform === 'linux' && { agentPath: unitAgentPath() }),
+    ...(platform === 'linux' && { agentPath: unitAgentPath(agentDirs) }),
     shimDir: userPaths().shimDir,
     keys: robotKeyEnv(resolvePaths(home).env),
     mainAgent,

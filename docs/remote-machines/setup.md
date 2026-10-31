@@ -304,8 +304,10 @@ On the Linux machine, all under the account:
   removes older ones.
 - `~/.config/systemd/user/svall-svalld@<fleet>.service`, one per fleet the machine is a worker of, running
   `svalld --worker`. Each fleet's unit carries the `CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `XDG_CONFIG_HOME`,
-  `XDG_DATA_HOME` and `OPENCODE_DB` the account's login shell sets. Its `PATH` holds the release's `bin`,
-  `~/.local/bin` and `~/.opencode/bin`, where OpenCode's installer puts it.
+  `XDG_DATA_HOME` and `OPENCODE_DB` the account's login shell sets. Its `PATH` holds the release's `bin`, each
+  folder the login shell finds an agent in (such as nvm's or Linuxbrew's), `~/.local/bin` and `~/.opencode/bin`,
+  where OpenCode's installer puts it. nvm's folder names a Node version: after `nvm alias default` picks another,
+  run `svall host upgrade <name>` so the unit takes the new folder.
 - `~/.config/opencode/plugins/svall.js` (under `XDG_CONFIG_HOME` when the login shell sets it), Svall's OpenCode
   plugin, when OpenCode is installed and the fleet does not turn it off.
 - `~/.local/share/svall/log`, the units' logs.

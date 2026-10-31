@@ -597,6 +597,25 @@ describe('svall doctor on Linux', () => {
     expect(report.daemonEnv).toEqual({ CLAUDE_CONFIG_DIR: claudeDir, XDG_CONFIG_HOME: configDir });
   });
 
+  it("finds an agent in the folder only the login shell's PATH holds, as nvm puts it, and reports the PATH it asked on", async () => {
+    const home = makeHome();
+    vi.stubEnv('HOME', home);
+    const nvm = path.join(home, '.nvm', 'versions', 'node', 'v22.11.0', 'bin');
+    fs.mkdirSync(nvm, { recursive: true });
+    fs.writeFileSync(path.join(nvm, 'claude'), '#!/bin/sh\n[ "$1" = auth ] && echo \'{"loggedIn":true}\' || echo "2.1.300 (Claude Code)"\n', { mode: 0o755 });
+    const bin = makeHome();
+    fs.writeFileSync(path.join(bin, 'login-shell'), `#!/bin/sh\nexport PATH='${nvm}':"$PATH"\nexec /bin/sh -c "$2"\n`, { mode: 0o755 });
+    vi.stubEnv('SHELL', path.join(bin, 'login-shell'));
+    vi.stubEnv('PATH', `${bin}:/usr/bin:/bin`);
+    const out: string[] = [];
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => { out.push(String(chunk)); return true; });
+    await doctorCommand(() => ({ name: 'private', home: path.join(home, '.svall'), managed: true }), () => true, 'linux').parseAsync([], { from: 'user' });
+    const report = JSON.parse(out.join('')) as Report;
+    expect(byName(report).claude).toMatchObject({ status: 'ok', detail: '2.1.300 (Claude Code), signed in' });
+    const unit = svalldUnit({ runtime: ownRuntime(), homedir: home, prefix: DEFAULT_PREFIX, fleet: 'private', home: path.join(home, '.svall'), agentDirs: [nvm] });
+    expect(report.daemonPath).toBe(/^Environment="PATH=(.*)"$/m.exec(unit.text)![1]);
+  });
+
   it('checks the OpenCode plugin where the unit\'s XDG_CONFIG_HOME points, which only the login shell names', async () => {
     const home = makeHome();
     vi.stubEnv('HOME', home);

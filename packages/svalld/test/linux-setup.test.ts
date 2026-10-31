@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rollbackRelease } from '../../../scripts/install-release.mjs';
 import { codexPaths } from '../src/codex/install.js';
-import { agentHomesEnv, svalldUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
+import { agentHomesEnv, agentLoginEnv, svalldUnit, probeOrRollback, restartUnits, serveAsWorker, setupLinux, setupLinuxRelease, unitDirOf, writeUnits } from '../src/linux/setup.js';
 import { SystemdError, daemonReload, enableUnit, lingerState, unitStatus, type Run } from '../src/linux/service.js';
 import { opencodePaths } from '../src/opencode/install.js';
 import { resolvePaths } from '../src/paths.js';
@@ -157,6 +157,39 @@ describe('the agent homes a daemon is given', () => {
     expect(fs.readFileSync(path.join(f.unitDir, 'svall-svalld@private.service'), 'utf8')).toContain(`Environment="XDG_CONFIG_HOME=${config}"\n`);
     expect(fs.existsSync(opencodePaths({ XDG_CONFIG_HOME: config }).plugin)).toBe(true);
     expect(fs.existsSync(opencodePaths({}, f.root).plugin)).toBe(false);
+  });
+
+  it("finds each agent CLI where the login shell's PATH, then this process's, holds it, in that order, and puts it on the unit's", async () => {
+    vi.stubEnv('SHELL', '/bin/bash');
+    unset();
+    const f = installed();
+    const bin = (dir: string, name: string, mode = 0o755) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, name), '', { mode }); return dir; };
+    const nvm = bin(path.join(f.root, '.nvm', 'versions', 'node', 'v22.11.0', 'bin'), 'claude');
+    const brew = bin(path.join(f.root, 'linuxbrew', 'bin'), 'codex');
+    // a codex that cannot run is no codex
+    const stale = bin(path.join(f.root, 'stale'), 'codex', 0o644);
+    const local = bin(bin(path.join(f.root, '.local', 'bin'), 'opencode'), 'claude');
+    vi.stubEnv('PATH', `${local}:/usr/bin:/bin`);
+    const said = `svall-agent-homes\n\n\n\n\n\n${stale}:${nvm}:/usr/bin:${brew}\n`;
+    expect(await agentLoginEnv(shell(said))).toEqual({ homes: {}, agentDirs: [nvm, brew, local] });
+    expect(await agentLoginEnv(shell(new Error('timed out')))).toEqual({ homes: {}, agentDirs: [local] });
+    await setupLinux({ ...f.o, run: shell(said) });
+    const unit = fs.readFileSync(path.join(f.unitDir, 'svall-svalld@private.service'), 'utf8');
+    expect(/^Environment="PATH=(.*)"$/m.exec(unit)?.[1].split(':').slice(1))
+      .toEqual([nvm, brew, local, path.join(f.root, '.opencode', 'bin'), '/usr/local/bin', '/usr/bin', '/bin']);
+    // brew's codex ahead of the one beside nvm's claude is the one the login shell runs
+    bin(nvm, 'codex');
+    expect((await agentLoginEnv(shell(`svall-agent-homes\n\n\n\n\n\n${brew}:${nvm}\n`))).agentDirs).toEqual([brew, nvm, local]);
+  });
+
+  it("puts the agents' folders after the release's node, so an agent script's env node runs the release's, and moves a fixed folder only ahead of one it must beat", () => {
+    const pathOf = (agentDirs: string[]) => /^Environment="PATH=(.*)"$/m.exec(svalldUnit({
+      runtime: releaseRuntime('/r'), homedir: '/h', prefix: '/p', fleet: 'private', home: '/h/.svall', agentDirs,
+    }).text)?.[1];
+    const nvm = '/h/.nvm/versions/node/v22.11.0/bin';
+    expect(pathOf([nvm, '/h/.local/bin', '/usr/bin'])).toBe(`/r/node/bin:/r/bin:${nvm}:/h/.local/bin:/h/.opencode/bin:/usr/local/bin:/usr/bin:/bin`);
+    expect(pathOf(['/usr/bin', nvm])).toBe(`/r/node/bin:/r/bin:/usr/bin:${nvm}:/h/.local/bin:/h/.opencode/bin:/usr/local/bin:/bin`);
+    expect(pathOf(['/usr/bin'])).toBe('/r/node/bin:/r/bin:/h/.local/bin:/h/.opencode/bin:/usr/local/bin:/usr/bin:/bin');
   });
 
   it("puts them in the fleet daemon's unit, as the Mac's plist carries them", async () => {
@@ -353,8 +386,15 @@ describe('setupLinux', () => {
     expect(fs.readFileSync(unit, 'utf8')).not.toContain('--worker');
     fs.writeFileSync(resolvePaths(f.home).workerFile, '{}');
     const fake = fakeRun();
-    const done = await serveAsWorker({ ...f.o, run: fake.run });
+    // the login shell finds claude under nvm, which the rewritten unit keeps on its PATH
+    const nvm = path.join(f.root, '.nvm', 'versions', 'node', 'v22.11.0', 'bin');
+    fs.mkdirSync(nvm, { recursive: true });
+    fs.writeFileSync(path.join(nvm, 'claude'), '', { mode: 0o755 });
+    vi.stubEnv('SHELL', '/bin/bash');
+    const run: Run = (cmd, args) => (cmd === '/bin/bash' ? Promise.resolve({ stdout: `svall-agent-homes\n\n\n\n\n\n${nvm}\n`, stderr: '' }) : fake.run(cmd, args));
+    const done = await serveAsWorker({ ...f.o, run });
     expect(fs.readFileSync(unit, 'utf8')).toContain('"--worker"\n');
+    expect(fs.readFileSync(unit, 'utf8')).toContain(`:${nvm}:`);
     expect(fake.calls.filter(([cmd]) => cmd === 'systemctl')).toEqual([
       ['systemctl', '--user', 'daemon-reload'],
       ['systemctl', '--user', 'restart', 'svall-svalld@private.service'],

@@ -51,6 +51,20 @@ describe('host add', () => {
     expect(agentCalls.every((w) => w.slice(0, 4).join('\n') === ['env', ...env].join('\n') && !w.includes('-S=/x'))).toBe(true);
   });
 
+  it("asks each agent on the PATH the companion's doctor names, which holds the folder its login shell finds the agent in", async () => {
+    const PATH = `PATH=${BASE}/current/node/bin:${BASE}/current/bin:${HOME}/.nvm/versions/node/v22.11.0/bin:/usr/bin:/bin`;
+    healthy({ agents: false, doctor: JSON.stringify({ ...JSON.parse(DOCTOR), daemonPath: PATH.slice('PATH='.length) }) });
+    ssh.reply([PATH, 'claude', '--version'], { stdout: '2.1.278 (Claude Code)\n' });
+    ssh.reply([PATH, 'claude', 'auth', 'status', '--json'], { stdout: '{"loggedIn":true}\n' });
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps());
+    await d.close();
+    expect(step('claude').at(-1)).toMatchObject({ status: 'ok', detail: '2.1.278 (Claude Code), logged in' });
+    const agentCalls = ssh.remoteCalls().filter((w) => w.includes('claude') || w.includes('codex') || w.includes('opencode'));
+    expect(agentCalls.every((w) => w[0] === 'env' && w[1] === PATH)).toBe(true);
+  });
+
   it('names an OpenCode whose auth list fails as not logged in', async () => {
     healthy({ agents: false });
     ssh.reply([UNIT_PATH, 'opencode', '--version'], { stdout: '2.0.22\n' });
