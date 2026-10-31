@@ -1,6 +1,6 @@
 /* the board's bar: the view switch, the island chips, then Needs you and + Column at the end */
-.kb-bar { flex: none; height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1); }
-.kb-seg { position: relative; isolation: isolate; flex: none; display: inline-flex; padding: var(--sp-2xs); border-radius: calc(var(--r-md) + var(--sp-2xs)); background: var(--fill-1); border: 1px solid var(--line-soft); }
+.kb-bar { flex: none; height: var(--bar-h); box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1); }
+.kb-seg { position: relative; isolation: isolate; flex: none; display: inline-flex; padding: var(--sp-2xs); border-radius: var(--r-card); background: var(--fill-1); border: 1px solid var(--line-soft); }
 .kb-seg button { padding: var(--sp-xs) var(--sp-2xl); border-radius: var(--r-md); background: none; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); }
 .kb-seg button:hover { background: none; color: var(--ink); }
 .kb-seg button[aria-pressed="true"] { color: var(--ink); cursor: default; }
@@ -54,7 +54,7 @@
 .kb-col-act :is(button, .kb-grip):hover { background: var(--fill-2); color: var(--ink); }
 .kb-grip { cursor: grab; }
 .kb-grip svg { width: 10px; height: 14px; }
-.kb-ren { flex: 1; min-width: 0; height: 26px; box-sizing: border-box; padding: 0 var(--sp-md); border-radius: var(--r-sm); background: var(--fill-2); border: 1px solid var(--sel); box-shadow: var(--ring);
+.kb-ren { flex: 1; min-width: 0; height: 26px; box-sizing: border-box; padding: 0 var(--sp-md); border-radius: var(--r-sm); background: var(--fill-2); border: 1px solid var(--sand);
   font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); outline: none; user-select: text; -webkit-user-select: text; }
 
 /* the robots scroll inside the column; the inset keeps a selected card's ring clear of the scroll edge */
@@ -63,8 +63,8 @@
 .kb-col-body[data-more="true"] { mask-image: linear-gradient(var(--ink) calc(100% - var(--col-fade)), transparent); -webkit-mask-image: linear-gradient(var(--ink) calc(100% - var(--col-fade)), transparent); }
 .kb-empty { flex: 1; min-height: 84px; display: grid; place-content: center; gap: var(--sp-xs); text-align: center; border-radius: var(--r-md); border: 1px dashed var(--line); color: var(--ink-3); font-size: var(--text-sm); }
 .kb-empty b { font-weight: var(--w-semibold); color: var(--ink-2); }
-.kb-slot { flex: none; box-sizing: border-box; border-radius: calc(var(--r-md) + var(--sp-2xs)); border: 1px dashed color-mix(in srgb, var(--sel) 65%, transparent); background: color-mix(in srgb, var(--sel) 8%, transparent); }
-.kb-add-col { flex: 0 0 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: calc(var(--r-md) + var(--sp-2xs)); border: 1px dashed var(--line); background: none; color: var(--ink-3); font-size: var(--text-2xl); font-weight: var(--w-regular); }
+.kb-slot { flex: none; box-sizing: border-box; border-radius: var(--r-card); border: 1px dashed color-mix(in srgb, var(--sel) 65%, transparent); background: color-mix(in srgb, var(--sel) 8%, transparent); }
+.kb-add-col { flex: 0 0 36px; height: 36px; padding: 0; display: grid; place-items: center; border-radius: var(--r-card); border: 1px dashed var(--line); background: none; color: var(--ink-3); font-size: var(--text-2xl); font-weight: var(--w-regular); }
 .kb-add-col:hover { background: var(--fill-1); color: var(--ink); }
 
 /* a collapsed column: its count and its name read upward, and it still takes a drop */
@@ -77,7 +77,7 @@
 /* the card: a portrait centred on a two-line name, a two-line note, then status and context */
 .kc { --lit: var(--idle); position: relative; flex: none; box-sizing: border-box; display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-rows: 32px 32px 16px;
   column-gap: var(--sp-md); row-gap: var(--sp-xs); align-items: center; padding: var(--sp-md) var(--sp-lg);
-  border-radius: calc(var(--r-md) + var(--sp-2xs)); background: var(--surface-2); border: 1px solid var(--line-soft); box-shadow: 0 1px 2px var(--shade-1); cursor: default;
+  border-radius: var(--r-card); background: var(--surface-2); border: 1px solid var(--line-soft); box-shadow: 0 1px 2px var(--shade-1); cursor: default;
   transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease); }
 .kc[data-status="working"] { --lit: var(--working); }
 .kc[data-status="blocked"] { --lit: var(--blocked); }
@@ -113,7 +113,7 @@
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .kc-ft { grid-column: 1 / -1; grid-row: 3; min-width: 0; display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-sm); white-space: nowrap; }
 .kc-st { display: inline-flex; align-items: center; gap: var(--sp-xs); font-weight: var(--w-semibold); color: var(--lit); }
-.kc-st i { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--lit); }
+.kc-st i { flex: none; width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--lit); }
 .kc-un { font-weight: var(--w-semibold); color: var(--done); }
 .kc-un::before { content: '·'; margin-right: var(--sp-sm); color: var(--ink-3); }
 .kc-sp { flex: 1; }

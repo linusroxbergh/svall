@@ -1,5 +1,5 @@
 export const theme = {
-  cell: 44,                       // world px per cell
+  cell: 44,                       // world px per cell; tokens.css --cell
   // a coastline's squircle exponent and how far the wobble strays from it, as a share of the short radius
   coast: { n: 4.5, wobble: 0.08 },
   pad: 132,                       // 3 * cell, drawing room around an island
@@ -9,7 +9,7 @@ export const theme = {
   fit: { x: 56, top: 56, bottom: 34 },
   bounds: { top: 1.48 },          // cells; the island label's band over its land
   panMargin: 40,
-  fitEaseMs: 200,
+  fitEaseMs: 200,                 // tokens.css --dur-slow
   dragSettleMs: 140,
   hoverDelayMs: 300,
   hoverCardWidth: 274,
@@ -26,9 +26,9 @@ export const theme = {
   toastActionMs: 9000,
   docSaveMs: 800,                 // a doc is written this long after the last edit
   resourcesFreshMs: 3000,         // a listing read this recently serves the next ask
-  card: { margin: 26, easeMs: 160 },
+  card: { margin: 26, easeMs: 160 }, // tokens.css --map-inset and --dur
   // a press on the board that travels dragPx is a drag; a robot that arrived in a column within arriveMs glows as it is drawn
-  board: { dragPx: 4, arriveMs: 1400 },
+  board: { dragPx: 4, arriveMs: 1400 }, // arriveMs: tokens.css --dur-arrive
   // the little box that asks where a link should open, kept clear of the window's own edges
   linkAsk: { width: 200, height: 112, gap: 6, margin: 8 },
   // a right-click menu keeps this far inside the window

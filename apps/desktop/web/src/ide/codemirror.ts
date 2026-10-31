@@ -12,8 +12,9 @@ const editorTheme: Extension = [
   EditorView.theme({
     '&': { height: '100%', backgroundColor: 'var(--surface-0)', color: 'var(--ink)' },
     '.cm-scroller': { fontFamily: 'var(--mono)', fontSize: 'var(--text-md)', lineHeight: '1.5' },
-    '.cm-content': { caretColor: 'var(--sel)' },
-    '.cm-cursor, .cm-dropCursor': { borderLeftColor: 'var(--sel)' },
+    '.cm-content': { caretColor: 'var(--sand)' },
+    '.cm-cursor': { borderLeftColor: 'var(--sand)' },
+    '.cm-dropCursor': { borderLeftColor: 'var(--sel)' },
     '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground': { backgroundColor: 'color-mix(in srgb, var(--sel) 25%, transparent)' },
     '.cm-activeLine': { backgroundColor: 'var(--fill-1)' },
     '.cm-gutters': { backgroundColor: 'var(--surface-0)', color: 'var(--ink-3)', border: 'none' },
