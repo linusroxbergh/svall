@@ -143,12 +143,6 @@ textarea.fld { padding-block: var(--sp-md); }
 .kicker, .sb-head, .ide-root, .res-subh, .res-list h4, .load-grp, .load-tot span, .setup h2 {
   font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);
 }
-/* icons: an svg from icons.tsx, its box one of the --icon-* sizes */
-.icon-xs, .icon-sm, .icon-md, .icon-lg { flex: none; vertical-align: middle; }
-.icon-xs { width: var(--icon-xs); height: var(--icon-xs); }
-.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
-.icon-md { width: var(--icon-md); height: var(--icon-md); }
-.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 /* an icon control's target is the height of the bar or tab it sits in, never the glyph's own line box.
    each site bleeds the control back out over its parent's padding, so the row keeps the height it had */
 .phead .ticon, .phead .tx, .phead .px,

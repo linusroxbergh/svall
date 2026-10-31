@@ -1,0 +1,6 @@
+/* an svg from icons.tsx, its box one of the --icon-* sizes; loaded by the app, the phone and the landing page */
+.icon-xs, .icon-sm, .icon-md, .icon-lg { flex: none; vertical-align: middle; }
+.icon-xs { width: var(--icon-xs); height: var(--icon-xs); }
+.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
+.icon-md { width: var(--icon-md); height: var(--icon-md); }
+.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }

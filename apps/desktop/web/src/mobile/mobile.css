@@ -1,6 +1,7 @@
 @import '@xterm/xterm/css/xterm.css';
 @import '../tokens.css';
 @import '../fonts.css';
+@import '../icons.css';
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -15,13 +16,6 @@ body {
 #root { height: var(--vvh, 100dvh); display: flex; flex-direction: column; }
 
 button { font: inherit; color: inherit; background: none; border: 0; }
-
-/* icons: an svg from icons.tsx, its box one of the --icon-* sizes, as in base.css */
-.icon-xs, .icon-sm, .icon-md, .icon-lg { flex: none; vertical-align: middle; }
-.icon-xs { width: var(--icon-xs); height: var(--icon-xs); }
-.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
-.icon-md { width: var(--icon-md); height: var(--icon-md); }
-.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 
 /* ---- shared chrome */
 
