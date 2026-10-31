@@ -66,6 +66,20 @@ describe('isShellCommand', () => {
   });
 });
 
+describe('ControlClient replies', () => {
+  it('takes a %pause or %continue written inside the reply to a line it sent quietly as the notification it is, as tmux 3.7c writes them', () => {
+    const c = new ControlClient({ binary: 'tmux', socket: '/nonexistent.sock', conf: '/dev/null', session: SESSION });
+    const seen: string[] = [];
+    c.on('pause', (id) => seen.push(`pause ${id}`));
+    c.on('continue', (id) => seen.push(`continue ${id}`));
+    c['ready'] = true;
+    c.send("refresh-client -A '%3:pause'");
+    c.send("refresh-client -A '%3:continue'");
+    c['onData']('%begin 1 2 1\n%pause %3\n%end 1 2 1\n%begin 1 3 1\n%continue %3\n%end 1 3 1\n');
+    expect(seen).toEqual(['pause %3', 'continue %3']);
+  });
+});
+
 describe('hasWindow', () => {
   it('passes on a tmux that timed out rather than call the window gone', async () => {
     const tmux = new Tmux('/nonexistent.sock', '/dev/null');
@@ -491,7 +505,7 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     const t = await boot();
     const spawned = new Tmux(t.socket, `${lastHome}/tmux.conf`, t.binary);
     const text = `${lastHome}/text`;
-    fs.writeFileSync(text, Buffer.from('%end 1 2 1\r\n%error 1 2 1\r\n%begin 1 2 1\r\ncaf\xc3\xa9 \xff tab\there \x1b[31mred\x1b[0m\r\n' + 'x'.repeat(3000), 'latin1'));
+    fs.writeFileSync(text, Buffer.from('%end 1 2 1\r\n%error 1 2 1\r\n%begin 1 2 1\r\n%continue %0\r\ncaf\xc3\xa9 \xff tab\there \x1b[31mred\x1b[0m\r\n' + 'x'.repeat(3000), 'latin1'));
     const w = await t.newWindow('c_one', '/tmp', {});
     await t.run('respawn-pane', '-k', '-t', w.paneId, 'cat', text, '-');
     await t.newWindow('we;ird #{x} back\\slash ü', `${lastHome}`, {});
@@ -501,6 +515,8 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     const c = t.connect();
     await c.start();
     c.send('refresh-client -f pause-after=3');
+    const continued: string[] = [];
+    c.on('continue', (id) => continued.push(id));
     await waitFor(async () => (await spawned.capture(w.paneId, 10)).includes('red'));
     const call = vi.spyOn(t as unknown as { call: () => Promise<string> }, 'call');
     expect(await t.listWindows()).toEqual(await spawned.listWindows());
@@ -508,6 +524,7 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     expect(await t.screen(w.paneId)).toEqual(await spawned.screen(w.paneId));
     expect(await t.capture(w.paneId, 100)).toEqual(await spawned.capture(w.paneId, 100));
     expect(call).not.toHaveBeenCalled();
+    expect(continued).toEqual([]);
     c.stop();
   });
 

@@ -2,6 +2,10 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { parseLine } from './parse.js';
 
+// what a line sent only for its effect waits on: tmux prints no text for it, though 3.7c writes the %pause or %continue
+// a refresh-client -A causes inside its reply
+const QUIET = (): void => {};
+
 type Events = {
   // as tmux escapes it; unescapeOutput gives the pane's bytes
   output: [paneId: string, escaped: string];
@@ -15,8 +19,9 @@ type Events = {
 export class ControlClient extends EventEmitter<Events> {
   private proc?: ChildProcess;
   private buf = '';
-  // the reply being read: its guard, whether it answers a line this client sent, and its lines so far
-  private reply?: { guard: string; ours: boolean; lines: string[] };
+  // the reply being read: its guard, whether it answers a line this client sent, whether that line was sent quietly, and
+  // its lines so far
+  private reply?: { guard: string; ours: boolean; quiet: boolean; lines: string[] };
   private ready = false;
   // a callback per line sent, in order, for the reply tmux gives it; undefined for an error or no reply
   private sent: ((reply: string | undefined) => void)[] = [];
@@ -60,7 +65,7 @@ export class ControlClient extends EventEmitter<Events> {
   }
 
   send(command: string): void {
-    this.sent.push(() => {});
+    this.sent.push(QUIET);
     this.proc?.stdin?.write(command + '\n');
   }
 
@@ -126,7 +131,10 @@ export class ControlClient extends EventEmitter<Events> {
     const r = this.reply;
     if (r) {
       // a pane's text in a reply may read as a guard; only the one repeating this reply's number ends it
-      if (line !== `%end ${r.guard}` && line !== `%error ${r.guard}`) { r.lines.push(line); return; }
+      if (line !== `%end ${r.guard}` && line !== `%error ${r.guard}`) {
+        if (r.quiet) this.notify(parseLine(line)); else r.lines.push(line);
+        return;
+      }
       this.reply = undefined;
       const ok = line.startsWith('%end');
       if (this.ready) {
@@ -144,9 +152,17 @@ export class ControlClient extends EventEmitter<Events> {
       return;
     }
     const ev = parseLine(line);
-    switch (ev.type) {
+    if (ev.type === 'begin') {
       // flags 1: the reply to a line this client sent
-      case 'begin': this.reply = { guard: ev.guard, ours: ev.guard.endsWith(' 1'), lines: [] }; break;
+      const ours = ev.guard.endsWith(' 1');
+      this.reply = { guard: ev.guard, ours, quiet: ours && this.ready && this.sent[0] === QUIET, lines: [] };
+      return;
+    }
+    this.notify(ev);
+  }
+
+  private notify(ev: ReturnType<typeof parseLine>): void {
+    switch (ev.type) {
       case 'output': this.emit('output', ev.paneId, ev.escaped); break;
       case 'window-close': this.emit('window-close', ev.windowId); break;
       case 'pause': this.emit('pause', ev.paneId); break;
