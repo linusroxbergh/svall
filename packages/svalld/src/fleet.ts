@@ -84,8 +84,8 @@ type Revived = Robot & { delivery?: Delivery };
 
 export class Fleet extends EventEmitter<Events> {
   private reviving = new Map<string, Promise<Revived>>();
-  // the windows of agents ended for idleness or put to sleep, until tmux has closed them, the agent has exited and a
-  // sleep has ended what it started
+  // the windows of agents ended for idleness or put to sleep, or of a revive or second terminal that failed, until tmux
+  // has closed them, the agent has exited and a sleep has ended what it started
   private ending = new Map<string, Promise<void>>();
   // the window names of robots being closed, which a listing meanwhile must not adopt
   private closing = new Set<string>();
@@ -853,7 +853,7 @@ export class Fleet extends EventEmitter<Events> {
         if (c.resumeError) cur.resumeError = c.resumeError;
         if (c.agent && !cur.agent) cur.agent = c.agent;
       });
-      await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`revive ${id}: ${String(k)}`));
+      await this.closeFailed(id, w.windowId, `revive ${id}`);
       throw e;
     }
     return this.robot(id);
@@ -903,6 +903,15 @@ export class Fleet extends EventEmitter<Events> {
 
   // concurrent opens would each spawn a window and orphan all but the last; a dormant second is revived here too, or
   // started `fresh` with that command and its prompt. `move` is the move a moving robot opens it by
+  // the window, named `name`, of a revive or second terminal that failed: no listing takes it back until tmux has closed it
+  // and a poll that listed it meanwhile has applied that listing
+  private async closeFailed(name: string, windowId: string, what: string): Promise<void> {
+    const killed = this.deps.tmux.killWindow(windowId).catch((k) => this.deps.log.error(`${what}: ${String(k)}`));
+    const ended: Promise<void> = killed.then(() => this.poll.settled()).finally(() => { if (this.ending.get(name) === ended) this.ending.delete(name); });
+    this.ending.set(name, ended);
+    await killed;
+  }
+
   openSecond(id: string, fresh?: { command: string; prompt: string }, move?: string): Promise<Robot> {
     this.still(id, move);
     if (fresh && this.deps.remote?.placedAt(id)) this.local(id);
@@ -957,7 +966,7 @@ export class Fleet extends EventEmitter<Events> {
         if (c.second?.resumeError) second.resumeError = c.second.resumeError;
         if (c.second?.agent && !second.agent) second.agent = c.second.agent;
       });
-      await this.deps.tmux.killWindow(w.windowId).catch((k) => this.deps.log.error(`open ${secondName(id)}: ${String(k)}`));
+      await this.closeFailed(secondName(id), w.windowId, `open ${secondName(id)}`);
       throw e;
     }
     return this.robot(id);
