@@ -215,7 +215,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
 
   return (
     <div className="modal-back" data-testid="move-sheet" onPointerDown={close}>
-      <div className="modal panel" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
+      <div className="modal dialog" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
           <Progress stand={stand(run, c.moving, retried, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}

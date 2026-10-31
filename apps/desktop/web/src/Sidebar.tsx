@@ -104,7 +104,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
   // the rename field keeps the text menu
   const menu = i.kind === 'home' || editing ? undefined : (e: React.MouseEvent) => islandMenu(e, i.id, robots.length === 0, () => setEditing(i.id));
   return (
-    <div className="sb-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
+    <div className="sb-row list-row sb-isle" data-testid={`sb-island-${i.id}`} data-selected={selected} data-open={open}
       data-drop={`island:${i.id}`} data-drop-hover={hover} {...dropZone({ kind: 'island', id: i.id })}
       draggable={i.kind !== 'home' && !editing} data-dragging={dragging}
       onDragStart={(e) => { e.dataTransfer.setData(ISLAND_DRAG, i.id); e.dataTransfer.effectAllowed = 'move'; setDragging(i.id); }}
@@ -121,7 +121,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       ) : (
         <span className="sb-name" data-testid="island-name">{i.name}</span>
       )}
-      {!open && attention > 0 && <span className="sb-attn" data-testid={`sb-island-attention-${i.id}`}>{attention}</span>}
+      {!open && attention > 0 && <span className="count" data-testid={`sb-island-attention-${i.id}`}>{attention}</span>}
       <span className="sb-ct tnum">{robots.length || '—'}</span>
       <i className="sdot" data-status={status} data-empty={robots.length === 0} />
       {robots.length > 0 && <button className="sb-robot-add" data-testid={`sb-island-new-${i.id}`}
@@ -155,7 +155,7 @@ const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c
   const attention = useApp((s) => wantsUser(c, s.fleet));
   return (
     <div
-      className="sb-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
+      className="sb-row list-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={attention} data-selected={selected}
       data-drop={`robot:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'robot', id: c.id })}
       draggable={!editing} data-dragging={dragging}
@@ -194,7 +194,7 @@ const StarredRow = memoByValue(function StarredRow({ c, machine, hover, zone }: 
   const status = useApp((s) => statusOf(c, s.fleet));
   const attention = useApp((s) => wantsUser(c, s.fleet));
   return (
-    <div className="sb-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
+    <div className="sb-row list-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={attention} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}
       data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
       draggable data-dragging={dragging} {...zone}
@@ -246,12 +246,12 @@ function Starred() {
   const fold = () => app.store.getState().setSection(STARRED, { shut: !shut });
   return (
     <div className="sb-folder" data-testid="sb-starred">
-      <div className="sb-row sb-isle" data-testid="sb-starred-head" data-open={!shut} data-drop-hover={hover !== undefined && hover.id === undefined}
+      <div className="sb-row list-row sb-isle" data-testid="sb-starred-head" data-open={!shut} data-drop-hover={hover !== undefined && hover.id === undefined}
         {...starZone(undefined, setHover)} onClick={fold}>
         <button className="sb-caret" data-testid="sb-starred-toggle" aria-expanded={!shut} aria-label={shut ? 'Expand starred' : 'Collapse starred'}
           onClick={(e) => { stop(e); fold(); }}><Caret open={!shut} /></button>
         <span className="sb-name">Starred</span>
-        {shut && attention > 0 && <span className="sb-attn" data-testid="sb-starred-attention">{attention}</span>}
+        {shut && attention > 0 && <span className="count" data-testid="sb-starred-attention">{attention}</span>}
         <span className="sb-ct tnum">{robots.length}</span>
         <i className="sb-star-mark"><StarIcon on /></i>
       </div>
@@ -330,7 +330,7 @@ export function Sidebar() {
             <div key={i.id} className="sb-folder" data-testid={`sb-folder-${i.id}`} {...reorderZone(i)}
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
               <IslandRow i={i} robots={robots} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
-              {!i.collapsed && robots.length === 0 && <div className="sb-kids"><button className="sb-row sb-robot-empty" data-testid={`sb-island-new-${i.id}`}
+              {!i.collapsed && robots.length === 0 && <div className="sb-kids"><button className="sb-row list-row sb-robot-empty" data-testid={`sb-island-new-${i.id}`}
                 aria-label={`New robot on ${i.name}`} onClick={() => void newRobotOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
               {!i.collapsed && robots.length > 0 && (
                 <div className="sb-kids">{robots.map((c) => <RobotRow key={c.id} c={c} machine={machineOf(fleet, c)} editing={editing === c.id} setEditing={setEditing} />)}</div>

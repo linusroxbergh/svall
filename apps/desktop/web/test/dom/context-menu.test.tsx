@@ -33,7 +33,7 @@ test('the menu lists the entries with Reload under a separator, and a pick close
   open();
   expect(screen.getAllByRole('menuitem').map((el) => el.textContent)).toEqual(['Rename', 'Delete', 'Reload']);
   expect(screen.getByRole('separator').nextElementSibling).toBe(screen.getByTestId('menu-reload'));
-  expect(screen.getByTestId('menu-delete').dataset.danger).toBe('true');
+  expect(screen.getByTestId('menu-delete').classList.contains('dan')).toBe(true);
   remove.mockImplementation(() => expect(store.getState().menu).toBeUndefined());
   fireEvent.click(screen.getByTestId('menu-delete'));
   expect(remove).toHaveBeenCalledOnce();

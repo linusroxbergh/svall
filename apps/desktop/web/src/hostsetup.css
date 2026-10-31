@@ -9,11 +9,7 @@
 .host-form { display: flex; flex-direction: column; gap: var(--sp-md); }
 .machine { display: flex; flex-direction: column; gap: var(--sp-xs); padding-bottom: var(--sp-md); }
 .machine-acts { position: relative; display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
-.machine-menu { position: fixed; z-index: var(--z-popover); display: flex; flex-direction: column; min-width: max-content; padding: var(--sp-xs); overflow: hidden auto; box-sizing: border-box; }
-.machine-menu button { padding: var(--sp-sm) var(--sp-md); border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
-.machine-menu button:hover:not(:disabled) { background: var(--fill-2); }
-.machine-menu button.dan { color: var(--danger); }
-.machine-menu button:disabled { opacity: var(--disabled); cursor: default; }
+.machine-menu { min-width: max-content; }
 .machine .row b.machine-said { font-weight: var(--w-regular); color: var(--ink-2); }
 .host .acts { flex-wrap: wrap; }
 .host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }

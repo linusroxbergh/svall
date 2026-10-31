@@ -181,7 +181,7 @@ export function Tour() {
   return (
     <>
       {ring && <div className="tour-ring" style={{ left: ring.left, top: ring.top, width: ring.right - ring.left, height: ring.bottom - ring.top, borderRadius: clamp(ring.radius, 10, (ring.bottom - ring.top) / 2) }} />}
-      <div key={`tour-${step}`} ref={bubble} className="tour panel" data-testid="tour" data-side={box ? at.side : undefined} style={place(at.side, box, size.w, size.h, vw, vh)} role="dialog" aria-label={cur.title}>
+      <div key={`tour-${step}`} ref={bubble} className="tour dialog" data-testid="tour" data-side={box ? at.side : undefined} style={place(at.side, box, size.w, size.h, vw, vh)} role="dialog" aria-label={cur.title}>
         <div className="kicker">{step + 1} of {STEPS.length}</div>
         <div className="tour-title">{cur.title}</div>
         <div className="tour-body">{cur.body(k, cwd)}</div>

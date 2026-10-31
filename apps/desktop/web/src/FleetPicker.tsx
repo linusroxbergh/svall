@@ -65,7 +65,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
 
   return (
     <div className="modal-back" data-testid="fleet-picker" onPointerDown={close}>
-      <div className="modal panel" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
+      <div className="modal dialog" ref={panel} tabIndex={-1} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker">{mode === 'new' ? 'New fleet' : 'Fleets'}<CloseX onClose={close} testid="fleet-picker-close" /></div>
         {!online && <div className="modal-note" data-testid="fleet-picker-offline">svalld is not connected, so fleets can't be listed or made.</div>}
         {listError && <div className="fleet-error">{listError}</div>}
@@ -73,7 +73,7 @@ function Picker({ mode }: { mode: 'bare' | 'menu' | 'new' }) {
           {fleets?.map((f) => (
             <div key={f.home}>
               {/* a reflex Enter keeps this window's fleet */}
-              <button className="fleet-row" data-testid={`fleet-row-${f.name}`} autoFocus={f.current} disabled={!online || busy !== undefined} onClick={() => open(f)}>
+              <button className="fleet-row menu-item wide" data-testid={`fleet-row-${f.name}`} autoFocus={f.current} disabled={!online || busy !== undefined} onClick={() => open(f)}>
                 <span className="fleet-name">{f.name}</span>
                 {f.current && <span className="fleet-tag">this window</span>}
                 {!f.current && busy === f.home && <span className="fleet-tag">starting…</span>}

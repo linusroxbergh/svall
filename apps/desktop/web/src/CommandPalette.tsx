@@ -49,7 +49,7 @@ function Palette() {
 
   return (
     <div className="modal-back palette-back" data-testid="palette" onPointerDown={close}>
-      <div className="modal panel palette" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="modal dialog palette" onPointerDown={(e) => e.stopPropagation()}>
         <input className="fld" placeholder="Type a command" aria-label="Command" autoFocus value={query} data-testid="palette-query" {...AS_TYPED}
           onChange={(e) => { setQuery(e.target.value); setActive(0); }}
           onKeyDown={(e) => {
@@ -62,7 +62,7 @@ function Palette() {
           }} />
         <div className="palette-rows" ref={rows} role="listbox" aria-label="Commands">
           {list.map((c, i) => (
-            <button key={c.label} className="palette-row" role="option" aria-selected={i === active} data-active={i === active} data-testid="palette-row"
+            <button key={c.label} className="palette-row menu-item wide" role="option" aria-selected={i === active} data-active={i === active} data-testid="palette-row"
               tabIndex={-1} onMouseMove={() => setActive(i)} onClick={() => run(c)}>
               <span className="palette-label">{c.label}</span>
               {c.key && <kbd className="palette-key">{c.key}</kbd>}

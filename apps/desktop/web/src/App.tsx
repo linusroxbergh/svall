@@ -86,11 +86,11 @@ function Screen() {
   }
   return (
     <div className="app">
-      {status !== 'online' && <div className="banner" data-testid="offline-banner">{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</div>}
+      {status !== 'online' && <div className="banner dan" data-testid="offline-banner"><span>{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</span></div>}
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
-          Ghostty config: {configErrors.join('; ')}
-          <button data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
+          <span>Ghostty config: {configErrors.join('; ')}</span>
+          <button className="btn" data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
         </div>
       )}
       <div className="main">

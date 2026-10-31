@@ -1,6 +1,6 @@
 .ide { position: absolute; inset: 0; display: flex; min-height: 0; }
-.ide-side { width: clamp(140px, 30%, 240px); flex: none; overflow: hidden auto; border-right: 1px solid var(--line-soft); background: var(--surface-1); padding: var(--sp-sm) 0 var(--sp-xl); }
-.ide-root { padding: var(--sp-sm) var(--sp-xl) var(--sp-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ide-side { width: clamp(140px, 30%, 240px); flex: none; overflow: hidden auto; border-right: 1px solid var(--line-soft); background: var(--surface-1); padding: var(--sp-sm) var(--sp-xs) var(--sp-xl); }
+.ide-root { padding: var(--sp-sm) var(--sp-md) var(--sp-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the tree's folder: the folders above it, which scroll to keep the last in view, and the way back to the robot's root */
 .ide-where { display: flex; align-items: center; gap: var(--sp-xs); padding-right: var(--sp-md); }
 .ide-crumbs { flex: 1; min-width: 0; display: flex; align-items: center; overflow-x: auto; scrollbar-width: none; text-overflow: clip; }
@@ -15,16 +15,14 @@
 /* the Files tree takes the width it was dragged to and always leaves the editor room; undragged it is as wide as the Changes list */
 .ide-files { --tree: clamp(140px, var(--tree-w, min(30%, 240px)), 100% - 240px); }
 .ide-files .ide-side { box-sizing: border-box; width: var(--tree); padding-right: var(--edge-lip-w); }
-.ide-drag { position: relative; flex: none; width: 8px; margin: 0 calc(-1 * var(--sp-xs)); z-index: 3; cursor: col-resize; touch-action: none; }
-.ide-drag:hover::after, .ide-drag:active::after { content: ''; position: absolute; inset: 0 3px; background: var(--line-strong); }
 /* the tree's edge tab, the sidebars' own, inside its border and at the same height whether it is shown or folded */
 .ide-hide { left: calc(var(--tree) - var(--edge-lip-w) - 1px); border-right: 0; border-radius: var(--r-md) 0 0 var(--r-md); }
 .ide-show { left: 0; border-left: 0; border-radius: 0 var(--r-md) var(--r-md) 0; }
 .ide-empty { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-3); font-size: var(--text-md); }
 .ide-main .ide-empty { position: static; flex: 1; }
-.tree-row { display: flex; align-items: center; gap: var(--sp-xs); width: 100%; padding: var(--sp-2xs) var(--sp-md); background: none; border-radius: 0; font-size: var(--text-md); font-weight: var(--w-medium); color: var(--ink-2); text-align: left; white-space: nowrap; }
-.tree-row:hover { background: var(--fill-1); color: var(--ink); }
-.tree-row[data-active="true"] { background: var(--fill-2); color: var(--ink); }
+.tree-row, .change-row { font-weight: var(--w-medium); color: var(--ink-2); white-space: nowrap; }
+.tree-row { gap: var(--sp-xs); }
+:is(.tree-row, .change-row):is(:hover, [data-active="true"]) { color: var(--ink); }
 .tree-row[data-kind="dir"] { color: var(--ink); }
 /* what git ignores is there to open, a shade back from what it tracks */
 .tree-row[data-ignored="true"] { opacity: .52; }
@@ -71,16 +69,10 @@
 .markdown-preview th { background: var(--fill-1); }
 .markdown-preview img { max-width: 100%; height: auto; }
 .markdown-preview hr { border: 0; border-top: 1px solid var(--line); margin: 1.5em 0; }
-.ide-banner { display: flex; align-items: center; gap: var(--sp-lg); padding: var(--sp-sm) var(--sp-xl); font-size: var(--text-md); background: color-mix(in srgb, var(--working) 14%, transparent); color: var(--ink); border-bottom: 1px solid var(--line-soft); }
-.ide-banner span { flex: 1; }
-.ide-banner .btn { padding: var(--sp-xs) var(--sp-lg); }
-.base-switch { display: flex; align-items: center; gap: var(--sp-xs); padding: var(--sp-xs) var(--sp-lg) var(--sp-md); }
+.base-switch { display: flex; align-items: center; gap: var(--sp-xs); padding: var(--sp-xs) var(--sp-sm) var(--sp-md); }
 .base-btn { padding: var(--sp-2xs) var(--sp-lg); font-size: var(--text-sm); border-radius: var(--r-pill); background: none; color: var(--ink-3); }
 .base-btn[data-active="true"] { background: var(--fill-2); color: var(--ink); }
 .base-branch { margin-left: auto; font-size: var(--text-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.change-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-xs) var(--sp-xl); background: none; border-radius: 0; font-size: var(--text-md); font-weight: var(--w-medium); color: var(--ink-2); text-align: left; white-space: nowrap; }
-.change-row:hover { background: var(--fill-1); color: var(--ink); }
-.change-row[data-active="true"] { background: var(--fill-2); color: var(--ink); }
 .change-st { flex: none; width: 12px; font-family: var(--mono); font-size: var(--text-sm); font-weight: var(--w-bold); }
 .change-row[data-status="A"] .change-st, .change-row[data-status="?"] .change-st { color: var(--done); }
 .change-row[data-status="M"] .change-st, .change-row[data-status="R"] .change-st { color: var(--working); }

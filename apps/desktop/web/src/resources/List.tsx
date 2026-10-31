@@ -56,7 +56,7 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
   const link = isField(item.card) ? undefined : item.card;
   return (
     <div className="res-row">
-      <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-opens={opensItself(item)}
+      <button className="res-item list-row" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-opens={opensItself(item)}
         data-tip={link ? link.link.ref : `Edit the ${item.name.toLowerCase()}`}
         onClick={(e) => { if (link) followLink(link.link, link.robotId, { x: e.clientX, y: e.clientY }); else void chooseResource(deps(), item); }}>
         <b>
@@ -83,7 +83,7 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
   return (
     <>
       <div className="res-row" data-doc={isDoc}>
-        <button className="res-item" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
+        <button className="res-item list-row" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
           aria-disabled={idle || undefined} data-tip={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
           onClick={() => { void chooseResource(deps(), item, far !== undefined); }}>
           <b>
@@ -145,7 +145,7 @@ function TierRows({ tier, query }: { tier: Tier; query: string }) {
     <section key={sec.id ?? tier}>
       {sec.heading && <h4>{sec.heading}</h4>}
       {sec.sources.map((s) => (
-        <button key={s.rootId} className="res-item" data-testid={`resources-list-source-${s.rootId}`} data-opens="false" data-tip={s.root}
+        <button key={s.rootId} className="res-item list-row" data-testid={`resources-list-source-${s.rootId}`} data-opens="false" data-tip={s.root}
           onClick={() => app.store.getState().setResourcesFilter({ where: s.rootId })}>
           <b><i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>{s.name}<em className="res-tag">{counts.get(s.rootId) ?? 0}</em></b>
           <span>{qualifierOf(s, fleet)}</span>

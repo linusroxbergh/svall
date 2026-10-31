@@ -31,8 +31,8 @@
 .pon { flex: none; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-bottom: 1px solid var(--line-soft);
   background: color-mix(in srgb, var(--away) 14%, var(--surface-2)); font-size: var(--text-sm); }
 .pon b { font-weight: var(--w-semibold); }
-.pdivider { flex: none; width: 7px; cursor: col-resize; background: var(--surface-2); border-inline: 1px solid var(--line-soft); touch-action: none; }
-.pdivider:hover { background: var(--fill-3); }
+/* the panes' grip takes room of its own: a terminal is drawn over the page, so a grip lying over its edge would sit under it */
+.pdivider { position: relative; flex: none; box-sizing: border-box; width: var(--sp-md); cursor: col-resize; background: var(--surface-2); border-inline: 1px solid var(--line-soft); touch-action: none; }
 .browser { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface-0); }
 /* the strip scrolls sideways when the tabs outgrow it and shows no bar either way: a tab's underline
    reaches 1px past the content box, which is enough to raise a vertical one */

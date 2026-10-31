@@ -14,5 +14,5 @@ export function Split({ col, label }: { col: 'rail' | 'list'; label: string }) {
     const cols = app.store.getState().resourceCols;
     app.store.getState().setResourceCols({ ...cols, [col]: from + dx }, false);
   }, () => app.store.getState().setResourceCols(app.store.getState().resourceCols));
-  return <i className="res-drag" data-testid={`resources-split-${col}`} role="separator" aria-orientation="vertical" aria-label={label} data-tip="Drag to resize" {...grip} />;
+  return <i className="width-grip" data-testid={`resources-split-${col}`} role="separator" aria-orientation="vertical" aria-label={label} data-tip="Drag to resize" {...grip} />;
 }

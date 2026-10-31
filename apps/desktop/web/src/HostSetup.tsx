@@ -71,15 +71,15 @@ export function MachineActions({ name }: { name: string }) {
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
       <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
-        <div ref={menu} className="machine-menu popover" role="menu" style={place}>
-          <button role="menuitem" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
-          <button role="menuitem" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
+        <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
+          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
+          <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
-          <button role="menuitem" className="dan" data-testid="machine-remove" disabled={running || placed > 0}
+          <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0}
             data-tip={placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
             onClick={item(() => ask(false))}>Remove</button>
           {!up && (
-            <button role="menuitem" className="dan" data-testid="machine-forget" disabled={running}
+            <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running}
               data-tip="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={item(() => ask(true))}>Forget</button>
           )}
         </div>
@@ -353,7 +353,7 @@ export function HostSetup() {
 
   return (
     <div className="modal-back" data-testid="host-setup" onPointerDown={term ? undefined : close}>
-      <div className="modal host panel" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="modal host dialog" onPointerDown={(e) => e.stopPropagation()}>
         <div className="kicker">
           {machine ? <span data-testid="host-machine">{machine}</span> : 'Add a machine'}
           <CloseX ref={shut} onClose={close} testid="host-close" />
