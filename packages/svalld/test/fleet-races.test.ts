@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { markDormant } from '../src/dormancy.js';
+import { markDormant, markSlotDormant } from '../src/dormancy.js';
 import { NotFound } from '../src/errors.js';
 import { ControlClient } from '../src/tmux/control.js';
 import { SESSION } from '../src/tmux/tmux.js';
@@ -214,6 +214,76 @@ runIf('Fleet races', () => {
     expect(store.state.robots[c.id].tmux).toBeUndefined();
     expect(store.state.robots[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
     expect((await tmux.listWindows()).filter((w) => w.name === c.id)).toEqual([]);
+  });
+
+  it('takes back no window a failed revive is closing, from a poll or a reconcile', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux, home } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { markDormant(d.robots[c.id]); });
+    await tmux.killWindow(c.tmux!.windowId);
+    fs.mkdirSync(path.join(home, `${c.id}.prompt`));
+    // a poll and a reconcile list the windows before tmux has closed the revive's
+    const kill = tmux.killWindow.bind(tmux);
+    vi.spyOn(tmux, 'killWindow').mockImplementationOnce(async (id) => { await fleet['poll']['tick'](); await fleet.reconcileNow(); return kill(id); });
+    await expect(fleet.reviveRobot(c.id, 'go on')).rejects.toThrow('EISDIR');
+    expect(store.state.robots[c.id].tmux).toBeUndefined();
+    expect(store.state.robots[c.id].revive).toEqual({ command: `claude --resume ${SID}` });
+  });
+
+  it('takes back no window that began closing while a poll listed it, as a failed revive\'s may', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { markDormant(d.robots[c.id]); });
+    const list = fleet['poll']['deps'].listWindows;
+    vi.spyOn(fleet['poll']['deps'], 'listWindows').mockImplementationOnce(async () => {
+      const live = await list();
+      fleet['ending'].set(c.id, Promise.resolve());
+      return live;
+    });
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].tmux).toBeUndefined();
+  });
+
+  it('takes back no window a failed revive closed while a poll still had it listed', async () => {
+    const b = await boot({ pollMs: 50 });
+    const { fleet, store } = b;
+    const { c } = await withAgent(b);
+    store.update((d) => { markDormant(d.robots[c.id]); });
+    // the next poll lists the window, which then closes as a failed revive's does, before the poll applies the listing
+    const list = fleet['poll']['deps'].listWindows;
+    let closed!: () => void;
+    const done = new Promise<void>((r) => { closed = r; });
+    vi.spyOn(fleet['poll']['deps'], 'listWindows').mockImplementationOnce(async () => {
+      const live = await list();
+      await fleet['closeFailed'](c.id, c.tmux!.windowId, `revive ${c.id}`);
+      closed();
+      return live;
+    });
+    await done;
+    await fleet['poll'].settled();
+    expect(store.state.robots[c.id].tmux).toBeUndefined();
+  });
+
+  it('takes back no window a failed second terminal is closing, from a poll or a reconcile', async () => {
+    const b = await boot({ pollMs: 60_000 });
+    const { fleet, store, tmux } = b;
+    const { c } = await withAgent(b);
+    const first = (await fleet.openSecond(c.id)).second!.tmux!.windowId;
+    store.update((d) => {
+      const second = d.robots[c.id].second!;
+      second.agent = { kind: 'claude', sessionId: SID, transcriptPath: '/t', status: 'idle', lastActivityAt: 1 };
+      markSlotDormant(second);
+    });
+    await tmux.killWindow(first);
+    const revive = store.state.robots[c.id].second!.revive;
+    vi.spyOn(tmux, 'sendLine').mockRejectedValueOnce(new Error('the pane went'));
+    const kill = tmux.killWindow.bind(tmux);
+    vi.spyOn(tmux, 'killWindow').mockImplementationOnce(async (id) => { await fleet['poll']['tick'](); await fleet.reconcileNow(); return kill(id); });
+    await expect(fleet.openSecond(c.id)).rejects.toThrow('the pane went');
+    expect(store.state.robots[c.id].second?.tmux).toBeUndefined();
+    expect(store.state.robots[c.id].second?.revive).toEqual(revive);
   });
 
   it('keeps the failed resume and its session of a terminal whose fresh start could not be started, to start afresh again', async () => {

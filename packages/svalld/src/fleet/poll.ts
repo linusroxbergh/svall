@@ -99,6 +99,11 @@ export class Poll {
     }, this.deps.pollMs ?? 3000);
   }
 
+  /** Settles once the poll running now, if any, has applied its listing. */
+  settled(): Promise<void> {
+    return this.ticking ?? Promise.resolve();
+  }
+
   async stop(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.timer);
@@ -143,6 +148,8 @@ export class Poll {
     const suspended = await stoppedPids(Object.values(this.deps.store.state.robots).filter(this.deps.runsHere)
       .flatMap((c) => [...atShell(c.id, c.agent), ...atShell(secondName(c.id), c.second?.agent)]));
     if (this.stopped) return;
+    // a window that began closing while tmux answered was listed all the same, and is not one to take back
+    for (const name of this.deps.ending.keys()) byName.delete(name);
     const cwdChanged: string[] = [];
     const silent: { id: string; pid: number; paneId: string }[] = [];
     const closing: { key: string; windowId: string; error: string }[] = [];
