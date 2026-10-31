@@ -24,6 +24,7 @@ import {
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths } from './paths.js';
+import { addLine } from './replay.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, holding, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree,
   packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Failure, type Made, type RestSide, type ReturnSheet,
@@ -53,6 +54,7 @@ const sheetRefusal = (e: Error, name: string): Failure => {
 
 // a move undone before its commit rejects with the phase it failed at, which the move sheet names
 const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
+const keptLine = (root: string, where: string): string => `${root} on ${where} changed during a move that was undone; it stays as it is, unlocked`;
 
 // two branch names this Mac cannot hold side by side: one a folder of the other, or spelled alike but for case, which APFS
 // takes for one
@@ -341,9 +343,14 @@ export class Placement {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     // what a rest that failed part way had stopped is on disk
     const j = this.readable(failed.id) ?? failed;
-    const told = j.phase !== 'prepare' || await this.d.links.call<{ fingerprint?: string }>(j.to, 'move.abort', { id: j.id }).then((r) => {
-      // a worktree the robot left there, taken back and left again, holds what it holds now
-      if (r.fingerprint) this.d.store.update((d) => { const l = d.robots[j.robotId]?.left; if (l?.machine === j.to) l.fingerprint = r.fingerprint!; });
+    const told = j.phase !== 'prepare' || await this.d.links.call<Pick<MoveJournal, 'fingerprint' | 'kept'>>(j.to, 'move.abort', { id: j.id }).then((r) => {
+      // a worktree the robot left there, taken back, holds what it holds once left again, or was kept as it is
+      if (r.fingerprint || r.kept) this.d.store.update((d) => {
+        const c = d.robots[j.robotId];
+        if (c?.left?.machine !== j.to) return;
+        if (r.fingerprint) c.left.fingerprint = r.fingerprint;
+        if (r.kept) addLine(c, keptLine(c.left.path, this.name(j.to)));
+      });
       return true;
     }, (e: Error) => {
       this.d.log.error(`move ${j.id}: ${this.name(j.to)} was not told to remove what it prepared: ${e.message}`);
@@ -432,6 +439,7 @@ export class Placement {
     await checkSessions(j.sessions ?? [], sessions, paths, run, 'on this Mac');
     if (m) {
       const made = (x: Made): void => { j = { ...j, made: { ...j.made, ...x } }; this.save(j); };
+      const tip = async (): Promise<string | null> => (await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null;
       await this.clones.run(clone, async () => {
         const twin = await this.clashing(m.branch, back?.path ?? clone);
         if (twin) throw refused(twin);
@@ -439,12 +447,12 @@ export class Placement {
           // looked at again right before the reset, so a save made since the checks is refused, not deleted
           const changed = await changedSince(back, 'on this Mac', git);
           if (changed) throw refused(changed);
-          made({ unlocked: true });
+          made({ unlocked: true, branch: await tip() });
           await takeBack(back.path, back.branchSha, git);
           return applyBundle(back.path, dir, m, git, { machine: 'this Mac', ...(back.branch === m.branch && { keep: back.branchSha }) });
         }
         await newWorktree({ clone, root: paths.root, m, detach: false, where: 'this Mac', git, made });
-        made({ branch: (await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null });
+        made({ branch: await tip() });
         await applyBundle(paths.root, dir, m, git, { machine: 'this Mac', ...(left?.branch === m.branch && { keep: left.branchSha }) });
       });
     }
@@ -454,8 +462,9 @@ export class Placement {
     return j;
   }
 
-  // before the commit: a worktree this return took back is locked again as the robot left it, one it made goes, and the
-  // worker reopens the robot, told once it is back if out of reach; a step that fails is logged and the rest still run
+  // before the commit: a worktree this return took back is locked again as the robot left it, or kept as it is when it holds
+  // what the return did not write, one it made goes, and the worker reopens the robot, told once it is back if out of
+  // reach; a step that fails is logged and the rest still run
   private async abortBack(failed: MoveJournal, error: Error): Promise<void> {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     let j = this.readable(failed.id) ?? failed;
@@ -469,9 +478,16 @@ export class Placement {
     // what this return made here is its to undo only until a later move of the robot lands
     if (j.made && (c?.machine !== j.from || (c.placement?.generation ?? 0) >= j.generation)) still({});
     const { left } = c ?? {};
-    if (left && j.made?.unlocked) {
-      await leaveAgain(left.path, left.branchSha, `moved to ${this.name(j.from)} ${left.moveId}`, this.d.git).then(
-        (fingerprint) => { this.d.store.update((d) => { d.robots[j.robotId].left = { ...left, fingerprint }; }); still({}); },
+    if (left && j.made?.unlocked && j.manifest) {
+      await leaveAgain(left, j.manifest, j.made, `moved to ${this.name(j.from)} ${left.moveId}`, this.d.git).then(
+        (fingerprint) => {
+          this.d.store.update((d) => {
+            const r = d.robots[j.robotId];
+            if (fingerprint) r.left = { ...left, fingerprint };
+            else addLine(r, keptLine(left.path, 'this Mac'));
+          });
+          still({});
+        },
         (e: Error) => this.d.log.error(`move ${j.id}: ${left.path} was not locked again: ${e.message}`),
       );
     } else if (j.manifest && j.made) {

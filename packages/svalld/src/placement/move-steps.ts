@@ -19,7 +19,7 @@ import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
 import { clean, realPath } from '../path-tools.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
-import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, wasCredential } from './bundle.js';
+import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, NOTHING, untrackedFiles, wasCredential } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
 import { refuseUncarried } from './convert.js';
 import { sessionLanding } from './paths.js';
@@ -59,8 +59,9 @@ export const MoveJournal = z.object({
     // the session files that were not here
     files: z.array(z.string()).optional(),
   }).optional(),
-  // the fingerprint of the worktree an abort left again here, which an abort asked again answers
+  // the fingerprint of the worktree an abort left again here, or that it kept it as it was, which an abort asked again answers
   fingerprint: z.string().optional(),
+  kept: z.literal(true).optional(),
   error: z.string().optional(),
   updatedAt: z.number(),
 });
@@ -393,10 +394,27 @@ export async function takeBack(root: string, sha: string, git: GitRunner): Promi
   await cleanWorktree(root, git);
 }
 
-/** Leaves a worktree a move took back as the robot had left it: at `sha`, cleaned, locked with `reason`; answers its fingerprint. */
-export async function leaveAgain(root: string, sha: string, reason: string, git: GitRunner): Promise<string> {
-  await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', sha], root);
+/**
+ * Leaves the worktree `left` that a move of bundle `m` took back as the robot had left it, while it holds what the robot
+ * left, nothing beyond the commit it was left at, or the bundle applied whole: on its branch at that commit, cleaned,
+ * locked with `reason`, and the bundle's branch as `made` recorded it. Answers its fingerprint, or undefined for one
+ * holding anything else, which stays as it is, unlocked.
+ */
+export async function leaveAgain(left: LeftBehind, m: BundleManifest, made: Made, reason: string, git: GitRunner): Promise<string | undefined> {
+  const root = left.path;
+  const tip = async (ref: string): Promise<string> => (await git(['rev-parse', '--verify', '-q', `${ref}^{commit}`], root)).stdout.trim();
+  const held = `${(await git(['symbolic-ref', '-q', 'HEAD'], root)).stdout.trim()} ${await tip('HEAD')} ${await fingerprintOf(root, git)}`;
+  // the bundle's apply leaves its branch at m.base, the commit it came at
+  const known = [[left.branch, left.branchSha, left.fingerprint], [left.branch, left.branchSha, NOTHING], [m.branch, m.base, m.fingerprint]];
+  if (!known.some(([branch, sha, fingerprint]) => held === `refs/heads/${branch} ${sha} ${fingerprint}`)) return undefined;
+  const at = await tip(`refs/heads/${left.branch}`);
+  if (at !== left.branchSha && !(m.branch === left.branch && at === m.base)) return undefined;
+  await must(git, ['checkout', '-q', '-f', '--no-recurse-submodules', '-B', left.branch, left.branchSha], root);
   await cleanWorktree(root, git);
+  if (m.branch !== left.branch && made.branch !== undefined && await tip(`refs/heads/${m.branch}`) === m.base) {
+    if (made.branch === null) await must(git, ['branch', '-q', '-D', m.branch], root);
+    else await must(git, ['update-ref', `refs/heads/${m.branch}`, made.branch, m.base], root);
+  }
   await lockWorktree(root, reason, git);
   return fingerprintOf(root, git);
 }

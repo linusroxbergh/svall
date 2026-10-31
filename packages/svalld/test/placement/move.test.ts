@@ -689,6 +689,88 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(again.store.state.robots.c_1.machine).toBe(W);
   });
 
+  it('an aborted move on another branch into the worktree the robot left on the worker puts it back on kanban where it left it, and that branch there as it was, new or not', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await home.placement.start('c_1', H);
+    const left = w.g(w.farWt, 'rev-parse', 'HEAD');
+    // the robot goes on here on a branch of its own, with a commit the move carries
+    w.g(w.wt, 'checkout', '-q', '-b', 'other');
+    w.g(w.wt, 'commit', '-qm', 'on other');
+    const failing = (): void => at('worker.prepare.journal', 'before', () => { throw new Error('the disk is full'); });
+
+    failing();
+    await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
+    expect(state(w, w.farWt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.clone, 'branch', '--list', 'other')).toBe('');
+    expect(listed(w, w.clone, w.farWt)?.locked).toMatch(/^moved to mac mv_/);
+
+    // a branch of that name there already, behind what comes
+    const before = w.g(w.clone, 'rev-parse', 'kanban~1');
+    w.g(w.clone, 'branch', 'other', before);
+    failing();
+    await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
+    expect(state(w, w.farWt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.clone, 'rev-parse', 'other')).toBe(before);
+    expect(listed(w, w.clone, w.farWt)?.locked).toMatch(/^moved to mac mv_/);
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+
+    disarm?.();
+    const here = state(w, w.wt);
+    await home.placement.start('c_1', W);
+    expect(state(w, w.farWt)).toEqual(here);
+  });
+
+  it('an aborted move leaves the worktree the robot left on the worker as it is, unlocked, when it changed after the move took it back, and the note says so', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await home.placement.start('c_1', H);
+    const b = path.join(w.farWt, 'b.txt');
+    const coming = fs.readFileSync(path.join(w.wt, 'b.txt'), 'utf8');
+    at('worker.prepare.journal', 'before', () => {
+      fs.appendFileSync(b, 'saved on w1\n');
+      throw new Error('the disk is full');
+    });
+
+    const failed = await home.placement.start('c_1', W).catch((e: Error & { data: { moveId: string } }) => e);
+
+    expect(failed).toMatchObject({ message: 'the disk is full' });
+    expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
+    expect(listed(w, w.clone, w.farWt)).toEqual({});
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(home.store.state.robots.c_1.note).toContain(`${w.farWt} on w1 changed during a move that was undone; it stays as it is, unlocked`);
+    // and answers so again
+    expect(await w.worker.handlers['move.abort']({ id: (failed as { data: { moveId: string } }).data.moveId })).toEqual({ kept: true });
+    disarm?.();
+    await expect(home.placement.start('c_1', W)).rejects.toMatchObject({ code: 'refused', message: `changes on w1 in ${w.farWt} since the move; stash or commit them` });
+    expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
+  });
+
+  it('an abort asked again after the worker left the worktree again, and failed before it answered, leaves it locked with its fingerprint', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    await home.placement.start('c_1', H);
+    disarm = armFailpoints((n, e) => {
+      if (n === 'worker.prepare.journal' && e === 'before') throw new Error('the disk is full');
+      if (n === 'worker.abort.remove' && e === 'after') throw new Error('the worker stopped');
+    });
+    await expect(home.placement.start('c_1', W)).rejects.toThrow('the disk is full');
+    disarm();
+    disarm = undefined;
+
+    await home.placement.recoverMoves();
+
+    const c = home.store.state.robots.c_1;
+    expect(c.note).not.toContain('changed during a move that was undone');
+    expect(listed(w, w.clone, w.farWt)?.locked).toMatch(/^moved to mac mv_/);
+    expect(c.left).toMatchObject({ machine: W, path: w.farWt, fingerprint: await fingerprintOf(w.farWt, hooklessGit) });
+    const id = await home.placement.start('c_1', W);
+    expect(home.placement.status(id).phase).toBe('done');
+  });
+
   it('a move refuses a branch of its name on the worker holding commits the robot\'s lacks, at the check and at the apply, and takes one it holds whole', async () => {
     const w = open();
     w.g(w.base, 'clone', '-q', w.origin, w.clone);
@@ -853,6 +935,106 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
     expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
     await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
+  it('an aborted return that came back on another branch puts the Mac worktree back on kanban where it left it, and that branch as it was here, new or not', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const left = w.g(w.wt, 'rev-parse', 'HEAD');
+    // the robot goes on there on a branch of its own, with a commit the return carries
+    w.g(w.farWt, 'checkout', '-q', '-b', 'other');
+    w.g(w.farWt, 'commit', '-qm', 'on other');
+    const failing = (): void => at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+
+    failing();
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    expect(state(w, w.wt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.main, 'branch', '--list', 'other')).toBe('');
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+
+    // a branch of that name here already, behind what comes back
+    const before = w.g(w.main, 'rev-parse', 'kanban~1');
+    w.g(w.main, 'branch', 'other', before);
+    failing();
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    expect(state(w, w.wt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.main, 'rev-parse', 'other')).toBe(before);
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+
+    disarm?.();
+    const there = state(w, w.farWt);
+    await home.placement.start('c_1', H);
+    expect(state(w, w.wt)).toEqual(there);
+  });
+
+  it('an aborted return leaves the Mac worktree as it is, unlocked, when it changed after the return took it back, and the note says so', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const a = path.join(w.wt, 'a.txt');
+    const coming = fs.readFileSync(path.join(w.farWt, 'a.txt'), 'utf8');
+    at('move.journal.commit', 'before', () => {
+      fs.appendFileSync(a, 'saved on the Mac\n');
+      throw new Error('the disk is full');
+    });
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+
+    expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
+    expect(listed(w, w.main, w.wt)).toEqual({});
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
+    disarm?.();
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them` });
+    expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
+  });
+
+  it('an aborted return keeps a file saved into the Mac worktree while the return applied what came back', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    let saved = false;
+    d.git = (args, cwd) => {
+      if (!saved && args[0] === 'apply') {
+        saved = true;
+        fs.writeFileSync(path.join(w.wt, 'mine.md'), 'mine\n');
+      }
+      return git(args, cwd);
+    };
+    at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    d.git = git;
+
+    expect(saved).toBe(true);
+    expect(fs.readFileSync(path.join(w.wt, 'mine.md'), 'utf8')).toBe('mine\n');
+    expect(listed(w, w.main, w.wt)).toEqual({});
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
+  });
+
+  it('an aborted return leaves the Mac worktree as it is, unlocked, when the branch it was left on moved after the return took it back', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    w.g(w.farWt, 'checkout', '-q', '-b', 'other');
+    w.g(w.farWt, 'commit', '-qm', 'on other');
+    const head = w.g(w.main, 'rev-parse', 'kanban');
+    const moved = w.g(w.main, 'commit-tree', `${head}^{tree}`, '-p', head, '-m', 'on the Mac');
+    at('move.journal.commit', 'before', () => {
+      w.g(w.main, 'update-ref', 'refs/heads/kanban', moved);
+      throw new Error('the disk is full');
+    });
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+
+    expect(w.g(w.main, 'rev-parse', 'kanban')).toBe(moved);
+    expect(state(w, w.wt).branch).toBe('other');
+    expect(listed(w, w.main, w.wt)).toEqual({});
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
   });
 
   it('a move waits while the worker catches up with this Mac: busy, with the one sentence', async () => {

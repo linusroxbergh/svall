@@ -100,6 +100,9 @@ async function digest(root: string, git: GitRunner, untracked: readonly { path: 
   return canonicalDigest({ index: sha256Hex(index), worktree, untracked: files });
 }
 
+/** The fingerprint of a worktree that holds nothing beyond its HEAD. */
+export const NOTHING = canonicalDigest({ index: sha256Hex(''), worktree: [], untracked: [] });
+
 /** What a worktree holds beyond its HEAD, the same on any machine holding the same index, working tree and untracked files but credentials. */
 export async function fingerprintOf(root: string, git: GitRunner, credential = isCredential): Promise<string> {
   const untracked: { path: string; sha256: string }[] = [];
