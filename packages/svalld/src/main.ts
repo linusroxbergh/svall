@@ -357,7 +357,7 @@ async function start(opts: Options): Promise<Daemon> {
     if (!off.has('push')) {
       teardown.push(startPusher({
         store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: () => config.mobile.pushContact,
-        owns: (c) => router.runsHere(c) || !phone?.serves(c.machine),
+        ...(phone && { owns: (c: Robot) => phone.pushesFor(c) }),
       }));
     }
     if (workerPhone) {
@@ -367,7 +367,7 @@ async function start(opts: Options): Promise<Daemon> {
         owns: (c) => router.runsHere(c), machine: me,
       }));
     }
-    if (phone) teardown.push(push.watch(() => void phone.syncAll()));
+    if (phone) teardown.push(phone.start());
     // a running server keeps its old options if the new conf has a line this tmux rejects
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
@@ -378,7 +378,7 @@ async function start(opts: Options): Promise<Daemon> {
       ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(workerPhone && { workerPhone }),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

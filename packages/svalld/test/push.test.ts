@@ -207,6 +207,36 @@ describe('pusher', () => {
     expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'done', machine: W }]);
   });
 
+  it('tells nothing of a robot that moves in with news in the same change', async () => {
+    const { store, push } = setup({ off: true });
+    const W = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const sent: PushPayload[] = [];
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, machine: W, owns: (c) => c.machine === W,
+      send: (_s, payload) => { sent.push(payload); return Promise.resolve(); },
+    });
+    store.update((d) => { d.robots.c.machine = W; d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    stop();
+    expect(sent).toEqual([]);
+  });
+
+  // as when a worker stops serving the phone: the home owns its robots from then, with nothing in the store changed
+  it('tells of the next news of a robot it comes to own with no change to the store', async () => {
+    const { store, push } = setup({ off: true });
+    const sent: PushPayload[] = [];
+    const mine = { owned: false };
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, owns: () => mine.owned,
+      send: (_s, payload) => { sent.push(payload); return Promise.resolve(); },
+    });
+    mine.owned = true;
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    stop();
+    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?' }]);
+  });
+
   it('says nothing once stopped', async () => {
     const { store, sent, stop } = setup();
     stop();

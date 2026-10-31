@@ -16,8 +16,8 @@ type PhoneOn = z.infer<typeof PhoneOn>;
 /** What the home sends a worker for its phone link: what the home's own link accepts and signs pushes with, or off. */
 export const PhoneSet = z.discriminatedUnion('on', [PhoneOn, z.object({ on: z.literal(false) })]);
 export type PhoneSet = z.infer<typeof PhoneSet>;
-/** The worker's answer: its link and pass while it serves, else why not. */
-export const PhoneAnswer = z.object({ url: z.string().optional(), pass: z.string().optional(), error: z.string().optional() });
+/** The worker's answer: its link and pass while it serves, else why not; `unseen` when tailscale did not say whether it serves. */
+export const PhoneAnswer = z.object({ url: z.string().optional(), pass: z.string().optional(), error: z.string().optional(), unseen: z.literal(true).optional() });
 export type PhoneAnswer = z.infer<typeof PhoneAnswer>;
 
 type Link = Pick<Mobile, 'get' | 'set'> & { served(): string | undefined };
@@ -72,10 +72,6 @@ export class WorkerPhone {
     return [...this.held?.subscriptions ?? []];
   }
 
-  get(endpoint: string): Subscription | undefined {
-    return this.held?.subscriptions.find((s) => s.endpoint === endpoint);
-  }
-
   // a device the push service says is gone leaves this copy; the home's own store learns it on its next push
   remove(endpoint: string): boolean {
     const held = this.held;
@@ -109,8 +105,13 @@ export class WorkerPhone {
     }
     this.write(p.data);
     this.look();
-    let s = await this.link.get();
-    if (!s.serving && !s.error) s = await this.link.set(true);
+    const look = await this.link.get();
+    // a look tailscale does not answer leaves the link as it was last seen
+    if (look.error) {
+      const was = this.link.served();
+      return was ? { url: was, pass: this.o.pass } : { error: look.error, unseen: true };
+    }
+    const s = look.serving ? look : await this.link.set(true);
     return s.serving ? { url: s.url, pass: this.o.pass } : { error: s.error ?? `tailscale serve did not take port ${s.port}` };
   }
 

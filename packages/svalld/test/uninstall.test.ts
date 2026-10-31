@@ -112,6 +112,15 @@ describe('runUninstall', () => {
     expect(JSON.parse(fs.readFileSync(claudeJson, 'utf8')).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
   });
 
+  it('removes the phone keys a worker\'s home copied there, and says so as host remove reads it', async () => {
+    const { o, home } = installed();
+    const phone = path.join(home, 'phone.json');
+    fs.writeFileSync(phone, '{}', { mode: 0o600 });
+    const lines = await runUninstall(o);
+    expect(lines).toContain(`removed ${phone}, the phone keys its home copied`);
+    expect(fs.existsSync(phone)).toBe(false);
+  });
+
   it('removes the OpenCode plugin', async () => {
     const { o } = installed();
     installOpencodePlugin(o.opencode);

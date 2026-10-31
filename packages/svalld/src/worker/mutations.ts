@@ -73,9 +73,12 @@ export class WorkerMutations {
     return !this.o.connection.connected() || !this.drained();
   }
 
-  /** Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
-   *  a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change to one
-   *  of its robots never waits on a link that may be half open. */
+  /**
+   * Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
+   * a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change to one
+   * of its robots never waits on a link that may be half open, but for an update the journal cannot carry. A close of a robot
+   * moving away is the home's, which holds the move.
+   */
   serves(method: MethodName, params: unknown, phone = false): boolean {
     if (method === 'robot.create') return true;
     if (method === 'island.create') return this.away();
@@ -83,7 +86,10 @@ export class WorkerMutations {
     const { robots, islands } = this.o.store.state;
     if (method === 'island.update' || method === 'island.delete') return typeof id === 'string' && Object.hasOwn(islands, id) && islands[id].kind !== 'home' && this.away();
     if (typeof id !== 'string' || !Object.hasOwn(robots, id) || robots[id].machine !== this.o.me) return false;
-    return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run' || method === 'robot.send') && (phone || this.away()));
+    if (method === 'robot.seen') return true;
+    if (method === 'robot.close' && robots[id].moving) return false;
+    if (method !== 'robot.update' && method !== 'robot.close' && method !== 'robot.run' && method !== 'robot.send') return false;
+    return this.away() || (phone && (method !== 'robot.update' || journaled(params)));
   }
 
   serve<M extends MethodName>(method: M, params: ParsedParams<M>): Promise<Result<M>> {
@@ -184,6 +190,10 @@ export class WorkerMutations {
     return { id: newMutationId(), ...m, snapshotVersion: this.o.connection.snapshotVersion(), at: Date.now() };
   }
 }
+
+// an update that names only the fields a mutation carries home
+const journaled = (params: unknown): boolean =>
+  Object.entries(params as Record<string, unknown>).every(([k, v]) => k === 'id' || v === undefined || (UPDATE_FIELDS as readonly string[]).includes(k));
 
 // what an acknowledged mutation changed, as applied.ndjson records it
 function changed(m: Mutation): Record<string, unknown> {

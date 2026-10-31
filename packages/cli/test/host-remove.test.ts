@@ -89,9 +89,11 @@ describe('host remove', () => {
   });
 
   it('shows the keys the far uninstall took back as done', async () => {
-    ssh.reply(['uninstall'], { stdout: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${BASE}/current\n` });
+    ssh.reply(['uninstall'], { stdout: `took 1 key the mirror copied out of ${HOME}/.claude.json\nremoved ${HOME}/.svall/phone.json, the phone keys its home copied\nremoved ${BASE}/current\n` });
     expect(await removeHost('trift', {}, deps({ registry: registered('trift.test') }))).toEqual({ result: 'ready', actions: [] });
-    expect(step('keys').at(-1)).toMatchObject({ status: 'ok', detail: `took 1 key the mirror copied out of ${HOME}/.claude.json` });
+    expect(step('keys').at(-1)).toMatchObject({
+      status: 'ok', detail: `took 1 key the mirror copied out of ${HOME}/.claude.json; removed ${HOME}/.svall/phone.json, the phone keys its home copied`,
+    });
   });
 
   it('uninstalls nothing on a machine that answers as another than the registry names, as an alias that now leads elsewhere', async () => {

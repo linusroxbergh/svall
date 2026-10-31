@@ -615,7 +615,7 @@ describe('a worker\'s phone link', () => {
     expect(d.calls).toEqual([]);
     const run = d.run;
     d.run = () => Promise.reject(new Error('tailscaled is wedged'));
-    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('tailscale') });
+    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('tailscale'), unseen: true });
     d.run = run;
     await vi.waitFor(() => expect(phone.served()).toBe('https://mac.tailnet.ts.net:8443/'));
     expect(d.web[8443]).toBe(TARGET);

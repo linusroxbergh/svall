@@ -1,5 +1,5 @@
 import webpush from 'web-push';
-import { isNews, isPushStatus, sessionsOf, type MachineId, type PushStatus, type Robot, type Session } from '@svall/protocol';
+import { isNews, isPushStatus, sessionsOf, type MachineId, type PushStatus, type Robot } from '@svall/protocol';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 import type { PushStore, Subscription } from './store.js';
@@ -13,25 +13,26 @@ export type Send = (sub: Subscription, payload: PushPayload, subject: string) =>
 
 /**
  * Tells every device of an accepted login when an agent of a robot it `owns` turns blocked or done, while the phone link is
- * served; a robot it did not own before, as one that arrived by a move, tells nothing of the state it came in. `machine`,
- * on a worker, goes in each push. The returned function stops it.
+ * served; a robot it would not have owned as it was before, as one that arrived by a move, tells nothing of the state it
+ * came in. `machine`, on a worker, goes in each push. The returned function stops it.
  */
 export function startPusher(o: {
   store: Store; push: Pick<PushStore, 'list' | 'remove'>; send: Send; log: Logger; logins: () => string[]; served: () => string | undefined; contact?: () => string | undefined;
   owns?: (c: Robot) => boolean; machine?: MachineId;
 }): () => void {
-  const owned = (sessions: Map<string, Session>): Set<string> => new Set([...sessions].filter(([, s]) => o.owns?.(o.store.state.robots[s.robotId]) ?? true).map(([k]) => k));
-  let last = sessionsOf(o.store.state);
-  let mine = owned(last);
+  const owns = (c: Robot): boolean => o.owns?.(c) ?? true;
+  // ownership is judged now, of the robot as it is and as it was, so ownership that turns with no change to the store moves nothing
+  let before = o.store.state;
+  let last = sessionsOf(before);
   return o.store.subscribe(() => {
     const f = o.store.state;
     const next = sessionsOf(f);
-    const now = owned(next);
     const url = o.served();
     for (const [key, { robotId, term, agent }] of next) {
       const status = agent?.status;
-      if (url === undefined || !now.has(key) || (last.has(key) && !mine.has(key)) || !isNews(last.get(key)?.agent, agent) || !isPushStatus(status)) continue;
       const c = f.robots[robotId];
+      const was = Object.hasOwn(before.robots, robotId) ? before.robots[robotId] : undefined;
+      if (url === undefined || !owns(c) || (was && !owns(was)) || !isNews(last.get(key)?.agent, agent) || !isPushStatus(status)) continue;
       const payload: PushPayload = {
         id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
         ...(o.machine && { machine: o.machine }),
@@ -45,8 +46,8 @@ export function startPusher(o: {
         });
       }
     }
+    before = f;
     last = next;
-    mine = now;
   });
 }
 
