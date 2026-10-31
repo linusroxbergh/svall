@@ -424,7 +424,7 @@ test('a robot here offers a move to each worker within reach, which opens the mo
   act(() => store.getState().setFleet(f));
   render(<Side />);
   expect(moves()).toEqual(['Move to linus-vault']);
-  expect(foot()).toEqual(['Finder', 'Resources', 'Move to linus-vault', 'Open terminal', 'Delete robot']);
+  expect(foot()).toEqual(['Move to linus-vault', 'Finder', 'Resources', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-machine')).toBeNull();
   fireEvent.click(screen.getByTestId(`side-move-${VAULT}`));
   expect(store.getState().moveSheet).toEqual({ id: 'c0', to: VAULT });
@@ -447,7 +447,7 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(screen.getByTestId('side-machine').getAttribute('data-tip')).toBeNull();
   expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
-  expect(foot()).toEqual(['Terminal there', 'Resources', 'Move to this Mac', 'Open terminal', 'Delete robot']);
+  expect(foot()).toEqual(['Move to this Mac', 'Terminal there', 'Resources', 'Open terminal', 'Delete robot']);
   expect(screen.queryByTestId('side-cpu')).toBeNull();
   expect(calls().some(([m]) => m === 'load.get')).toBe(false);
   // what of its agent setup will not work there, which here is nothing

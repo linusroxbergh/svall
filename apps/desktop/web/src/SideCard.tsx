@@ -169,14 +169,6 @@ export function SideCard({ id }: { id: string }) {
         </Section>
       </div>
       <div className="acts">
-        {placed ? (
-          <button className="btn" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
-            onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
-        ) : (
-          <button className="btn" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
-            onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
-        )}
-        <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
         {movable && (placed || workers.length > 0) && (
           <div className="moves">
             {placed
@@ -186,6 +178,14 @@ export function SideCard({ id }: { id: string }) {
               ))}
           </div>
         )}
+        {placed ? (
+          <button className="btn" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
+            onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
+        ) : (
+          <button className="btn" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
+            onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
+        )}
+        <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
         <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
         <button className="btn dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
