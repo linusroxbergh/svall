@@ -1,5 +1,5 @@
 html, body, #root { height: 100%; margin: 0; }
-body { background: var(--surface-1); color: var(--ink); font: var(--text-lg)/var(--lh) var(--sans); overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased; }
+body { background: var(--surface-1); color: var(--ink); caret-color: var(--sand); font: var(--text-lg)/var(--lh) var(--sans); overflow: hidden; user-select: none; -webkit-font-smoothing: antialiased; }
 /* WebKit lays a textarea's placeholder out wider than the box once the page is zoomed */
 textarea { overflow-x: hidden; }
 .app { display: flex; flex-direction: column; height: 100%; }
@@ -79,6 +79,7 @@ textarea { overflow-x: hidden; }
 .menu-item.wide { padding-inline: var(--sp-lg); }
 .list-row:hover { background: var(--fill-1); }
 .list-row:is([data-selected="true"], [data-active="true"], [aria-pressed="true"], [aria-selected="true"]) { background: var(--fill-2); }
+.list-row:is([data-selected="true"], [data-active="true"], [aria-pressed="true"], [aria-selected="true"]) .n { color: var(--ink-2); }
 .menu-item:hover { background: none; }
 /* a menu that keeps its own pick marks every item data-active; one of plain buttons lights under the pointer and the focus */
 .menu-item[data-active="true"], .menu-item:not([data-active], :disabled):is(:hover, :focus-visible) { background: var(--fill-2); }
@@ -122,7 +123,7 @@ textarea { overflow-x: hidden; }
 :is(.btn, .hact):active:not(:disabled) { scale: .97; }
 :where(button, .btn, .fld):disabled { opacity: var(--disabled); cursor: default; }
 /* a text field: boxed on its panel's ground, its border lit while it holds the caret */
-.fld { box-sizing: border-box; width: 100%; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line-soft); border-radius: var(--r-sm);
+.fld { box-sizing: border-box; width: 100%; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
   background: var(--fill-1); color: var(--ink); font: inherit; font-size: var(--text-md); transition: border-color var(--dur) var(--ease); }
 textarea.fld { padding-block: var(--sp-md); }
 .fld::placeholder { color: var(--ink-3); }
@@ -198,7 +199,7 @@ textarea.fld { padding-block: var(--sp-md); }
 button.pill:hover { background: var(--fill-2); color: var(--ink); }
 .pill:is([aria-pressed="true"], [data-on="true"]) { background: var(--sand-fill); color: var(--sand-hi); border-color: color-mix(in srgb, var(--sand) 30%, transparent); }
 .pill .n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.pill[aria-pressed="true"] .n { color: inherit; opacity: .7; }
+.pill:is([aria-pressed="true"], [data-on="true"]) .n { color: inherit; opacity: .85; }
 /* a document tab: its name, a dot while unsaved, then its close; the open one underlined in sand. The strip scrolls sideways
    and shows no bar: the underline reaches 1px past its box, which is enough to raise a vertical one */
 .dtabs { flex: none; display: flex; align-items: center; gap: var(--sp-2xs); padding: var(--sp-sm) var(--sp-md) 0; border-bottom: 1px solid var(--line-soft);

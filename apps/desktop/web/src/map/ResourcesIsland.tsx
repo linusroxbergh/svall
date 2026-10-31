@@ -30,7 +30,7 @@ function facet(fw: number, fh: number, seed: string, cx: number, cy: number, dx:
   return { d: coastPath(fw, fh, seed, 0), t: `translate(${cx + dx - (fw / 2 + theme.pad)},${cy + dy - (fh / 2 + theme.pad)})` };
 }
 
-const ROCK = { crag: 'rgba(58,52,42,.13)', lichen: 'rgba(255,250,236,.2)' };
+const ROCK = { crag: 'color-mix(in srgb, var(--rock-ink) 13%, transparent)', lichen: 'color-mix(in srgb, var(--cream) 20%, transparent)' };
 
 export function ResourcesIsland({ place }: { place: Placement }) {
   const user = useApp((s) => s.resources[0]);
@@ -61,7 +61,7 @@ export function ResourcesIsland({ place }: { place: Placement }) {
           </defs>
           <Seabed sand={rock} cx={cx} cy={cy} bank="var(--rock-bank)" />
           <g style={{ pointerEvents: 'visiblePainted', cursor: 'pointer' }} onPointerDown={stop} onDoubleClick={stop} onClick={press}>
-            <path className="land" d={rock} fill="url(#s-res)" stroke="rgba(80,72,58,.34)" strokeWidth="1" />
+            <path className="land" d={rock} fill="url(#s-res)" stroke="color-mix(in srgb, var(--rock-ink) 28%, transparent)" strokeWidth="1" />
             <g clipPath="url(#c-res)">
               <path d={rock} fill="none" stroke={ROCK.crag} strokeWidth="14" />
               <path d={rock} fill="none" stroke={ROCK.crag} strokeWidth="6" />
@@ -71,8 +71,8 @@ export function ResourcesIsland({ place }: { place: Placement }) {
               <path d={facets[2].d} transform={facets[2].t} fill={ROCK.lichen} />
               {/* the footing the tower stands on, cut from the rock so the grain runs over it too */}
               <g className="res-plinth" transform={`translate(${cx},${pad + ISLET.visible - ISLET.foot})`}>
-                <ellipse className="res-plinth-side" fill="var(--rock-plinth)" stroke="rgba(58,52,42,.16)" />
-                <ellipse className="res-plinth-top" fill="var(--rock-plinth-top)" />
+                <ellipse className="res-plinth-side" fill="var(--rock-plinth)" stroke="color-mix(in srgb, var(--rock-ink) 16%, transparent)" />
+                <ellipse className="res-plinth-top" fill="var(--rock-0)" />
               </g>
               <rect width={bw} height={bh} filter="url(#g-res)" opacity=".28" />
             </g>

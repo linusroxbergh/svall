@@ -89,8 +89,8 @@ export function Home({
             </defs>
             <Seabed sand={sand} cx={cx} cy={cy} bank="var(--home-bank)" />
             <g {...label} style={{ pointerEvents: 'visiblePainted' }}>
-              <path className="land" d={sand} fill="url(#s-home)" stroke="rgba(120,104,68,.28)" strokeWidth="1" />
-              <path className="land grass" d={dune} fill="rgba(255,250,236,.33)" />
+              <path className="land" d={sand} fill="url(#s-home)" stroke="color-mix(in srgb, var(--card-tint) 28%, transparent)" strokeWidth="1" />
+              <path className="land grass" d={dune} fill="color-mix(in srgb, var(--cream) 33%, transparent)" />
             </g>
           </svg>
           <LandTexture shape={sand} />

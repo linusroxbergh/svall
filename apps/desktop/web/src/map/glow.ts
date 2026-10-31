@@ -1,9 +1,13 @@
-// the shoals lightening the sea and the cast shadow: the coast scaled k round the centre, moved, blurred by sd before the scale
+// the shoals lightening the sea and the cast shadow: the coast scaled k round the centre, moved, blurred by sd before the scale,
+// in the colour of the token fill names
 const GLOWS = [
-  { k: 1.38, dx: 0, dy: 0, sd: 16, fill: 'rgba(140,190,215,.13)' },
-  { k: 1.16, dx: 0, dy: 0, sd: 11, fill: 'rgba(205,225,230,.08)' },
-  { k: 1, dx: 2, dy: 8, sd: 5, fill: 'rgba(8,14,22,.26)' },
+  { k: 1.38, dx: 0, dy: 0, sd: 16, fill: '--shoal' },
+  { k: 1.16, dx: 0, dy: 0, sd: 11, fill: '--shoal-2' },
+  { k: 1, dx: 2, dy: 8, sd: 5, fill: '--shade-1' },
 ];
+
+/** The glows' colours, read on the page: a worker has no stylesheet to read them from. */
+export const glowFills = (read: (token: string) => string): string[] => GLOWS.map((o) => read(o.fill));
 
 // bitmap px per world px: the narrowest blur is still 2.5 of them wide
 export const RES = 0.5;
@@ -25,12 +29,12 @@ export function frame(sand: string, cx: number, cy: number): Frame {
 }
 
 /** Draws the glow onto a canvas of the frame's size. */
-export function paint(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, sand: string, cx: number, cy: number, { x, y, w, h }: Frame): void {
+export function paint(ctx: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, sand: string, cx: number, cy: number, { x, y, w, h }: Frame, fills: string[]): void {
   // the coast itself is drawn off the canvas, so only its shadow lands on it
   const off = 4 * (w + h), path = new Path2D(sand);
-  for (const o of GLOWS) {
+  for (const [i, o] of GLOWS.entries()) {
     ctx.setTransform(RES * o.k, 0, 0, RES * o.k, RES * (cx - o.k * cx + o.dx - x) - off, RES * (cy - o.k * cy + o.dy - y));
-    ctx.shadowColor = o.fill; ctx.shadowBlur = 2 * RES * o.sd * o.k; ctx.shadowOffsetX = off;
+    ctx.shadowColor = fills[i]; ctx.shadowBlur = 2 * RES * o.sd * o.k; ctx.shadowOffsetX = off;
     ctx.fill(path);
   }
 }

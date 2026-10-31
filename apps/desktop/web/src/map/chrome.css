@@ -24,9 +24,9 @@
 .map-sea, .map-world, .home, .res-islet { filter: brightness(var(--map-tone, 1)); }
 .map[data-dragging="true"] { cursor: grabbing; }
 .drop-cell { position: absolute; border-radius: var(--r-sm); pointer-events: none;
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--done) 95%, transparent); background: color-mix(in srgb, var(--done) 18%, transparent); }
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sel) 95%, transparent); background: color-mix(in srgb, var(--sel) 18%, transparent); }
 /* a crowded cell still takes the drop, the fleet just chooses where it lands, so it dims rather than alarms */
-.drop-cell[data-free="false"] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--done) 45%, transparent); background: color-mix(in srgb, var(--done) 8%, transparent); }
+.drop-cell[data-free="false"] { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sel) 45%, transparent); background: color-mix(in srgb, var(--sel) 8%, transparent); }
 .hover-card { position: absolute; z-index: var(--z-hover); padding: var(--sp-2xl); box-sizing: border-box; pointer-events: none; max-height: calc(100% - 24px); overflow: hidden; }
 .hover-card[data-flip="false"] { transform: translateY(-100%); }
 .hover-card .top { display: flex; align-items: baseline; gap: var(--sp-lg); }

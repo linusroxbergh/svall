@@ -8,10 +8,10 @@ const read = (blob: Blob) => new Promise<string>((done) => {
 
 // a drawing that throws reaches the page as the worker's error; a canvas that reads back nothing, as the page's does while
 // WebKit replaces its GPU process, posts null
-onmessage = ({ data: { id, sand, cx, cy } }: MessageEvent<{ id: number; sand: string; cx: number; cy: number }>) => {
+onmessage = ({ data: { id, sand, cx, cy, fills } }: MessageEvent<{ id: number; sand: string; cx: number; cy: number; fills: string[] }>) => {
   const f = frame(sand, cx, cy);
   const canvas = new OffscreenCanvas(f.w, f.h);
-  paint(canvas.getContext('2d')!, sand, cx, cy, f);
+  paint(canvas.getContext('2d')!, sand, cx, cy, f, fills);
   void canvas.convertToBlob().then((b) => (b.size ? read(b) : null), () => null)
     .then((href) => postMessage({ id, g: href && { href, x: f.x, y: f.y, w: f.w / RES, h: f.h / RES } }));
 };
