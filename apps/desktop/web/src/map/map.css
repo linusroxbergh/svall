@@ -119,7 +119,7 @@
 
 .tok .nm { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 0 calc(var(--tok) * .15) calc(var(--tok) * .04);
-  font-size: var(--label); font-weight: var(--w-bold); line-height: 1.08; letter-spacing: .05em; text-transform: uppercase;
+  font-size: var(--label); font-weight: var(--w-bold); line-height: 1.08; letter-spacing: var(--track-loose); text-transform: uppercase;
   color: var(--ink-land); overflow: hidden; }
 .tok .nm span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere; hyphens: none; }
@@ -134,7 +134,7 @@
 .tok[data-status=done]    { --foot: var(--done); --on-foot: var(--ink-on-done); }
 .tok[data-status=moving]  { --foot: var(--moving); --on-foot: var(--ink-on-moving); }
 .tok[data-status=unknown] { --foot: var(--unknown); --on-foot: var(--ink-on-unknown); }
-.tok .foot .sw { font-size: var(--label); font-weight: var(--w-bold); letter-spacing: .05em;
+.tok .foot .sw { font-size: var(--label); font-weight: var(--w-bold); letter-spacing: var(--track-loose);
   text-transform: uppercase; padding: calc(var(--tok) * .02) calc(var(--tok) * .13);
   border-radius: var(--r-xs); transition: background-color var(--dur-status) var(--ease), color var(--dur-status) var(--ease); }
 .tok .foot .sw[data-status] { padding-left: 0; color: var(--on-foot); }
