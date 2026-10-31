@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
-import setup, { LOCK_FLAGS, takeTmuxLock } from './tmux-lock.js';
+import setup, { LOCK_FLAGS, refusal, takeTmuxLock } from './tmux-lock.js';
 
 const MODULE = path.join(import.meta.dirname, 'tmux-lock.ts');
 const dirs: string[] = [];
@@ -115,4 +115,15 @@ test('names the holder it waits on at most every 30 seconds', async () => {
 test('is skipped for a run started with SVALL_NO_TEST_LOCK=1', async () => {
   vi.stubEnv('SVALL_NO_TEST_LOCK', '1');
   expect(await setup()).toBeUndefined();
+});
+
+test('refuses tmux-driven tests on a Mac unless SVALL_TMUX_ON_MAC=1 asks for them or the run is CI', () => {
+  vi.stubEnv('CI', undefined);
+  vi.stubEnv('SVALL_TMUX_ON_MAC', undefined);
+  expect(refusal()).toMatch(/^svall tests: the tmux-driven tests \(svalld-tmux, cli-tmux, e2e\) .* SVALL_TMUX_ON_MAC=1 runs them$/);
+  vi.stubEnv('SVALL_TMUX_ON_MAC', '1');
+  expect(refusal()).toBeUndefined();
+  vi.stubEnv('SVALL_TMUX_ON_MAC', undefined);
+  vi.stubEnv('CI', 'true');
+  expect(refusal()).toBeUndefined();
 });

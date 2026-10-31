@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { configDefaults, defineConfig } from 'vitest/config';
+import { refusal } from './test/tmux-lock.js';
 
 const isolate = fileURLToPath(new URL('./test/isolate.ts', import.meta.url));
 const tmuxLock = fileURLToPath(new URL('./test/tmux-lock.ts', import.meta.url));
@@ -14,6 +15,10 @@ const tmuxFiles = (root: string) => {
   const dir = fileURLToPath(new URL(`./${root}/`, import.meta.url));
   return fs.globSync('test/**/*.test.ts', { cwd: dir }).filter((f) => fs.readFileSync(dir + f, 'utf8').includes('hasTmux('));
 };
+// and on a Mac they are left out unless asked for, said once though vitest evaluates this file for each project
+const refused = refusal();
+const noted = globalThis as { svallTmuxNoted?: boolean };
+if (refused && !noted.svallTmuxNoted) { noted.svallTmuxNoted = true; console.warn(refused); }
 
 export default defineConfig({
   test: {
@@ -27,7 +32,7 @@ export default defineConfig({
         const test = { root, setupFiles: [isolate], env: shell, ...slow };
         return [
           { test: { name, ...test, exclude: [...configDefaults.exclude, ...tmux] } },
-          { test: { name: `${name}-tmux`, ...test, include: tmux, globalSetup: [tmuxLock], maxWorkers: 4, sequence: { groupOrder: 1 } } },
+          ...(refused ? [] : [{ test: { name: `${name}-tmux`, ...test, include: tmux, globalSetup: [tmuxLock], maxWorkers: 4, sequence: { groupOrder: 1 } } }]),
         ];
       }),
       'apps/desktop/web',
