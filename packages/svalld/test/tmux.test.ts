@@ -1,6 +1,8 @@
+import { once } from 'node:events';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Config } from '../src/config.js';
 import { tmuxConfText, tmuxTooOld } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
@@ -585,11 +587,16 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
   });
 
   it('start rejects when the client does not become ready in time', async () => {
-    await boot();
+    const home = makeHome();
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({})));
+    // a socket that takes the client's connection and never answers, so it can never become ready
+    const silent = net.createServer().listen(`${home}/tmux.sock`);
+    await once(silent, 'listening');
+    onTestFinished(() => { silent.close(); });
     const c = new ControlClient({
       binary: resolveTmux(),
-      socket: `${lastHome}/tmux.sock`,
-      conf: `${lastHome}/tmux.conf`,
+      socket: `${home}/tmux.sock`,
+      conf: `${home}/tmux.conf`,
       session: SESSION,
       readyTimeoutMs: 1,
     });
