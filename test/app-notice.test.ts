@@ -5,14 +5,14 @@ import path from 'node:path';
 import { expect, test } from 'vitest';
 
 const ROOT = path.join(import.meta.dirname, '..');
-const LIB = path.join(ROOT, 'vendor/ghostty-kit/GhosttyKit.xcframework/macos-arm64/libghostty-fat.a');
+const LIB = path.join(ROOT, 'vendor/ghostty-kit/GhosttyKit.xcframework/macos-arm64/libghostty-internal.a');
 const NOTICE = path.join(ROOT, 'apps/desktop/mac/NOTICE');
 // what build.sh copies into Contents/Resources from the kit
 const SHARE = path.join(ROOT, 'vendor/ghostty-kit/share');
 
 // the component each object file GhosttyKit links comes from, by its name less `.o`
 const OBJECTS: Record<string, RegExp> = {
-  Ghostty: /^(?:libghostty_zcu|vt|base64|codepoint_width|index_of|ext|zig_macos)$/,
+  Ghostty: /^(?:ghostty_zcu|highway_zcu|vt|base64|codepoint_width|index_of|ext|zig_macos)$/,
   'Zig compiler-rt': /^compiler_rt$/,
   FreeType: /^(?:autofit|bdf|cff|ft\w+|pcf|pfr|psaux|pshinter|psnames|raster|sdf|sfnt|smooth|svg|truetype|type1|type1cid|type42|winfnt)$/,
   libpng: /^png\w*$/,
@@ -21,8 +21,7 @@ const OBJECTS: Record<string, RegExp> = {
   glslang: /^(?:attribute|CodeGen|Constant|disassemble|doc|glslang_\w+|GlslangToSpv|InfoSink|Initialize|InReadableOrder|Intermediate|intermOut|IntermTraverse|iomapper|limits|Link|linkValidate|Logger|ossource|parseConst|ParseContextBase|ParseHelper|PoolAlloc|Pp\w*|propagateNoContraction|reflection|RemoveTree|resource_limits_c|ResourceLimits|Scan|ShaderLang|spirv_c_interface|SpirvIntrinsics|SpvBuilder|SpvPostProcess|SymbolTable|Versions)$/,
   'SPIRV-Cross': /^spirv_(?:cfg|cross\w*|glsl|msl|parser)$/,
   simdutf: /^simdutf$/,
-  Highway: /^(?:abort|aligned_allocator|bridge|nanobenchmark|per_target|print|targets|timer)$/,
-  utfcpp: /^empty$/,
+  Highway: /^(?:abort|per_target|targets)$/,
   'GNU gettext (libintl)': /^(?:bindtextdom|compat|dc\w*gettext|dgettext|dngettext|explodename|finddomain|getlocalename_l-unsafe|gettext|hash-string|intl-compat|l10nflist|langprefs|loadmsgcat|localealias|localename(?:-\w+)?|log|ngettext|plural(?:-exp)?|setlocale(?:_null(?:-unlocked)?|-lock)?|textdomain|version)$/,
   'Dear ImGui': /^(?:imgui\w*|dcimgui\w*)$/,
   stb: /^stb$/,

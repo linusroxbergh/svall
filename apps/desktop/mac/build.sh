@@ -37,7 +37,7 @@ otool -l "$APP/Contents/MacOS/Svall" | grep -q '@executable_path/../Frameworks' 
 cp "$MAC/Info.plist" "$APP/Contents/Info.plist"
 "$MAC/variant-plist.sh" "$APP/Contents/Info.plist" "$VARIANT"
 cp "$MAC/Svall.icns" "$APP/Contents/Resources/Svall.icns"
-cp "$MAC/Resources/ghostty-theme" "$APP/Contents/Resources/ghostty-theme"
+cp "$MAC/Resources/ghostty-defaults" "$MAC/Resources/ghostty-theme" "$APP/Contents/Resources/"
 rsync -a --delete "$SHARE/ghostty" "$SHARE/terminfo" "$APP/Contents/Resources/"
 mkdir -p "$APP/Contents/Resources/Licenses"
 cp "$MAC/NOTICE" "$MAC/LICENSE.ghostty" "$MAC/LICENSE.gpl-3.0" "$MAC/LICENSE.bash-preexec" "$APP/Contents/Resources/Licenses/"

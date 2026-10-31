@@ -10,16 +10,16 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 REPO=linusroxbergh/svall
 TAG=ghostty-kit
 KIT="$ROOT/vendor/ghostty-kit"
-# bump when ghostty-build.sh or its libtool shim changes what it builds, then pnpm ghostty:publish
+# bump when ghostty-build.sh changes what it builds, then pnpm ghostty:publish
 REV=1
 COMMIT="$(git -C "$ROOT" rev-parse HEAD:vendor/ghostty)"
 VERSION="$COMMIT-r$REV"
 ASSET="GhosttyKit-$VERSION-arm64.zip"
 # xcodebuild names the slice after the library's architecture, which is zig's own, whatever the shell's
-LIB=GhosttyKit.xcframework/macos-arm64/libghostty-fat.a
+LIB=GhosttyKit.xcframework/macos-arm64/libghostty-internal.a
 # the one kit fetch takes: the VERSION it was published as, and the sha256 publish printed for it
-PINNED=332b2aefc6e72d363aa93ab6ecfc86eeeeb5ed28-r1
-SHA256=c31cad36b47911a0e4a45a8d32e4699b1b2217598a58747a9c10da833b846c4b
+PINNED=83fb95624b0439ee660c2679b43b38c8b63769cd-r1
+SHA256=212aa0732b8242eeda8cbae395026d5bef03083ba113d5dae9f774287ffd3a5f
 
 current() {
   [ "$(cat "$KIT/version" 2>/dev/null)" = "$VERSION" ]

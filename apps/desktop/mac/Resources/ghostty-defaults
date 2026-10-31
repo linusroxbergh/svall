@@ -1,0 +1,4 @@
+# Loaded before your own Ghostty config, which can set these otherwise. macOS has no selection
+# clipboard, so a selection Ghostty makes copies to the clipboard, and a middle-click pastes it.
+copy-on-select = clipboard
+middle-click-action = clipboard-paste
