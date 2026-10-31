@@ -87,8 +87,9 @@ runIf('svalld --worker', () => {
       expect(await api.call('usage.get')).toMatchObject({ result: { available: true, idle: true, windows: [] } });
       expect(await api.call('fleets.list')).toMatchObject({ error: { code: process.platform === 'darwin' ? 'not_on_worker' : 'forbidden' } });
       // a change is the home's to make, and no home has linked
-      expect(await api.call('island.create', { name: 'x' })).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });
-      expect(Object.values(d.store.state.islands).map((i) => i.name)).not.toContain('x');
+      const islands = structuredClone(d.store.state.islands);
+      expect(await api.call('island.arrange', {})).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });
+      expect(d.store.state.islands).toEqual(islands);
     } finally {
       api.close();
       await d.stop();

@@ -61,7 +61,7 @@ describe('routing calls for placed robots', () => {
     expect(await dispatch({ id: 4, method: 'robot.read', params: { id: 'c_home' } }, w.worker.ctx)).toEqual({ id: 4, error: { code: 'not_reachable', message: UNREACHABLE } });
     expect(await dispatch({ id: 4, method: 'robot.prompts', params: { id: 'c_home' } }, w.worker.ctx)).toEqual({ id: 4, error: { code: 'not_reachable', message: UNREACHABLE } });
     expect(captured).toEqual(['%1']);
-    expect(await dispatch({ id: 5, method: 'island.create', params: { name: 'x' } }, w.worker.ctx)).toEqual({ id: 5, error: { code: 'not_reachable', message: UNREACHABLE } });
+    expect(await dispatch({ id: 5, method: 'island.arrange', params: {} }, w.worker.ctx)).toEqual({ id: 5, error: { code: 'not_reachable', message: UNREACHABLE } });
   });
 
   it('on the worker, a call its mirror cannot answer is the home\'s, and the change comes back in the next snapshot', async () => {
