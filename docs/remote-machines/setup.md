@@ -257,6 +257,17 @@ says whether the companion is signed, and `svall host doctor` says it of the mac
   release `dev`: `node scripts/build-companion.mjs --out <dir> --arch x64 --version dev`, then
   `svall-dev host add studio --ssh ada@studio --release <dir>/svall-companion-dev-linux-x64.tar.gz --allow-unsigned`.
 
+## The phone while this Mac is off
+
+A worker can serve the phone itself while this Mac is off. Tick **Phone while this Mac is off** under Machines →
+**Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies this Mac's push keys and the
+phone's devices to the machine, which is why it stays off until ticked. While this Mac's own phone link is on, the
+worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
+there), and the row shows the address. Unticking, or turning this Mac's phone link off, stops it. If the row says
+tailscale refused, run `sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
+address the next time it opens while this Mac is on; there is nothing to pair. [What the phone does
+then](placement.md#while-this-mac-sleeps).
+
 ## Looking after it
 
 Settings → Machines lists every machine with its ssh destination and the release and result of its last check, add,
