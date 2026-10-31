@@ -61,9 +61,9 @@ export function EditorPane({ onClose }: { onClose(): void }) {
           </span>
         ) : <span className="res-crumb">{file}</span>}
         <span className="res-ctl">
-          <button className="res-x" data-testid="resources-size" data-tip={full ? 'Back to its size' : 'Full size'}
+          <button className="ib bar res-x" data-testid="resources-size" data-tip={full ? 'Back to its size' : 'Full size'}
             aria-label={full ? 'Back to its size' : 'Full size'} onClick={() => app.store.getState().toggleResourcesFull()}>{full ? <Shrink size="lg" /> : <Expand size="lg" />}</button>
-          <button className="res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}><Close size="lg" /></button>
+          <button className="ib bar res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}><Close size="lg" /></button>
         </span>
       </header>
       {field ? <Field r={field} /> : shown ? (

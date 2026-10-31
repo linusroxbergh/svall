@@ -266,9 +266,9 @@ export function Board() {
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
           {attention > 0 && <span className="count tnum" data-tip={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
-            <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><Grip /></span>
-            <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}><Plus size="md" /></button>
-            <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}><More size="md" /></button>
+            <span className="ib kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><Grip /></span>
+            <button type="button" className="ib" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}><Plus size="md" /></button>
+            <button type="button" className="ib" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}><More size="md" /></button>
           </span>
         </header>
         <Body onScroll={hov.end}>
@@ -294,8 +294,8 @@ export function Board() {
   };
 
   const chip = (key: string, on: boolean, label: string, n: number, toggle: () => void) => (
-    <button key={key} type="button" className="kb-chip" data-testid={`chip-${key}`} aria-pressed={on} onClick={toggle}>
-      {label} <span className="kb-n tnum">{n}</span>
+    <button key={key} type="button" className="pill kb-chip" data-testid={`chip-${key}`} aria-pressed={on} onClick={toggle}>
+      {label} <span className="n">{n}</span>
     </button>
   );
   const lifted = lift && fleet.robots[lift.id];
@@ -307,24 +307,24 @@ export function Board() {
         <span className="kb-sep" />
         {chip('open', openOn, 'Open islands', all.filter(open).length, () => setFilter((f) => ({ ...f, island: undefined, open: !openOn })))}
         {(backChips || moreChips) && (
-          <button type="button" className="kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><Caret dir="left" /></button>
+          <button type="button" className="ib kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><Caret dir="left" /></button>
         )}
         <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
           {islandsSorted(fleet).map((i) => chip(i.id, island === i.id, i.name, robotsOf(fleet, i.id).length,
             () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id, open: false }))))}
         </div>
         {(backChips || moreChips) && (
-          <button type="button" className="kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><Caret dir="right" /></button>
+          <button type="button" className="ib kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><Caret dir="right" /></button>
         )}
         <span className="kb-gap" />
-        <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
+        <button type="button" className="pill kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
           <Place />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
         </button>
-        <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
-          Needs you <span className={needs > 0 ? 'count tnum' : 'kb-n tnum'}>{needs}</span>
+        <button type="button" className="pill kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
+          Needs you <span className={needs > 0 ? 'count tnum' : 'n'}>{needs}</span>
         </button>
-        <button type="button" className="kb-ghost" data-testid="board-add-column" onClick={() => void add()}><Plus size="xs" />Column</button>
+        <button type="button" className="btn sm" data-testid="board-add-column" onClick={() => void add()}><Plus size="xs" />Column</button>
       </div>
       <div ref={ground} className="kb-ground">
         <div className="kb-cols" data-testid="board-cols" data-dragging={Boolean(lift || shift)} onClick={blank}>

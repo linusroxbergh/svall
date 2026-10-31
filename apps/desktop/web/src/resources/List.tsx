@@ -97,13 +97,13 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
         {isDoc && renaming && <NameField testid="resources-doc-rename-name" initial={item.name} onDone={() => setRenaming(false)} onCommit={(v) => { void renameDoc(deps(), o.rootId, o.path, v); }} />}
         {isDoc && !renaming && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}><Edit size="xs" /></button>
-            <button data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}><Close size="xs" /></button>
+            <button className="ib xs filled" data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}><Edit size="xs" /></button>
+            <button className="ib xs filled" data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}><Close size="xs" /></button>
           </span>
         )}
         {o && !far && deletable(kind, item) && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-delete-${kind}-${item.name}`} data-tip={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}><Close size="xs" /></button>
+            <button className="ib xs filled" data-testid={`resources-delete-${kind}-${item.name}`} data-tip={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}><Close size="xs" /></button>
           </span>
         )}
       </div>
@@ -125,7 +125,7 @@ function Kinds({ source, what }: { source: Source; what: What }) {
   return (
     <div className="res-kinds" role="group" aria-label="Kind">
       {kindRows(source).filter(offered).map((w) => (
-        <button key={w.what} className="res-chip" data-testid={`resources-what-${w.what}`} aria-pressed={w.what === what} data-none={w.zero}
+        <button key={w.what} className="pill xs res-chip" data-testid={`resources-what-${w.what}`} aria-pressed={w.what === what} data-none={w.zero}
           onClick={() => app.store.getState().setResourcesFilter({ what: w.what })}>
           {w.colour && <i className="res-dot" style={{ background: `var(${w.colour})` }} />}{w.label}<span className="n">{w.n}</span>
         </button>

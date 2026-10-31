@@ -75,8 +75,6 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-n { text-align: right; font-variant-numeric: tabular-nums; }
 .load-acts { display: flex; gap: var(--sp-2xs); justify-content: flex-end; opacity: .45; }
 .load-row:hover .load-acts, .load-acts:focus-within { opacity: 1; }
-.load-ib { display: grid; place-items: center; width: var(--ctl-sm); height: var(--ctl-sm); padding: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); }
-.load-ib:hover { background: var(--fill-3); color: var(--ink); }
 .load-ib.dan:hover { color: var(--danger); }
 .load-bar { grid-column: 1 / 5; height: 3px; margin-top: calc(-1 * var(--sp-2xs)); overflow: hidden; border-radius: var(--r-pill); background: var(--line-soft); }
 .load-bar i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--sand); }
@@ -85,8 +83,8 @@ button.load-nm:hover { background: none; color: var(--sand); }
 
 /* the feedback form under a panel title */
 .fb { display: flex; flex-direction: column; gap: var(--sp-lg); }
-.fb .kb-seg { display: flex; }
-.fb .kb-seg button { flex: 1; padding-inline: 0; }
+.fb .seg { display: flex; }
+.fb .seg > button { flex: 1; justify-content: center; padding-inline: 0; }
 .fb textarea.fld { min-height: 92px; resize: vertical; }
 .fb-check { display: flex; align-items: flex-start; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink); }
 .fb-check input { flex: none; margin: var(--sp-2xs) 0 0; accent-color: var(--sand); }

@@ -56,8 +56,8 @@ export function LinkAsk() {
         <span className="linkask-ref mono">{ask.url.replace(/^https?:\/\//, '')}</span>
         <CloseX onClose={() => { app.store.getState().closeLinkAsk(); giveBack(ask.surface); }} testid="link-ask-close" />
       </div>
-      <button className="btn pri" data-testid="link-ask-here" onClick={here}>Open here</button>
-      <button className="btn" data-testid="link-ask-outside" onClick={outside}>Open outside</button>
+      <button className="btn sm pri" data-testid="link-ask-here" onClick={here}>Open here</button>
+      <button className="btn sm" data-testid="link-ask-outside" onClick={outside}>Open outside</button>
     </div>
   );
 }

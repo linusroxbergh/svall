@@ -65,7 +65,6 @@ textarea { overflow-x: hidden; }
 /* banners: a strip over what it is about, its words and then its buttons, in the tone of what it reports */
 .banner { display: flex; align-items: center; gap: var(--sp-lg); padding: var(--sp-sm) var(--sp-xl); border-bottom: 1px solid var(--line-soft); font-size: var(--text-md); }
 .banner > span { flex: 1; min-width: 0; }
-.banner .btn { padding: var(--sp-xs) var(--sp-lg); }
 .banner.dan { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: var(--danger); }
 .banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: var(--ink); }
 /* surfaces: glass over the map; solid for a dialog and, a step lower, a popover (a menu, tip or utility panel) */
@@ -111,7 +110,8 @@ textarea { overflow-x: hidden; }
 .pills { display: flex; flex-wrap: wrap; gap: var(--sp-sm); margin-top: var(--sp-lg); }
 .lg { font-family: var(--mono); font-size: var(--text-2xs); font-weight: var(--w-medium); font-style: normal; letter-spacing: var(--track-loose); color: var(--ink-3); }
 .lg svg { width: var(--icon-xs); height: var(--icon-xs); vertical-align: middle; }
-.lp { font-size: var(--text-xs); font-weight: var(--w-medium); padding: var(--sp-2xs) var(--sp-lg); border-radius: var(--r-pill); background: var(--fill-2); border: 1px solid var(--line-soft); color: var(--ink); display: inline-flex; align-items: center; gap: var(--sp-sm); }
+/* a link pill: a chip's metrics, in a link's fill and ink */
+.lp { background: var(--fill-2); color: var(--ink); }
 .btn, button { padding: var(--sp-lg) var(--sp-xl); border: 0; border-radius: var(--r-md); font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); text-align: center; color: var(--ink); background: var(--fill-2); cursor: pointer; transition: background var(--dur) var(--ease); }
 .btn:hover, button:hover { background: var(--fill-3); }
 .btn.pri { background: var(--sand); color: var(--ink-sand); }
@@ -140,19 +140,6 @@ textarea.fld { padding-block: var(--sp-md); }
 .kicker, .sb-head, .ide-root, .res-subh, .res-list h4, .load-grp, .load-tot span, .setup h2 {
   font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);
 }
-/* an icon control's target is the height of the bar or tab it sits in, never the glyph's own line box.
-   each site bleeds the control back out over its parent's padding, so the row keeps the height it had */
-.phead .ticon, .phead .tx, .phead .px,
-.baddr button, .btab button, .ftab-x, .sb-caret, .res-x {
-  display: inline-flex; align-items: center; justify-content: center; align-self: stretch; flex: none;
-  border: 0; border-radius: 0; font-family: inherit; font-size: var(--text-xl); line-height: 1; cursor: pointer;
-}
-.phead .px, .baddr button, .btab button, .ftab-x, .sb-caret, .res-x { padding: 0 var(--ctl-pad-sm); }
-/* a control flush with its parent's clip edge would lose the ring drawn outside it */
-:is(.phead .ticon, .phead .tx, .phead .px,
-.baddr button, .btab button, .ftab-x, .sb-caret, .res-x):focus-visible {
-  outline: 2px solid var(--sand); outline-offset: -2px; animation: ring-fade var(--dur) var(--ease-out);
-}
 :where(a, button, summary, select, [tabindex], input:is([type="checkbox"], [type="radio"], [type="range"])):focus-visible {
   outline: 2px solid var(--sand); outline-offset: 2px; animation: ring-in var(--dur) var(--ease-out);
 }
@@ -179,8 +166,7 @@ textarea.fld { padding-block: var(--sp-md); }
 .mono { font-family: var(--mono); }
 .rows { border-top: 1px solid var(--line-soft); padding-top: var(--sp-sm); }
 .lp a { color: inherit; text-decoration: none; }
-.lp button { background: none; border: 0; padding: 0; color: var(--ink-3); line-height: 1; cursor: pointer; }
-.lp button:hover { color: var(--ink); }
+.lp > .ib { align-self: stretch; height: auto; margin-right: calc(-1 * var(--sp-sm)); border-radius: var(--r-pill); }
 .lp[data-pinned="true"] .lg { color: var(--sel); }
 .side .lp, .hover-card .lp { max-width: 100%; box-sizing: border-box; }
 .sdot { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--shell); display: inline-block; flex: none; }
@@ -193,3 +179,38 @@ textarea.fld { padding-block: var(--sp-md); }
 .sdot[data-status="unknown"] { background: var(--unknown); color: var(--unknown); }
 .btn.ghost { background: none; color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-medium); padding: var(--sp-xs) 0; text-align: left; }
 .btn.ghost:hover { background: none; color: var(--ink); }
+/* controls */
+/* a segmented control: one mode of a few, its pressed fill the glide behind it; the strip's corner is its buttons' plus its padding */
+.seg { position: relative; isolation: isolate; box-sizing: border-box; flex: none; display: inline-flex; height: var(--ctl-md); padding: var(--sp-2xs);
+  border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--fill-1); }
+.seg > button { flex: none; display: inline-flex; align-items: center; gap: var(--sp-md); padding: 0 var(--sp-2xl); border: 0; border-radius: var(--r-sm); background: none;
+  font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); white-space: nowrap; }
+.seg > button:hover { background: none; color: var(--ink); }
+.seg > button:is([aria-pressed="true"], [data-active="true"]) { color: var(--ink); cursor: default; }
+.glide { position: absolute; z-index: -1; top: var(--sp-2xs); bottom: var(--sp-2xs); left: 0; border-radius: var(--r-sm); background: var(--fill-3); pointer-events: none;
+  transition: translate var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out); }
+.glide[data-still="true"] { transition: none; }
+/* a chip: a filter or toggle as a pill, pressed in sand; .xs is its size in a dense row */
+.pill { box-sizing: border-box; flex: none; display: inline-flex; align-items: center; gap: var(--sp-sm); height: var(--ctl-md); padding: 0 var(--sp-lg);
+  border: 1px solid var(--line-soft); border-radius: var(--r-pill); background: var(--fill-1); color: var(--ink-2);
+  font-size: var(--text-sm); font-weight: var(--w-medium); line-height: 1; white-space: nowrap; }
+.pill.xs { height: var(--ctl-xs); font-size: var(--text-xs); }
+button.pill:hover { background: var(--fill-2); color: var(--ink); }
+.pill:is([aria-pressed="true"], [data-on="true"]) { background: var(--sand-fill); color: var(--sand-hi); border-color: color-mix(in srgb, var(--sand) 30%, transparent); }
+.pill .n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.pill[aria-pressed="true"] .n { color: inherit; opacity: .7; }
+/* a document tab: its name, a dot while unsaved, then its close; the open one underlined in sand. The strip scrolls sideways
+   and shows no bar: the underline reaches 1px past its box, which is enough to raise a vertical one */
+.dtabs { flex: none; display: flex; align-items: center; gap: var(--sp-2xs); padding: var(--sp-sm) var(--sp-md) 0; border-bottom: 1px solid var(--line-soft);
+  overflow-x: auto; scrollbar-width: none; }
+.dtabs::-webkit-scrollbar { display: none; }
+.dtab { display: inline-flex; align-items: center; gap: var(--sp-sm); max-width: 200px; overflow: hidden; margin-bottom: -1px; padding: var(--sp-xs) var(--sp-md) var(--sp-sm);
+  border-bottom: 2px solid transparent; font-size: var(--text-md); color: var(--ink-2); white-space: nowrap; cursor: default; }
+.dtab:hover { color: var(--ink); }
+.dtab[data-active="true"] { color: var(--ink); border-bottom-color: var(--sand); }
+.dtab-name { overflow: hidden; text-overflow: ellipsis; }
+.dtab-dot { flex: none; width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--working); }
+.dtab > .ib { margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-md)) calc(-1 * var(--sp-sm)) 0; }
+/* a small button; in a settings or detail row it takes the row's control height, as the switches and steppers there do */
+.btn.sm { box-sizing: border-box; height: var(--ctl-md); padding: 0 var(--sp-lg); border-radius: var(--r-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
+:is(.row, .side-gap, .side-away, .var-field, .machine-acts, .host-step) .btn.sm { height: var(--ctl-sm); }

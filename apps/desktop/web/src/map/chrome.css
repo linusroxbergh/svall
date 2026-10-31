@@ -13,7 +13,7 @@
 @starting-style { .map > :is(.map-grain, .map-grid, .map-sea, .map-world), .map-overlay > :is(.home, .res-islet), .board > .kb-ground { opacity: 0; } }
 /* the view switch stands where the board's bar holds it, so switching moves it nowhere */
 .map-view { position: absolute; top: 0; left: 0; z-index: var(--z-furniture); height: var(--bar-h); box-sizing: border-box; border-bottom: 1px solid transparent; padding: 0 var(--sp-2xl); display: flex; align-items: center; }
-.map-view .kb-seg { pointer-events: auto; background: var(--glass); backdrop-filter: blur(var(--blur)); }
+.map-view .seg { pointer-events: auto; background: var(--glass); backdrop-filter: blur(var(--blur)); }
 .map-grain { position: absolute; inset: 0; pointer-events: none;
   background: url('../assets/map-grain.png') repeat, radial-gradient(125% 95% at 50% 8%, var(--map-0) 0%, var(--map-1) 46%, var(--map-2) 100%);
   background-size: 128px 128px, auto; background-blend-mode: soft-light, normal; opacity: .46; }
@@ -55,7 +55,6 @@
 .linkask { position: fixed; z-index: var(--z-ask); display: flex; flex-direction: column; gap: var(--sp-sm); padding: var(--sp-lg); }
 .linkask-head { display: flex; align-items: center; gap: var(--sp-sm); }
 .linkask-ref { flex: 1; min-width: 0; font-size: var(--text-xs); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.linkask .btn { padding: var(--sp-md) var(--sp-lg); font-size: var(--text-md); }
 .ctx-menu { z-index: var(--z-ask); min-width: 148px; }
 /* a menu grows out of the pointer's corner, through transitions so its hole in the surfaces follows; it closes at once, being opened all day */
 .ctx-menu, .side-profile-menu, .linkask { transform-origin: var(--origin, left top); transition: opacity var(--dur-fast) var(--ease-out), scale var(--dur-fast) var(--ease-out); }

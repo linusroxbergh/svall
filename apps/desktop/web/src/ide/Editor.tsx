@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
+import { Glide } from '../Glide.js';
 import { useApp } from '../hooks.js';
 import { getBuffer, mountView, subscribeBuffer, unmountView } from './buffers.js';
 import { overwriteFile, reloadFile } from './files.js';
@@ -39,17 +40,20 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
 
   return (
     <div className="editor" data-testid="editor" data-path={path}>
-      {markdown && <div className="editor-mode" role="group" aria-label="Markdown view">
-        <button type="button" data-active={!preview} aria-pressed={!preview} onClick={() => setPreview(false)}>Text</button>
-        <button type="button" data-active={preview} aria-pressed={preview} onClick={showPreview}>Preview</button>
+      {markdown && <div className="editor-mode">
+        <span className="seg" role="group" aria-label="Markdown view">
+          <Glide at={preview ? 'preview' : 'text'} />
+          <button type="button" aria-pressed={!preview} onClick={() => setPreview(false)}>Text</button>
+          <button type="button" aria-pressed={preview} onClick={showPreview}>Preview</button>
+        </span>
         {cue}
       </div>}
       {!markdown && cue && <div className="editor-mode">{cue}</div>}
       {conflict && (
         <div className="banner warn" data-testid="conflict-banner">
           <span>{path} changed on disk.</span>
-          <button className="btn" data-testid="conflict-reload" onClick={() => { void reloadFile(deps(), id, path); }}>Reload</button>
-          <button className="btn pri" data-testid="conflict-overwrite" onClick={() => { void overwriteFile(deps(), id, path); }}>Overwrite</button>
+          <button className="btn sm" data-testid="conflict-reload" onClick={() => { void reloadFile(deps(), id, path); }}>Reload</button>
+          <button className="btn sm pri" data-testid="conflict-overwrite" onClick={() => { void overwriteFile(deps(), id, path); }}>Overwrite</button>
         </div>
       )}
       {preview && markdown && <Suspense fallback={<div className="ide-empty">Loading preview…</div>}><MarkdownPreview id={id} path={path} text={text} /></Suspense>}

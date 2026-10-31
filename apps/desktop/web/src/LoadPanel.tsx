@@ -38,8 +38,8 @@ function RobotRow({ c, use, of }: { c: Robot; use: LoadRobot; of: number }) {
   return (
     <Row testid={`load-row-${c.id}`} use={use} of={of}
       name={<button className="load-nm" onClick={open}>{c.name}{!c.tmux && <small>asleep</small>}</button>}>
-      {c.tmux && use.sleepable && <button className="load-ib" data-testid={`load-sleep-${c.id}`} data-tip={"Sleep\nEnds its terminal to free memory; opening it resumes the session"} aria-label="Sleep" onClick={sleep}><Moon /></button>}
-      <button className="load-ib dan" data-testid={`load-delete-${c.id}`} data-tip="Delete" aria-label="Delete" onClick={() => app.store.getState().setClosingRobot(c.id)}><Close /></button>
+      {c.tmux && use.sleepable && <button className="ib load-ib" data-testid={`load-sleep-${c.id}`} data-tip={"Sleep\nEnds its terminal to free memory; opening it resumes the session"} aria-label="Sleep" onClick={sleep}><Moon /></button>}
+      <button className="ib load-ib dan" data-testid={`load-delete-${c.id}`} data-tip="Delete" aria-label="Delete" onClick={() => app.store.getState().setClosingRobot(c.id)}><Close /></button>
     </Row>
   );
 }

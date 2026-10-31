@@ -7,7 +7,7 @@ export function ResourcesButton({ root, machine, testid }: { root: string | unde
   const sources = useApp((s) => s.resources);
   const source = sourceOfRoot(sources, root, machine);
   return (
-    <button className="btn res-open" data-testid={testid} data-tip="Open the resources shelf"
+    <button className="btn sm res-open" data-testid={testid} data-tip="Open the resources shelf"
       onClick={() => app.store.getState().toggleResources(true, { where: (source ?? sources[0])?.rootId, what: 'all' })}>Resources</button>
   );
 }
