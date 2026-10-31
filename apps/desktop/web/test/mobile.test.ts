@@ -537,7 +537,7 @@ describe('holding the place across a repaint', () => {
 describe('phone keys', () => {
   it('keeps shift+tab, the mode key of every agent, on the row', () => {
     expect(KEY_ROW.find((k) => k.label === '⇧tab')?.seq).toBe('\x1b[Z');
-    expect(KEY_ROW.map((k) => k.label)).toEqual(['esc', 'tab', '⇧tab', '^C', '↑', '↓', '↩']);
+    expect(KEY_ROW.map((k) => k.label)).toEqual(['esc', 'tab', '⇧tab', '^C', '↑', '↓', '⌫', '↩']);
   });
 
   it("lists the agent's own keys and commands first, and only terminal keys for a shell", () => {

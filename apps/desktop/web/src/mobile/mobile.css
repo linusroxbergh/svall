@@ -130,7 +130,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   border-top: 1px solid var(--line); background: var(--surface-2);
 }
 .keys button {
-  flex: 1; min-width: 0; min-height: 40px; padding: 0; border-radius: var(--r-md);
+  flex: 1; min-height: 40px; padding: 0; border-radius: var(--r-md);
   font: var(--w-medium) var(--text-md)/1 var(--mono); color: var(--ink-2);
   background: var(--fill-1); border: 1px solid var(--line);
 }

@@ -7,7 +7,7 @@ export type KeyGroup = { title: string; keys: Key[] };
 /** The row under the terminal: what an agent's TUI asks for most, in the order a thumb reaches them. */
 export const KEY_ROW: Key[] = [
   { label: 'esc', seq: '\x1b' }, { label: 'tab', seq: '\t' }, { label: '⇧tab', seq: '\x1b[Z' }, { label: '^C', seq: '\x03' },
-  { label: '↑', seq: '\x1b[A' }, { label: '↓', seq: '\x1b[B' }, { label: '↩', seq: '\r' },
+  { label: '↑', seq: '\x1b[A' }, { label: '↓', seq: '\x1b[B' }, { label: '⌫', seq: '\x7f' }, { label: '↩', seq: '\r' },
 ];
 
 const cmd = (label: string, hint: string): Key => ({ label, seq: `${label}\r`, hint });
