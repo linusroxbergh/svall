@@ -258,6 +258,17 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon env', status: 'ok', detail: `same ${keys.join(' and ')} as this account` };
 }
 
+// the unit's PATH holds the agents' folders setup found through the login shell, which an agent moved since leaves stale
+function unitDaemonPath(t: Target, d: DoctorDeps): Check {
+  if (!t.managed) return { name: 'daemon path', status: 'skip', detail: 'not managed' };
+  const file = path.join(d.unitDir, svalldUnitName(t.name));
+  const text = d.read(file);
+  if (text === undefined) return { name: 'daemon path', status: 'skip', detail: `no ${file}` };
+  return text.includes(unitEnv('PATH', d.agentPath ?? ''))
+    ? { name: 'daemon path', status: 'ok', detail: 'it finds the agent CLIs where this account\'s login shell does' }
+    : { name: 'daemon path', status: 'warn', detail: `the PATH in ${file} is not where this account's login shell finds the agent CLIs: ${unitFix(t)}`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
+}
+
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
 const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
 
@@ -387,7 +398,7 @@ export async function doctor(t: Target, d: DoctorDeps): Promise<Report> {
     await svalld(t, d),
     await hookReceiver(t, d),
     ...(linux
-      ? [await systemd(t, d), daemonEnv(t, d), await linger(d)]
+      ? [await systemd(t, d), daemonEnv(t, d), unitDaemonPath(t, d), await linger(d)]
       : [await launchd(t, d), daemonNode(t, d), daemonPath(t, d), daemonEnv(t, d)]),
     hooks(d),
     await codexCheck(d),

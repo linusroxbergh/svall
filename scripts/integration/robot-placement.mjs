@@ -668,6 +668,9 @@ function agentSetup(ids, fx) {
   check('servers on the Mac', Object.entries(SERVERS).every(([k, v]) => same(mac[k], v)), () => brief(mac));
 
   const checks = doctor();
+  // the unit holds the PATH the login shell there finds the agents on, nvm's claude among them
+  const unitPath = checks.find((c) => c.name === 'daemon path');
+  check('worker daemon path', unitPath?.status === 'ok', () => brief(unitPath));
   const rows = mirrorRows(checks);
   const unticked = (k) => rows[k]?.status === 'warn' && rows[k].tick?.on === false;
   const gamma = rows['var:GAMMA_TOKEN'];
