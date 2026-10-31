@@ -223,9 +223,6 @@ describe('a worker serving its robots while the home is away', () => {
     expect(w.worker.outbox.after(w.worker.outbox.acked()).map((e) => e.kind)).toEqual(['robot.sync']);
     expect(await call('robot.update', { id: 'c_1', note: 'linked' })).toMatchObject({ result: { note: 'linked' } });
     expect(w.home.store.state.robots.c_1.note).toBe('linked');
-    const phone = { kind: 'phone', login: 'me@example.com', send: () => {}, backlog: () => 0 } as const;
-    expect(await dispatch({ id: 1, method: 'island.update', params: { id: 'i_1', name: 'phoned' } }, { ...w.worker.ctx, viewer: phone })).toMatchObject({ result: { name: 'phoned' } });
-    expect(w.home.store.state.islands.i_1.name).toBe('phoned');
     w.worker.store.update((d) => { d.robots.c_1.unread = false; });
     expect(await call('robot.update', { id: 'c_1', figure: 2 })).toMatchObject({ result: { figure: 2 } });
     // the home holds every mutation unacked, and the link stays live
@@ -235,6 +232,35 @@ describe('a worker serving its robots while the home is away', () => {
     expect(mutations()).toHaveLength(7);
     expect(madeIn(await create()).noteSource).toBeUndefined();
     release();
+  });
+
+  it("while linked, a phone's new island, rename, fold and delete are served here and journaled, and a move of an island goes to the home", async () => {
+    const home = { islands: { i_1: island, i_2: { ...island, id: 'i_2', name: 'b', position: { x: 10, y: 0 } } }, robots: { c_1: placed({ id: 'c_1' }) } };
+    const { w, mutations } = setup({ home });
+    w.worker.store.update((d) => { d.islands.i_2 = structuredClone(home.islands.i_2); });
+    await w.link();
+    await drained(w);
+    const phone = { kind: 'phone', login: 'me@example.com', send: () => {}, backlog: () => 0 } as const;
+    // the home takes no mutation while held, so what each call journaled here is still unacked
+    const served = async (method: string, params: Record<string, unknown>) => {
+      const release = w.home.hold();
+      const r = await dispatch({ id: 1, method, params }, { ...w.worker.ctx, viewer: phone });
+      const journaled = mutations().map((m) => m.method);
+      release();
+      await drained(w);
+      return { r, journaled };
+    };
+    const made = await served('island.create', { name: 'docs' });
+    expect(made.journaled).toEqual(['island.create']);
+    const { id } = (made.r as { result: Island }).result;
+    expect((await served('island.update', { id: 'i_1', name: 'phoned', collapsed: true })).journaled).toEqual(['island.update']);
+    expect((await served('island.delete', { id: 'i_2' })).journaled).toEqual(['island.delete']);
+    expect(w.home.store.state.islands[id]).toMatchObject({ name: 'docs' });
+    expect(w.home.store.state.islands.i_1).toMatchObject({ name: 'phoned', collapsed: true });
+    expect(w.home.store.state.islands.i_2).toBeUndefined();
+    const moved = await served('island.update', { id: 'i_1', position: { x: 0, y: 20 } });
+    expect(moved).toMatchObject({ r: { result: { position: { x: 0, y: 20 } } }, journaled: [] });
+    expect(w.home.store.state.islands.i_1.position).toEqual({ x: 0, y: 20 });
   });
 
   it('while linked with a mutation unacked, update of a robot here is served locally; once it is acked the next goes to the home', async () => {

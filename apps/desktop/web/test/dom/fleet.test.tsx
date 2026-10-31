@@ -11,7 +11,7 @@ import { chr, fleet, isl } from '../fixtures.js';
 
 const call = vi.fn(() => Promise.resolve({}));
 const fire = vi.fn();
-vi.mock('../../src/mobile/boot.js', () => ({ phone: { api: () => ({ call, fire }) } }));
+vi.mock('../../src/mobile/boot.js', () => ({ phone: { api: () => ({ call, fire }), get store() { return store; } } }));
 
 const { Fleet } = await import('../../src/mobile/Fleet.js');
 const { NewRobot } = await import('../../src/mobile/NewRobot.js');
@@ -187,12 +187,13 @@ const throughVault = () => {
   store.getState().setVia({ machine: VAULT, home: HOME });
 };
 
-test('through a worker, the list offers no new island, settings or island sheet, and the robots elsewhere read unknown and wait on nobody', () => {
+test('through a worker, the list offers a new island and every island\'s sheet but mission control\'s, no settings, and the robots elsewhere read unknown and wait on nobody', () => {
   throughVault();
   const { container } = render(<Fleet onOpen={() => {}} />);
-  expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'New island' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'beta options' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'beta options' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'mission control options' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'New robot on mission control' })).toBeNull();
   expect(screen.getByRole('button', { name: 'New robot on alpha' })).toBeTruthy();
   expect(container.querySelector('.conn')!.textContent).toBe('on linus-vault · mac asleep');
@@ -223,14 +224,31 @@ test('through a worker with no robot of its own, a new robot has no folder to st
   expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
 });
 
-test('through a worker, an island folds nowhere, and one folded on the Mac shows its crew', () => {
+test('through a worker, an island folds as on the Mac, but mission control, which shows open and folds nowhere', () => {
   throughVault();
   const f = store.getState().fleet;
-  store.getState().setFleet({ ...f, islands: { ...f.islands, i_b: { ...f.islands.i_b, collapsed: true } } });
+  store.getState().setFleet({ ...f, islands: { ...f.islands, i_b: { ...f.islands.i_b, collapsed: true }, home: { ...f.islands.home, collapsed: true } } });
+  store.getState().setFleet({ ...store.getState().fleet, robots: { ...store.getState().fleet.robots, c3: chr('c3', 'home', { x: 0, y: 0 }) } });
   render(<Fleet onOpen={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: 'beta' }));
+  expect(screen.queryByText('c0')).toBeNull();
+  expect(screen.getByText('c3')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'mission control' }));
   expect(call).not.toHaveBeenCalled();
-  expect(screen.getByText('c0')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: /^beta\s*2$/ }));
+  expect(call).toHaveBeenCalledWith('island.update', { id: 'i_b', collapsed: false });
+});
+
+test('through a worker, a new island is made there, and an island\'s sheet renames it there', async () => {
+  throughVault();
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'New island' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'docs' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(call).toHaveBeenCalledWith('island.create', { name: 'docs' });
+  fireEvent.click(screen.getByRole('button', { name: 'empty options' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'notes' } });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Rename' })); });
+  expect(call).toHaveBeenCalledWith('island.update', { id: 'i_e', name: 'notes' });
 });
 
 test('through a worker, only its own robots are marked read from the list', () => {
