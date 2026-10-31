@@ -113,7 +113,6 @@ test('names the holder it waits on at most every 30 seconds', async () => {
 });
 
 test('is skipped for a run started with SVALL_NO_TEST_LOCK=1', async () => {
-  vi.stubEnv('SVALL_TMUX_ON_MAC', '1');
   vi.stubEnv('SVALL_NO_TEST_LOCK', '1');
   expect(await setup()).toBeUndefined();
 });
@@ -121,24 +120,10 @@ test('is skipped for a run started with SVALL_NO_TEST_LOCK=1', async () => {
 test('refuses tmux-driven tests on a Mac unless SVALL_TMUX_ON_MAC=1 asks for them or the run is CI', () => {
   vi.stubEnv('CI', undefined);
   vi.stubEnv('SVALL_TMUX_ON_MAC', undefined);
-  expect(refusal()).toMatch(/^svall tests: .*SVALL_TMUX_ON_MAC=1 runs them, and pnpm test --project '!\*-tmux' runs the rest$/);
+  expect(refusal()).toMatch(/^svall tests: the tmux-driven tests \(svalld-tmux, cli-tmux, e2e\) .* SVALL_TMUX_ON_MAC=1 runs them$/);
   vi.stubEnv('SVALL_TMUX_ON_MAC', '1');
   expect(refusal()).toBeUndefined();
   vi.stubEnv('SVALL_TMUX_ON_MAC', undefined);
   vi.stubEnv('CI', 'true');
   expect(refusal()).toBeUndefined();
-});
-
-test('a refused run ends at once, saying why in one line', async () => {
-  const env = { ...process.env };
-  delete env.CI;
-  delete env.SVALL_TMUX_ON_MAC;
-  const p = spawn(process.execPath, ['--input-type=module', '-e', `await (await import(${JSON.stringify(MODULE)})).default();`], { env });
-  kids.push(p);
-  let err = '';
-  p.stderr.on('data', (d) => (err += d));
-  const code = await new Promise((r) => p.on('exit', r));
-
-  expect(code).toBe(1);
-  expect(err.trim().split('\n')).toEqual([expect.stringMatching(/^svall tests: tmux-driven tests can hang/)]);
 });

@@ -85,10 +85,10 @@ The first `pnpm e2e` needs
 `pnpm --filter @svall/desktop-web exec playwright install chromium`.
 
 On macOS, tests that start tmux servers (the `svalld-tmux` and `cli-tmux`
-projects, `pnpm e2e`) can hang the tty layer until a reboot, so they refuse to
-run; `pnpm test --project '!*-tmux'` runs the rest. `SVALL_TMUX_ON_MAC=1` runs
-them anyway, one run at a time across worktrees, once the 1-minute load is at
-most the core count; `SVALL_NO_TEST_LOCK=1` skips that lock and wait.
+projects, `pnpm e2e`) can hang the tty layer until a reboot, so `pnpm test`
+leaves them out and `pnpm e2e` refuses. `SVALL_TMUX_ON_MAC=1` runs them, one run
+at a time across worktrees, once the 1-minute load is at most the core count;
+`SVALL_NO_TEST_LOCK=1` skips that lock and wait.
 
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).

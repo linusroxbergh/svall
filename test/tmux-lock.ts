@@ -56,14 +56,11 @@ export async function takeTmuxLock(o: Options = {}): Promise<() => void> {
 /** Why tmux-driven tests must not run here, when they must not: on a Mac they can hang the tty layer until a reboot. */
 export function refusal(): string | undefined {
   if (process.platform !== 'darwin' || process.env.CI || process.env.SVALL_TMUX_ON_MAC === '1') return undefined;
-  return "svall tests: tmux-driven tests can hang macOS's tty layer until a reboot, so they don't run here: "
-    + "SVALL_TMUX_ON_MAC=1 runs them, and pnpm test --project '!*-tmux' runs the rest";
+  return "svall tests: the tmux-driven tests (svalld-tmux, cli-tmux, e2e) can hang macOS's tty layer until a reboot, "
+    + "so they don't run here; SVALL_TMUX_ON_MAC=1 runs them";
 }
 
 export default async function setup(): Promise<(() => void) | undefined> {
-  const no = refusal();
-  // the line alone, before any test file starts: a throw here would bury it under vitest's "No test files found"
-  if (no) { process.stderr.write(`${no}\n`); process.exit(1); }
   if (process.platform !== 'darwin' || process.env.SVALL_NO_TEST_LOCK === '1') return undefined;
   return takeTmuxLock();
 }
