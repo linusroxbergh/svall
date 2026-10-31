@@ -233,6 +233,21 @@ the worker:
 - `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it, with the worker's
   changes this Mac has yet to take over it.
 
+With **Phone while this Mac is off** ticked for a worker ([how](setup.md#the-phone-while-this-mac-is-off)), the phone
+keeps working too. Its Home Screen app keeps a copy of its page; when this Mac does not answer within 2.5 seconds, it
+opens that copy and connects to the worker's own phone link, in the same app and without pairing again. Through the
+worker:
+
+- its robots work as usual: terminal, keys, prompts, approve and deny, revive, and a new robot in the folder of a robot
+  there;
+- every other robot shows unknown, its terminal keeping the last screen under "ada-mac is asleep" or "studio is not
+  reachable", and the header reads "on linus-vault · ada-mac asleep";
+- what only this Mac answers is hidden: new islands and island settings, mission control, notification settings, and
+  closing, notes and docs of robots elsewhere;
+- the worker sends the notifications for its own robots, as it does whenever it serves the phone.
+
+Once this Mac answers again, the phone is this Mac's again.
+
 Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": moves,
 browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes this Mac as away
 once 45 seconds pass with nothing from it.
@@ -310,7 +325,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - Context items of kind file or folder outside the worktree do not exist on the other machine.
 - No platform or filter checks: a robot whose work needs Xcode moves and finds out.
 - A second terminal moves as a shell in the same worktree; a command running in it ends.
-- The phone cannot see a worker's robots while the Mac sleeps.
+- While this Mac is off, the phone reaches only the robots of a worker with **Phone while this Mac is off** ticked, one
+  worker at a time.
 - Robots move one at a time; an island does not move as a whole.
 - A dev server a robot runs on a worker is not forwarded to this Mac.
 - A worker that disappears for good: its robots stay unknown until you close them.

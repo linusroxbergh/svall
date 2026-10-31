@@ -30,8 +30,9 @@ carries and under which licences, and which risks are accepted. Tests are named 
     0700 fleet home.
   - A terminal the Machines panel opens for `codex login` or an MCP server's login forwards `127.0.0.1:1455`, or
     3118 or the server's own callback port, to the machine while it is open.
-  - The phone link is the only thing served past loopback: `tailscale serve`, and only when the user turns it on.
-    A move never turns it on, on either machine.
+  - The phone link is the only thing served past loopback: `tailscale serve`, and only when the user turns it on. A
+    worker serves its own only while its **phone** consent is ticked and the Mac's phone link is on. A move never
+    turns either on.
 
 ## Threat model
 
@@ -146,6 +147,7 @@ the keys in your agent setup, agent logins and ssh keys.
 | Logs and events | The daemon's API never logs a token, its own or one a client offered. A host command's events are scrubbed of tokens. The units' logs sit in a 0700 folder. | `svalld/test/api.test.ts` "never writes the daemon token, or one a client offered, to its log"; `cli/test/host-add.test.ts` "never lets the companion token out in an event"; `linux-setup.test.ts` |
 | A remote's URL | An origin that carries a token reaches the worker and the move's plan without it. | `svalld/test/placement/checks.test.ts` "an origin carrying a token reaches the worker and the plan without it; an ssh user and an scp-style remote stay" |
 | Your agent setup | Logins never travel. Credential files and folders (`.netrc`, `.git-credentials`, `.npmrc`, `.pypirc`, `.pgpass`, `.vault-token`, `.env*`, `*.pem`, `*.key`, `*.tfvars`, `*.p12`, `*.pfx`, `AuthKey_*.p8`, `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `credentials.json`, `credentials.toml`, `token.json`, `token.pickle`, `service-account.json`, `client_secret_*.json`, Docker's `config.json`, gh's `hosts.yml`, `.aws`, `.ssh`, `.gnupg`, `.kube`, `.azure`, `~/.config/gcloud`, each in any case) stay on the Mac, under a copied folder or behind a link. A key travels only once ticked for that machine, field by field; unticked, it arrives as the agent's reference to a variable, or emptied, and an untick empties it there at the next copy. A file there that holds a ticked key is the user's alone (0600). | `svalld/test/placement/mirror-plan.test.ts` "the common credential files and folders stay on the Mac, under a mirrored root or through a link into a dotfiles tree", "a link to a login file, and a key by any of its names, stays on the Mac; a link into plugins and to a plain file travels"; `svalld/test/placement/mirror.test.ts` "consent is per field: …", "a ticked field travels, an unticked one arrives emptied, and unticking later empties it on the next push", "a config file or plugin server file holding a ticked key is written for its owner alone" |
+| The phone's fallback | The Mac keeps each worker's phone address and pass in `phone-fallbacks.json` (0600) and hands them to a paired phone alone, through `mobile.fallbacks`: never in the fleet's state, a log, or to a worker's panes. A worker holds the Mac's VAPID keys, its phone logins and origin, and the phone's devices in `phone.json` (0600) only while its **phone** tick stands; an untick, the Mac's phone link turning off, or `svall uninstall` there removes it. A phone offers the worker's pass as a WebSocket subprotocol, which the worker never names back. | `svalld/test/placement/phone.test.ts` "serves once ticked, with the home's logins, origin, push keys and devices, and the home lists its link and pass to the phone alone"; `svalld/test/mobile.test.ts` "takes the pass as a subprotocol from a page on an origin the fleet accepts, and names only svall back"; `svalld/test/uninstall.test.ts` "removes the phone keys a worker's home copied there, and says so as host remove reads it" |
 | The consent list | `mirror-consent.json` in the fleet home, at 0600, holds which fields are ticked for each machine, never a value; the rows show a key masked. `svall host remove` clears the machine's ticks. | `mirror.test.ts` "consent is per field: …" |
 
 - **Credential files in a worktree.** An untracked file named like a credential in any case (`.env*`, `*.pem`,
@@ -260,6 +262,7 @@ reset and kill a move, a worker or an install makes, with what authorises it:
 | Svall's hooks in Claude's settings and Codex's hooks file, and Svall's OpenCode plugin (on Linux also under the login shell's `XDG_CONFIG_HOME`) | removed | removed | removed |
 | Keys and files the mirror copied with a tick, while each is as it wrote it | taken back | taken back | taken back |
 | Phone links that proxy to a fleet's key | turned off | turned off | turned off |
+| The Mac's push keys and the phone's devices a worker held (`phone.json`) | removed | removed | removed |
 | systemd units / launchd agents | stopped and removed | stopped and removed | stopped and removed |
 | Every fleet's tmux server, and the robots in it | stopped | stopped | stopped |
 | `releases/`, `current`, `companions/`, `log/`, the shims, and on Linux `~/.cache/svall` | removed | removed | removed |
