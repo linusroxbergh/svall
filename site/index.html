@@ -14,7 +14,7 @@
 <meta property="og:image:height" content="1260">
 <meta property="og:image:alt" content="Your agents, on one map: islands of robot cards, each showing whether its agent is working, blocked or done">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#2B3645">
+<meta name="theme-color" content="#374959">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="preload" href="fonts/FunnelSans-Variable.woff2" as="font" type="font/woff2" crossorigin>
@@ -22,13 +22,14 @@
 <!-- the app's tokens, fonts, sea, islands and cards, built by `pnpm site:build` -->
 <link rel="stylesheet" href="map/map.css">
 <style>
-/* what the page adds to the app's tokens; its third ink is lighter, for small text on the sea */
+/* what the page adds to the app's tokens; its inks hold 4.5:1 for small text on the sea, down to --map-1 */
 :root {
-  --ink-3: #B3AD9A;
   --map-tone: .97;
   --gutter: clamp(16px, 4vw, 40px);
-  --body: #EDE7D6;
-  --meta: #E4DDCB;
+  --body: color-mix(in srgb, var(--ink) 82%, var(--ink-2));
+  --meta: color-mix(in srgb, var(--ink) 60%, var(--ink-2));
+  --faint: color-mix(in srgb, var(--ink-2) 65%, var(--ink-3));
+  --dur-view: .6s;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -37,46 +38,46 @@ body { position: relative; margin: 0; font: 400 1rem/1.55 var(--sans); color: va
 ::selection { background: color-mix(in srgb, var(--sand) 32%, transparent); color: var(--white); }
 a { color: inherit; text-underline-offset: .22em; text-decoration-thickness: 1px; }
 :is(p, li) code { font-family: var(--mono); font-size: .875em; color: var(--ink); }
-:focus-visible { outline: 2px solid var(--sel); outline-offset: 3px; border-radius: 6px; }
+:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 .wrap { max-width: 1280px; margin: 0 auto; padding: 0 var(--gutter); }
 
 .bar { display: flex; align-items: center; justify-content: space-between; padding-top: 22px; padding-bottom: 22px; }
 .mark { display: inline-flex; align-items: center; gap: 9px; text-decoration: none; font-size: 16px; font-weight: 600; letter-spacing: -.02em; }
-.mark img { width: 22px; height: 22px; border-radius: 6px; box-shadow: 0 0 0 1px var(--line-soft); }
-.gh { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: var(--r-md);
+.mark img { width: 22px; height: 22px; border-radius: var(--r-sm); box-shadow: 0 0 0 1px var(--line-soft); }
+.gh { display: inline-flex; align-items: center; gap: var(--sp-md); padding: var(--sp-sm) var(--sp-xl); border-radius: var(--r-md);
   font-size: 12px; font-weight: 500; text-decoration: none; color: var(--ink-2);
-  background: var(--glass); border: 1px solid var(--line-soft); transition: background .16s var(--ease), color .16s var(--ease), border-color .16s var(--ease); }
+  background: var(--glass); border: 1px solid var(--line-soft); transition: background var(--dur) var(--ease), color var(--dur) var(--ease), border-color var(--dur) var(--ease); }
 .gh:hover { color: var(--ink); background: var(--glass-hi); border-color: var(--line-strong); }
 .gh svg { width: 14px; height: 14px; }
 
 .hero { position: relative; padding-top: clamp(32px, 7vh, 80px); }
 h1 { margin: 0; max-width: 20ch; font-size: clamp(2.3rem, 1.4rem + 3vw, 3.5rem); font-weight: 600; line-height: 1.04; letter-spacing: -.03em; text-wrap: balance; }
-.lede { margin: 16px 0 0; max-width: 31em; font-size: 1.0625rem; line-height: 1.55; color: var(--body); text-wrap: pretty; }
+.lede { margin: var(--sp-2xl) 0 0; max-width: 31em; font-size: 1.0625rem; line-height: 1.55; color: var(--body); text-wrap: pretty; }
 /* the app's primary button: sand, as on its setup screen */
 .dl { display: inline-flex; align-items: center; gap: 9px; margin-top: 28px; padding: 11px 18px 11px 15px; border-radius: var(--r-md);
   font-size: .9375rem; font-weight: 600; letter-spacing: -.005em; text-decoration: none; color: var(--ink-sand); background: var(--sand);
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--white) 35%, transparent), 0 6px 16px -6px var(--shade-2);
-  transition: background .16s var(--ease), transform .16s var(--ease); }
+  transition: background var(--dur) var(--ease), transform var(--dur) var(--ease); }
 .dl:hover { background: var(--sand-hi); }
 .dl:active { transform: translateY(1px); }
 .dl svg { width: 16px; height: 16px; }
-.install { display: flex; align-items: flex-start; margin-top: 12px; max-width: 520px;
+.install { display: flex; align-items: flex-start; margin-top: var(--sp-xl); max-width: 520px;
   background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); }
-.install pre { flex: 1; min-width: 0; margin: 0; padding: 12px 6px 12px 14px; overflow-x: auto;
+.install pre { flex: 1; min-width: 0; margin: 0; padding: var(--sp-xl) var(--sp-sm) var(--sp-xl) 14px; overflow-x: auto;
   font: 12px/1.75 var(--mono); color: var(--ink); scrollbar-width: thin; }
 /* the browser's own code { font-family: monospace } would otherwise win over the block's face */
 .install code { font: inherit; }
 .install .ln { display: block; padding-left: 2ch; text-indent: -2ch; }
 .install .p { color: var(--ink-3); user-select: none; }
 .install .nw { white-space: nowrap; }
-.copy { flex: none; margin: 7px 7px 0 0; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 7px;
-  background: transparent; color: var(--ink-3); cursor: pointer; transition: color .16s var(--ease), background .16s var(--ease); }
+.copy { flex: none; margin: 7px 7px 0 0; display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: var(--r-sm);
+  background: transparent; color: var(--ink-3); cursor: pointer; transition: color var(--dur) var(--ease), background var(--dur) var(--ease); }
 .copy:hover { color: var(--ink); background: var(--fill-2); }
 .copy svg { width: 15px; height: 15px; }
 .copy .ok { display: none; color: var(--done); }
 .copy[data-copied] .ok { display: block; }
 .copy[data-copied] .cp { display: none; }
-.meta { margin: 12px 0 0; font-size: .8125rem; color: var(--meta); text-wrap: pretty; }
+.meta { margin: var(--sp-xl) 0 0; font-size: .8125rem; color: var(--meta); text-wrap: pretty; }
 .meta a { color: var(--ink); }
 
 /* the page is the app's map: its sea stays put under everything as the page scrolls */
@@ -98,7 +99,7 @@ main { overflow-x: clip; }
 .narrow .hero, .narrow .features { max-width: 520px; }
 .narrow .features { margin-top: 64px; }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
-:is(.features, .how, .ctx) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+:is(.features, .how, .ctx) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-lg); }
 .how ul { max-width: 560px; }
 .ctx ul { margin-top: 18px; }
 :is(.features, .how, .ctx) li { position: relative; padding-left: 20px; color: var(--body); line-height: 1.5; text-wrap: pretty; }
@@ -129,11 +130,10 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .rise, .pop { --k: inherit; --lk: inherit; }
 .rise > .island { animation: rise .9s var(--ease-out) both; }
 @keyframes rise { from { opacity: 0; scale: .82; } }
-.pop > .tok { animation: pop .5s var(--ease-out) both; }
+.pop > .tok, .scene-map .home .tok { animation: pop .5s var(--ease-out) both; }
 @keyframes pop { from { opacity: 0; scale: .5; } }
-.scene-map .home .tok { animation: pop .5s var(--ease-out) both; }
 /* the ⌘G dialog, as the app draws it over the map */
-.scene-map .modal-back { position: absolute; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: radial-gradient(48% 52% at 50% 50%, var(--shade-1), transparent); animation: fade .2s var(--ease) both; }
+.scene-map .modal-back { position: absolute; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: radial-gradient(48% 52% at 50% 50%, var(--shade-1), transparent); animation: fade var(--dur-slow) var(--ease) both; }
 @keyframes fade { from { opacity: 0; } }
 .scene-map .modal { width: 420px; padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); text-align: left;
   background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); font: var(--text-md)/1.45 var(--sans); animation: lift .25s var(--ease-out) both; }
@@ -144,37 +144,37 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .scene-map .caret { display: inline-block; width: 1.5px; height: 1.1em; margin-left: 1px; vertical-align: -.18em; background: var(--sand); animation: blink 1s steps(1) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
 .scene-map .acts { display: flex; gap: var(--sp-md); }
-.scene-map .btn { flex: 1; padding: var(--sp-lg) var(--sp-xl); border-radius: var(--r-md); font-size: var(--text-md); font-weight: var(--w-semibold); text-align: center; color: var(--ink); background: var(--fill-2); transition: background .12s var(--ease), translate .12s var(--ease); }
+.scene-map .btn { flex: 1; padding: var(--sp-lg) var(--sp-xl); border-radius: var(--r-md); font-size: var(--text-md); font-weight: var(--w-semibold); text-align: center; color: var(--ink); background: var(--fill-2); transition: background var(--dur-fast) var(--ease), translate var(--dur-fast) var(--ease); }
 .scene-map .btn.pri { background: var(--sand); color: var(--ink-sand); }
 .scene-map .btn.pri[data-down="true"] { background: var(--sand-hi); translate: 0 1px; }
-.keycap { position: absolute; z-index: calc(var(--z-modal) + 1); left: 50%; top: 22px; display: flex; gap: 6px; translate: -50% 0; opacity: 0; transition: opacity .2s var(--ease); }
+.keycap { position: absolute; z-index: calc(var(--z-modal) + 1); left: 50%; top: 22px; display: flex; gap: var(--sp-sm); translate: -50% 0; opacity: 0; transition: opacity var(--dur-slow) var(--ease); }
 .keycap[data-on="true"] { opacity: 1; }
-.keycap kbd { min-width: 38px; height: 38px; padding: 0 10px; display: grid; place-items: center; border-radius: 9px; font: 600 17px/1 var(--sans); color: var(--ink);
-  background: var(--glass-hi); border: 1px solid var(--line-strong); box-shadow: 0 3px 0 var(--shade-2); transition: translate .1s, box-shadow .1s; }
+.keycap kbd { min-width: 38px; height: 38px; padding: 0 var(--sp-lg); display: grid; place-items: center; border-radius: var(--r-md); font: 600 var(--text-2xl)/1 var(--sans); color: var(--ink);
+  background: var(--glass-hi); border: 1px solid var(--line-strong); box-shadow: 0 3px 0 var(--shade-2); transition: translate var(--dur-fast), box-shadow var(--dur-fast); }
 .keycap[data-on="true"] kbd { translate: 0 2px; box-shadow: 0 1px 0 var(--shade-2); }
 
 /* one robot in four views, shown one at a time; a view fades in over the last */
-.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; width: max-content; max-width: 100%; margin: 0 0 20px; padding: 3px; border-radius: 12px;
+.tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: var(--sp-2xs); width: max-content; max-width: 100%; margin: 0 0 20px; padding: var(--sp-xs); border-radius: var(--r-lg);
   background: var(--glass); border: 1px solid var(--line-soft); }
-.tabs button { padding: 7px 14px; border: 0; border-radius: 9px; background: none; cursor: pointer;
-  font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background .16s var(--ease), color .16s var(--ease); }
+.tabs button { padding: 7px 14px; border: 0; border-radius: var(--r-md); background: none; cursor: pointer;
+  font: 500 .875rem/1 var(--sans); color: var(--ink-2); transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
 .tabs button:hover { color: var(--ink); }
 .tabs button[aria-selected="true"] { background: var(--fill-2); color: var(--ink); }
 /* while the views turn by themselves, the open tab's pill fills from a shade dimmer to its tint for as long as it stays,
    and the pills hand over slowly */
 .tabs button { position: relative; }
-.tabs[data-auto] button { transition-duration: .6s; }
+.tabs[data-auto] button { transition-duration: var(--dur-view); }
 .tabs[data-auto] button[aria-selected="true"] { background: var(--fill-1); }
-.tabs button::after { content: ''; position: absolute; inset: 0; border-radius: 9px; background: color-mix(in srgb, var(--fill-1) 72%, transparent);
-  opacity: 0; transition: opacity .6s var(--ease); }
-.tabs[data-auto] button[aria-selected="true"]::after { opacity: 1; clip-path: inset(0 100% 0 0 round 9px); animation: dwell var(--dwell, 6s) linear forwards; }
+.tabs button::after { content: ''; position: absolute; inset: 0; border-radius: var(--r-md); background: color-mix(in srgb, var(--fill-1) 72%, transparent);
+  opacity: 0; transition: opacity var(--dur-view) var(--ease); }
+.tabs[data-auto] button[aria-selected="true"]::after { opacity: 1; clip-path: inset(0 100% 0 0 round var(--r-md)); animation: dwell var(--dwell, 6s) linear forwards; }
 .tabs[data-auto="paused"] button[aria-selected="true"]::after { animation-play-state: paused; }
-@keyframes dwell { to { clip-path: inset(0 0 0 0 round 9px); } }
+@keyframes dwell { to { clip-path: inset(0 0 0 0 round var(--r-md)); } }
 /* one shadow under whatever the frame shows, so two views mid-fade don't stack theirs */
 .frame { display: grid; container-type: inline-size; filter: drop-shadow(0 24px 40px var(--shade-2)); }
 /* the old view stays opaque under the new one until it is covered, so the sea never shows through both */
-.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity 0s .6s, visibility 0s .6s; }
-.frame > .on { z-index: 1; visibility: visible; opacity: 1; transition: opacity .6s var(--ease); }
+.frame > * { grid-area: 1 / 1; visibility: hidden; opacity: 0; transition: opacity 0s var(--dur-view), visibility 0s var(--dur-view); }
+.frame > .on { z-index: 1; visibility: visible; opacity: 1; transition: opacity var(--dur-view) var(--ease); }
 .frame > img, .view-phone > img { display: block; width: 100%; height: auto; }
 
 /* the phone view: the window, and the phone the fleet opens on standing over it, sized off the frame */
@@ -191,12 +191,12 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 /* context: the lighthouse's tree of levels beside the brief an agent starts with */
 .ctx { display: grid; grid-template-columns: minmax(0, 380px) minmax(0, 1fr); gap: 56px; align-items: center; }
 .ctx .sec-head { margin: 0; }
-.shelf { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: 14px; overflow: hidden;
+.shelf { display: grid; grid-template-columns: 250px minmax(0, 1fr); border-radius: var(--r-lg); overflow: hidden;
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 30px 60px -20px var(--shade-2);
   zoom: .9; width: 90%; justify-self: end; }
-.tree { padding: 16px 10px 16px 14px; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 2px; font-size: .875rem; }
+.tree { padding: var(--sp-2xl) var(--sp-lg) var(--sp-2xl) 14px; border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: var(--sp-2xs); font-size: .875rem; }
 /* each level a folder as in the app's shelf: its sources under a guide line; the ones the brief draws on stay lit */
-.tier, .src { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border: 0; border-radius: 7px; background: none;
+.tier, .src { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-xs) var(--sp-md); border: 0; border-radius: var(--r-sm); background: none;
   font: 500 .875rem/1.3 var(--sans); color: var(--ink); text-align: left; }
 .tier { cursor: pointer; }
 .src { font-weight: 400; }
@@ -205,22 +205,22 @@ span.src { color: var(--ink-3); }
 .tier b { flex: none; width: 10px; margin-right: -2px; font-size: .625rem; font-weight: 400; color: var(--ink-3); text-align: center; }
 .tier i, .src i { flex: none; font-style: normal; width: 14px; text-align: center; }
 .tier .n, .src .n { margin-left: auto; font-size: .75rem; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.kids { display: flex; flex-direction: column; gap: 2px; margin: 0 0 6px 12px; padding-left: 10px; border-left: 1px solid var(--line-soft); }
-.grp { padding: 6px 8px 1px; font-size: .6875rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
-.brief { padding: 16px 18px 18px; min-width: 0; }
-.brief-cap { margin-bottom: 10px; font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-cool); }
-.brief pre { margin: 0; display: grid; gap: 12px; font: 11.5px/1.6 var(--mono); color: var(--ink-2); white-space: normal; overflow-wrap: anywhere; }
+.kids { display: flex; flex-direction: column; gap: var(--sp-2xs); margin: 0 0 var(--sp-sm) var(--sp-xl); padding-left: var(--sp-lg); border-left: 1px solid var(--line-soft); }
+.grp { padding: var(--sp-sm) var(--sp-md) 1px; font-size: .6875rem; font-weight: 500; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+.brief { padding: var(--sp-2xl) 18px 18px; min-width: 0; }
+.brief-cap { margin-bottom: var(--sp-lg); font-size: .75rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-cool); }
+.brief pre { margin: 0; display: grid; gap: var(--sp-xl); font: var(--text-sm)/1.6 var(--mono); color: var(--ink-2); white-space: normal; overflow-wrap: anywhere; }
 .brief pre i { display: block; font-style: normal; }
 /* a level's heading reads "Global: ~/.claude"; on a phone, where the tree is hidden, it takes the tree's icon instead */
 .brief .lvl b { display: none; }
 .brief .lvl span::after { content: ':'; }
 /* an item: its name, then its kind with the shelf's colour for it */
 .brief pre i.in { display: flex; align-items: baseline; gap: 1ch; padding-left: 2ch; }
-.brief pre em { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: 6px; font-style: normal; color: var(--ink-3); }
+.brief pre em { flex: none; margin-left: auto; display: inline-flex; align-items: center; gap: var(--sp-sm); font-style: normal; color: var(--ink-3); }
 .brief pre em::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--kind); }
 [data-k="instructions"], [data-k="profile"] { --kind: var(--sand); } [data-k="skill"] { --kind: var(--pt-sun); } [data-k="mcp"], [data-k="link"] { --kind: var(--pt-sky); }
 [data-k="hook"] { --kind: var(--pt-coral); } [data-k="doc"] { --kind: var(--pt-earth); } [data-k="note"] { --kind: var(--pt-slate); }
-.brief pre > span { display: block; padding-left: 10px; border-left: 2px solid var(--c); transition: opacity .2s var(--ease); }
+.brief pre > span { display: block; padding-left: var(--sp-lg); border-left: 2px solid var(--c); transition: opacity var(--dur-slow) var(--ease); }
 .shelf[data-hl] .brief pre > span { opacity: .3; }
 .shelf[data-hl="global"] .brief [data-tier="global"], .shelf[data-hl="fleet"] .brief [data-tier="fleet"], .shelf[data-hl="repo"] .brief [data-tier="repo"],
 .shelf[data-hl="island"] .brief [data-tier="island"], .shelf[data-hl="robot"] .brief [data-tier="robot"] { opacity: 1; }
@@ -231,7 +231,7 @@ span.src { color: var(--ink-3); }
 .close { text-align: center; }
 .close .install { margin-left: auto; margin-right: auto; text-align: left; }
 
-footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-bottom: 36px; font-size: .8125rem; color: var(--ink-3); }
+footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-bottom: 36px; font-size: .8125rem; color: var(--faint); }
 
 @media (max-width: 960px) {
   .ctx { grid-template-columns: minmax(0, 1fr); gap: 32px; }
@@ -240,12 +240,12 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
 @media (max-width: 760px) {
   .lede, .sub { font-size: .9375rem; }
   .dl { margin-top: 22px; }
-  .install pre { padding: 10px 4px 10px 12px; font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .install pre { padding: var(--sp-lg) var(--sp-xs) var(--sp-lg) var(--sp-xl); font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; }
   .gh span { display: none; }
   .tabs { width: 100%; grid-auto-flow: row; grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .shelf { grid-template-columns: minmax(0, 1fr); }
   .tree { display: none; }
-  .brief .lvl { display: flex; align-items: baseline; gap: 8px; margin-bottom: 4px; font: 500 .875rem/1.3 var(--sans); color: var(--ink); }
+  .brief .lvl { display: flex; align-items: baseline; gap: var(--sp-md); margin-bottom: var(--sp-xs); font: 500 .875rem/1.3 var(--sans); color: var(--ink); }
   .brief .lvl b { display: block; flex: none; width: 14px; font-weight: 400; text-align: center; color: var(--c); }
   .brief .lvl span { font-size: .6875rem; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
   .brief .lvl span::after { content: none; }
