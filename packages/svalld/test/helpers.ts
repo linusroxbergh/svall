@@ -74,7 +74,9 @@ const GHOSTTY_TERMINFO = [
 export function ghosttyTermEnv(): Record<string, string> | undefined {
   const term = { TERM: 'xterm-ghostty' };
   try { execFileSync('infocmp', ['xterm-ghostty'], { stdio: 'ignore' }); return term; } catch { /* not on the terminfo path */ }
-  const dir = GHOSTTY_TERMINFO.find((d) => fs.existsSync(`${d}/78/xterm-ghostty`));
+  // macOS's ncurses files an entry under its first letter in hex, Linux's under the letter, so a Mac build is no use on Linux
+  const sub = process.platform === 'darwin' ? '78' : 'x';
+  const dir = GHOSTTY_TERMINFO.find((d) => fs.existsSync(`${d}/${sub}/xterm-ghostty`));
   return dir ? { ...term, TERMINFO_DIRS: `${dir}:` } : undefined;
 }
 
