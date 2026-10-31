@@ -41,6 +41,8 @@ export type HostOutcome = { result: 'ready' | 'actions'; actions: string[]; stop
 
 export type HostDeps = {
   emit(event: StepEvent): void;
+  /** told the release an add, upgrade or rollback leaves the machine running, once it knows it */
+  runs?(release: string): void;
   registry: MachineRegistry;
   openMaster(destination: string): Promise<SshMaster>;
   /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said */
@@ -511,6 +513,7 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
   if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
   const held = registry.get(o.name);
+  if (held && !held.record.ssh) throw new StepError(`${o.name} is this Mac's name; add the machine under another name`);
   if (held && held.record.ssh !== o.ssh) {
     throw new StepError(`${o.name} is already the machine at ${held.record.ssh}; remove it first or add this one under another name`);
   }
@@ -604,6 +607,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `svall host upgrade ${o.name}, or ` : ''}add the machine again`);
         }
         if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
+        d.runs?.(v.release);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
       await run.step('enrol', async () => {
@@ -811,6 +815,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         }
       });
       if (probed) {
+        d.runs?.(companion.version);
         await becomeWorker(master, entry, run, d);
         await setupSteps(run, entry.id, name, d);
         return;
@@ -823,6 +828,7 @@ export function upgradeHost(name: string, o: { release?: string; allowUnsigned?:
         const to = back !== companion.version ? back : replaced ? undefined : before;
         const out = await remoteRollback(master, { svallBase: entry.record.svallBase, from: companion.version, ...(to !== undefined && { to }) }).catch((err: Error) => err);
         const now = await currentRelease(master, entry.record.svallBase);
+        d.runs?.(now);
         const runs = !replaced ? `${name} runs release ${now}${now === before ? ', the one it ran before' : `, not ${before}, the one it ran before`}`
           : `${name} ran a release named ${before} before, which this install replaced; ${now === before ? 'no other release is kept there, so it runs the new one' : `it runs release ${now}, the newest one kept there`}`;
         const action = `ssh ${entry.record.ssh} and read the daemon log; ${runs}`;
@@ -864,6 +870,7 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
           .catch(async (err: Error) => { throw new StepError(err.message, await runs()); });
         return { value: await currentRelease(master, base), detail: out.trim().split('\n').join('; ') };
       });
+      d.runs?.(now);
       await run.step('probe', async () => {
         try {
           serviceOutcome(await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json'), entry.record.ssh);

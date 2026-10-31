@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
@@ -64,6 +64,16 @@ describe('host add', () => {
     expect(ssh.remoteCalls().some((w) => w.includes('gateway'))).toBe(false);
     // this fleet's daemon links it without waiting for its next start
     expect(refreshed).toBe(1);
+  });
+
+  it('tells the release the machine runs once it answers on it, for host list', async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const runs = vi.fn();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), runs }));
+    await d.close();
+    expect([out.result, runs.mock.calls]).toEqual(['ready', [['1.2.3']]]);
   });
 
   it('enrols a named fleet under the profile it runs there', async () => {
@@ -391,6 +401,15 @@ esac
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(step('name').at(-1)).toMatchObject({ status: 'fail' });
     expect(step('name').at(-1)?.detail).toContain('other.test');
+    expect(out.result).toBe('actions');
+    expect(ssh.calls()).toEqual([]);
+  });
+
+  it("refuses this Mac's own name, which has no ssh destination, before any ssh", async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'studio', platform: 'darwin', arch: 'arm64', home: '/Users/linus', svallBase: '/Users/linus/.svall' }, MAC);
+    const out = await addHost({ name: 'studio', ssh: 'trift.test', release: archive() }, deps({ registry }));
+    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: "studio is this Mac's name; add the machine under another name" });
     expect(out.result).toBe('actions');
     expect(ssh.calls()).toEqual([]);
   });
