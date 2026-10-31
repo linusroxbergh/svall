@@ -17,7 +17,7 @@ export function OnMachine({ id, machine, name }: { id: string; machine: MachineI
   const hostOpen = useApp((s) => s.hostOpen);
   useEffect(() => { if (!hostOpen) void read(); }, [id, machine, hostOpen]);
   const tick = ({ item, fields }: NonNullable<SetupRow['tick']>) => app.api().call('machines.consent', { machine, item, fields, on: true })
-    .then(read, (e: Error) => app.store.getState().showToast(e.message, 'error'));
+    .then(read, (e: Error) => { app.store.getState().showToast(e.message, 'error'); return read(); });
   if (!rows.length) return null;
   const apart = asideLine(rows.filter(aside), true);
   return (

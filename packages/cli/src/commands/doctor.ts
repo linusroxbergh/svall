@@ -238,6 +238,9 @@ function daemonPath(t: Target, d: DoctorDeps): Check {
     : { name: 'daemon path', status: 'ok', detail: 'its program is there, and it finds the agent CLIs as this shell does' };
 }
 
+// a named fleet's unit is the controller's to write, so there is nothing to type on this machine
+const unitFix = (t: Target): string => (t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host upgrade <this machine> from the controller`);
+
 // launchd and systemd give svalld only the environment its plist or unit holds, which setup took from this account
 function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!t.managed) return { name: 'daemon env', status: 'skip', detail: 'not managed' };
@@ -246,9 +249,7 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
   if (!keys.length) {
     return { name: 'daemon env', status: 'ok', detail: 'this account sets none of CLAUDE_CONFIG_DIR, CODEX_HOME, XDG_CONFIG_HOME or XDG_DATA_HOME' };
   }
-  const { plist: file, fix } = linux
-    ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: t.name === PRIVATE ? `${SHIM} setup` : `${SHIM} host upgrade <this machine> from the controller` }
-    : plistOf(t, d);
+  const { plist: file, fix } = linux ? { plist: path.join(d.unitDir, svalldUnitName(t.name)), fix: unitFix(t) } : plistOf(t, d);
   const text = d.read(file);
   if (text === undefined) return { name: 'daemon env', status: 'skip', detail: `no ${file}` };
   const lacks = keys.filter((k) => !text.includes((linux ? unitEnv : plistEnv)(k, d.daemonEnv[k])));
@@ -260,11 +261,12 @@ function daemonEnv(t: Target, d: DoctorDeps): Check {
 // the wrappers take stdout and stderr; doctor's runner reports a failure by throwing
 const asRun = (d: DoctorDeps): Run => async (cmd, args) => ({ stdout: await d.run(cmd, args), stderr: '' });
 
-async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Check> {
+async function unitCheck(name: string, t: Target, d: DoctorDeps): Promise<Check> {
+  const unit = svalldUnitName(t.name);
   try {
     const s = await unitStatus(asRun(d), unit);
     const detail = `${unit}: ${s.load}, ${s.active} (${s.sub}), ${s.state}`;
-    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${SHIM} setup`, run: `${SHIM} setup` };
+    if (s.load === 'not-found') return { name, status: 'fail', detail: `${unit} is not installed: ${unitFix(t)}`, ...(t.name === PRIVATE && { run: `${SHIM} setup` }) };
     return { name, status: s.active === 'active' ? 'ok' : 'fail', detail };
   } catch (e) {
     return { name, status: 'fail', detail: (e as Error).message };
@@ -273,7 +275,7 @@ async function unitCheck(name: string, unit: string, d: DoctorDeps): Promise<Che
 
 function systemd(t: Target, d: DoctorDeps): Promise<Check> {
   if (!t.managed) return Promise.resolve({ name: 'systemd', status: 'ok', detail: `not managed: ${t.home} is not a profile home` });
-  return unitCheck('systemd', svalldUnitName(t.name), d);
+  return unitCheck('systemd', t, d);
 }
 
 async function linger(d: DoctorDeps): Promise<Check> {

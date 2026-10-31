@@ -60,8 +60,12 @@ test('a copy the machine did not take says why, and a robot whose agent setup al
     : Promise.resolve({ rows })));
   await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
   unfold();
+  // the saved tick shows, as the rows are read again
+  rows = [{ key: linear.key, status: 'warn', detail: 'd', tick: { ...linear.tick!, on: true }, gap: { name: 'linear', what: 'ticked; not on vault yet' } }, notion, chrome];
   await act(async () => { fireEvent.click(screen.getByTestId('side-gap-copy-claude:mcp:linear')); });
   expect(store.getState().toast).toMatchObject({ text: 'the change is saved, but vault did not take it: ENOSPC', tone: 'error' });
+  expect(call.mock.calls.filter(([m]) => m === 'machines.setup')).toHaveLength(2);
+  expect(shown()[0]).toBe('linear ticked; not on vault yet');
 
   rows = [{ key: 'var:X', status: 'ok', detail: 'X is set on vault' }];
   const { container } = await act(async () => render(<OnMachine id="c2" machine={VAULT} name="vault" />));

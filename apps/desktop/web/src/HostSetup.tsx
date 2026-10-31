@@ -293,6 +293,7 @@ function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
           value={name} onChange={(e) => setName(e.target.value.trim())} />
         <input className="fld" data-testid="host-ssh" placeholder="ssh destination, e.g. linus@studio" aria-label="Ssh destination" {...AS_TYPED}
           value={ssh} onChange={(e) => setSsh(e.target.value.trim())} />
+        {name && !machineName(name) && <div className="fleet-error" data-testid="host-name-problem">Name the machine with up to 32 lowercase letters, digits and dashes, starting with a letter</div>}
       </div>
       <div className="acts">
         <button className="btn" data-testid="host-add" disabled={running || !machineName(name) || !sshDestination(ssh)}
