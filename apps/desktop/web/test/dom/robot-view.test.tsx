@@ -408,3 +408,55 @@ test('a terminal that comes back under a new window shows it, not the closed mes
   expect(screen.queryByText('The terminal closed.')).toBeNull();
   expect(screen.queryByRole('button', { name: 'revive' })).toBeNull();
 });
+
+const HOME = '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId;
+// linus-vault's copy of the fleet while the Mac does not answer: c2 runs at home, and asks
+const throughVault = () => {
+  const f = blockedFleet();
+  f.machines = { [HOME]: { name: 'mac', reachable: false, since: 0 }, [vault]: { name: 'linus-vault', reachable: false, since: 0 } };
+  store.getState().setFleet(f);
+  store.getState().setStatus('online');
+  store.getState().setVia({ machine: vault, home: HOME });
+};
+
+test('through a worker, a robot of the home says the home is asleep, asks nothing, and opens no terminal', async () => {
+  throughVault();
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(screen.getByTestId('phone-unreachable').textContent).toBe('mac is asleep');
+  expect(screen.queryByRole('button', { name: 'approve' })).toBeNull();
+  expect(open).not.toHaveBeenCalled();
+});
+
+test('through a worker, a robot of the home is sent no prompt and marked seen nowhere', async () => {
+  throughVault();
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'hello' } });
+  expect((screen.getByRole('button', { name: 'send' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.submit(screen.getByPlaceholderText('prompt…').closest('form')!);
+  expect(call).not.toHaveBeenCalledWith('robot.run', expect.anything());
+  expect(fire).not.toHaveBeenCalledWith('robot.seen', expect.anything());
+  expect((screen.getByPlaceholderText('prompt…') as HTMLTextAreaElement).value).toBe('hello');
+});
+
+test('a robot running on the worker answers and streams there, whatever the stale fleet says of its link', async () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c2: { ...f.robots.c2, machine: vault } } });
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  expect(screen.queryByTestId('phone-unreachable')).toBeNull();
+  expect(screen.getByRole('button', { name: 'approve' })).toBeTruthy();
+  expect(open).toHaveBeenCalledTimes(1);
+});
+
+test('a terminal open through a worker opens again once the Mac has the fleet back', async () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c2: { ...f.robots.c2, machine: vault } } });
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  await act(async () => { store.getState().setVia(undefined); store.getState().setFleet(onVault(true)); });
+  expect(open).toHaveBeenCalledTimes(2);
+});

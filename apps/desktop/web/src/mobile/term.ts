@@ -18,7 +18,8 @@ export type TerminalLink = {
   close(): void;
 };
 
-export type LinkDeps = { api: Api; subscribe(h: (e: TermEvent) => void): () => void };
+// the api is asked on every call, so the terminal follows the page from the Mac to a worker and back
+export type LinkDeps = { api(): Api; subscribe(h: (e: TermEvent) => void): () => void };
 
 const encoder = new TextEncoder();
 export const decode = (b64: string): Uint8Array => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -47,24 +48,24 @@ export function linkTerminal(deps: LinkDeps, id: string, screen: Screen): Termin
       });
       try {
         const { cols, rows } = screen;
-        const { screen: seed } = await deps.api.call('term.open', { id, cols, rows, lines: 2000 });
+        const { screen: seed } = await deps.api().call('term.open', { id, cols, rows, lines: 2000 });
         if (closed) return;
         paint(seed);
         // the daemon takes no size from a viewer still opening, so one the screen settled on meanwhile goes now
-        if (screen.cols !== cols || screen.rows !== rows) deps.api.fire('term.resize', { id, cols: screen.cols, rows: screen.rows });
+        if (screen.cols !== cols || screen.rows !== rows) deps.api().fire('term.resize', { id, cols: screen.cols, rows: screen.rows });
       } catch (e) {
         unsubscribe?.();
         unsubscribe = undefined;
         throw e;
       }
     },
-    input(text) { deps.api.fire('term.input', { id, data: encode(encoder.encode(text)) }); },
-    resize() { deps.api.fire('term.resize', { id, cols: screen.cols, rows: screen.rows }); },
+    input(text) { deps.api().fire('term.input', { id, data: encode(encoder.encode(text)) }); },
+    resize() { deps.api().fire('term.resize', { id, cols: screen.cols, rows: screen.rows }); },
     close() {
       closed = true;
       unsubscribe?.();
       unsubscribe = undefined;
-      deps.api.fire('term.close', { id });
+      deps.api().fire('term.close', { id });
     },
   };
 }

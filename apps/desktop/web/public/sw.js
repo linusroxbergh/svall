@@ -1,6 +1,44 @@
-// receives push for the page; caches nothing, so every load is the daemon's own bundle
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+// receives push for the page, and keeps the page to open while the Mac does not answer.
+// The phone build fills BUILD with its files and a hash of them; unbuilt, nothing is kept or served
+const BUILD = { version: '', files: [] };
+const CACHE = `svall-${BUILD.version}`;
+// how long a navigation waits on the Mac before the kept page opens instead
+const RACE_MS = 2500;
+
+// a page reloading past an older build clears every cache, so a navigation that finds this build's gone keeps it again
+const keep = () => caches.open(CACHE).then((c) => c.match('/').then((hit) => hit || c.addAll(BUILD.files)));
+
+self.addEventListener('install', (e) => {
+  self.skipWaiting();
+  if (BUILD.files.length) e.waitUntil(keep());
+});
+self.addEventListener('activate', (e) => e.waitUntil(caches.keys()
+  .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
+  .then(() => self.clients.claim())));
+
+// the kept page says so on its root, so it turns to a worker without waiting on the Mac first
+const marked = (res) => res.text().then((html) => new Response(html.replace('<html', '<html data-kept'), { headers: res.headers }));
+
+// the Mac's page when it answers in time; past that, or when it cannot be reached, the one kept from it. Tailscale
+// answers 502 for a Mac that is awake while svalld is not
+function navigate(req) {
+  const net = fetch(req);
+  const served = net.then((res) => (res.status >= 500 ? Promise.reject(res) : res));
+  const kept = () => caches.match('/').then((hit) => (hit ? marked(hit) : net));
+  return Promise.race([served, new Promise((r) => setTimeout(r, RACE_MS)).then(kept)]).catch(kept);
+}
+
+// the manifest carries the pass and /pair and /rpc are the Mac's answers, so only the build's own files are kept
+self.addEventListener('fetch', (e) => {
+  const req = e.request;
+  if (!BUILD.files.length || req.method !== 'GET') return;
+  const url = new URL(req.url);
+  if (url.origin !== self.location.origin) return;
+  if (req.mode === 'navigate') {
+    e.respondWith(navigate(req));
+    e.waitUntil(keep().catch(() => {}));
+  } else if (BUILD.files.includes(url.pathname)) e.respondWith(caches.match(url.pathname).then((hit) => hit || fetch(req)));
+});
 
 // a notification replaces only the one before it from the same session, so two terminals do not hide each other
 const tagOf = (p) => (p.term ? `${p.id}-${p.term}` : p.id);
@@ -17,8 +55,9 @@ self.addEventListener('push', (e) => {
     tag: tagOf(p),
     renotify: true,
     data: p,
-    // answering reaches the main terminal only, so a second-terminal prompt is informational and opened in the app
-    actions: blocked && !p.term ? [{ action: 'approve', title: 'Approve' }, { action: 'deny', title: 'Deny' }] : [],
+    // answering reaches the main terminal only, so a second-terminal prompt is informational and opened in the app; a
+    // worker's push may come while the Mac is off, so it opens in the app too
+    actions: blocked && !p.term && !p.machine ? [{ action: 'approve', title: 'Approve' }, { action: 'deny', title: 'Deny' }] : [],
   }));
 });
 

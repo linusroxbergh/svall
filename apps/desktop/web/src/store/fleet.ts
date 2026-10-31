@@ -2,17 +2,20 @@ import jsonpatch, { type Operation } from 'fast-json-patch';
 import { emptyState, type FleetState, type ResourceSource } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { Api, Status } from '../api.js';
+import type { Via } from '../placement.js';
 import { whereTier } from '../resources/model.js';
 import { pruneIde } from './ide.js';
 import type { App, AppStore } from './index.js';
 
-// the fleet as the daemon last showed it, the listing that hangs off it, and the state of the link itself
-export type FleetSliceState = { fleet: FleetState; loaded: boolean; status: Status; resources: ResourceSource[] };
+// the fleet as the daemon last showed it, the listing that hangs off it, and the state of the link itself; `via` is the
+// worker a phone last had the fleet from while the home did not answer
+export type FleetSliceState = { fleet: FleetState; loaded: boolean; status: Status; resources: ResourceSource[]; via?: Via };
 
 export type FleetActions = {
   setFleet(fleet: FleetState): void;
   applyPatch(ops: Operation[]): void;
   setStatus(status: Status): void;
+  setVia(via: Via | undefined): void;
   setResources(sources: ResourceSource[]): void;
 };
 
@@ -71,6 +74,7 @@ export const createFleetSlice: StateCreator<App, [], [], FleetSliceState & Fleet
     set((s) => ({ fleet, ...pruned(s, fleet) }));
   },
   setStatus: (status) => set({ status }),
+  setVia: (via) => set({ via }),
   // a listing without the chosen source has nothing to show under it: the rail falls back to its first; a chosen tier is always there
   setResources: (resources) => set((s) => ({ resources, resourcesWhere: whereTier(s.resourcesWhere) || resources.some((r) => r.rootId === s.resourcesWhere) ? s.resourcesWhere : undefined })),
 });

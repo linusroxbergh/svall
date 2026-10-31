@@ -2,14 +2,15 @@ import { ApiError, HelloReply, LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED, server
 
 export { ApiError };
 
-// where svalld answers, and the token to say on arrival; a socket the proxy has already vouched for has none
-type Endpoint = { url: string; token?: string };
+// where svalld answers, the subprotocols the socket offers, and the token to say on arrival; a socket the proxy has
+// already vouched for has none
+type Endpoint = { url: string; protocols?: string[]; token?: string };
 
 // refused: the proxy brought the page from a tailnet login the fleet does not accept; unpaired: the page holds no pass
 export type Status = 'connecting' | 'online' | 'offline' | 'outdated' | 'refused' | 'unpaired';
 
 type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; timer: ReturnType<typeof setTimeout> };
-type Opts = { WS?: typeof WebSocket; minDelay?: number; maxDelay?: number; callTimeout?: number };
+type Opts = { WS?: typeof WebSocket; minDelay?: number; maxDelay?: number; callTimeout?: number; connectTimeout?: number };
 
 export class Api {
   onStatus: (s: Status) => void = () => {};
@@ -20,6 +21,7 @@ export class Api {
   private minDelay: number;
   private maxDelay: number;
   private callTimeout: number;
+  private connectTimeout?: number;
   private ws?: WebSocket;
   private online = false;
   // a daemon on another protocol, or one that refuses this login, stays reported as such across retries, until one
@@ -37,6 +39,7 @@ export class Api {
     this.minDelay = opts.minDelay ?? 500;
     this.maxDelay = opts.maxDelay ?? 5000;
     this.callTimeout = opts.callTimeout ?? 30_000;
+    this.connectTimeout = opts.connectTimeout;
     this.delay = this.minDelay;
   }
 
@@ -56,9 +59,12 @@ export class Api {
 
   /** Drops the socket as closed without waiting for its close, which one lost to a network change may never send. */
   restart(): void {
-    const ws = this.ws;
-    const closed = ws?.onclose;
-    if (!ws || !closed || !this.online) return;
+    if (this.ws && this.online) this.drop(this.ws);
+  }
+
+  private drop(ws: WebSocket): void {
+    const closed = ws.onclose;
+    if (!closed) return;
     ws.onclose = null;
     ws.close();
     closed.call(ws, new CloseEvent('close'));
@@ -86,9 +92,11 @@ export class Api {
 
   private open(): void {
     if (!this.held) this.onStatus('connecting');
-    const ws = new this.WS(this.endpoint.url);
+    const ws = new this.WS(this.endpoint.url, this.endpoint.protocols);
     this.ws = ws;
     let answered = false;
+    // a socket to a machine that is off can take a minute to fail; given a timeout, one not greeted in time counts as closed
+    const late = this.connectTimeout === undefined ? undefined : setTimeout(() => { if (this.ws === ws && !answered) this.drop(ws); }, this.connectTimeout);
     const token = this.endpoint.token;
     ws.onopen = () => { if (token !== undefined) ws.send(JSON.stringify({ token })); };
     // a socket already replaced by a reconnect speaks for nobody: neither its messages nor its close count
@@ -101,6 +109,7 @@ export class Api {
         const hello = HelloReply.safeParse(msg);
         if (!hello.success) return;
         answered = true;
+        clearTimeout(late);
         if (hello.data.result.protocol !== PROTOCOL_VERSION) {
           this.held = 'outdated';
           this.onStatus('outdated');
@@ -124,6 +133,7 @@ export class Api {
     };
     ws.onerror = () => { /* onclose follows */ };
     ws.onclose = (ev) => {
+      clearTimeout(late);
       if (this.ws !== ws) return;
       this.online = false;
       for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('svalld connection closed')); }

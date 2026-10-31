@@ -1,6 +1,7 @@
 import { useState, type JSX } from 'react';
 import type { Robot } from '@svall/protocol';
 import { useApp } from '../hooks.js';
+import { elsewhere } from '../placement.js';
 import { phone } from './boot.js';
 import { Sheet } from './Sheet.js';
 
@@ -25,7 +26,8 @@ export function CloseConfirm({ c, onClosed }: { c: Robot; onClosed(): void }): J
 
 export function CloseRobot({ id, onClose }: { id: string; onClose(): void }): JSX.Element | null {
   const c = useApp((s) => s.fleet.robots[id]);
-  if (!c) return null;
+  const away = useApp((s) => !!c && elsewhere(c, s.via));
+  if (!c || away) return null;
   return (
     <Sheet title={c.name} onClose={onClose}>
       <div className="sheet-form"><CloseConfirm c={c} onClosed={onClose} /></div>

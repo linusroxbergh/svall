@@ -173,3 +173,82 @@ test('a refused login is pointed at fleet.json, where the fleet keeps its logins
   render(<Fleet onOpen={() => {}} />);
   expect(screen.getByText(/can't open this fleet/).textContent).toContain('mobile.logins in fleet.json');
 });
+
+const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+const HOME = '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId;
+// the fleet as linus-vault holds it while the Mac does not answer: c0 runs there, c1 and c2 at home
+const throughVault = () => {
+  const f = fleet();
+  f.machines = { [HOME]: { name: 'mac', reachable: false, since: 0 }, [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } };
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { machine: VAULT, cwd: '/home/me/a' });
+  f.robots.c1 = chr('c1', 'i_b', { x: 4, y: 1 }, { agent: { kind: 'claude', sessionId: 's', status: 'blocked', lastActivityAt: 0 } });
+  store.getState().setFleet(f);
+  store.getState().setStatus('online');
+  store.getState().setVia({ machine: VAULT, home: HOME });
+};
+
+test('through a worker, the list offers no new island, settings or island sheet, and the robots elsewhere read unknown and wait on nobody', () => {
+  throughVault();
+  const { container } = render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'beta options' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'New robot on mission control' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'New robot on alpha' })).toBeTruthy();
+  expect(container.querySelector('.conn')!.textContent).toBe('on linus-vault · mac asleep');
+  const status = (name: string) => screen.getByText(name).closest('.row')!.getAttribute('data-status');
+  expect([status('c0'), status('c1'), status('c2')]).toEqual(['shell', 'unknown', 'unknown']);
+  // only a robot running on the worker can be closed from it
+  expect(container.querySelector('[aria-label="Close c1"]')).toBeNull();
+  expect(container.querySelector('[aria-label="Close c0"]')).toBeTruthy();
+});
+
+test('through a worker, a new robot is started in a folder of the robots running there', async () => {
+  throughVault();
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'New robot on alpha' }));
+  expect(call).not.toHaveBeenCalled();
+  expect(screen.getAllByRole('radio').map((r) => (r as HTMLInputElement).value)).toEqual(['/home/me/a']);
+  call.mockResolvedValueOnce({ id: 'c9' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/home/me/a' });
+});
+
+test('through a worker with no robot of its own, a new robot has no folder to start in', () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, machine: undefined } } });
+  render(<NewRobot islandId="i_a" onClose={() => {}} onCreated={() => {}} />);
+  expect(screen.getByText(/No robot runs on linus-vault yet/)).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+test('through a worker, an island folds nowhere, and one folded on the Mac shows its crew', () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, islands: { ...f.islands, i_b: { ...f.islands.i_b, collapsed: true } } });
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'beta' }));
+  expect(call).not.toHaveBeenCalled();
+  expect(screen.getByText('c0')).toBeTruthy();
+});
+
+test('through a worker, only its own robots are marked read from the list', () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, unread: true }, c2: { ...f.robots.c2, unread: true } } });
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'Mark c2 read' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Mark c0 read' }));
+  expect(fire).toHaveBeenCalledWith('robot.seen', { id: 'c0' });
+});
+
+test('a new robot sheet open as the Mac comes back starts in the Mac\'s folder, not the worker\'s', async () => {
+  throughVault();
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'New robot on alpha' }));
+  act(() => store.getState().setVia(undefined));
+  call.mockResolvedValueOnce({ id: 'c9' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/tmp' });
+});

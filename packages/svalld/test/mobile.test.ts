@@ -100,6 +100,20 @@ describe('bundle paths', () => {
     expect(resolveFile('/nowhere', '/')).toBeUndefined();
   });
 
+  // a phone's service worker keeping an older build asks for its assets, and the page in their place would be kept as code
+  it('answers 404 for an asset no longer in the bundle, rather than the page', async () => {
+    const built = makeHome();
+    fs.writeFileSync(path.join(built, 'index.html'), 'page');
+    fs.mkdirSync(path.join(built, 'assets'));
+    expect(resolveFile(built, '/assets/gone.js')).toBeUndefined();
+    expect(resolveFile(built, '/assets')).toBe(path.join(built, 'index.html'));
+    const server = http.createServer((req, res) => serveBundle(req, res, built));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', () => r()));
+    try {
+      expect((await fetch(`http://127.0.0.1:${(server.address() as { port: number }).port}/assets/gone.js`)).status).toBe(404);
+    } finally { await new Promise((r) => server.close(r)); }
+  });
+
   it('says the page is not built only when it is not', async () => {
     const built = makeHome(), empty = makeHome();
     fs.writeFileSync(path.join(built, 'index.html'), 'page');

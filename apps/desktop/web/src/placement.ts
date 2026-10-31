@@ -22,13 +22,25 @@ export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string):
   return at && machineName(f, at);
 };
 
-/** The worker a robot runs on, while the home has lost its link to it. */
-export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>): string | undefined =>
-  (isPlaced(c) && f.machines?.[c.machine]?.reachable === false ? machineName(f, c.machine) : undefined);
+/** The worker a phone reaches the fleet through while the home does not answer, and the home it stands in for. */
+export type Via = { machine: MachineId; home: MachineId };
+
+/** The home as a worker's copy of the fleet names it; before that copy arrives, by what it is. */
+export const homeName = (f: Machines, via: Via): string => f.machines?.[via.home]?.name ?? 'the Mac';
+
+/** The machine a robot runs on, while the home has lost its link to it; through a worker, any machine but that worker. */
+export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined => {
+  if (via) return c.machine === via.machine ? undefined : isPlaced(c) ? machineName(f, c.machine) : homeName(f, via);
+  return isPlaced(c) && f.machines?.[c.machine]?.reachable === false ? machineName(f, c.machine) : undefined;
+};
+
+/** Through a worker, a robot that runs on another machine, which takes none of the actions the Mac would answer. */
+export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && c.machine !== via.machine;
 
 /** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade. */
-export function awayLine(f: Machines, c: Pick<Robot, 'machine'>): string | undefined {
-  const name = unreachableOf(f, c);
+export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined {
+  const name = unreachableOf(f, c, via);
+  if (via) return name && `${name} ${isPlaced(c) ? 'is not reachable' : 'is asleep'}`;
   const mismatch = isPlaced(c) && f.machines?.[c.machine]?.mismatch === true;
   return name && `${name} ${mismatch ? 'runs a different build; upgrade it under Machines' : 'is not reachable'}`;
 }
