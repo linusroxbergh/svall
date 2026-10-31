@@ -24,14 +24,14 @@ runIf('TerminalHub', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 
-  async function boot() {
+  async function boot(pollMs = 200) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const config = Config.parse({ shell: '/bin/sh' });
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs: 200 });
+    const fleet = new Fleet({ store, tmux, paths, config, log: silentLogger, pollMs });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;
@@ -151,7 +151,8 @@ runIf('TerminalHub', () => {
   });
 
   it('takes Enter or Esc typed into a blocked agent as its answer, and arrows as no answer', async () => {
-    const { hub, store, c } = await boot();
+    // no poll: the pane is at a shell, where two polls drop the agent this test stands in
+    const { hub, store, c } = await boot(60_000);
     const block = (id: string) => store.update((d) => {
       d.robots[c.id].agent = { kind: 'claude', sessionId: 's', status: 'blocked', promptId: id, prompt: 'may I', lastActivityAt: 1 };
     });
