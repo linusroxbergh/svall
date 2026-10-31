@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { AS_TYPED } from '../Field.js';
 import { useApp } from '../hooks.js';
-import { Close } from '../icons.js';
+import { Close, Edit, Plus } from '../icons.js';
 import { openFile } from '../ide/files.js';
 import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
@@ -97,7 +97,7 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
         {isDoc && renaming && <NameField testid="resources-doc-rename-name" initial={item.name} onDone={() => setRenaming(false)} onCommit={(v) => { void renameDoc(deps(), o.rootId, o.path, v); }} />}
         {isDoc && !renaming && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}>✎</button>
+            <button data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}><Edit size="xs" /></button>
             <button data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}><Close size="xs" /></button>
           </span>
         )}
@@ -203,7 +203,7 @@ export function List() {
                 </section>
               );
             })}
-            {addTo && !naming && <button className="res-new" data-testid="resources-new-doc" onClick={() => setNaming(true)}>+ new {noun}</button>}
+            {addTo && !naming && <button className="res-new" data-testid="resources-new-doc" onClick={() => setNaming(true)}><Plus size="xs" />new {noun}</button>}
           </>
         )}
       </div>

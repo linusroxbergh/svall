@@ -4,6 +4,7 @@ import { app, deps } from './boot.js';
 import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth } from './hooks.js';
+import { Plus } from './icons.js';
 import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
@@ -35,7 +36,7 @@ export function IslandCard({ id }: { id: string }) {
       <div className="side-island-head">
         <FollowLine className="h2" aria-label="Island name" key={`name-${id}`} value={i.name} data-testid="side-island-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === i.name) return false; save({ name }); }} />
-        <button className="btn pri sm" data-testid="side-island-new" onClick={() => newRobotOn(deps(), id)}>+ New robot</button>
+        <button className="btn pri sm" data-testid="side-island-new" onClick={() => newRobotOn(deps(), id)}><Plus size="xs" />New robot</button>
       </div>
       <div className="side-secs">
         <Section name="island.description" title="Description">

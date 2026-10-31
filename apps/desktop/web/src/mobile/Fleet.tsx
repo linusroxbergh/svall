@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
 import { memoByValue, useApp } from '../hooks.js';
-import { Caret, Check, More } from '../icons.js';
+import { Caret, Check, Gear, More, Plus } from '../icons.js';
 import { elsewhere, homeName, machineName } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
@@ -124,8 +124,8 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>
-        {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
+        <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}><Plus size="lg" /></button>
+        {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}><Gear /></button>}
         <span className="conn" data-status={status}>
           {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
         </span>
@@ -159,7 +159,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
             {/* the island's own folder is the Mac's, so a worker asks which of its own to start in; it starts no mission control */}
             {!(via && island.kind === 'home') && (
               <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
-                onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}>+</button>
+                onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}><Plus size="lg" /></button>
             )}
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}

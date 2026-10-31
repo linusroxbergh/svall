@@ -5,7 +5,7 @@ import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
-import { Caret, Eye, Feedback, Pr, Star, Update } from './icons.js';
+import { Caret, Eye, Feedback, Plus, Pr, Star, Update } from './icons.js';
 import { MachineLine, reviewText } from './indicators.js';
 import { machineOf } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
@@ -111,7 +111,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       <i className="sdot" data-status={status} data-empty={robots.length === 0} />
       {robots.length > 0 && <button className="sb-robot-add" data-testid={`sb-island-new-${i.id}`}
         data-tip={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
-        onClick={(e) => { stop(e); void newRobotOn(deps(), i.id); }} onDoubleClick={stop}>+</button>}
+        onClick={(e) => { stop(e); void newRobotOn(deps(), i.id); }} onDoubleClick={stop}><Plus /></button>}
     </div>
   );
 });
@@ -297,7 +297,7 @@ export function Sidebar() {
     <aside className="sb" style={width} data-testid="sidebar" data-paused={!active}>
       <div className="sb-head">
         islands
-        <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}>+ New island</button>
+        <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}><Plus size="xs" />New island</button>
       </div>
       <button className="sb-collapse" data-testid="sidebar-hide" data-tip="Hide the islands" aria-label="Hide the islands"
         onClick={() => app.store.getState().toggleSidebar(false)}><Caret dir="left" /></button>
@@ -310,7 +310,7 @@ export function Sidebar() {
               data-drop-reorder={islandHover?.id === i.id} data-drop-after={islandHover?.id === i.id && islandHover.after}>
               <IslandRow i={i} robots={robots} editing={editing === i.id} setEditing={setEditing} dragging={dragIsland === i.id} setDragging={setDragging} />
               {!i.collapsed && robots.length === 0 && <div className="sb-kids"><button className="sb-row list-row sb-robot-empty" data-testid={`sb-island-new-${i.id}`}
-                aria-label={`New robot on ${i.name}`} onClick={() => void newRobotOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true">+</i>New robot</button></div>}
+                aria-label={`New robot on ${i.name}`} onClick={() => void newRobotOn(deps(), i.id)}><i className="sb-plus" aria-hidden="true"><Plus /></i>New robot</button></div>}
               {!i.collapsed && robots.length > 0 && (
                 <div className="sb-kids">{robots.map((c) => <RobotRow key={c.id} c={c} machine={machineOf(fleet, c)} editing={editing === c.id} setEditing={setEditing} />)}</div>
               )}

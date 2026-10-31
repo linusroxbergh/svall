@@ -26,7 +26,7 @@
 .tree-row[data-kind="dir"] { color: var(--ink); }
 /* what git ignores is there to open, a shade back from what it tracks */
 .tree-row[data-ignored="true"] { opacity: .52; }
-.tree-caret { flex: none; width: 12px; color: var(--ink-3); font-size: var(--text-xs); }
+.tree-caret { flex: none; display: grid; place-items: center; width: 12px; color: var(--ink-3); font-size: var(--text-xs); }
 .tree-name { overflow: hidden; text-overflow: ellipsis; }
 .tree-err { padding: var(--sp-xs) var(--sp-md); font-size: var(--text-sm); color: var(--danger); }
 /* the row scrolls sideways; the ask hangs out of the strip, so only the row may clip */

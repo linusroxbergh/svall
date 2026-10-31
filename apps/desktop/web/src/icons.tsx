@@ -25,13 +25,13 @@ export const Caret = ({ dir, size }: Props & { dir: 'up' | 'down' | 'left' | 'ri
   <Svg grid={10} size={size} className="caret" dir={dir}><path d="M2 3.5 5 6.5 8 3.5" /></Svg>
 );
 
-export const Check = ({ size }: Props) => <Svg grid={10} size={size}><path d="M1.8 5.4 4 7.6 8.4 2.6" /></Svg>;
+export const Check = ({ size }: Props) => <Svg grid={10} size={size}><path d="M1.7 5.32 3.9 7.52 8.3 2.52" /></Svg>;
 
 const DOT = <circle cx="5" cy="5" r=".9" fill="currentColor" stroke="none" />;
 const MARK = {
-  ok: <path d="M1.8 5.4 4 7.6 8.4 2.6" />,
+  ok: <path d="M1.7 5.32 3.9 7.52 8.3 2.52" />,
   fail: <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" />,
-  warn: <><path d="M5 1.8v3.6" /><circle cx="5" cy="7.9" r=".9" fill="currentColor" stroke="none" /></>,
+  warn: <><path d="M5 1.9v3.6" /><circle cx="5" cy="8" r=".9" fill="currentColor" stroke="none" /></>,
   todo: <circle cx="5" cy="5" r="2.6" />,
   start: DOT,
   skip: <path d="M3 5h4" />,
@@ -42,6 +42,31 @@ export type MarkStatus = keyof typeof MARK;
 export const Mark = ({ status, size }: Props & { status: MarkStatus }) => <Svg grid={10} size={size}>{MARK[status]}</Svg>;
 
 export const Close = ({ size }: Props) => <Svg grid={12} size={size}><path d="M3 3l6 6M9 3 3 9" /></Svg>;
+
+export const Plus = ({ size }: Props) => <Svg grid={12} size={size}><path d="M6 2.5v7M2.5 6h7" /></Svg>;
+
+export const Minus = ({ size }: Props) => <Svg grid={12} size={size}><path d="M2.5 6h7" /></Svg>;
+
+export const Edit = ({ size }: Props) => <Svg grid={12} size={size}><path d="M8 2.5 9.5 4 4.5 9 2.5 9.5 3 7.5zM6.8 3.7l1.5 1.5" /></Svg>;
+
+// a turn clockwise, and its mirror
+export const Reload = ({ size }: Props) => (
+  <Svg grid={12} size={size}><path d="M9.75 6.3A3.75 3.75 0 1 1 6 2.55a3.75 3.75 0 0 1 2.87 1.34M9.04 1.9l-.17 1.99-1.99-.17" /></Svg>
+);
+
+export const Reset = ({ size }: Props) => (
+  <Svg grid={12} size={size}><path d="M2.25 6.3A3.75 3.75 0 1 0 6 2.55a3.75 3.75 0 0 0-2.87 1.34M2.96 1.9l.17 1.99 1.99-.17" /></Svg>
+);
+
+// back to where a walk started
+export const Back = ({ size }: Props) => <Svg grid={12} size={size}><path d="M4.5 2 2 4.5 4.5 7M2 4.5h5.25a2.75 2.75 0 0 1 0 5.5H6" /></Svg>;
+
+// fill the window, and back to the card
+export const Expand = ({ size }: Props) => <Svg grid={12} size={size}><path d="M7 2.5h2.5V5M9.5 2.5 6.75 5.25M5 9.5H2.5V7M2.5 9.5l2.75-2.75" /></Svg>;
+
+export const Shrink = ({ size }: Props) => (
+  <Svg grid={12} size={size}><path d="M9.5 2.5 6.75 5.25M6.75 2.75v2.5h2.5M2.5 9.5l2.75-2.75M5.25 9.25v-2.5h-2.5" /></Svg>
+);
 
 export const More = ({ size }: Props) => (
   <Svg grid={12} size={size} fill><circle cx="2.5" cy="6" r=".95" /><circle cx="6" cy="6" r=".95" /><circle cx="9.5" cy="6" r=".95" /></Svg>
@@ -70,7 +95,7 @@ export const Pr = ({ size }: Props) => (
 
 export const Bot = ({ size }: Props) => (
   <Svg grid={12} size={size} fill>
-    <path fillRule="evenodd" d="M3.4 3.6h5.2a1.8 1.8 0 0 1 1.8 1.8v3.4a1.8 1.8 0 0 1-1.8 1.8H3.4a1.8 1.8 0 0 1-1.8-1.8V5.4a1.8 1.8 0 0 1 1.8-1.8zM3.7 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM6.3 7a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM5.45 3.6V2.3h1.1v1.3zM5 1.35a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM.5 6h1.1v2.2H.5zM10.4 6h1.1v2.2h-1.1z" />
+    <path fillRule="evenodd" d="M3.4 4.1h5.2a1.8 1.8 0 0 1 1.8 1.8v3.4a1.8 1.8 0 0 1-1.8 1.8H3.4a1.8 1.8 0 0 1-1.8-1.8V5.9a1.8 1.8 0 0 1 1.8-1.8zM3.7 7.5a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM6.3 7.5a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM5.45 4.1V2.8h1.1v1.3zM5 1.85a1 1 0 1 0 2 0a1 1 0 1 0-2 0zM.5 6.5h1.1v2.2H.5zM10.4 6.5h1.1v2.2h-1.1z" />
   </Svg>
 );
 
@@ -83,7 +108,7 @@ export const Eye = ({ size }: Props) => (
 
 export const Hand = ({ size }: Props) => (
   <Svg grid={12} size={size}>
-    <path d="M4 6.6V2.7a.8.8 0 0 1 1.6 0V6M5.6 5.6V1.9a.8.8 0 0 1 1.6 0v3.7M7.2 5.6V2.7a.8.8 0 0 1 1.6 0V7c0 2.2-1.4 3.6-3.3 3.6-1.2 0-2-.6-2.6-1.6L1.8 7.4a.75.75 0 0 1 1.2-.9L4 7.5" />
+    <path d="M4.75 6.75v-3.9a.8.8 0 0 1 1.6 0v3.3M6.35 5.75v-3.7a.8.8 0 0 1 1.6 0v3.7M7.95 5.75v-2.9a.8.8 0 0 1 1.6 0v4.3c0 2.2-1.4 3.6-3.3 3.6-1.2 0-2-.6-2.6-1.6L2.55 7.55a.75.75 0 0 1 1.2-.9l1 1" />
   </Svg>
 );
 
@@ -95,9 +120,9 @@ export const Machine = ({ size }: Props) => (
   </Svg>
 );
 
-export const Mac = ({ size }: Props) => <Svg grid={12} size={size}><rect x="2.3" y="2.3" width="7.4" height="5.2" rx=".9" /><path d="M1.1 9.4h9.8" /></Svg>;
+export const Mac = ({ size }: Props) => <Svg grid={12} size={size}><rect x="2.3" y="2.45" width="7.4" height="5.2" rx=".9" /><path d="M1.1 9.55h9.8" /></Svg>;
 
-export const Moon = ({ size }: Props) => <Svg grid={12} size={size}><path d="M10 7.25A4 4 0 0 1 4.75 2a4 4 0 1 0 5.25 5.25Z" /></Svg>;
+export const Moon = ({ size }: Props) => <Svg grid={12} size={size}><path d="M9.82 7.4A4 4 0 0 1 4.57 2.15a4 4 0 1 0 5.25 5.25Z" /></Svg>;
 
 export const Phone = ({ size }: Props) => <Svg grid={24} size={size}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></Svg>;
 
@@ -107,7 +132,7 @@ export const Meter = ({ size }: Props) => (
 
 export const Pulse = ({ size }: Props) => <Svg grid={24} size={size}><path d="M3 12h4l2.5-6 5 12 2.5-6h4" /></Svg>;
 
-export const Feedback = ({ size }: Props) => <Svg grid={24} size={size}><path d="M4 5h16v11H10l-5 4v-4H4z" /></Svg>;
+export const Feedback = ({ size }: Props) => <Svg grid={24} size={size}><path d="M4 4.5h16v11H10l-5 4v-4H4z" /></Svg>;
 
 export const Gear = ({ size }: Props) => (
   <Svg grid={24} size={size}>

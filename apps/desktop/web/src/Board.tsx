@@ -4,7 +4,7 @@ import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorde
 import { app, deps } from './boot.js';
 import { BoardCard, NameInput } from './BoardCard.js';
 import { useApp } from './hooks.js';
-import { Caret, Grip, More, Place } from './icons.js';
+import { Caret, Grip, More, Place, Plus } from './icons.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
@@ -267,7 +267,7 @@ export function Board() {
           {attention > 0 && <span className="count tnum" data-tip={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
             <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><Grip /></span>
-            <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}>+</button>
+            <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}><Plus size="md" /></button>
             <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}><More size="md" /></button>
           </span>
         </header>
@@ -324,12 +324,12 @@ export function Board() {
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'count tnum' : 'kb-n tnum'}>{needs}</span>
         </button>
-        <button type="button" className="kb-ghost" data-testid="board-add-column" onClick={() => void add()}>+ Column</button>
+        <button type="button" className="kb-ghost" data-testid="board-add-column" onClick={() => void add()}><Plus size="xs" />Column</button>
       </div>
       <div ref={ground} className="kb-ground">
         <div className="kb-cols" data-testid="board-cols" data-dragging={Boolean(lift || shift)} onClick={blank}>
           {cols.map(lane)}
-          <button type="button" className="kb-add-col" data-testid="board-add-column-end" aria-label="Add a column" data-tip="Add a column" onClick={() => void add()}>+</button>
+          <button type="button" className="kb-add-col" data-testid="board-add-column-end" aria-label="Add a column" data-tip="Add a column" onClick={() => void add()}><Plus size="md" /></button>
         </div>
         <div className="kb-overlay">
           {hovered && hoverAt && <HoverCard c={hovered} x={hoverAt.x} y={hoverAt.y} flip={hoverAt.flip} />}

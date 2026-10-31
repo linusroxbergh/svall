@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
-import { Close } from '../icons.js';
+import { Close, Plus } from '../icons.js';
 import { Section } from '../Section.js';
 import { chooseResource } from './choose.js';
 import { deleteDoc } from './docs.js';
@@ -18,7 +18,7 @@ export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string })
   const open = (naming: boolean) => app.store.getState().toggleResources(true, { where: source.rootId, what: 'docs', naming });
   return (
     <Section name={`${tier}.docs`} title="Docs" testid="side-docs"
-      head={<button className="side-docs-new res-open" data-testid="side-docs-new" data-tip="Write a doc in the shelf" onClick={() => open(true)}>+ new doc</button>}>
+      head={<button className="side-docs-new res-open" data-testid="side-docs-new" data-tip="Write a doc in the shelf" onClick={() => open(true)}><Plus size="xs" />new doc</button>}>
       {items.map((i) => {
         const o = i.open;
         return (

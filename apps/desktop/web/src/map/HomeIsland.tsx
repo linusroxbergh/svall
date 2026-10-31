@@ -2,7 +2,7 @@ import type { Robot, ContextItem, Home as HomeConfig, HomeAction, Island } from 
 import { useMemo, useState } from 'react';
 import type { DropTarget } from '../drop.js';
 import { stop } from '../hooks.js';
-import { Caret } from '../icons.js';
+import { Caret, Plus } from '../icons.js';
 import type { DisplayStatus } from '../selectors.js';
 import { theme } from '../theme.js';
 import { coastPath } from './coast.js';
@@ -128,9 +128,9 @@ export function Home({
             data-tip={actionTip(a)} onPointerDown={stop} onClick={() => press(a)}>{a.label}</button>
         ))}
         <div className="home-create">
-          <button className="hact dim" data-testid="home-new-island" data-tip="Adds an empty island to the map" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
+          <button className="hact dim" data-testid="home-new-island" data-tip="Adds an empty island to the map" onPointerDown={stop} onClick={onNewIsland}><Plus size="xs" />New island</button>
           <button className="hact dim" data-testid="home-new" data-tip={"Starts a mission control robot for you to talk to\nIt looks after the fleet, not your code"}
-            onPointerDown={stop} onClick={onNew}>+ New robot</button>
+            onPointerDown={stop} onClick={onNew}><Plus size="xs" />New robot</button>
         </div>
         {extra}
       </div>

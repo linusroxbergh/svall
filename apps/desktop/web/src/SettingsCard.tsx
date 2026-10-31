@@ -7,7 +7,7 @@ import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { MachineActions } from './HostSetup.js';
-import { Close } from './icons.js';
+import { Close, Minus, Plus } from './icons.js';
 import { Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -76,9 +76,9 @@ function Dormancy() {
     <div className="row">
       <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up.</Info></span>
       <b className="set-zoom">
-        <button data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}>−</button>
+        <button data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}><Minus /></button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>
-        <button data-testid="dormancy-more" aria-label="Later" disabled={more === undefined} onClick={() => setDormancy(deps(), more!)}>+</button>
+        <button data-testid="dormancy-more" aria-label="Later" disabled={more === undefined} onClick={() => setDormancy(deps(), more!)}><Plus /></button>
       </b>
     </div>
   );
@@ -318,9 +318,9 @@ function Machine() {
         <div className="row">
           <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} sets 100%.`}</Info></span>
           <b className="set-zoom">
-            <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}>−</button>
+            <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}><Minus /></button>
             <span className="tnum" data-testid="zoom-level">{Math.round(zoom * 100)}%</span>
-            <button data-testid="zoom-in" aria-label="Bigger" onClick={() => set({ zoom: zoomBy(zoom, 1) })}>+</button>
+            <button data-testid="zoom-in" aria-label="Bigger" onClick={() => set({ zoom: zoomBy(zoom, 1) })}><Plus /></button>
           </b>
         </div>
       </div>
