@@ -106,6 +106,7 @@ export type There = { ssh: string; svall: string };
 /** A mirror row by its key, as svalld words it, or as a step or a check carries it. */
 type Gapped = Pick<SetupRow, 'key' | 'gap' | 'tick' | 'run' | 'forward' | 'action'>;
 const MIRROR = 'mirror:';
+const PHONE_ROW = `${MIRROR}phone`;
 const asRow = <T extends { step: string } | { name: string }>(e: T): T & { key: string } => ({ ...e, key: ('step' in e ? e.step : e.name).slice(MIRROR.length) });
 
 /** The one thing to do about a row from this Mac's terminal: tick it from here, or run its command there; Claude Code signs in with /mcp. */
@@ -159,9 +160,11 @@ type SetUpIo = { ask(q: string): Promise<string>; write(text: string): void; con
 
 /** Asks to set up what of the machine's agent setup can be from here: each key to copy there, one at a time, then the commands to run there. */
 export async function setUpNow(steps: StepEvent[], o: { name: string; machine: MachineId; there: There }, io: SetUpIo): Promise<void> {
-  if (!steps.some((s) => (toTick(s) && !notNeeded(s)) || s.run !== undefined) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
+  // a row with no gap, as the phone link while it is off, is nothing that will not work there
+  const asked = (s: StepEvent | Gapped): boolean => s.gap !== undefined && toTick(s) && !notNeeded(s);
+  if (!steps.some((s) => asked(s) || s.run !== undefined) || !/^(y|yes)?$/i.test((await io.ask('Set them up now? [Y/n] ')).trim())) return;
   const rows = steps.map(asRow);
-  for (const r of rows.filter((x) => toTick(x) && !notNeeded(x))) {
+  for (const r of rows.filter(asked)) {
     const { item, fields, preview } = r.tick!;
     if (!/^y(es)?$/i.test((await io.ask(`${r.action![0].toUpperCase()}${r.action!.slice(1)}? ${preview.join(', ')} [y/N] `)).trim())) continue;
     try {
@@ -174,6 +177,12 @@ export async function setUpNow(steps: StepEvent[], o: { name: string; machine: M
   const runs = [...new Set(rows.filter((x) => x.run).map((x) => gapAction(x, o.name, o.there)!))];
   if (runs.length) io.write([`Run these on ${o.name}:`, ...runs.map((a) => `  ${a}`), ''].join('\n'));
   io.write(`${o.there.svall} host doctor ${o.name} checks again once they are done.\n`);
+}
+
+/** What `host doctor` prints: each check, the phone link's row the one setup row among them whatever it says, then the verdict. */
+export function doctorText(report: HostReport, name: string, there: There): string {
+  const listed = report.checks.flatMap((c) => (!c.name.startsWith(MIRROR) ? [c] : c.name === PHONE_ROW ? [{ ...c, name: 'phone' }] : []));
+  return [`machine ${report.machine}`, ...checkLines(listed), doctorVerdict(report.checks, name, there)].join('\n');
 }
 
 const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
@@ -301,7 +310,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       });
       if (entry) recordCheck(dir(), entry.id, checkOf(report));
       const there = thereOf(name, dir(), target());
-      printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks.filter((c) => !c.name.startsWith(MIRROR))), doctorVerdict(report.checks, name, there)].join('\n'));
+      printResult(report, json(), () => doctorText(report, name, there));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
     });
 

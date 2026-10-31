@@ -16,6 +16,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
+import { PHONE_ITEM, type PhoneFallbacks } from '../placement/phone.js';
 import { updateAgents, type Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
@@ -29,7 +30,9 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
+  // the home's: each worker's phone link
+  phone?: PhoneFallbacks };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -58,12 +61,14 @@ const mirrorOf = ({ mirror }: Ctx): Mirror => {
   return mirror;
 };
 
-// the setup rows of `machine`, asked of its worker once the link is up or `waitMs` has passed
-async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: string): Promise<{ rows: SetupRow[] }> {
+// the setup rows of `machine`, asked of its worker once the link is up or `waitMs` has passed; `recheck` tells a worker
+// that last did not serve the phone again first
+async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: string, recheck = false): Promise<{ rows: SetupRow[] }> {
   const mirror = mirrorOf(ctx);
   if (robot !== undefined && !Object.hasOwn(ctx.store.state.robots, robot)) throw new ApiError('not_found', `no robot ${robot}`);
   const link = ctx.links?.for(machine);
   await link?.linked(waitMs);
+  if (recheck && robot === undefined) await ctx.phone?.recheck(machine);
   const { machines, robots } = ctx.store.state;
   const c = robot === undefined ? undefined : robots[robot];
   // a robot's folders, where it runs on a worker, under that worker's home
@@ -72,7 +77,8 @@ async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: str
     agents: [c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined), folders: [c.cwd, c.repo?.mainRoot, c.second?.cwd].filter((f) => f !== undefined),
     ...(far && { home: far }),
   };
-  return { rows: await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) }) };
+  const rows = await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) });
+  return { rows: ctx.phone && !only ? [...rows, ctx.phone.row(machine)] : rows };
 }
 
 // the folders a scan here lists are those of the robots that run here
@@ -135,13 +141,17 @@ const handlers: Handlers = {
     })),
   }),
   'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
-  'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0, p.robot),
+  'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0, p.robot, true),
   // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
   'machines.consent': async (p, ctx) => {
     const mirror = mirrorOf(ctx);
     const name = ctx.store.state.machines?.[p.machine]?.name;
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
     mirror.consent(p.machine, p.item, p.fields, p.on);
+    if (p.item === PHONE_ITEM && ctx.phone) {
+      await ctx.phone.sync(p.machine);
+      return setupOf(ctx, p.machine, 0);
+    }
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
@@ -205,10 +215,17 @@ const handlers: Handlers = {
   'load.get': (_p, { load }) => load(),
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
-  'mobile.set': async (p, { mobile, push }) => {
+  'mobile.set': async (p, { mobile, push, phone }) => {
     const status = await mobile.set(p.enabled);
+    // recorded before the devices go, so the sync their clearing starts finds the off
+    void phone?.macSet(p.enabled);
     if (!p.enabled) push.clear();
     return status;
+  },
+  // a worker's pass is the phone's alone: never in the fleet's state or a log
+  'mobile.fallbacks': (_p, { phone }) => {
+    if (!phone) throw new ApiError('not_on_worker', 'the phone links are the home\'s');
+    return phone.fallbacks();
   },
   // each worker lists the clones its robots work in, read there
   'resources.get': async (_p, ctx) => {
@@ -279,10 +296,15 @@ export async function systemInfo(o: { machineId: MachineId; agents: AgentProber;
   };
 }
 
+// what a worker answers for a robot that runs on it, its home linked or not, so a phone there never waits on the link
+const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive']);
+
 // a worker answers a read of the fleet, or of a robot placed on it, from its mirror; any other call is its home's
 function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
   if (!ctx.router?.onWorker) return false;
   const id = (params as { id?: unknown }).id;
+  const { robots } = ctx.store.state;
+  if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
   return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
 }
 
@@ -294,7 +316,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
-    if (ctx.mutations?.serves(req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
+    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone')) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };

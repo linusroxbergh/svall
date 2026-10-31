@@ -207,7 +207,9 @@ describe('the last line a run prints', () => {
     const macOnly: SetupRow = { key: 'maconly:claude:chrome', status: 'skip', detail: 'd', gap: { name: 'chrome', what: 'runs only on a Mac' } };
     const unchecked: SetupRow = { key: 'unchecked', status: 'warn', detail: 'd', action: 'svall host doctor trift once Svall is open', gap: { name: 'agent setup', what: 'not checked' } };
     const still: SetupRow = { ...unticked('claude:mcp:jira'), action: 'check trift again', gap: { name: 'jira', what: 'unticked; still on trift' } };
-    await setUpNow([macOnly, unchecked, still].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
+    // the phone link while it is off is nothing that will not work there
+    const phone: SetupRow = { key: 'phone', status: 'skip', detail: 'off', tick: { item: 'phone', fields: ['on'], on: false, preview: [] } };
+    await setUpNow([macOnly, unchecked, still, phone].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
     expect([asked, said]).toEqual([[], []]);
 
     const login = (name: string): SetupRow => ({
@@ -227,6 +229,23 @@ describe('the last line a run prints', () => {
     await setUpNow([npx].map(rowStep), { name: 'trift', machine: REMOTE, there: THERE }, io);
     expect(asked).toEqual(['Set them up now? [Y/n] ']);
     expect(said.join('')).toBe('Run these on trift:\n  ssh trift.test, then sudo apt install nodejs npm\nsvall host doctor trift checks again once they are done.\n');
+  });
+
+  it('host doctor lists the phone link\'s row among the checks whatever it says, and leaves the other setup rows to the verdict', async () => {
+    const { doctorText } = await import('../src/commands/host.js');
+    const phone = (row: Partial<SetupRow>) => rowCheck({ key: 'phone', status: 'skip', detail: 'off', tick: { item: 'phone', fields: ['on'], on: false, preview: [] }, ...row });
+    const release = { name: 'release', status: 'ok' as const, detail: '1.2.3' };
+    expect(doctorText({ machine: 'trift', checks: [release, rowCheck(okRow('var:X')), phone({})] }, 'trift', THERE).split('\n').slice(0, 3))
+      .toEqual(['machine trift', '✓ release  1.2.3', '– phone    [ ] off']);
+    const refused = phone({
+      status: 'warn', detail: 'trift does not serve the phone: Access denied', action: 'sudo tailscale set --operator=$USER', gap: { name: 'phone', what: 'not served' },
+      tick: { item: 'phone', fields: ['on'], on: true, preview: [] },
+    });
+    expect(doctorText({ machine: 'trift', checks: [release, refused] }, 'trift', THERE).split('\n').slice(2)).toEqual([
+      '! phone    [x] trift does not serve the phone: Access denied -> sudo tailscale set --operator=$USER',
+      'trift is ready. 1 part of your agent setup will not work there yet:',
+      '  phone  not served  → sudo tailscale set --operator=$USER',
+    ]);
   });
 
   it('a run\'s lines leave the agent setup rows to the list at its end', async () => {

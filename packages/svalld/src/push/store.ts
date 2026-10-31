@@ -17,6 +17,7 @@ const File = z.object({ subscriptions: z.array(Subscription) });
 /** Every device that asked to be told, by push endpoint. The file holds the devices' keys, so it is the daemon's alone. */
 export class PushStore {
   private subs: Subscription[];
+  private watchers = new Set<() => void>();
 
   constructor(private file: string, private log: (msg: string) => void) {
     this.subs = this.read();
@@ -45,11 +46,18 @@ export class PushStore {
     this.persist();
   }
 
+  /** Calls `fn` after each change to the devices; the returned function stops it. */
+  watch(fn: () => void): () => void {
+    this.watchers.add(fn);
+    return () => this.watchers.delete(fn);
+  }
+
   private read(): Subscription[] {
     return readJsonOrQuarantine(this.file, this.log, (raw) => File.parse(raw).subscriptions) ?? [];
   }
 
   private persist(): void {
     writeDurable(this.file, { subscriptions: this.subs });
+    for (const fn of this.watchers) fn();
   }
 }

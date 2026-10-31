@@ -204,6 +204,13 @@ export async function runUninstall(o: {
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
   for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
+  // a worker's phone.json holds its home's push signing key and devices
+  for (const home of o.homes) {
+    const { phone } = resolvePaths(home);
+    if (!fs.existsSync(phone)) continue;
+    fs.rmSync(phone, { force: true });
+    done.push(`removed ${phone}, the phone keys its home copied`);
+  }
   if (o.prefix) done.push(...removeReleases(o.prefix));
   // where host add uploads and stages a release
   if (linux && o.cache && fs.existsSync(o.cache)) {

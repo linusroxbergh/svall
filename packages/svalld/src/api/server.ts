@@ -31,7 +31,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; diagnostics?: Ctx['diagnostics']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations; retro?: Ctx['retro'];
-  remoteWatches?: RemoteWatches; mirror?: Mirror; fleetFlag?: string;
+  remoteWatches?: RemoteWatches; mirror?: Mirror; fleetFlag?: string; phone?: Ctx['phone'];
   // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -52,6 +52,9 @@ const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]']);
 // the cookie a phone keeps the pass in; 400 days is the most a browser keeps one
 const PASS_COOKIE = 'svall-pass';
 const PASS_MAX_AGE_S = 400 * 86_400;
+// a page from the home's origin holds no cookie on a worker's, so its socket offers the pass as a subprotocol beside this one
+const PROTOCOL = 'svall';
+const PASS_PROTOCOL = 'svall.pass.';
 
 function tokenMatches(given: string, token: string): boolean {
   const a = crypto.createHash('sha256').update(given).digest();
@@ -69,6 +72,9 @@ export function stripKey(url: string, key: string): string | undefined {
   if (given.length !== want.length || !crypto.timingSafeEqual(given, want)) return undefined;
   return (end === -1 ? '/' : path.slice(end)) + (q === -1 ? '' : url.slice(q));
 }
+
+const passProtocol = (req: IncomingMessage): string | undefined =>
+  String(req.headers['sec-websocket-protocol'] ?? '').split(',').map((p) => p.trim()).find((p) => p.startsWith(PASS_PROTOCOL))?.slice(PASS_PROTOCOL.length);
 
 export function cookieOf(req: IncomingMessage, name: string): string | undefined {
   for (const part of (req.headers.cookie ?? '').split(';')) {
@@ -109,7 +115,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 
 /** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
 export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
-  const { host, port, token, store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro } = opts;
+  const { host, port, token, store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro, phone } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? (() => []);
   const dist = opts.dist ?? mobileDist();
@@ -130,11 +136,12 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     },
   };
   const apps: AppWindows = { show: (p) => { for (const v of pages) v.send({ event: 'app.show', data: p }); return pages.size; } };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro, apps };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, fleetFlag, retro, apps, phone };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
   ];
-  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
+  // the reply never names the subprotocol that holds the pass
+  const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD, handleProtocols: (offered) => (offered.has(PROTOCOL) ? PROTOCOL : false) });
   // a phone that drops off the network sends no FIN: a socket that misses a whole beat without a pong is ended
   const answered = new WeakSet<WebSocket>();
   const heartbeat = setInterval(() => {
@@ -149,7 +156,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
   const behindKey = (req: IncomingMessage) => { const key = opts.key?.(); return key ? stripKey(req.url ?? '/', key) : undefined; };
   // The key proves only that much: it is in the serve command's arguments, which other users on the Mac can read. A phone
   // also holds the pass, which left the Mac in the QR code alone, in the cookie /pair set from the link's fragment
-  const paired = (req: IncomingMessage) => { const given = cookieOf(req, PASS_COOKIE); return given !== undefined && tokenMatches(given, opts.pass); };
+  const paired = (req: IncomingMessage) => [cookieOf(req, PASS_COOKIE), passProtocol(req)].some((given) => given !== undefined && tokenMatches(given, opts.pass));
   // a request through the key proves tailscale is up, so a refused one asks it again who owns this Mac: it may not have
   // answered when the daemon started, or the Mac may be signed in as someone else since
   let lookedAt = -Infinity;

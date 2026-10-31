@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { AgentStatus, Robot, MobileStatus } from '@svall/protocol';
+import type { AgentStatus, MachineId, Robot, MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
 import { silentLogger } from '../src/log.js';
 import webpush from 'web-push';
@@ -103,7 +103,7 @@ describe('pusher', () => {
     push.upsert({ endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked'], login: 'me', addedAt: 1 });
     push.upsert({ endpoint: 'https://push.example/b', keys: { p256dh: 'p', auth: 'a' }, statuses: ['done'], login: 'me', addedAt: 1 });
     const accepted = { logins: o.logins ?? ['me'] };
-    const stop = startPusher({ store, push, send, log: silentLogger, logins: () => accepted.logins, served: () => (o.off ? undefined : SERVED), contact: o.contact });
+    const stop = startPusher({ store, push, send, log: silentLogger, logins: () => accepted.logins, served: () => (o.off ? undefined : SERVED), contact: () => o.contact });
     return { store, push, sent, subjects, dead, stop, accepted };
   }
 
@@ -188,6 +188,53 @@ describe('pusher', () => {
     const vapid = readOrCreateVapid(path.join(makeHome(), 'vapid.json'));
     const headers = webpush.getVapidHeaders('https://web.push.apple.com', SERVED, vapid.publicKey, vapid.privateKey, 'aes128gcm');
     expect(headers.Authorization).toMatch(/^vapid t=.+, k=/);
+  });
+
+  it('tells only of a robot it owns, nothing of the state one arrives in by a move, and names the worker it tells from', async () => {
+    const { store, push } = setup({ off: true });
+    const W = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const sent: PushPayload[] = [];
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, machine: W, owns: (c) => c.machine === W,
+      send: (_s, payload) => { sent.push(payload); return Promise.resolve(); },
+    });
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    store.update((d) => { d.robots.c.machine = W; });
+    store.update((d) => { d.robots.c.agent = agent('done'); });
+    store.update((d) => { delete d.robots.c.machine; d.robots.c.agent = agent('blocked'); });
+    await tick();
+    stop();
+    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'done', machine: W }]);
+  });
+
+  it('tells nothing of a robot that moves in with news in the same change', async () => {
+    const { store, push } = setup({ off: true });
+    const W = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const sent: PushPayload[] = [];
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, machine: W, owns: (c) => c.machine === W,
+      send: (_s, payload) => { sent.push(payload); return Promise.resolve(); },
+    });
+    store.update((d) => { d.robots.c.machine = W; d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    stop();
+    expect(sent).toEqual([]);
+  });
+
+  // as when a worker stops serving the phone: the home owns its robots from then, with nothing in the store changed
+  it('tells of the next news of a robot it comes to own with no change to the store', async () => {
+    const { store, push } = setup({ off: true });
+    const sent: PushPayload[] = [];
+    const mine = { owned: false };
+    const stop = startPusher({
+      store, push, log: silentLogger, logins: () => ['me'], served: () => SERVED, owns: () => mine.owned,
+      send: (_s, payload) => { sent.push(payload); return Promise.resolve(); },
+    });
+    mine.owned = true;
+    store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
+    await tick();
+    stop();
+    expect(sent).toEqual([{ id: 'c', name: 'otter', status: 'blocked', prompt: 'Bash?' }]);
   });
 
   it('says nothing once stopped', async () => {

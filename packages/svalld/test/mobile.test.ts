@@ -163,10 +163,10 @@ runIf('phone sockets', () => {
     await started;
     const terminals = new TerminalHub(fleet, tmux, store, silentLogger);
     const workspace = new Workspace((id) => { const c = store.state.robots[id]; if (!c) throw new Error(id); return c.repo?.root ?? c.cwd; }, silentLogger);
-    const current = { key, logins: ['me@example.com'] };
+    const current = { key, logins: ['me@example.com'], origins: [] as string[] };
     const api = await startApi({
       host: '127.0.0.1', port: 0, token: 'secret', store, fleet, fleets: stubFleets, terminals, workspace, usage: stubUsage, load: stubLoad, mobileControl, log,
-      origins: () => [], logins: () => current.logins, dist, key: () => current.key, pass, fleetName,
+      origins: () => current.origins, logins: () => current.logins, dist, key: () => current.key, pass, fleetName,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), systemInfo: stubSystemInfo,
       claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') },
     });
@@ -250,6 +250,23 @@ runIf('phone sockets', () => {
     const post = (cookie?: string) => fetch(`http://127.0.0.1:${api.port}/${key}/rpc`, { method: 'POST', body: JSON.stringify(call), headers: { 'Tailscale-User-Login': 'me@example.com', ...(cookie ? { cookie } : {}) } });
     expect((await post()).status).toBe(401);
     expect((await post(`svall-pass=${pass}`)).status).toBe(200);
+  });
+
+  // the home's page reaching a worker holds no cookie there
+  it('takes the pass as a subprotocol from a page on an origin the fleet accepts, and names only svall back', async () => {
+    const api = await boot();
+    api.current.origins = ['https://mac.tail.ts.net'];
+    const open = (protocols: string[], origin = 'https://mac.tail.ts.net') => {
+      const ws = new WebSocket(`ws://127.0.0.1:${api.port}/${key}/`, protocols, { headers: { 'Tailscale-User-Login': 'me@example.com', origin } });
+      ws.on('error', () => {});
+      cleanup.push(async () => ws.close());
+      return ws;
+    };
+    const ws = open(['svall', `svall.pass.${pass}`]);
+    expect((await hello(ws)).protocol).toBe(PROTOCOL_VERSION);
+    expect(ws.protocol).toBe('svall');
+    await expect(hello(open(['svall', 'svall.pass.not-the-pass']))).rejects.toThrow(/closed 4402/);
+    await expect(hello(open(['svall', `svall.pass.${pass}`], 'https://evil.example'))).rejects.toThrow(/closed 1006/);
   });
 
   it('hands the pass back as a cookie to a phone that posts it from the link, and to nobody else', async () => {
