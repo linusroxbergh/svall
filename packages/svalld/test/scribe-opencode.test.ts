@@ -5,6 +5,7 @@ import { opencodeRunner as runner } from '../src/scribe/opencode.js';
 import { scribeOf, type Call } from '../src/scribe/run.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
 
+// a call deletes its session after it returns, which the stand-in records in the home: each test waits for that before the home goes
 afterEach(cleanHomes);
 
 // a stand-in for `opencode`: it records each run's arguments, its stdin and its env, then does what `body` says. Its
@@ -34,12 +35,14 @@ describe('opencodeRunner', () => {
     expect(JSON.parse(fs.readFileSync(path.join(dir, 'config'), 'utf8')))
       .toEqual({ share: 'disabled', agents: { 'svall-scribe': { mode: 'primary', permissions: ASK } } });
     expect(fs.readFileSync(path.join(dir, 'pwd'), 'utf8').trim()).toBe(path.join(dir, 'scribe'));
+    await waitFor(() => argsOf(dir).includes('session delete'));
   });
 
   it('passes a model only when one is configured', async () => {
     const dir = makeHome();
     await opencodeRunner({ model: 'opencode/big-pickle', cwd: dir, bin: fakeOpencode(dir, answers) })('s', 'p');
     expect(fs.readFileSync(path.join(dir, 'args'), 'utf8')).toContain('run --standalone --format json --agent svall-scribe -m opencode/big-pickle');
+    await waitFor(() => argsOf(dir).includes('session delete'));
   });
 
   it('deletes the session the run left behind, and asks a pass nothing about what it spent', async () => {
@@ -89,5 +92,6 @@ describe('opencodeRunner', () => {
     const failed = line({ type: 'error', sessionID: 'ses_1', error: { type: 'provider.auth', message: 'no key for anthropic' } });
     const run = opencodeRunner({ cwd: dir, bin: fakeOpencode(dir, `${failed}; exit 1`) });
     await expect(run('s', 'p')).rejects.toThrow('opencode run failed: no key for anthropic');
+    await waitFor(() => argsOf(dir).includes('session delete'));
   });
 });
