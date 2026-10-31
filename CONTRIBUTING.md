@@ -90,6 +90,13 @@ leaves them out and `pnpm e2e` refuses. `SVALL_TMUX_ON_MAC=1` runs them, one run
 at a time across worktrees, once the 1-minute load is at most the core count;
 `SVALL_NO_TEST_LOCK=1` skips that lock and wait.
 
+`pnpm test:linux [<vitest args>]` runs `svalld-tmux` and `cli-tmux`, or what the
+args name, in a Linux container with the release's tmux 3.7c, testing the
+checkout it runs from read-only. It keeps each checkout's Linux node_modules in
+docker volumes it names as it starts; this removes them all:
+
+    docker volume ls -q --filter name=svall-test-linux- | xargs docker volume rm
+
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).
 - `packages/cli`: the `svall` client.

@@ -93,7 +93,8 @@ runIf('API', () => {
     fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
     const store = Store.load(paths.state, () => {});
     const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
-    const fleet = new Fleet({ store, tmux, paths, config, log, pollMs: 200 });
+    // a new fleet opens with the tour's shell on a Mac
+    const fleet = new Fleet({ store, tmux, paths, config, log, pollMs: 200, platform: 'darwin' });
     const started = fleet.start();
     cleanup.push(async () => { await started.catch(() => {}); await fleet.stop(); await tmux.killServer(); });
     await started;

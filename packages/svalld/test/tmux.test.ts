@@ -1,6 +1,8 @@
+import { once } from 'node:events';
 import fs from 'node:fs';
+import net from 'node:net';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import { Config } from '../src/config.js';
 import { tmuxConfText, tmuxTooOld } from '../src/tmux/conf.js';
 import { ControlClient } from '../src/tmux/control.js';
@@ -264,7 +266,8 @@ runIf('Tmux', () => {
     }
   });
 
-  it('pipes copied text to the system clipboard', async () => {
+  // the conf pipes copies to pbcopy only on macOS
+  it.runIf(process.platform === 'darwin')('pipes copied text to the system clipboard', async () => {
     const t = await boot();
     expect((await t.run('show-options', '-gv', 'copy-command')).trim()).toBe('pbcopy');
   });
@@ -584,11 +587,16 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
   });
 
   it('start rejects when the client does not become ready in time', async () => {
-    await boot();
+    const home = makeHome();
+    fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({})));
+    // a socket that takes the client's connection and never answers, so it can never become ready
+    const silent = net.createServer().listen(`${home}/tmux.sock`);
+    await once(silent, 'listening');
+    onTestFinished(() => { silent.close(); });
     const c = new ControlClient({
       binary: resolveTmux(),
-      socket: `${lastHome}/tmux.sock`,
-      conf: `${lastHome}/tmux.conf`,
+      socket: `${home}/tmux.sock`,
+      conf: `${home}/tmux.conf`,
       session: SESSION,
       readyTimeoutMs: 1,
     });
@@ -598,7 +606,8 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
 
 runIf('ControlClient', () => {
   afterEach(cleanHomes);
-  it('reports tmux stderr when the connection fails', async () => {
+  // Linux's tmux reads a file that is not a socket as a server with no sessions, not as a failed connect
+  it.runIf(process.platform === 'darwin')('reports tmux stderr when the connection fails', async () => {
     const home = makeHome();
     fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({})));
     fs.writeFileSync(`${home}/not-a-socket`, 'x');
