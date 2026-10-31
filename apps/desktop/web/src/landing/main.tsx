@@ -42,12 +42,12 @@ const ISLANDS = [
 // each island's footprint and where its crew stand, as svalld lays them out
 const GRIDS = ISLANDS.map((i) => crewGrid(i.crew.length));
 
-// wide: the text holds the left column and the islands cascade down the right; narrow: the same map under the text;
+// wide: the text holds the left column and the islands cascade down the right; narrow: the map under the text, less the last island;
 // og: the link preview's, when the page opens as #og, islands under and beside the headline for site-og.mjs to frame.
-// w and h are the world's box in px, k the most it is zoomed to, at each island's position in cells
+// w and h are the world's box in px, k the most it is zoomed to, at each shown island's position in cells
 const LAYOUTS: Record<'wide' | 'narrow' | 'og', { w: number; h: number; k: number; at: Cell[] }> = {
   wide: { w: 2200, h: 1000, k: 0.72, at: [{ x: 20, y: 14 }, { x: 22, y: 4 }, { x: 33, y: 5 }, { x: 30, y: 15 }] },
-  narrow: { w: 748, h: 1290, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }, { x: 0, y: 23 }] },
+  narrow: { w: 748, h: 894, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }] },
   og: { w: 2024, h: 1012, k: 0.72, at: [{ x: 11, y: 6 }, { x: 0, y: 11 }, { x: 23, y: 11 }, { x: 22, y: 0 }] },
 };
 
@@ -101,14 +101,15 @@ function useBeat(): Crew[] {
 
 function DemoMap({ at }: { at: Cell[] }) {
   const crew = useBeat();
+  const islands = ISLANDS.slice(0, at.length);
   return (
     <>
-      {ISLANDS.map((isl, i) => (
+      {islands.map((isl, i) => (
         <Island key={isl.id} island={islandModel(isl, at[i], GRIDS[i].size)} count={isl.crew.length} hot={false} selected={false}
           dragging={false} settling={false} hover={false} onNew={none} onToggle={none} onMenu={none}
           land={pointer} label={pointer} handle={pointer} hold={hold} />
       ))}
-      {ISLANDS.flatMap((isl, i) => isl.crew.map((ci, k) => (
+      {islands.flatMap((isl, i) => isl.crew.map((ci, k) => (
         <Token key={ci} c={robot(crew[ci], isl.id)} status={crew[ci].status}
           world={{ x: at[i].x + GRIDS[i].cells[k].x, y: at[i].y + GRIDS[i].cells[k].y }}
           selected={false} dragging={false} hover={false} pointer={pointer}
