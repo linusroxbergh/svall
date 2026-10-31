@@ -30,7 +30,6 @@
 .side-head { display: flex; align-items: center; gap: var(--sp-xl); }
 .side-star { flex: none; width: var(--ctl-sm); height: var(--ctl-sm); display: grid; place-items: center; padding: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); }
 .side-star:hover { background: var(--fill-2); color: var(--sand-hi); }
-.side-star svg { width: var(--ctl-xs); height: var(--ctl-xs); }
 .side-star[aria-pressed="true"] { color: var(--star); }
 .side-branch { display: flex; align-items: center; min-width: 0; color: var(--ink-3); font-size: var(--text-sm); }
 .side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -125,9 +124,9 @@
   background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--away) 50%, transparent); }
 .side > .acts .btn.move:hover { background: color-mix(in srgb, var(--away) 9%, transparent); }
 .btn.move > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.btn.move svg { flex: none; width: 13px; height: 13px; color: var(--away); }
-.btn.move .move-go { width: 10px; height: 10px; transition: transform var(--dur) var(--ease); }
-.btn.move:hover .move-go { transform: translateX(2px); }
+.btn.move svg { color: var(--away); }
+.btn.move svg:last-child { transition: translate var(--dur) var(--ease); }
+.btn.move:hover svg:last-child { translate: 2px 0; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }

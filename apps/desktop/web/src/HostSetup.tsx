@@ -12,10 +12,9 @@ import { startHost } from './hostRun.js';
 import { MachineTerminal } from './MachineTerminal.js';
 import { answers } from './placement.js';
 import { placeTip } from './settings.js';
-import { Caret } from './Sidebar.js';
+import { Caret, Mark, More } from './icons.js';
 import { VarField } from './VarField.js';
 
-const MARK: Record<HostStep['status'], string> = { start: '·', ok: '✓', warn: '!', fail: '×', skip: '–' };
 // the machine's own setup, which installing this Mac's release there runs again
 const SETUP = /^svall(-dev)? setup$/;
 const FORGET = /\bhost remove \S+ --forget\b/;
@@ -69,7 +68,7 @@ export function MachineActions({ name }: { name: string }) {
   return (
     <span className="machine-acts" ref={box}>
       <button className="btn set-open" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
-      <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
+      <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}><More /></button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
@@ -172,13 +171,13 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   };
   return (
     <div className="host-step" data-testid={`host-step-${row.step}`} data-status={row.status}>
-      <span className="host-mark">{isSetup(row) && row.status === 'warn' ? '○' : MARK[row.status]}</span>
+      <span className="host-mark"><Mark status={isSetup(row) && row.status === 'warn' ? 'todo' : row.status} /></span>
       <span className="host-name" data-tip={stepLabel(row.step)}>{stepLabel(row.step)}</span>
       <span className="host-said">
         {updating ? <span id={sentence} data-testid={`host-updating-${row.step}`}>updating {[updates && `on ${name}`, onMac && 'on this Mac'].filter(Boolean).join(' and ')}…</span>
           : asked !== undefined ? <span id={sentence} data-testid={`host-pushing-${row.step}`}>pushing to {name}…</span>
           : row.action ? <em id={sentence} data-testid={`host-action-${row.step}`}>{row.action}</em> : <span id={sentence}>{said}</span>}
-        {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary>details</summary>{more}</details>}
+        {more && <details className="modal-more" data-testid={`host-details-${row.step}`}><summary><Caret dir="right" />details</summary>{more}</details>}
         {failed && <span className="host-failed" role="status" data-testid={`host-tick-failed-${row.step}`}>{failed}</span>}
       </span>
       {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
@@ -254,14 +253,14 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
       )}
       {ok.length > 0 && (
         <button type="button" className="sec-fold host-fine" data-testid="host-fine" aria-expanded={fine} onClick={() => unfold({ fine: !fine, setup })}>
-          <Caret open={fine} />{plural(ok.length, 'check')} fine
+          <Caret dir={fine ? 'down' : 'right'} />{plural(ok.length, 'check')} fine
         </button>
       )}
       {rows.length > 0 && (
         <div className="host-phase host-setup-rows">
           <div className="kicker">
             <button type="button" className="sec-fold" data-testid="host-setup-fold" aria-expanded={setup} onClick={() => unfold({ fine, setup: !setup })}>
-              <Caret open={setup} />Your agent setup{' '}<span className="host-optional">optional</span>
+              <Caret dir={setup ? 'down' : 'right'} />Your agent setup{' '}<span className="host-optional">optional</span>
             </button>
           </div>
           {setup && rows.filter((r) => !asideStep(r)).map(row)}

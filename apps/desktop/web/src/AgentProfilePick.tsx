@@ -5,7 +5,7 @@ import { useApp, useMeasure } from './hooks.js';
 import { chooseResource } from './resources/choose.js';
 import { reloadResources } from './resources/load.js';
 import { placeTip } from './settings.js';
-import { Caret } from './Sidebar.js';
+import { Caret, Check } from './icons.js';
 
 // no file can be named this, so the menu's last entry never stands for a profile
 const MANAGE = '\u0000manage';
@@ -90,7 +90,7 @@ export function AgentProfilePick({ id }: { id: string }) {
           aria-controls={`side-profile-menu-${id}`} aria-activedescendant={open ? `side-profile-${id}-${active}` : undefined}
           data-none={picked === undefined} data-testid="side-agent-profile" onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => { e.currentTarget.focus(); if (open) setOpen(false); else show(); }} onKeyDown={onKey} onBlur={() => setOpen(false)}>
-          <span>{opts[chosen].name}</span><Caret open />
+          <span>{opts[chosen].name}</span><Caret dir="down" />
         </button>
         {current?.open && (
           <button className="btn sm res-open" data-testid="side-agent-profile-view" data-tip={`Open ${current.reveal}`}
@@ -118,13 +118,5 @@ export function AgentProfilePick({ id }: { id: string }) {
       </div>
       {hint && <div className="side-profile-hint" data-error={!current || Boolean(current.error)} data-testid="side-agent-profile-hint">{hint}</div>}
     </>
-  );
-}
-
-function Check() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1.8 5.4 4 7.6 8.4 2.6" />
-    </svg>
   );
 }

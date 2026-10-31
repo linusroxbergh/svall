@@ -17,7 +17,8 @@
 .host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
 .host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
 .host-step { display: flex; gap: var(--sp-md); font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-2); }
-.host-mark { flex: none; width: 12px; text-align: center; color: var(--ink-3); }
+/* one text line tall, so the mark centres on the step's first line */
+.host-mark { flex: none; display: grid; place-items: center; width: 12px; height: 1lh; color: var(--ink-3); }
 .host-step[data-status="ok"] .host-mark { color: var(--done); }
 .host-step[data-status="warn"] .host-mark { color: var(--working); }
 .host-step[data-status="fail"] .host-mark { color: var(--blocked); }

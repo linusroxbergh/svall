@@ -164,9 +164,9 @@ test('a worker\'s clone offers no Show in Finder and no delete, and opens its fi
   expect(screen.getByTestId('editor').dataset.path).toBe('CLAUDE.md');
   expect(getBuffer(C, 'CLAUDE.md')!.state.readOnly).toBe(true);
   expect(screen.getByTestId('editor-read-only').textContent).toBe('read-only · on linus-vault');
-  expect(screen.queryByText('Show in Finder ›')).toBeNull();
+  expect(screen.queryByText('Show in Finder')).toBeNull();
   await act(async () => { fireEvent.click(screen.getByTestId('resources-item-docs-plan')); });
-  expect(screen.getByText('Show in Finder ›')).toBeTruthy();
+  expect(screen.getByText('Show in Finder')).toBeTruthy();
   expect(screen.queryByTestId('editor-read-only')).toBeNull();
 });
 

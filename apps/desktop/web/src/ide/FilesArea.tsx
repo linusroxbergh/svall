@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { Caret, Return } from '../icons.js';
 import { accountHome, basename } from '../paths.js';
 import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
@@ -33,14 +34,14 @@ function Crumbs({ id, root, top }: { id: string; root: string; top: string }) {
       <nav className="ide-root ide-crumbs" ref={nav} aria-label="Folder">
         {chain.map((d, i) => (
           <Fragment key={d}>
-            {i > 0 && <span className="ide-sep">›</span>}
+            {i > 0 && <span className="ide-sep"><Caret dir="right" /></span>}
             <button className="ide-crumb" data-testid={`crumb-${d}`} data-tip={d} aria-current={i === chain.length - 1 || undefined} onClick={() => go(d)}>
               {d === home ? '~' : basename(d) || '/'}
             </button>
           </Fragment>
         ))}
       </nav>
-      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}>↩ {basename(root)}</button>}
+      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}><Return size="xs" /><span>{basename(root)}</span></button>}
     </div>
   );
 }
@@ -75,8 +76,8 @@ export function FilesArea({ id }: { id: string }) {
       )}
       {tree.open && <TreeGrip />}
       {tree.open
-        ? <button className="ide-hide" data-testid="files-tree-hide" data-tip="Hide the files" aria-label="Hide the files" onClick={() => app.store.getState().toggleFilesTree(false)}>‹</button>
-        : <button className="ide-show" data-testid="files-tree-show" data-tip="Show the files" aria-label="Show the files" onClick={() => app.store.getState().toggleFilesTree(true)}>›</button>}
+        ? <button className="ide-hide" data-testid="files-tree-hide" data-tip="Hide the files" aria-label="Hide the files" onClick={() => app.store.getState().toggleFilesTree(false)}><Caret dir="left" /></button>
+        : <button className="ide-show" data-testid="files-tree-show" data-tip="Show the files" aria-label="Show the files" onClick={() => app.store.getState().toggleFilesTree(true)}><Caret dir="right" /></button>}
       <div className="ide-main">
         <FileTabs id={id} />
         {active ? <Editor key={`${id}:${active}`} id={id} path={active} /> : <div className="ide-empty">Pick a file</div>}

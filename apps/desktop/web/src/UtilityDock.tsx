@@ -4,45 +4,12 @@ import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
 import { FeedbackPanel } from './FeedbackPanel.js';
 import { useApp, usePanelWidth } from './hooks.js';
+import { Feedback, Gear, Meter, Phone, Pulse } from './icons.js';
 import { refocusSurface } from './keyboard.js';
 import { keyTip } from './keys.js';
 import { LoadPanel } from './LoadPanel.js';
 import { MobilePanel, MobileSwitch } from './PhonePanel.js';
 import { UsagePanel } from './Usage.js';
-
-// the glyphs share one 24-square and stroke weight
-const Phone = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-    <rect x="7" y="2.5" width="10" height="19" rx="2.5" />
-    <line x1="10.5" y1="18.5" x2="13.5" y2="18.5" />
-  </svg>
-);
-
-const Meter = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
-    <circle cx="12" cy="12" r="9" />
-    <path d="M12 12V3a9 9 0 0 1 9 9Z" fill="currentColor" stroke="none" />
-  </svg>
-);
-
-const Pulse = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 12h4l2.5-6 5 12 2.5-6h4" />
-  </svg>
-);
-
-const Bubble = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M4 5h16v11H10l-5 4v-4H4z" />
-  </svg>
-);
-
-const Gear = () => (
-  <svg className="use-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <circle cx="12" cy="12" r="3" />
-    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-  </svg>
-);
 
 /** The fleet utilities share the fixed foot of the island sidebar. */
 export function UtilityDock() {
@@ -107,20 +74,20 @@ export function UtilityDock() {
       <div className="use-tabs" ref={tabs} style={width}>
         {/* the sidebar's own link stands in while it is open */}
         <button className="use-tab" data-rail data-testid="feedback-tab" aria-expanded={feedbackOpen} aria-controls="corner-panel"
-          data-tip="Send feedback" aria-label="Send feedback" onClick={() => app.store.getState().toggleFeedback()}><Bubble /><span className="use-tab-label">Feedback</span></button>
+          data-tip="Send feedback" aria-label="Send feedback" onClick={() => app.store.getState().toggleFeedback()}><Feedback size="lg" /><span className="use-tab-label">Feedback</span></button>
         {phoneTab && (
           <button className="use-tab" data-testid="mobile-tab" aria-expanded={mobileOpen} aria-controls="corner-panel"
             data-tip={phoneLabel} aria-label={phoneLabel} data-off={!serving || undefined}
-            onClick={() => app.store.getState().toggleMobile()}><Phone /><span className="use-tab-label">Phone</span><i className="use-status" data-on={serving} aria-hidden="true" /></button>
+            onClick={() => app.store.getState().toggleMobile()}><Phone size="lg" /><span className="use-tab-label">Phone</span><i className="use-status" data-on={serving} aria-hidden="true" /></button>
         )}
         {usageTab && (
           <button className="use-tab" data-testid="usage-tab" aria-expanded={usageOpen} aria-controls="corner-panel"
-            data-tip="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter /><span className="use-tab-label">Usage</span></button>
+            data-tip="Plan usage" aria-label="Plan usage" onClick={() => app.store.getState().toggleUsage()}><Meter size="lg" /><span className="use-tab-label">Usage</span></button>
         )}
         <button className="use-tab" data-testid="load-tab" aria-expanded={loadOpen} aria-controls="corner-panel"
-          data-tip="Load" aria-label="Load" onClick={() => app.store.getState().toggleLoad()}><Pulse /><span className="use-tab-label">Load</span></button>
+          data-tip="Load" aria-label="Load" onClick={() => app.store.getState().toggleLoad()}><Pulse size="lg" /><span className="use-tab-label">Load</span></button>
         <button className="use-tab" data-testid="settings-open" aria-expanded={settingsOpen} data-tip={keyTip(settingsLabel, 'toggleSettings', bindings)} aria-label={settingsLabel}
-          onClick={() => app.store.getState().toggleSettings()}><Gear /><span className="use-tab-label">Settings</span>
+          onClick={() => app.store.getState().toggleSettings()}><Gear size="lg" /><span className="use-tab-label">Settings</span>
           {update && <i className="use-status" data-update data-testid="settings-update" aria-hidden="true" />}</button>
       </div>
       {open && (

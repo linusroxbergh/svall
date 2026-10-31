@@ -1,7 +1,8 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
-import { useEffect, useRef, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
 import { useApp, useFitHeight } from '../hooks.js';
+import { Arrow, Backspace, Caret, More, Return } from '../icons.js';
 import { awayLine, elsewhere } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
@@ -14,6 +15,12 @@ import { dragToScroll, holdScroll, scrollTerm, withoutClicks } from './scroll.js
 import { linkTerminal, type TerminalLink } from './term.js';
 
 // smaller type means more columns; Claude Code's TUI only lays out narrow when the window itself is
+// the keys the row draws as icons, with the names they read as
+const FACE: Record<string, [ReactNode, string]> = {
+  '↑': [<Arrow dir="up" size="md" />, 'Up'], '↓': [<Arrow dir="down" size="md" />, 'Down'],
+  '⌫': [<Backspace size="md" />, 'Backspace'], '↩': [<Return size="md" />, 'Return'],
+};
+
 const SIZES = [9, 10, 11, 13];
 const SIZE_KEY = 'svall.mobile.fontSize';
 
@@ -195,7 +202,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   return (
     <div className="robot">
       <header className="top">
-        <button className="back" onClick={onBack}>‹ fleet</button>
+        <button className="back" onClick={onBack}><Caret dir="left" /> fleet</button>
         <span className="title">
           {robot?.name ?? 'gone'}
           {island && <small>{island.name}</small>}
@@ -204,7 +211,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
         <span className="conn" data-status={!online ? status : robotStatus ?? 'gone'}>
           {!online ? status : robotStatus ? statusLabel(robotStatus) : 'gone'}
         </span>
-        <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context ›</button>
+        <button type="button" className="ahead" aria-haspopup="dialog" onClick={() => setMenu(true)}>context <Caret dir="right" /></button>
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
@@ -235,9 +242,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       )}
       <div className="keys">
         {KEY_ROW.map((k) => (
-          <button key={k.label} type="button" className={k.label.length === 1 ? 'glyph' : undefined} disabled={away} onClick={() => key(k.seq)}>{k.label}</button>
+          <button key={k.label} type="button" className={FACE[k.label] ? 'glyph' : undefined} aria-label={FACE[k.label]?.[1]} disabled={away} onClick={() => key(k.seq)}>{FACE[k.label]?.[0] ?? k.label}</button>
         ))}
-        <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}>⋯</button>
+        <button type="button" className="more" aria-label="More keys" aria-haspopup="dialog" disabled={away} onClick={() => setKeys(true)}><More size="lg" /></button>
       </div>
       <form className="composer" onSubmit={(e) => { e.preventDefault(); send(); }}>
         {sendError && <p className="sheet-error">{sendError}</p>}

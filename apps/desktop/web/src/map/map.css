@@ -220,7 +220,7 @@
 .mline { display: flex; align-items: center; gap: var(--sp-xs); min-width: 0; color: var(--away); font-weight: var(--w-medium); white-space: nowrap; }
 .mline > span { overflow: hidden; text-overflow: ellipsis; }
 .mline b { font-weight: inherit; }
-.mline .ind-glyph { flex: none; width: 1em; height: 1em; }
+.mline svg { width: 1em; height: 1em; }
 /* the worker band tops the card, theme.token.band tall: the card grows up by it, so everything else keeps its place */
 .tok .mach { flex: none; justify-content: center; gap: calc(var(--tok) * .08); height: calc(var(--tok) * .38); padding: 0 calc(var(--tok) * .1);
   background: var(--away); color: var(--ink-on-away); font-size: calc(var(--tok) * .22); font-weight: var(--w-bold); letter-spacing: var(--track-loose); text-transform: uppercase; }

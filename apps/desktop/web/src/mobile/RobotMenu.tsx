@@ -3,6 +3,7 @@ import { ROBOT_NOTE_MAX, contextKind, type Robot, type ContextItem, type Params 
 import { webUrl } from '../bridge.js';
 import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
+import { Caret, Close } from '../icons.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { ago, hintText, linkText } from '../map/tokenText.js';
 import { elsewhere } from '../placement.js';
@@ -46,7 +47,7 @@ function Context({ c, editable }: { c: Robot; editable: boolean }) {
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
             {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{name}</a> : <span className="m-link-text">{name}</span>}
-            {editable && <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}>×</button>}
+            {editable && <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}><Close /></button>}
           </div>
         );
       })}
@@ -85,9 +86,9 @@ function LastCommand({ c }: { c: Robot }) {
         Last command
         {list.length > 0 && (
           <span className="m-nav">
-            <button type="button" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}>‹</button>
+            <button type="button" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
             <b>{at + 1}/{list.length}</b>
-            <button type="button" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}>›</button>
+            <button type="button" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
           </span>
         )}
       </h4>

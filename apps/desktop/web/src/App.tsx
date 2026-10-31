@@ -11,6 +11,7 @@ import { FleetPicker } from './FleetPicker.js';
 import { FleetSummary } from './FleetSummary.js';
 import { useApp } from './hooks.js';
 import { HostSetup } from './HostSetup.js';
+import { Caret } from './icons.js';
 import { IslandCard } from './IslandCard.js';
 import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
@@ -98,7 +99,7 @@ function Screen() {
         {sidebarOpen && <SideGrip side="sidebar" />}
         {!sidebarOpen && (
           <button className="sb-show" data-testid="sidebar-show" data-tip="Show the islands" aria-label="Show the islands"
-            onClick={() => app.store.getState().toggleSidebar(true)}>›</button>
+            onClick={() => app.store.getState().toggleSidebar(true)}><Caret dir="right" /></button>
         )}
         {view === 'map' ? <Map /> : <Board />}
         {sideCardOpen && <SideGrip side="card" />}
@@ -110,7 +111,7 @@ function Screen() {
         {settingsOpen && <SettingsCard />}
         {!sideCardOpen && (
           <button className="side-show" data-testid="side-show" data-tip={keyTip('Show the side card', 'toggleSideCard', bindings)}
-            aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}>‹</button>
+            aria-label="Show the side card" onClick={() => app.store.getState().toggleSideCard(true)}><Caret dir="left" /></button>
         )}
       </div>
       <NewRobot />

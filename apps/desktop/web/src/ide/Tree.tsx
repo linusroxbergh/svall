@@ -2,6 +2,7 @@ import type { FsEntry } from '@svall/protocol';
 import { useEffect, useState } from 'react';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { Caret } from '../icons.js';
 import { childOf } from './where.js';
 
 type Props = { id: string; root: string; dir: string; depth: number; tick: number; onOpen(path: string): void };
@@ -36,7 +37,7 @@ export function Tree({ id, root, dir, depth, tick, onOpen }: Props) {
             <button className="tree-row list-row sm" data-testid={`tree-${path}`} data-kind={e.kind} data-open={open} data-active={path === active} data-ignored={e.ignored}
               style={{ paddingLeft: 8 + depth * 14 }}
               onClick={() => (e.kind === 'dir' ? app.store.getState().toggleFolder(id, path) : onOpen(path))}>
-              <span className="tree-caret">{e.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
+              <span className="tree-caret">{e.kind === 'dir' && <Caret dir={open ? 'down' : 'right'} />}</span>
               <span className="tree-name">{e.name}</span>
               {path === '' && <span className="tree-robot" data-tip="The robot's folder" />}
             </button>

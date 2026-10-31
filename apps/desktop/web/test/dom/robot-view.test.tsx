@@ -127,7 +127,7 @@ test('the header names the robot and its island', () => {
   store.getState().setFleet(fleet());
   render(<RobotView id="c2" onBack={() => {}} />);
   expect(screen.getByText('alpha')).toBeTruthy();
-  expect(screen.getByRole('button', { name: '‹ fleet' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'fleet' })).toBeTruthy();
 });
 
 test('a robot that left the fleet reads as gone', () => {
@@ -236,7 +236,7 @@ test('the reason a prompt was not sent goes once svalld is back', async () => {
 test('the context button opens the robot\'s card', () => {
   store.getState().setFleet(fleet());
   render(<RobotView id="c0" onBack={() => {}} />);
-  fireEvent.click(screen.getByRole('button', { name: 'context ›' }));
+  fireEvent.click(screen.getByRole('button', { name: 'context' }));
   expect(screen.getByRole('dialog', { name: 'c0' })).toBeTruthy();
 });
 
@@ -244,7 +244,7 @@ test('a note being typed is saved when the back gesture takes the view away', ()
   history.replaceState(null, '', '/robot/c0');
   store.getState().setFleet(fleet());
   render(<App />);
-  fireEvent.click(screen.getByRole('button', { name: 'context ›' }));
+  fireEvent.click(screen.getByRole('button', { name: 'context' }));
   const note = screen.getByLabelText('Note');
   note.focus();
   fireEvent.change(note, { target: { value: 'new note' } });

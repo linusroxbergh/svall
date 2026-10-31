@@ -5,6 +5,7 @@ import { app, deps } from './boot.js';
 import { rectOf } from './bridge.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
+import { Caret, Close, Plus, Reload } from './icons.js';
 import { canFill } from './settings.js';
 import { isVeiled } from './selectors.js';
 
@@ -81,15 +82,15 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             onClick={() => activateBrowserTab(deps(), id, t.id)} data-tip={t.url}>
             {ellipsis(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab', 24)}
             <button data-testid={`btab-close-${t.id}`} aria-label="Close tab"
-              onClick={(e) => { e.stopPropagation(); closeBrowserTab(deps(), id, t.id); }}>×</button>
+              onClick={(e) => { e.stopPropagation(); closeBrowserTab(deps(), id, t.id); }}><Close size="xs" /></button>
           </span>
         ))}
-        <button className="btab-new" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}>+</button>
+        <button className="btab-new" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}><Plus /></button>
       </div>
       <div className="baddr">
-        <button data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}>‹</button>
-        <button data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}>›</button>
-        <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? '×' : '↻'}</button>
+        <button data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}><Caret dir="left" /></button>
+        <button data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}><Caret dir="right" /></button>
+        <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? <Close /> : <Reload />}</button>
         <input ref={input} data-testid="browser-address" className="fld mono" value={shown} placeholder="Search or enter a url"
           {...AS_TYPED} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {

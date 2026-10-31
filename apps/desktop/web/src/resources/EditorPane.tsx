@@ -3,6 +3,7 @@ import { saveEntityField } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { FollowTextarea } from '../Field.js';
 import { useApp } from '../hooks.js';
+import { Close, Expand, Shrink } from '../icons.js';
 import { Editor } from '../ide/Editor.js';
 import { basename } from '../paths.js';
 import { asDoc } from './docEditor.js';
@@ -61,8 +62,8 @@ export function EditorPane({ onClose }: { onClose(): void }) {
         ) : <span className="res-crumb">{file}</span>}
         <span className="res-ctl">
           <button className="res-x" data-testid="resources-size" data-tip={full ? 'Back to its size' : 'Full size'}
-            aria-label={full ? 'Back to its size' : 'Full size'} onClick={() => app.store.getState().toggleResourcesFull()}>{full ? '⤡' : '⤢'}</button>
-          <button className="res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}>×</button>
+            aria-label={full ? 'Back to its size' : 'Full size'} onClick={() => app.store.getState().toggleResourcesFull()}>{full ? <Shrink size="lg" /> : <Expand size="lg" />}</button>
+          <button className="res-x" data-testid="resources-close" aria-label="Close resources" onClick={onClose}><Close size="lg" /></button>
         </span>
       </header>
       {field ? <Field r={field} /> : shown ? (
