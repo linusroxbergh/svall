@@ -70,7 +70,7 @@ test('a phone whose Mac is off opens the page it kept, controls the robots on th
     await expect(page.locator('.fleet .conn')).toHaveText('on linus-vault · mac asleep', { timeout: 10_000 });
     await expect(row('bob')).toHaveAttribute('data-status', 'unknown');
     await expect(row('ada')).toHaveAttribute('data-status', 'shell');
-    await expect(page.getByRole('button', { name: 'New island' })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Settings' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Mission control' })).toHaveCount(0);
 
     await page.getByRole('button', { name: /^ada/ }).click();
@@ -84,7 +84,7 @@ test('a phone whose Mac is off opens the page it kept, controls the robots on th
     await expect(page.getByTestId('phone-unreachable')).toHaveCount(0, { timeout: 15_000 });
     await expect(page.locator('.xterm-rows')).toContainText('on the mac');
     await page.getByRole('button', { name: 'fleet', exact: true }).click();
-    await expect(page.getByRole('button', { name: 'New island' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible();
   } finally {
     server.closeAllConnections();
     server.close();

@@ -174,7 +174,8 @@ test('the shell is told the opacity, the zoom and which config to open', async (
 
   await chord('cmd+,');
   await expect(page.getByTestId('settings')).toBeVisible();
-  // the terminals give up the window's rect, so it is seen and pressed over them
+  // the terminals give up the window's rect, so it is seen and pressed over them; it scales in, so it is measured settled
+  await expect.poll(() => page.getByTestId('settings').evaluate((el) => el.getAnimations().length)).toBe(0);
   const win = (await page.getByTestId('settings').boundingBox())!;
   await expect.poll(async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1))
     .toMatchObject({ rects: expect.arrayContaining([expect.objectContaining({ width: win.width, height: win.height })]) });
