@@ -1,0 +1,10 @@
+.fleet-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); }
+.fleet-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-md) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
+.fleet-row:hover:not(:disabled), .fleet-row:focus-visible { background: var(--fill-2); }
+.fleet-row:disabled { cursor: default; }
+.fleet-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fleet-tag { flex: none; font-size: var(--text-xs); font-weight: var(--w-regular); color: var(--ink-3); }
+.fleet-error { color: var(--danger); font-size: var(--text-sm); overflow-wrap: anywhere; }
+.fleet-new { display: flex; gap: var(--sp-md); align-items: center; }
+.fleet-new .fld { flex: 1; }
+.fleet-new .btn { flex: none; }

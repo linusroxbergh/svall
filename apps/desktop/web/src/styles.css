@@ -9,5 +9,10 @@
 @import './map/chrome.css';
 @import './resources/shelf.css';
 @import './modal.css';
+@import './movesheet.css';
+@import './fleetpicker.css';
+@import './commandpalette.css';
+@import './hostsetup.css';
+@import './tour.css';
 @import './dock.css';
 @import './ide/ide.css';

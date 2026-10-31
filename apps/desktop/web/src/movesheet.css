@@ -1,0 +1,26 @@
+/* where a move stands before it starts: checking, ready, or not yet */
+.move-state { display: flex; align-items: baseline; gap: var(--sp-md); color: var(--ink); font-weight: var(--w-semibold); }
+.move-state[data-state="ready"] > .move-mark { color: var(--done); }
+.move-state[data-state="blocked"] > .move-mark { color: var(--working); }
+.move-checks { color: var(--ink-3); }
+/* a choice the move sheet asks about again as it changes */
+.move-pick { display: flex; align-items: center; gap: var(--sp-md); font-size: var(--text-md); color: var(--ink-2); min-width: 0; overflow-wrap: anywhere; }
+/* a running move: a bar of its steps, and a line for each */
+.move-bar { display: flex; gap: var(--sp-2xs); }
+.move-bar > i { flex: 1; height: 3px; border-radius: var(--r-pill); background: var(--line); }
+.move-bar > i[data-state="done"] { background: var(--done); }
+.move-bar > i[data-state="doing"] { background: var(--moving); animation: move-pulse var(--pulse-fast) ease-in-out infinite; }
+.move-bar > i[data-state="failed"] { background: var(--danger); }
+.move-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--sp-sm); font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); }
+.move-steps > li { display: flex; align-items: baseline; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
+.move-steps > li[data-state="todo"] { color: var(--ink-3); }
+.move-steps > li[data-state="doing"], .move-steps > li[data-state="failed"] { color: var(--ink); }
+.move-mark { flex: none; width: 1em; text-align: center; }
+.move-steps > li[data-state="done"] > .move-mark { color: var(--done); }
+.move-steps > li[data-state="failed"] > .move-mark { color: var(--danger); }
+.move-spin { display: inline-block; width: .7em; height: .7em; box-sizing: border-box; border: 1.5px solid var(--line-strong); border-top-color: var(--ink); border-radius: 50%; animation: spin var(--pulse-fast) linear infinite; }
+@keyframes move-pulse { 50% { opacity: .45; } }
+/* one check a move failed: its sentence, and its button beside it */
+.move-blocker { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-md); }
+.move-blocker .host-note { flex: 1; }
+.move-blocker .btn { flex: none; }

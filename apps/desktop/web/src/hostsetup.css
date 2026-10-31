@@ -1,0 +1,58 @@
+/* setting a machine up: one long checklist, so the dialog is the tallest of them */
+.modal.host { width: 520px; max-height: min(82vh, 760px); overflow: hidden auto; }
+/* the checklist, scrolling between the pinned title and footer; bled to the dialog's edges for its scrollbar and focus rings */
+.host-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-xl);
+  margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-3xl)); padding: var(--sp-xs) var(--sp-3xl); }
+.host-foot { flex: none; margin-inline: calc(-1 * var(--sp-3xl)); padding: var(--sp-xl) var(--sp-3xl) 0; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: var(--sp-lg); }
+.host-verdict { font-size: var(--text-lg); font-weight: var(--w-semibold); line-height: var(--lh); color: var(--ink); overflow-wrap: anywhere; }
+.host-verdict .modal-sub { margin-top: var(--sp-xs); font-weight: var(--w-regular); }
+.host-form { display: flex; flex-direction: column; gap: var(--sp-md); }
+.machine { display: flex; flex-direction: column; gap: var(--sp-xs); padding-bottom: var(--sp-md); }
+.machine-acts { position: relative; display: flex; flex-wrap: wrap; gap: var(--sp-xs); }
+.machine-menu { position: fixed; z-index: var(--z-popover); display: flex; flex-direction: column; min-width: max-content; padding: var(--sp-xs); overflow: hidden auto; box-sizing: border-box; }
+.machine-menu button { padding: var(--sp-sm) var(--sp-md); border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font: inherit; font-size: var(--text-sm); text-align: left; cursor: pointer; }
+.machine-menu button:hover:not(:disabled) { background: var(--fill-2); }
+.machine-menu button.dan { color: var(--danger); }
+.machine-menu button:disabled { opacity: var(--disabled); cursor: default; }
+.machine .row b.machine-said { font-weight: var(--w-regular); color: var(--ink-2); }
+.host .acts { flex-wrap: wrap; }
+.host-note { font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2); display: flex; flex-direction: column; gap: var(--sp-md); min-width: 0; overflow-wrap: anywhere; }
+.host-note ul { margin: 0; padding-left: var(--sp-2xl); }
+.host-steps { display: flex; flex-direction: column; gap: var(--sp-xl); }
+.host-phase { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.host-step { display: flex; gap: var(--sp-md); font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-2); }
+.host-mark { flex: none; width: 12px; text-align: center; color: var(--ink-3); }
+.host-step[data-status="ok"] .host-mark { color: var(--done); }
+.host-step[data-status="warn"] .host-mark { color: var(--working); }
+.host-step[data-status="fail"] .host-mark { color: var(--blocked); }
+.host-name { flex: none; width: 120px; color: var(--ink); font-family: var(--mono); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.host-said { min-width: 0; overflow-wrap: anywhere; white-space: pre-line; }
+/* a variable's value, typed for one machine: the field, Set, and a copy from this Mac when it has one */
+.var-field { display: flex; flex: none; align-items: center; gap: var(--sp-xs); }
+.var-field .fld { width: 12em; padding: var(--sp-xs) var(--sp-sm); font-family: var(--mono); font-size: var(--text-sm); }
+.var-field .btn { white-space: nowrap; }
+/* what the user has to go and do about this step, which the checklist never hides */
+.host-said em { display: block; font-style: normal; color: var(--sand); }
+/* a setup row is one line: its name, one sentence with details folded beside it, and its one control at the end */
+.host-body .host-step { align-items: baseline; }
+.host-body .host-said { flex: 1; }
+.host-body .host-said em { display: inline; }
+.host-body .host-step details { display: inline-block; margin-left: var(--sp-md); }
+.host-body .host-step details[open] { display: block; margin-left: 0; }
+/* a box stands on the text's baseline, so it is lowered onto the middle of the line */
+.host-body .host-step > input[type="checkbox"] { flex: none; margin: 0; translate: 0 2px; accent-color: var(--sand); }
+.host-body .host-step > .btn { flex: none; }
+/* a variable's field goes on a line of its own under the sentence, lined up with it */
+.host-body .host-step:has(> .var-field) { display: grid; grid-template-columns: 12px 120px minmax(0, 1fr); }
+.host-body .host-step > .var-field { grid-column: 3; }
+.host-body .host-step > .var-field .fld { flex: 1; width: auto; min-width: 0; }
+/* the agent setup never holds a robot back, so its rows wait rather than warn */
+.host-optional { margin-left: var(--sp-sm); color: var(--ink-3); font-weight: var(--w-regular); letter-spacing: normal; text-transform: none; }
+.host-setup-rows .host-step[data-status="warn"] .host-mark { color: var(--ink-3); }
+.host-failed { display: block; color: var(--danger); }
+.host-fine { align-self: flex-start; font-size: var(--text-sm); color: var(--ink-3); }
+/* a terminal on the machine, wide enough for a login's long link; the shell draws it over the surface */
+.modal.host:has(.host-term) { width: min(760px, 92vw); }
+.host-term { display: flex; flex-direction: column; gap: var(--sp-md); }
+.host-term-surface { height: 360px; flex: none; border-radius: var(--r-sm); background: var(--surface-0); }
+.host-term-failed { color: var(--danger); overflow-wrap: anywhere; }
