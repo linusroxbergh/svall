@@ -740,7 +740,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
     expect(listed(w, w.clone, w.farWt)).toEqual({});
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
-    expect(home.store.state.robots.c_1.note).toContain(`${w.farWt} on w1 changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.farWt} on w1 changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove --force it, and the next move there makes a new one`);
     // and answers so again
     expect(await w.worker.handlers['move.abort']({ id: (failed as { data: { moveId: string } }).data.moveId })).toEqual({ kept: true });
     disarm?.();
@@ -986,7 +986,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
     expect(listed(w, w.main, w.wt)).toEqual({});
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove --force it, and the next move there makes a new one`);
     disarm?.();
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: 'kanban moved on this Mac since the move; merge or rename it' });
     expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
@@ -1019,7 +1019,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(saved).toBe(true);
     expect(fs.readFileSync(path.join(w.wt, 'mine.md'), 'utf8')).toBe('mine\n');
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove --force it, and the next move there makes a new one`);
   });
 
   it('an aborted return leaves the Mac worktree as it is, unlocked, when the branch it was left on moved after the return took it back', async () => {
@@ -1040,7 +1040,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.g(w.main, 'rev-parse', 'kanban')).toBe(moved);
     expect(state(w, w.wt).branch).toBe('other');
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove --force it, and the next move there makes a new one`);
   });
 
   it('a return refuses a Mac worktree kept on the branch an undone return came on, and a commit made there stays on that branch', async () => {

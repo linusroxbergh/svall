@@ -55,7 +55,7 @@ const sheetRefusal = (e: Error, name: string): Failure => {
 // a move undone before its commit rejects with the phase it failed at, which the move sheet names
 const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
 const keptLine = (root: string, where: string): string =>
-  `${root} on ${where} changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`;
+  `${root} on ${where} changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove --force it, and the next move there makes a new one`;
 
 // two branch names this Mac cannot hold side by side: one a folder of the other, or spelled alike but for case, which APFS
 // takes for one
