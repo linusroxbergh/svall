@@ -30,7 +30,7 @@ export const Check = ({ size }: Props) => <Svg grid={10} size={size}><path d="M1
 const DOT = <circle cx="5" cy="5" r=".9" fill="currentColor" stroke="none" />;
 const MARK = {
   ok: <path d="M1.8 5.4 4 7.6 8.4 2.6" />,
-  fail: <path d="M2.8 2.8l4.4 4.4M7.2 2.8 2.8 7.2" />,
+  fail: <path d="M2.5 2.5l5 5M7.5 2.5l-5 5" />,
   warn: <><path d="M5 1.8v3.6" /><circle cx="5" cy="7.9" r=".9" fill="currentColor" stroke="none" /></>,
   todo: <circle cx="5" cy="5" r="2.6" />,
   start: DOT,

@@ -69,7 +69,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
           </span>
         </button>
         {c.unread && here
-          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}><Check size="sm" /></button>
+          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}><Check size="md" /></button>
           : <span className="row-status">{statusLabel(status)}</span>}
       </div>
       {here && (
