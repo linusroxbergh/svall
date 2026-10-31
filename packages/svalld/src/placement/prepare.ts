@@ -18,7 +18,7 @@ import { applyBundle, branchAhead, fileSha, holdsWhole, verifyBundle } from './b
 import { carriedFrom } from './checks.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree, packMove, placeSessions, refused,
-  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Made, type ReturnSheet,
+  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Made, type ReturnSheet,
 } from './move-steps.js';
 import { seedTrust } from './trust.js';
 
@@ -260,34 +260,37 @@ export class PrepareService {
   }
 
   // before anything ran here: what this move made goes and what it changed is put back, and the robot's record goes; on
-  // the way back the robot reopens here as it was. A worktree the robot left here is left again, with its fingerprint
-  private async abort(id: string): Promise<{ fingerprint?: string }> {
+  // the way back the robot reopens here as it was. A worktree the robot left here is left again, with its fingerprint, or
+  // kept as it is when it holds what the move did not write
+  private async abort(id: string): Promise<AbortAnswer> {
     const j = this.files.read(id);
     if (!j) return {};
-    if (j.phase === 'aborted') return j.fingerprint ? { fingerprint: j.fingerprint } : {};
+    if (j.phase === 'aborted') return { ...(j.fingerprint && { fingerprint: j.fingerprint }), ...(j.kept && { kept: j.kept }) };
     if (j.from === this.d.me) return this.reopen(j);
     if (j.phase === 'activate' || j.phase === 'done') throw new ApiError('invalid', `${j.robot?.name ?? j.robotId} already runs on ${this.name}`);
     this.receipts.delete(id);
-    const fingerprint = await this.clones.run(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
+    const answer = await this.clones.run(j.plan.clone, () => boundary('worker.abort.remove', () => this.remove(j)));
     fs.rmSync(this.files.stage(id), { recursive: true, force: true });
-    this.save({ ...j, phase: 'aborted', ...(fingerprint && { fingerprint }) });
-    return fingerprint ? { fingerprint } : {};
+    this.save({ ...j, phase: 'aborted', ...answer });
+    return answer;
   }
 
-  private async remove(j: MoveJournal): Promise<string | undefined> {
+  private async remove(j: MoveJournal): Promise<AbortAnswer> {
     const { clone, paths } = j.plan;
     const { manifest: m, made = {} } = j;
     const left = j.robot?.left;
     const git = this.d.git;
-    let fingerprint: string | undefined;
-    if (m && made.unlocked && left) fingerprint = await leaveAgain(paths.root, left.branchSha, `moved to ${this.d.homeName} ${left.moveId}`, git);
-    else if (m) await removeWorktree(clone, paths.root, m, made, git);
+    let out: AbortAnswer = {};
+    if (m && made.unlocked && left) {
+      const fingerprint = await leaveAgain(left, m, made, `moved to ${this.d.homeName} ${left.moveId}`, git);
+      out = fingerprint ? { fingerprint } : { kept: true };
+    } else if (m) await removeWorktree(clone, paths.root, m, made, git);
     for (const f of made.files ?? []) fs.rmSync(f, { force: true });
     this.d.store.update((d) => {
       const c = d.robots[j.robotId];
       if (c?.machine === this.d.me && c.placement?.generation === j.generation) delete c.machine;
     });
-    return fingerprint;
+    return out;
   }
 
   // ---- a robot going back to the home

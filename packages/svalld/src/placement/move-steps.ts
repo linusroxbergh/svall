@@ -19,7 +19,7 @@ import { installedScripts } from '../paths.js';
 import type { Store } from '../store.js';
 import { clean, realPath } from '../path-tools.js';
 import { noServer, type Tmux } from '../tmux/tmux.js';
-import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, wasCredential } from './bundle.js';
+import { BundleManifest, buildBundle, CREDENTIAL_GLOBS, fingerprintOf, isCredential, untrackedFiles, untrackedOnly, wasCredential } from './bundle.js';
 import { MovePlan, type Carried } from './checks.js';
 import { refuseUncarried } from './convert.js';
 import { sessionLanding } from './paths.js';
@@ -59,12 +59,15 @@ export const MoveJournal = z.object({
     // the session files that were not here
     files: z.array(z.string()).optional(),
   }).optional(),
-  // the fingerprint of the worktree an abort left again here, which an abort asked again answers
+  // the fingerprint of the worktree an abort left again here, or that it kept it as it was, which an abort asked again answers
   fingerprint: z.string().optional(),
+  kept: z.literal(true).optional(),
   error: z.string().optional(),
   updatedAt: z.number(),
 });
 export type MoveJournal = z.infer<typeof MoveJournal>;
+/** What a worker's abort answers of the worktree the robot left there: its fingerprint once left again, or that it was kept as it is. */
+export type AbortAnswer = Pick<MoveJournal, 'fingerprint' | 'kept'>;
 
 /** A machine's journals of its moves, one durable file each, and the folder each move stages its files in. */
 export class MoveFiles {
@@ -293,6 +296,11 @@ export const refused = (f: Failure): ApiError => new ApiError('refused', `${f.re
 export async function changedSince(left: LeftBehind, where: string, git: GitRunner): Promise<Failure | undefined> {
   const sha = await git(['rev-parse', '--verify', '-q', `refs/heads/${left.branch}^{commit}`], left.path);
   if (sha.stdout.trim() !== left.branchSha) return { reason: `${left.branch} moved ${where} since the move`, action: 'merge or rename it' };
+  // the fingerprint is of what it holds beyond HEAD, so HEAD must be the branch it was left on
+  const head = (await git(['symbolic-ref', '-q', 'HEAD'], left.path)).stdout.trim();
+  if (head !== `refs/heads/${left.branch}`) {
+    return { reason: `${left.path} ${where} is on ${head.replace(/^refs\/heads\//, '') || 'no branch'} since the move`, action: `check out ${left.branch} there or remove the worktree` };
+  }
   const same = async (credential: (p: string) => boolean): Promise<boolean> => await fingerprintOf(left.path, git, credential) === left.fingerprint;
   if (!await same(isCredential) && !await same(wasCredential)) return { reason: `changes ${where} in ${left.path} since the move`, action: 'stash or commit them' };
   return undefined;
@@ -393,10 +401,32 @@ export async function takeBack(root: string, sha: string, git: GitRunner): Promi
   await cleanWorktree(root, git);
 }
 
-/** Leaves a worktree a move took back as the robot had left it: at `sha`, cleaned, locked with `reason`; answers its fingerprint. */
-export async function leaveAgain(root: string, sha: string, reason: string, git: GitRunner): Promise<string> {
-  await must(git, ['reset', '-q', '--hard', '--no-recurse-submodules', sha], root);
+/**
+ * Leaves the worktree `left` that a move of bundle `m` took back as the robot had left it, while it holds what the robot
+ * left, what the move or this put there, or nothing beyond either commit: on its branch at that commit, cleaned, locked
+ * with `reason`, and the bundle's branch as `made` recorded it. Answers its fingerprint, or undefined for one holding
+ * anything else, which stays as it is, unlocked.
+ */
+export async function leaveAgain(left: LeftBehind, m: BundleManifest, made: Made, reason: string, git: GitRunner): Promise<string | undefined> {
+  const root = left.path;
+  const tip = async (ref: string): Promise<string> => (await git(['rev-parse', '--verify', '-q', `${ref}^{commit}`], root)).stdout.trim();
+  const head = `${(await git(['symbolic-ref', '-q', 'HEAD'], root)).stdout.trim()} ${await tip('HEAD')}`;
+  const fingerprint = await fingerprintOf(root, git);
+  // the bundle's untracked files by its own list, which this machine's ignore rules may read otherwise
+  const carried = await fingerprintOf(root, git, isCredential, m.untracked.map((u) => u.path));
+  // the bundle's apply checks its branch out at m.base, the commit it came at, before it writes anything else
+  const asLeft = head === `refs/heads/${left.branch} ${left.branchSha}`
+    && ([left.fingerprint, untrackedOnly([])].includes(fingerprint) || carried === untrackedOnly(m.untracked));
+  const asMoved = head === `refs/heads/${m.branch} ${m.base}` && (fingerprint === untrackedOnly([]) || carried === m.fingerprint);
+  if (!asLeft && !asMoved) return undefined;
+  const at = await tip(`refs/heads/${left.branch}`);
+  if (at !== left.branchSha && !(m.branch === left.branch && at === m.base)) return undefined;
+  await must(git, ['checkout', '-q', '-f', '--no-recurse-submodules', '-B', left.branch, left.branchSha], root);
   await cleanWorktree(root, git);
+  if (m.branch !== left.branch && made.branch !== undefined && await tip(`refs/heads/${m.branch}`) === m.base) {
+    if (made.branch === null) await must(git, ['branch', '-q', '-D', m.branch], root);
+    else await must(git, ['update-ref', `refs/heads/${m.branch}`, made.branch, m.base], root);
+  }
   await lockWorktree(root, reason, git);
   return fingerprintOf(root, git);
 }

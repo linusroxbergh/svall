@@ -96,16 +96,26 @@ async function digest(root: string, git: GitRunner, untracked: readonly { path: 
     const st = fs.lstatSync(file, { throwIfNoEntry: false });
     worktree.push([fields[i], fields[i + 1], st && !st.isDirectory() ? await contentSha(file, st) : null]);
   }
-  const files = untracked.filter((u) => !credential(u.path)).map((u) => [u.path, u.sha256]).sort(([a], [b]) => byCodeUnit(a, b));
-  return canonicalDigest({ index: sha256Hex(index), worktree, untracked: files });
+  return canonicalDigest({ index: sha256Hex(index), worktree, untracked: listed(untracked, credential) });
 }
 
-/** What a worktree holds beyond its HEAD, the same on any machine holding the same index, working tree and untracked files but credentials. */
-export async function fingerprintOf(root: string, git: GitRunner, credential = isCredential): Promise<string> {
+const listed = (untracked: readonly { path: string; sha256: string }[], credential: (p: string) => boolean) =>
+  untracked.filter((u) => !credential(u.path)).map((u) => [u.path, u.sha256]).sort(([a], [b]) => byCodeUnit(a, b));
+
+/** The fingerprint of a worktree that holds nothing beyond its HEAD but the `untracked` files. */
+export const untrackedOnly = (untracked: readonly { path: string; sha256: string }[]): string =>
+  canonicalDigest({ index: sha256Hex(''), worktree: [], untracked: listed(untracked, isCredential) });
+
+/**
+ * What a worktree holds beyond its HEAD, the same on any machine holding the same index, working tree and untracked files
+ * but credentials; the files at the `also` paths count as untracked whatever this machine's ignore rules say.
+ */
+export async function fingerprintOf(root: string, git: GitRunner, credential = isCredential, also: readonly string[] = []): Promise<string> {
   const untracked: { path: string; sha256: string }[] = [];
-  for (const p of (await untrackedFiles(root, git)).filter((f) => !credential(f))) {
+  for (const p of new Set([...await untrackedFiles(root, git), ...also])) {
     const file = path.join(root, p);
-    untracked.push({ path: p, sha256: await contentSha(file, fs.lstatSync(file)) });
+    const st = fs.lstatSync(file, { throwIfNoEntry: false });
+    if (!credential(p) && st && !st.isDirectory()) untracked.push({ path: p, sha256: await contentSha(file, st) });
   }
   return digest(root, git, untracked, false, credential);
 }
