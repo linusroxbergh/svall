@@ -24,12 +24,12 @@ test('a placed robot names its machine on its card, row, panes and token, offers
   await expect(card.getByTestId('side-machine')).toHaveText('Runs on linus-vault');
   await expect(card.getByTestId('side-away')).toHaveText('linus-vault is not reachableCheck linus-vault');
   await expect(card.getByTestId('side-move-home')).toHaveText('Move to this Mac');
-  // one size of button in two columns: the folder pair, the move alone on its row across both, then open and delete
+  // one size of button in two columns: the move alone on its row across both, the folder pair, then open and delete
   const box = async (t: string) => (await card.getByTestId(t).boundingBox())!;
   const [there, res, home, open, close] = await Promise.all(['side-finder', 'side-resources', 'side-move-home', 'side-open', 'side-close'].map(box));
   expect(new Set([there, res, home, open, close].map((b) => b.height)).size).toBe(1);
   expect([there.y, open.y]).toEqual([res.y, close.y]);
-  expect(there.y < home.y && home.y < open.y).toBe(true);
+  expect(home.y < there.y && there.y < open.y).toBe(true);
   expect(home.width).toBeCloseTo(close.x + close.width - open.x, 0);
   await expect(card.getByTestId('side-cwd')).toHaveAttribute('data-tip', 'Copy linus-vault:/tmp');
   await expect(card.getByTestId('side-finder')).toHaveText('Terminal there');
