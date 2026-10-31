@@ -41,7 +41,7 @@ function Crumbs({ id, root, top }: { id: string; root: string; top: string }) {
           </Fragment>
         ))}
       </nav>
-      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}><Return size="xs" />{basename(root)}</button>}
+      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}><Return size="xs" /><span>{basename(root)}</span></button>}
     </div>
   );
 }
