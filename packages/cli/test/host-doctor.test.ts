@@ -74,6 +74,21 @@ describe('host doctor', () => {
     expect(at('mirror:var:X')).toBe(events.length - 1);
   });
 
+  it("asks the far doctor about this fleet's own unit there, and has the daemon retry a down link before it reads the rows", async () => {
+    ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }) });
+    ssh.reply(['svall-space'], { stdout: DF });
+    ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+    const order: string[] = [];
+    await doctorHost('trift', deps({
+      registry: registered(), fleet: { home: fleet, profile: 'work' },
+      refreshLinks: () => { order.push('refresh'); return Promise.resolve(); },
+      setupRows: () => { order.push('rows'); return Promise.resolve([]); },
+    }));
+    expect(ssh.remoteCalls().filter((w) => w.includes('doctor'))).toEqual([[SVALL, '-p', 'work', 'doctor', '--json']]);
+    expect(order).toEqual(['refresh', 'rows']);
+  });
+
   it('a doctor that cannot reach the machine says so as the connection step', async () => {
     await expect(doctorHost('trift', deps({ registry: registered(), openMaster: () => Promise.reject(new Error('Permission denied (publickey)')) })))
       .rejects.toThrow('Permission denied (publickey)');

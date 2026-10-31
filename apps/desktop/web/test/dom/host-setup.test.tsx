@@ -29,6 +29,21 @@ test('opened to add a machine, the panel asks its name and ssh, and the run it s
   expect(screen.getByTestId('host-machine').textContent).toBe('studio');
 });
 
+test('a name the registry would refuse says what a name takes, and Add machine waits for one it takes', () => {
+  render(<HostSetup />);
+  act(() => store.getState().toggleHost(true));
+  fireEvent.change(screen.getByTestId('host-ssh'), { target: { value: 'ada@studio' } });
+  expect(screen.queryByTestId('host-name-problem')).toBeNull();
+  for (const name of ['Studio', 'vault.local']) {
+    fireEvent.change(screen.getByTestId('host-name'), { target: { value: name } });
+    expect(screen.getByTestId('host-name-problem').textContent, name).toBe('Name the machine with up to 32 lowercase letters, digits and dashes, starting with a letter');
+    expect((screen.getByTestId('host-add') as HTMLButtonElement).disabled).toBe(true);
+  }
+  fireEvent.change(screen.getByTestId('host-name'), { target: { value: 'vault-local' } });
+  expect(screen.queryByTestId('host-name-problem')).toBeNull();
+  expect((screen.getByTestId('host-add') as HTMLButtonElement).disabled).toBe(false);
+});
+
 test('opened on a machine, the panel names it once and acts on it without asking its name', () => {
   render(<HostSetup />);
   act(() => store.getState().toggleHost(true, 'trift'));

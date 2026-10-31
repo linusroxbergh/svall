@@ -467,6 +467,10 @@ describe('doctor on Linux', () => {
 
     const missing = byName(await doctor(priv, linux({ [show]: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nUnitFileState=\n' }).deps));
     expect(missing.systemd).toEqual({ name: 'systemd', status: 'fail', detail: `${unit} is not installed: svall setup`, run: 'svall setup' });
+    // setup here rewrites only the units there are, so a named fleet's comes from the controller
+    const work = 'svall-svalld@work.service';
+    const unenrolled = byName(await doctor({ name: 'work', home: '/u/.svall-work', managed: true }, linux({ [showOf(work)]: 'LoadState=not-found\nActiveState=inactive\nSubState=dead\nUnitFileState=\n' }).deps));
+    expect(unenrolled.systemd).toEqual({ name: 'systemd', status: 'fail', detail: `${work} is not installed: svall host upgrade <this machine> from the controller` });
   });
 
   it('warns when AppArmor keeps Codex\'s sandbox from starting, naming the bwrap profile that lets it', async () => {

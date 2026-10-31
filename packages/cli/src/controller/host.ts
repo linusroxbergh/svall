@@ -672,6 +672,8 @@ const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', d
 /** `svall host doctor`: the companion's own doctor plus what only the controller can check, each emitted as a step once found. */
 export async function doctorHost(name: string, d: HostDeps): Promise<HostReport> {
   const entry = need(d.registry, name);
+  // a link that is down is retried now, so the rows read last find it up if the machine answers
+  await d.refreshLinks();
   const start = (step: string) => d.emit({ step, status: 'start' });
   const checks: Check[] = [];
   const found = (...cs: Check[]) => { checks.push(...cs); for (const { name: step, ...c } of cs) d.emit({ step, ...c }); };
@@ -684,7 +686,7 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
     let report: RemoteDoctor | undefined;
     start('doctor');
     try {
-      report = await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json');
+      report = await remoteJson<RemoteDoctor>(master, base, [...farFleet(d.fleet), 'doctor', '--json'], 'svall doctor --json');
       d.emit({ step: 'doctor', status: 'ok', detail: 'answered' });
       found(...report.checks);
     } catch (err) { found(failed('doctor', err)); }
