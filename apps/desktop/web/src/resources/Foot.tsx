@@ -15,12 +15,12 @@ function ChainChip({ chip, sources, on }: { chip: Chip; sources: ResourceSource[
   const many = chip.rootIds.length > 1;
   return (
     <>
-      <button className="res-chip" data-testid={`resources-chip-${chip.tier}`} aria-pressed={on} aria-expanded={many ? open : undefined}
+      <button className="pill xs res-chip" data-testid={`resources-chip-${chip.tier}`} aria-pressed={on} aria-expanded={many ? open : undefined}
         onClick={() => (many ? setOpen(!open) : go(chip.rootIds[0]))}>
         <i style={{ color: `var(${t.colour})` }}>{t.glyph}</i>{chip.label}
       </button>
       {many && open && chip.rootIds.map((id) => (
-        <button key={id} className="res-chip" data-testid={`resources-chip-repo-${id}`} onClick={() => go(id)}>
+        <button key={id} className="pill xs res-chip" data-testid={`resources-chip-repo-${id}`} onClick={() => go(id)}>
           <i style={{ color: `var(${t.colour})` }}>{t.glyph}</i>{sources.find((s) => s.rootId === id)?.name}
         </button>
       ))}

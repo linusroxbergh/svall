@@ -23,12 +23,7 @@
 /* one pick a column: bright in the column that has the keys, plain in one the walk came through */
 .res-tree:focus-within .res-node[aria-pressed="true"], .res-list:focus-within .res-item[data-active="true"] { background: var(--sand-fill); }
 .res-kinds { display: flex; flex-wrap: wrap; gap: var(--sp-xs); margin: 0 0 var(--sp-md); }
-.res-chip { display: inline-flex; align-items: center; gap: var(--sp-xs); padding: var(--sp-2xs) var(--sp-md); border: 1px solid var(--line);
-  border-radius: var(--r-pill); background: var(--fill-1); font: inherit; font-size: var(--text-xs); color: var(--ink-2); cursor: pointer; }
 .res-chip i { font-style: normal; }
-.res-chip .n { color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.res-chip[aria-pressed="true"] { background: var(--sand-fill); border-color: transparent; color: var(--ink); }
-.res-chip[aria-pressed="true"] .n { color: var(--ink-2); }
 .res-chip[data-none="true"] { opacity: var(--disabled); }
 .res-dot { width: var(--dot); height: var(--dot); border-radius: 50%; flex: none; }
 /* the dragged widths give way on a small map, so the file keeps a readable pane */
@@ -57,8 +52,6 @@ em.res-bdg[data-kind="lookup"] { border: 1px solid var(--line); color: var(--ink
 /* see-through until the row is hovered or a control takes focus, so the keyboard reaches them; out of sight they let a click through to the row */
 .res-doc-acts { position: absolute; right: var(--sp-sm); top: var(--sp-sm); display: flex; gap: var(--sp-2xs); opacity: 0; pointer-events: none; }
 .res-row:hover .res-doc-acts, .res-doc-acts:focus-within { opacity: 1; pointer-events: auto; }
-.res-doc-acts button { width: var(--ctl-xs); height: var(--ctl-xs); padding: 0; border-radius: var(--r-xs); background: var(--fill-2); color: var(--ink-2); font-size: var(--text-sm); line-height: 1; }
-.res-doc-acts button:hover { background: var(--fill-3); color: var(--ink); }
 .res-new { margin: var(--sp-sm) var(--sp-md); padding: var(--sp-2xs) var(--sp-md); border: 1px dashed var(--line); border-radius: var(--r-xs);
   background: none; font: inherit; font-size: var(--text-xs); font-weight: var(--w-medium); color: var(--ink-cool); }
 .res-name { margin: var(--sp-xs) var(--sp-md); width: calc(100% - 16px); box-sizing: border-box; }
@@ -76,8 +69,6 @@ em.res-bdg[data-kind="lookup"] { border: 1px solid var(--line); color: var(--ink
 .res-crumb b { font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; }
 .res-crumb i { font-style: normal; color: var(--ink-3); padding: 0 var(--sp-xs); }
 .res-ctl { flex: none; display: flex; align-self: stretch; margin: calc(-1 * var(--sp-md)) calc(-1 * var(--sp-xl)) calc(-1 * var(--sp-md)) 0; }
-.res-x { background: none; color: var(--ink-3); }
-.res-x:hover { color: var(--ink); background: var(--fill-2); }
 /* the shelf's two marks, as large as the terminal card's */
 .res-ctl .res-x { font-size: var(--text-3xl); }
 .res-editor .editor { flex: 1; min-height: 0; }

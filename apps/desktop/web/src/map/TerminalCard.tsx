@@ -55,9 +55,9 @@ export function TerminalCard({ id, host }: Props) {
           lead={<span className="tname-row"><i className="sdot" data-status={status} /><span className="tname">{c.name}</span></span>}
           trail={
             <span className="tctl">
-              <button className="ticon" data-testid="card-size" data-tip={size === 'half' ? 'Fill the window' : 'Back to the card'}
+              <button className="ib bar ticon" data-testid="card-size" data-tip={size === 'half' ? 'Fill the window' : 'Back to the card'}
                 aria-label={size === 'half' ? 'Fill the window' : 'Back to the card'} onClick={() => app.store.getState().toggleCardSize()}>{size === 'half' ? '⤢' : '⤡'}</button>
-              <button className="tx" data-testid="card-close" data-tip="Close" aria-label="Close the card"
+              <button className="ib bar tx" data-testid="card-close" data-tip="Close" aria-label="Close the card"
                 onClick={() => app.store.getState().closeCard()}>×</button>
             </span>
           } />

@@ -27,7 +27,7 @@ export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string })
               <b>{i.name}</b>{(i.error ?? i.detail) && <span data-error={Boolean(i.error)}>{i.error ?? i.detail}</span>}
             </button>
             {o && (
-              <button className="side-doc-del res-open" data-testid={`side-doc-delete-${i.name}`} aria-label={`Delete ${i.name}`} data-tip={`Delete ${o.path}`}
+              <button className="ib xs filled side-doc-del res-open" data-testid={`side-doc-delete-${i.name}`} aria-label={`Delete ${i.name}`} data-tip={`Delete ${o.path}`}
                 onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
             )}
           </div>

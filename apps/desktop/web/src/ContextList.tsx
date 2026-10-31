@@ -9,11 +9,11 @@ export function ContextPills({ items, ids, robotId, onChange }: { items: Context
   return (
     <div className="pills" data-testid={ids.list}>
       {items.map((it, i) => (
-        <span key={`${it.ref}-${i}`} className="lp" data-pinned={Boolean(it.pinned)}>
+        <span key={`${it.ref}-${i}`} className="pill xs lp" data-pinned={Boolean(it.pinned)}>
           <i className="lg"><LinkIcon item={it} /></i>
           <a className="clip-head" href={/^(https?|mailto):/i.test(it.ref) ? it.ref : undefined} data-tip={it.ref}
             onClick={(e) => { e.preventDefault(); followLink(it, robotId, { x: e.clientX, y: e.clientY }); }}>{linkText(it)}</a>
-          <button data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i), it.ref)}>×</button>
+          <button className="ib xs" data-testid={ids.remove} onClick={() => onChange(items.filter((_, j) => j !== i), it.ref)}>×</button>
         </span>
       ))}
     </div>

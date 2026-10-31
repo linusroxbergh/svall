@@ -84,10 +84,10 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
     <div className="pane" data-testid={`pane-${side}`} style={side === 'left' && two ? { flex: `0 0 ${ratio * 100}%` } : undefined}>
       <div className="phead" onPointerDown={(e) => e.stopPropagation()}>
         {side === 'left' && lead}
-        <span className="tseg" role="tablist">
+        <span className="seg" role="tablist">
           <Glide at={kindOf(surface)} />
           {KINDS.map(({ kind, label, action }) => (
-            <button key={kind} className="tbtn" role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
+            <button key={kind} role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
               data-tip={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
               {kind === 'terminal' && c.second && isTerminal(surface) && <i className="sdot" data-status={slotStatus(c, surface === 'terminal2' ? 2 : 1)} />}
               {kind === 'terminal' && surface === 'terminal2' ? 'Terminal 2' : label}
@@ -96,8 +96,8 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
         </span>
         <span className="spacer" />
         {two
-          ? <button className="px" data-testid={`pane-${side}-close`} data-tip="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><UnsplitGlyph side={side} /></button>
-          : <button className="tbtn psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
+          ? <button className="ib bar px" data-testid={`pane-${side}-close`} data-tip="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><UnsplitGlyph side={side} /></button>
+          : <button className="btn sm psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
       {on && <MachineLine name={on} className="pon" testid={`pane-${side}-machine`} />}

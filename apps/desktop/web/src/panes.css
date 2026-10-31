@@ -2,15 +2,11 @@
 .pane { position: relative; flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; }
 .phead { flex: none; display: flex; align-items: center; gap: var(--sp-lg); padding: var(--sp-md) var(--sp-lg); border-bottom: 1px solid var(--line-soft); background: var(--surface-2); }
 /* a pane can be narrow enough that the four names do not fit, so the strip scrolls and the corner control stays put */
-.phead .tseg { position: relative; isolation: isolate; display: inline-flex; flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: var(--sp-2xs); border-radius: var(--r-md); background: var(--fill-1); border: 1px solid var(--line-soft); }
-.phead .tseg::-webkit-scrollbar { display: none; }
-.phead .tbtn { flex: none; display: inline-flex; align-items: center; gap: var(--sp-md); padding: var(--sp-xs) var(--sp-2xl); border: 0; border-radius: var(--r-sm); background: none; font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); white-space: nowrap; cursor: pointer; }
-.phead .tbtn:hover { color: var(--ink); }
-.phead .tbtn[data-active="true"] { color: var(--ink); }
-.phead .tseg .glide { border-radius: var(--r-sm); }
+.phead .seg { flex: 0 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.phead .seg::-webkit-scrollbar { display: none; }
 /* as tall as the tab strip beside it, and framed like it, so the two read as one row of controls */
-.phead .psplit { align-self: stretch; gap: var(--sp-md); padding: 0 var(--sp-2xl); border: 1px solid var(--line-soft); border-radius: var(--r-md); color: var(--ink-2); background: var(--fill-2); }
-.phead .psplit:hover { color: var(--ink); background: var(--fill-3); }
+.phead .psplit { display: inline-flex; align-items: center; gap: var(--sp-md); padding: 0 var(--sp-2xl); border: 1px solid var(--line-soft); color: var(--ink-2); white-space: nowrap; }
+.phead .psplit:hover { color: var(--ink); }
 .phead .split-glyph { flex: none; width: 15px; height: 15px; }
 .phead .spacer { flex: 1; }
 /* in a row too narrow for everything the name gives way first, down to its first few letters */
@@ -18,14 +14,9 @@
 .phead .tname { font-size: var(--text-lg); font-weight: var(--w-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* the marks stretch to the row and bleed over its padding, so the corner is theirs to the edge */
 .phead .px, .phead .tctl { margin-block: calc(-1 * var(--sp-md)); }
-.phead .tctl { display: flex; align-items: stretch; margin-right: calc(-1 * var(--sp-lg)); }
-.phead .px { background: none; color: var(--ink-3); }
-.phead .px:hover { color: var(--ink); background: var(--fill-2); }
+.phead .tctl { display: flex; align-self: stretch; margin-right: calc(-1 * var(--sp-lg)); }
 /* the card's two marks are the largest thing in the row: big glyphs on little padding */
-.phead .ticon, .phead .tx { padding: 0 var(--sp-lg); font-size: var(--text-3xl); background: none; }
-.phead .ticon { color: var(--ink-cool); }
-.phead .tx { color: var(--ink-3); }
-.phead .ticon:hover, .phead .tx:hover { color: var(--ink); background: var(--fill-2); }
+.phead .ticon, .phead .tx { padding: 0 var(--sp-lg); font-size: var(--text-3xl); }
 .pbody { position: relative; flex: 1; min-height: 0; }
 /* a robot on a worker: under each head, the machine it runs on */
 .pon { flex: none; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-bottom: 1px solid var(--line-soft);
@@ -34,17 +25,8 @@
 /* the panes' grip takes room of its own: a terminal is drawn over the page, so a grip lying over its edge would sit under it */
 .pdivider { position: relative; flex: none; box-sizing: border-box; width: var(--sp-md); cursor: col-resize; background: var(--surface-2); border-inline: 1px solid var(--line-soft); touch-action: none; }
 .browser { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface-0); }
-/* the strip scrolls sideways when the tabs outgrow it and shows no bar either way: a tab's underline
-   reaches 1px past the content box, which is enough to raise a vertical one */
-.btabs { display: flex; align-items: center; gap: var(--sp-2xs); padding: var(--sp-sm) var(--sp-md) 0; border-bottom: 1px solid var(--line-soft); overflow-x: auto; scrollbar-width: none; }
-.btabs::-webkit-scrollbar { display: none; }
-.btab { display: inline-flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-md) var(--sp-sm); font-size: var(--text-md); color: var(--ink-2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; cursor: default; max-width: 200px; overflow: hidden; }
-.btab[data-active="true"] { color: var(--ink); border-bottom-color: var(--sand); }
-.btab button { margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-md)) calc(-1 * var(--sp-sm)) 0; background: none; color: var(--ink-3); }
-.btab button:hover { color: var(--ink); }
-.btab-new { padding: var(--sp-2xs) var(--sp-md); background: none; color: var(--ink-3); font-weight: var(--w-semibold); }
 .baddr { display: flex; align-items: center; gap: var(--sp-xs); padding: var(--sp-sm) var(--sp-md); border-bottom: 1px solid var(--line-soft); }
-.baddr button { margin-block: calc(-1 * var(--sp-sm)); background: none; color: var(--ink-3); }
+.baddr .ib { margin-block: calc(-1 * var(--sp-sm)); }
 .baddr .fld { flex: 1; min-width: 0; padding: var(--sp-xs) var(--sp-md); }
 .baddr-err { flex: none; color: var(--danger); font-size: var(--text-sm); white-space: nowrap; }
 .bsurface { flex: 1; min-height: 0; display: grid; place-items: center; color: var(--ink-3); }

@@ -11,13 +11,13 @@ export function FileTabs({ id }: { id: string }) {
   const close = (path: string) => { closeFile(app, id, path); setClosing(undefined); };
   return (
     <div className="ftabs" data-testid="file-tabs">
-      <div className="ftab-row">
+      <div className="dtabs">
         {ide.open.map((path) => (
-          <div key={path} className="ftab" data-testid={`file-tab-${path}`} data-active={path === ide.active} data-dirty={ide.dirty.includes(path)}
+          <div key={path} className="dtab" data-testid={`file-tab-${path}`} data-active={path === ide.active} data-dirty={ide.dirty.includes(path)}
             onClick={() => app.store.getState().activateFile(id, path)} data-tip={path}>
-            <span className="ftab-name">{basename(path)}</span>
-            <span className="ftab-dot" />
-            <button className="ftab-x" data-testid={`file-close-${path}`} aria-label={`Close ${basename(path)}`}
+            <span className="dtab-name">{basename(path)}</span>
+            {ide.dirty.includes(path) && <span className="dtab-dot" />}
+            <button className="ib bar" data-testid={`file-close-${path}`} aria-label={`Close ${basename(path)}`}
               onClick={(e) => { e.stopPropagation(); if (ide.dirty.includes(path)) setClosing(path); else close(path); }}>×</button>
           </div>
         ))}
@@ -25,8 +25,8 @@ export function FileTabs({ id }: { id: string }) {
       {closing && (
         <div className="ftab-ask" data-testid="discard-ask">
           Discard changes to {basename(closing)}?
-          <button className="btn dan" data-testid="discard-yes" onClick={() => close(closing)}>Discard</button>
-          <button className="btn" data-testid="discard-no" onClick={() => setClosing(undefined)}>Keep</button>
+          <button className="btn sm dan" data-testid="discard-yes" onClick={() => close(closing)}>Discard</button>
+          <button className="btn sm" data-testid="discard-no" onClick={() => setClosing(undefined)}>Keep</button>
         </div>
       )}
     </div>

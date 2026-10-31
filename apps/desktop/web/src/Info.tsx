@@ -27,7 +27,7 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
 
   return (
     <span className="set-info" onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
-      <button type="button" aria-label="What this does" aria-describedby={`set-tip-${id}`} data-testid={`set-info-${id}`}>ⓘ</button>
+      <button type="button" className="ib xs" aria-label="What this does" aria-describedby={`set-tip-${id}`} data-testid={`set-info-${id}`}>ⓘ</button>
       <span ref={tip} className="set-tip popover" role="tooltip" id={`set-tip-${id}`}
         data-open={open} data-place={place.above ? 'up' : 'down'}
         style={place.maxHeight ? { maxHeight: place.maxHeight } : undefined}>{children}</span>

@@ -1,6 +1,7 @@
 @import '@xterm/xterm/css/xterm.css';
 @import '../tokens.css';
 @import '../fonts.css';
+@import '../iconbutton.css';
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -43,11 +44,9 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   display: flex; align-items: center; gap: var(--sp-2xs); margin: 0; padding: var(--sp-sm) var(--sp-md) 0 var(--sp-2xl);
   font-size: var(--text-sm); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);
 }
-.icon { padding: var(--sp-xs) var(--sp-md); font-size: var(--text-2xl); line-height: 1; color: var(--ink-2); border-radius: var(--r-sm); }
-.icon:active { background: var(--fill-2); }
-.fleet h2 .icon { min-width: 40px; min-height: 40px; font-size: var(--text-xl); }
+/* the header's icons bleed over its padding, so it keeps its height */
+.top .ib { margin-block: calc(-1 * var(--sp-lg)); font-size: var(--text-2xl); }
 .fleet h2 .add { font-size: var(--text-3xl); font-weight: var(--w-light); color: var(--ink); }
-.fleet h2 .icon:disabled { opacity: var(--disabled); }
 .fleet h2 .starred { min-height: 40px; display: flex; align-items: center; }
 .fold {
   flex: 1; min-width: 0; min-height: 40px; padding: 0;

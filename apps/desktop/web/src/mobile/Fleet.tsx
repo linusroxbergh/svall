@@ -123,8 +123,8 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>
-        {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
+        <button type="button" className="ib touch" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>
+        {!via && <button type="button" className="ib touch" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
         <span className="conn" data-status={status}>
           {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
         </span>
@@ -154,10 +154,10 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
                 <small>{robots.length}{robots.some((c) => wantsUser(c, fleet, via)) && <i className="pip" />}</small>
               )}
             </button>
-            {edits(island) && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
+            {edits(island) && <button type="button" className="ib touch" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
             {/* the island's own folder is the Mac's, so a worker asks which of its own to start in; it starts no mission control */}
             {!(via && island.kind === 'home') && (
-              <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
+              <button type="button" className="ib touch add" aria-label={`New robot on ${island.name}`} disabled={adding}
                 onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}>+</button>
             )}
           </h2>

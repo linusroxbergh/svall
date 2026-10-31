@@ -1,0 +1,23 @@
+/* an icon button: a fixed square that centres its glyph on the grid, never on a line box, a baseline or padding; ghost until
+   pointed at or pressed. Loaded by the app, the phone and the landing page */
+.ib { box-sizing: border-box; flex: none; display: inline-grid; place-items: center; width: var(--ctl-sm); height: var(--ctl-sm); padding: 0;
+  border: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); font: inherit; font-size: var(--text-xl); font-weight: var(--w-regular);
+  line-height: 0; cursor: pointer; transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+.ib > svg { display: block; }
+.ib.xs { width: var(--ctl-xs); height: var(--ctl-xs); }
+/* a finger's target, on the phone */
+.ib.touch { width: 40px; height: 40px; border-radius: var(--r-sm); }
+.ib.filled { background: var(--fill-2); color: var(--ink-2); }
+/* a touch screen keeps :hover after a tap, so there the press alone lights it */
+@media (hover: hover) {
+  .ib:hover { background: var(--fill-2); color: var(--ink); }
+  .ib.filled:hover { background: var(--fill-3); }
+}
+.ib:active { background: var(--fill-2); }
+.ib.filled:active { background: var(--fill-3); }
+.ib:disabled { background: none; color: var(--ink-3); opacity: var(--disabled); cursor: default; }
+.ib.filled:disabled { background: var(--fill-2); color: var(--ink-2); }
+/* in a bar or tab the target is the bar's height; each site bleeds it back out over its parent's padding, so the row keeps its
+   height. Flush with its parent's clip edge, its focus ring is drawn inside */
+.ib.bar { align-self: stretch; width: auto; height: auto; padding: 0 var(--ctl-pad-sm); border-radius: 0; }
+.ib.bar:focus-visible { outline: 2px solid var(--sand); outline-offset: -2px; animation: ring-fade var(--dur) var(--ease-out); }

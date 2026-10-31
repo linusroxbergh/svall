@@ -25,11 +25,11 @@ export function VarField({ machine, name, varName, here, take, failed, testid }:
     <form className="var-field" data-testid={testid} onSubmit={(e) => { e.preventDefault(); if (value) send({ value }); }}>
       <input type="password" className="fld" {...AS_TYPED} data-testid={`${testid}-value`} aria-label={`value for ${varName} on ${name}`} placeholder={`value for ${varName}`}
         value={value} disabled={busy} onChange={(e) => setValue(e.target.value)} />
-      <button type="submit" className="btn set-open" data-testid={`${testid}-set`} disabled={busy || !value} data-tip={`Sets ${varName} in the fleet's .env on ${name}; robots started there from then on have it`}>
+      <button type="submit" className="btn sm" data-testid={`${testid}-set`} disabled={busy || !value} data-tip={`Sets ${varName} in the fleet's .env on ${name}; robots started there from then on have it`}>
         Set on {name}
       </button>
       {here && (
-        <button type="button" className="btn set-open" data-testid={`${testid}-copy`} disabled={busy} data-tip={`This Mac has ${varName}; its value goes to ${name} without being shown`}
+        <button type="button" className="btn sm" data-testid={`${testid}-copy`} disabled={busy} data-tip={`This Mac has ${varName}; its value goes to ${name} without being shown`}
           onClick={() => send({ fromMac: true })}>Copy from this Mac</button>
       )}
     </form>

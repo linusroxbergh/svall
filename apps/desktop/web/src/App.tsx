@@ -90,7 +90,7 @@ function Screen() {
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           <span>Ghostty config: {configErrors.join('; ')}</span>
-          <button className="btn" data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
+          <button className="btn sm" data-testid="config-errors-dismiss" onClick={() => app.store.getState().setConfigErrors([])}>dismiss</button>
         </div>
       )}
       <div className="main">

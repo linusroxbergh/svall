@@ -68,8 +68,8 @@ export function MachineActions({ name }: { name: string }) {
   const item = (fn: () => void) => () => { close(); fn(); };
   return (
     <span className="machine-acts" ref={box}>
-      <button className="btn set-open" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
-      <button ref={more} className="btn set-open" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
+      <button className="btn sm" data-testid="machine-doctor" disabled={running} data-tip="What to fix on the machine and what will not work there yet, checked now" onClick={() => run('doctor')}>Check</button>
+      <button ref={more} className="btn sm" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}>⋯</button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
@@ -183,7 +183,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       </span>
       {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
       {notNeeded(row) && row.run && terminal && idle && (
-        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+        <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
       )}
       {row.tick ? (
@@ -193,28 +193,28 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           data-tip={!id ? 'listed once the machine is added' : notNeeded(row) ? `Tick when ${name} does not need it; the row then stands aside` : undefined}
           onChange={(e) => { if (id && asked === undefined) tick(id as MachineId, e.target.checked); }} />
       ) : (updates || onMac) && id && idle ? (
-        <button className="btn set-open" data-testid={`host-update-${row.step}`} disabled={updating}
+        <button className="btn sm" data-testid={`host-update-${row.step}`} disabled={updating}
           data-tip={`Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
           onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
-        <button className="btn set-open" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
+        <button className="btn sm" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
       ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? (
-        <button className="btn set-open" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
+        <button className="btn sm" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
           onClick={() => startHost('upgrade', { name })}>Set up</button>
       ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? (
-        <button className="btn set-open" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
+        <button className="btn sm" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
           onClick={() => startHost('upgrade', { name })}>Repair</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
         <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}
           take={() => { setFailed(undefined); return take(); }} failed={(m) => fail(new Error(m))} />
       ) : row.status === 'fail' && row.action && FORGET.test(row.action) && id && idle ? (
-        <button className="btn set-open" data-testid={`host-forget-${row.step}`} data-tip={`Drop the route to ${name}, leaving the machine untouched`}
+        <button className="btn sm" data-testid={`host-forget-${row.step}`} data-tip={`Drop the route to ${name}, leaving the machine untouched`}
           onClick={() => app.store.getState().confirmHost({ name, forget: true })}>Forget</button>
       ) : row.run && terminal && idle ? (
-        <button className="btn set-open" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
+        <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
       ) : run.op !== 'doctor' && !row.action && row.status === 'fail' && idle ? (
-        <button className="btn set-open" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
+        <button className="btn sm" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
       ) : null}
     </div>
   );

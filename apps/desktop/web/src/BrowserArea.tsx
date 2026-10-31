@@ -75,21 +75,21 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
 
   return (
     <div className="browser" data-testid="browser-area">
-      <div className="btabs" data-testid="browser-tabs">
+      <div className="dtabs" data-testid="browser-tabs">
         {tabs.map((t) => (
-          <span key={t.id} className="btab" data-testid={`btab-${t.id}`} data-active={t.id === active}
+          <span key={t.id} className="dtab" data-testid={`btab-${t.id}`} data-active={t.id === active}
             onClick={() => activateBrowserTab(deps(), id, t.id)} data-tip={t.url}>
-            {ellipsis(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab', 24)}
-            <button data-testid={`btab-close-${t.id}`} aria-label="Close tab"
+            <span className="dtab-name">{ellipsis(t.title || t.url.replace(/^https?:\/\//, '') || 'New tab', 24)}</span>
+            <button className="ib bar" data-testid={`btab-close-${t.id}`} aria-label="Close tab"
               onClick={(e) => { e.stopPropagation(); closeBrowserTab(deps(), id, t.id); }}>×</button>
           </span>
         ))}
-        <button className="btab-new" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}>+</button>
+        <button className="ib" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}>+</button>
       </div>
       <div className="baddr">
-        <button data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}>‹</button>
-        <button data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}>›</button>
-        <button data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? '×' : '↻'}</button>
+        <button className="ib bar" data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}>‹</button>
+        <button className="ib bar" data-testid="browser-forward" disabled={!view?.canGoForward} onClick={() => active && app.browser().go(active, 'forward')}>›</button>
+        <button className="ib bar" data-testid="browser-reload" disabled={!active} onClick={() => active && app.browser().go(active, view?.loading ? 'stop' : 'reload')}>{view?.loading ? '×' : '↻'}</button>
         <input ref={input} data-testid="browser-address" className="fld mono" value={shown} placeholder="Search or enter a url"
           {...AS_TYPED} onChange={(e) => setDraft(e.target.value)} onFocus={(e) => e.target.select()}
           onKeyDown={(e) => {
@@ -98,7 +98,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
         {failure && <span className="baddr-err" data-testid="browser-error" data-tip={failure}>{ellipsis(failure, 40)}</span>}
-        {fills && <button data-testid="browser-fill" disabled={!active} data-tip="Fill from 1Password" aria-label="Fill from 1Password"
+        {fills && <button className="ib bar" data-testid="browser-fill" disabled={!active} data-tip="Fill from 1Password" aria-label="Fill from 1Password"
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>
       {active ? (

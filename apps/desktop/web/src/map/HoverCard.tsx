@@ -28,7 +28,7 @@ export function HoverCard({ c, x, y, flip }: Props) {
         <div className="row">branch<b>{c.repo ? <><span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}</> : '—'}</b></div>
         <div className="row">last activity<b className="tnum">{ago(at)} ago</b></div>
       </div>
-      {c.context.length > 0 && <div className="pills">{c.context.map((l, i) => <span key={`${l.ref}-${i}`} className="lp"><span className="clip-head">{linkText(l)}</span></span>)}</div>}
+      {c.context.length > 0 && <div className="pills">{c.context.map((l, i) => <span key={`${l.ref}-${i}`} className="pill xs lp"><span className="clip-head">{linkText(l)}</span></span>)}</div>}
       <div className="hint">Double-click to open</div>
     </div>
   );
