@@ -3,7 +3,7 @@
 .modal-back { animation: fade-in var(--dur-slow) var(--ease-out); }
 .modal-back > .modal { animation: dialog-in var(--dur-slow) var(--ease-out); }
 @keyframes dialog-in { from { opacity: 0; translate: 0 6px; scale: .98; } }
-.modal { background: var(--surface-2); backdrop-filter: none; width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
+.modal { width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
 .modal:focus { outline: none; }
 /* every dialog's way out is the × at the right of its kicker, bled over the padding so the row keeps its height */
 .kicker > .side-x, .use-panel-title > .side-x, .linkask-head > .side-x { padding: var(--sp-xs) var(--sp-sm); margin: calc(-1 * var(--sp-xs)) calc(-1 * var(--sp-sm)) calc(-1 * var(--sp-xs)) auto; }

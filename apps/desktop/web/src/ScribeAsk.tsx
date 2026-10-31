@@ -22,7 +22,7 @@ function NameAsk({ skip }: { skip(): void }) {
   };
   return (
     <div className="modal-back" data-testid="fleet-name-ask">
-      <div className="modal panel" onKeyDown={dialogKeys(skip)}>
+      <div className="modal dialog" onKeyDown={dialogKeys(skip)}>
         <div className="kicker">Your fleet<CloseX onClose={skip} testid="fleet-name-close" /></div>
         <div className="modal-name">Name this fleet</div>
         <input className="fld" autoFocus placeholder="private" aria-label="Fleet name" value={name} data-testid="fleet-name-input" {...AS_TYPED}
@@ -45,7 +45,7 @@ function Ask({ id, title, answer, children }: { id: string; title: string; answe
   useEffect(() => { off.current?.focus(); }, []);
   return (
     <div className="modal-back" data-testid={id}>
-      <div className="modal panel" onKeyDown={dialogKeys(() => answer(false))}>
+      <div className="modal dialog" onKeyDown={dialogKeys(() => answer(false))}>
         <div className="kicker">Scribe<CloseX onClose={() => answer(false)} testid={`${id}-close`} /></div>
         <div className="modal-name">{title}</div>
         {children}

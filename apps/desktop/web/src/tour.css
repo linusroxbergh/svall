@@ -1,4 +1,4 @@
-.tour { position: fixed; z-index: var(--z-ask); width: 300px; padding: var(--sp-2xl); display: flex; flex-direction: column; gap: var(--sp-md); background: var(--surface-2); backdrop-filter: none; }
+.tour { position: fixed; z-index: var(--z-ask); width: 300px; padding: var(--sp-2xl); display: flex; flex-direction: column; gap: var(--sp-md); }
 .tour[data-side]::before { content: ''; position: absolute; width: 12px; height: 12px; background: inherit; border: 0 solid var(--line); rotate: 45deg; }
 .tour[data-side="bottom"]::before { top: -7px; left: calc(var(--arrow) - 6px); border-width: 1px 0 0 1px; }
 .tour[data-side="top"]::before { bottom: -7px; left: calc(var(--arrow) - 6px); border-width: 0 1px 1px 0; }

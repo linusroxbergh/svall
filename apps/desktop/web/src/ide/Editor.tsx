@@ -46,7 +46,7 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
       </div>}
       {!markdown && cue && <div className="editor-mode">{cue}</div>}
       {conflict && (
-        <div className="ide-banner" data-testid="conflict-banner">
+        <div className="banner warn" data-testid="conflict-banner">
           <span>{path} changed on disk.</span>
           <button className="btn" data-testid="conflict-reload" onClick={() => { void reloadFile(deps(), id, path); }}>Reload</button>
           <button className="btn pri" data-testid="conflict-overwrite" onClick={() => { void overwriteFile(deps(), id, path); }}>Overwrite</button>

@@ -12,7 +12,7 @@ function TierNode({ tier, count, on, open }: { tier: Tier; count: number; on: bo
   const t = tierOf(tier);
   const flip = () => app.store.getState().toggleResourceGroup(tier);
   return (
-    <button className="res-node" data-testid={`resources-group-${tier}`} aria-pressed={on} aria-expanded={open}
+    <button className="res-node list-row sm" data-testid={`resources-group-${tier}`} aria-pressed={on} aria-expanded={open}
       onClick={() => pick(tierWhere(tier))} onDoubleClick={flip}>
       <i className="res-car" data-testid={`resources-caret-${tier}`} onClick={(e) => { e.stopPropagation(); flip(); }}>{open ? '▾' : '▸'}</i>
       <i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>
@@ -24,7 +24,7 @@ function TierNode({ tier, count, on, open }: { tier: Tier; count: number; on: bo
 function SourceNode({ s, count, on, qualifier }: { s: ResourceSource; count: number; on: boolean; qualifier: string }) {
   const t = tierOf(s.tier);
   return (
-    <button className="res-node" data-testid={`resources-where-${s.rootId}`} aria-pressed={on} data-tip={`${qualifier}\n${s.root}`}
+    <button className="res-node list-row sm" data-testid={`resources-where-${s.rootId}`} aria-pressed={on} data-tip={`${qualifier}\n${s.root}`}
       style={{ '--depth': 1 } as React.CSSProperties} onClick={() => pick(s.rootId)}>
       <i className="res-car" />
       <i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>

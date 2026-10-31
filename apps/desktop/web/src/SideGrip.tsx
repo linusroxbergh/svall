@@ -10,5 +10,5 @@ export function SideGrip({ side }: { side: 'sidebar' | 'card' }) {
     // the card grows leftwards, away from the pointer's own direction
     app.store.getState().setSideWidths({ ...widths, [side]: from + dx * (side === 'sidebar' ? 1 : -1) }, false);
   }, () => app.store.getState().setSideWidths(app.store.getState().sideWidths));
-  return <i className="side-drag" data-testid={`side-drag-${side}`} role="separator" aria-orientation="vertical" aria-label={LABEL[side]} data-tip="Drag to resize" {...grip} />;
+  return <i className="width-grip" data-testid={`side-drag-${side}`} role="separator" aria-orientation="vertical" aria-label={LABEL[side]} data-tip="Drag to resize" {...grip} />;
 }

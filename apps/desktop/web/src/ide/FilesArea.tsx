@@ -16,7 +16,7 @@ function TreeGrip() {
     (el) => el.previousElementSibling!.getBoundingClientRect().width,
     (from, dx) => app.store.getState().setFilesTreeWidth(from + dx, false),
     () => { const { filesTree, setFilesTreeWidth } = app.store.getState(); if (filesTree.width !== undefined) setFilesTreeWidth(filesTree.width); });
-  return <i className="ide-drag" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" data-tip="Drag to resize" {...grip} />;
+  return <i className="width-grip" data-testid="files-tree-drag" role="separator" aria-orientation="vertical" aria-label="Resize the files" data-tip="Drag to resize" {...grip} />;
 }
 
 /** The folders from the home folder, or the disk's top, down to the tree's top; each takes the tree up to it. */

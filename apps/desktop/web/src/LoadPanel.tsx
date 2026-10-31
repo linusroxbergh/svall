@@ -28,7 +28,7 @@ function Total({ label, text, testid }: { label: string; text: string; testid?: 
 // the bar is the row's share of all the cpu the panel counts
 function Row({ testid, name, use, of, appRow, children }: { testid: string; name: ReactNode; use: LoadUsage; of: number; appRow?: boolean; children?: ReactNode }) {
   return (
-    <div className="load-row" data-testid={testid} data-app={appRow || undefined}>
+    <div className="load-row list-row sm" data-testid={testid} data-app={appRow || undefined}>
       {name}
       <span className="load-n">{coresText(use.cpu)}</span>
       <span className="load-n">{memText(use.mem)}</span>

@@ -97,13 +97,13 @@ export function AgentProfilePick({ id }: { id: string }) {
             onClick={() => { shelf(); void chooseResource(deps(), current); }}>View</button>
         )}
         {open && (
-          <div ref={menu} className="side-profile-menu popover" role="listbox" id={`side-profile-menu-${id}`} aria-label="Agent profile"
+          <div ref={menu} className="side-profile-menu menu popover" role="listbox" id={`side-profile-menu-${id}`} aria-label="Agent profile"
             style={place}
             onMouseDown={(e) => e.preventDefault()}>
             {opts.map((o, i) => (
               <Fragment key={o.value}>
-                {o.value === MANAGE && <div className="side-profile-sep" aria-hidden="true" />}
-                <div id={`side-profile-${id}-${i}`} role="option" className="side-profile-opt" aria-selected={i === chosen} aria-disabled={o.disabled || undefined}
+                {o.value === MANAGE && <div className="menu-sep" aria-hidden="true" />}
+                <div id={`side-profile-${id}-${i}`} role="option" className="side-profile-opt menu-item" aria-selected={i === chosen} aria-disabled={o.disabled || undefined}
                   data-active={i === active} data-manage={o.value === MANAGE || undefined}
                   data-testid={`side-agent-profile-opt-${o.value === MANAGE ? 'manage' : o.value || 'none'}`}
                   onPointerEnter={() => { if (!o.disabled) setActive(i); }} onClick={() => { if (!o.disabled) choose(o); }}>

@@ -62,10 +62,39 @@ textarea { overflow-x: hidden; }
 .setup-acts { display: flex; gap: var(--sp-md); }
 .setup-acts .btn { padding-inline: var(--sp-3xl); }
 .setup .setup-blocker, .setup .setup-error { color: var(--danger); font-size: var(--text-lg); }
-.banner { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: var(--danger); padding: var(--sp-sm) var(--sp-2xl); border-bottom: 1px solid var(--line); }
-.banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: color-mix(in srgb, var(--working) 35%, var(--ink)); display: flex; gap: var(--sp-xl); align-items: center; }
-.banner.warn button { margin-left: auto; }
+/* banners: a strip over what it is about, its words and then its buttons, in the tone of what it reports */
+.banner { display: flex; align-items: center; gap: var(--sp-lg); padding: var(--sp-sm) var(--sp-xl); border-bottom: 1px solid var(--line-soft); font-size: var(--text-md); }
+.banner > span { flex: 1; min-width: 0; }
+.banner .btn { padding: var(--sp-xs) var(--sp-lg); }
+.banner.dan { background: color-mix(in srgb, var(--blocked) 16%, transparent); color: var(--danger); }
+.banner.warn { background: color-mix(in srgb, var(--working) 14%, transparent); color: var(--ink); }
+/* surfaces: glass over the map; solid for a dialog and, a step lower, a popover (a menu, tip or utility panel) */
 .panel { background: var(--panel); backdrop-filter: blur(var(--blur-panel)) saturate(1.15); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-3); }
+.dialog, .popover { border: 1px solid var(--line); background: var(--surface-2); }
+.dialog { border-radius: var(--r-lg); box-shadow: var(--shadow-3); }
+.popover { border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+/* rows: a list row lights under the pointer and keeps its pick lit; a menu item lights the one row the pointer or keys are on */
+.list-row, .menu-item { display: flex; align-items: center; gap: var(--sp-md); box-sizing: border-box; width: 100%; min-width: 0; padding: var(--sp-sm) var(--sp-md);
+  border: 0; border-radius: var(--r-sm); background: none; color: var(--ink); font: inherit; font-size: var(--text-md); text-align: left; cursor: default; }
+.list-row.sm { padding-block: var(--sp-xs); }
+.menu-item.wide { padding-inline: var(--sp-lg); }
+.list-row:hover { background: var(--fill-1); }
+.list-row:is([data-selected="true"], [data-active="true"], [aria-pressed="true"], [aria-selected="true"]) { background: var(--fill-2); }
+.menu-item:hover { background: none; }
+/* a menu that keeps its own pick marks every item data-active; one of plain buttons lights under the pointer and the focus */
+.menu-item[data-active="true"], .menu-item:not([data-active], :disabled):is(:hover, :focus-visible) { background: var(--fill-2); }
+.menu-item[aria-disabled="true"] { opacity: var(--disabled); }
+.menu-item.dan { color: var(--danger); }
+.menu { position: fixed; z-index: var(--z-popover); box-sizing: border-box; display: flex; flex-direction: column; padding: var(--sp-xs); overflow: hidden auto; user-select: none; }
+.menu-sep { flex: none; height: 1px; margin: var(--sp-xs) var(--sp-md); background: var(--line-soft); }
+/* a count of robots that want you */
+.count { flex: none; display: inline-grid; place-items: center; box-sizing: border-box; height: var(--sp-2xl); min-width: calc(var(--sp-2xl) + var(--sp-xs)); padding: 0 var(--sp-sm);
+  border-radius: var(--r-pill); background: var(--blocked); color: var(--ink-on-blocked); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: normal; }
+/* grips: a handle lying over the edge it moves, a hairline under the pointer and through the drag */
+.width-grip { position: relative; flex: none; width: var(--sp-md); margin: 0 calc(-1 * var(--sp-xs)); z-index: var(--z-furniture); cursor: col-resize; touch-action: none; }
+.sec-grip { position: absolute; left: 0; right: 0; bottom: calc(-1 * var(--sp-xs)); height: var(--sp-md); z-index: 1; cursor: row-resize; touch-action: none; }
+:is(.width-grip, .pdivider):is(:hover, :active)::after { content: ''; position: absolute; inset: 0 calc(50% - 1px); background: var(--line-strong); }
+.sec-grip:is(:hover, :active)::after { content: ''; position: absolute; inset: calc(50% - 1px) 0; background: var(--line-strong); }
 .row { display: flex; justify-content: space-between; gap: var(--sp-xl); padding: var(--sp-xs) 0; font-size: var(--text-sm); color: var(--ink-3); }
 .row > span { flex: none; }
 .row b { font-weight: var(--w-medium); color: var(--ink); text-align: right; min-width: 0; overflow-wrap: anywhere; }
@@ -98,8 +127,6 @@ textarea { overflow-x: hidden; }
 textarea.fld { padding-block: var(--sp-md); }
 .fld::placeholder { color: var(--ink-3); }
 .fld:focus { outline: none; border-color: var(--sand); }
-/* a menu, tip or utility panel: a step above the chrome, a step below a dialog */
-.popover { border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-2); box-shadow: var(--shadow-2); }
 /* a hover tip: its first line names the control, the lines after it say what a press does */
 .tip { position: fixed; top: 0; left: 0; z-index: var(--z-tip); box-sizing: border-box; max-width: 320px; padding: var(--sp-sm) var(--sp-md);
   color: var(--ink); font-size: var(--text-sm); line-height: var(--lh); overflow-wrap: anywhere; pointer-events: none; }

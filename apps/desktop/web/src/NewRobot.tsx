@@ -41,7 +41,7 @@ export function NewRobot() {
 
   return (
     <div className="modal-back" data-testid="new-robot" onPointerDown={close}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()}
+      <div className="modal dialog" onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } }}>
         <div className="kicker">New robot<CloseX onClose={close} testid="new-robot-close" /></div>
         <input ref={field} className="h2" placeholder="name" aria-label="Name" value={name} data-testid="new-robot-name"

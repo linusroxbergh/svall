@@ -288,7 +288,7 @@ export function Board() {
             ? <NameInput name={column.name} className="kb-ren" testid="col-name-input" onSave={(name) => renameColumn(deps(), id, name)} onDone={() => setRenaming(undefined)} />
             : <span className="kb-col-n" data-testid={`col-name-${id}`} onDoubleClick={() => setRenaming(id)}>{column.name}</span>}
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
-          {attention > 0 && <span className="kb-red tnum" data-tip={`${attention} want you`}>{attention}</span>}
+          {attention > 0 && <span className="count tnum" data-tip={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
             <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
             <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}>+</button>
@@ -346,7 +346,7 @@ export function Board() {
           <PlaceGlyph />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'} ▾
         </button>
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
-          Needs you <span className={needs > 0 ? 'kb-red tnum' : 'kb-n tnum'}>{needs}</span>
+          Needs you <span className={needs > 0 ? 'count tnum' : 'kb-n tnum'}>{needs}</span>
         </button>
         <button type="button" className="kb-ghost" data-testid="board-add-column" onClick={() => void add()}>+ Column</button>
       </div>

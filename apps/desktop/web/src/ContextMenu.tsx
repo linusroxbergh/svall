@@ -20,8 +20,8 @@ function Item({ it, active, onEnter, onLeave, onPick, rowRef }: {
   it: MenuEntry; active: boolean; onEnter(): void; onLeave(): void; onPick(): void; rowRef?: (el: HTMLDivElement | null) => void;
 }) {
   return (
-    <div ref={rowRef} role="menuitem" className="ctx-item" aria-disabled={!live(it) || undefined} aria-haspopup={it.items ? 'menu' : undefined}
-      data-active={active} data-danger={it.danger || undefined} data-testid={`menu-${it.title.toLowerCase()}`}
+    <div ref={rowRef} role="menuitem" className={`ctx-item menu-item${it.danger ? ' dan' : ''}`} aria-disabled={!live(it) || undefined} aria-haspopup={it.items ? 'menu' : undefined}
+      data-active={active} data-testid={`menu-${it.title.toLowerCase()}`}
       onPointerEnter={onEnter} onPointerLeave={onLeave} onClick={onPick}>
       {it.title}
       {it.items && <span className="ctx-mark">›</span>}
@@ -47,7 +47,7 @@ function SubMenu({ items, anchor, active, setActive, pick }: {
   }, [anchor]);
   useEffect(() => (box.current ? holdCutout(app.bridge, box.current) : undefined), []);
   return (
-    <div ref={box} className="ctx-menu popover" role="menu" data-testid="context-submenu">
+    <div ref={box} className="ctx-menu menu popover" role="menu" data-testid="context-submenu">
       {items.map((it, i) => (
         <Item key={i} it={it} active={i === active} onEnter={() => setActive(live(it) ? i : -1)} onLeave={() => setActive(-1)} onPick={() => pick(it)} />
       ))}
@@ -130,11 +130,11 @@ export function ContextMenu() {
   if (!menu) return null;
   const anchor = rows.current[sub];
   return (
-    <div ref={box} className="ctx-menu popover" role="menu" data-testid="context-menu"
+    <div ref={box} className="ctx-menu menu popover" role="menu" data-testid="context-menu"
       onContextMenu={(e) => e.preventDefault()} onMouseDown={(e) => e.preventDefault()}>
       {items.map((it, i) => (
         <Fragment key={i}>
-          {it.sep && <div className="ctx-sep" role="separator" />}
+          {it.sep && <div className="menu-sep" role="separator" />}
           <Item it={it} active={i === active} rowRef={(el) => { rows.current[i] = el; }}
             onEnter={() => { setActive(live(it) ? i : -1); if (it.items && live(it)) open(i, false); else setSub(-1); }}
             onLeave={() => setActive(-1)} onPick={() => press(i)} />

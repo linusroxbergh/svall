@@ -25,7 +25,6 @@
 .kb-chip[data-busy="true"] svg { animation: spin var(--pulse-fast) linear infinite; }
 .kb-n { color: var(--ink-3); }
 .kb-chip[aria-pressed="true"] .kb-n { color: inherit; opacity: .7; }
-.kb-red { flex: none; min-width: 9px; padding: 0 var(--sp-sm); border-radius: var(--r-pill); background: var(--blocked); color: var(--surface-0); font-size: var(--text-2xs); font-weight: var(--w-bold); line-height: 1.5; text-align: center; }
 .kb-ghost { flex: none; padding: var(--sp-xs) var(--sp-xl); border-radius: var(--r-md); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-2); background: var(--fill-2); white-space: nowrap; }
 
 /* the ground the columns stand on; the card, the hover card and the toast lie over it */

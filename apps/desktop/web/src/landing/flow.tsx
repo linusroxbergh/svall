@@ -151,7 +151,7 @@ function Islet({ place, count }: { place: Placement; count: number }) {
 function Prompt({ typed, send }: { typed: number; send: boolean }) {
   return (
     <div className="modal-back">
-      <div className="modal panel">
+      <div className="modal dialog">
         <div className="kicker">Mission control</div>
         <div className="fld mission" data-empty={typed === 0}>{typed ? PROMPT.slice(0, typed) : 'what should the fleet do?'}<i className="caret" /></div>
         <div className="acts">

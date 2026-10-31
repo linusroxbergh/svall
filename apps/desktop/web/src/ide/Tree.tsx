@@ -24,7 +24,7 @@ export function Tree({ id, root, dir, depth, tick, onOpen }: Props) {
     return () => { live = false; };
   }, [id, dir, tick]);
 
-  if (error) return <div className="tree-err" style={{ paddingLeft: 12 + depth * 14 }}>{error}</div>;
+  if (error) return <div className="tree-err" style={{ paddingLeft: 8 + depth * 14 }}>{error}</div>;
   if (!entries) return null;
   return (
     <>
@@ -33,8 +33,8 @@ export function Tree({ id, root, dir, depth, tick, onOpen }: Props) {
         const open = e.kind === 'dir' && expanded.includes(path);
         return (
           <div key={path}>
-            <button className="tree-row" data-testid={`tree-${path}`} data-kind={e.kind} data-open={open} data-active={path === active} data-ignored={e.ignored}
-              style={{ paddingLeft: 12 + depth * 14 }}
+            <button className="tree-row list-row sm" data-testid={`tree-${path}`} data-kind={e.kind} data-open={open} data-active={path === active} data-ignored={e.ignored}
+              style={{ paddingLeft: 8 + depth * 14 }}
               onClick={() => (e.kind === 'dir' ? app.store.getState().toggleFolder(id, path) : onOpen(path))}>
               <span className="tree-caret">{e.kind === 'dir' ? (open ? '▾' : '▸') : ''}</span>
               <span className="tree-name">{e.name}</span>

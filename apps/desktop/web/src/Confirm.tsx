@@ -25,7 +25,7 @@ function Confirm({ id, testid, title, name, note, act, focusAct, onCancel, onCon
   if (!id) return null;
   return (
     <div className="modal-back" data-testid={testid} onPointerDown={onCancel}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(onCancel)}>
+      <div className="modal dialog" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(onCancel)}>
         <div className="kicker">{title}<CloseX onClose={onCancel} testid={`${testid}-close`} /></div>
         <div className="modal-name">{name}</div>
         <div className="modal-note" data-testid={`${testid}-note`}>{note}</div>
@@ -94,7 +94,7 @@ function DeleteColumn({ id }: { id: string }) {
   const cancel = () => app.store.getState().setDeletingColumn(undefined);
   return (
     <div className="modal-back" data-testid="confirm-delete-column" onPointerDown={cancel}>
-      <div className="modal panel" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(cancel)}>
+      <div className="modal dialog" onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(cancel)}>
         <div className="kicker">Delete column<CloseX onClose={cancel} testid="confirm-delete-column-close" /></div>
         <div className="modal-name">{fleet.columns[at].name}</div>
         <label className="modal-note modal-pick">

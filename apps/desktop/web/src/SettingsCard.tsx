@@ -417,7 +417,7 @@ export function SettingsCard() {
   const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   return (
-    <div className="set-win" ref={box} data-testid="settings" role="dialog" aria-label="Settings">
+    <div className="set-win dialog" ref={box} data-testid="settings" role="dialog" aria-label="Settings">
       <div className="set-bar">
         <h2>Settings</h2>
         <button className="side-x" data-testid="settings-close" data-tip={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
@@ -425,7 +425,7 @@ export function SettingsCard() {
       </div>
       <nav className="set-nav" role="tablist" aria-orientation="vertical">
         {tabs.map(([p, label]) => (
-          <button key={p} role="tab" aria-selected={p === pane} data-testid={`settings-tab-${p}`} onClick={() => pick(p)}>
+          <button key={p} className="list-row" role="tab" aria-selected={p === pane} data-testid={`settings-tab-${p}`} onClick={() => pick(p)}>
             {label}{p === 'updates' && <i aria-hidden="true" />}
           </button>
         ))}
