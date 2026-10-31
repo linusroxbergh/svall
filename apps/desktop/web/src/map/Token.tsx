@@ -5,7 +5,7 @@ import { MachineLine, MONITORING, reviewText, subagentsText } from '../indicator
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
-import { colourOf, figureOf } from '../portraits.js';
+import { figureOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
 import { hintLabel, hintText, statusWord } from './tokenText.js';
@@ -76,7 +76,6 @@ export const Token = memoByValue(function Token({
         ['--card-w' as string]: `${tokenPx.w}px`,
         ['--card-h' as string]: `${tokenPx.h}px`,
         ['--grain' as string]: `${Math.round(seedNum(c.id) * 96)}px ${Math.round(seedNum(c.id + '~') * 96)}px`,
-        ['--robot' as string]: colourOf(figure),
       }}
       {...pointer}
       onPointerEnter={onHoverStart}

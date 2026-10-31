@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { PORTRAITS } from '@svall/protocol';
 import { describe, expect, it } from 'vitest';
-import { colourOf, figureOf, figureUrl, stepFigure } from '../src/portraits.js';
+import { figureOf, figureUrl, stepFigure } from '../src/portraits.js';
 
 const files = fs.readdirSync(path.join(__dirname, '../public/robots')).filter((f) => f.endsWith('.svg')).sort();
 const file = (n: number) => figureUrl(n).split('/').pop();
@@ -19,10 +19,6 @@ describe('robot portraits', () => {
       expect(seen.map(file).sort()).toEqual(files);
       seen.forEach((n, i) => expect(family(n)).not.toBe(family(seen[(i + 1) % seen.length])));
     }
-  });
-
-  it('give every robot a body colour for its card', () => {
-    for (const f of files) expect(colourOf(Number(f.match(/\d+/)![0])), f).toMatch(/^#[0-9a-f]{6}$/);
   });
 
   it('show a robot its own robot, else a different one for each portrait', () => {
