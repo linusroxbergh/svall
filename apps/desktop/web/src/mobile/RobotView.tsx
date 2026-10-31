@@ -2,7 +2,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useRef, useState, type JSX } from 'react';
 import { useApp, useFitHeight } from '../hooks.js';
-import { awayLine } from '../placement.js';
+import { awayLine, elsewhere } from '../placement.js';
 import { statusOf } from '../selectors.js';
 import { phone } from './boot.js';
 import { readDraft, writeDraft } from './draft.js';
@@ -34,10 +34,11 @@ const readSize = (): number => {
 
 export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.Element {
   const robot = useApp((s) => s.fleet.robots[id]);
-  const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet) : undefined));
+  const robotStatus = useApp((s) => (s.fleet.robots[id] ? statusOf(s.fleet.robots[id], s.fleet, s.via) : undefined));
   const island = useApp((s) => s.fleet.islands[s.fleet.robots[id]?.islandId ?? '']);
-  // what stands over the terminal while the home has lost the worker it runs on; the terminal holds the last screen the home saw
-  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r); });
+  // what stands over the terminal while the machine it runs on is out of reach; the terminal holds the last screen it showed
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via); });
+  const via = useApp((s) => s.via);
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -67,7 +68,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     term.open(host.current!);
     xterm.current = term;
     refit.current = () => { try { fit.fit(); } catch { /* laid out with no size yet */ } };
-    const l = linkTerminal({ api: phone.api(), subscribe: phone.onTermEvent }, id, {
+    const l = linkTerminal({ api: phone.api, subscribe: phone.onTermEvent }, id, {
       get cols() { return term.cols; },
       get rows() { return term.rows; },
       ...holdScroll(term),
@@ -129,7 +130,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     }
     phone.api().fire('robot.seen', { id });
     return () => { left = true; };
-  }, [id, online, attempt, away]);
+  }, [id, online, attempt, away, via?.machine]);
 
   // a window lost while the view is open waits for revive, as on the desktop; one that comes back clears it, and one on
   // another machine, as a move lands, is opened there
@@ -220,7 +221,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
           </div>
         )}
       </div>
-      {blocked && robot && (
+      {blocked && robot && !elsewhere(robot, via) && (
         <div className="ask" role="status">
           <p>{robot.agent?.prompt ?? `${robot.name} is waiting on you`}</p>
           <span>

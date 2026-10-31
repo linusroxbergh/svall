@@ -1,6 +1,6 @@
 import { byCell, byIslandOrder, columnOf, placingOn, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
-import { unreachableOf } from './placement.js';
+import { unreachableOf, type Via } from './placement.js';
 import type { View } from './store/ui.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 'moving' | 'unknown';
@@ -98,10 +98,10 @@ export const slotStatus = (c: Robot, term: 1 | 2): DisplayStatus => {
 // what the robot shows when its sessions differ: the one that needs the user soonest
 const URGENCY: DisplayStatus[] = ['blocked', 'working', 'done', 'idle', 'shell'];
 
-// a robot between machines is moving; given the fleet's machines, one on a worker out of reach is unknown
-export const statusOf = (c: Robot, f?: Pick<FleetState, 'machines'>): DisplayStatus => {
+// a robot between machines is moving; given the fleet's machines, one on a machine out of reach is unknown
+export const statusOf = (c: Robot, f?: Pick<FleetState, 'machines'>, via?: Via): DisplayStatus => {
   if (c.moving) return 'moving';
-  if (f && unreachableOf(f, c)) return 'unknown';
+  if (f && unreachableOf(f, c, via)) return 'unknown';
   const all = c.second ? [slotStatus(c, 1), slotStatus(c, 2)] : [slotStatus(c, 1)];
   return URGENCY.find((s) => all.includes(s)) ?? 'shell';
 };
@@ -114,17 +114,17 @@ export const DISPLAY_STATUSES: DisplayStatus[] = ['working', 'idle', 'blocked', 
 
 // what needs the user first: blocked, then finished and unread, then the rest by how alive they are
 const PRIORITY: DisplayStatus[] = ['blocked', 'done', 'working', 'moving', 'idle', 'unknown', 'shell'];
-const priorityOf = (c: Robot, f: FleetState): number => {
-  const s = statusOf(c, f);
+const priorityOf = (c: Robot, f: FleetState, via?: Via): number => {
+  const s = statusOf(c, f, via);
   return s === 'done' && !isUnread(c) ? PRIORITY.indexOf('idle') + 0.5 : PRIORITY.indexOf(s);
 };
 
-export function robotsByPriority(f: FleetState): Robot[] {
+export function robotsByPriority(f: FleetState, via?: Via): Robot[] {
   const order = stripOrder(f);
-  return order.map((c, i) => ({ c, i })).sort((a, b) => priorityOf(a.c, f) - priorityOf(b.c, f) || a.i - b.i).map((x) => x.c);
+  return order.map((c, i) => ({ c, i })).sort((a, b) => priorityOf(a.c, f, via) - priorityOf(b.c, f, via) || a.i - b.i).map((x) => x.c);
 }
 
-export const wantsUser = (c: Robot, f: Pick<FleetState, 'machines'>): boolean => isUnread(c) || statusOf(c, f) === 'blocked';
+export const wantsUser = (c: Robot, f: Pick<FleetState, 'machines'>, via?: Via): boolean => isUnread(c) || statusOf(c, f, via) === 'blocked';
 
 // the PR the work is on: the branch's own, the one svalld reads a state for, else the first among the links
 export const mainPr = (c: Robot): ContextItem | undefined =>

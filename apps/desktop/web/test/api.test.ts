@@ -158,6 +158,44 @@ describe('Api', () => {
     expect(said).toEqual([]);
   });
 
+  it('offers the subprotocols its endpoint names', async () => {
+    const offered: string[][] = [];
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0, handleProtocols: (asked) => { offered.push([...asked]); return 'svall'; } });
+    await new Promise((r) => wss.once('listening', r));
+    cleanup.push(() => new Promise<void>((r) => { for (const c of wss.clients) c.terminate(); wss.close(() => r()); }));
+    wss.on('connection', (ws) => {
+      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+    });
+    const api = new Api({ url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}`, protocols: ['svall', 'svall.pass.p4ss'] }, { WS: WebSocket as unknown as typeof globalThis.WebSocket });
+    cleanup.push(() => api.stop());
+    const statuses: Status[] = [];
+    api.onStatus = (s) => statuses.push(s);
+    api.start();
+    await until(() => statuses.includes('online'));
+    expect(offered).toEqual([['svall', 'svall.pass.p4ss']]);
+  });
+
+  it('gives up on a socket nobody greets in time, and keeps trying', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    cleanup.push(() => new Promise<void>((r) => { for (const c of wss.clients) c.terminate(); wss.close(() => r()); }));
+    let greet = false;
+    let sockets = 0;
+    wss.on('connection', (ws) => {
+      sockets += 1;
+      if (greet) ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+    });
+    const api = new Api({ url: `ws://127.0.0.1:${(wss.address() as { port: number }).port}` }, { WS: WebSocket as unknown as typeof globalThis.WebSocket, minDelay: 20, maxDelay: 50, connectTimeout: 100 });
+    cleanup.push(() => api.stop());
+    const statuses: Status[] = [];
+    api.onStatus = (s) => statuses.push(s);
+    api.start();
+    await until(() => sockets >= 2);
+    expect(statuses.slice(0, 3)).toEqual(['connecting', 'offline', 'connecting']);
+    greet = true;
+    await until(() => statuses.at(-1) === 'online');
+  });
+
   it('rejects a bad token and keeps retrying', async () => {
     const server = await serve();
     cleanup.push(server.close);

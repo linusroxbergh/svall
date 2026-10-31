@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
 import { memoByValue, useApp } from '../hooks.js';
+import { elsewhere } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
@@ -16,8 +17,10 @@ import { Settings } from './Settings.js';
 type RowProps = { c: Robot; revealed: boolean; onOpen(id: string): void; onReveal(id?: string): void; onClose(id: string): void };
 
 const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }: RowProps): JSX.Element {
-  const status = useApp((s) => statusOf(c, s.fleet));
-  const asks = useApp((s) => wantsUser(c, s.fleet));
+  const status = useApp((s) => statusOf(c, s.fleet, s.via));
+  const asks = useApp((s) => wantsUser(c, s.fleet, s.via));
+  // a worker closes only its own robots
+  const closable = useApp((s) => !elsewhere(c, s.via));
   const sub = subtitle(c);
   const [drag, setDrag] = useState<number>();
   const touch = useRef<{ x: number; y: number; from: number; swiping: boolean }>(undefined);
@@ -27,6 +30,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
 
   const down = (e: PointerEvent) => {
     swiped.current = false;
+    if (!closable) return;
     touch.current = { x: e.clientX, y: e.clientY, from: revealed ? -REVEAL : 0, swiping: false };
   };
   const move = (e: PointerEvent<HTMLDivElement>) => {
@@ -67,8 +71,10 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
           ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}>✓</button>
           : <span className="row-status">{statusLabel(status)}</span>}
       </div>
-      <button type="button" className="row-close" style={{ width: REVEAL }} aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed}
-        onClick={() => onClose(c.id)}>close</button>
+      {closable && (
+        <button type="button" className="row-close" style={{ width: REVEAL }} aria-label={`Close ${c.name}`} tabIndex={revealed ? 0 : -1} aria-hidden={!revealed}
+          onClick={() => onClose(c.id)}>close</button>
+      )}
     </div>
   );
 });
@@ -79,10 +85,12 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
   const fleet = useApp((s) => s.fleet);
   const loaded = useApp((s) => s.loaded);
   const status = useApp((s) => s.status);
+  // through a worker the page offers only what it answers: robots started there, and its own robots' terminals
+  const via = useApp((s) => s.via);
   const [sheet, setSheet] = useState<Open>();
-  const groups = sections(fleet);
+  const groups = sections(fleet, via);
   const starred = starredOf(fleet);
-  const need = waiting(fleet);
+  const need = waiting(fleet, via);
   const close = () => setSheet(undefined);
 
   const [failed, setFailed] = useState<{ islandId: string; message: string }>();
@@ -113,8 +121,8 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>
-        <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>
+        {!via && <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>}
+        {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
         <span className="conn" data-status={status}>
           {status === 'online' ? (need ? `${need} waiting` : 'all quiet') : status}
         </span>
@@ -139,11 +147,13 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
               <i className="chev" />
               <span>{island.name}</span>
               {island.collapsed && robots.length > 0 && (
-                <small>{robots.length}{robots.some((c) => wantsUser(c, fleet)) && <i className="pip" />}</small>
+                <small>{robots.length}{robots.some((c) => wantsUser(c, fleet, via)) && <i className="pip" />}</small>
               )}
             </button>
-            <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>
-            <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding} onClick={() => void add(island.id)}>+</button>
+            {!via && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
+            {/* the island's own folder is the Mac's, so a worker asks which of its own to start in */}
+            <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
+              onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}>+</button>
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}
           {!island.collapsed && robots.map((c) => (
@@ -152,10 +162,10 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           ))}
         </section>
       ))}
-      {sheet?.kind === 'island' && <NewIsland onClose={close} />}
+      {sheet?.kind === 'island' && !via && <NewIsland onClose={close} />}
       {sheet?.kind === 'robot' && <NewRobot islandId={sheet.islandId} onClose={close} onCreated={(id) => { close(); onOpen(id); }} />}
-      {sheet?.kind === 'islandMenu' && <IslandSheet islandId={sheet.islandId} onClose={close} onOpen={onOpen} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
-      {sheet?.kind === 'settings' && <Settings onClose={close} />}
+      {sheet?.kind === 'islandMenu' && !via && <IslandSheet islandId={sheet.islandId} onClose={close} onOpen={onOpen} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
+      {sheet?.kind === 'settings' && !via && <Settings onClose={close} />}
       {sheet?.kind === 'close' && <CloseRobot id={sheet.id} onClose={close} />}
     </div>
   );

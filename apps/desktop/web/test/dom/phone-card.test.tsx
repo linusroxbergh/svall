@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { ROBOT_NOTE_MAX, type ContextItem } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, type ContextItem, type MachineId } from '@svall/protocol';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
 import { createAppStore, type AppStore } from '../../src/store/index.js';
@@ -145,4 +145,12 @@ test('closing the robot asks once, says what goes with it, then closes it', asyn
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Close c0' })); });
   expect(calls.filter(([m]) => m === 'robot.close')).toEqual([['robot.close', { id: 'c0' }]]);
   expect(onClosed).toHaveBeenCalled();
+});
+
+test('through a worker, a robot running elsewhere offers neither its docs nor a close', async () => {
+  const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+  store.getState().setVia({ machine: vault, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
+  await act(async () => { open(); });
+  expect(screen.queryByRole('button', { name: 'Close robot' })).toBeNull();
+  expect(calls.some(([m]) => m === 'resources.get')).toBe(false);
 });

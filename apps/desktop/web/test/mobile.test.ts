@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Event, PushStatus } from '@svall/protocol';
+import type { Event, MachineId, PushStatus } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import { sections, subtitle, waiting } from '../src/mobile/list.js';
 import { encode, linkTerminal, type Screen } from '../src/mobile/term.js';
@@ -20,6 +20,7 @@ const b64 = (s: string) => encode(new TextEncoder().encode(s));
 
 function harness() {
   const calls: { method: string; params: Record<string, unknown> }[] = [];
+  const sent: string[][] = [];
   const handlers = new Set<(e: TermEvent) => void>();
   let painted = '';
   const screen = {
@@ -27,13 +28,15 @@ function harness() {
     write: (b: Uint8Array) => { painted += new TextDecoder().decode(b); },
     reset: () => { painted = ''; },
   } satisfies Screen;
-  const api = {
-    call: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); return Promise.resolve({ screen: b64('seed') }); },
-    fire: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); },
-  } as unknown as Api;
+  // the source the page has the fleet from, which it can leave for another
+  let on = 'mac';
+  const api = () => ({
+    call: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, on]); return Promise.resolve({ screen: b64(on === 'mac' ? 'seed' : `seed ${on}`) }); },
+    fire: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, on]); },
+  } as unknown as Api);
   const link = linkTerminal({ api, subscribe: (h) => { handlers.add(h); return () => handlers.delete(h); } }, 'c1', screen);
   const emit = (e: TermEvent) => { for (const h of [...handlers]) h(e); };
-  return { link, calls, emit, size: screen, screen: () => painted, viewers: () => handlers.size };
+  return { link, calls, sent, emit, size: screen, screen: () => painted, viewers: () => handlers.size, switchTo: (to: string) => { on = to; } };
 }
 
 describe('phone terminal', () => {
@@ -79,6 +82,16 @@ describe('phone terminal', () => {
     await h.link.open();
     expect(h.screen()).toBe('seed');
     expect(h.viewers()).toBe(1);
+  });
+
+  it('opens again, and types, on the source the page has turned to', async () => {
+    const h = harness();
+    await h.link.open();
+    h.switchTo('linus-vault');
+    await h.link.open();
+    h.link.input('y');
+    expect(h.screen()).toBe('seed linus-vault');
+    expect(h.sent).toEqual([['term.open', 'mac'], ['term.open', 'linus-vault'], ['term.input', 'linus-vault']]);
   });
 
   it('sends keys and sizes as the daemon expects, and stops on close', async () => {
@@ -142,6 +155,17 @@ describe('phone cwd choices', () => {
     expect(cwdChoices(f, 'i_b')[0].label).toBe('~/a');
     expect(cwdChoices(f, 'home').map((c) => c.path)).toEqual(['/mc', '/Users/me/a', '/Users/me/b', '~']);
     expect(cwdChoices(f, 'i_e').map((c) => c.path)).toEqual(['/Users/me/a', '/Users/me/b', '~', '/mc']);
+  });
+
+  it("on a worker, offers only the folders of the robots running there, the island's own first", () => {
+    const vault = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    const f = fleet();
+    Object.assign(f.robots.c0, { machine: vault, cwd: '/home/me/a' });
+    Object.assign(f.robots.c2, { machine: vault, cwd: '/home/me/b-wt', repo: { root: '/home/me/b-wt', mainRoot: '/home/me/b', branch: 'x', isWorktree: true } });
+    f.robots.c1.cwd = '/Users/me/on-the-mac';
+    expect(cwdChoices(f, 'i_a', vault).map((c) => c.path)).toEqual(['/home/me/b', '/home/me/a']);
+    expect(cwdChoices(f, 'home', vault).map((c) => c.path)).toEqual(['/home/me/a', '/home/me/b']);
+    expect(cwdChoices(f, 'i_b', '7d8e9f0a-1b2c-4d3e-8f4a-5b6c7d8e9f0a' as MachineId)).toEqual([]);
   });
 
   it("starts a one-tap robot in its island's repo, the home cwd, or the fleet default", () => {

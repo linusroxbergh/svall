@@ -5,6 +5,7 @@ import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { ago, hintText, linkText } from '../map/tokenText.js';
+import { elsewhere } from '../placement.js';
 import { usePromptHistory } from '../promptHistory.js';
 import { contextPctOf } from '../selectors.js';
 import { phone } from './boot.js';
@@ -124,6 +125,7 @@ function Details({ c }: { c: Robot }) {
 /** The side card of the Mac, as a sheet: what the robot works from. */
 export function RobotMenu({ id, onClose, onClosed }: { id: string; onClose(): void; onClosed(): void }): JSX.Element | null {
   const c = useApp((s) => s.fleet.robots[id]);
+  const via = useApp((s) => s.via);
   const [confirm, setConfirm] = useState(false);
   const saving = useRef<Promise<boolean>>(undefined);
   if (!c) return null;
@@ -142,15 +144,17 @@ export function RobotMenu({ id, onClose, onClosed }: { id: string; onClose(): vo
       {hint && <p className="sheet-note">{hint}</p>}
       <Context c={c} />
       <Note c={c} saving={saving} />
-      <DocsList tier="robot" id={id} />
+      {!elsewhere(c, via) && <DocsList tier="robot" id={id} />}
       <LastCommand c={c} />
       <Instructions c={c} />
       <Details c={c} />
-      <div className="sheet-form m-acts">
-        {confirm
-          ? <CloseConfirm c={c} onClosed={onClosed} />
-          : <button type="button" className="dan" onClick={() => setConfirm(true)}>Close robot</button>}
-      </div>
+      {!elsewhere(c, via) && (
+        <div className="sheet-form m-acts">
+          {confirm
+            ? <CloseConfirm c={c} onClosed={onClosed} />
+            : <button type="button" className="dan" onClick={() => setConfirm(true)}>Close robot</button>}
+        </div>
+      )}
     </Sheet>
   );
 }

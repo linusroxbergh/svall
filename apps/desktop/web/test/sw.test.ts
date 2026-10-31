@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string };
 type Shown = { title: string; options: { tag: string; actions: { action: string }[] } };
@@ -80,5 +80,107 @@ describe('service worker notifications', () => {
     push(blocked());
     push({ id: 'c_a', name: 'otter', status: 'done', term: 2 });
     expect(shown.map((s) => s.options.tag)).toEqual(['c_a', 'c_a-2']);
+  });
+});
+
+type Req = { url: string; method: string; mode: string };
+
+// the worker as the phone build leaves it, with a Mac that answers navigations as `net` says
+function kept(net: (req: Req) => Promise<string>) {
+  const listeners: Record<string, (e: unknown) => void> = {};
+  const stores = new Map<string, Map<string, string>>([['svall-old', new Map([['/', 'old page']])]]);
+  const caches = {
+    open: (name: string) => {
+      if (!stores.has(name)) stores.set(name, new Map());
+      const store = stores.get(name)!;
+      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => net({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((b) => { store.set(u, b); }))) });
+    },
+    keys: () => Promise.resolve([...stores.keys()]),
+    delete: (name: string) => Promise.resolve(stores.delete(name)),
+    match: (u: string) => Promise.resolve([...stores.values()].find((m) => m.has(u))?.get(u)),
+  };
+  const self = {
+    addEventListener: (name: string, fn: (e: unknown) => void) => { listeners[name] = fn; },
+    skipWaiting: () => {},
+    location: { origin: 'https://mac.ts.net' },
+    clients: { claim: () => Promise.resolve() },
+  };
+  const source = fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')
+    .replace(/^const BUILD = .*;$/m, `const BUILD = ${JSON.stringify({ version: 'v2', files: ['/', '/assets/app.js', '/robots/a.png'] })};`);
+  vm.runInNewContext(source, { self, caches, fetch: net, setTimeout, URL });
+  const lifecycle = async (name: string) => { let done: unknown; listeners[name]({ waitUntil: (p: unknown) => { done = p; } }); await done; };
+  // what the page is handed for a request, or undefined when the worker leaves it to the browser
+  const fetch = (path: string, mode = 'cors', method = 'GET'): Promise<string> | undefined => {
+    let answer: Promise<string> | undefined;
+    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method, mode }, respondWith: (p: Promise<string>) => { answer = p; } });
+    return answer;
+  };
+  return { install: () => lifecycle('install'), activate: () => lifecycle('activate'), fetch, stores };
+}
+
+describe('service worker page keeping', () => {
+  afterEach(() => vi.useRealTimers());
+  const mac = (req: Req) => Promise.resolve(`mac ${new URL(req.url).pathname}`);
+
+  it('keeps every file of the build under its version, and drops the cache of the build before', async () => {
+    const sw = kept(mac);
+    await sw.install();
+    expect([...sw.stores.get('svall-v2')!.keys()]).toEqual(['/', '/assets/app.js', '/robots/a.png']);
+    await sw.activate();
+    expect([...sw.stores.keys()]).toEqual(['svall-v2']);
+  });
+
+  it("serves the build's own files from what it kept, and leaves the manifest, the pass and the Mac's answers to the network", async () => {
+    let asked = 0;
+    const sw = kept((req) => { asked += 1; return mac(req); });
+    await sw.install();
+    await sw.activate();
+    asked = 0;
+    expect(await sw.fetch('/assets/app.js')).toBe('mac /assets/app.js');
+    expect(asked).toBe(0);
+    expect(sw.fetch('/manifest.webmanifest')).toBeUndefined();
+    expect(sw.fetch('/pair', 'cors', 'POST')).toBeUndefined();
+    expect(sw.fetch('/rpc', 'cors', 'POST')).toBeUndefined();
+    expect(sw.fetch('https://vault.ts.net/robots/a.png')).toBeUndefined();
+  });
+
+  it("opens the Mac's page when it answers in time", async () => {
+    const sw = kept((req) => Promise.resolve(req.mode === 'navigate' ? 'fresh page' : 'file'));
+    await sw.install();
+    expect(await sw.fetch('/robot/c_a', 'navigate')).toBe('fresh page');
+  });
+
+  it('opens the kept page once the Mac has not answered for 2.5 s, or as soon as it cannot be reached', async () => {
+    vi.useFakeTimers();
+    let navigations = 0;
+    const sw = kept((req) => {
+      if (req.mode !== 'navigate') return Promise.resolve('kept page');
+      navigations += 1;
+      return navigations === 1 ? new Promise(() => {}) : Promise.reject(new TypeError('Load failed'));
+    });
+    await sw.install();
+    await sw.activate();
+    let page: string | undefined;
+    void sw.fetch('/robot/c_a', 'navigate')!.then((p) => { page = p; });
+    await vi.advanceTimersByTimeAsync(2499);
+    expect(page).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(page).toBe('kept page');
+    expect(await sw.fetch('/', 'navigate')).toBe('kept page');
+  });
+
+  it('waits on the network when nothing was kept', async () => {
+    vi.useFakeTimers();
+    let answer: (b: string) => void = () => {};
+    const sw = kept((req) => (req.mode === 'navigate' ? new Promise((r) => { answer = r; }) : Promise.resolve('file')));
+    await sw.activate();
+    sw.stores.clear();
+    let page: string | undefined;
+    void sw.fetch('/', 'navigate')!.then((p) => { page = p; });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(page).toBeUndefined();
+    answer('fresh page');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(page).toBe('fresh page');
   });
 });
