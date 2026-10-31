@@ -110,7 +110,7 @@ textarea { overflow-x: hidden; }
 .badge { font-size: var(--text-2xs); font-weight: var(--w-bold); letter-spacing: var(--track-loose); text-transform: uppercase; padding: var(--sp-2xs) var(--sp-sm); border-radius: var(--r-xs); background: var(--sand-fill); color: var(--sand); margin-left: var(--sp-sm); }
 .pills { display: flex; flex-wrap: wrap; gap: var(--sp-sm); margin-top: var(--sp-lg); }
 .lg { font-family: var(--mono); font-size: var(--text-2xs); font-weight: var(--w-medium); font-style: normal; letter-spacing: var(--track-loose); color: var(--ink-3); }
-.lg svg { width: 11px; height: 11px; vertical-align: middle; }
+.lg svg { width: var(--icon-xs); height: var(--icon-xs); vertical-align: middle; }
 .lp { font-size: var(--text-xs); font-weight: var(--w-medium); padding: var(--sp-2xs) var(--sp-lg); border-radius: var(--r-pill); background: var(--fill-2); border: 1px solid var(--line-soft); color: var(--ink); display: inline-flex; align-items: center; gap: var(--sp-sm); }
 .btn, button { padding: var(--sp-lg) var(--sp-xl); border: 0; border-radius: var(--r-md); font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); text-align: center; color: var(--ink); background: var(--fill-2); cursor: pointer; transition: background var(--dur) var(--ease); }
 .btn:hover, button:hover { background: var(--fill-3); }
@@ -143,6 +143,12 @@ textarea.fld { padding-block: var(--sp-md); }
 .kicker, .sb-head, .ide-root, .res-subh, .res-list h4, .load-grp, .load-tot span, .setup h2 {
   font-size: var(--text-xs); font-weight: var(--w-semibold); letter-spacing: var(--track-caps); text-transform: uppercase; color: var(--ink-cool);
 }
+/* icons: an svg from icons.tsx, its box one of the --icon-* sizes */
+.icon-xs, .icon-sm, .icon-md, .icon-lg { flex: none; vertical-align: middle; }
+.icon-xs { width: var(--icon-xs); height: var(--icon-xs); }
+.icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
+.icon-md { width: var(--icon-md); height: var(--icon-md); }
+.icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
 /* an icon control's target is the height of the bar or tab it sits in, never the glyph's own line box.
    each site bleeds the control back out over its parent's padding, so the row keeps the height it had */
 .phead .ticon, .phead .tx, .phead .px,

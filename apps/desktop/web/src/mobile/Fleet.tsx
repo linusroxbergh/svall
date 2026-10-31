@@ -2,6 +2,7 @@ import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
 import { memoByValue, useApp } from '../hooks.js';
+import { Caret, Check, More } from '../icons.js';
 import { elsewhere, homeName, machineName } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
@@ -68,7 +69,7 @@ const Row = memoByValue(function Row({ c, revealed, onOpen, onReveal, onClose }:
           </span>
         </button>
         {c.unread && here
-          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}>✓</button>
+          ? <button type="button" className="row-read" aria-label={`Mark ${c.name} read`} onClick={() => phone.api().fire('robot.seen', { id: c.id })}><Check size="sm" /></button>
           : <span className="row-status">{statusLabel(status)}</span>}
       </div>
       {here && (
@@ -148,13 +149,13 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         <section key={island.id}>
           <h2>
             <button type="button" className="fold" aria-expanded={!folded} onClick={() => { if (edits(island)) fold(island); }}>
-              <i className="chev" />
+              <Caret dir="down" size="sm" />
               <span>{island.name}</span>
               {folded && robots.length > 0 && (
                 <small>{robots.length}{robots.some((c) => wantsUser(c, fleet, via)) && <i className="pip" />}</small>
               )}
             </button>
-            {edits(island) && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
+            {edits(island) && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}><More size="md" /></button>}
             {/* the island's own folder is the Mac's, so a worker asks which of its own to start in; it starts no mission control */}
             {!(via && island.kind === 'home') && (
               <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}

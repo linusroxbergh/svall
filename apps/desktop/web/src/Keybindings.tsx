@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
+import { Close } from './icons.js';
 import { ACTIONS, actionIds, chordFor, chordLabel, chordOf, chordsOf, holderOf, resolve, type ActionId, type Bindings, type Chord } from './keys.js';
 
 // a chord the user picked that something else already answers, held until they say to take it
@@ -86,7 +87,7 @@ export function Keybindings() {
                     {capturing === id ? 'press a key' : chordLabel(chord)}
                   </button>
                   {chord && <button className="key-x" data-testid={`key-clear-${id}`} data-tip="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
-                    onClick={() => put(id, null)}>×</button>}
+                    onClick={() => put(id, null)}><Close size="xs" /></button>}
                   {id in bindings && <button className="key-x" data-testid={`key-reset-${id}`} data-tip={`Back to ${chordLabel(shipped)}`}
                     aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}>↺</button>}
                 </b>

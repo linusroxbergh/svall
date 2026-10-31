@@ -11,7 +11,6 @@
 /* as tall as the tab strip beside it, and framed like it, so the two read as one row of controls */
 .phead .psplit { align-self: stretch; gap: var(--sp-md); padding: 0 var(--sp-2xl); border: 1px solid var(--line-soft); border-radius: var(--r-md); color: var(--ink-2); background: var(--fill-2); }
 .phead .psplit:hover { color: var(--ink); background: var(--fill-3); }
-.phead .split-glyph { flex: none; width: 15px; height: 15px; }
 .phead .spacer { flex: 1; }
 /* in a row too narrow for everything the name gives way first, down to its first few letters */
 .phead .tname-row { display: inline-flex; align-items: center; gap: var(--sp-md); flex: 0 4 auto; min-width: 5em; }

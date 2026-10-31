@@ -3,21 +3,10 @@ import type { Robot, LoadRobot, LoadUsage } from '@svall/protocol';
 import { sleepRobot } from './actions.js';
 import { app, deps } from './boot.js';
 import { useApp } from './hooks.js';
+import { Close, Moon } from './icons.js';
 import { useLoad } from './load.js';
 import { coresText, memText } from './loadText.js';
 import { slotStatus } from './selectors.js';
-
-const Moon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
-  </svg>
-);
-
-const Cross = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-    <path d="M6 6l12 12M18 6 6 18" />
-  </svg>
-);
 
 // the figure large, its unit small
 function Total({ label, text, testid }: { label: string; text: string; testid?: string }) {
@@ -50,7 +39,7 @@ function RobotRow({ c, use, of }: { c: Robot; use: LoadRobot; of: number }) {
     <Row testid={`load-row-${c.id}`} use={use} of={of}
       name={<button className="load-nm" onClick={open}>{c.name}{!c.tmux && <small>asleep</small>}</button>}>
       {c.tmux && use.sleepable && <button className="load-ib" data-testid={`load-sleep-${c.id}`} data-tip={"Sleep\nEnds its terminal to free memory; opening it resumes the session"} aria-label="Sleep" onClick={sleep}><Moon /></button>}
-      <button className="load-ib dan" data-testid={`load-delete-${c.id}`} data-tip="Delete" aria-label="Delete" onClick={() => app.store.getState().setClosingRobot(c.id)}><Cross /></button>
+      <button className="load-ib dan" data-testid={`load-delete-${c.id}`} data-tip="Delete" aria-label="Delete" onClick={() => app.store.getState().setClosingRobot(c.id)}><Close /></button>
     </Row>
   );
 }

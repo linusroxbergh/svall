@@ -92,6 +92,8 @@
   --ctl-pad-sm: 8px;    /* inside a tab or a list row */
   /* a square icon button: inside a dense row, and in a settings row or beside a portrait */
   --ctl-xs: 18px; --ctl-sm: 22px;
+  /* an icon's box: a caret or mark, a glyph beside text, a panel's icon, the dock's */
+  --icon-xs: 10px; --icon-sm: 12px; --icon-md: 15px; --icon-lg: 18px;
   /* a status or unsaved dot, and the pip on a tab */
   --dot: 7px; --dot-sm: 5px;
   --disabled: .45;

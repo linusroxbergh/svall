@@ -7,6 +7,7 @@ import { AddLink, ContextPills } from './ContextList.js';
 import { FollowLine, FollowTextarea } from './Field.js';
 import { useApp, usePanelWidth, useTick } from './hooks.js';
 import { startHost } from './hostRun.js';
+import { Caret, Mac, Machine, Star } from './icons.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
@@ -22,7 +23,6 @@ import { DocsList } from './resources/DocsList.js';
 import { ResourcesButton } from './ResourcesButton.js';
 import { Section } from './Section.js';
 import { contextPctOf, islandsSorted, isUnread, resumeErrorOf, statusOf } from './selectors.js';
-import { StarIcon } from './Sidebar.js';
 
 type Patch = Omit<Params<'robot.update'>, 'id'>;
 
@@ -32,7 +32,7 @@ export function Collapse() {
   const width = usePanelWidth('card');
   return (
     <button className="side-collapse" style={width} data-testid="side-collapse" data-tip={keyTip('Hide the side card', 'toggleSideCard', bindings)}
-      aria-label="Hide the side card" onClick={() => app.store.getState().toggleSideCard(false)}>›</button>
+      aria-label="Hide the side card" onClick={() => app.store.getState().toggleSideCard(false)}><Caret dir="right" /></button>
   );
 }
 
@@ -42,9 +42,9 @@ function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   return (
     <Section name="robot.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
       <span className="cmd-nav">
-        <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}>‹</button>
+        <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
         <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
-        <button data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}>›</button>
+        <button data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
       </span>
     )}>
       <p className="cmd-text" data-testid="side-prompt-text">{list[at] ?? 'nothing sent yet'}</p>
@@ -56,9 +56,9 @@ function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' 
   const step = (by: 1 | -1) => saveRobot(deps(), id, { figure: stepFigure(figureOf({ portrait, figure }), by) });
   return (
     <div className="side-portrait" data-testid="side-portrait">
-      <button className="pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}>‹</button>
+      <button className="pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}><Caret dir="left" /></button>
       <img className="side-figure" src={figureUrl(figureOf({ portrait, figure }))} alt="robot" draggable={false} />
-      <button className="pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}>›</button>
+      <button className="pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}><Caret dir="right" /></button>
     </div>
   );
 }
@@ -108,7 +108,7 @@ export function SideCard({ id }: { id: string }) {
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
         <button className="side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
-          aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><StarIcon on={starred} /></button>
+          aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
       </div>
       {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
       {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
@@ -180,9 +180,9 @@ export function SideCard({ id }: { id: string }) {
         {movable && (placed || workers.length > 0) && (
           <div className="moves">
             {placed
-              ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><MoveGlyph home /><span>Move to this Mac</span><MoveGo /></button>
+              ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><Mac /><span>Move to this Mac</span><Caret dir="right" /></button>
               : workers.map(([m, w]) => (
-                <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><MoveGlyph /><span>Move to {w.name}</span><MoveGo /></button>
+                <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><Machine /><span>Move to {w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
@@ -193,21 +193,6 @@ export function SideCard({ id }: { id: string }) {
     </aside>
   );
 }
-
-// where the robot goes: a worker's rack, or this Mac
-const MoveGlyph = ({ home }: { home?: boolean }) => (
-  <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    {home
-      ? <><rect x="3" y="3" width="10" height="7" rx="1.2" /><path d="M1.5 12.5h13" /></>
-      : <><rect x="2.5" y="2.5" width="11" height="4.5" rx="1.2" /><rect x="2.5" y="9" width="11" height="4.5" rx="1.2" /><path d="M5 4.75h.01M5 11.25h.01" strokeWidth="2" /></>}
-  </svg>
-);
-
-const MoveGo = () => (
-  <svg className="move-go" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3.5 2 6.5 5 3.5 8" />
-  </svg>
-);
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
 function AwayLine({ name, line, running }: { name: string; line: string; running: boolean }) {

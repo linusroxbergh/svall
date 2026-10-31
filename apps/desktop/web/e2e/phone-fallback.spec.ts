@@ -75,7 +75,7 @@ test('a phone whose Mac is off opens the page it kept, controls the robots on th
 
     await page.getByRole('button', { name: /^ada/ }).click();
     await expect(page.locator('.xterm-rows')).toContainText('on the vault');
-    await page.getByRole('button', { name: '‹ fleet' }).click();
+    await page.getByRole('button', { name: 'fleet', exact: true }).click();
     await page.getByRole('button', { name: /^bob/ }).click();
     await expect(page.getByTestId('phone-unreachable')).toHaveText('mac is asleep');
 
@@ -83,7 +83,7 @@ test('a phone whose Mac is off opens the page it kept, controls the robots on th
     on = true;
     await expect(page.getByTestId('phone-unreachable')).toHaveCount(0, { timeout: 15_000 });
     await expect(page.locator('.xterm-rows')).toContainText('on the mac');
-    await page.getByRole('button', { name: '‹ fleet' }).click();
+    await page.getByRole('button', { name: 'fleet', exact: true }).click();
     await expect(page.getByRole('button', { name: 'New island' })).toBeVisible();
   } finally {
     server.closeAllConnections();

@@ -2,6 +2,7 @@ import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
+import { Caret, Check } from './icons.js';
 import { refocusSurface } from './keyboard.js';
 import type { MenuEntry } from './store/ui.js';
 import { theme } from './theme.js';
@@ -24,9 +25,9 @@ function Item({ it, active, onEnter, onLeave, onPick, rowRef }: {
       data-active={active} data-testid={`menu-${it.title.toLowerCase()}`}
       onPointerEnter={onEnter} onPointerLeave={onLeave} onClick={onPick}>
       {it.title}
-      {it.items && <span className="ctx-mark">›</span>}
+      {it.items && <span className="ctx-mark"><Caret dir="right" /></span>}
       {it.note && <small className="ctx-mark ctx-note">{it.note}</small>}
-      {it.checked && <span className="ctx-mark ctx-check" data-testid="menu-checked">✓</span>}
+      {it.checked && <span className="ctx-mark ctx-check" data-testid="menu-checked"><Check /></span>}
     </div>
   );
 }

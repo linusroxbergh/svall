@@ -4,6 +4,7 @@ import { addColumn, newRobotOn, newRobotTarget, placeRobot, renameColumn, reorde
 import { app, deps } from './boot.js';
 import { BoardCard, NameInput } from './BoardCard.js';
 import { useApp } from './hooks.js';
+import { Caret, Grip, More, Place } from './icons.js';
 import { cardRect } from './map/card.js';
 import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
@@ -88,31 +89,6 @@ function useSize(ref: React.RefObject<HTMLElement | null>): { w: number; h: numb
 // a robot the board has just dropped somewhere sits there before the fleet says so
 const placed = (f: FleetState, p: { id: string; column: string } | undefined): FleetState =>
   (p && f.robots[p.id] ? { ...f, robots: { ...f.robots, [p.id]: { ...f.robots[p.id], column: p.column } } } : f);
-
-function GripGlyph() {
-  return (
-    <svg viewBox="0 0 10 14" fill="currentColor" aria-hidden="true">
-      <circle cx="3" cy="2.5" r="1.3" /><circle cx="7" cy="2.5" r="1.3" /><circle cx="3" cy="7" r="1.3" />
-      <circle cx="7" cy="7" r="1.3" /><circle cx="3" cy="11.5" r="1.3" /><circle cx="7" cy="11.5" r="1.3" />
-    </svg>
-  );
-}
-
-function PlaceGlyph() {
-  return (
-    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d="M1.5 4h7.5M7 1.8 9.5 4 7 6.2M10.5 8H3M5 5.8 2.5 8 5 10.2" />
-    </svg>
-  );
-}
-
-function ChevronGlyph({ next }: { next?: boolean }) {
-  return (
-    <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <path d={next ? 'M4.5 2.5 8 6l-3.5 3.5' : 'M7.5 2.5 4 6l3.5 3.5'} />
-    </svg>
-  );
-}
 
 // whether more of an element's content lies below it, or past its right edge, the read its scroll calls, and whether it is scrolled from the start
 function useMore(ref: React.RefObject<HTMLElement | null>, axis: 'x' | 'y'): [boolean, () => void, boolean] {
@@ -290,9 +266,9 @@ export function Board() {
           <span className="kb-col-ct tnum" data-testid={`col-count-${id}`}>{robots.length}</span>
           {attention > 0 && <span className="count tnum" data-tip={`${attention} want you`}>{attention}</span>}
           <span className="kb-col-act">
-            <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><GripGlyph /></span>
+            <span className="kb-grip" data-testid={`col-grip-${id}`} data-tip="Drag to reorder" onPointerDown={(e) => liftColumn(e, id)}><Grip /></span>
             <button type="button" data-testid={`col-new-${id}`} aria-label={`New robot in ${column.name}`} data-tip="New robot here" onClick={() => void newIn(id)}>+</button>
-            <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}>⋯</button>
+            <button type="button" data-testid={`col-menu-${id}`} aria-label={`${column.name} column menu`} onClick={(e) => menu(e, id)}><More /></button>
           </span>
         </header>
         <Body onScroll={hov.end}>
@@ -331,19 +307,19 @@ export function Board() {
         <span className="kb-sep" />
         {chip('open', openOn, 'Open islands', all.filter(open).length, () => setFilter((f) => ({ ...f, island: undefined, open: !openOn })))}
         {(backChips || moreChips) && (
-          <button type="button" className="kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><ChevronGlyph /></button>
+          <button type="button" className="kb-page" data-testid="chips-back" aria-label="Earlier islands" disabled={!backChips} onClick={() => pageChips(-1)}><Caret dir="left" /></button>
         )}
         <div ref={chips} className="kb-chips" role="group" aria-label="Islands" data-testid="island-chips" data-more={moreChips} onScroll={readChips}>
           {islandsSorted(fleet).map((i) => chip(i.id, island === i.id, i.name, robotsOf(fleet, i.id).length,
             () => setFilter((f) => ({ ...f, island: f.island === i.id ? undefined : i.id, open: false }))))}
         </div>
         {(backChips || moreChips) && (
-          <button type="button" className="kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><ChevronGlyph next /></button>
+          <button type="button" className="kb-page" data-testid="chips-next" aria-label="More islands" disabled={!moreChips} onClick={() => pageChips(1)}><Caret dir="right" /></button>
         )}
         <span className="kb-gap" />
         <button type="button" className="kb-chip" data-testid="chip-placing" data-on={placing} data-busy={placingNow} aria-busy={placingNow} aria-haspopup="menu"
           onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); placingMenu(r.left, r.bottom + 4); }}>
-          <PlaceGlyph />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'} ▾
+          <Place />Auto-place: {placingNow ? 'placing…' : placing ? 'scribe' : 'off'}<Caret dir="down" />
         </button>
         <button type="button" className="kb-chip" data-testid="chip-needs" aria-pressed={filter.needsYou} onClick={() => setFilter((f) => ({ ...f, needsYou: !f.needsYou }))}>
           Needs you <span className={needs > 0 ? 'count tnum' : 'kb-n tnum'}>{needs}</span>

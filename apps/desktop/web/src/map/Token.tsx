@@ -1,6 +1,7 @@
 import type { Cell, Robot, ContextItem } from '@svall/protocol';
 import { memoByValue } from '../hooks.js';
-import { BotGlyph, EyeGlyph, MachineLine, MONITORING, PrGlyph, reviewText, subagentsText } from '../indicators.js';
+import { Bot, Eye, Pr } from '../icons.js';
+import { MachineLine, MONITORING, reviewText, subagentsText } from '../indicators.js';
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
@@ -117,15 +118,15 @@ export const Token = memoByValue(function Token({
                   onLink(review, c.id, { x: e.clientX, y: e.clientY });
                 }}
               >
-                <PrGlyph />
+                <Pr />
               </button>
             )}
-            {monitor && <span className="mark monitor" data-tip={MONITORING} data-testid={`token-monitor-${c.id}`}><EyeGlyph /></span>}
+            {monitor && <span className="mark monitor" data-tip={MONITORING} data-testid={`token-monitor-${c.id}`}><Eye /></span>}
           </span>
           {subs > 0 && (
             <span className="marks left">
               <span className="mark subs" role="img" data-tip={subagentsText(subs)} aria-label={subagentsText(subs)} data-testid={`token-subs-${c.id}`}>
-                <BotGlyph /><b>{subs}</b>
+                <Bot /><b>{subs}</b>
               </span>
             </span>
           )}

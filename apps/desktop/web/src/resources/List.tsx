@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { AS_TYPED } from '../Field.js';
 import { useApp } from '../hooks.js';
+import { Close } from '../icons.js';
 import { openFile } from '../ide/files.js';
 import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
@@ -97,12 +98,12 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
         {isDoc && !renaming && (
           <span className="res-doc-acts">
             <button data-testid={`resources-doc-rename-${item.name}`} data-tip={`Rename ${o.path}`} aria-label={`Rename ${item.name}`} onClick={() => setRenaming(true)}>✎</button>
-            <button data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
+            <button data-testid={`resources-doc-delete-${item.name}`} data-tip={`Delete ${o.path}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}><Close size="xs" /></button>
           </span>
         )}
         {o && !far && deletable(kind, item) && (
           <span className="res-doc-acts">
-            <button data-testid={`resources-delete-${kind}-${item.name}`} data-tip={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}>×</button>
+            <button data-testid={`resources-delete-${kind}-${item.name}`} data-tip={`Delete ${shortPath(item.reveal)}`} aria-label={`Delete ${item.name}`} onClick={() => { void deleteResource(deps(), item.name, o); }}><Close size="xs" /></button>
           </span>
         )}
       </div>

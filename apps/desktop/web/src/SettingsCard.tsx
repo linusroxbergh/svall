@@ -7,6 +7,7 @@ import { holdCutout } from './cutout.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { MachineActions } from './HostSetup.js';
+import { Close } from './icons.js';
 import { Info } from './Info.js';
 import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
@@ -421,7 +422,7 @@ export function SettingsCard() {
       <div className="set-bar">
         <h2>Settings</h2>
         <button className="side-x" data-testid="settings-close" data-tip={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
-          onClick={() => app.store.getState().toggleSettings(false)}>×</button>
+          onClick={() => app.store.getState().toggleSettings(false)}><Close /></button>
       </div>
       <nav className="set-nav" role="tablist" aria-orientation="vertical">
         {tabs.map(([p, label]) => (

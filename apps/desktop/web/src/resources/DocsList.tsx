@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { Close } from '../icons.js';
 import { Section } from '../Section.js';
 import { chooseResource } from './choose.js';
 import { deleteDoc } from './docs.js';
@@ -28,7 +29,7 @@ export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string })
             </button>
             {o && (
               <button className="side-doc-del res-open" data-testid={`side-doc-delete-${i.name}`} aria-label={`Delete ${i.name}`} data-tip={`Delete ${o.path}`}
-                onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}>×</button>
+                onClick={() => { void deleteDoc(deps(), o.rootId, o.path); }}><Close size="xs" /></button>
             )}
           </div>
         );

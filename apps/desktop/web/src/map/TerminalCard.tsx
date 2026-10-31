@@ -4,6 +4,7 @@ import { rectOf } from '../bridge.js';
 import { useApp } from '../hooks.js';
 import { RobotPanes } from '../RobotPanes.js';
 import { useHalfGrip } from '../halfGrip.js';
+import { Close } from '../icons.js';
 import { statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
 import { cardRect } from './card.js';
@@ -58,7 +59,7 @@ export function TerminalCard({ id, host }: Props) {
               <button className="ticon" data-testid="card-size" data-tip={size === 'half' ? 'Fill the window' : 'Back to the card'}
                 aria-label={size === 'half' ? 'Fill the window' : 'Back to the card'} onClick={() => app.store.getState().toggleCardSize()}>{size === 'half' ? '⤢' : '⤡'}</button>
               <button className="tx" data-testid="card-close" data-tip="Close" aria-label="Close the card"
-                onClick={() => app.store.getState().closeCard()}>×</button>
+                onClick={() => app.store.getState().closeCard()}><Close size="lg" /></button>
             </span>
           } />
       </div>

@@ -6,6 +6,7 @@ import {
 import { app } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { machineNames, plainStep, stepLabel } from './host.js';
+import { Caret, Mark } from './icons.js';
 import { startHost } from './hostRun.js';
 import { dialogKeys, useApp } from './hooks.js';
 import { setupNote } from './landings.js';
@@ -240,7 +241,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {!run && sheet && (
           <>
             <div className="host-note">
-              <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark">✓</span>Ready to move</span>
+              <span className="move-state" data-state="ready" data-testid="move-ready"><span className="move-mark"><Mark status="ok" /></span>Ready to move</span>
               <ul data-testid="move-summary">
                 {moveParts(staying(sheet), c.repo && c.repo.mainRoot.split('/').pop(), where).map((p) => <li key={p}>{p}</li>)}
               </ul>
@@ -258,7 +259,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
         {!run && doing && <div className="modal-note" data-testid="move-fixing">{doing.doing}{step && `: ${stepLabel(step)}`}…</div>}
         {!run && !doing && refusal && (
           <>
-            <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark">!</span>Not ready to move yet</span>
+            <span className="move-state" data-state="blocked" data-testid="move-blocked"><span className="move-mark"><Mark status="warn" /></span>Not ready to move yet</span>
             {blockers.map((b, i) => {
               const answerable = interruptOf(b.action);
               const updates = b.run ? updatesIn(b.run) : undefined;
@@ -285,7 +286,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
                     {i === 0 && fix && 'failed' in fix && <span className="host-failed" role="status" data-testid="move-fix-failed">{fix.failed}</span>}
                     {i === 0 && refusal.details.length > 0 && (
                       <details className="modal-more" data-testid="move-details">
-                        <summary>details</summary>
+                        <summary><Caret dir="right" />details</summary>
                         <div className="modal-more-body">{refusal.details.map((d) => <span key={d}>{d}</span>)}</div>
                       </details>
                     )}
@@ -335,7 +336,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, again }:
           if (f && now === 'todo') return null;
           return (
             <li key={s} data-state={now} data-testid={`move-step-${s}`}>
-              <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : { done: '✓', failed: '✕', todo: '○' }[now]}</span>
+              <span className="move-mark" aria-hidden>{now === 'doing' ? <span className="move-spin" /> : <Mark status={({ done: 'ok', failed: 'fail', todo: 'todo' } as const)[now]} />}</span>
               <span>{now === 'failed' ? sentence : words[s][now]}</span>
             </li>
           );
@@ -344,7 +345,7 @@ function Progress({ stand: st, words, robot, where, here, setup, close, again }:
       {st.done && <div className="host-note" data-testid="move-through">{robot} runs on {where}.{setup && ` ${setup}`}</div>}
       {details.length > 0 && (
         <details className="modal-more" data-testid="move-run-details">
-          <summary>details</summary>
+          <summary><Caret dir="right" />details</summary>
           <div className="modal-more-body">{details.map((d) => <span key={d}>{d}</span>)}</div>
         </details>
       )}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { app } from '../boot.js';
 import { useApp } from '../hooks.js';
+import { Close } from '../icons.js';
 import { basename } from '../paths.js';
 import { closeFile } from './files.js';
 
@@ -18,7 +19,7 @@ export function FileTabs({ id }: { id: string }) {
             <span className="ftab-name">{basename(path)}</span>
             <span className="ftab-dot" />
             <button className="ftab-x" data-testid={`file-close-${path}`} aria-label={`Close ${basename(path)}`}
-              onClick={(e) => { e.stopPropagation(); if (ide.dirty.includes(path)) setClosing(path); else close(path); }}>×</button>
+              onClick={(e) => { e.stopPropagation(); if (ide.dirty.includes(path)) setClosing(path); else close(path); }}><Close size="xs" /></button>
           </div>
         ))}
       </div>

@@ -8,13 +8,12 @@
   font-size: var(--text-sm); font-weight: var(--w-medium); line-height: var(--lh-tight); white-space: nowrap; }
 .use-tab[data-rail] { display: none; }
 .use[data-collapsed="true"] .use-tab[data-rail] { display: flex; }
-.use-glyph { flex: none; width: 18px; height: 18px; }
 .use-tab-label { overflow: hidden; max-width: 100%; text-overflow: ellipsis; }
 /* four labels need about this much; a narrower sidebar shows the glyphs alone, as the collapsed rail does */
 @container (width < 210px) { .use-tab-label { display: none; } }
 .use-tab:hover { color: var(--ink); background: var(--fill-1); }
 .use-tab[aria-expanded="true"] { color: var(--sand); background: var(--fill-2); border-color: var(--line-soft); }
-.use-tab[data-off] .use-glyph { opacity: .65; }
+.use-tab[data-off] svg { opacity: .65; }
 .use-status { position: absolute; top: 5px; left: calc(50% + 7px); width: var(--dot-sm); height: var(--dot-sm); border-radius: var(--r-pill); background: var(--idle); }
 .use-status[data-on="true"] { background: var(--done); }
 .use-status[data-update] { background: var(--sel); }
@@ -79,7 +78,6 @@ button.load-nm:hover { background: none; color: var(--sand); }
 .load-ib { display: grid; place-items: center; width: var(--ctl-sm); height: var(--ctl-sm); padding: 0; border-radius: var(--r-xs); background: none; color: var(--ink-3); }
 .load-ib:hover { background: var(--fill-3); color: var(--ink); }
 .load-ib.dan:hover { color: var(--danger); }
-.load-ib svg { width: 14px; height: 14px; }
 .load-bar { grid-column: 1 / 5; height: 3px; margin-top: calc(-1 * var(--sp-2xs)); overflow: hidden; border-radius: var(--r-pill); background: var(--line-soft); }
 .load-bar i { display: block; height: 100%; border-radius: var(--r-pill); background: var(--sand); }
 .load-row[data-app] { margin-top: var(--sp-md); padding-top: var(--sp-md); border-top: 1px solid var(--line-soft); border-radius: 0 0 var(--r-sm) var(--r-sm); }

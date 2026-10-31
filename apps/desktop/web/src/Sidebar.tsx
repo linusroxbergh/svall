@@ -5,7 +5,8 @@ import { app, deps } from './boot.js';
 import type { DropTarget } from './drop.js';
 import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
-import { EyeGlyph, MachineLine, PrGlyph, reviewText } from './indicators.js';
+import { Caret, Eye, Feedback, Pr, Star, Update } from './icons.js';
+import { MachineLine, reviewText } from './indicators.js';
 import { machineOf } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
@@ -57,14 +58,6 @@ function NameField({ name, testid, onDone }: { name: string; testid: string; onD
   );
 }
 
-export function Caret({ open }: { open: boolean }) {
-  return (
-    <svg className="caret" data-open={open} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M2 3.6 5 6.6l3-3" />
-    </svg>
-  );
-}
-
 // a click reads and a click on the row already selected opens the card — as does any click once a card is open,
 // which the selection then moves to
 const pick = (id: string, starred = false) => {
@@ -73,19 +66,11 @@ const pick = (id: string, starred = false) => {
   s.setStarredRow(starred ? id : undefined);
 };
 
-export function StarIcon({ on }: { on: boolean }) {
-  return (
-    <svg width="11" height="11" viewBox="0 0 12 12" fill={on ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round">
-      <path d="M6 1.4 7.18 4.78l3.58.08-2.86 2.16 1.04 3.43L6 8.4l-2.94 2.05 1.04-3.43-2.86-2.16 3.58-.08z" />
-    </svg>
-  );
-}
-
 function StarButton({ c, testid }: { c: Robot; testid: string }) {
   const on = c.star !== undefined;
   return (
     <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'}
-      onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><StarIcon on={on} /></button>
+      onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><Star on={on} /></button>
   );
 }
 
@@ -112,7 +97,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       onClick={select} onDoubleClick={() => setEditing(i.id)} onContextMenu={menu}>
       <button className="sb-caret" data-testid={`sb-island-toggle-${i.id}`} aria-expanded={open}
         aria-label={open ? `Collapse ${i.name}` : `Expand ${i.name}`}
-        onClick={(e) => { stop(e); toggleIsland(deps(), i.id); }} onDoubleClick={stop}><Caret open={open} /></button>
+        onClick={(e) => { stop(e); toggleIsland(deps(), i.id); }} onDoubleClick={stop}><Caret dir={open ? 'down' : 'right'} /></button>
       {editing ? (
         <NameField name={i.name} testid="island-name-input" onDone={(name) => {
           setEditing(undefined);
@@ -136,7 +121,7 @@ function Marks({ c }: { c: Robot }) {
   const monitor = isMonitoring(c);
   if (!pr && !monitor) return null;
   const title = [pr && reviewText(pr), monitor && 'Monitoring'].filter(Boolean).join(' · ');
-  return <span className="sb-ind" data-tip={title}>{pr && <i data-kind="review"><PrGlyph /></i>}{monitor && <i data-kind="monitor"><EyeGlyph /></i>}</span>;
+  return <span className="sb-ind" data-tip={title}>{pr && <i data-kind="review"><Pr /></i>}{monitor && <i data-kind="monitor"><Eye /></i>}</span>;
 }
 
 function RobotName({ c, machine, title }: { c: Robot; machine?: string; title?: string }) {
@@ -249,11 +234,11 @@ function Starred() {
       <div className="sb-row list-row sb-isle" data-testid="sb-starred-head" data-open={!shut} data-drop-hover={hover !== undefined && hover.id === undefined}
         {...starZone(undefined, setHover)} onClick={fold}>
         <button className="sb-caret" data-testid="sb-starred-toggle" aria-expanded={!shut} aria-label={shut ? 'Expand starred' : 'Collapse starred'}
-          onClick={(e) => { stop(e); fold(); }}><Caret open={!shut} /></button>
+          onClick={(e) => { stop(e); fold(); }}><Caret dir={shut ? 'right' : 'down'} /></button>
         <span className="sb-name">Starred</span>
         {shut && attention > 0 && <span className="count" data-testid="sb-starred-attention">{attention}</span>}
         <span className="sb-ct tnum">{robots.length}</span>
-        <i className="sb-star-mark"><StarIcon on /></i>
+        <i className="sb-star-mark"><Star on /></i>
       </div>
       {!shut && <div className="sb-kids">{robots.map((c) => <StarredRow key={c.id} c={c} machine={machineOf(fleet, c)} hover={hover} zone={starZone(c.id, setHover)} />)}</div>}
     </div>
@@ -265,10 +250,7 @@ function UpdateRow() {
   if (!version) return null;
   return (
     <button className="sb-update" data-testid="sidebar-update" onClick={() => app.bridge.send({ type: 'update.install' })}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v4.5A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5V14" />
-      </svg>
-      Update to {version}
+      <Update />Update to {version}
     </button>
   );
 }
@@ -276,10 +258,7 @@ function UpdateRow() {
 function FeedbackLink() {
   return (
     <button className="sb-feedback" data-testid="sidebar-feedback" onClick={() => app.store.getState().toggleFeedback()}>
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M4 5h16v11H10l-5 4v-4H4z" />
-      </svg>
-      Send feedback
+      <Feedback />Send feedback
     </button>
   );
 }
@@ -321,7 +300,7 @@ export function Sidebar() {
         <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}>+ New island</button>
       </div>
       <button className="sb-collapse" data-testid="sidebar-hide" data-tip="Hide the islands" aria-label="Hide the islands"
-        onClick={() => app.store.getState().toggleSidebar(false)}>‹</button>
+        onClick={() => app.store.getState().toggleSidebar(false)}><Caret dir="left" /></button>
       <div className="sb-list">
         <Starred />
         {islandsSorted(fleet).map((i) => {
