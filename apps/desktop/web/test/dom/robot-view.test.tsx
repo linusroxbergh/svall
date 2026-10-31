@@ -428,6 +428,18 @@ test('through a worker, a robot of the home says the home is asleep, asks nothin
   expect(open).not.toHaveBeenCalled();
 });
 
+test('through a worker, a robot of the home is sent no prompt and marked seen nowhere', async () => {
+  throughVault();
+  render(<RobotView id="c2" onBack={() => {}} />);
+  await act(async () => {});
+  fireEvent.change(screen.getByPlaceholderText('prompt…'), { target: { value: 'hello' } });
+  expect((screen.getByRole('button', { name: 'send' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.submit(screen.getByPlaceholderText('prompt…').closest('form')!);
+  expect(call).not.toHaveBeenCalledWith('robot.run', expect.anything());
+  expect(fire).not.toHaveBeenCalledWith('robot.seen', expect.anything());
+  expect((screen.getByPlaceholderText('prompt…') as HTMLTextAreaElement).value).toBe('hello');
+});
+
 test('a robot running on the worker answers and streams there, whatever the stale fleet says of its link', async () => {
   throughVault();
   const f = store.getState().fleet;

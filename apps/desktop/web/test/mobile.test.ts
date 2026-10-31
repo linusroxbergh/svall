@@ -30,10 +30,14 @@ function harness() {
   } satisfies Screen;
   // the source the page has the fleet from, which it can leave for another
   let on = 'mac';
-  const api = () => ({
-    call: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, on]); return Promise.resolve({ screen: b64(on === 'mac' ? 'seed' : `seed ${on}`) }); },
-    fire: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, on]); },
-  } as unknown as Api);
+  // each api speaks for the source it was asked of, so one held across a switch still reaches the old source
+  const api = () => {
+    const at = on;
+    return {
+      call: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, at]); return Promise.resolve({ screen: b64(at === 'mac' ? 'seed' : `seed ${at}`) }); },
+      fire: (method: string, params: Record<string, unknown>) => { calls.push({ method, params }); sent.push([method, at]); },
+    } as unknown as Api;
+  };
   const link = linkTerminal({ api, subscribe: (h) => { handlers.add(h); return () => handlers.delete(h); } }, 'c1', screen);
   const emit = (e: TermEvent) => { for (const h of [...handlers]) h(e); };
   return { link, calls, sent, emit, size: screen, screen: () => painted, viewers: () => handlers.size, switchTo: (to: string) => { on = to; } };

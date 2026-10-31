@@ -47,19 +47,21 @@ const keepFallbacks = (f: Fallbacks) => { try { localStorage.setItem(FALLBACKS, 
 type Source = { api: Api; status: Status; via?: Via };
 
 // the QR link's pass rides in the fragment, which stays in the browser, and the daemon trades it for a cookie;
-// the manifest is asked for only after, so a Home Screen app made from this page opens with the pass too
+// the manifest is asked for only once that settles, so a Home Screen app made from this page opens with the pass too.
+// The socket waits on the pairing no longer than PAIR_MS
 function pair(then: () => void): void {
-  const done = () => {
+  const manifest = () => {
     const link = document.createElement('link');
     link.rel = 'manifest';
     link.href = '/manifest.webmanifest';
     link.crossOrigin = 'use-credentials';
     document.head.append(link);
-    then();
   };
   const pass = location.hash.slice(1);
-  if (pass) void Promise.race([fetch('/pair', { method: 'POST', body: pass }).catch(() => {}), new Promise((r) => setTimeout(r, PAIR_MS))]).then(done);
-  else done();
+  if (!pass) { manifest(); then(); return; }
+  const paired = fetch('/pair', { method: 'POST', body: pass }).catch(() => {});
+  void paired.then(manifest);
+  void Promise.race([paired, new Promise((r) => setTimeout(r, PAIR_MS))]).then(then);
 }
 
 function createPhone(): PhoneContext {
@@ -93,16 +95,19 @@ function createPhone(): PhoneContext {
     }
     store.getState().setStatus(active ? 'online' : mac.status);
   };
-  // each worker the Mac named while it answered, by its own phone link; a worker on another protocol is passed over
+  // each worker the Mac named while it answered, by its own phone link; one on another protocol, or whose link is no
+  // url, is passed over
   const startWorkers = () => {
     const kept = workers.length ? undefined : readFallbacks();
     if (!kept) return;
-    workers = kept.fallbacks.map((w) => {
-      const api = new Api({ url: `wss://${new URL(w.url).host}`, protocols: ['svall', `svall.pass.${w.pass}`] }, { connectTimeout: CONNECT_MS });
+    workers = kept.fallbacks.flatMap((w) => {
+      let host: string;
+      try { host = new URL(w.url).host; } catch { return []; }
+      const api = new Api({ url: `wss://${host}`, protocols: ['svall', `svall.pass.${w.pass}`] }, { connectTimeout: CONNECT_MS });
       const s = source(api, { machine: w.machine, home: kept.home });
       s.api.onStatus = (status) => { s.status = status; pick(); };
       s.api.start();
-      return s;
+      return [s];
     });
   };
   const stopWorkers = () => { for (const w of workers) w.api.stop(); workers = []; };

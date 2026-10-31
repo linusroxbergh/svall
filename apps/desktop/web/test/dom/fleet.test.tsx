@@ -222,3 +222,33 @@ test('through a worker with no robot of its own, a new robot has no folder to st
   expect(screen.getByText(/No robot runs on linus-vault yet/)).toBeTruthy();
   expect((screen.getByRole('button', { name: 'Create' }) as HTMLButtonElement).disabled).toBe(true);
 });
+
+test('through a worker, an island folds nowhere, and one folded on the Mac shows its crew', () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, islands: { ...f.islands, i_b: { ...f.islands.i_b, collapsed: true } } });
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'beta' }));
+  expect(call).not.toHaveBeenCalled();
+  expect(screen.getByText('c0')).toBeTruthy();
+});
+
+test('through a worker, only its own robots are marked read from the list', () => {
+  throughVault();
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, unread: true }, c2: { ...f.robots.c2, unread: true } } });
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByRole('button', { name: 'Mark c2 read' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Mark c0 read' }));
+  expect(fire).toHaveBeenCalledWith('robot.seen', { id: 'c0' });
+});
+
+test('a new robot sheet open as the Mac comes back starts in the Mac\'s folder, not the worker\'s', async () => {
+  throughVault();
+  render(<Fleet onOpen={() => {}} />);
+  fireEvent.click(screen.getByRole('button', { name: 'New robot on alpha' }));
+  act(() => store.getState().setVia(undefined));
+  call.mockResolvedValueOnce({ id: 'c9' });
+  await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
+  expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/tmp' });
+});

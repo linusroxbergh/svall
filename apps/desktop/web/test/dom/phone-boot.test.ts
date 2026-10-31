@@ -66,9 +66,11 @@ test('a phone left on an older page loads the new one once, and again after a la
 test('a page that no longer matches drops the copy the service worker kept before it reloads', async () => {
   const kept = new Set(['svall-v1', 'svall-v2']);
   vi.stubGlobal('caches', { keys: () => Promise.resolve([...kept]), delete: (k: string) => Promise.resolve(kept.delete(k)) });
-  reload.mockImplementation(() => expect([...kept]).toEqual([]));
+  let atReload: string[] | undefined;
+  reload.mockImplementation(() => { atReload = [...kept]; });
   (await boot()).hello(PROTOCOL_VERSION + 1);
   await vi.waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+  expect(atReload).toEqual([]);
   reload.mockReset();
 });
 
@@ -166,6 +168,35 @@ test('a Mac that names no worker any more leaves none to fall back to', async ()
   expect(Socket.all.filter(isWorker)).toEqual([]);
 });
 
+test('a worker let go as the Mac comes back speaks for nobody, though its close comes late', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
+  const { store, onTermEvent } = await start();
+  const frames: string[] = [];
+  onTermEvent((e) => frames.push(e.data.id));
+  await vi.advanceTimersByTimeAsync(4000);
+  const worker = Socket.all.find(isWorker)!;
+  worker.hello();
+  worker.close = () => {};
+  const mac = Socket.all.filter((s) => !isWorker(s)).at(-1)!;
+  mac.hello();
+  mac.answer('state.get', fleet());
+  await vi.advanceTimersByTimeAsync(0);
+  worker.receive({ event: 'term.output', data: { id: 'c0', data: 'eA==' } });
+  worker.receive({ event: 'state.patch', data: { ops: [{ op: 'replace', path: '/robots/c0/name', value: 'from the worker' }] } });
+  expect(frames).toEqual([]);
+  expect(store.getState().fleet.robots.c0.name).toBe('c0');
+});
+
+test('a kept worker whose link is no url is passed over, and the rest still start', async () => {
+  vi.useFakeTimers();
+  const broken = { ...FALLBACKS.fallbacks[0], machine: HOME, url: 'not a url' };
+  localStorage.setItem('svall.fallbacks', JSON.stringify({ ...FALLBACKS, fallbacks: [broken, ...FALLBACKS.fallbacks] }));
+  await start();
+  await vi.advanceTimersByTimeAsync(4000);
+  expect(Socket.all.filter(isWorker).map((s) => s.url)).toEqual(['wss://linus-vault.tail.ts.net:8443']);
+});
+
 test("a fleet that arrives from a worker after the Mac is back is not the page's", async () => {
   vi.useFakeTimers();
   localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
@@ -218,6 +249,21 @@ test('a worker in use that hears nothing once the page is back in view is droppe
   expect(worker.sent.at(-1)?.method).toBe('mobile.fallbacks');
   await vi.advanceTimersByTimeAsync(6000);
   expect(Socket.all.filter(isWorker)).toHaveLength(2);
+});
+
+test('a pairing still on its way at 2.5 s lets the socket go, and asks for the manifest only once the cookie is set', async () => {
+  vi.useFakeTimers();
+  let paired = () => {};
+  vi.stubGlobal('fetch', () => new Promise<Response>((r) => { paired = () => r(new Response(null, { status: 204 })); }));
+  vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', hash: '#p4ss', reload });
+  document.head.replaceChildren();
+  await start();
+  await vi.advanceTimersByTimeAsync(2500);
+  expect(Socket.all).toHaveLength(1);
+  expect(document.head.querySelector('link[rel=manifest]')).toBeNull();
+  paired();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(document.head.querySelector('link[rel=manifest]')).not.toBeNull();
 });
 
 test('a pairing the Mac never answers holds the socket back no longer than 2.5 s', async () => {

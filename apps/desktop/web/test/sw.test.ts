@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import vm from 'node:vm';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string };
+type Payload = { id: string; name: string; status: string; term?: 2; prompt?: string; promptId?: string; machine?: string };
 type Shown = { title: string; options: { tag: string; actions: { action: string }[] } };
 
 // the worker is a static file the page registers, so it runs here against a stand-in for its global;
@@ -40,6 +40,12 @@ describe('service worker notifications', () => {
     push(blocked(2));
     expect(shown[0].options.actions.map((a) => a.action)).toEqual(['approve', 'deny']);
     expect(shown[1].options.actions).toEqual([]);
+  });
+
+  it("offers neither for a worker's robot, whose answer the Mac's /rpc would not take", () => {
+    const { push, shown } = load();
+    push({ ...blocked(), machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' });
+    expect(shown[0].options.actions).toEqual([]);
   });
 
   it('posts Approve and Deny as the answer for the robot the notification named', async () => {
@@ -94,7 +100,10 @@ function kept(answer: (req: Req) => Promise<string | Response>) {
     open: (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name)!;
-      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => net({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((r) => r.text()).then((b) => { store.set(u, b); }))) });
+      return Promise.resolve({
+        addAll: (urls: string[]) => Promise.all(urls.map((u) => net({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((r) => r.text()).then((b) => { store.set(u, b); }))),
+        match: (u: string) => Promise.resolve(store.has(u) ? new Response(store.get(u)) : undefined),
+      });
     },
     keys: () => Promise.resolve([...stores.keys()]),
     delete: (name: string) => Promise.resolve(stores.delete(name)),
@@ -114,17 +123,19 @@ function kept(answer: (req: Req) => Promise<string | Response>) {
   vm.runInNewContext(source, { self, caches, fetch: net, setTimeout, URL, Response });
   const lifecycle = async (name: string) => { let done: unknown; listeners[name]({ waitUntil: (p: unknown) => { done = p; } }); await done; };
   // what the page is handed for a request, or undefined when the worker leaves it to the browser
+  // what the worker goes on doing after it has answered
+  const after: unknown[] = [];
   const fetch = (path: string, mode = 'cors', method = 'GET'): Promise<string> | undefined => {
     let handed: Promise<Response> | undefined;
-    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method, mode }, respondWith: (p: Promise<Response>) => { handed = p; } });
+    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method, mode }, respondWith: (p: Promise<Response>) => { handed = p; }, waitUntil: (p: unknown) => { after.push(p); } });
     return handed?.then((r) => r.text());
   };
   const headers = (path: string) => {
     let handed: Promise<Response> | undefined;
-    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method: 'GET', mode: 'navigate' }, respondWith: (p: Promise<Response>) => { handed = p; } });
+    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method: 'GET', mode: 'navigate' }, respondWith: (p: Promise<Response>) => { handed = p; }, waitUntil: () => {} });
     return handed!.then((r) => Object.fromEntries(r.headers));
   };
-  return { install: () => lifecycle('install'), activate: () => lifecycle('activate'), fetch, headers, stores };
+  return { install: () => lifecycle('install'), activate: () => lifecycle('activate'), fetch, headers, stores, settled: () => Promise.all(after) };
 }
 
 describe('service worker page keeping', () => {
@@ -190,10 +201,21 @@ describe('service worker page keeping', () => {
     expect(await sw.fetch('/', 'navigate')).toBe('bad gateway');
   });
 
+  it('keeps the build again on the next navigation once a page reloading past an older build has cleared it', async () => {
+    const sw = kept(mac);
+    await sw.install();
+    await sw.activate();
+    sw.stores.clear();
+    expect(await sw.fetch('/', 'navigate')).toBe('mac /');
+    await sw.settled();
+    expect([...sw.stores.get('svall-v2')!.keys()]).toEqual(['/', '/assets/app.js', '/robots/a.png']);
+  });
+
   it('waits on the network when nothing was kept', async () => {
     vi.useFakeTimers();
     let answer: (b: string) => void = () => {};
-    const sw = kept((req) => (req.mode === 'navigate' ? new Promise((r) => { answer = r; }) : Promise.resolve('file')));
+    // a Mac that is slow to answer anything
+    const sw = kept((req) => (req.mode === 'navigate' ? new Promise((r) => { answer = r; }) : new Promise(() => {})));
     await sw.activate();
     sw.stores.clear();
     let page: string | undefined;

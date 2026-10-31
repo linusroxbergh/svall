@@ -154,3 +154,13 @@ test('through a worker, a robot running elsewhere offers neither its docs nor a 
   expect(screen.queryByRole('button', { name: 'Close robot' })).toBeNull();
   expect(calls.some(([m]) => m === 'resources.get')).toBe(false);
 });
+
+test('through a worker, a robot running elsewhere shows its links and note to read, and takes no edit', async () => {
+  store.getState().setVia({ machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId });
+  await act(async () => { open(); });
+  expect(screen.getByText('the PR')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Remove the PR' })).toBeNull();
+  expect(screen.queryByLabelText('Add a url or path')).toBeNull();
+  expect(screen.getByText('old note')).toBeTruthy();
+  expect(screen.queryByRole('textbox', { name: 'Note' })).toBeNull();
+});

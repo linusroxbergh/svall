@@ -23,7 +23,8 @@ function useSave(id: string) {
   return [error, save] as const;
 }
 
-function Context({ c }: { c: Robot }) {
+// a robot running elsewhere than the worker the page reaches shows its links and note to read only
+function Context({ c, editable }: { c: Robot; editable: boolean }) {
   const [ref, setRef] = useState('');
   const [error, save] = useSave(c.id);
   const set = (context: ContextItem[]) => save({ context });
@@ -45,27 +46,31 @@ function Context({ c }: { c: Robot }) {
           <div key={`${it.ref}-${i}`} className="m-link">
             <i className="lg"><LinkIcon item={it} /></i>
             {href ? <a className="m-link-text" href={href} target="_blank" rel="noreferrer">{name}</a> : <span className="m-link-text">{name}</span>}
-            <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}>×</button>
+            {editable && <button type="button" aria-label={`Remove ${name}`} onClick={() => save({ context: c.context.filter((_, j) => j !== i), removed: [it.ref] })}>×</button>}
           </div>
         );
       })}
-      <form className="m-add" onSubmit={(e) => { e.preventDefault(); add(); }}>
-        <input value={ref} placeholder="Add a url or path" aria-label="Add a url or path" enterKeyHint="done" {...AS_TYPED}
-          onChange={(e) => setRef(e.target.value)} />
-        <button type="submit" disabled={!ref.trim()}>Add</button>
-      </form>
+      {editable && (
+        <form className="m-add" onSubmit={(e) => { e.preventDefault(); add(); }}>
+          <input value={ref} placeholder="Add a url or path" aria-label="Add a url or path" enterKeyHint="done" {...AS_TYPED}
+            onChange={(e) => setRef(e.target.value)} />
+          <button type="submit" disabled={!ref.trim()}>Add</button>
+        </form>
+      )}
       {error && <p className="sheet-error">{error}</p>}
     </div>
   );
 }
 
-function Note({ c, saving }: { c: Robot; saving: RefObject<Promise<boolean> | undefined> }) {
+function Note({ c, editable, saving }: { c: Robot; editable: boolean; saving: RefObject<Promise<boolean> | undefined> }) {
   const [error, save] = useSave(c.id);
   return (
     <div className="m-sec">
       <h4>Note</h4>
-      <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this robot is doing" value={c.note} maxLength={ROBOT_NOTE_MAX}
-        onSave={(v) => { if (v !== c.note) saving.current = save({ note: v }); }} />
+      {editable
+        ? <FollowTextarea className="m-field" rows={3} aria-label="Note" placeholder="What this robot is doing" value={c.note} maxLength={ROBOT_NOTE_MAX}
+          onSave={(v) => { if (v !== c.note) saving.current = save({ note: v }); }} />
+        : <p className="m-text">{c.note}</p>}
       {error && <p className="sheet-error">{error}</p>}
     </div>
   );
@@ -138,17 +143,18 @@ export function RobotMenu({ id, onClose, onClosed }: { id: string; onClose(): vo
     if (!note || await note) onClose();
   };
   const hint = hintText(c);
+  const here = !elsewhere(c, via);
 
   return (
     <Sheet title={c.name} onClose={close}>
       {hint && <p className="sheet-note">{hint}</p>}
-      <Context c={c} />
-      <Note c={c} saving={saving} />
-      {!elsewhere(c, via) && <DocsList tier="robot" id={id} />}
+      <Context c={c} editable={here} />
+      <Note c={c} editable={here} saving={saving} />
+      {here && <DocsList tier="robot" id={id} />}
       <LastCommand c={c} />
       <Instructions c={c} />
       <Details c={c} />
-      {!elsewhere(c, via) && (
+      {here && (
         <div className="sheet-form m-acts">
           {confirm
             ? <CloseConfirm c={c} onClosed={onClosed} />

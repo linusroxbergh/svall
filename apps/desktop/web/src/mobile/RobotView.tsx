@@ -39,6 +39,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   // what stands over the terminal while the machine it runs on is out of reach; the terminal holds the last screen it showed
   const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via); });
   const via = useApp((s) => s.via);
+  // through a worker, a robot running elsewhere keeps its draft and takes no prompt
+  const here = !robot || !elsewhere(robot, via);
   const status = useApp((s) => s.status);
   const online = status === 'online';
   const host = useRef<HTMLDivElement>(null);
@@ -128,7 +130,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       openedOn.current = robot?.machine;
       woken.then(() => { if (!left) return link.current?.open(); }).catch((e: Error) => { if (!left) setFailed(e.message); });
     }
-    phone.api().fire('robot.seen', { id });
+    if (here) phone.api().fire('robot.seen', { id });
     return () => { left = true; };
   }, [id, online, attempt, away, via?.machine]);
 
@@ -182,7 +184,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   // a prompt the fleet does not take comes back to the field, unless something new was typed meanwhile
   const send = () => {
     const text = prompt;
-    if (!text.trim()) return;
+    if (!text.trim() || !here) return;
     xterm.current?.scrollToBottom();
     setPrompt('');
     setSendError(undefined);
@@ -249,7 +251,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
           autoCorrect="off"
           onChange={(e) => setPrompt(e.target.value)}
         />
-        <button type="submit" disabled={!prompt.trim()}>send</button>
+        <button type="submit" disabled={!prompt.trim() || !here}>send</button>
       </form>
       {menu && <RobotMenu id={id} onClose={() => setMenu(false)} onClosed={onBack} />}
       {keys && <KeysSheet kind={robot?.agent?.kind} fontSize={fontSize} onKey={key} onSize={size} onClose={() => setKeys(false)} />}
