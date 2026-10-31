@@ -627,8 +627,9 @@ export class Fleet extends EventEmitter<Events> {
     // a prompt file an OpenCode plugin never took must not reach the next resume
     if (!prompt) fs.rmSync(this.promptFile(id), { force: true });
     if (!prompt || !isAgentCommand(command)) return command;
-    fs.writeFileSync(this.promptFile(id), promptText(command, prompt), { mode: 0o600 });
-    return withPromptFile(command, this.promptFile(id));
+    const { text, line } = withPromptFile(command, promptText(command, prompt), this.promptFile(id));
+    fs.writeFileSync(this.promptFile(id), text, { mode: 0o600 });
+    return line;
   }
 
   renameAgentProfile(from: string, to: string): void {

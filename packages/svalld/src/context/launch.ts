@@ -50,10 +50,16 @@ export const withoutV1Flags = (revive: string): string =>
 export const promptText = (command: string, prompt: string): string =>
   agentKindOf(command) === 'opencode' && /^\/\S+$/.test(prompt.trim()) ? `${prompt.trim()} ` : prompt;
 
-// an agent submits a prompt given as its argument once it is up. The shell reads it from a file: typed in before the
-// shell is reading, a line past 1024 bytes is cut. OpenCode reads none on a resume, so its plugin takes the file then
-export function withPromptFile(command: string, file: string): string {
-  const read = `"$(cat ${shq(file)}; rm -f ${shq(file)})"`;
-  if (agentKindOf(command) !== 'opencode') return `${command} -- ${read}`;
-  return /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, ''))) ? command : `${command} --prompt ${read}`;
+// a word sh, bash, zsh and fish all read as `s`: fish reads \\ and \' inside single quotes, so each ' and \ goes outside them
+const anyShq = (s: string): string =>
+  s.split(/(['\\])/).map((p, i) => (i % 2 ? `\\${p}` : p && `'${p}'`)).join('') || "''";
+
+// an agent submits a prompt given as its argument once it is up. The shell sources the line from `file`, as a line typed
+// in before the shell is reading is cut past 1024 bytes, and the line has no "$(…)", which fish before 3.4 refuses.
+// OpenCode reads none on a resume, so its plugin takes the prompt from the file then
+export function withPromptFile(command: string, prompt: string, file: string): { text: string; line: string } {
+  const opencode = agentKindOf(command) === 'opencode';
+  if (opencode && /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, '')))) return { text: prompt, line: command };
+  // `.` and not `source`, which dash lacks; fish has kept `.` as its deprecated name for source
+  return { text: `rm -f ${anyShq(file)}; ${command} ${opencode ? '--prompt' : '--'} ${anyShq(prompt)}\n`, line: `. ${anyShq(file)}` };
 }

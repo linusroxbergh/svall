@@ -19,9 +19,6 @@ machine needs, how to add it, and how to look after it.
 On the Mac, tmux 3.5 or newer is recommended, because Shift+Enter needs it. The Linux machine runs the tmux 3.7c Svall
 brings, as Ubuntu 24.04 ships 3.4.
 
-A fish login shell on the Linux machine needs fish 3.4 or newer: Ubuntu 22.04's packaged fish 3.3 cannot start a
-robot's agent with its first prompt.
-
 ## Home paths
 
 The Linux account's home need not be your home on the Mac. A move puts each of a robot's paths under the home it

@@ -309,8 +309,8 @@ runIf('Fleet dormancy', () => {
     await fleet.run(c.id, 'run the tests again', true);
     expect(store.state.robots[c.id].tmux).toBeDefined();
     const file = path.join(home, `${c.id}.prompt`);
-    expect(typed).toEqual([`claude --resume ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
-    expect(fs.readFileSync(file, 'utf8')).toBe('run the tests again');
+    expect(typed).toEqual([`. '${file}'`]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; claude --resume ${SID} -- 'run the tests again'\n`);
   });
 
   it('wakes a dormant codex with a prompt run into it, as its launch prompt', async () => {
@@ -323,6 +323,7 @@ runIf('Fleet dormancy', () => {
     vi.spyOn(tmux, 'sendLine').mockImplementation(async (_pane, text) => { typed.push(text); });
     await fleet.run(c.id, 'run the tests again', true);
     const file = path.join(home, `${c.id}.prompt`);
-    expect(typed).toEqual([`codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session ${SID} -- "$(cat '${file}'; rm -f '${file}')"`]);
+    expect(typed).toEqual([`. '${file}'`]);
+    expect(fs.readFileSync(file, 'utf8')).toBe(`rm -f '${file}'; codex resume --no-daemon -c check_for_update_on_startup=false -c tui.resume_cwd=session ${SID} -- 'run the tests again'\n`);
   });
 });
