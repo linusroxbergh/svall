@@ -16,21 +16,22 @@ import '../map/map.css';
 // since is when, on the beat's clock, the member's status last changed
 type Crew = Member & { since: number };
 
-const pr = (repo: string, n: number): ContextItem => ({ kind: 'pr', ref: `https://github.com/linusroxbergh/${repo}/pull/${n}`, label: '', source: 'auto' });
+const pr = (repo: string, n: number, open = false): ContextItem =>
+  ({ kind: 'pr', ref: `https://github.com/linusroxbergh/${repo}/pull/${n}`, label: '', source: 'auto', prState: open ? 'open' : undefined });
 const issue = (repo: string, n: number): ContextItem => ({ kind: 'issue', ref: `https://github.com/linusroxbergh/${repo}/issues/${n}`, label: '', source: 'auto' });
 const linear = (n: number): ContextItem => ({ kind: 'linear', ref: `https://linear.app/acme/issue/SHOP-${n}`, label: `SHOP-${n}`, source: 'scribe' });
 
 const CAST: Crew[] = ([
-  { name: 'checkout redesign', figure: 89, status: 'working', ctx: 46, links: [issue('storefront', 6)] },
+  { name: 'checkout redesign', figure: 89, status: 'working', ctx: 46, links: [issue('storefront', 6)], subs: 3 },
   { name: 'fix cart total', figure: 88, status: 'working', ctx: 58, links: [issue('storefront', 5), linear(150)] },
   { name: 'a11y audit', figure: 62, status: 'done', ctx: 71, links: [linear(133)] },
-  { name: 'flaky e2e', figure: 83, status: 'idle', ctx: 12, links: [] },
-  { name: 'refund webhooks', figure: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1)] },
-  { name: 'review #1', figure: 80, status: 'working', ctx: 62, links: [pr('payments-api', 1)] },
+  { name: 'flaky e2e', figure: 83, status: 'idle', ctx: 12, links: [], monitor: true, machine: 'remote-server' },
+  { name: 'refund webhooks', figure: 7, status: 'working', ctx: 33, links: [pr('payments-api', 1, true)] },
+  { name: 'review #1', figure: 80, status: 'working', ctx: 62, links: [pr('payments-api', 1)], subs: 2 },
   { name: 'changelog', figure: 8, status: 'working', ctx: 27, links: [] },
-  { name: 'sale banner', figure: 54, status: 'working', ctx: 41, links: [] },
+  { name: 'sale banner', figure: 54, status: 'working', ctx: 41, links: [pr('storefront', 7, true)], monitor: true },
   { name: 'BF26 code', figure: 71, status: 'working', ctx: 38, links: [] },
-  { name: 'checkout load test', figure: 66, status: 'idle', ctx: 9, links: [] },
+  { name: 'checkout load test', figure: 66, status: 'idle', ctx: 9, links: [], monitor: true, machine: 'remote-server' },
 ] satisfies Omit<Member, 'id'>[]).map((m) => ({ ...m, id: m.name, since: 0 }));
 
 const ISLANDS = [
@@ -112,7 +113,7 @@ function DemoMap({ at }: { at: Cell[] }) {
       {islands.flatMap((isl, i) => isl.crew.map((ci, k) => (
         <Token key={ci} c={robot(crew[ci], isl.id)} status={crew[ci].status}
           world={{ x: at[i].x + GRIDS[i].cells[k].x, y: at[i].y + GRIDS[i].cells[k].y }}
-          selected={false} dragging={false} hover={false} pointer={pointer}
+          selected={false} dragging={false} hover={false} machine={crew[ci].machine} pointer={pointer}
           onHoverStart={none} onHoverEnd={none} onOpen={none} onLink={none} onMenu={none} />
       )))}
     </>

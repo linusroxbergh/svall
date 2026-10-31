@@ -121,7 +121,7 @@
 .kc-mk { flex: none; width: 15px; height: 15px; display: grid; place-items: center; border-radius: 50%; box-shadow: 0 0 0 1px var(--shade-2); }
 .kc-mk svg { width: 10px; height: 10px; display: block; }
 .kc-mk[data-kind="review"] { background: var(--review); color: var(--ink-on-review); }
-.kc-mk[data-kind="monitor"] { background: var(--pt-sky); color: var(--map-2); }
+.kc-mk[data-kind="monitor"] { background: var(--monitor); color: var(--ink-on-monitor); }
 .kc-hand { flex: none; display: grid; place-items: center; color: var(--ink-3); }
 .kc-hand svg { width: 12px; height: 12px; display: block; }
 .kc-ring { flex: none; display: inline-flex; align-items: center; gap: var(--sp-xs); color: var(--ink-3); font-size: var(--text-xs); }

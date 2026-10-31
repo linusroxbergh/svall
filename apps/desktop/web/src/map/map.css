@@ -197,11 +197,11 @@
 .tok .mark{flex:none;box-sizing:border-box;width:calc(var(--tok)*.54);height:calc(var(--tok)*.54);padding:0;border:0;border-radius:50%;
   display:grid;place-items:center;pointer-events:auto;cursor:inherit;
   background:var(--card-1);color:color-mix(in srgb, var(--ink-land) 70%, transparent);
-  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--ink-3)}
+  box-shadow:0 1px 3px var(--shade-1), 0 0 0 calc(var(--tok)*.055) var(--mark-ring, var(--card-0))}
 .tok .mark svg{width:62%;height:62%;display:block}
-.tok .mark.review{cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
+.tok .mark.review{--mark-ring:color-mix(in oklab, var(--review) 40%, var(--white));cursor:pointer;background:var(--review);color:var(--ink-on-review);transition:background var(--dur) var(--ease),color var(--dur) var(--ease)}
 .tok .mark.review:hover{background:var(--ink-on-review);color:var(--review)}
-.tok .mark.monitor{background:var(--pt-sky);color:var(--map-2)}
+.tok .mark.monitor{--mark-ring:color-mix(in oklab, var(--monitor) 40%, var(--white));background:var(--monitor);color:var(--ink-on-monitor)}
 /* the subagent count, on the top-left corner clear of the other marks */
 .tok .corner .marks.left{right:auto;left:calc(var(--tok)*-.12)}
 .tok .mark.subs{width:auto;display:inline-flex;gap:calc(var(--tok)*.05);padding:0 calc(var(--tok)*.13) 0 calc(var(--tok)*.1);
@@ -218,7 +218,6 @@
   background:var(--away);color:var(--ink-on-away);font-size:calc(var(--tok)*.22);font-weight:var(--w-bold);letter-spacing:var(--track-loose);text-transform:uppercase}
 .tok:has(.mach) .card{height:calc(var(--card-h) + var(--tok)*.38);margin-top:calc(var(--tok)*-.38)}
 .tok:has(.mach) .card::before{top:calc(var(--tok)*.63)}
-.tok:has(.mach) .corner{top:calc(var(--tok)*-.38)}
 
 .tok.drag{z-index:var(--z-popover);pointer-events:none}
 .tok.drag .card{transform:translateY(-12px);
