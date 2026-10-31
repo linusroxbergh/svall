@@ -1,6 +1,7 @@
 @import '@xterm/xterm/css/xterm.css';
 @import '../tokens.css';
 @import '../fonts.css';
+@import '../icons.css';
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -51,18 +52,11 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .fleet h2 .starred { min-height: 40px; display: flex; align-items: center; }
 .fold {
   flex: 1; min-width: 0; min-height: 40px; padding: 0;
-  display: flex; align-items: center; gap: var(--sp-md);
+  display: flex; align-items: center; justify-content: flex-start; gap: var(--sp-md);
   letter-spacing: inherit; text-transform: inherit; text-align: left;
 }
 .fold span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fold small { flex: none; display: flex; align-items: center; gap: var(--sp-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
-/* the chevron keeps the same footprint pointing down or across, so the name beside it stays put */
-.chev {
-  flex: none; width: 7px; height: 7px; margin: 0 calc(var(--sp-xs) - 1px) calc(var(--sp-xs) - 1px) 1px;
-  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-  transform: rotate(45deg); transition: transform var(--dur) var(--ease);
-}
-.fold[aria-expanded='false'] .chev { margin: 0 var(--sp-xs) 0 0; transform: rotate(-45deg); }
 .empty { padding: calc(var(--sp-3xl) + var(--sp-2xl)) var(--sp-3xl); text-align: center; color: var(--ink-3); }
 .fleet > section > .sheet-error { padding: 0 var(--sp-2xl) var(--sp-md); }
 
@@ -206,7 +200,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
   width: 22px; height: 22px; display: grid; place-items: center; border-radius: var(--r-xs);
   font: var(--w-semibold) var(--text-2xs)/1 var(--mono); font-style: normal; color: var(--ink-3); background: var(--fill-1);
 }
-.m-link .lg svg { width: 13px; height: 13px; }
+.m-link .lg svg { width: var(--icon-sm); height: var(--icon-sm); }
 .m-link-text {
   padding: var(--sp-lg) 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: var(--text-lg); color: inherit; text-decoration: none;

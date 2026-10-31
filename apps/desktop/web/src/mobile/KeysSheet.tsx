@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { AgentKind } from '@svall/protocol';
+import { Minus, Plus } from '../icons.js';
 import { keyGroups } from './keys.js';
 import { Sheet } from './Sheet.js';
 
@@ -26,9 +27,9 @@ export function KeysSheet({ kind, fontSize, onKey, onSize, onClose }: Props): JS
           <div>
             <span>size</span>
             <span className="m-nav">
-              <button type="button" aria-label="Smaller text" onClick={() => onSize(-1)}>−</button>
+              <button type="button" aria-label="Smaller text" onClick={() => onSize(-1)}><Minus /></button>
               <b>{fontSize}</b>
-              <button type="button" aria-label="Larger text" onClick={() => onSize(1)}>+</button>
+              <button type="button" aria-label="Larger text" onClick={() => onSize(1)}><Plus /></button>
             </span>
           </div>
         </div>

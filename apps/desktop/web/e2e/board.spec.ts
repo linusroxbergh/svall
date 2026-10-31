@@ -119,11 +119,12 @@ test('right-click Move to places the robot, and Let the scribe place it hands th
   await svall.open();
   await page.getByTestId(`kc-${c.id}`).click({ button: 'right' });
   await expect(page.getByTestId('context-menu').getByRole('menuitem'))
-    .toHaveText(['Open terminal', 'Rename', 'Star', 'Move to›', 'Let the scribe place it', 'Delete', 'Reload']);
+    .toHaveText(['Open terminal', 'Rename', 'Star', 'Move to', 'Let the scribe place it', 'Delete', 'Reload']);
   await expect(page.getByTestId('menu-let the scribe place it')).toHaveAttribute('aria-disabled', 'true');
   await page.getByTestId('menu-move to').hover();
   const sub = page.getByTestId('context-submenu');
-  await expect(sub.getByRole('menuitem')).toHaveText(['To do✓', 'In progress', 'In review', 'Done']);
+  await expect(sub.getByRole('menuitem')).toHaveText(['To do', 'In progress', 'In review', 'Done']);
+  await expect(sub.getByTestId('menu-to do').getByTestId('menu-checked')).toBeVisible();
   // its own column sends nothing, so the scribe keeps placing it
   await sub.getByTestId('menu-to do').click();
   await expect(page.getByTestId('context-menu')).toHaveCount(0);
@@ -494,11 +495,11 @@ test('the board asks once whether the scribe places robots, and Turn on brings t
   await expect(ask).toContainText('Let the scribe place robots on the board?');
   await expect(ask).toContainText('Turning this on turns the scribe on too.');
   await expect(ask.getByTestId('placing-ask-off')).toBeFocused();
-  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off ▾');
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off');
   await ask.getByTestId('placing-ask-on').click();
   await expect(ask).toHaveCount(0);
   await expect.poll(() => placingState(svall)).toEqual([undefined, undefined, undefined]);
-  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe ▾');
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe');
   await expect(page.getByTestId('chip-placing')).toHaveAttribute('data-on', 'true');
   await page.reload();
   await expect(page.getByTestId('board')).toBeVisible();
@@ -520,7 +521,7 @@ test('a reflex Return keeps placing off, the map never asks, and the first-launc
   await page.keyboard.press('Enter');
   await expect(ask).toHaveCount(0);
   await expect.poll(() => placingState(svall)).toEqual([undefined, true, true]);
-  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off ▾');
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: off');
   await expect(page.getByTestId('toast')).toHaveCount(0);
 });
 
@@ -539,11 +540,12 @@ test('Keep off on an empty fleet counts as the first-launch toast, so the first 
 test('the Auto-place chip says who places robots and switches it, and places them now, the scribe only while it runs', async ({ page, svall }) => {
   await svall.open();
   const chip = page.getByTestId('chip-placing');
-  await expect(chip).toHaveText('Auto-place: off ▾');
+  await expect(chip).toHaveText('Auto-place: off');
   await expect(chip).toHaveAttribute('data-on', 'false');
   await chip.click();
   const menu = page.getByTestId('context-menu');
-  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByTestId('menu-off').getByTestId('menu-checked')).toBeVisible();
   await expect(menu.getByRole('separator')).toHaveCount(2);
   await expect(menu.getByTestId('menu-place now')).toHaveAttribute('aria-disabled', 'true');
   await expect(menu.getByTestId('menu-scribe')).toHaveAttribute('aria-disabled', 'true');
@@ -555,23 +557,25 @@ test('the Auto-place chip says who places robots and switches it, and places the
   await menu.getByTestId('menu-scribe').click();
   await expect(menu).toHaveCount(0);
   await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBeUndefined();
-  await expect(chip).toHaveText('Auto-place: scribe ▾');
+  await expect(chip).toHaveText('Auto-place: scribe');
   await expect(chip).toHaveAttribute('data-on', 'true');
 
   // with the scribe off nothing places robots, though placing stays on for when it runs again
   await svall.api.call('scribe.set', { enabled: false });
-  await expect(chip).toHaveText('Auto-place: off ▾');
+  await expect(chip).toHaveText('Auto-place: off');
   await chip.click();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only✓', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByTestId('menu-off').getByTestId('menu-checked')).toBeVisible();
   await page.keyboard.press('Escape');
   await svall.api.call('scribe.set', { enabled: true });
-  await expect(chip).toHaveText('Auto-place: scribe ▾');
+  await expect(chip).toHaveText('Auto-place: scribe');
 
   await chip.click();
-  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only', 'Scribe✓', 'Scribe settings…']);
+  await expect(menu.getByRole('menuitem')).toHaveText(['Place now', 'Offby hand only', 'Scribe', 'Scribe settings…']);
+  await expect(menu.getByTestId('menu-scribe').getByTestId('menu-checked')).toBeVisible();
   await menu.getByTestId('menu-off').click();
   await expect.poll(async () => (await svall.api.call('state.get', {})).placingOff).toBe(true);
-  await expect(chip).toHaveText('Auto-place: off ▾');
+  await expect(chip).toHaveText('Auto-place: off');
 
   // Place now runs a pass with Auto-place off too; no robot here has a session to read
   await chip.click();
@@ -595,7 +599,7 @@ test('the first board with robots on this Mac says where they start, once, and o
   await expect(toast.getByTestId('toast-dismiss')).toHaveText('Dismiss');
   await toast.getByTestId('toast-action').click();
   await expect.poll(() => placingState(svall)).toEqual([undefined, undefined, undefined]);
-  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe ▾');
+  await expect(page.getByTestId('chip-placing')).toHaveText('Auto-place: scribe');
   await page.reload();
   await expect(page.getByTestId(`kc-${c.id}`)).toBeVisible();
   await expect(page.getByTestId('toast')).toHaveCount(0);

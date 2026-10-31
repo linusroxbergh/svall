@@ -3,6 +3,7 @@ import { openSecondTerminal } from './actions.js';
 import { app, deps } from './boot.js';
 import { BrowserArea } from './BrowserArea.js';
 import { useApp } from './hooks.js';
+import { Split, Unsplit } from './icons.js';
 import { Changes } from './ide/Changes.js';
 import { Glide } from './Glide.js';
 import { FilesArea } from './ide/FilesArea.js';
@@ -13,32 +14,12 @@ import { awayLine, machineOf } from './placement.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
 
-// a pane divided in two, the half it gains filled in
-const SplitGlyph = () => (
-  <svg className="split-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-    <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
-    <rect x="13" y="7" width="6.5" height="10" rx="1.2" fill="currentColor" stroke="none" />
-  </svg>
-);
-
 const KINDS: { kind: Kind; label: string; action: ActionId }[] = [
   { kind: 'terminal', label: 'Terminal', action: 'paneTerminal' },
   { kind: 'browser', label: 'Browser', action: 'paneBrowser' },
   { kind: 'files', label: 'Files', action: 'paneFiles' },
   { kind: 'changes', label: 'Changes', action: 'paneChanges' },
 ];
-
-// the half a pane gives back, crossed out
-const UnsplitGlyph = ({ side }: { side: Side }) => {
-  const x = side === 'left' ? 4.5 : 14;
-  return (
-    <svg className="split-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
-      <rect x="2.5" y="4.5" width="19" height="15" rx="2.5" />
-      <path d="M12 4.5v15" />
-      <path d={`M${x} 9l5.5 6M${x + 5.5} 9l-5.5 6`} />
-    </svg>
-  );
-};
 
 type Props = { id: string; opacity?: number; lead?: React.ReactNode; trail?: React.ReactNode };
 
@@ -96,8 +77,8 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
         </span>
         <span className="spacer" />
         {two
-          ? <button className="px" data-testid={`pane-${side}-close`} data-tip="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><UnsplitGlyph side={side} /></button>
-          : <button className="tbtn psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><SplitGlyph />Split</button>}
+          ? <button className="px" data-testid={`pane-${side}-close`} data-tip="Close this pane" aria-label="Close this pane" onClick={() => set(closeSide(panes, side))}><Unsplit side={side} /></button>
+          : <button className="tbtn psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><Split />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
       {on && <MachineLine name={on} className="pon" testid={`pane-${side}-machine`} />}

@@ -60,7 +60,7 @@ const bar = () => [...screen.getByTestId('move-bar').children].map((i) => i.getA
 test('the sheet says it is ready and what travels, a line each, re-asks with a ticked credential file, and Move starts the move', async () => {
   await open(VAULT);
   expect(screen.getByTestId('move-title').textContent).toBe('Move ada to linus-vault');
-  expect(screen.getByTestId('move-ready').textContent).toBe('✓Ready to move');
+  expect(screen.getByTestId('move-ready').textContent).toBe('Ready to move');
   expect([...screen.getByTestId('move-summary').children].map((li) => li.textContent))
     .toEqual(['session 4 MB', 'branch kanban-board: 2 commits not on origin, 3 changed files', 'svall on linus-vault: will clone (first time)']);
   expect(checks()).toEqual([{ id: 'c0', machine: VAULT }]);
@@ -400,7 +400,7 @@ test('unticking its own worktree asks again without it', async () => {
 test('a refusal with a command to run opens a terminal there with it typed, over the sheet, which checks again once it closes', async () => {
   answers = [{ ok: false, refusal: { reason: 'claude is not logged in on linus-vault', action: 'log claude in there', run: 'claude auth login', details: [] } }, { ok: true, sheet: sheet() }];
   await open(VAULT);
-  expect(screen.getByTestId('move-blocked').textContent).toBe('!Not ready to move yet');
+  expect(screen.getByTestId('move-blocked').textContent).toBe('Not ready to move yet');
   expect(screen.queryByTestId('move-details')).toBeNull();
   expect(screen.getByTestId('move-action').textContent).toBe('Open terminal');
   await act(async () => fireEvent.click(screen.getByTestId('move-action')));

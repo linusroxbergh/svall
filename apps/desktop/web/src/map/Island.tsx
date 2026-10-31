@@ -1,8 +1,8 @@
 import { type Island as IslandModel } from '@svall/protocol';
 import { useMemo } from 'react';
 import { memoByValue } from '../hooks.js';
+import { Caret } from '../icons.js';
 import { theme } from '../theme.js';
-import { Chevron } from './Chevron.js';
 import { coastPath } from './coast.js';
 import { GrassTexture } from './GrassTexture.js';
 import { LandTexture } from './LandTexture.js';
@@ -77,7 +77,7 @@ export const Island = memoByValue(function Island({
       {/* a hidden island leaves the map; the sidebar is where it comes back */}
       <div className="ilabel" data-testid={`island-label-${island.id}`} style={{ top: pad - LABEL_OFFSET }} {...label} {...hold}>
         <button className="itog" data-testid={`island-toggle-${island.id}`} data-tip="Hide island" aria-label={`Hide ${island.name}`}
-          onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onClick={onToggle}><Chevron up /></button>
+          onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onClick={onToggle}><Caret dir="up" /></button>
         <b>{island.name}</b>
         <span className="ct">{count || 'empty'}</span>
       </div>

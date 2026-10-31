@@ -2,9 +2,9 @@ import type { Robot, ContextItem, Home as HomeConfig, HomeAction, Island } from 
 import { useMemo, useState } from 'react';
 import type { DropTarget } from '../drop.js';
 import { stop } from '../hooks.js';
+import { Caret, Plus } from '../icons.js';
 import type { DisplayStatus } from '../selectors.js';
 import { theme } from '../theme.js';
-import { Chevron } from './Chevron.js';
 import { coastPath } from './coast.js';
 import { LandTexture } from './LandTexture.js';
 import { Seabed, Waterline } from './Relief.js';
@@ -115,7 +115,7 @@ export function Home({
         style={{ bottom: collapsed ? theme.home.bar : theme.home.visible * scale + theme.home.rowGap, '--map-w': `${mapW}px`, '--home-shift': `${rowShift}px` } as React.CSSProperties}>
         <button className="htog" data-testid="home-toggle" data-tip={collapsed ? 'Show island' : 'Hide island'}
           aria-label={collapsed ? 'Show island' : 'Hide island'} aria-expanded={!collapsed} onPointerDown={stop} onClick={onToggle}>
-          <Chevron up={collapsed} />
+          <Caret dir={collapsed ? 'up' : 'down'} />
         </button>
         <div className="ilabel" data-testid="island-label-home" {...label}>
           <b>{island.name}</b>
@@ -128,9 +128,9 @@ export function Home({
             data-tip={actionTip(a)} onPointerDown={stop} onClick={() => press(a)}>{a.label}</button>
         ))}
         <div className="home-create">
-          <button className="hact dim" data-testid="home-new-island" data-tip="Adds an empty island to the map" onPointerDown={stop} onClick={onNewIsland}>+ New island</button>
+          <button className="hact dim" data-testid="home-new-island" data-tip="Adds an empty island to the map" onPointerDown={stop} onClick={onNewIsland}><Plus size="xs" />New island</button>
           <button className="hact dim" data-testid="home-new" data-tip={"Starts a mission control robot for you to talk to\nIt looks after the fleet, not your code"}
-            onPointerDown={stop} onClick={onNew}>+ New robot</button>
+            onPointerDown={stop} onClick={onNew}><Plus size="xs" />New robot</button>
         </div>
         {extra}
       </div>

@@ -3,6 +3,7 @@ import type { ResourceSource } from '@svall/protocol';
 import { app } from '../boot.js';
 import { AS_TYPED } from '../Field.js';
 import { useApp } from '../hooks.js';
+import { Caret } from '../icons.js';
 import { countsBySource, qualifierOf, tierOf, tierWhere, whereGroups, whereTier, type Tier } from './model.js';
 
 const pick = (where: string) => app.store.getState().setResourcesFilter({ where });
@@ -14,7 +15,7 @@ function TierNode({ tier, count, on, open }: { tier: Tier; count: number; on: bo
   return (
     <button className="res-node list-row sm" data-testid={`resources-group-${tier}`} aria-pressed={on} aria-expanded={open}
       onClick={() => pick(tierWhere(tier))} onDoubleClick={flip}>
-      <i className="res-car" data-testid={`resources-caret-${tier}`} onClick={(e) => { e.stopPropagation(); flip(); }}>{open ? '▾' : '▸'}</i>
+      <i className="res-car" data-testid={`resources-caret-${tier}`} onClick={(e) => { e.stopPropagation(); flip(); }}><Caret dir={open ? 'down' : 'right'} /></i>
       <i className="res-glyph" style={{ color: `var(${t.colour})` }}>{t.glyph}</i>
       <span className="res-node-n">{t.label}</span><span className="n">{count}</span>
     </button>

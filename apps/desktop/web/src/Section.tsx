@@ -2,7 +2,7 @@ import { useRef, type ReactNode } from 'react';
 import { app } from './boot.js';
 import { commitFocused } from './Field.js';
 import { useApp } from './hooks.js';
-import { Caret } from './Sidebar.js';
+import { Caret } from './icons.js';
 import type { Section as Fold } from './store/index.js';
 import { useWidthGrip } from './widthGrip.js';
 
@@ -48,7 +48,7 @@ export function Section({ name, title, head, testid, shut, children }: { name: s
       style={open && fold.height !== undefined ? { flexBasis: fold.height } : undefined}>
       <div className="kicker">
         <button type="button" className="sec-fold" data-testid={`sec-fold-${name}`} aria-expanded={open}
-          onClick={() => { commitFocused(); set({ ...fold, shut: open }); }}><Caret open={open} />{title}</button>
+          onClick={() => { commitFocused(); set({ ...fold, shut: open }); }}><Caret dir={open ? 'down' : 'right'} />{title}</button>
         {head}
       </div>
       {open && <div className="sec-body" data-opened={wasShut.current || undefined}>{children}</div>}
