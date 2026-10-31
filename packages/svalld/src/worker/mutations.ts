@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import os from 'node:os';
-import { ApiError, Mutation, UPDATE_FIELDS, type MachineId, type MethodName, type ParsedParams, type Result, type Robot } from '@svall/protocol';
+import { ApiError, ISLAND_FIELDS, Mutation, UPDATE_FIELDS, type Island, type MachineId, type MethodName, type ParsedParams, type Result, type Robot } from '@svall/protocol';
 import { Invalid } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { writeDurable } from '../durable.js';
 import { newMutationId } from '../ids.js';
+import { addIsland, dropIsland } from '../islands.js';
 import type { HomeConnection } from '../link/worker.js';
 import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
@@ -23,7 +24,7 @@ const NOT_HOME = 'mission control stays on this Mac; start it on another island'
 // the acknowledged mutations applied.ndjson keeps
 const APPLIED_KEPT = 500;
 
-type Served = 'robot.create' | 'robot.update' | 'robot.close' | 'robot.run' | 'robot.send' | 'robot.seen';
+type Served = 'robot.create' | 'robot.update' | 'robot.close' | 'robot.run' | 'robot.send' | 'robot.seen' | 'island.create' | 'island.update' | 'island.delete';
 
 /** What a worker serves from its own store for the CLI in its panes, its home linked or not, and journals for the home to apply. */
 export class WorkerMutations {
@@ -45,6 +46,14 @@ export class WorkerMutations {
     'robot.send': async (p) => this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true }),
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
+    'island.create': async (p) => this.createIsland(p),
+    'island.update': async (p) => this.updateIsland(p),
+    // the docs stay until the home takes the delete: a removal here would go home as its own change, even where the home refuses the delete
+    'island.delete': async (p) => {
+      dropIsland(this.o.store, p.id);
+      this.journal({ method: 'island.delete', params: p });
+      return {};
+    },
   };
   // the starts the quota let through that are not journaled yet, by the params the fleet hands back to `created`
   private starting = new Set<object>();
@@ -64,12 +73,14 @@ export class WorkerMutations {
     return !this.o.connection.connected() || !this.drained();
   }
 
-  /** Whether this worker answers the call itself: a new robot always, and a change to one of its robots while the home is away
-   *  or has yet to take a mutation. */
+  /** Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
+   *  a change to one of its robots, a new island, or a change to an island other than mission control. */
   serves(method: MethodName, params: unknown): boolean {
     if (method === 'robot.create') return true;
+    if (method === 'island.create') return this.away();
     const id = (params as { id?: unknown }).id;
-    const { robots } = this.o.store.state;
+    const { robots, islands } = this.o.store.state;
+    if (method === 'island.update' || method === 'island.delete') return typeof id === 'string' && Object.hasOwn(islands, id) && islands[id].kind !== 'home' && this.away();
     if (typeof id !== 'string' || !Object.hasOwn(robots, id) || robots[id].machine !== this.o.me) return false;
     return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run' || method === 'robot.send') && this.away());
   }
@@ -139,11 +150,36 @@ export class WorkerMutations {
     return robot;
   }
 
-  private journal(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'base' | 'delivery'>): void {
+  // context names paths as this machine has them
+  private createIsland(p: ParsedParams<'island.create'>): Island {
+    if (p.context?.length) throw new ApiError('not_reachable', unreachableLine(this.name));
+    let mutation!: Mutation;
+    // refused before the island is made here, as the home could never take it
+    this.o.store.update((d) => {
+      mutation = this.stamp({ method: 'island.create', params: p, island: structuredClone(addIsland(d, p)) });
+      this.o.connection.fits('mutation', mutation);
+    });
+    this.o.connection.journal('mutation', mutation);
+    return this.o.store.state.islands[mutation.island!.id];
+  }
+
+  private updateIsland(p: ParsedParams<'island.update'>): Island {
+    const named = Object.keys(p).filter((k) => k !== 'id' && p[k as keyof typeof p] !== undefined);
+    if (named.some((k) => !(ISLAND_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name));
+    const held = this.o.store.state.islands[p.id];
+    const base = Object.fromEntries(named.map((k) => [k, k === 'collapsed' ? Boolean(held.collapsed) : held[k as keyof Island]]));
+    const mutation = this.stamp({ method: 'island.update', params: p, base });
+    this.o.connection.fits('mutation', mutation);
+    const island = this.o.fleet.updateIsland(p.id, p);
+    this.o.connection.journal('mutation', mutation);
+    return island;
+  }
+
+  private journal(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'island' | 'base' | 'delivery'>): void {
     this.o.connection.journal('mutation', this.stamp(m));
   }
 
-  private stamp(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'base' | 'delivery'>): Mutation {
+  private stamp(m: Pick<Mutation, 'method' | 'params' | 'robot' | 'island' | 'base' | 'delivery'>): Mutation {
     return { id: newMutationId(), ...m, snapshotVersion: this.o.connection.snapshotVersion(), at: Date.now() };
   }
 }
@@ -154,5 +190,8 @@ function changed(m: Mutation): Record<string, unknown> {
   if (m.method === 'robot.create') return { robotId: m.robot?.id, islandId: m.robot?.islandId, cell: m.robot?.cell };
   if (m.method === 'robot.update') return { robotId: p.id, ...Object.fromEntries(UPDATE_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]])) };
   if (m.method === 'robot.run') return { robotId: p.id, delivery: m.delivery };
+  if (m.method === 'island.create') return { islandId: m.island?.id, name: m.island?.name, position: m.island?.position };
+  if (m.method === 'island.update') return { islandId: p.id, ...Object.fromEntries(ISLAND_FIELDS.filter((k) => p[k] !== undefined).map((k) => [k, p[k]])) };
+  if (m.method === 'island.delete') return { islandId: p.id };
   return { robotId: p.id };
 }

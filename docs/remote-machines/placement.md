@@ -226,12 +226,16 @@ the worker:
   again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run` and `read` reach the robots on it.
+- `svall island create` makes an island on the worker, and `svall island update` changes an island's name and
+  description; folding or unfolding one is taken too. `svall island delete` deletes an island no robot stands on in the
+  fleet as the worker holds it; its docs stay until this Mac takes the delete. Mission control, a new island with
+  `--context`, and any other change to an island get the sentence below.
 - `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it, with the worker's
   changes this Mac has yet to take over it.
 
-Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": new
-islands, moves, browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes
-this Mac as away once 45 seconds pass with nothing from it.
+Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": moves,
+browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes this Mac as away
+once 45 seconds pass with nothing from it.
 
 The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
 the last 500 this Mac has acknowledged, with what each changed. A note set with `svall robot update` or in the app holds
@@ -245,9 +249,16 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - A robot started there keeps its cell, or stands elsewhere on its island when another robot took that cell meanwhile.
   One whose island was deleted here, or is full, stands on the island "recovered from linus-vault", its worktree and
   transcript left as they are.
+- An island made there keeps its id, so a robot started on it there stands on it here. Where another island took its
+  place meanwhile it goes to the nearest free one, and a name another island has here gets a number: "docs 2".
 - A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
   "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile:
   "linus-vault set name to "kb2" while this Mac slept; another robot has that name here".
+- An island's name, description and fold follow the same rule. An island has no note, so svalld's log names the
+  worker's value: "linus-vault: island docs: linus-vault set description to "specs" while this Mac slept; it had changed
+  here since". A change to an island deleted here is dropped, the log saying so.
+- An island deleted there goes here with its docs, after the closes the worker made before it. One a robot stands on
+  here stays, and the log says why: "linus-vault: island.delete mu_3k9x0q2m7a not applied: island docs is not empty".
 - A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
   "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
 - A doc changed both there and here, such as a robot's `notes.md`, keeps this Mac's text. The worker's lands beside

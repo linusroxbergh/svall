@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HOME_ISLAND, Mutation, type FleetState, type Robot } from '@svall/protocol';
+import { HOME_ISLAND, Mutation, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
+import { docsDir } from '../../src/docs.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
 import { pane } from '../fleet-boot.js';
 import { H, W, island, placed, robot, stopWorlds, until, world } from '../placement/world.js';
@@ -178,12 +179,39 @@ describe('a worker serving its robots while the home is away', () => {
     expect(w.worker.outbox.after(w.worker.outbox.acked()).at(-1)).toMatchObject({ kind: 'robot.sync', data: { robotId: 'c_1', fields: { unread: false } } });
   });
 
-  it('island.create and robot.update of a home robot are still refused with the one sentence', async () => {
+  it('robot.update and robot.close of a home robot are still refused with the one sentence', async () => {
     const { w, call, mutations } = setup();
     w.worker.store.update((d) => { d.robots.c_home = robot({ id: 'c_home', cell: { x: 3, y: 0 } }); });
-    expect(await call('island.create', { name: 'x' })).toEqual({ id: 1, error: { code: 'not_reachable', message: UNREACHABLE } });
     expect(await call('robot.update', { id: 'c_home', note: 'x' })).toEqual({ id: 1, error: { code: 'not_reachable', message: UNREACHABLE } });
     expect(await call('robot.close', { id: 'c_home' })).toEqual({ id: 1, error: { code: 'not_reachable', message: UNREACHABLE } });
+    expect(mutations()).toEqual([]);
+  });
+
+  it('island.create, an island.update of name, description and fold, and island.delete are served here and journaled in order, the update with its base; the docs stay', async () => {
+    const { w, call, mutations } = setup();
+    const made = (await call('island.create', { name: 'docs', description: 'd' }) as { result: Island }).result;
+    expect(w.worker.store.state.islands[made.id]).toMatchObject({ name: 'docs', description: 'd' });
+    expect(await call('island.update', { id: made.id, name: 'notes', description: 'e', collapsed: true })).toMatchObject({ result: { id: made.id, name: 'notes', description: 'e', collapsed: true } });
+    const docs = docsDir(w.worker.paths.docs, 'island', made.id);
+    fs.mkdirSync(docs, { recursive: true });
+    expect(await call('island.delete', { id: made.id })).toEqual({ id: 1, result: {} });
+    expect(w.worker.store.state.islands[made.id]).toBeUndefined();
+    expect(fs.existsSync(docs)).toBe(true);
+    expect(mutations()).toMatchObject([
+      { method: 'island.create', params: { name: 'docs', description: 'd' }, island: made },
+      { method: 'island.update', params: { id: made.id, name: 'notes', description: 'e', collapsed: true }, base: { name: 'docs', description: 'd', collapsed: false } },
+      { method: 'island.delete', params: { id: made.id } },
+    ]);
+  });
+
+  it('mission control, an island update past name, description and fold, and a new island with context get the one sentence; a delete of an island with a robot is refused; nothing is journaled', async () => {
+    const { call, mutations } = setup();
+    const refused = { id: 1, error: { code: 'not_reachable', message: UNREACHABLE } };
+    expect(await call('island.update', { id: HOME_ISLAND, name: 'x' })).toEqual(refused);
+    expect(await call('island.delete', { id: HOME_ISLAND })).toEqual(refused);
+    expect(await call('island.update', { id: 'i_1', name: 'x', position: { x: 3, y: 9 } })).toEqual(refused);
+    expect(await call('island.create', { name: 'x', context: [{ kind: 'other', ref: 'https://example.com/spec', label: 'spec', source: 'manual' }] })).toEqual(refused);
+    expect(await call('island.delete', { id: 'i_1' })).toEqual({ id: 1, error: { code: 'invalid', message: 'island a is not empty' } });
     expect(mutations()).toEqual([]);
   });
 
@@ -245,14 +273,39 @@ describe('a worker serving its robots while the home is away', () => {
     expect(w.home.store.state.robots.c_2).toBeUndefined();
   });
 
+  it('a snapshot that comes while island mutations are unacked keeps an island made, changed and deleted here', async () => {
+    const home = { islands: { i_1: island, i_2: { ...island, id: 'i_2', name: 'b', position: { x: 10, y: 0 } } }, robots: { c_1: placed({ id: 'c_1' }) } };
+    const { w, call, create } = setup({ home });
+    w.worker.store.update((d) => { d.islands.i_2 = structuredClone(home.islands.i_2); });
+    await w.link();
+    await drained(w);
+    const release = w.home.hold();
+    // a new robot the home has yet to take, so the island calls after it are served here
+    await create();
+    const made = (await call('island.create', { name: 'docs' }) as { result: Island }).result;
+    await call('island.update', { id: 'i_1', name: 'renamed', collapsed: true });
+    expect(await call('island.delete', { id: 'i_2' })).toEqual({ id: 1, result: {} });
+    w.home.store.update((d) => { d.islands.i_1.instructions = 'from home'; });
+    await until(() => expect(w.worker.store.state.islands.i_1.instructions).toBe('from home'));
+    expect(w.worker.store.state.islands.i_1).toMatchObject({ name: 'renamed', collapsed: true });
+    expect(w.worker.store.state.islands[made.id]).toMatchObject({ name: 'docs' });
+    expect(w.worker.store.state.islands.i_2).toBeUndefined();
+    release();
+    await drained(w);
+    expect(w.home.store.state.islands.i_1).toMatchObject({ name: 'renamed', collapsed: true, instructions: 'from home' });
+    expect(w.home.store.state.islands[made.id]).toMatchObject({ name: 'docs' });
+    expect(w.home.store.state.islands.i_2).toBeUndefined();
+  });
+
   it('an acked mutation is recorded in journal/applied.ndjson with what it changed, before the outbox trims it', async () => {
     const { w, create, call } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
     // the file keeps its last 500 lines
     fs.writeFileSync(w.worker.paths.applied, Array.from({ length: 499 }, (_, i) => `${JSON.stringify({ n: i })}\n`).join(''));
     const made = madeIn(await create());
     await call('robot.update', { id: 'c_1', note: 'reviewing' });
+    await call('island.update', { id: 'i_1', name: 'renamed' });
     const entries = w.worker.outbox.after(0).filter((e) => e.kind === 'mutation');
-    const [m, u] = entries.map((e) => Mutation.parse(e.data));
+    const [m, u, i] = entries.map((e) => Mutation.parse(e.data));
     const held: string[] = [];
     const record = w.worker.mutations.acked.bind(w.worker.mutations);
     vi.spyOn(w.worker.mutations, 'acked').mockImplementation((dropped) => { held.push(fs.readFileSync(w.worker.paths.outbox, 'utf8')); record(dropped); });
@@ -261,10 +314,11 @@ describe('a worker serving its robots while the home is away', () => {
     expect(held.some((text) => text.includes(m.id) && text.includes(u.id))).toBe(true);
     const lines = fs.readFileSync(w.worker.paths.applied, 'utf8').trim().split('\n').map((l) => JSON.parse(l) as unknown);
     expect(lines).toHaveLength(500);
-    expect(lines[0]).toEqual({ n: 1 });
-    expect(lines.slice(-2)).toEqual([
+    expect(lines[0]).toEqual({ n: 2 });
+    expect(lines.slice(-3)).toEqual([
       { id: m.id, seq: entries[0].seq, method: 'robot.create', at: m.at, changed: { robotId: made.id, islandId: 'i_1', cell: made.cell } },
       { id: u.id, seq: entries[1].seq, method: 'robot.update', at: u.at, changed: { robotId: 'c_1', note: 'reviewing' } },
+      { id: i.id, seq: entries[2].seq, method: 'island.update', at: i.at, changed: { islandId: 'i_1', name: 'renamed' } },
     ]);
   });
 

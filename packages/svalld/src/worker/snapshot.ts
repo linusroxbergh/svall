@@ -1,6 +1,6 @@
 import jsonpatch from 'fast-json-patch';
 import { z } from 'zod';
-import { FleetState, Robot, UPDATE_FIELDS, WORKER_OWNED, type MachineId, type Mutation } from '@svall/protocol';
+import { FleetState, ISLAND_FIELDS, Robot, UPDATE_FIELDS, WORKER_OWNED, type Island, type MachineId, type Mutation } from '@svall/protocol';
 import type { Store } from '../store.js';
 
 /** The fleet as the home holds it, and the home's user folder and Claude, Codex and OpenCode config folders that paths in it may name. */
@@ -55,6 +55,26 @@ function keepPending(robots: Record<string, Robot>, held: Record<string, Robot>,
   }
 }
 
+// the same for islands: one made here, the fields an update named, and one a delete took away
+function keepPendingIslands(islands: Record<string, Island>, held: Record<string, Island>, pending: Mutation[]): void {
+  for (const m of pending) {
+    const id = m.island?.id ?? (m.params as { id?: unknown } | undefined)?.id;
+    if (typeof id !== 'string') continue;
+    if (m.method === 'island.delete') delete islands[id];
+    if (!Object.hasOwn(held, id)) continue;
+    if (m.method === 'island.create') islands[id] ??= held[id];
+    if (m.method !== 'island.update' || !Object.hasOwn(islands, id)) continue;
+    const p = m.params as Record<string, unknown>;
+    const named: string[] = ISLAND_FIELDS.filter((k) => p[k] !== undefined);
+    const to = islands[id] as Record<string, unknown>;
+    const from = held[id] as Record<string, unknown>;
+    for (const k of named.includes('description') ? [...named, 'descriptionSource'] : named) {
+      if (from[k] === undefined) delete to[k];
+      else to[k] = from[k];
+    }
+  }
+}
+
 /** Takes the home's snapshot into a worker's store, keeping the scribe switch, the robots placed here with their own fields at
  *  that placement, and what `pending` mutations changed; `home` gets its entry with this snapshot's version. */
 export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?: { id: MachineId; name: string; reachable: boolean }, pending: Mutation[] = []): void {
@@ -67,6 +87,7 @@ export function mergeSnapshot(store: Store, snap: Snapshot, me: MachineId, home?
       robots[id] = held?.machine === me && r.machine === me && generation(held) === generation(r) ? withOwned(r, held) : r;
     }
     keepPending(robots, d.robots, pending);
+    keepPendingIslands(incoming.islands, d.islands, pending);
     const { scribeOff } = d;
     for (const k of Object.keys(d)) delete (d as Record<string, unknown>)[k];
     Object.assign(d, incoming, { robots }, scribeOff && { scribeOff });

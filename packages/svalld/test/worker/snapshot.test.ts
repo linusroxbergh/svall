@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MachineId, emptyState, type FleetState, type Robot } from '@svall/protocol';
+import { MachineId, emptyState, type FleetState, type Mutation, type Robot } from '@svall/protocol';
 import { Store } from '../../src/store.js';
 import { applyReport, mergeSnapshot, ownedReport, type RobotSync, type Snapshot } from '../../src/worker/snapshot.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -80,6 +80,21 @@ describe('mergeSnapshot', () => {
     expect(Object.keys(store.state.robots)).toEqual(['r_a']);
     expect(store.state.robots.r_a).toMatchObject({ name: 'mine', note: '', instructions: 'theirs' });
     expect(store.state.robots.r_a).not.toHaveProperty('noteSource');
+  });
+
+  it('an island the home made from a pending create comes as the home placed it, with the fields a later pending update named', () => {
+    const made = { ...island, id: 'i_2', name: 'docs', position: { x: 10, y: 0 } };
+    // the home took the create, under a number and at another place, and its ack is still on the way
+    const placed = { ...made, name: 'docs 2', position: { x: 20, y: 0 } };
+    const create: Mutation = { id: 'mu_0000000001', method: 'island.create', params: { name: 'docs' }, island: made, snapshotVersion: 0, at: 1 };
+    const update: Mutation = { id: 'mu_0000000002', method: 'island.update', params: { id: 'i_2', name: 'notes', collapsed: true }, base: { name: 'docs', collapsed: false }, snapshotVersion: 0, at: 2 };
+    const taken = fleet([], { islands: { i_1: island, i_2: placed } });
+    const a = storeWith(fleet([], { islands: { i_1: island, i_2: made } })).store;
+    mergeSnapshot(a, snapshot(taken), me, undefined, [create]);
+    expect(a.state.islands.i_2).toEqual(placed);
+    const b = storeWith(fleet([], { islands: { i_1: island, i_2: { ...made, name: 'notes', collapsed: true } } })).store;
+    mergeSnapshot(b, snapshot(taken), me, undefined, [create, update]);
+    expect(b.state.islands.i_2).toEqual({ ...placed, name: 'notes', collapsed: true });
   });
 
   it('takes the whole record from the snapshot for a robot that left this machine or came back at a new placement', () => {

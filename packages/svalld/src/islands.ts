@@ -25,11 +25,11 @@ export function createIsland({ store }: Deps, p: NewIsland): Island {
 }
 
 /** Adds an island to the draft where it clears every other. */
-export function addIsland(draft: FleetState, p: NewIsland): Island {
+export function addIsland(draft: FleetState, p: NewIsland, id = newId('i')): Island {
   const size = p.size ?? DEFAULT_SIZE;
   const wanted = p.position ?? defaultPosition(draft);
   const island: Island = {
-    id: newId('i'), name: uniqueName(Object.values(draft.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
+    id, name: uniqueName(Object.values(draft.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
     position: wanted, size, seed: p.seed ?? randomSeed(),
   };
   setDescription(island, island.description);
@@ -41,7 +41,7 @@ export function addIsland(draft: FleetState, p: NewIsland): Island {
   return island;
 }
 
-export function updateIsland({ store, log }: Deps, id: string, patch: IslandPatch): Island {
+export function updateIsland({ store, log }: Pick<Deps, 'store' | 'log'>, id: string, patch: IslandPatch): Island {
   const current = store.state.islands[id];
   if (!Object.hasOwn(store.state.islands, id)) throw new NotFound(`no island ${id}`);
   // home is drawn in screen space; only its text and its fold can change
@@ -96,9 +96,14 @@ export function reorderIsland({ store }: Deps, id: string, targetId: string, aft
 }
 
 export function deleteIsland({ store, log, paths }: Deps, id: string): void {
+  dropIsland(store, id);
+  removeDocs(paths.docs, 'island', id, log);
+}
+
+/** Takes an empty island off the fleet, leaving its docs. */
+export function dropIsland(store: Store, id: string): void {
   if (!Object.hasOwn(store.state.islands, id)) throw new NotFound(`no island ${id}`);
   if (store.state.islands[id].kind === 'home') throw new Invalid('mission control cannot be deleted');
   if (Object.values(store.state.robots).some((c) => c.islandId === id)) throw new Invalid(`island ${store.state.islands[id].name} is not empty`);
   store.update((d) => { delete d.islands[id]; settleHome(d); });
-  removeDocs(paths.docs, 'island', id, log);
 }
