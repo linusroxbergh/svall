@@ -86,9 +86,9 @@ export function Keybindings() {
                     onClick={() => listen(capturing === id ? undefined : id)}>
                     {capturing === id ? 'press a key' : chordLabel(chord)}
                   </button>
-                  {chord && <button className="key-x" data-testid={`key-clear-${id}`} data-tip="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
+                  {chord && <button className="ib filled" data-testid={`key-clear-${id}`} data-tip="No key" aria-label={`Unbind ${ACTIONS[id].label}`}
                     onClick={() => put(id, null)}><Close size="xs" /></button>}
-                  {id in bindings && <button className="key-x" data-testid={`key-reset-${id}`} data-tip={`Back to ${chordLabel(shipped)}`}
+                  {id in bindings && <button className="ib filled" data-testid={`key-reset-${id}`} data-tip={`Back to ${chordLabel(shipped)}`}
                     aria-label={`Reset ${ACTIONS[id].label}`} onClick={() => reset(id)}><Reset size="xs" /></button>}
                 </b>
               </div>
@@ -96,8 +96,8 @@ export function Keybindings() {
                 <div className="row key-ask" role="alert" data-testid={`key-ask-${id}`}>
                   <span>{chordLabel(ask.chord)} {ask.from ? `is taken by ${ACTIONS[ask.from].label}` : `is taken by your Ghostty config (${ask.ghostty})`}</span>
                   <b className="set-keys">
-                    <button className="btn" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
-                    <button className="btn" onClick={() => setAsk(undefined)}>Cancel</button>
+                    <button className="btn sm" data-testid={`key-take-${id}`} onClick={() => put(id, ask.chord, ask.from)}>Override</button>
+                    <button className="btn sm" onClick={() => setAsk(undefined)}>Cancel</button>
                   </b>
                 </div>
               )}
@@ -105,7 +105,7 @@ export function Keybindings() {
                 <div className="row key-ask" role="alert" data-testid={`key-held-${id}`}>
                   <span>{chordLabel(shipped)} is taken by your Ghostty config ({held})</span>
                   <b className="set-keys">
-                    <button className="btn" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
+                    <button className="btn sm" data-testid={`key-claim-${id}`} onClick={() => claim(id, shipped)}>Take it</button>
                   </b>
                 </div>
               )}

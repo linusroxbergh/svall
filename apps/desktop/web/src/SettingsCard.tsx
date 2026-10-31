@@ -76,9 +76,9 @@ function Dormancy() {
     <div className="row">
       <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up.</Info></span>
       <b className="set-zoom">
-        <button data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}><Minus /></button>
+        <button className="ib filled" data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}><Minus /></button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>
-        <button data-testid="dormancy-more" aria-label="Later" disabled={more === undefined} onClick={() => setDormancy(deps(), more!)}><Plus /></button>
+        <button className="ib filled" data-testid="dormancy-more" aria-label="Later" disabled={more === undefined} onClick={() => setDormancy(deps(), more!)}><Plus /></button>
       </b>
     </div>
   );
@@ -186,12 +186,12 @@ function Machines() {
       {error && (
         <div className="row" data-testid="machines-error">
           <span>{error}</span>
-          <b><button className="btn set-open" data-testid="machines-reload" onClick={list}>Read again</button></b>
+          <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
         </div>
       )}
       <div className="row">
         <span>another machine<Info id="hosts">Svall installs itself on a Linux machine over ssh and reports what is left to do. From a terminal: <code>svall host</code></Info></span>
-        <b><button className="btn set-open" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
+        <b><button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
       </div>
     </div>
   );
@@ -282,7 +282,7 @@ function Notifications() {
         <>
           <div className="desc" data-testid="set-notify-denied">macOS has notifications turned off for Svall.</div>
           <div className="opens">
-            <button className="btn" data-testid="set-notify-settings" onClick={() => app.bridge.send({ type: 'notify.settings' })}>Open System Settings</button>
+            <button className="btn sm" data-testid="set-notify-settings" onClick={() => app.bridge.send({ type: 'notify.settings' })}>Open System Settings</button>
           </div>
         </>
       )}
@@ -298,7 +298,7 @@ function Update() {
       <div className="rows">
         <div className="row">
           <span>Svall {version} is out</span>
-          <b><button className="btn set-open" data-testid="set-update" onClick={() => app.bridge.send({ type: 'update.install' })}>Update</button></b>
+          <b><button className="btn sm" data-testid="set-update" onClick={() => app.bridge.send({ type: 'update.install' })}>Update</button></b>
         </div>
       </div>
     </>
@@ -318,9 +318,9 @@ function Machine() {
         <div className="row">
           <span>zoom<Info id="zoom">{zoomOut && zoomIn ? `${zoomOut} and ${zoomIn} scale` : 'Scales'} the map, panels and terminal text.{zoomReset && ` ${zoomReset} sets 100%.`}</Info></span>
           <b className="set-zoom">
-            <button data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}><Minus /></button>
+            <button className="ib filled" data-testid="zoom-out" aria-label="Smaller" onClick={() => set({ zoom: zoomBy(zoom, -1) })}><Minus /></button>
             <span className="tnum" data-testid="zoom-level">{Math.round(zoom * 100)}%</span>
-            <button data-testid="zoom-in" aria-label="Bigger" onClick={() => set({ zoom: zoomBy(zoom, 1) })}><Plus /></button>
+            <button className="ib filled" data-testid="zoom-in" aria-label="Bigger" onClick={() => set({ zoom: zoomBy(zoom, 1) })}><Plus /></button>
           </b>
         </div>
       </div>
@@ -363,9 +363,9 @@ function Machine() {
         )}
       </div>
       <div className="opens">
-        <button className="btn" data-testid="settings-ghostty" disabled={!shell} data-tip="Terminal font, colours and cursor"
+        <button className="btn sm" data-testid="settings-ghostty" disabled={!shell} data-tip="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn" data-testid="settings-fleet" disabled={!shell} data-tip="Mission control, fleet defaults, scribe and phone logins"
+        <button className="btn sm" data-testid="settings-fleet" disabled={!shell} data-tip="Mission control, fleet defaults, scribe and phone logins"
           onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
       </div>
     </>
@@ -388,7 +388,7 @@ function Browser() {
       </div>
       {!op && <div className="desc">Run <code>brew install 1password-cli</code>, then turn on Integrate with 1Password CLI in 1Password's Developer settings.</div>}
       <div className="opens">
-        <button className="btn" data-testid="settings-cookies" disabled={!shell} data-tip="Pick a Chrome profile to copy from"
+        <button className="btn sm" data-testid="settings-cookies" disabled={!shell} data-tip="Pick a Chrome profile to copy from"
           onClick={() => app.bridge.send({ type: 'browser.importCookies' })}>Import Chrome cookies</button>
         <Info id="cookies">A one-time copy, so your Chrome sign-ins work here too.</Info>
       </div>
@@ -421,7 +421,7 @@ export function SettingsCard() {
     <div className="set-win dialog" ref={box} data-testid="settings" role="dialog" aria-label="Settings">
       <div className="set-bar">
         <h2>Settings</h2>
-        <button className="side-x" data-testid="settings-close" data-tip={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
+        <button className="ib side-x" data-testid="settings-close" data-tip={keyTip('Close', 'toggleSettings', bindings)} aria-label="Close the settings"
           onClick={() => app.store.getState().toggleSettings(false)}><Close /></button>
       </div>
       <nav className="set-nav" role="tablist" aria-orientation="vertical">

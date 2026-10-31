@@ -50,7 +50,7 @@ export function FeedbackPanel({ diagnostics, hint = 'Version, health checks, las
 
   return (
     <div className="fb">
-      <div className="kb-seg" role="group" aria-label="Kind">
+      <div className="seg" role="group" aria-label="Kind">
         <Glide at={kind} />
         {(['bug', 'idea'] as const).map((k) => (
           <button key={k} data-testid={`feedback-kind-${k}`} aria-pressed={kind === k} onClick={() => setDraft({ kind: k })}>{k === 'bug' ? 'Bug' : 'Idea'}</button>

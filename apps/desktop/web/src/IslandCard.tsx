@@ -11,7 +11,7 @@ import { Section } from './Section.js';
 import { robotsOf } from './selectors.js';
 
 function DeleteIsland({ id, testid, label }: { id: string; testid: string; label: string }) {
-  return <button className="btn dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
+  return <button className="btn sm dan" data-testid={testid} onClick={() => app.store.getState().setDeletingIsland(id)}>{label}</button>;
 }
 
 // the repository most of the island's robots stand in

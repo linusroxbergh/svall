@@ -76,7 +76,7 @@ export const Island = memoByValue(function Island({
       <svg className="waterline" width={bw} height={bh} viewBox={`0 0 ${bw} ${bh}`}><Waterline sand={sand} /></svg>
       {/* a hidden island leaves the map; the sidebar is where it comes back */}
       <div className="ilabel" data-testid={`island-label-${island.id}`} style={{ top: pad - LABEL_OFFSET }} {...label} {...hold}>
-        <button className="itog" data-testid={`island-toggle-${island.id}`} data-tip="Hide island" aria-label={`Hide ${island.name}`}
+        <button className="ib xs itog" data-testid={`island-toggle-${island.id}`} data-tip="Hide island" aria-label={`Hide ${island.name}`}
           onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()} onClick={onToggle}><Caret dir="up" /></button>
         <b>{island.name}</b>
         <span className="ct">{count || 'empty'}</span>

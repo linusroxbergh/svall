@@ -1,29 +1,18 @@
-/* the board's bar: the view switch, the island chips, then Needs you and + Column at the end */
+/* the board's bar: the view switch, the island chips, then Needs you and + Column at the end. Its controls share one height and
+   the chips' fill and hairline; the shape says what each is: a mode, a filter, or an action */
 .kb-bar { flex: none; height: var(--bar-h); box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1); }
-.kb-seg { position: relative; isolation: isolate; flex: none; display: inline-flex; padding: var(--sp-2xs); border-radius: var(--r-card); background: var(--fill-1); border: 1px solid var(--line-soft); }
-.kb-seg button { padding: var(--sp-xs) var(--sp-2xl); border-radius: var(--r-md); background: none; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); }
-.kb-seg button:hover { background: none; color: var(--ink); }
-.kb-seg button[aria-pressed="true"] { color: var(--ink); cursor: default; }
-/* the pressed button's fill: one pill behind a segmented control's buttons that eases to each one pressed */
-.glide { position: absolute; z-index: -1; top: var(--sp-2xs); bottom: var(--sp-2xs); left: 0; border-radius: var(--r-md); background: var(--fill-3); pointer-events: none;
-  transition: translate var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out); }
-.glide[data-still="true"] { transition: none; }
+.kb-bar .btn.sm { border: 1px solid var(--line-soft); background: var(--fill-1); color: var(--ink-2); }
+.kb-bar .btn.sm:hover { background: var(--fill-2); color: var(--ink); }
 .kb-sep { flex: none; width: 1px; height: 20px; background: var(--line); }
 /* the island chips give way first in a narrow window, and scroll sideways rather than wrap */
 .kb-chips { position: relative; flex: 0 1 auto; min-width: 0; display: flex; gap: var(--sp-lg); overflow-x: auto; scrollbar-width: none; }
 .kb-chips::-webkit-scrollbar { display: none; }
 .kb-chips[data-more="true"] { mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); -webkit-mask-image: linear-gradient(to right, var(--ink) calc(100% - 40px), transparent); }
-.kb-page { flex: none; display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: var(--r-pill); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); }
-.kb-page:hover:not(:disabled) { background: var(--fill-2); color: var(--ink); }
-.kb-page:disabled:hover { background: var(--fill-1); }
+/* the pager scrolls the chips, so it wears their round dress */
+.kb-page { width: var(--ctl-md); height: var(--ctl-md); border: 1px solid var(--line-soft); border-radius: var(--r-pill); background: var(--fill-1); color: var(--ink-2); }
+.kb-page:disabled { background: var(--fill-1); }
 .kb-gap { flex: 1; }
-.kb-chip { flex: none; display: inline-flex; align-items: center; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-radius: var(--r-pill); font-size: var(--text-sm); font-weight: var(--w-medium); color: var(--ink-2); background: var(--fill-1); border: 1px solid var(--line-soft); white-space: nowrap; }
-.kb-chip:hover { background: var(--fill-2); color: var(--ink); }
-.kb-chip:is([aria-pressed="true"], [data-on="true"]) { background: var(--sand-fill); color: var(--sand-hi); border-color: color-mix(in srgb, var(--sand) 30%, transparent); }
 .kb-chip[data-busy="true"] svg:first-child { animation: spin var(--pulse-fast) linear infinite; }
-.kb-n { color: var(--ink-3); }
-.kb-chip[aria-pressed="true"] .kb-n { color: inherit; opacity: .7; }
-.kb-ghost { flex: none; padding: var(--sp-xs) var(--sp-xl); border-radius: var(--r-md); font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-2); background: var(--fill-2); white-space: nowrap; }
 
 /* the ground the columns stand on; the card, the hover card and the toast lie over it */
 .kb-ground { position: relative; flex: 1; min-height: 0; overflow: hidden; background: var(--surface-0); }
@@ -47,8 +36,6 @@
 .kb-col-ct { flex: none; font-size: var(--text-md); color: var(--ink-3); }
 .kb-col-act { margin-left: auto; flex: none; display: flex; gap: var(--sp-2xs); opacity: 0; transition: opacity var(--dur) var(--ease); }
 .kb-col:is(:hover, :focus-within) .kb-col-act { opacity: 1; }
-.kb-col-act :is(button, .kb-grip) { width: 24px; height: 24px; padding: 0; display: grid; place-items: center; border-radius: var(--r-sm); background: none; color: var(--ink-3); font-size: var(--text-xl); line-height: 1; }
-.kb-col-act :is(button, .kb-grip):hover { background: var(--fill-2); color: var(--ink); }
 .kb-grip { cursor: grab; }
 .kb-ren { flex: 1; min-width: 0; height: 26px; box-sizing: border-box; padding: 0 var(--sp-md); border-radius: var(--r-sm); background: var(--fill-2); border: 1px solid var(--sand);
   font: inherit; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink); outline: none; user-select: text; -webkit-user-select: text; }

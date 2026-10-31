@@ -42,9 +42,9 @@ function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   return (
     <Section name="robot.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
       <span className="cmd-nav">
-        <button data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
+        <button className="ib xs filled" data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
         <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
-        <button data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
+        <button className="ib xs filled" data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
       </span>
     )}>
       <p className="cmd-text" data-testid="side-prompt-text">{list[at] ?? 'nothing sent yet'}</p>
@@ -56,9 +56,9 @@ function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' 
   const step = (by: 1 | -1) => saveRobot(deps(), id, { figure: stepFigure(figureOf({ portrait, figure }), by) });
   return (
     <div className="side-portrait" data-testid="side-portrait">
-      <button className="pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}><Caret dir="left" /></button>
+      <button className="ib pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}><Caret dir="left" /></button>
       <img className="side-figure" src={figureUrl(figureOf({ portrait, figure }))} alt="robot" draggable={false} />
-      <button className="pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}><Caret dir="right" /></button>
+      <button className="ib pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}><Caret dir="right" /></button>
     </div>
   );
 }
@@ -107,7 +107,7 @@ export function SideCard({ id }: { id: string }) {
         <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
         <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
           onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
-        <button className="side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
+        <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
           aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
       </div>
       {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
@@ -172,22 +172,22 @@ export function SideCard({ id }: { id: string }) {
         {movable && (placed || workers.length > 0) && (
           <div className="moves">
             {placed
-              ? <button className="btn move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><Mac /><span>Move to this Mac</span><Caret dir="right" /></button>
+              ? <button className="btn sm move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><Mac /><span>Move to this Mac</span><Caret dir="right" /></button>
               : workers.map(([m, w]) => (
-                <button key={m} className="btn move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><Machine /><span>Move to {w.name}</span><Caret dir="right" /></button>
+                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><Machine /><span>Move to {w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
         {placed ? (
-          <button className="btn" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
+          <button className="btn sm" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
             onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
         ) : (
-          <button className="btn" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
+          <button className="btn sm" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
             onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
-        <button className="btn pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
-        <button className="btn dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal"
+        <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
+        <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal"
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>
@@ -200,7 +200,7 @@ function AwayLine({ name, line, running }: { name: string; line: string; running
   return (
     <div className="side-away" data-testid="side-away">
       <span>{line}</span>
-      <button className="btn set-open" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
+      <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
     </div>
   );
 }

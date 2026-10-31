@@ -1,6 +1,7 @@
 import type { ChangedFile, DiffBase } from '@svall/protocol';
 import { useEffect, useState } from 'react';
 import { app, deps } from '../boot.js';
+import { Glide } from '../Glide.js';
 import { useApp } from '../hooks.js';
 import { pick } from '../panes.js';
 import { panesOf } from '../selectors.js';
@@ -64,9 +65,12 @@ export function Changes({ id }: { id: string }) {
     <div className="ide" data-testid="changes">
       <div className="ide-side">
         <div className="base-switch">
-          {(['head', 'main'] as DiffBase[]).map((b) => (
-            <button key={b} className="base-btn" data-testid={`base-${b}`} data-active={base === b} onClick={() => setChosen(b)}>{b === 'head' ? 'HEAD' : 'main'}</button>
-          ))}
+          <span className="seg" role="group" aria-label="Compare with">
+            <Glide at={base} />
+            {(['head', 'main'] as DiffBase[]).map((b) => (
+              <button key={b} data-testid={`base-${b}`} data-active={base === b} onClick={() => setChosen(b)}>{b === 'head' ? 'HEAD' : 'main'}</button>
+            ))}
+          </span>
           {status?.branch && <span className="base-branch mono">{status.branch}</span>}
         </div>
         {status?.files.length === 0 && <div className="ide-root">Nothing changed</div>}
@@ -84,7 +88,7 @@ export function Changes({ id }: { id: string }) {
             <span className="diff-kind">{KIND[file.status]}</span>
             <span className="spacer" />
             {file.status !== 'D' && (
-              <button className="btn" data-testid="diff-open" onClick={() => {
+              <button className="btn sm" data-testid="diff-open" onClick={() => {
                 const s = app.store.getState();
                 const p = panesOf(s, id);
                 s.setPanes(id, pick(p, p.right === 'changes' ? 'right' : 'left', 'files'));

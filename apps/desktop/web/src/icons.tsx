@@ -130,6 +130,10 @@ export const Machine = ({ size }: Props) => (
 
 export const Mac = ({ size }: Props) => <Svg grid={12} size={size}><rect x="2.3" y="2.45" width="7.4" height="5.2" rx=".9" /><path d="M1.1 9.55h9.8" /></Svg>;
 
+export const Hint = ({ size }: Props) => (
+  <Svg grid={12} size={size}><circle cx="6" cy="6" r="4.75" /><path d="M6 5.6v2.9" /><circle cx="6" cy="3.8" r=".7" fill="currentColor" stroke="none" /></Svg>
+);
+
 export const Moon = ({ size }: Props) => <Svg grid={12} size={size}><path d="M9.82 7.4A4 4 0 0 1 4.57 2.15a4 4 0 1 0 5.25 5.25Z" /></Svg>;
 
 export const Phone = ({ size }: Props) => <Svg grid={24} size={size}><rect x="7" y="2.5" width="10" height="19" rx="2.5" /><path d="M10.5 18.5h3" /></Svg>;

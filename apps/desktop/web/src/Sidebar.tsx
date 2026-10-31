@@ -69,7 +69,7 @@ const pick = (id: string, starred = false) => {
 function StarButton({ c, testid }: { c: Robot; testid: string }) {
   const on = c.star !== undefined;
   return (
-    <button className="sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'}
+    <button className="ib xs sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'}
       onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><Star on={on} /></button>
   );
 }
@@ -95,7 +95,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       onDragStart={(e) => { e.dataTransfer.setData(ISLAND_DRAG, i.id); e.dataTransfer.effectAllowed = 'move'; setDragging(i.id); }}
       onDragEnd={() => setDragging(undefined)}
       onClick={select} onDoubleClick={() => setEditing(i.id)} onContextMenu={menu}>
-      <button className="sb-caret" data-testid={`sb-island-toggle-${i.id}`} aria-expanded={open}
+      <button className="ib bar sb-caret" data-testid={`sb-island-toggle-${i.id}`} aria-expanded={open}
         aria-label={open ? `Collapse ${i.name}` : `Expand ${i.name}`}
         onClick={(e) => { stop(e); toggleIsland(deps(), i.id); }} onDoubleClick={stop}><Caret dir={open ? 'down' : 'right'} /></button>
       {editing ? (
@@ -109,7 +109,7 @@ const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditin
       {!open && attention > 0 && <span className="count" data-testid={`sb-island-attention-${i.id}`}>{attention}</span>}
       <span className="sb-ct tnum">{robots.length || '—'}</span>
       <i className="sdot" data-status={status} data-empty={robots.length === 0} />
-      {robots.length > 0 && <button className="sb-robot-add" data-testid={`sb-island-new-${i.id}`}
+      {robots.length > 0 && <button className="ib xs sb-robot-add" data-testid={`sb-island-new-${i.id}`}
         data-tip={`New robot on ${i.name}`} aria-label={`New robot on ${i.name}`}
         onClick={(e) => { stop(e); void newRobotOn(deps(), i.id); }} onDoubleClick={stop}><Plus /></button>}
     </div>
@@ -233,7 +233,7 @@ function Starred() {
     <div className="sb-folder" data-testid="sb-starred">
       <div className="sb-row list-row sb-isle" data-testid="sb-starred-head" data-open={!shut} data-drop-hover={hover !== undefined && hover.id === undefined}
         {...starZone(undefined, setHover)} onClick={fold}>
-        <button className="sb-caret" data-testid="sb-starred-toggle" aria-expanded={!shut} aria-label={shut ? 'Expand starred' : 'Collapse starred'}
+        <button className="ib bar sb-caret" data-testid="sb-starred-toggle" aria-expanded={!shut} aria-label={shut ? 'Expand starred' : 'Collapse starred'}
           onClick={(e) => { stop(e); fold(); }}><Caret dir={shut ? 'right' : 'down'} /></button>
         <span className="sb-name">Starred</span>
         {shut && attention > 0 && <span className="count" data-testid="sb-starred-attention">{attention}</span>}
@@ -297,7 +297,7 @@ export function Sidebar() {
     <aside className="sb" style={width} data-testid="sidebar" data-paused={!active}>
       <div className="sb-head">
         islands
-        <button className="sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}><Plus size="xs" />New island</button>
+        <button className="ib sb-add" data-testid="sidebar-new-island" onClick={() => newIsland(deps())}><Plus size="xs" />New island</button>
       </div>
       <button className="sb-collapse" data-testid="sidebar-hide" data-tip="Hide the islands" aria-label="Hide the islands"
         onClick={() => app.store.getState().toggleSidebar(false)}><Caret dir="left" /></button>

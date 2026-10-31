@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useMeasure } from './hooks.js';
+import { Hint } from './icons.js';
 import { placeTip } from './settings.js';
 
 // long enough for the pointer to cross the gap from the mark onto the tip it opened
@@ -27,7 +28,7 @@ export function Info({ id, children }: { id: string; children: ReactNode }) {
 
   return (
     <span className="set-info" onPointerEnter={show} onPointerLeave={hide} onFocus={show} onBlur={hide}>
-      <button type="button" aria-label="What this does" aria-describedby={`set-tip-${id}`} data-testid={`set-info-${id}`}>ⓘ</button>
+      <button type="button" className="ib xs" aria-label="What this does" aria-describedby={`set-tip-${id}`} data-testid={`set-info-${id}`}><Hint /></button>
       <span ref={tip} className="set-tip popover" role="tooltip" id={`set-tip-${id}`}
         data-open={open} data-place={place.above ? 'up' : 'down'}
         style={place.maxHeight ? { maxHeight: place.maxHeight } : undefined}>{children}</span>
