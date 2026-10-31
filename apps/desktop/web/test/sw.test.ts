@@ -42,7 +42,7 @@ describe('service worker notifications', () => {
     expect(shown[1].options.actions).toEqual([]);
   });
 
-  it("offers neither for a worker's robot, whose answer the Mac's /rpc would not take", () => {
+  it("offers neither for a worker's robot, whose push may come while the Mac is off", () => {
     const { push, shown } = load();
     push({ ...blocked(), machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' });
     expect(shown[0].options.actions).toEqual([]);

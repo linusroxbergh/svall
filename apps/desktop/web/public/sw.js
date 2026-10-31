@@ -55,8 +55,8 @@ self.addEventListener('push', (e) => {
     tag: tagOf(p),
     renotify: true,
     data: p,
-    // answering reaches the main terminal only, so a second-terminal prompt is informational and opened in the app; the
-    // Mac's /rpc answers only for its own robots, so a worker's are opened in the app too
+    // answering reaches the main terminal only, so a second-terminal prompt is informational and opened in the app; a
+    // worker's push may come while the Mac is off, so it opens in the app too
     actions: blocked && !p.term && !p.machine ? [{ action: 'approve', title: 'Approve' }, { action: 'deny', title: 'Deny' }] : [],
   }));
 });

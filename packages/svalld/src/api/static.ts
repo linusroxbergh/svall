@@ -21,7 +21,8 @@ const NOT_BUILT = `The phone bundle is not built. Run \`${SHIM} mobile\` on the 
 const CSP = "default-src 'self'; script-src 'self'; connect-src 'self' wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'";
 const HEADERS = { 'content-security-policy': CSP, 'x-frame-options': 'DENY' };
 
-/** The file `pathname` names, or index.html for a route the single page owns; never anything outside dir. */
+/** The file `pathname` names, or index.html for a route the single page owns; never anything outside dir. An asset gone
+ *  from assets/ is another build's, and the page in its place would be kept as code by a phone's service worker. */
 export function resolveFile(dir: string, pathname: string): string | undefined {
   let rel: string;
   try { rel = decodeURIComponent(pathname); } catch { return undefined; }
@@ -29,6 +30,7 @@ export function resolveFile(dir: string, pathname: string): string | undefined {
   if (target !== dir && !target.startsWith(dir + path.sep)) return undefined;
   const index = path.join(dir, 'index.html');
   if (fs.existsSync(target) && fs.statSync(target).isFile()) return target;
+  if (target.startsWith(path.join(dir, 'assets') + path.sep)) return undefined;
   return fs.existsSync(index) ? index : undefined;
 }
 
