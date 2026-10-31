@@ -42,8 +42,7 @@ describe('stylesheets draw from tokens.css', () => {
   it.each(sheets)('%s', (f) => expect(offenders(read(f))).toEqual([]));
 });
 
-// portraits.ts names each figure's body colour as its drawing has it
-const scripts = fs.globSync('**/*.{ts,tsx}', { cwd: src }).filter((f) => f !== 'portraits.ts');
+const scripts = fs.globSync('**/*.{ts,tsx}', { cwd: src });
 const RAW_COLOUR = /['"`]#[0-9a-fA-F]{3,8}['"`]|\brgba?\(|\bhsla?\(/;
 
 it('scripts draw colours from tokens.css', () =>

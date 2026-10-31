@@ -216,7 +216,7 @@ A night sea of blue-slate surfaces, cream inks, sand chrome, and a small set of 
 - **Glass** over the map: glass for labels and pills, glass-hi when one is lit, panel for a panel whose text must read over the cards (terminal card, hover card, resources shelf).
 - **Map sea**: map-0 (lightest) to map-2 (deepest), with a grain and contour lines.
 - **Inks**: ink for primary text, ink-2 for secondary, ink-3 for tertiary text, placeholders and ghost icons, ink-cool for a section's kicker.
-- **Lines and fills**, cream at low alpha: line-soft and line for hairlines, line-strong for a field's border and a lit pill's edge; fill-1, fill-2 and fill-3 for hover, selected and pressed.
+- **Lines and fills**, cream at low alpha: line-soft and line for hairlines and a field's border, line-strong for a lit pill's edge; fill-1, fill-2 and fill-3 for hover, selected and pressed.
 - **Card paper**: card-0 to card-2 with a grain, card-band for the foot, ink-land for the printed name.
 
 ### Named Rules
@@ -224,7 +224,7 @@ A night sea of blue-slate surfaces, cream inks, sand chrome, and a small set of 
 
 **The Robots Carry the Color Rule.** Working, blocked, done, idle, moving and unknown use the same token in the app, the phone, the board card, the map card and the site. Where a status shows as color alone (the sidebar's dots), any two stay apart under protanopia and deuteranopia (ΔE2000 of 10 or more); everywhere else it also carries its word or a shape. Chrome uses a status color only for the same meaning, such as the coral count of robots that need you.
 
-**The Contrast Floor Rule.** Text and icons hold 4.5:1 against the ground they are drawn on, including hover and selected fills and glass over the map. Large text, and non-text UI (field borders, focus rings, status dots, selected rings, a glyph beside its own label) hold 3:1. ink-3 is the dimmest ink for text. Disabled controls, at `--disabled` (.45), are exempt.
+**The Contrast Floor Rule.** Text and icons hold 4.5:1 against the ground they are drawn on, including hover and selected fills and glass over the map. Large text, and non-text UI (focus rings, status dots, selected rings, a glyph beside its own label) hold 3:1. ink-3 is the dimmest ink for text. Disabled controls, at `--disabled` (.45), are exempt.
 
 **The One Source Rule.** Colors live only in `tokens.css`. Stylesheets and scripts use `var(--…)` or a `color-mix()` of tokens; `test/tokens.test.ts` fails on a raw hex or `rgb()` anywhere else (the robot body colors in `portraits.ts` mirror their drawings and are the exception). The site's page tokens are mixed from the app's.
 
@@ -301,7 +301,7 @@ Three heights: 22px (`--ctl-sm`) for any control inside a settings or detail row
 - **Grips** (`.width-grip`, `.sec-grip`): invisible handles over an edge that show a line-strong hairline under the pointer and through the drag.
 
 ### Inputs / Fields
-- **Field** (`.fld`): fill-1 inside a line-strong border (3:1 against its ground), sm radius, ink-3 placeholder. Focus turns the border sand; no glow.
+- **Field** (`.fld`): fill-1 inside a line hairline, sm radius, ink-3 placeholder; the fill, not the edge, marks it. Focus turns the border sand; no glow.
 
 ### Robot cards
 - **Map card**: cream paper with grain, a printed frame, the robot's portrait, its name in ink-land, and a foot in its status ink with the status word and a terminal toggle. Focus inside the paper is drawn in ink-sand, because sand would vanish there.

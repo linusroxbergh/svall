@@ -123,7 +123,7 @@ textarea { overflow-x: hidden; }
 :is(.btn, .hact):active:not(:disabled) { scale: .97; }
 :where(button, .btn, .fld):disabled { opacity: var(--disabled); cursor: default; }
 /* a text field: boxed on its panel's ground, its border lit while it holds the caret */
-.fld { box-sizing: border-box; width: 100%; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line-strong); border-radius: var(--r-sm);
+.fld { box-sizing: border-box; width: 100%; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line); border-radius: var(--r-sm);
   background: var(--fill-1); color: var(--ink); font: inherit; font-size: var(--text-md); transition: border-color var(--dur) var(--ease); }
 textarea.fld { padding-block: var(--sp-md); }
 .fld::placeholder { color: var(--ink-3); }

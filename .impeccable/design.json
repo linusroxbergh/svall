@@ -815,9 +815,9 @@
       "name": "Field",
       "kind": "input",
       "refersTo": "field",
-      "description": "A text field boxed in a 3:1 cream border; sand while it holds the caret.",
+      "description": "A text field: a fill-1 box in a faint cream hairline; sand while it holds the caret.",
       "html": "<input class=\"ds-fld\" placeholder=\"Add a url or path\">",
-      "css": ".ds-fld { width: 100%; box-sizing: border-box; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line-strong); border-radius: var(--r-sm); background: var(--fill-1); color: var(--ink); caret-color: var(--sand); font: var(--text-md) var(--sans); transition: border-color var(--dur) var(--ease); } .ds-fld::placeholder { color: var(--ink-3); } .ds-fld:focus { outline: none; border-color: var(--sand); }"
+      "css": ".ds-fld { width: 100%; box-sizing: border-box; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--fill-1); color: var(--ink); caret-color: var(--sand); font: var(--text-md) var(--sans); transition: border-color var(--dur) var(--ease); } .ds-fld::placeholder { color: var(--ink-3); } .ds-fld:focus { outline: none; border-color: var(--sand); }"
     },
     {
       "name": "List Row",
@@ -858,7 +858,7 @@
       },
       {
         "name": "The Contrast Floor Rule",
-        "body": "Text and icons hold 4.5:1 against the ground they are drawn on, including hover and selected fills and glass over the map. Large text, and non-text UI (field borders, focus rings, status dots, selected rings, a glyph beside its own label) hold 3:1. ink-3 is the dimmest ink for text. Disabled controls, at `--disabled` (.45), are exempt.",
+        "body": "Text and icons hold 4.5:1 against the ground they are drawn on, including hover and selected fills and glass over the map. Large text, and non-text UI (focus rings, status dots, selected rings, a glyph beside its own label) hold 3:1. ink-3 is the dimmest ink for text. Disabled controls, at `--disabled` (.45), are exempt.",
         "section": "colors"
       },
       {
