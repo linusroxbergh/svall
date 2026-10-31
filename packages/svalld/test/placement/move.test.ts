@@ -825,6 +825,37 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.opened).toEqual([]);
   });
 
+  it('a return looks at the Mac worktree again right before it resets it, so a save made while what came back is checked stays', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const a = path.join(w.wt, 'a.txt');
+    const held = fs.readFileSync(a);
+    // an editor saves into the Mac worktree once the return's prepare is under way, as it checks the branches here
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    at('move.journal.prepare', 'after', () => {
+      let saved = false;
+      d.git = (args, cwd) => {
+        if (!saved && args[0] === 'for-each-ref' && args.at(-1) === 'refs/heads') {
+          saved = true;
+          fs.appendFileSync(a, 'saved on the Mac\n');
+        }
+        return git(args, cwd);
+      };
+    });
+
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
+      code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare' },
+    });
+    d.git = git;
+
+    expect(fs.readFileSync(a, 'utf8')).toBe(`${held}saved on the Mac\n`);
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
   it('a move waits while the worker catches up with this Mac: busy, with the one sentence', async () => {
     const w = open();
     const home = await w.start();

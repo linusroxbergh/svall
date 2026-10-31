@@ -424,10 +424,6 @@ export class Placement {
     const run = this.d.cli ?? cliRunner();
     const git = this.d.git;
     if (clone && !m) throw new Error(`${c.name} comes back without its worktree`);
-    if (back) {
-      const changed = await changedSince(back, 'on this Mac', git);
-      if (changed) throw refused(changed);
-    }
     if (m) {
       await unpack(path.join(stage, 'bundle.tar'), dir);
       await verifyBundle(dir, m);
@@ -440,6 +436,9 @@ export class Placement {
         const twin = await this.clashing(m.branch, back?.path ?? clone);
         if (twin) throw refused(twin);
         if (back) {
+          // looked at again right before the reset, so a save made since the checks is refused, not deleted
+          const changed = await changedSince(back, 'on this Mac', git);
+          if (changed) throw refused(changed);
           made({ unlocked: true });
           await takeBack(back.path, back.branchSha, git);
           return applyBundle(back.path, dir, m, git, { machine: 'this Mac', ...(back.branch === m.branch && { keep: back.branchSha }) });
