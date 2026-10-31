@@ -33,14 +33,14 @@ describe('withAddDirs for opencode', () => {
     expect(cmd).toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')},${rule("/c'\\''d/*")}]}' opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn`);
     expect(agentKindOf(cmd)).toBe('opencode');
     expect(withAddDirs('opencode', [])).toBe('opencode');
-    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), 'go', '/h/p').text).toMatch(/ opencode --prompt 'go'\n$/);
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/a')]), 'go', '/h/p').text).toMatch(/ opencode --prompt='go'\n$/);
   });
   it('allows a folder by its resolved path, leaves one named with a wildcard to ask, and reads no flag in a folder name', () => {
     expect(withAddDirs('opencode', [item('folder', '/a/b/'), item('folder', '/c/*'), item('folder', '/d/e?')]))
       .toBe(`OPENCODE_CONFIG_CONTENT='{"permissions":[${rule('/a/b/*')}]}' opencode`);
     expect(withAddDirs('opencode', [item('folder', '/c/*')])).toBe('opencode');
-    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), 'go', '/h/p').text).toMatch(/ opencode --prompt 'go'\n$/);
-    expect(withPromptFile("opencode '/notes -s draft'", 'go', '/h/p').text).toMatch(/ '\/notes -s draft' --prompt 'go'\n$/);
+    expect(withPromptFile(withAddDirs('opencode', [item('folder', '/notes -s draft')]), 'go', '/h/p').text).toMatch(/ opencode --prompt='go'\n$/);
+    expect(withPromptFile("opencode '/notes -s draft'", 'go', '/h/p').text).toMatch(/ '\/notes -s draft' --prompt='go'\n$/);
   });
 });
 
@@ -104,11 +104,11 @@ describe('withPromptFile', () => {
     expect(isAgentCommand('codexx')).toBe(false);
     expect(isAgentCommand('node fake.mjs')).toBe(false);
   });
-  it('hands opencode its prompt with --prompt, and leaves the file to the plugin on a resume', () => {
+  it('hands opencode its prompt with --prompt=, and leaves the file to the plugin on a resume', () => {
     expect(isAgentCommand('opencode')).toBe(true);
     expect(isAgentCommand('opencodex')).toBe(false);
     expect(withPromptFile('opencode -m opencode/big-pickle', 'fix it', '/h/c_1.prompt'))
-      .toEqual({ text: "rm -f '/h/c_1.prompt'; opencode -m opencode/big-pickle --prompt 'fix it'\n", line: ". '/h/c_1.prompt'" });
+      .toEqual({ text: "rm -f '/h/c_1.prompt'; opencode -m opencode/big-pickle --prompt='fix it'\n", line: ". '/h/c_1.prompt'" });
     expect(withPromptFile('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn', 'fix it', '/h/c_1.prompt'))
       .toEqual({ text: 'fix it', line: 'opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn' });
   });
@@ -138,6 +138,18 @@ describe('withPromptFile', () => {
       expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
       expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--via-function', '--add-dir', '/a b', '--', PROMPT]);
       expect(fs.existsSync(file)).toBe(false);
+      fs.rmSync(dir, { recursive: true, force: true });
+    });
+    it.skipIf(!onPath(sh, process.env.PATH ?? ''))(`hands opencode in ${sh} a prompt that starts with - or holds = as one --prompt= argument`, () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'launch-'));
+      const argv = path.join(dir, 'argv');
+      fs.writeFileSync(path.join(dir, 'opencode'), `#!/bin/sh\nfor a in "$@"; do printf '%s\\0' "$a"; done > '${argv}'\n`, { mode: 0o755 });
+      const file = path.join(dir, 'c_1.prompt');
+      const { text, line } = withPromptFile('opencode --standalone', "- fix it's ~/x a=b", file);
+      fs.writeFileSync(file, text);
+      const r = spawnSync(sh, [...args, line], { env: { ...process.env, PATH: `${dir}:${process.env.PATH}` }, encoding: 'utf8' });
+      expect({ status: r.status, stderr: r.stderr }).toEqual({ status: 0, stderr: '' });
+      expect(fs.readFileSync(argv, 'utf8').split('\0').slice(0, -1)).toEqual(['--standalone', "--prompt=- fix it's ~/x a=b"]);
       fs.rmSync(dir, { recursive: true, force: true });
     });
   }

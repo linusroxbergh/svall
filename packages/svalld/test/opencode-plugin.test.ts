@@ -361,6 +361,21 @@ describe('the OpenCode plugin', () => {
     }
   });
 
+  // the words ps prints for a prompt "- a=b -s <id>"
+  for (const prompt of [['--prompt', '-'], ['--prompt=-']]) {
+    it(`takes no session id from a prompt given as ${prompt[0]}`, async () => {
+      const argv = process.argv;
+      process.argv = [...argv, ...prompt, 'a=b', '-s', SID];
+      try {
+        await load();
+        await new Promise((r) => setTimeout(r, 100));
+        expect(names()).toEqual([]);
+      } finally {
+        process.argv = argv;
+      }
+    });
+  }
+
   it('reads a resumed session given as --session=<id>', async () => {
     fs.writeFileSync(path.join(home, 'c_1.prompt'), 'wake up');
     const argv = process.argv;

@@ -603,7 +603,7 @@ runIf('Fleet prompts', () => {
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-codex', `${c.id}.argv`), 'utf8'))).toEqual(['--no-daemon', '-c', 'check_for_update_on_startup=false', '--', 'fix the flaky test']);
   });
 
-  it('hands opencode its first prompt with --prompt and follows its plugin', async () => {
+  it('hands opencode its first prompt with --prompt= and follows its plugin', async () => {
     vi.stubEnv('PATH', `${path.join(import.meta.dirname, 'fixtures/bin')}:${process.env.PATH}`);
     cleanup.push(async () => { vi.unstubAllEnvs(); });
     const b = await boot();
@@ -613,7 +613,7 @@ runIf('Fleet prompts', () => {
     const agent = b.store.state.robots[c.id].agent!;
     expect(agent).toMatchObject({ kind: 'opencode', sessionId: OSID, contextPct: 10, model: 'big-pickle' });
     expect(b.fleet.readPrompts(c.id, 5)).toEqual(['fix the flaky test']);
-    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '--prompt', 'fix the flaky test']);
+    expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.argv`), 'utf8'))).toEqual(['--standalone', '--prompt=fix the flaky test']);
     expect(JSON.parse(fs.readFileSync(path.join(b.home, 'fake-opencode', `${c.id}.system`), 'utf8'))).toEqual([agent.brief]);
   });
 

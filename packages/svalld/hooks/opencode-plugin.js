@@ -28,7 +28,7 @@ const clip = (v, n) => (typeof v === 'string' ? v : JSON.stringify(v ?? '')).sli
 // Svall resumes a dormant robot with `opencode --standalone -s <id>`, and its private server runs plugins as a
 // child process, so the TUI's command line is read from ps, where a prompt's words pass for flags
 const resumedFrom = (argv) => {
-  const end = argv.indexOf('--prompt');
+  const end = argv.findIndex((a) => /^--prompt(=|$)/.test(a));
   const i = argv.findIndex((a, j) => /^(-s|--session)(=|$)/.test(a) && (end === -1 || j < end));
   const id = i === -1 ? undefined : argv[i].split('=')[1] ?? argv[i + 1];
   return /^ses_[0-9a-f]{12}[0-9A-Za-z]{14}$/.test(id ?? '') ? id : undefined;
