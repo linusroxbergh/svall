@@ -130,6 +130,9 @@ describe('startFlags', () => {
     expect(startFlags('opencode --server http://localhost:4096', 'opencode')).toBeUndefined();
     // svalld puts the prompt last, where a bullet or a flag in its text is no option
     expect(startFlags('opencode --standalone --prompt fix these: - the --force flag', 'opencode')).toEqual([]);
+    expect(startFlags('opencode --standalone --auto --prompt=- fix these: - the --force flag', 'opencode')).toEqual(['--auto']);
+    expect(startFlags('opencode --standalone --prompt=a=b --force', 'opencode')).toEqual([]);
+    expect(startFlags('opencode --standalone --promptx y', 'opencode')).toBeUndefined();
   });
 });
 

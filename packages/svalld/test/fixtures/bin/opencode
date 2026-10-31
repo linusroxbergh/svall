@@ -20,9 +20,9 @@ if (args[0] !== 'serve') {
   const dir = path.join(process.env.SVALL_HOME, 'fake-opencode');
   fs.mkdirSync(dir, { recursive: true });
   fs.writeFileSync(path.join(dir, `${robotId}.argv`), JSON.stringify(args));
-  const i = args.indexOf('--prompt');
+  const prompt = args.find((a) => a.startsWith('--prompt='))?.slice('--prompt='.length);
   const server = spawn(process.execPath, [import.meta.filename, 'serve', '--stdio'], {
-    stdio: ['pipe', 'inherit', 'inherit'], env: { ...process.env, ...(i !== -1 && { FAKE_PROMPT: args[i + 1] }), ...(args.includes('-s') && { FAKE_RESUMED: '1' }) },
+    stdio: ['pipe', 'inherit', 'inherit'], env: { ...process.env, ...(prompt !== undefined && { FAKE_PROMPT: prompt }), ...(args.includes('-s') && { FAKE_RESUMED: '1' }) },
   });
   process.stdin.pipe(server.stdin);
   server.on('exit', (code) => process.exit(code ?? 0));

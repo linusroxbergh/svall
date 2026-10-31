@@ -60,6 +60,7 @@ const anyShq = (s: string): string =>
 export function withPromptFile(command: string, prompt: string, file: string): { text: string; line: string } {
   const opencode = agentKindOf(command) === 'opencode';
   if (opencode && /\s(-s|--session)(\s|=)/.test(unquoted(command.replace(ACCESS, '')))) return { text: prompt, line: command };
-  // `.` and not `source`, which dash lacks; fish has kept `.` as its deprecated name for source
-  return { text: `rm -f ${anyShq(file)}; ${command} ${opencode ? '--prompt' : '--'} ${anyShq(prompt)}\n`, line: `. ${anyShq(file)}` };
+  // `.` and not `source`, which dash lacks; fish has kept `.` as its deprecated name for source. OpenCode takes a word
+  // starting with - after a bare --prompt for a flag
+  return { text: `rm -f ${anyShq(file)}; ${command} ${opencode ? '--prompt=' : '-- '}${anyShq(prompt)}\n`, line: `. ${anyShq(file)}` };
 }

@@ -113,7 +113,7 @@ const FLAGS: Record<AgentKind, { kept: string[]; keptSwitches: string[]; dropped
   opencode: {
     kept: [],
     keptSwitches: ['--auto', '--yolo', '--dangerously-skip-permissions'],
-    dropped: ['-s', '--session', '--prompt'],
+    dropped: ['-s', '--session'],
     droppedSwitches: ['-c', '--continue', '--standalone'],
   },
 };
@@ -136,7 +136,7 @@ export function startFlags(args: string, kind: AgentKind): string[] | undefined 
   for (; i < words.length; i++) {
     const w = words[i];
     // svalld puts an OpenCode prompt last, and its words can pass for flags
-    if (w === '--' || (kind === 'opencode' && w === '--prompt')) return out;
+    if (w === '--' || (kind === 'opencode' && /^--prompt(=|$)/.test(w))) return out;
     // codex takes resume or fork after its global flags, as the robot's zsh puts --no-daemon first, and the
     // session as a word among the options
     if (kind === 'codex' && !resume && (w === 'resume' || w === 'fork')) { resume = true; continue; }

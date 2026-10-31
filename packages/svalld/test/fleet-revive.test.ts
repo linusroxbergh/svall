@@ -12,7 +12,7 @@ import { cleanHomes, hasTmux, waitFor, waitForPolls } from './helpers.js';
 const runIf = hasTmux() ? describe : describe.skip;
 
 // the prompt a launch file hands its agent: its last word, as bash, zsh and fish read it
-const promptOf = (file: string): string => /(?:--|--prompt) ((?:'[^']*'|\\.)+)\n$/.exec(fs.readFileSync(file, 'utf8'))![1]
+const promptOf = (file: string): string => /(?:-- |--prompt=)((?:'[^']*'|\\.)+)\n$/.exec(fs.readFileSync(file, 'utf8'))![1]
   .replace(/'([^']*)'|\\(.)/g, (_, quoted: string | undefined, escaped: string) => quoted ?? escaped);
 
 runIf('Fleet revive', () => {
