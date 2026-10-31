@@ -142,7 +142,7 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 }
 .composer textarea, .sheet-form > input, .m-add input, .m-field {
   border-radius: var(--r-md); font: inherit; font-size: var(--text-input);
-  color: var(--ink); background: var(--surface-0); border: 1px solid var(--line-strong);
+  color: var(--ink); background: var(--surface-0); border: 1px solid var(--line);
 }
 :is(.composer textarea, .sheet-form > input, .m-add input, .m-field)::placeholder { color: var(--ink-3); }
 .composer textarea { flex: 1; min-width: 0; max-height: 144px; padding: var(--sp-lg) var(--sp-xl); resize: none; }
