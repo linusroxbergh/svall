@@ -1,4 +1,4 @@
-<svg width="232" height="454" viewBox="140 22 232 454" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc" class="r75" data-idle="blink blink dial settle ripple" data-work="claw claw settle ripple dial blink"><style>.r75[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r75-blink .4s ease-in-out}
+<svg width="232" height="454" viewBox="140 22 232 454" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="stack-title stack-desc" class="r75" data-idle="blink blink blink blink dial settle ripple" data-work="claw claw settle ripple dial blink blink"><style>.r75[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r75-blink .4s ease-in-out}
 .r75[data-act=dial] .needle{animation:r75-needle 1.8s ease-in-out}
 .r75[data-act=dial] .head{animation:r75-nod 1.8s ease-in-out}
 .r75[data-act=dial] .eyes{animation:r75-down 1.8s ease-in-out}

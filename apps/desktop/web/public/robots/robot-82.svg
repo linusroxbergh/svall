@@ -1,4 +1,4 @@
-<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc" class="r82" data-idle="blink blink tilt shrug return" data-work="type type return return tilt"><style>
+<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc" class="r82" data-idle="blink blink blink blink tilt shrug return" data-work="type type return return tilt"><style>
 .r82[data-act=blink] .spool{animation:r82-blink .4s ease-in-out}
 .r82[data-act=tilt] .head{animation:r82-tilt 1.6s ease-in-out}
 .r82[data-act=tilt] .spool{animation:r82-look 1.6s ease-in-out}

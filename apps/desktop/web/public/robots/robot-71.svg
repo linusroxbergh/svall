@@ -1,4 +1,4 @@
-<svg width="340" height="418" viewBox="86 60 340 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="boombox-title boombox-desc" class="r71" data-idle="blink blink scan scan hush signal" data-work="strut strut signal signal hush blink"><style>
+<svg width="340" height="418" viewBox="86 60 340 418" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="boombox-title boombox-desc" class="r71" data-idle="blink blink blink blink scan scan hush signal" data-work="strut strut signal signal hush blink blink"><style>
 .r71[data-act=signal] .all{animation:r71-lean 2s ease-in-out}
 .r71[data-act=signal] .arm-r{animation:r71-reach 2s ease-in-out}
 .r71[data-act=signal] .fore-r{animation:r71-unfold 2s ease-in-out}

@@ -1,4 +1,4 @@
-<svg width="336" height="430" viewBox="88 46 336 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rotor-title rotor-desc" class="r48" data-idle="blink blink peer peer grip" data-work="haul haul bank bank grip blink"><style>
+<svg width="336" height="430" viewBox="88 46 336 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rotor-title rotor-desc" class="r48" data-idle="blink blink blink blink peer peer grip" data-work="haul haul bank bank grip blink blink"><style>
 .r48[data-act=haul] .drone{animation:r48-heave 2s ease-in-out}
 .r48[data-act=haul] .blades{animation:r48-whirl 2s ease-in-out}
 .r48[data-act=haul] .arm-l,.r48[data-act=haul] .arm-r{animation:r48-haul-arm 2s ease-in-out}

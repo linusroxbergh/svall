@@ -55,7 +55,7 @@
 <body>
 <main>
   <h1>Robot motion</h1>
-  <p>Each action is short and returns to the still pose. Buttons play one action now on all copies of that robot (grey: idle list, yellow: working list). The <code>today</code> card is the static image. <code>?r=01,02</code> shows only those robots; without it, every robot with motion.</p>
+  <p>Each action is short and returns to the still pose. Buttons play one action now on all copies of that robot and show its length before the ±10% (grey: idle list, yellow: working list). The <code>today</code> card is the static image. <code>?r=01,02</code> shows only those robots; without it, every robot with motion.</p>
   <label>How often <input type="range" id="often" min="0.5" max="3" step="0.25" value="1" style="vertical-align:middle;width:200px"> <b id="oftenTxt"></b></label>
   <div id="robots"></div>
 </main>
@@ -80,6 +80,13 @@
   };
   often.oninput = setOften;
   setOften();
+  // an action's unjittered length: when its last part ends
+  const lengthOf = (bot, act) => {
+    bot.dataset.act = act;
+    const ms = Math.max(0, ...bot.getAnimations({ subtree: true }).map((a) => a.effect.getComputedTiming().endTime));
+    delete bot.dataset.act;
+    return ms;
+  };
 
   (async () => {
     const ids = asked ? asked.split(',') : await (await fetch('robots.json')).json();
@@ -112,7 +119,10 @@
         new MutationObserver(() => { tag.textContent = b.dataset.act || ''; }).observe(b, { attributes: true, attributeFilter: ['data-act'] });
         motion.start(b);
       }
-      sec.querySelectorAll('button').forEach((btn) => { btn.onclick = () => bots.forEach((b) => motion.play(b, btn.dataset.a)); });
+      sec.querySelectorAll('button').forEach((btn) => {
+        btn.textContent += ` ${s(lengthOf(bots[0], btn.dataset.a))}s`;
+        btn.onclick = () => bots.forEach((b) => motion.play(b, btn.dataset.a));
+      });
     }
   })();
 </script>

@@ -1,4 +1,4 @@
-<svg width="308" height="450" viewBox="102 26 308 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="capsule-title capsule-desc" class="r87" data-idle="blink blink bank bank tuck wave" data-work="boost boost wave bank tuck blink"><style>
+<svg width="308" height="450" viewBox="102 26 308 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="capsule-title capsule-desc" class="r87" data-idle="blink blink blink blink bank bank tuck wave" data-work="boost boost wave bank tuck blink blink"><style>
 .r87[data-act=boost] .pod{animation:r87-lift 2s ease-in-out}
 .r87[data-act=boost] .flame{animation:r87-thrust 2s ease-in-out}
 .r87[data-act=boost] .arm-l{animation:r87-trail-l 2s ease-in-out}

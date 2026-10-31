@@ -1,4 +1,4 @@
-<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc" class="r80" data-idle="blink blink shift snip" data-work="ching ching crank crank snip blink"><style>
+<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc" class="r80" data-idle="blink blink blink blink shift snip" data-work="ching ching crank crank snip blink blink"><style>
 .r80[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r80-blink .4s ease-in-out}
 .r80[data-act=snip] .arm-l{animation:r80-lift 2s ease-in-out}
 .r80[data-act=snip] .fore-l{animation:r80-hang 2s ease-in-out}

@@ -1,4 +1,4 @@
-<svg width="332" height="452" viewBox="92 24 332 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fitter-title fitter-desc" class="r84" data-idle="blink blink tilt tilt shift shrug" data-work="ratchet ratchet shift shrug tilt blink"><style>
+<svg width="332" height="452" viewBox="92 24 332 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fitter-title fitter-desc" class="r84" data-idle="blink blink blink blink tilt tilt shift shrug" data-work="ratchet ratchet shift shrug tilt blink blink"><style>
 .r84[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r84-blink .4s ease-in-out}
 .r84[data-act=tilt] .head{animation:r84-cock 1.8s ease-in-out}
 .r84[data-act=tilt] .eyes{animation:r84-look 1.8s ease-in-out}

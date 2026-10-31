@@ -1,4 +1,4 @@
-<svg width="344" height="374" viewBox="84 104 344 374" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bubble-title bubble-desc" class="r46" data-idle="blink blink peer peer shift vent" data-work="vent vent shift shift peer blink"><style>
+<svg width="344" height="374" viewBox="84 104 344 374" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bubble-title bubble-desc" class="r46" data-idle="blink blink blink blink peer peer shift vent" data-work="vent vent shift shift peer blink blink"><style>
 .r46[data-act=vent] .boiler{animation:r46-swell 2s ease-in-out}
 .r46[data-act=vent] .dome{animation:r46-rattle 2s ease-in-out}
 .r46[data-act=vent] .needle{animation:r46-needle 2s ease-in-out}

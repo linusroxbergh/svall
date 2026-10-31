@@ -1,4 +1,4 @@
-<svg width="302" height="452" viewBox="124 24 302 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc" class="r85" data-idle="blink blink tilt tilt dip" data-work="barrier barrier fold fold dip tilt blink"><style>
+<svg width="302" height="452" viewBox="124 24 302 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="signal-title signal-desc" class="r85" data-idle="blink blink blink blink tilt tilt dip" data-work="barrier barrier fold fold dip tilt blink blink"><style>
 .r85[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r85-blink .4s ease-in-out}
 .r85[data-act=tilt] .head{animation:r85-tilt 1.6s ease-in-out}
 .r85[data-act=tilt] .mast{animation:r85-lag 1.6s ease-in-out}

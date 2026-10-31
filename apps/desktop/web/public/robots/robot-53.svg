@@ -1,4 +1,4 @@
-<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc" class="r53" data-idle="blink blink cock cock preen shift" data-work="strike strike preen shift cock blink"><style>
+<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc" class="r53" data-idle="blink blink blink blink cock cock preen shift" data-work="strike strike preen shift cock blink blink"><style>
 .r53[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r53-blink .4s ease-in-out}
 .r53[data-act=cock] .body{animation:r53-brace 1.4s ease-in-out}
 .r53[data-act=cock] .head{animation:r53-cock 1.4s ease-in-out}

@@ -1,4 +1,4 @@
-<svg width="340" height="420" viewBox="86 56 340 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vault-title vault-desc" class="r93" data-idle="blink blink peer peer shift listen crack" data-work="listen listen crack crack shift blink"><style>
+<svg width="340" height="420" viewBox="86 56 340 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vault-title vault-desc" class="r93" data-idle="blink blink blink blink peer peer shift listen crack" data-work="listen listen crack crack shift blink blink"><style>
 .r93[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r93-blink .4s ease-in-out}
 .r93[data-act=peer] .head{animation:r93-tilt 1.8s ease-in-out}
 .r93[data-act=peer] .eyes{animation:r93-look 1.8s ease-in-out}

@@ -1,4 +1,4 @@
-<svg width="418.7" height="464.8" viewBox="46.7 23.6 418.7 464.8" xmlns="http://www.w3.org/2000/svg" class="r08" data-idle="blink blink glance glance sway" data-work="dangle dangle sway glance blink"><style>.r08[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r08-blink .4s ease-in-out}
+<svg width="418.7" height="464.8" viewBox="46.7 23.6 418.7 464.8" xmlns="http://www.w3.org/2000/svg" class="r08" data-idle="blink blink blink blink glance glance sway" data-work="dangle dangle sway glance blink blink"><style>.r08[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r08-blink .4s ease-in-out}
 .r08[data-act=glance] .body{animation:r08-lean 1.3s ease-in-out}
 .r08[data-act=glance] .head{animation:r08-tilt 1.3s ease-in-out}
 .r08[data-act=glance] .eyes{animation:r08-look 1.3s ease-in-out}

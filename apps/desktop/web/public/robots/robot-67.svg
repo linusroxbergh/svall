@@ -1,4 +1,4 @@
-<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc" class="r67" data-idle="blink blink peer peer shift lever" data-work="crank crank crank lever shift peer"><style>
+<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc" class="r67" data-idle="blink blink blink blink peer peer shift lever" data-work="crank crank crank lever shift peer"><style>
 .r67[data-act=blink] .lens{transform-box:fill-box;transform-origin:center;animation:r67-blink .4s ease-in-out}
 .r67[data-act=peer] .head{animation:r67-cock 1.6s ease-in-out}
 .r67[data-act=peer] .look{animation:r67-side 1.6s ease-in-out}

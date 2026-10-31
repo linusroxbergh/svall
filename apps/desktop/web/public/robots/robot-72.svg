@@ -1,4 +1,4 @@
-<svg width="280" height="424" viewBox="116 54 280 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="beam-title beam-desc" class="r72" data-idle="blink blink dip dip switch beacon" data-work="snip snip switch switch beacon blink"><style>
+<svg width="280" height="424" viewBox="116 54 280 424" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="beam-title beam-desc" class="r72" data-idle="blink blink blink blink dip dip switch beacon" data-work="snip snip switch switch beacon blink blink"><style>
 .r72[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r72-blink .4s ease-in-out}
 .r72[data-act=beacon] .up{animation:r72-lean 2s ease-in-out}
 .r72[data-act=beacon] .lens{animation:r72-skyward 2s ease-in-out}

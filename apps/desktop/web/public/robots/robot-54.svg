@@ -1,4 +1,4 @@
-<svg width="184" height="414" viewBox="164 64 184 414" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="radar-title radar-desc" class="r54" data-idle="blink blink scan rock wave" data-work="scan scan tune tune rock blink"><style>.r54[data-act=blink] .iris{animation:r54-blink .4s ease-in-out}
+<svg width="184" height="414" viewBox="164 64 184 414" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="radar-title radar-desc" class="r54" data-idle="blink blink blink blink scan rock wave" data-work="scan scan tune tune rock blink blink"><style>.r54[data-act=blink] .iris{animation:r54-blink .4s ease-in-out}
 .r54[data-act=scan] .head{animation:r54-sweep 2s ease-in-out}
 .r54[data-act=scan] .lens{animation:r54-seek 2s ease-in-out}
 .r54[data-act=scan] .iris{animation:r54-focus 2s ease-in-out}

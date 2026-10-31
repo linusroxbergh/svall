@@ -1,4 +1,4 @@
-<svg width="258" height="452" viewBox="128 24 258 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="tinker-title tinker-desc" class="r86" data-idle="blink blink tilt tilt roll visor" data-work="drive drive pinch pinch visor roll"><style>
+<svg width="258" height="452" viewBox="128 24 258 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="tinker-title tinker-desc" class="r86" data-idle="blink blink blink blink tilt tilt roll visor" data-work="drive drive pinch pinch visor roll"><style>
 .r86[data-act=visor] .visor{animation:r86-flip 2s ease-in-out}
 .r86[data-act=visor] .head{animation:r86-lift 2s ease-in-out}
 .r86[data-act=visor] .neck{animation:r86-stretch 2s ease-in-out}

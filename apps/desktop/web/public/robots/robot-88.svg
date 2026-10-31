@@ -1,4 +1,4 @@
-<svg width="344" height="452" viewBox="84 24 344 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hoop-title hoop-desc" class="r88" data-idle="blink blink shrug wave peek" data-work="cheer cheer wave peek shrug blink"><style>
+<svg width="344" height="452" viewBox="84 24 344 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hoop-title hoop-desc" class="r88" data-idle="blink blink blink blink shrug wave peek" data-work="cheer cheer wave peek shrug blink blink"><style>
 .r88[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r88-blink .4s ease-in-out}
 .r88[data-act=shrug] .arm-l{animation:r88-lift-l 1.5s ease-in-out}
 .r88[data-act=shrug] .arm-r{animation:r88-lift-r 1.5s ease-in-out}

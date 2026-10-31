@@ -1,4 +1,4 @@
-<svg width="216" height="434" viewBox="148 44 216 434" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="breeze-title breeze-desc" class="r66" data-idle="blink blink sweep" data-work="spin spin swing swing press"><style>.r66[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r66-blink 1s ease-in-out}
+<svg width="216" height="434" viewBox="148 44 216 434" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="breeze-title breeze-desc" class="r66" data-idle="blink blink blink blink sweep" data-work="spin spin swing swing press"><style>.r66[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r66-blink 1s ease-in-out}
 .r66[data-act=blink] .head{animation:r66-cock 1s ease-in-out}
 .r66[data-act=sweep] .head{animation:r66-sweep 2s ease-in-out}
 .r66[data-act=spin] .head{animation:r66-oscillate 2s ease-in-out}
