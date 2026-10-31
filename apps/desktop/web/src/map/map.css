@@ -86,7 +86,7 @@
 .home .tok::before { background: color-mix(in srgb, var(--home-sand-press) 30%, transparent); }
 .tok.drag::before { display: none; }
 
-/* the name and the status word print in one size */
+/* the status word's size; the name prints a touch larger */
 .tok .card { --label: calc(var(--tok) * .221); position: relative; width: var(--card-w); height: var(--card-h);
   border-radius: calc(var(--tok) * .12);
   display: flex; flex-direction: column; overflow: hidden;
@@ -121,7 +121,7 @@
 
 .tok .nm { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 0 calc(var(--tok) * .15) calc(var(--tok) * .04);
-  font-size: var(--label); font-weight: var(--w-bold); line-height: 1.08; letter-spacing: var(--track-loose); text-transform: uppercase;
+  font-size: calc(var(--label) * 1.08); font-weight: var(--w-bold); line-height: 1.08; letter-spacing: var(--track-loose); text-transform: uppercase;
   color: var(--ink-land); overflow: hidden; }
 .tok .nm span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere; hyphens: none; }
