@@ -141,14 +141,18 @@ its own `svall-svalld@work.service`.
 Once the machine is in this Mac's list, Svall copies your agent setup there. It copies it again each time this Mac
 links to the machine and before every move, one way, and only what changed on this Mac since the last copy:
 
-- **Claude Code:** `settings.json`, merged key by key; `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/` and
+- **Claude Code:** `settings.json`, merged by top-level setting; `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/` and
   `keybindings.json`; your plugins and their marketplaces; and the MCP servers in `~/.claude.json`, yours and those of
   each project whose folder the machine has.
-- **Codex:** `config.toml`, merged key by key, with its MCP servers; `AGENTS.md`; and `~/.agents/skills`. Its
+- **Codex:** `config.toml`, merged by top-level setting, with its MCP servers; `AGENTS.md`; and `~/.agents/skills`. Its
   `notify`, `[desktop]`, `[marketplaces]` and `[plugins]` stay on this Mac, and the machine keeps its own
   `[projects]` and `[hooks]`.
-- **OpenCode:** `opencode.json` or `opencode.jsonc`, merged key by key, with its MCP servers; and its commands, skills,
+- **OpenCode:** `opencode.json` or `opencode.jsonc`, merged by top-level setting, with its MCP servers; and its commands, skills,
   agents, plugins and `AGENTS.md`.
+
+A top-level setting that changes on this Mac replaces the machine's value whole, a table such as Codex's
+`[model_providers]` or `[profiles]` included, and a setting only the machine has stays. Keep an entry of the machine's
+own in such a table, such as `model_providers.local`, in its overrides (below).
 
 A path under your home on this Mac lands under the home there. Svall's own hooks, statusline and OpenCode plugin on
 the machine are never replaced. Logins never travel: log each agent, and `gh`, in on the machine.
@@ -221,8 +225,9 @@ one that runs `xcrun`, is listed and not copied.
 private fleet, `~/.svall-<fleet>` for another) are merged over Svall's copy, last, and Svall never changes them. Their
 folders `claude/`, `codex/`, `opencode/` and `home/` stand for `~/.claude`, `~/.codex`, `~/.config/opencode` and the
 home. In `claude/.claude.json`, only `mcpServers` counts, merged over the copied servers by name.
-`claude/settings.json`, `codex/config.toml` and `opencode/opencode.json` merge key by key, and any other file replaces
-the copy. Keep there
+`claude/settings.json`, `codex/config.toml` and `opencode/opencode.json` merge by top-level setting: each setting there
+replaces the copy's, a table whole, so an override's `[model_providers]` names every provider the machine should have.
+Their MCP servers merge over the copied ones by name, field by field. Any other file replaces the copy. Keep there
 what the machine should have of its own, such as its own key for a server. Any other edit made on the machine stays
 until that setting changes on this Mac, but a copied server you delete there, or a ticked key you change there, is
 written back at the next copy; a key of the machine's own belongs in the overrides.
