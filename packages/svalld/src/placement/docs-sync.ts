@@ -68,17 +68,22 @@ function fileAbove(dir: string, file: string): string | undefined {
 
 // whether `file` is a folder holding only folders and a crashed write's temps, that lies in `dir` wherever links lead
 function emptyFolder(dir: string, file: string): boolean {
-  const only = (f: string): boolean => fs.readdirSync(f, { withFileTypes: true }).every((d) => DURABLE_TEMP.test(d.name) || (d.isDirectory() && only(path.join(f, d.name))));
+  const only = (f: string): boolean => fs.readdirSync(f, { withFileTypes: true }).every((d) => (d.isFile() && DURABLE_TEMP.test(d.name)) || (d.isDirectory() && only(path.join(f, d.name))));
   return statOf(file)?.isDirectory() === true && fs.realpathSync(file).startsWith(`${fs.realpathSync(dir)}${path.sep}`) && only(file);
 }
 
-// removes such a folder from the bottom up; a file made there meanwhile stops it
-function clearFolder(file: string): void {
+// removes such a folder from the bottom up, false when a file made there meanwhile stops it
+function clearFolder(file: string): boolean {
   for (const d of fs.readdirSync(file, { withFileTypes: true })) {
-    if (d.isDirectory()) clearFolder(path.join(file, d.name));
-    else if (DURABLE_TEMP.test(d.name)) fs.rmSync(path.join(file, d.name));
+    if (d.isDirectory() && !clearFolder(path.join(file, d.name))) return false;
+    if (d.isFile() && DURABLE_TEMP.test(d.name)) fs.rmSync(path.join(file, d.name), { force: true });
   }
-  fs.rmdirSync(file);
+  try { fs.rmdirSync(file); } catch (e) {
+    const { code } = e as NodeJS.ErrnoException;
+    if (code === 'ENOTEMPTY' || code === 'EEXIST') return false;
+    throw e;
+  }
+  return true;
 }
 
 /**
@@ -221,7 +226,7 @@ export class HomeDocs {
     if (here !== sha256 && here !== made) return this.conflict(named, machine);
     if (!bytes) fs.rmSync(file, { force: true });
     else if (here !== sha256) {
-      if (empty) clearFolder(file);
+      if (empty && !clearFolder(file)) return this.conflict(named, machine, file);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       writeDurable(file, bytes);
     }
@@ -415,15 +420,13 @@ export class WorkerDocs {
       // caught up, the file holds the last change journaled or else what the last tar brought
       if ((last ? last.sha256 : this.synced[rel]) !== sha256) {
         // a doc that stays here holds its place: until the home has taken it, or for good if it is one this machine cannot
-        // send; a link here is replaced
-        const empty = emptyFolder(this.o.dir, file);
-        if (fileAbove(this.o.dir, file) || (statOf(file)?.isDirectory() && !empty)) {
+        // send; a link here is replaced, and a folder holding only folders cleared
+        if (fileAbove(this.o.dir, file) || (statOf(file)?.isDirectory() && !(emptyFolder(this.o.dir, file) && clearFolder(file)))) {
           if (this.untaken.get(rel) !== sha256) this.o.log.info(`docs: the home's ${rel} is not taken while a doc of this machine's holds its place`);
           this.untaken.set(rel, sha256);
           delete this.synced[rel];
           continue;
         }
-        if (empty) clearFolder(file);
         fs.mkdirSync(path.dirname(file), { recursive: true });
         writeDurable(file, data);
       }

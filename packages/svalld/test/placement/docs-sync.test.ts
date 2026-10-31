@@ -670,6 +670,17 @@ describe('a path that is a file on one machine and a folder on the other', () =>
     expect(errors).toEqual([]);
   });
 
+  it('a file made in an empty folder here as the home\'s doc clears it holds the place', async () => {
+    const { errors, infos, here, there, ours, send } = tars();
+    fs.mkdirSync(here('e/f'), { recursive: true });
+    put(there('e'), 'e from home\n');
+    madeMeanwhile(here('e'));
+    await send(0);
+    expect(ours()).toEqual({ 'e/new.md': 'made meanwhile\n' });
+    expect(infos).toEqual(['docs: the home\'s robots/c_1/e is not taken while a doc of this machine\'s holds its place']);
+    expect(errors).toEqual([]);
+  });
+
   it('a doc too large to send stays on the worker and holds its place, said once, and a delete the home took is journaled once', async () => {
     const { journaled, errors, infos, here, there, ours, send } = tars();
     put(there('gone.md'), 'g\n');
@@ -727,6 +738,30 @@ describe('a path that is a file on one machine and a folder on the other', () =>
       [`x.w1.${ids[0]}.conflict.md`]: 'x from w1\n', [`plan.w1.${ids[1]}.conflict.md`]: 'plan from w1\n', [`spec.w1.${ids[2]}.conflict.md`]: 'spec from w1\n',
     });
     for (const f of ['plan/aaa', 'plan/bbb/ccc', 'plan/mmm', 'spec/drafts', 'aaa', 'bbb/ccc', 'mmm']) expect(fs.statSync(at(f)).isDirectory()).toBe(true);
+  });
+
+  // a file made in `dir` as it is removed, as by an agent writing there meanwhile
+  const madeMeanwhile = (dir: string) => {
+    const rmdir = fs.rmdirSync.bind(fs) as (...a: unknown[]) => void;
+    const spy = vi.spyOn(fs, 'rmdirSync').mockImplementation(((f: fs.PathLike, ...rest: unknown[]) => {
+      if (String(f) === dir) put(path.join(dir, 'new.md'), 'made meanwhile\n');
+      rmdir(f, ...rest);
+    }) as typeof fs.rmdirSync);
+    stops.push(() => spy.mockRestore());
+  };
+
+  it('this Mac keeps a write beside a folder whose doc is in a folder named like a write\'s temp, or one a file is made in as it is cleared', () => {
+    const home = path.join(makeHome(), 'docs');
+    const at = (rel: string) => path.join(home, 'robots/c_1', rel);
+    put(at('p/q.durable-1-abcdef12.tmp/y.md'), 'y\n');
+    for (const f of ['p/aaa', 'p/zzz', 'e/f']) fs.mkdirSync(at(f), { recursive: true });
+    madeMeanwhile(at('e'));
+    const docs = new HomeDocs(home, silentLogger, () => 'w1', () => true);
+    expect(docs.apply('docs.write', write('robots/c_1/p', 'p from w1\n'), W)).toMatchObject({ under: 'robots/c_1/p' });
+    expect(docs.apply('docs.write', write('robots/c_1/e', 'e from w1\n'), W)).toMatchObject({ under: 'robots/c_1/e' });
+    expect(tree(at('.'))).toMatchObject({ 'p/q.durable-1-abcdef12.tmp/y.md': 'y\n', 'e/new.md': 'made meanwhile\n' });
+    expect(conflicts(at('.'))).toHaveLength(2);
+    for (const f of ['p/aaa', 'p/zzz']) expect(fs.statSync(at(f)).isDirectory()).toBe(true);
   });
 
   it('this Mac follows a link: one to a file is that file, one to a folder holds its place, a dangling one is nothing, and no folder through one is removed outside the docs', () => {

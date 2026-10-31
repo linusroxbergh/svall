@@ -256,8 +256,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   there since. Where it has, this Mac keeps its own, and the worker's doc lands beside the file or folder in its way,
   named for its path from there, and the robot's note names it: "linus-vault wrote robots/c_4f2k9a/plan/a.md, but
   robots/c_4f2k9a/plan is a file on this Mac; linus-vault's version is kept as
-  robots/c_4f2k9a/plan-a.4be0c1.linus-vault.mu_3k9x0q2m7a.conflict.md". A file made a folder on a worker before it ran
-  this release drains too, but leaves such a copy and a note behind.
+  robots/c_4f2k9a/plan-a.4be0c1.linus-vault.mu_3k9x0q2m7a.conflict.md". A file made a folder, or a folder a file, on a
+  worker before it ran this release drains too, but leaves such a copy and a note behind.
 - A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
   cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:
