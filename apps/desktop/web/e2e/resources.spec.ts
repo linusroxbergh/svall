@@ -760,7 +760,7 @@ test('a new agent profile is written in the agent profiles’ own shelf and offe
   await expect(page.getByTestId('resources-what-agentProfiles')).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByTestId('resources-item-agentProfiles-reviewer')).toBeVisible();
 
-  await expect(page.getByTestId('resources-new-doc')).toHaveText('+ new profile');
+  await expect(page.getByTestId('resources-new-doc')).toHaveText('new profile');
   await page.getByTestId('resources-new-doc').click();
   await page.getByTestId('resources-new-doc-name').fill('Critic');
   await page.keyboard.press('Enter');

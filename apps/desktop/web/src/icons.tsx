@@ -58,8 +58,16 @@ export const Reset = ({ size }: Props) => (
   <Svg grid={12} size={size}><path d="M2.25 6.3A3.75 3.75 0 1 0 6 2.55a3.75 3.75 0 0 0-2.87 1.34M2.96 1.9l.17 1.99 1.99-.17" /></Svg>
 );
 
-// back to where a walk started
-export const Back = ({ size }: Props) => <Svg grid={12} size={size}><path d="M4.5 2 2 4.5 4.5 7M2 4.5h5.25a2.75 2.75 0 0 1 0 5.5H6" /></Svg>;
+// a hooked arrow: back to where a walk started, or the Return key
+export const Return = ({ size }: Props) => <Svg grid={12} size={size}><path d="M4.5 2 2 4.5 4.5 7M2 4.5h5.25a2.75 2.75 0 0 1 0 5.5H6" /></Svg>;
+
+export const Arrow = ({ dir, size }: Props & { dir: 'up' | 'down' }) => (
+  <Svg grid={12} size={size}><path d={dir === 'up' ? 'M6 9.5v-7M2.75 5.75 6 2.5l3.25 3.25' : 'M6 2.5v7M2.75 6.25 6 9.5l3.25-3.25'} /></Svg>
+);
+
+export const Backspace = ({ size }: Props) => (
+  <Svg grid={12} size={size}><path d="M4.2 2.75h5.55a1 1 0 0 1 1 1v4.5a1 1 0 0 1-1 1H4.2L1.25 6zM5.75 4.75l2.5 2.5M8.25 4.75l-2.5 2.5" /></Svg>
+);
 
 // fill the window, and back to the card
 export const Expand = ({ size }: Props) => <Svg grid={12} size={size}><path d="M7 2.5h2.5V5M9.5 2.5 6.75 5.25M5 9.5H2.5V7M2.5 9.5l2.75-2.75" /></Svg>;

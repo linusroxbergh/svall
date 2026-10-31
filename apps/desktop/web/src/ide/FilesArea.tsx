@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { useApp } from '../hooks.js';
-import { Back, Caret } from '../icons.js';
+import { Caret, Return } from '../icons.js';
 import { accountHome, basename } from '../paths.js';
 import { useWidthGrip } from '../widthGrip.js';
 import { Editor } from './Editor.js';
@@ -41,7 +41,7 @@ function Crumbs({ id, root, top }: { id: string; root: string; top: string }) {
           </Fragment>
         ))}
       </nav>
-      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}><Back size="xs" />{basename(root)}</button>}
+      {top !== '' && <button className="ide-back" data-testid="files-back" data-tip="Back to the robot's folder" onClick={() => go(root)}><Return size="xs" />{basename(root)}</button>}
     </div>
   );
 }

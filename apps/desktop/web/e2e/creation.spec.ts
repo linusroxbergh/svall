@@ -5,7 +5,7 @@ test('creation actions stay findable and create on the intended island', async (
   const b = await svall.api.call('island.create', { name: svall.uniq('second'), position: { x: 12, y: 200 } });
   await svall.open('map');
 
-  await expect(page.getByTestId('sidebar-new-island')).toHaveText('+ New island');
+  await expect(page.getByTestId('sidebar-new-island')).toHaveText('New island');
   const sidebarAction = page.getByTestId(`sb-island-new-${a.id}`);
   await expect(sidebarAction).toBeVisible();
   await expect(sidebarAction).toHaveAccessibleName(`New robot on ${a.name}`);
