@@ -153,7 +153,7 @@ function Prompt({ typed, send }: { typed: number; send: boolean }) {
     <div className="modal-back">
       <div className="modal dialog">
         <div className="kicker">Mission control</div>
-        <div className="fld mission" data-empty={typed === 0}>{typed ? PROMPT.slice(0, typed) : 'what should the fleet do?'}<i className="caret" /></div>
+        <div className="fld mission" data-empty={typed === 0}>{typed ? PROMPT.slice(0, typed) : 'what should the fleet do?'}<i className="type-cursor" /></div>
         <div className="acts">
           <span className="btn pri" data-down={send}>Send</span>
           <span className="btn">Cancel</span>
