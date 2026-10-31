@@ -18,7 +18,7 @@ import { applyBundle, branchAhead, fileSha, holdsWhole, verifyBundle } from './b
 import { carriedFrom } from './checks.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree, packMove, placeSessions, refused,
-  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Made, type ReturnSheet,
+  removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Made, type ReturnSheet,
 } from './move-steps.js';
 import { seedTrust } from './trust.js';
 
@@ -61,9 +61,6 @@ const Prepare = z.object({ id: MoveId, blobs: z.object({ bundle: Sha256.optional
 const Compare = z.object({ left: LeftBehind });
 // branch: the home's branch of the robot's branch's name, which the way back would reset
 const Sheet = z.object({ robotId: z.string(), have: z.array(z.string()), branch: z.object({ name: z.string(), sha: ObjectName }).optional() });
-
-// what an abort answers of a worktree the robot left here: its fingerprint once left again, or that it was kept as it is
-type Answer = Pick<MoveJournal, 'fingerprint' | 'kept'>;
 
 const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
   const p = schema.safeParse(raw);
@@ -265,7 +262,7 @@ export class PrepareService {
   // before anything ran here: what this move made goes and what it changed is put back, and the robot's record goes; on
   // the way back the robot reopens here as it was. A worktree the robot left here is left again, with its fingerprint, or
   // kept as it is when it holds what the move did not write
-  private async abort(id: string): Promise<Answer> {
+  private async abort(id: string): Promise<AbortAnswer> {
     const j = this.files.read(id);
     if (!j) return {};
     if (j.phase === 'aborted') return { ...(j.fingerprint && { fingerprint: j.fingerprint }), ...(j.kept && { kept: j.kept }) };
@@ -278,12 +275,12 @@ export class PrepareService {
     return answer;
   }
 
-  private async remove(j: MoveJournal): Promise<Answer> {
+  private async remove(j: MoveJournal): Promise<AbortAnswer> {
     const { clone, paths } = j.plan;
     const { manifest: m, made = {} } = j;
     const left = j.robot?.left;
     const git = this.d.git;
-    let out: Answer = {};
+    let out: AbortAnswer = {};
     if (m && made.unlocked && left) {
       const fingerprint = await leaveAgain(left, m, made, `moved to ${this.d.homeName} ${left.moveId}`, git);
       out = fingerprint ? { fingerprint } : { kept: true };

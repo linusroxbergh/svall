@@ -740,7 +740,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.readFileSync(b, 'utf8')).toBe(`${coming}saved on w1\n`);
     expect(listed(w, w.clone, w.farWt)).toEqual({});
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
-    expect(home.store.state.robots.c_1.note).toContain(`${w.farWt} on w1 changed during a move that was undone; it stays as it is, unlocked`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.farWt} on w1 changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
     // and answers so again
     expect(await w.worker.handlers['move.abort']({ id: (failed as { data: { moveId: string } }).data.moveId })).toEqual({ kept: true });
     disarm?.();
@@ -969,10 +969,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(state(w, w.wt)).toEqual(there);
   });
 
-  it('an aborted return leaves the Mac worktree as it is, unlocked, when it changed after the return took it back, and the note says so', async () => {
+  it('an aborted return leaves the Mac worktree as it is, unlocked, when it changed after the return took it back, and the note says so and how to bring the robot back', async () => {
     const w = open();
     const home = await w.start();
     await home.placement.start('c_1', W);
+    w.g(w.farWt, 'commit', '-qm', 'staged work');
     const a = path.join(w.wt, 'a.txt');
     const coming = fs.readFileSync(path.join(w.farWt, 'a.txt'), 'utf8');
     at('move.journal.commit', 'before', () => {
@@ -985,10 +986,15 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
     expect(listed(w, w.main, w.wt)).toEqual({});
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
     disarm?.();
-    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them` });
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: 'kanban moved on this Mac since the move; merge or rename it' });
     expect(fs.readFileSync(a, 'utf8')).toBe(`${coming}saved on the Mac\n`);
+
+    w.g(w.main, 'worktree', 'remove', '--force', w.wt);
+    const there = state(w, w.farWt);
+    await home.placement.start('c_1', H);
+    expect(state(w, w.wt)).toEqual(there);
   });
 
   it('an aborted return keeps a file saved into the Mac worktree while the return applied what came back', async () => {
@@ -1013,7 +1019,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(saved).toBe(true);
     expect(fs.readFileSync(path.join(w.wt, 'mine.md'), 'utf8')).toBe('mine\n');
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
   });
 
   it('an aborted return leaves the Mac worktree as it is, unlocked, when the branch it was left on moved after the return took it back', async () => {
@@ -1034,7 +1040,104 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.g(w.main, 'rev-parse', 'kanban')).toBe(moved);
     expect(state(w, w.wt).branch).toBe('other');
     expect(listed(w, w.main, w.wt)).toEqual({});
-    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone; it stays as it is, unlocked`);
+    expect(home.store.state.robots.c_1.note).toContain(`${w.wt} on this Mac changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`);
+  });
+
+  it('a return refuses a Mac worktree kept on the branch an undone return came on, and a commit made there stays on that branch', async () => {
+    const w = open();
+    // the robot leaves its worktree here holding nothing beyond its commit
+    w.g(w.wt, 'add', 'a.txt', 'b.txt', 'notes.md');
+    w.g(w.wt, 'commit', '-qm', 'all of it');
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    w.g(w.farWt, 'checkout', '-q', '-b', 'other');
+    fs.writeFileSync(path.join(w.farWt, 'other.txt'), 'other\n');
+    w.g(w.farWt, 'add', 'other.txt');
+    w.g(w.farWt, 'commit', '-qm', 'on other');
+    at('move.journal.commit', 'before', () => {
+      fs.appendFileSync(path.join(w.wt, 'other.txt'), 'saved on the Mac\n');
+      throw new Error('the disk is full');
+    });
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    disarm?.();
+    expect(state(w, w.wt).branch).toBe('other');
+    w.g(w.wt, 'commit', '-qam', 'mine');
+    const mine = w.g(w.wt, 'rev-parse', 'HEAD');
+
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `${w.wt} on this Mac is on other since the move; check out kanban there or remove the worktree` });
+
+    expect(w.g(w.main, 'rev-parse', 'other')).toBe(mine);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+  });
+
+  it('an aborted return puts the Mac worktree back on kanban when what came back was refused once it was checked out', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const left = w.g(w.wt, 'rev-parse', 'HEAD');
+    w.g(w.farWt, 'checkout', '-q', '-b', 'other');
+    w.g(w.farWt, 'commit', '-qm', 'on other');
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    d.git = (args, cwd) => (args[0] === 'apply' && args.includes('--whitespace=nowarn') ? Promise.resolve({ code: 1, stdout: '', stderr: 'error: patch failed' }) : git(args, cwd));
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('patch failed');
+    d.git = git;
+
+    expect(state(w, w.wt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.main, 'branch', '--list', 'other')).toBe('');
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(home.store.state.robots.c_1.note).not.toContain('changed during a move that was undone');
+  });
+
+  it('an aborted return takes back a file this Mac\'s ignore rules leave out, and locks the Mac worktree again', async () => {
+    const w = open();
+    fs.appendFileSync(path.join(w.main, '.git/info/exclude'), '*.log\n');
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    fs.writeFileSync(path.join(w.farWt, 'run.log'), 'ran\n');
+    fs.appendFileSync(path.join(w.farWt, 'b.txt'), 'more\n');
+    at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(home.store.state.robots.c_1.note).not.toContain('changed during a move that was undone');
+    disarm?.();
+    await home.placement.start('c_1', H);
+    expect(fs.readFileSync(path.join(w.wt, 'run.log'), 'utf8')).toBe('ran\n');
+  });
+
+  it('an abort that stopped once it checked the Mac worktree out on kanban again finishes when svalld starts again', async () => {
+    const w = open();
+    const first = await w.start();
+    await first.placement.start('c_1', W);
+    const left = w.g(w.wt, 'rev-parse', 'HEAD');
+    w.g(w.farWt, 'checkout', '-q', '-b', 'other');
+    w.g(w.farWt, 'commit', '-qm', 'on other');
+    const d = first.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    d.git = async (args, cwd) => {
+      const r = await git(args, cwd);
+      if (args[0] === 'checkout' && args.includes('-f')) {
+        first.life.dead = true;
+        throw new Crash('svalld died');
+      }
+      return r;
+    };
+    at('move.journal.commit', 'before', () => { throw new Error('the disk is full'); });
+    await expect(first.placement.start('c_1', H)).rejects.toThrow();
+    first.links.stop();
+    disarm?.();
+    expect(fs.existsSync(path.join(w.wt, 'notes.md'))).toBe(true);
+
+    const again = await w.bootHome();
+    await again.placement.recoverMoves();
+
+    expect(state(w, w.wt)).toMatchObject({ branch: 'kanban', head: left });
+    expect(w.g(w.main, 'branch', '--list', 'other')).toBe('');
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(again.store.state.robots.c_1.note).not.toContain('changed during a move that was undone');
   });
 
   it('a move waits while the worker catches up with this Mac: busy, with the one sentence', async () => {

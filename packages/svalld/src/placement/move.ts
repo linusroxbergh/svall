@@ -27,7 +27,7 @@ import { destinationPaths } from './paths.js';
 import { addLine } from './replay.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, holding, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree,
-  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type Failure, type Made, type RestSide, type ReturnSheet,
+  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Failure, type Made, type RestSide, type ReturnSheet,
 } from './move-steps.js';
 
 const JOURNALED: Record<MovePhase, Failpoint> = {
@@ -54,7 +54,8 @@ const sheetRefusal = (e: Error, name: string): Failure => {
 
 // a move undone before its commit rejects with the phase it failed at, which the move sheet names
 const failedAt = (e: Error & { data?: Record<string, unknown> }, j: MoveJournal): Error => Object.assign(e, { data: { ...e.data, moveId: j.id, phase: j.phase } });
-const keptLine = (root: string, where: string): string => `${root} on ${where} changed during a move that was undone; it stays as it is, unlocked`;
+const keptLine = (root: string, where: string): string =>
+  `${root} on ${where} changed during a move that was undone, so it stays as it is, unlocked; save what you need from it and git worktree remove it, and the next move there makes a new one`;
 
 // two branch names this Mac cannot hold side by side: one a folder of the other, or spelled alike but for case, which APFS
 // takes for one
@@ -343,7 +344,7 @@ export class Placement {
     this.d.log.error(`move ${failed.id}: ${error.message}`);
     // what a rest that failed part way had stopped is on disk
     const j = this.readable(failed.id) ?? failed;
-    const told = j.phase !== 'prepare' || await this.d.links.call<Pick<MoveJournal, 'fingerprint' | 'kept'>>(j.to, 'move.abort', { id: j.id }).then((r) => {
+    const told = j.phase !== 'prepare' || await this.d.links.call<AbortAnswer>(j.to, 'move.abort', { id: j.id }).then((r) => {
       // a worktree the robot left there, taken back, holds what it holds once left again, or was kept as it is
       if (r.fingerprint || r.kept) this.d.store.update((d) => {
         const c = d.robots[j.robotId];
