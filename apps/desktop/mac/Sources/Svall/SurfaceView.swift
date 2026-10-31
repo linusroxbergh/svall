@@ -22,6 +22,8 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var overLink = false
     var focused = false
     var cellSize = CGSize(width: 8, height: 16)
+    /// Clipboard requests a sheet is still asking about, which `destroy` denies so Ghostty frees them.
+    var pendingClipboard: [UnsafeMutableRawPointer] = []
     private var cursor: NSCursor = .iBeam
     private var sizeTimer: Timer?
 
@@ -67,6 +69,8 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     func destroy() {
         guard let surface else { return }
         self.surface = nil
+        pendingClipboard.forEach { ghostty_surface_deny_clipboard_request(surface, $0) }
+        pendingClipboard = []
         ghostty_surface_free(surface)
     }
 

@@ -107,19 +107,26 @@ final class GhosttyRuntime {
         }
     }
 
-    private typealias Content = (mime: String, data: Data)
+    typealias Content = (mime: String, data: Data)
+
+    /// The names Ghostty takes as text; a Kitty clipboard write passes them on as the program wrote them.
+    private static let textMimes: Set = ["text/plain", "text/plain;charset=utf-8", "UTF8_STRING", "TEXT", "STRING"]
 
     private static func readClipboard(_ userdata: UnsafeMutableRawPointer?, _ location: ghostty_clipboard_e, _ state: UnsafeMutableRawPointer?,
                                       _ mimes: UnsafePointer<UnsafePointer<CChar>?>?, _ count: Int, _ list: Bool) -> ghostty_clipboard_read_result_e {
         // on the main thread: a paste comes from a view's input, an OSC 52 read from ghostty_app_tick
         guard location == GHOSTTY_CLIPBOARD_STANDARD, let surface = surfaceView(userdata)?.surface else { return GHOSTTY_CLIPBOARD_READ_UNSUPPORTED }
-        // the pasteboard is served as text alone
-        let text = NSPasteboard.general.string(forType: .string)
-        let wantsText = (0..<count).contains { i in mimes?[i].map { String(cString: $0) } == "text/plain" }
-        let contents: [Content] = wantsText ? text.map { [("text/plain", Data($0.utf8))] } ?? [] : []
-        guard !contents.isEmpty || list else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
-        complete(surface, state, contents, available: list && text != nil ? ["text/plain"] : [])
+        let wanted = (0..<count).compactMap { i in mimes?[i].map { String(cString: $0) } }
+        guard let read = serve(NSPasteboard.general.string(forType: .string), wanted: wanted, list: list) else { return GHOSTTY_CLIPBOARD_READ_UNAVAILABLE }
+        complete(surface, state, read.contents, available: read.available)
         return GHOSTTY_CLIPBOARD_READ_STARTED
+    }
+
+    /// What a read gets from the pasteboard, served as its `text` alone; nil when it gets nothing.
+    static func serve(_ text: String?, wanted: [String], list: Bool) -> (contents: [Content], available: [String])? {
+        let contents: [Content] = if let text, wanted.contains("text/plain") { [("text/plain", Data(text.utf8))] } else { [] }
+        guard !contents.isEmpty || list else { return nil }
+        return (contents, list && text != nil ? ["text/plain"] : [])
     }
 
     /// Completes a started read with `contents`, which Ghostty borrows only for this call.
@@ -159,7 +166,7 @@ final class GhosttyRuntime {
             alert.informativeText = "This text looks like it contains commands, and pasting it into the terminal may run them."
             alert.addButton(withTitle: "Paste")
             alert.addButton(withTitle: "Cancel")
-        case GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ, GHOSTTY_CLIPBOARD_REQUEST_KITTY_READ, GHOSTTY_CLIPBOARD_REQUEST_LIST:
+        case GHOSTTY_CLIPBOARD_REQUEST_OSC_52_READ, GHOSTTY_CLIPBOARD_REQUEST_KITTY_READ:
             alert.messageText = "Authorize Clipboard Access"
             alert.informativeText = "A program in the terminal wants to read the clipboard."
             alert.addButton(withTitle: "Allow")
@@ -176,7 +183,7 @@ final class GhosttyRuntime {
 
     private static func confirmReadClipboard(_ userdata: UnsafeMutableRawPointer?, _ confirm: UnsafePointer<ghostty_clipboard_confirm_s>?,
                                              _ state: UnsafeMutableRawPointer?, _ request: ghostty_clipboard_request_e) {
-        guard let view = surfaceView(userdata), let surface = view.surface else { return }
+        guard let view = surfaceView(userdata), let surface = view.surface, let state else { return }
         guard let c = confirm?.pointee else { ghostty_surface_deny_clipboard_request(surface, state); return }
         // copied now, as Ghostty lends them only for this call; an approval completes with exactly these
         let contents: [Content] = (0..<c.contents_len).compactMap { i in
@@ -184,9 +191,12 @@ final class GhosttyRuntime {
             return (String(cString: mime), item.data.map { Data(bytes: $0, count: item.len) } ?? Data())
         }
         let available = (0..<c.available_len).compactMap { i in c.available?[i].map { String(cString: $0) } }
+        view.pendingClipboard.append(state)
         DispatchQueue.main.async {
             ask(request, on: view) { ok in
-                guard let surface = view.surface else { return }
+                // a terminal destroyed while asking denied the request itself
+                guard let surface = view.surface, let i = view.pendingClipboard.firstIndex(of: state) else { return }
+                view.pendingClipboard.remove(at: i)
                 if ok { complete(surface, state, contents, available: available, confirmed: true) } else { ghostty_surface_deny_clipboard_request(surface, state) }
             }
         }
@@ -196,7 +206,7 @@ final class GhosttyRuntime {
         guard location == GHOSTTY_CLIPBOARD_STANDARD, let content, len > 0 else { return }
         let view = surfaceView(userdata)
         for i in 0..<len {
-            guard let mime = content[i].mime, let data = content[i].data, String(cString: mime) == "text/plain" else { continue }
+            guard let mime = content[i].mime, let data = content[i].data, textMimes.contains(String(cString: mime)) else { continue }
             let text = String(decoding: UnsafeRawBufferPointer(start: data, count: content[i].len), as: UTF8.self)
             DispatchQueue.main.async {
                 let write = {
