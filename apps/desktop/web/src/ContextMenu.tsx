@@ -40,8 +40,10 @@ function SubMenu({ items, anchor, active, setActive, pick }: {
     const el = box.current;
     if (!el) return;
     const r = anchor.getBoundingClientRect(), m = theme.menu.margin, w = el.offsetWidth, h = el.offsetHeight;
-    el.style.left = `${r.right + w + m <= window.innerWidth ? r.right : Math.max(m, r.left - w)}px`;
-    el.style.top = `${Math.max(m, Math.min(r.top, window.innerHeight - h - m))}px`;
+    const right = r.right + w + m <= window.innerWidth, top = Math.max(m, Math.min(r.top, window.innerHeight - h - m));
+    el.style.left = `${right ? r.right : Math.max(m, r.left - w)}px`;
+    el.style.top = `${top}px`;
+    el.style.setProperty('--origin', `${right ? 0 : w}px ${r.top - top}px`);
   }, [anchor]);
   useEffect(() => (box.current ? holdCutout(app.bridge, box.current) : undefined), []);
   return (
@@ -75,8 +77,10 @@ export function ContextMenu() {
     const el = box.current;
     if (!menu || !el) return;
     const m = theme.menu.margin, w = el.offsetWidth, h = el.offsetHeight;
-    el.style.left = `${Math.max(m, Math.min(menu.x, window.innerWidth - w - m))}px`;
-    el.style.top = `${Math.max(m, menu.y + h + m > window.innerHeight ? menu.y - h : menu.y)}px`;
+    const left = Math.max(m, Math.min(menu.x, window.innerWidth - w - m)), top = Math.max(m, menu.y + h + m > window.innerHeight ? menu.y - h : menu.y);
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
+    el.style.setProperty('--origin', `${menu.x - left}px ${menu.y - top}px`);
     setActive(-1);
     setSub(-1);
   }, [menu]);

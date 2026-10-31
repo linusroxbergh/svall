@@ -40,6 +40,9 @@ export function Section({ name, title, head, testid, shut, children }: { name: s
     set({ ...now(), height: Math.round(Math.max(min, Math.min(max, from + dy))) }, false);
   }, () => set(now()), 'y');
   const open = !fold.shut;
+  // shut at some point while mounted, so an opening drops the body in where a card appearing on it does not
+  const wasShut = useRef(!open);
+  if (!open) wasShut.current = true;
   return (
     <section className="sec" data-testid={testid} data-section={name} data-open={open} data-fit={open && fold.height === undefined}
       style={open && fold.height !== undefined ? { flexBasis: fold.height } : undefined}>
@@ -48,7 +51,7 @@ export function Section({ name, title, head, testid, shut, children }: { name: s
           onClick={() => { commitFocused(); set({ ...fold, shut: open }); }}><Caret open={open} />{title}</button>
         {head}
       </div>
-      {open && <div className="sec-body">{children}</div>}
+      {open && <div className="sec-body" data-opened={wasShut.current || undefined}>{children}</div>}
       {open && (
         <i className="sec-grip" data-testid={`sec-grip-${name}`} role="separator" aria-orientation="horizontal" aria-label={`Resize ${title}`}
           data-tip="Drag to resize, double-click to fit" {...grip} onDoubleClick={() => set({ ...fold, height: undefined })} />

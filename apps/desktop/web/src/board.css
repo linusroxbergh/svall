@@ -1,9 +1,13 @@
 /* the board's bar: the view switch, the island chips, then Needs you and + Column at the end */
 .kb-bar { flex: none; height: 52px; box-sizing: border-box; display: flex; align-items: center; gap: var(--sp-lg); padding: 0 var(--sp-2xl); border-bottom: 1px solid var(--line-soft); background: var(--surface-1); }
-.kb-seg { flex: none; display: inline-flex; padding: var(--sp-2xs); border-radius: calc(var(--r-md) + var(--sp-2xs)); background: var(--fill-1); border: 1px solid var(--line-soft); }
+.kb-seg { position: relative; isolation: isolate; flex: none; display: inline-flex; padding: var(--sp-2xs); border-radius: calc(var(--r-md) + var(--sp-2xs)); background: var(--fill-1); border: 1px solid var(--line-soft); }
 .kb-seg button { padding: var(--sp-xs) var(--sp-2xl); border-radius: var(--r-md); background: none; font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); }
 .kb-seg button:hover { background: none; color: var(--ink); }
-.kb-seg button[aria-pressed="true"] { background: var(--fill-3); color: var(--ink); cursor: default; }
+.kb-seg button[aria-pressed="true"] { color: var(--ink); cursor: default; }
+/* the pressed button's fill: one pill behind a segmented control's buttons that eases to each one pressed */
+.glide { position: absolute; z-index: -1; top: var(--sp-2xs); bottom: var(--sp-2xs); left: 0; border-radius: var(--r-md); background: var(--fill-3); pointer-events: none;
+  transition: translate var(--dur-slow) var(--ease-out), width var(--dur-slow) var(--ease-out); }
+.glide[data-still="true"] { transition: none; }
 .kb-sep { flex: none; width: 1px; height: 20px; background: var(--line); }
 /* the island chips give way first in a narrow window, and scroll sideways rather than wrap */
 .kb-chips { position: relative; flex: 0 1 auto; min-width: 0; display: flex; gap: var(--sp-lg); overflow-x: auto; scrollbar-width: none; }

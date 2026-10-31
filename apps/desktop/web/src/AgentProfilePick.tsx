@@ -76,7 +76,7 @@ export function AgentProfilePick({ id }: { id: string }) {
     const r = at.getBoundingClientRect();
     const panel = at.closest('.side')?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
     const { above, maxHeight } = placeTip(r, el.scrollHeight, panel);
-    setPlace({ left: r.left, width: r.width, maxHeight: maxHeight || undefined,
+    setPlace({ left: r.left, width: r.width, maxHeight: maxHeight || undefined, ['--origin' as string]: above ? '50% 100%' : '50% 0',
       ...(above ? { bottom: window.innerHeight - r.top + 5 } : { top: r.bottom + 5 }) });
   });
   useEffect(() => { if (open) menu.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' }); }, [open, active]);

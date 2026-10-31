@@ -116,8 +116,10 @@
   --dur-fast: .12s; --dur: .16s; --dur-slow: .2s;
   /* the sand glow of a robot arriving in a board column; theme.board.arriveMs matches it */
   --dur-arrive: 1.4s;
+  /* a robot's status colour fading to its next, and its context meter filling */
+  --dur-status: .4s; --dur-meter: .6s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --ping: 2.4s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700;
   --track-tight: -.02em; --track-loose: .06em; --track-caps: .12em;

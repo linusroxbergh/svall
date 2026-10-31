@@ -1,4 +1,8 @@
 .modal-back { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; background: var(--shade-1); backdrop-filter: blur(2px); }
+/* a dialog rises into place over a fading backdrop */
+.modal-back { animation: fade-in var(--dur-slow) var(--ease-out); }
+.modal-back > .modal { animation: dialog-in var(--dur-slow) var(--ease-out); }
+@keyframes dialog-in { from { opacity: 0; translate: 0 6px; scale: .98; } }
 .modal { background: var(--surface-2); backdrop-filter: none; width: 380px; max-width: calc(100vw - 40px); padding: var(--sp-3xl); display: flex; flex-direction: column; gap: var(--sp-xl); }
 .modal:focus { outline: none; }
 /* every dialog's way out is the × at the right of its kicker, bled over the padding so the row keeps its height */
