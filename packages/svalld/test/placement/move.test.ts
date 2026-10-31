@@ -983,6 +983,15 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
     fs.rmSync(w.main, { recursive: true });
     fs.renameSync(`${w.main}.away`, w.main);
+    // a shallow clone here, whose oldest commit is no root
+    w.g(w.main, 'commit', '-q', '--allow-empty', '-m', 'more');
+    fs.writeFileSync(path.join(w.main, '.git/shallow'), `${w.g(w.main, 'rev-parse', 'HEAD')}\n`);
+    expect(await refusal()).toEqual({ reason: 'app is a shallow clone', action: `git -C '${w.main}' fetch --unshallow` });
+    w.g(w.main, 'remote', 'set-url', 'origin', path.join(w.base, 'origins/other.git'));
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    w.g(w.main, 'remote', 'set-url', 'origin', w.origin);
+    fs.rmSync(path.join(w.main, '.git/shallow'));
+    w.g(w.main, 'reset', '-q', '--hard', 'HEAD~1');
 
     const inTheWay = { reason: `${b.mac} on this Mac is in the way`, action: 'move it out of the way first' };
     fs.mkdirSync(b.mac);

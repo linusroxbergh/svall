@@ -15,6 +15,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello, WorkerLink } from '../link/home.js';
 import { must, remoteGit, webUrl, type GitRunner } from '../links/git.js';
 import type { Store } from '../store.js';
+import { shq } from '../text.js';
 import { branchAhead, BundleTooLarge, buildBundle, credentialsIn, holdsWhole, trackedCredentials, untrackedFiles, type BundleManifest } from './bundle.js';
 import { refuseUncarried, WORKTREES, worktreeSlug } from './convert.js';
 import { destinationPaths, sessionLanding, type Homes } from './paths.js';
@@ -106,6 +107,12 @@ const rootOf = async (dir: string, git: GitRunner): Promise<string | undefined> 
   const r = await git(['rev-list', '--max-parents=0', 'HEAD'], dir);
   return (r.code === 0 && r.stdout.trim().split('\n').at(-1)) || undefined;
 };
+
+/** Refuses the repository at `dir` while it is a shallow clone, whose oldest commit is no root commit a full clone shares. */
+export async function shallowFailure(dir: string, git: GitRunner): Promise<Failure | undefined> {
+  if ((await git(['rev-parse', '--is-shallow-repository'], dir)).stdout.trim() !== 'true') return undefined;
+  return { reason: `${path.posix.basename(clean(dir))} is a shallow clone`, action: `git -C ${shq(dir)} fetch --unshallow` };
+}
 
 // a remote as any of its spellings, scp or url, with or without .git, names it
 export const remoteKey = (r?: string): string | undefined => r && (webUrl(r) ?? r);
@@ -309,6 +316,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       }
     }
     if (detached) fail({ reason: `${c.name} is on a detached HEAD`, action: 'check out a branch first' });
+    const shallow = await shallowFailure(repo.mainRoot, d.git);
+    if (shallow) fail(shallow);
     if (onMain) {
       const head = keep ? (await d.git(['rev-parse', '--verify', '-q', 'HEAD^{commit}'], repo.mainRoot)).stdout.trim() : '';
       convert = { main: repo.mainRoot, slug: await worktreeSlug(c.name, repo.branch, { main: repo.mainRoot, git: d.git }), ...(head && { head }) };
@@ -339,7 +348,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       probe = await ask<RepoProbe>('repo.probe', { path: clone, ...(remote && { remote }), ...(branch && { branch }) });
       const inTheWay: Failure = { reason: `${clone} on ${name} is not a clone of ${repoName}`, action: 'move it out of the way there first' };
       if (probe?.state === 'clone') {
-        if (remoteKey(probe.remote) === remoteKey(remote) && probe.rootCommit === await rootOf(repo.mainRoot, d.git)) have = probe.refs;
+        // a shallow clone, refused above, has no root commit to compare
+        if (remoteKey(probe.remote) === remoteKey(remote) && (shallow || probe.rootCommit === await rootOf(repo.mainRoot, d.git))) have = probe.refs;
         else fail(inTheWay);
       } else if (probe?.state === 'other') fail(inTheWay);
       else if (probe && !remote) fail({ reason: `${repoName} has no remote`, action: `push ${repoName} to a remote first` });

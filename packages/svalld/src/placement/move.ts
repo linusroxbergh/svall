@@ -19,7 +19,8 @@ import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, unanswered, withoutToken, type CheckDeps, type CheckResult, type RepoProbe,
+  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
+  type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths } from './paths.js';
@@ -556,9 +557,11 @@ export class Placement {
         const remote = far.remote && withoutToken(far.remote);
         return { reason: `${repoName} is not cloned on this Mac`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
       }
-      if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote) || here.rootCommit !== far.rootCommit) {
-        return { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
-      }
+      const notClone: Failure = { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
+      if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote)) return notClone;
+      const shallow = await shallowFailure(main, git);
+      if (shallow) return shallow;
+      if (here.rootCommit !== far.rootCommit) return notClone;
     }
     const twin = await this.clashing(branch, back?.path ?? main);
     if (twin || back) return twin;

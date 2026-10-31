@@ -509,6 +509,28 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.remote).toBeUndefined();
   });
 
+  it('check 4: refuses a shallow clone with the command that fetches its history, a first move too, and names no clone there in the way', async () => {
+    const t = machines();
+    const full = t.repo('code/svall');
+    put(full, 'c.txt', 'three\n');
+    t.g(full, 'add', 'c.txt');
+    t.g(full, 'commit', '-qm', 'more');
+    t.g(full, 'push', '-q', 'origin', 'main');
+    fs.rmSync(full, { recursive: true });
+    t.g(t.base, 'clone', '-q', '--depth', '1', `file://${t.origin('svall')}`, full);
+    t.g(full, 'remote', 'set-url', 'origin', t.origin('svall'));
+    const wt = `${full}/.claude/worktrees/kb`;
+    t.g(full, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    const c = on(wt, { main: full, branch: 'kb' });
+    const shallow = { reason: 'svall is a shallow clone', action: `git -C '${full}' fetch --unshallow`, details: [] };
+
+    expect(await refusal(depsOf(t, [c]))).toEqual(shallow);
+    t.g(t.base, 'clone', '-q', t.origin('svall'), `${t.far}/code/svall`);
+    expect(await refusal(depsOf(t, [c]))).toEqual(shallow);
+    t.g(full, 'fetch', '-q', '--unshallow');
+    expect((await sheet(depsOf(t, [c]))).sheet).toMatchObject({ clone: 'warm' });
+  });
+
   it('check 4: a first clone builds on the remote\'s branches, which the clone will hold, though the Mac knows no origin/HEAD', async () => {
     const t = machines();
     const root = t.repo('code/svall');
