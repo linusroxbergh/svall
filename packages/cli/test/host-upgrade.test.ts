@@ -310,24 +310,36 @@ esac
     await far.close();
   });
 
+  it('tells the release the machine runs once it answers on it after an upgrade', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const runs = vi.fn();
+    await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, runs }));
+    await far.close();
+    expect(runs.mock.calls).toEqual([['1.2.3']]);
+  });
+
   it('puts a new release that does not answer back on the release the machine ran before, and says which it runs', async () => {
     // an older release is the newest by mtime, which is where a rollback that names nothing would go
     const far = await farMachine({ releases: [['1.2.1', PROTOCOL_VERSION], ['1.2.2', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
     fs.utimesSync(`${far.base}/releases/1.2.1`, new Date(), new Date(Date.now() + 60_000));
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    const runs = vi.fn();
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, runs }));
     await far.close();
     expect(out.result).toBe('actions');
     expect(far.now()).toBe('1.2.2');
+    expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback', '1.2.2']);
     expect(step('rollback').at(-1)).toMatchObject({ status: 'warn', action: expect.stringMatching(/trift runs release 1\.2\.2, the one it ran before$/) });
   });
 
   it('after a reinstall under the name it ran, goes back to the newest release kept there, and never calls the new tree the one it ran before', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.3' });
-    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    const runs = vi.fn();
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, runs }));
     await far.close();
     expect(out.result).toBe('actions');
     expect(far.now()).toBe('1.2.2');
+    expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(ssh.remoteCalls()).toContainEqual([`${far.base}/releases/1.2.3/bin/svall`, 'setup', '--rollback']);
     const action = step('rollback').at(-1)?.action ?? '';
     expect(action).toMatch(/trift ran a release named 1\.2\.3 before, which this install replaced; it runs release 1\.2\.2, the newest one kept there$/);
@@ -378,9 +390,11 @@ esac
   it('fails a rollback whose fleet unit is not running after it, and says which release the machine runs', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
     ssh.reply(['doctor', '--json'], { stdout: unitDown, code: 1 });
-    const out = await rollbackHost('trift', {}, deps({ registry: far.registry }));
+    const runs = vi.fn();
+    const out = await rollbackHost('trift', {}, deps({ registry: far.registry, runs }));
     await far.close();
     expect(out.result).toBe('actions');
+    expect(runs.mock.calls).toEqual([['1.2.2']]);
     expect(step('probe').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('svall-svalld@private.service'), action: expect.stringContaining('trift runs release 1.2.2') });
   });
 
@@ -668,10 +682,12 @@ esac
     expect(far.now()).toBe('1.2.2');
   });
 
-  it('rolls back from the command line, and refuses a rollback asked with a release to install', async () => {
+  it('rolls back from the command line, keeping what it found as the machine\'s last check, and refuses a rollback asked with a release to install', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
     far.registry.save();
-    const { hostCommands } = await import('../src/commands/host.js');
+    // a doctor's check from before, which host list would go on showing
+    fs.writeFileSync(path.join(work, 'config', 'checks.json'), JSON.stringify({ [REMOTE]: { at: 1, failed: 2, warned: 0, release: '1.2.3' } }));
+    const { hostCommands, lastChecks } = await import('../src/commands/host.js');
     const cli = () => hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => path.join(work, 'config'));
     const out = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     try {
@@ -683,13 +699,17 @@ esac
     }
     expect(process.exitCode ?? 0).toBe(0);
     expect(far.now()).toBe('1.2.2');
+    expect(lastChecks(path.join(work, 'config'))).toEqual({ [REMOTE]: { at: expect.any(Number), failed: 0, warned: 0, release: '1.2.2' } });
   });
 
   it('says which release the machine runs when a rollback fails or its daemon does not answer after it', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]], accepts: (r) => r !== '1.2.2' });
-    const silent = await rollbackHost('trift', {}, deps({ registry: far.registry }));
-    const none = await rollbackHost('trift', { to: '1.0.0' }, deps({ registry: far.registry }));
+    const runs = vi.fn();
+    const silent = await rollbackHost('trift', {}, deps({ registry: far.registry, runs }));
+    const none = await rollbackHost('trift', { to: '1.0.0' }, deps({ registry: far.registry, runs }));
     await far.close();
+    // the far rollback to a release not kept there fails, and the machine stays on 1.2.2
+    expect(runs.mock.calls).toEqual([['1.2.2'], ['1.2.2']]);
     expect(silent.result).toBe('actions');
     expect(step('probe')[0]).toMatchObject({ status: 'fail', action: expect.stringContaining('trift runs release 1.2.2') });
     expect(none.result).toBe('actions');

@@ -259,10 +259,10 @@ says whether the companion is signed, and `svall host doctor` says it of the mac
 
 ## Looking after it
 
-Settings → Machines lists every machine with its ssh destination and the release and result of its last check, each
-with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open a terminal there**, **Remove**, which waits
-while robots are placed there, and **Forget**, offered only while the machine cannot be reached. With no machine, it
-says what a machine is.
+Settings → Machines lists every machine with its ssh destination and the release and result of its last check, add,
+upgrade or rollback, each with **Check** and a ⋯ menu: **Upgrade to this Mac's release**, **Open a terminal there**,
+**Remove**, which waits while robots are placed there, and **Forget**, offered only while the machine cannot be
+reached. With no machine, it says what a machine is.
 
 | Command | In the app | What it does |
 | --- | --- | --- |

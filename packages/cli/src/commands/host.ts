@@ -12,7 +12,7 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
@@ -177,7 +177,7 @@ export async function setUpNow(steps: StepEvent[], o: { name: string; machine: M
 }
 
 const LastCheck = z.object({ at: z.number(), failed: z.number(), warned: z.number(), release: z.string().optional() });
-/** What the last `host doctor` here found: when, how many checks failed and warned, and the release the machine said it runs. */
+/** What the last `host doctor`, add, upgrade or rollback here found: when, how many checks failed and warned, and the release the machine runs. */
 export type LastCheck = z.infer<typeof LastCheck>;
 
 // beside the registry, by machine id, so a renamed machine keeps its check
@@ -189,11 +189,20 @@ export function lastChecks(dir: string): Record<string, LastCheck> {
 }
 
 // a check that could not reach the machine is one that failed; the agent setup's rows are no warnings
-function recordCheck(dir: string, id: MachineId, report: HostReport | undefined): void {
+function checkOf(report: Pick<HostReport, 'release'> & { checks: { name: string; status: string }[] } | undefined): LastCheck {
   const count = (status: string) => report?.checks.filter((c) => c.status === status && !c.name.startsWith(MIRROR)).length ?? 0;
-  const check: LastCheck = { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
+  return { at: Date.now(), failed: report ? count('fail') : 1, warned: count('warn'), ...(report?.release && { release: report.release }) };
+}
+
+function recordCheck(dir: string, id: MachineId, check: LastCheck): void {
   writeDurable(checksFile(dir), { ...lastChecks(dir), [id]: check });
 }
+
+/** What an add, upgrade or rollback that left the machine on `release` keeps as its last check: its steps, and that
+ *  release against this Mac's, counted as a doctor's are. */
+export const runCheck = (steps: Map<string, string>, release: string, controller: HostDeps['controller']): LastCheck => checkOf({
+  checks: [...[...steps].map(([name, status]) => ({ name, status })), { name: 'release', status: sameRelease(release, controller) ? 'ok' : 'fail' }], release,
+});
 
 /** Drops a machine's last check, as it leaves the registry; the file goes with the last one. */
 export function forgetCheck(dir: string, id: string): void {
@@ -237,11 +246,15 @@ async function runFlow(
   json: boolean, last: (o: HostOutcome) => string, run: (d: HostDeps) => Promise<HostOutcome>, dir: string, fleet: Target, after?: { name: string; there: There },
 ): Promise<void> {
   const out = reporter(json, last);
-  const d = realDeps(out.emit, dir, fleet);
+  // each step's last status, which an add, upgrade or rollback that reached the machine leaves as its last check
+  const steps = new Map<string, string>();
+  let release: string | undefined;
+  const d = { ...realDeps((e) => { steps.set(e.step, e.status); out.emit(e); }, dir, fleet), runs: (r: string) => { release = r; } };
   const outcome = await run(d);
   out.finish(outcome);
   if (outcome.result !== 'ready') process.exitCode = 1;
   const machine = after && d.registry.get(after.name)?.id;
+  if (machine && release) recordCheck(dir, machine, runCheck(steps, release, d.controller));
   if (outcome.setup && machine && askable(json)) {
     await setUpNow(outcome.setup, { name: after.name, machine, there: after.there }, { ask, write: (t) => process.stdout.write(t), consent: d.consent });
   }
@@ -283,10 +296,10 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       // a diagnosis prints a table, not steps, unless the app follows it
       const emit = o.steps && json() ? reporter(true, String).emit : () => {};
       const report = await doctorHost(name, realDeps(emit, dir(), target())).catch((e: unknown) => {
-        if (entry) recordCheck(dir(), entry.id, undefined);
+        if (entry) recordCheck(dir(), entry.id, checkOf(undefined));
         throw e;
       });
-      if (entry) recordCheck(dir(), entry.id, report);
+      if (entry) recordCheck(dir(), entry.id, checkOf(report));
       const there = thereOf(name, dir(), target());
       printResult(report, json(), () => [`machine ${report.machine}`, ...checkLines(report.checks.filter((c) => !c.name.startsWith(MIRROR))), doctorVerdict(report.checks, name, there)].join('\n'));
       if (report.checks.some((c) => c.status === 'fail')) process.exitCode = 1;
@@ -325,7 +338,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
       }
       if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
       const to = typeof o.rollback === 'string' ? o.rollback : undefined;
-      return runFlow(json(), (out) => outcomeText(out, 'rollback', name), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir(), target());
+      return runFlow(json(), (out) => outcomeText(out, 'rollback', name), (d) => rollbackHost(name, { ...(to !== undefined && { to }) }, d), dir(), target(), { name, there: thereOf(name, dir(), target()) });
     });
 
   host.command('remove')
