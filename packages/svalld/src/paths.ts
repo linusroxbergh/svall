@@ -65,6 +65,10 @@ export function resolvePaths(home: string = svallHome()) {
     hookHelper: path.join(home, 'hooks', HOOK_HELPER),
     push: path.join(home, 'push.json'),
     vapid: path.join(home, 'vapid.json'),
+    // a worker's: what its home's phone link accepts and signs pushes with, while it serves the phone itself
+    phone: path.join(home, 'phone.json'),
+    // the home's, of this machine alone: each worker's phone link and pass
+    phoneFallbacks: path.join(home, 'phone-fallbacks.json'),
     docs: path.join(home, 'docs'),
     agentProfiles: path.join(home, 'agent-profiles'),
     // a worker's own settings and files, in the mirror's layout, over what the home's agent configuration brings
@@ -113,7 +117,7 @@ export function socketTooLong(socket: string, platform: NodeJS.Platform = proces
 }
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.workerFile, p.workersFile];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile];
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

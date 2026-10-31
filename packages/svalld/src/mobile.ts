@@ -7,6 +7,7 @@ import type { MobileStatus } from '@svall/protocol';
 import { resolvePaths } from './paths.js';
 import type { Phones } from './phones.js';
 import { PRIVATE, PRIVATE_HTTPS_PORT, SHIM, profileLabel } from './profile.js';
+import { svalldUnitName } from './linux/setup.js';
 import { isRelease, repoRoot } from './release.js';
 import { mobileDist } from './runtime.js';
 
@@ -67,6 +68,10 @@ export function phoneKey(file: string, initial: string): { get(): string; rotate
     rotate: () => { const next = crypto.randomBytes(24).toString('hex'); fs.writeFileSync(file, next, { mode: 0o600 }); key = next; },
   };
 }
+
+/** How the daemon of `profile` restarts on `platform`. */
+export const restartLine = (profile: string, platform: NodeJS.Platform = process.platform): string =>
+  (platform === 'linux' ? `systemctl --user restart ${svalldUnitName(profile)}` : `launchctl kickstart -k gui/$(id -u)/${profileLabel(profile)}`);
 
 const buildBundle = (d: MobileDeps): Promise<string> =>
   d.run('pnpm', ['--filter', '@svall/desktop-web', 'build:mobile'], repoRoot());
@@ -205,7 +210,7 @@ export function mobileControl(d: MobileDeps, opts: {
     const self = await tailnetSelf(d, bin);
     const { host } = self;
     owner = self.owner;
-    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this Mac: set mobile.logins in fleet.json, then restart the daemon with launchctl kickstart -k gui/$(id -u)/${profileLabel(opts.profile)}`);
+    if (enable === true && logins().length === 0) throw new Error(`tailscale reports no login for this machine: set mobile.logins in fleet.json, then restart the daemon with ${restartLine(opts.profile)}`);
     const dist = mobileDist();
     // tailscale serve holds one mapping per port for the whole Mac, so a port another holds stays theirs. A fleet that
     // keeps no port yet takes a free one in place of its default; a kept port is the address a phone app already has

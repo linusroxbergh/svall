@@ -16,6 +16,7 @@ import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
 import type { Placement } from '../placement/move.js';
+import { PHONE_ITEM, type PhoneFallbacks } from '../placement/phone.js';
 import { updateAgents, type Router } from '../placement/router.js';
 import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
@@ -25,11 +26,14 @@ import type { TerminalHub, Viewer } from '../terminals.js';
 import { mergeUsage } from '../usage/merge.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
+import type { WorkerPhone } from '../worker/phone.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal };
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
+  // the home's: each worker's phone link; a worker's: its own, which stands in for the home's push keys and devices
+  phone?: PhoneFallbacks; workerPhone?: Pick<WorkerPhone, 'vapid' | 'get'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -72,7 +76,8 @@ async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: str
     agents: [c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined), folders: [c.cwd, c.repo?.mainRoot, c.second?.cwd].filter((f) => f !== undefined),
     ...(far && { home: far }),
   };
-  return { rows: await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) }) };
+  const rows = await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) });
+  return { rows: ctx.phone && !only ? [...rows, ctx.phone.row(machine)] : rows };
 }
 
 // the folders a scan here lists are those of the robots that run here
@@ -83,6 +88,9 @@ function refuseRemote({ router, store }: Pick<Ctx, 'router' | 'store'>, id: stri
   const at = router?.rootPlacedAt(id);
   if (at) throw new ApiError('read_only', `${rel} is on ${store.state.machines?.[at]?.name ?? at}; edit it in the robot's terminal`);
 }
+
+// the lines of a pane term.lastScreen reads, as a worker sends its home after a hook
+const SCREEN_LINES = 40;
 
 // svalld runs on macOS and Linux alone; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
@@ -142,6 +150,10 @@ const handlers: Handlers = {
     const name = ctx.store.state.machines?.[p.machine]?.name;
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
     mirror.consent(p.machine, p.item, p.fields, p.on);
+    if (p.item === PHONE_ITEM && ctx.phone) {
+      await ctx.phone.sync(p.machine);
+      return setupOf(ctx, p.machine, 0);
+    }
     const link = ctx.links?.for(p.machine);
     if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
@@ -205,10 +217,16 @@ const handlers: Handlers = {
   'load.get': (_p, { load }) => load(),
   'mobile.get': (_p, { mobile }) => mobile.get(),
   // an off revokes every device, even one tailscale refused, since the key has turned over: one that asks again has to reach the page first
-  'mobile.set': async (p, { mobile, push }) => {
+  'mobile.set': async (p, { mobile, push, phone }) => {
     const status = await mobile.set(p.enabled);
     if (!p.enabled) push.clear();
+    void phone?.syncAll();
     return status;
+  },
+  // a worker's pass is the phone's alone: never in the fleet's state or a log
+  'mobile.fallbacks': (_p, { phone }) => {
+    if (!phone) throw new ApiError('not_on_worker', 'the phone links are the home\'s');
+    return phone.fallbacks();
   },
   // each worker lists the clones its robots work in, read there
   'resources.get': async (_p, ctx) => {
@@ -244,10 +262,15 @@ const handlers: Handlers = {
   },
   // a robot moved since its watch began may hold it on either side
   'repo.unwatch': async (p, { workspace, viewer, remoteWatches }) => { workspace.unwatch(p.id, viewer); await remoteWatches?.unwatch(p.id, viewer); return {}; },
-  'push.key': (_p, { vapidPublicKey }) => ({ publicKey: vapidPublicKey }),
+  'push.key': (_p, { vapidPublicKey, workerPhone }) => {
+    if (!workerPhone) return { publicKey: vapidPublicKey };
+    const vapid = workerPhone.vapid();
+    if (!vapid) throw new ApiError('not_on_worker', 'this worker does not serve the phone');
+    return { publicKey: vapid.publicKey };
+  },
   'push.subscribe': (p, { push, viewer }) => { push.upsert({ ...p, login: viewer.login ?? 'local', addedAt: Date.now() }); return {}; },
   'push.unsubscribe': (p, { push }) => { push.remove(p.endpoint); return {}; },
-  'push.get': (p, { push }) => ({ statuses: push.get(p.endpoint)?.statuses }),
+  'push.get': (p, { push, workerPhone }) => ({ statuses: (workerPhone ?? push).get(p.endpoint)?.statuses }),
   'browser.open': (p, { fleet }) => fleet.openTab(p.id, p.url, p.tab),
   'browser.close': (p, { fleet }) => { fleet.closeTab(p.id, p.tab); return {}; },
   'browser.activate': (p, { fleet }) => { fleet.activateTab(p.id, p.tab); return {}; },
@@ -256,7 +279,12 @@ const handlers: Handlers = {
   'term.input': async (p, { terminals }) => { await terminals.input(p.id, Buffer.from(p.data, 'base64')); return {}; },
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
-  'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
+  // a worker keeps no screens of its own robots: it reads the pane of one that has one
+  'term.lastScreen': async (p, { terminals, fleet, store, router }) => {
+    const c = Object.hasOwn(store.state.robots, p.id) ? store.state.robots[p.id] : undefined;
+    if (router?.onWorker && c?.tmux && router.runsHere(c)) return { text: await fleet.readScreen(p.id, SCREEN_LINES), at: Date.now() };
+    return terminals.lastScreen(p.id) ?? { text: '' };
+  },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
   'system.info': (_p, { systemInfo }) => systemInfo(),
   'app.show': (p, { store, apps }) => {
@@ -279,10 +307,15 @@ export async function systemInfo(o: { machineId: MachineId; agents: AgentProber;
   };
 }
 
+// what a worker answers for a robot that runs on it, its home linked or not, so a phone there never waits on the link
+const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'term.close', 'term.lastScreen', 'robot.answer', 'robot.revive']);
+
 // a worker answers a read of the fleet, or of a robot placed on it, from its mirror; any other call is its home's
 function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
   if (!ctx.router?.onWorker) return false;
   const id = (params as { id?: unknown }).id;
+  const { robots } = ctx.store.state;
+  if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
   return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
 }
 
@@ -294,7 +327,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
-    if (ctx.mutations?.serves(req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
+    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone')) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };

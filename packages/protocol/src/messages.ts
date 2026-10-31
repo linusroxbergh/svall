@@ -76,6 +76,10 @@ export const MobileStatus = z.object({
 });
 export type MobileStatus = z.infer<typeof MobileStatus>;
 
+// a worker's own phone link, which the page falls back to while the home does not answer; url is its origin with a trailing slash
+export const PhoneFallback = z.object({ machine: MachineId, name: z.string(), url: z.string(), pass: z.string() });
+export type PhoneFallback = z.infer<typeof PhoneFallback>;
+
 // how long the daemon waits for a fresh agent to attach before it answers robot.create with a run
 export const RUN_TIMEOUT_MS = 30_000;
 
@@ -372,6 +376,8 @@ export const methods = {
   'load.get': { params: z.object({}), result: LoadSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
   'mobile.set': { params: z.object({ enabled: z.boolean() }), result: MobileStatus },
+  // the home's answer only: each worker whose phone link serves; a worker refuses it
+  'mobile.fallbacks': { params: z.object({}), result: z.object({ home: MachineId, fallbacks: z.array(PhoneFallback) }) },
   'resources.get': { params: z.object({}), result: z.object({ sources: z.array(ResourceSource) }) },
   // paths are relative to the robot's root: repo.root, else cwd; an absolute one names a file anywhere
   'fs.list': { params: RootPath, result: z.object({ entries: z.array(FsEntry) }) },

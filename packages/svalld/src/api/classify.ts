@@ -68,6 +68,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'fleet.stop': 'read',
   'mobile.get': 'read',
   'mobile.set': 'mutation',
+  'mobile.fallbacks': 'read',
   'resources.get': 'read',
   'resources.delete': 'mutation',
   'resources.restore': 'mutation',

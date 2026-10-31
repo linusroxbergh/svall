@@ -3,8 +3,10 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import QRCode from 'qrcode';
 import type { MobileStatus } from '@svall/protocol';
-import { ensureBundle, fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
+import { ensureBundle, fleetTarget, freePort, mobileControl, phoneKey, phoneUrl, resolveTailscale, restartLine, serve, servePort, servesOther, servesTarget, tailnetSelf, unserve, watchServed, type MobileDeps } from '../src/mobile.js';
 import { Phones } from '../src/phones.js';
+import { profileLabel } from '../src/profile.js';
+import { WorkerPhone } from '../src/worker/phone.js';
 import { mobileDist } from '../src/runtime.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -543,5 +545,85 @@ describe('ensureBundle', () => {
     const shipped = deps({ files: { '/opt/svall/web-mobile': 'built' } });
     expect(await ensureBundle(shipped, { rebuild: true })).toEqual({ dist: '/opt/svall/web-mobile', missing: false });
     expect(shipped.calls).toEqual([]);
+  });
+});
+
+describe('a worker\'s phone link', () => {
+  afterEach(cleanHomes);
+
+  const SUB = { endpoint: 'https://push.example/a', keys: { p256dh: 'p', auth: 'a' }, statuses: ['blocked' as const], login: 'me@example.com', addedAt: 1 };
+  const ON = { on: true, logins: ['me@example.com'], origin: 'https://mac.tailnet.ts.net:8443', vapid: { publicKey: 'pub', privateKey: 'priv' }, subscriptions: [SUB] };
+  // another app serves the worker's default port, as on a machine whose 443 is a site of its own
+  const SITE = 'http://127.0.0.1:8787';
+  const KEY = path.join(HOME, 'mobile-key');
+
+  // a daemon on `port` of a worker whose key file holds `key`, which every on and off turns over, keeping each port it is served on
+  function worker(o: { file: string; port?: string; key?: string; saved?: number[]; web?: Record<number, string> }) {
+    const files = { [path.join(HOME, 'port')]: o.port ?? '47812', [KEY]: o.key ?? 'abcdef', [mobileDist()]: 'built' };
+    const d = deps({ files, web: o.web ?? { [servePort('private')]: SITE } });
+    const saved = o.saved ?? [];
+    const turns = { n: 0 };
+    const phone = new WorkerPhone({
+      file: o.file, pass: 'p4ss', log: () => {},
+      link: (logins) => mobileControl(d, {
+        home: HOME, profile: 'private', logins, phones: new Phones(), pass: 'p4ss', kept: () => [], httpsPort: saved.at(-1),
+        rotateKey: () => { files[KEY] = `key${++turns.n}`; }, savePort: (p) => saved.push(p) > 0,
+      }),
+    });
+    return { d, files, phone, saved, turns };
+  }
+
+  it('serves on a free port beside the site on its default, keeps the key through each resync, and its pass across an off and an on', async () => {
+    const file = path.join(makeHome(), 'phone.json');
+    const { d, phone, saved, turns } = worker({ file });
+    expect(await phone.set(ON)).toEqual({ url: 'https://mac.tailnet.ts.net:8443/', pass: 'p4ss' });
+    expect(d.web).toEqual({ [servePort('private')]: SITE, 8443: 'http://127.0.0.1:47812/key1' });
+    expect(saved).toEqual([8443]);
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+    expect([phone.logins(), phone.origins(), phone.vapid(), phone.list()]).toEqual([['me@example.com'], ['https://mac.tailnet.ts.net:8443'], ON.vapid, [SUB]]);
+    expect(phone.served()).toBe('https://mac.tailnet.ts.net:8443/');
+
+    expect(await phone.set({ ...ON, subscriptions: [] })).toEqual({ url: 'https://mac.tailnet.ts.net:8443/', pass: 'p4ss' });
+    expect([turns.n, d.calls.filter((c) => c.args.includes('--bg')).length, phone.list()]).toEqual([1, 1, []]);
+
+    expect(await phone.set({ on: false })).toEqual({});
+    expect(d.web).toEqual({ [servePort('private')]: SITE });
+    expect([turns.n, fs.existsSync(file), phone.on, phone.logins(), phone.served()]).toEqual([2, false, false, [], undefined]);
+
+    expect(await phone.set(ON)).toEqual({ url: 'https://mac.tailnet.ts.net:8443/', pass: 'p4ss' });
+    expect(d.web[8443]).toBe('http://127.0.0.1:47812/key3');
+  });
+
+  it('comes back on its port under the same key after its daemon restarts elsewhere, and a resync then turns nothing over', async () => {
+    const file = path.join(makeHome(), 'phone.json');
+    const before = worker({ file });
+    await before.phone.set(ON);
+    const after = worker({ file, port: '51000', key: 'key1', saved: before.saved, web: before.d.web });
+    expect(after.phone.on).toBe(true);
+    const stop = after.phone.watch(10_000);
+    await vi.waitFor(() => expect(after.phone.served()).toBe('https://mac.tailnet.ts.net:8443/'));
+    stop();
+    expect(after.d.web[8443]).toBe('http://127.0.0.1:51000/key1');
+    expect(await after.phone.set(ON)).toEqual({ url: 'https://mac.tailnet.ts.net:8443/', pass: 'p4ss' });
+    expect(after.turns.n).toBe(0);
+  });
+
+  it('looks at nothing while its home has not turned it on, and says why tailscale would not serve', async () => {
+    const file = path.join(makeHome(), 'phone.json');
+    const { d, phone } = worker({ file });
+    phone.watch(10_000)();
+    expect(await phone.set({ on: false })).toEqual({});
+    expect(d.calls).toEqual([]);
+    const run = d.run;
+    d.run = (cmd, args, cwd) => (args.includes('--bg') ? Promise.reject(new Error('Access denied: serve config denied')) : run(cmd, args, cwd));
+    expect(await phone.set(ON)).toEqual({ error: expect.stringContaining('Access denied') });
+    await expect(phone.set({ on: true })).rejects.toThrow(/logins/);
+  });
+});
+
+describe('restartLine', () => {
+  it('names the service manager of the platform the daemon runs on', () => {
+    expect(restartLine('private', 'linux')).toBe('systemctl --user restart svall-svalld@private.service');
+    expect(restartLine('private', 'darwin')).toBe(`launchctl kickstart -k gui/$(id -u)/${profileLabel('private')}`);
   });
 });

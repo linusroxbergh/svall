@@ -32,6 +32,7 @@ import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from './placement/far-viewers.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
+import { PhoneFallbacks } from './placement/phone.js';
 import { readMirrorVars } from './placement/mirror-config.js';
 import { PrepareService } from './placement/prepare.js';
 import { homeRootOf } from './placement/repo-key.js';
@@ -41,7 +42,7 @@ import { DEFAULT_PORT, isProfileName, PRIVATE, profileOf, variantOf } from './pr
 import { releaseVersion } from './release.js';
 import { Retro } from './retro/service.js';
 import { runtimeVersion, variant } from './runtime.js';
-import { startPusher, webPushSender } from './push/pusher.js';
+import { startPusher, webPushSender, type Send } from './push/pusher.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
 import { repoSources, rootHere, workspaceRoot } from './resources/scan.js';
@@ -57,6 +58,7 @@ import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
 import { workerOptions, workerStubs, type Off } from './worker/mode.js';
 import { WorkerMutations } from './worker/mutations.js';
+import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
 import { ScreenNotice, ScreenTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
@@ -239,6 +241,7 @@ async function start(opts: Options): Promise<Daemon> {
     // a worker linked anew holds none of the home's watches and terminals
     onSynced: (machine) => {
       for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
+      void phone?.sync(machine);
     },
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
@@ -311,12 +314,19 @@ async function start(opts: Options): Promise<Daemon> {
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
   if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, terminals, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
   const phones = new Phones();
-  const mobile = off.has('mobile') ? workerStubs.mobile : mobileControl(realDeps(), {
-    home: paths.home, profile, logins: () => config.mobile.logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
+  const phoneLink = (logins: () => string[]) => mobileControl(realDeps(), {
+    home: paths.home, profile, logins, phones, httpsPort: config.mobile.httpsPort, rotateKey: key.rotate, pass,
     kept: () => keptPorts(homes().filter((h) => h !== paths.home)),
     savePort: (httpsPort) => {
       try { saveConfig(paths, { mobile: { httpsPort } }, log.info); return true; } catch (e) { log.error(`phone port ${httpsPort} not saved: ${(e as Error).message}`); return false; }
     },
+  });
+  const mobile = off.has('mobile') ? workerStubs.mobile : phoneLink(() => config.mobile.logins);
+  // a worker's own link, which serves the home's phone while the home has sent phone.json, with the home's logins
+  const workerPhone = worker && new WorkerPhone({ file: paths.phone, link: phoneLink, pass, log: log.error });
+  if (workerPhone) calls['phone.set'] = (p) => workerPhone.set(p);
+  const phone = links && new PhoneFallbacks({
+    me, file: paths.phoneFallbacks, consent: paths.mirrorConsent, store, links, mobile, vapid, push, contact: config.mobile.pushContact, log,
   });
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS), runsHere: (c) => router.runsHere(c) });
   // the home's usage panel counts a worker's robots as the worker reads them
@@ -343,18 +353,32 @@ async function start(opts: Options): Promise<Daemon> {
   try {
     await fleet.start();
     retro?.start();
-    if (!off.has('push')) teardown.push(startPusher({ store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: config.mobile.pushContact }));
+    // each daemon pushes for the robots that run on it; the home also for those on a worker that does not serve the phone
+    if (!off.has('push')) {
+      teardown.push(startPusher({
+        store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: () => config.mobile.pushContact,
+        owns: (c) => router.runsHere(c) || !phone?.serves(c.machine),
+      }));
+    }
+    if (workerPhone) {
+      const send: Send = (sub, payload, subject) => { const v = workerPhone.vapid(); return v ? webPushSender(v)(sub, payload, subject) : Promise.resolve(); };
+      teardown.push(startPusher({
+        store, push: workerPhone, send, log, logins: () => workerPhone.logins(), served: () => workerPhone.served(), contact: () => workerPhone.contact(),
+        owns: (c) => router.runsHere(c), machine: me,
+      }));
+    }
+    if (phone) teardown.push(push.watch(() => void phone.syncAll()));
     // a running server keeps its old options if the new conf has a line this tmux rejects
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
-      origins: () => config.mobile.origins, logins: mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
+      origins: () => [...config.mobile.origins, ...workerPhone?.origins() ?? []], logins: workerPhone ? () => workerPhone.logins() : mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
       // diagnostics read the last minute's agent probe; a worker gives none
       ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }), ...(retro && { retro }),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(workerPhone && { workerPhone }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
@@ -373,6 +397,7 @@ async function start(opts: Options): Promise<Daemon> {
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
     // and again while a device waits and tailscale has not answered
     if (!off.has('mobile')) teardown.push(watchServed(mobile, () => push.list().length > 0, LOOK_AGAIN_MS));
+    if (workerPhone) teardown.push(workerPhone.watch(LOOK_AGAIN_MS));
     if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());

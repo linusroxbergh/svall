@@ -74,15 +74,16 @@ export class WorkerMutations {
   }
 
   /** Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
-   *  a change to one of its robots, a new island, or a change to an island other than mission control. */
-  serves(method: MethodName, params: unknown): boolean {
+   *  a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change to one
+   *  of its robots never waits on a link that may be half open. */
+  serves(method: MethodName, params: unknown, phone = false): boolean {
     if (method === 'robot.create') return true;
     if (method === 'island.create') return this.away();
     const id = (params as { id?: unknown }).id;
     const { robots, islands } = this.o.store.state;
     if (method === 'island.update' || method === 'island.delete') return typeof id === 'string' && Object.hasOwn(islands, id) && islands[id].kind !== 'home' && this.away();
     if (typeof id !== 'string' || !Object.hasOwn(robots, id) || robots[id].machine !== this.o.me) return false;
-    return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run' || method === 'robot.send') && this.away());
+    return method === 'robot.seen' || ((method === 'robot.update' || method === 'robot.close' || method === 'robot.run' || method === 'robot.send') && (phone || this.away()));
   }
 
   serve<M extends MethodName>(method: M, params: ParsedParams<M>): Promise<Result<M>> {
