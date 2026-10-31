@@ -552,6 +552,34 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
 
+  it('a check names a worker that gives no answer in time, on the way back, out again, and home into a new worktree', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const silent = { ok: false, refusal: { reason: 'w1 did not answer', action: 'try again; if it keeps happening, Check it under Machines' } };
+    // `method` hangs there, and its call here is cut short
+    const call = home.links.call.bind(home.links);
+    const hang = (method: string): (() => void) => {
+      const was = w.worker.handlers[method];
+      w.worker.handlers[method] = () => new Promise(() => {});
+      home.links.call = ((m, asked, params, o) => call(m, asked, params, asked === method ? { ...o, timeoutMs: 100 } : o)) as typeof home.links.call;
+      return () => { w.worker.handlers[method] = was; home.links.call = call; };
+    };
+
+    let answer = hang('system.info');
+    expect(await home.placement.check('c_1', H)).toMatchObject(silent);
+    answer();
+    await home.placement.start('c_1', H);
+    answer = hang('move.compare');
+    expect(await home.placement.check('c_1', W)).toMatchObject(silent);
+    answer();
+    const b = await bornThere(w, 'scout');
+    answer = hang('repo.probe');
+    expect(await home.placement.check(b.id, H)).toMatchObject(silent);
+    answer();
+    expect(await home.placement.check(b.id, H)).toMatchObject({ ok: true });
+  });
+
   it('a return refuses a worktree there mid-merge, whose bundle would carry none of it', async () => {
     const w = open();
     const home = await w.start();
@@ -797,6 +825,37 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.opened).toEqual([]);
   });
 
+  it('a return looks at the Mac worktree again right before it resets it, so a save made while what came back is checked stays', async () => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const a = path.join(w.wt, 'a.txt');
+    const held = fs.readFileSync(a);
+    // an editor saves into the Mac worktree once the return's prepare is under way, as it checks the branches here
+    const d = home.placement['d'] as { git: GitRunner };
+    const git = d.git;
+    at('move.journal.prepare', 'after', () => {
+      let saved = false;
+      d.git = (args, cwd) => {
+        if (!saved && args[0] === 'for-each-ref' && args.at(-1) === 'refs/heads') {
+          saved = true;
+          fs.appendFileSync(a, 'saved on the Mac\n');
+        }
+        return git(args, cwd);
+      };
+    });
+
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({
+      code: 'refused', message: `changes on this Mac in ${w.wt} since the move; stash or commit them`, data: { phase: 'prepare' },
+    });
+    d.git = git;
+
+    expect(fs.readFileSync(a, 'utf8')).toBe(`${held}saved on the Mac\n`);
+    expect(listed(w, w.main, w.wt)?.locked).toMatch(/^moved to w1 mv_/);
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
+    await until(() => { expect(w.worker.store.state.robots.c_1?.tmux).toBeDefined(); });
+  });
+
   it('a move waits while the worker catches up with this Mac: busy, with the one sentence', async () => {
     const w = open();
     const home = await w.start();
@@ -955,6 +1014,15 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
     fs.rmSync(w.main, { recursive: true });
     fs.renameSync(`${w.main}.away`, w.main);
+    // a shallow clone here, whose oldest commit is no root
+    w.g(w.main, 'commit', '-q', '--allow-empty', '-m', 'more');
+    fs.writeFileSync(path.join(w.main, '.git/shallow'), `${w.g(w.main, 'rev-parse', 'HEAD')}\n`);
+    expect(await refusal()).toEqual({ reason: 'app is a shallow clone', action: `git -C '${w.main}' fetch --unshallow` });
+    w.g(w.main, 'remote', 'set-url', 'origin', path.join(w.base, 'origins/other.git'));
+    expect(await refusal()).toEqual({ reason: `${w.main} on this Mac is not a clone of app`, action: 'move it out of the way first' });
+    w.g(w.main, 'remote', 'set-url', 'origin', w.origin);
+    fs.rmSync(path.join(w.main, '.git/shallow'));
+    w.g(w.main, 'reset', '-q', '--hard', 'HEAD~1');
 
     const inTheWay = { reason: `${b.mac} on this Mac is in the way`, action: 'move it out of the way first' };
     fs.mkdirSync(b.mac);

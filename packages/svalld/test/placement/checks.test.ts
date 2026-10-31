@@ -210,6 +210,21 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(await refusal(mute)).toEqual({ reason: 'linus-vault runs 0.16.0, this Mac 0.17.0', action: 'upgrade it under Machines', details: [] });
   });
 
+  it('a worker that gives no answer in time is named, with what to do, and not the call it left unanswered', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    for (const method of ['system.info', 'repo.probe']) {
+      const d = depsOf(t, [on(root)]);
+      const call = d.links.call;
+      d.links.call = (m, asked, params) => (asked === method ? Promise.reject(new ApiError('timeout', `${method} got no reply in 30000 ms`)) : call(m, asked, params));
+      expect(await refusal(d)).toEqual({ reason: 'linus-vault did not answer', action: 'try again; if it keeps happening, Check it under Machines', details: [] });
+    }
+    // any other failure is shown as it is
+    const d = depsOf(t, [on(root)]);
+    d.links.call = () => Promise.reject(new ApiError('not_reachable', 'the link closed: reset'));
+    expect(await refusal(d)).toEqual({ reason: 'the link closed: reset', action: 'try again when it is awake', details: [] });
+  });
+
   it('a blocked agent is not refused: question is true and interrupts follows the choice', async () => {
     const t = machines();
     const terminals = [{ robotId: 'c_1', class: 'agent-blocked' as const }];
@@ -492,6 +507,28 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(s).toMatchObject({ clone: 'warm', commits: 1, branch: 'kb' });
     expect(plan).toMatchObject({ clone, have: [base] });
     expect(plan.remote).toBeUndefined();
+  });
+
+  it('check 4: refuses a shallow clone with the command that fetches its history, a first move too, and names no clone there in the way', async () => {
+    const t = machines();
+    const full = t.repo('code/svall');
+    put(full, 'c.txt', 'three\n');
+    t.g(full, 'add', 'c.txt');
+    t.g(full, 'commit', '-qm', 'more');
+    t.g(full, 'push', '-q', 'origin', 'main');
+    fs.rmSync(full, { recursive: true });
+    t.g(t.base, 'clone', '-q', '--depth', '1', `file://${t.origin('svall')}`, full);
+    t.g(full, 'remote', 'set-url', 'origin', t.origin('svall'));
+    const wt = `${full}/.claude/worktrees/kb`;
+    t.g(full, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    const c = on(wt, { main: full, branch: 'kb' });
+    const shallow = { reason: 'svall is a shallow clone', action: `git -C '${full}' fetch --unshallow`, details: [] };
+
+    expect(await refusal(depsOf(t, [c]))).toEqual(shallow);
+    t.g(t.base, 'clone', '-q', t.origin('svall'), `${t.far}/code/svall`);
+    expect(await refusal(depsOf(t, [c]))).toEqual(shallow);
+    t.g(full, 'fetch', '-q', '--unshallow');
+    expect((await sheet(depsOf(t, [c]))).sheet).toMatchObject({ clone: 'warm' });
   });
 
   it('check 4: a first clone builds on the remote\'s branches, which the clone will hold, though the Mac knows no origin/HEAD', async () => {

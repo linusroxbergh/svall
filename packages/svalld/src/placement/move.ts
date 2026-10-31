@@ -19,7 +19,8 @@ import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, withoutToken, type CheckDeps, type CheckResult, type RepoProbe,
+  converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
+  type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
 import { destinationPaths } from './paths.js';
@@ -127,7 +128,7 @@ export class Placement {
     // the worktree the robot left there is the one it goes back into, as it left it
     if (!checked.ok || c.left?.machine !== to) return checked;
     const { refusal } = await this.d.links.call<{ refusal?: Failure }>(to, 'move.compare', { left: c.left })
-      .catch((e: Error) => ({ refusal: { reason: e.message, action: 'try again when it is awake' } }));
+      .catch((e: Error) => ({ refusal: unanswered(e, this.name(to)) }));
     return refusal ? { ok: false, refusal: { ...refusal, details: [] } } : checked;
   }
 
@@ -423,10 +424,6 @@ export class Placement {
     const run = this.d.cli ?? cliRunner();
     const git = this.d.git;
     if (clone && !m) throw new Error(`${c.name} comes back without its worktree`);
-    if (back) {
-      const changed = await changedSince(back, 'on this Mac', git);
-      if (changed) throw refused(changed);
-    }
     if (m) {
       await unpack(path.join(stage, 'bundle.tar'), dir);
       await verifyBundle(dir, m);
@@ -439,6 +436,9 @@ export class Placement {
         const twin = await this.clashing(m.branch, back?.path ?? clone);
         if (twin) throw refused(twin);
         if (back) {
+          // looked at again right before the reset, so a save made since the checks is refused, not deleted
+          const changed = await changedSince(back, 'on this Mac', git);
+          if (changed) throw refused(changed);
           made({ unlocked: true });
           await takeBack(back.path, back.branchSha, git);
           return applyBundle(back.path, dir, m, git, { machine: 'this Mac', ...(back.branch === m.branch && { keep: back.branchSha }) });
@@ -528,7 +528,8 @@ export class Placement {
 
   // where the robot lands here, in this Mac's clone at the worker's clone's place, whose refs the bundle builds on
   private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<{ plan: MovePlan; back?: LeftBehind } | { failure: Failure }> {
-    const info = await this.d.links.call<SystemInfo>(from, 'system.info', {});
+    const info = await this.d.links.call<SystemInfo>(from, 'system.info', {}).catch((e: Error) => e);
+    if (info instanceof Error) return { failure: unanswered(info, this.name(from)) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, await this.d.agents());
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
@@ -549,15 +550,17 @@ export class Placement {
     if (!back) {
       if (!repo.isWorktree) return { reason: `${c.name} works in ${repoName}'s main checkout on ${this.name(from)}`, action: `give it its own worktree on ${this.name(from)} first` };
       const far = await this.d.links.call<RepoProbe>(from, 'repo.probe', { path: repo.mainRoot }).catch((e: Error) => e);
-      if (far instanceof Error) return { reason: far.message, action: 'try again when it is awake' };
+      if (far instanceof Error) return unanswered(far, this.name(from));
       const here = await probeRepo({ path: main }, git);
       if (here.state === 'none') {
         const remote = far.remote && withoutToken(far.remote);
         return { reason: `${repoName} is not cloned on this Mac`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
       }
-      if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote) || here.rootCommit !== far.rootCommit) {
-        return { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
-      }
+      const notClone: Failure = { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
+      if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote)) return notClone;
+      const shallow = await shallowFailure(main, git);
+      if (shallow) return shallow;
+      if (here.rootCommit !== far.rootCommit) return notClone;
     }
     const twin = await this.clashing(branch, back?.path ?? main);
     if (twin || back) return twin;
