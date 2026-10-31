@@ -56,6 +56,8 @@ Restart=always
 RestartSec=2
 # the daemon starts the fleet's tmux server, which a crash, a restart or a stop must leave running
 KillMode=process
+# an agent the kernel kills for memory is in this unit's cgroup, which systemd would otherwise stop
+OOMPolicy=continue
 StandardOutput=append:/home/linus/.local/share/svall/log/svall-svalld@private.log
 StandardError=append:/home/linus/.local/share/svall/log/svall-svalld@private.log
 

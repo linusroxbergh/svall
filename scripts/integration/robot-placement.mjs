@@ -117,6 +117,10 @@ function install() {
   const worker = JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout);
   check('worker.json', worker.homeMachineId === ids.local && worker.fleetId === ids.fleet, () => brief({ ...worker, token: undefined }));
   check('worker unit', /--worker/.test(sh(R, `systemctl --user cat ${UNIT}`).stdout), 'the fleet unit on remote does not run svalld --worker');
+  for (const m of [L, R]) {
+    const oom = sh(m, `systemctl --user show -p OOMPolicy --value ${UNIT}`).stdout.trim();
+    check(`${m} OOMPolicy`, oom === 'continue', oom);
+  }
   linked(ids);
   return ids;
 }
