@@ -242,8 +242,10 @@ worker:
   there;
 - every other robot shows unknown, its terminal keeping the last screen under "ada-mac is asleep" or "studio is not
   reachable", and the header reads "on linus-vault · ada-mac asleep";
-- what only this Mac answers is hidden: new islands and island settings, mission control, notification settings, and
-  closing, notes and docs of robots elsewhere;
+- islands can be made there, and renamed, folded and deleted, as `svall island` does on the worker; mission control
+  shows open, neither folded nor edited;
+- what only this Mac answers is hidden: mission control, notification settings, and closing, notes and docs of robots
+  elsewhere;
 - the worker sends the notifications for its own robots, as it does whenever it serves the phone.
 
 Once this Mac answers again, the phone is this Mac's again.

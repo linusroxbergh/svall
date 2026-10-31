@@ -75,16 +75,19 @@ export class WorkerMutations {
 
   /**
    * Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
-   * a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change to one
-   * of its robots never waits on a link that may be half open, but for an update the journal cannot carry. A close of a robot
-   * moving away is the home's, which holds the move.
+   * a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change of
+   * those never waits on a link that may be half open, but for one the journal cannot carry. A close of a robot moving away
+   * is the home's, which holds the move.
    */
   serves(method: MethodName, params: unknown, phone = false): boolean {
     if (method === 'robot.create') return true;
-    if (method === 'island.create') return this.away();
+    if (method === 'island.create') return this.away() || (phone && !(params as ParsedParams<'island.create'>).context?.length);
     const id = (params as { id?: unknown }).id;
     const { robots, islands } = this.o.store.state;
-    if (method === 'island.update' || method === 'island.delete') return typeof id === 'string' && Object.hasOwn(islands, id) && islands[id].kind !== 'home' && this.away();
+    if (method === 'island.update' || method === 'island.delete') {
+      if (typeof id !== 'string' || !Object.hasOwn(islands, id) || islands[id].kind === 'home') return false;
+      return this.away() || (phone && (method === 'island.delete' || journaled(params, ISLAND_FIELDS)));
+    }
     if (typeof id !== 'string' || !Object.hasOwn(robots, id) || robots[id].machine !== this.o.me) return false;
     if (method === 'robot.seen') return true;
     if (method === 'robot.close' && robots[id].moving) return false;
@@ -192,8 +195,8 @@ export class WorkerMutations {
 }
 
 // an update that names only the fields a mutation carries home
-const journaled = (params: unknown): boolean =>
-  Object.entries(params as Record<string, unknown>).every(([k, v]) => k === 'id' || v === undefined || (UPDATE_FIELDS as readonly string[]).includes(k));
+const journaled = (params: unknown, fields: readonly string[] = UPDATE_FIELDS): boolean =>
+  Object.entries(params as Record<string, unknown>).every(([k, v]) => k === 'id' || v === undefined || fields.includes(k));
 
 // what an acknowledged mutation changed, as applied.ndjson records it
 function changed(m: Mutation): Record<string, unknown> {

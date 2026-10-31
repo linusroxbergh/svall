@@ -87,8 +87,8 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
   const status = useApp((s) => s.status);
   // through a worker the page offers only what it answers: robots started there, and its own robots' terminals
   const via = useApp((s) => s.via);
-  // a worker answers no island change, so through one every island shows open and none is made, folded or edited
-  const islandEdits = !via;
+  // a worker changes no mission control, so through one it shows open and is neither folded nor edited
+  const edits = (island: Island) => !via || island.kind !== 'home';
   const [sheet, setSheet] = useState<Open>();
   const groups = sections(fleet, via);
   const starred = starredOf(fleet);
@@ -123,7 +123,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
     <div className="fleet">
       <header className="top">
         <h1>{document.title}</h1>
-        {islandEdits && <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>}
+        <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>
         {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
         <span className="conn" data-status={status}>
           {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
@@ -143,18 +143,18 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         </section>
       )}
       {groups.map(({ island, robots }) => {
-        const folded = island.collapsed && islandEdits;
+        const folded = island.collapsed && edits(island);
         return (
         <section key={island.id}>
           <h2>
-            <button type="button" className="fold" aria-expanded={!folded} onClick={() => { if (islandEdits) fold(island); }}>
+            <button type="button" className="fold" aria-expanded={!folded} onClick={() => { if (edits(island)) fold(island); }}>
               <i className="chev" />
               <span>{island.name}</span>
               {folded && robots.length > 0 && (
                 <small>{robots.length}{robots.some((c) => wantsUser(c, fleet, via)) && <i className="pip" />}</small>
               )}
             </button>
-            {islandEdits && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
+            {edits(island) && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
             {/* the island's own folder is the Mac's, so a worker asks which of its own to start in; it starts no mission control */}
             {!(via && island.kind === 'home') && (
               <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
@@ -169,10 +169,10 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         </section>
         );
       })}
-      {sheet?.kind === 'island' && islandEdits && <NewIsland onClose={close} />}
+      {sheet?.kind === 'island' && <NewIsland onClose={close} />}
       {/* the folders it offers are those of the machine the page reaches, so a switch starts it over */}
       {sheet?.kind === 'robot' && <NewRobot key={via?.machine} islandId={sheet.islandId} onClose={close} onCreated={(id) => { close(); onOpen(id); }} />}
-      {sheet?.kind === 'islandMenu' && islandEdits && <IslandSheet islandId={sheet.islandId} onClose={close} onOpen={onOpen} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
+      {sheet?.kind === 'islandMenu' && !(via && fleet.islands[sheet.islandId]?.kind === 'home') && <IslandSheet islandId={sheet.islandId} onClose={close} onOpen={onOpen} onNewRobot={() => setSheet({ kind: 'robot', islandId: sheet.islandId })} />}
       {sheet?.kind === 'settings' && !via && <Settings onClose={close} />}
       {sheet?.kind === 'close' && <CloseRobot id={sheet.id} onClose={close} />}
     </div>
