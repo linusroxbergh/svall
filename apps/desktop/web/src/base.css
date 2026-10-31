@@ -128,3 +128,22 @@ textarea.fld { padding-block: var(--sp-md); }
    An svg's own parts are left alone: restyling them all costs a frame, and motion.ts stills the robots */
 [data-paused="true"] :not(svg *), [data-paused="true"] :not(svg *)::before, [data-paused="true"] :not(svg *)::after { animation-play-state: paused !important; }
 .board { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+/* panel vocabulary */
+.tnum { font-variant-numeric: tabular-nums; }
+.mono { font-family: var(--mono); }
+.rows { border-top: 1px solid var(--line-soft); padding-top: var(--sp-sm); }
+.lp a { color: inherit; text-decoration: none; }
+.lp button { background: none; border: 0; padding: 0; color: var(--ink-3); line-height: 1; cursor: pointer; }
+.lp button:hover { color: var(--ink); }
+.lp[data-pinned="true"] .lg { color: var(--sel); }
+.side .lp, .hover-card .lp { max-width: 100%; box-sizing: border-box; }
+.sdot { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--shell); display: inline-block; flex: none; }
+.sdot[data-status="working"] { background: var(--working); color: var(--working); }
+.sdot[data-status="idle"] { background: var(--idle); color: var(--idle); }
+.sdot[data-status="blocked"] { background: var(--blocked); color: var(--blocked); }
+.sdot[data-status="done"] { background: var(--done); color: var(--done); }
+.sdot[data-status="shell"] { background: var(--shell); color: var(--shell); }
+.sdot[data-status="moving"] { background: var(--moving); color: var(--moving); }
+.sdot[data-status="unknown"] { background: var(--unknown); color: var(--unknown); }
+.btn.ghost { background: none; color: var(--ink-3); font-size: var(--text-sm); font-weight: var(--w-medium); padding: var(--sp-xs) 0; text-align: left; }
+.btn.ghost:hover { background: none; color: var(--ink); }

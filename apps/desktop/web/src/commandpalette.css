@@ -1,0 +1,10 @@
+/* hung from the top, so the field stays put while the list under it shrinks */
+.palette-back { align-items: start; padding-top: 14vh; }
+.modal.palette { gap: var(--sp-md); }
+.palette-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); max-height: min(52vh, 420px); overflow: hidden auto; }
+.palette-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }
+/* the pointer picks a row by moving over it, so a pointer resting where the list scrolled lights nothing */
+.palette-row:hover { background: none; }
+.palette-row[data-active="true"] { background: var(--fill-2); }
+.palette-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.palette-key { flex: none; font-family: var(--mono); font-size: var(--text-sm); color: var(--ink-3); }
