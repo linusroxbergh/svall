@@ -125,6 +125,9 @@ export function parseViewerScreen(out: string, lines: number): Buffer {
   return Buffer.from(`${screen}${cup(y, x)}${modes}${shown ? '' : '\x1b[?25l'}`, 'utf8');
 }
 
+// a worker's screens and `svall robot read` ask for 40 and 50 lines
+const CONTROL_CAPTURE_LINES = 100;
+
 export class Tmux {
   private rawPaste?: Promise<string[]>;
   private control?: ControlClient;
@@ -323,7 +326,9 @@ export class Tmux {
   }
 
   async capture(paneId: string, lines: number, signal?: AbortSignal): Promise<Buffer> {
-    const out = await this.query([['capture-pane', '-p', '-t', paneId, '-S', `-${lines}`]], signal);
+    const args = ['capture-pane', '-p', '-t', paneId, '-S', `-${lines}`];
+    // the control client writes no pane's output until a reply is out, so a long history goes through a client of its own
+    const out = await (lines > CONTROL_CAPTURE_LINES ? this.call(args, signal) : this.query([args], signal));
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
   }
 

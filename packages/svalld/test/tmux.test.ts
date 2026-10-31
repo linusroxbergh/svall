@@ -511,6 +511,19 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
     c.stop();
   });
 
+  it('captures up to 100 lines on the control client and a longer history in a client of its own, so no pane output waits behind it', async () => {
+    const t = await boot();
+    const w = await t.newWindow('c_one', '/tmp', {});
+    const c = t.connect();
+    await c.start();
+    const call = vi.spyOn(t as unknown as { call: () => Promise<string> }, 'call');
+    await t.capture(w.paneId, 100);
+    expect(call).not.toHaveBeenCalled();
+    await t.capture(w.paneId, 101);
+    expect(call).toHaveBeenCalledTimes(1);
+    c.stop();
+  });
+
   it('asks a client of its own what the control client fails, cannot answer in time, or is gone for, and keeps later replies in order', async () => {
     const t = await boot();
     const spawned = new Tmux(t.socket, `${lastHome}/tmux.conf`, t.binary);
