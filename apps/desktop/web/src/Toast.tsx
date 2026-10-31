@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { app } from './boot.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
@@ -21,14 +21,23 @@ export function toastCorner(card: { x: number; y: number; width: number; height:
 // a toast can land on a terminal or a browser tab, which the shell draws above the page, so it takes a hole in them;
 // one with nothing to press leaves the presses in that hole to the surface
 export function Toast({ corner = 'bottom-left' }: { corner?: Corner }) {
-  const toast = useApp((s) => s.toast);
+  const live = useApp((s) => s.toast);
+  // a cleared toast stays on the page while it sinks away, its hole in the surfaces given back at once
+  const [last, setLast] = useState(live);
+  if (live && live !== last) setLast(live);
+  useEffect(() => {
+    if (live) return;
+    const t = setTimeout(() => setLast(undefined), theme.toastLeaveMs);
+    return () => clearTimeout(t);
+  }, [live]);
+  const toast = live ?? last;
   const ref = useRef<HTMLDivElement>(null);
-  const shown = Boolean(toast);
-  const presses = Boolean(toast?.action || toast?.dismiss);
+  const shown = Boolean(live);
+  const presses = Boolean(live?.action || live?.dismiss);
   useEffect(() => (shown && ref.current ? holdCutout(app.bridge, ref.current, presses) : undefined), [shown, presses, corner]);
   if (!toast) return null;
   return (
-    <div ref={ref} className="toast" data-testid="toast" data-tone={toast.tone} data-corner={corner}>
+    <div ref={ref} className="toast" data-testid="toast" data-tone={toast.tone} data-corner={corner} data-leaving={!live || undefined}>
       {toast.text}{toast.action && <button className="toast-act" data-testid="toast-action" onClick={() => app.store.getState().runToastAction()}>{toast.action.label}</button>}
       {toast.dismiss && <button className="toast-act toast-dismiss" data-testid="toast-dismiss" onClick={() => app.store.getState().clearToast()}>Dismiss</button>}
     </div>

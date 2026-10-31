@@ -11,13 +11,13 @@ const TIPPED = '[data-tip]:not([data-tip=""])';
 
 // one tip for the window, said by whatever the pointer rests on with a data-tip; a line starting `• ` is a bullet
 export function Tips() {
-  const [tip, setTip] = useState<{ el: Element; text: string }>();
+  const [tip, setTip] = useState<{ el: Element; text: string; cold: boolean }>();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let under: Element | undefined, open = false, closed = -Infinity;
-    const show = (el: Element) => { open = true; setTip({ el, text: el.getAttribute('data-tip')! }); };
+    const show = (el: Element, cold: boolean) => { open = true; setTip({ el, text: el.getAttribute('data-tip')!, cold }); };
     const hide = () => {
       clearTimeout(timer);
       if (open) closed = performance.now();
@@ -30,7 +30,7 @@ export function Tips() {
       under = el;
       const warm = open || performance.now() - closed < WARM;
       hide();
-      if (el) { if (warm) show(el); else timer = setTimeout(() => show(el), DELAY); }
+      if (el) { if (warm) show(el, false); else timer = setTimeout(() => show(el, true), DELAY); }
     };
     const out = (e: PointerEvent) => { if (!e.relatedTarget) { under = undefined; hide(); } };
     // a press, a key or a scroll puts it away, and it waits for the pointer to come onto something else
@@ -62,7 +62,7 @@ export function Tips() {
 
   if (!tip) return null;
   return (
-    <div ref={ref} className="tip popover" role="tooltip" data-testid="tip">
+    <div ref={ref} className="tip popover" role="tooltip" data-testid="tip" data-cold={tip.cold || undefined}>
       {tip.text.split('\n').map((line, i) => (line.startsWith('• ')
         ? <div key={i} className="tip-li"><span>•</span><span>{line.slice(2)}</span></div>
         : <div key={i}>{line}</div>))}

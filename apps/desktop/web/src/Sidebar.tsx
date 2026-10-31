@@ -59,8 +59,8 @@ function NameField({ name, testid, onDone }: { name: string; testid: string; onD
 
 export function Caret({ open }: { open: boolean }) {
   return (
-    <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-      <path d={open ? 'M2 3.6 5 6.6l3-3' : 'M3.6 2l3 3-3 3'} />
+    <svg className="caret" data-open={open} width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M2 3.6 5 6.6l3-3" />
     </svg>
   );
 }

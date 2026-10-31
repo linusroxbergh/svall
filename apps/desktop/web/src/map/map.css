@@ -93,7 +93,7 @@
   background: url('../assets/card-grain.png') var(--grain, 0 0)/96px 96px,
               linear-gradient(var(--card-0) 0%, var(--card-1) 62%, var(--card-2) 100%);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--card-tint) 16%, transparent), 0 1px 2px var(--shade-1);
-  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease); }
 .tok .card::after { content: ''; position: absolute; inset: 0; pointer-events: none; z-index: 8;
   border-radius: inherit;
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cream) 50%, transparent),
@@ -132,7 +132,7 @@
   box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent); }
 .tok .foot .sw { font-size: calc(var(--tok) * .225); font-weight: var(--w-bold); letter-spacing: var(--track-caps);
   text-transform: uppercase; padding: calc(var(--tok) * .02) calc(var(--tok) * .13);
-  border-radius: var(--r-xs); }
+  border-radius: var(--r-xs); transition: background-color var(--dur-status) var(--ease), color var(--dur-status) var(--ease); }
 /* a sheen crosses a working pill now and then. It moves the background, not transform or opacity: a compositor
    animation lifts the whole card into a layer of its own, which WebKit draws blurred */
 .tok .foot .sw[data-status=working] { background-repeat: no-repeat; background-size: 300% 100%;
@@ -166,7 +166,9 @@
 
 
 /* robot portraits: the top edge is a meter of the context used */
-.tok .edge { --st: var(--idle); position: relative; height: calc(var(--tok) * .17); background: color-mix(in srgb, var(--st) 26%, var(--card-band)); }
+/* a new status fades in and the meter fills: background and width only, so the card stays out of a blurred layer */
+.tok .edge { --st: var(--idle); position: relative; height: calc(var(--tok) * .17); background: color-mix(in srgb, var(--st) 26%, var(--card-band));
+  transition: background-color var(--dur-status) var(--ease); }
 .tok[data-status=working] .edge { --st: var(--working); }
 .tok[data-status=blocked] .edge { --st: var(--blocked); }
 .tok[data-status=done]    .edge { --st: var(--done); }
@@ -175,7 +177,8 @@
 .tok[data-status=unknown] .edge { --st: var(--unknown); }
 /* a robot between machines greys until it lands */
 .tok[data-status=moving] .card { filter: grayscale(1); opacity: .7; }
-.tok .edge i { position: absolute; inset: 0 auto 0 0; background: var(--st); box-shadow: 1px 0 0 color-mix(in srgb, var(--cream) 70%, transparent); }
+.tok .edge i { position: absolute; inset: 0 auto 0 0; background: var(--st); box-shadow: 1px 0 0 color-mix(in srgb, var(--cream) 70%, transparent);
+  transition: width var(--dur-meter) var(--ease-out), background-color var(--dur-status) var(--ease); }
 .tok .nm { flex: none; height: calc(var(--tok) * .7); padding-top: calc(var(--tok) * .14); }
 .tok .stage { position: relative; flex: 1; min-height: 0; }
 /* faint ruling on the paper behind the robot */
@@ -189,9 +192,13 @@
 /* the inline robot lets its arms swing past its frame, and leaves the pointer to the card */
 .tok svg.portrait.figure { overflow: visible; pointer-events: none; }
 /* marks on the card's corners, on a layer over the card that lifts with it and lets clicks through */
-.tok .corner { position: absolute; z-index: 10; inset: 0; pointer-events: none; transition: transform var(--dur) var(--ease); }
+.tok .corner { position: absolute; z-index: 10; inset: 0; pointer-events: none; transition: transform var(--dur-fast) var(--ease); }
 .tok:hover .corner { transform: translateY(-6px); }
 .tok[data-selected="true"] .corner { transform: translateY(-5px) scale(1.04); }
+/* a card lifts on a long ease-out and settles quicker; pressed, it sinks halfway, so the click is felt before the ring lands */
+.tok:hover :is(.card, .corner) { transition-duration: var(--dur-slow); transition-timing-function: var(--ease-out); }
+.tok:not(.drag):active :is(.card, .corner) { transform: translateY(-3px); transition-duration: var(--dur-fast); }
+.tok[data-selected="true"]:not(.drag):active :is(.card, .corner) { transform: translateY(-3px) scale(1.02); }
 .tok.drag .corner { transform: translateY(-12px); }
 .tok .corner .marks { position: absolute; top: calc(var(--tok) * -.12); right: calc(var(--tok) * -.12); display: flex; gap: calc(var(--tok) * .22); }
 .tok .mark { flex: none; box-sizing: border-box; width: calc(var(--tok) * .54); height: calc(var(--tok) * .54); padding: 0; border: 0; border-radius: 50%;

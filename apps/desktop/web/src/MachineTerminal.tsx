@@ -26,6 +26,9 @@ export function MachineTerminal({ name, ssh, run, forward: port, back, onEnd }: 
     const panel = el.closest('.host-body');
     panel?.addEventListener('scroll', move);
     window.addEventListener('resize', move);
+    // the dialog rises into place as it opens, which no observer above reports
+    const dialog = el.closest('.modal');
+    dialog?.addEventListener('animationend', move);
     // the shell lets go of a surface whose ssh ended
     let gone = false;
     const off = app.bridge.onMessage((m) => {
@@ -36,6 +39,7 @@ export function MachineTerminal({ name, ssh, run, forward: port, back, onEnd }: 
       ro.disconnect();
       panel?.removeEventListener('scroll', move);
       window.removeEventListener('resize', move);
+      dialog?.removeEventListener('animationend', move);
       off();
       if (!gone) app.bridge.send({ type: 'term.close', id });
     };

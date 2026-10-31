@@ -18,6 +18,8 @@ export const theme = {
   // how long the window has to stand still before an auto arrange follows a resize
   autoArrangeMs: 320,
   toastMs: 2600,
+  // a cleared toast stays this long, sinking away; --dur-slow matches it
+  toastLeaveMs: 200,
   // how long launch waits on svalld before the connect screen shows the log
   connectGraceMs: 10_000,
   // a toast offering to take something back stands long enough to be read and acted on

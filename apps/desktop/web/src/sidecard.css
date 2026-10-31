@@ -12,6 +12,9 @@
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
+/* a section the user opens drops its contents in; one open as its card appears shows them at once */
+.sec-body[data-opened] { transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out); }
+@starting-style { .sec-body[data-opened] { opacity: 0; translate: 0 -4px; } }
 /* its rows tall, or its text when longer, and gives up the empty rows before its section scrolls */
 .sec-body > textarea.desc { flex: 1 1 calc(var(--rows) * 1lh + 2 * var(--sp-md) + 2px); min-height: min-content; resize: none; field-sizing: content; }
 .sec-body > textarea.desc[rows="3"] { --rows: 3; }
@@ -142,7 +145,10 @@
 /* the settings window: its panes listed down the left, the one picked beside them in a side card's dress */
 .set-win { position: fixed; inset: 0; margin: auto; z-index: var(--z-settings); box-sizing: border-box; overflow: hidden;
   width: min(720px, calc(100vw - 40px)); height: min(560px, calc(100vh - 40px)); display: grid; grid-template: auto minmax(0, 1fr) / 180px minmax(0, 1fr);
-  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); box-shadow: var(--shadow-3); }
+  border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface-2); box-shadow: var(--shadow-3);
+  transition: opacity var(--dur-slow) var(--ease-out), translate var(--dur-slow) var(--ease-out), scale var(--dur-slow) var(--ease-out); }
+/* it rises in like a dialog, through transitions so its hole in the surfaces settles with it */
+@starting-style { .set-win { opacity: 0; translate: 0 6px; scale: .98; } }
 .set-bar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: var(--sp-lg) var(--sp-lg) var(--sp-lg) var(--sp-2xl); border-bottom: 1px solid var(--line-soft); }
 .set-bar h2 { margin: 0; font-size: var(--text-lg); font-weight: var(--w-semibold); color: var(--ink); }
 .set-nav { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-lg) var(--sp-md); overflow: hidden auto; }

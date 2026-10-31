@@ -7,13 +7,14 @@ bridge.present = true;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { Toast } = await import('../../src/Toast.js');
+const { theme } = await import('../../src/theme.js');
 
 beforeEach(() => {
   freshStore();
   // jsdom lays nothing out, and a hole that measures as nothing is left out
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({ left: 26, top: 700, width: 200, height: 40 } as DOMRect);
 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 const last = () => sent.filter((m) => m.type === 'shell.cutout').at(-1);
 const hole = { x: 26, y: 700, width: 200, height: 40 };
@@ -27,11 +28,15 @@ test('a toast with nothing to press shows through the terminal and leaves the pr
 });
 
 test('Dismiss takes the presses in its hole and clears the toast without running its action', () => {
+  vi.useFakeTimers();
   const run = vi.fn();
   const { getByTestId, queryByTestId } = render(<Toast />);
   act(() => store.getState().showToast('every robot starts in To do', 'ok', { label: 'Let the scribe place them', run }, true));
   expect(last()).toEqual({ type: 'shell.cutout', rects: [hole], passive: [] });
   act(() => getByTestId('toast-dismiss').click());
+  expect(getByTestId('toast').dataset.leaving).toBe('true');
+  expect(last()).toEqual({ type: 'shell.cutout', rects: [], passive: [] });
+  act(() => { vi.advanceTimersByTime(theme.toastLeaveMs); });
   expect(queryByTestId('toast')).toBeNull();
   expect(run).not.toHaveBeenCalled();
 });

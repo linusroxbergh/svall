@@ -1,5 +1,8 @@
 /* hung from the top, so the field stays put while the list under it shrinks */
 .palette-back { align-items: start; padding-top: 14vh; }
+/* opened all day, it only fades */
+.palette-back { animation-duration: var(--dur-fast); }
+.palette-back > .modal { animation: none; }
 .modal.palette { gap: var(--sp-md); }
 .palette-rows { display: flex; flex-direction: column; gap: var(--sp-2xs); max-height: min(52vh, 420px); overflow: hidden auto; }
 .palette-row { display: flex; align-items: center; gap: var(--sp-md); width: 100%; padding: var(--sp-sm) var(--sp-lg); border-radius: var(--r-sm); background: none; text-align: left; font-weight: var(--w-medium); }

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { FEEDBACK_TEXT_MAX, type FeedbackKind } from '@svall/protocol';
 import { CloseX } from './CloseX.js';
 import { sendFeedback } from './feedback.js';
+import { Glide } from './Glide.js';
 import { useApp } from './hooks.js';
 
 const PLACEHOLDER: Record<FeedbackKind, string> = { bug: 'What happened, and what did you expect?', idea: 'What would you like Svall to do?' };
@@ -50,6 +51,7 @@ export function FeedbackPanel({ diagnostics, hint = 'Version, health checks, las
   return (
     <div className="fb">
       <div className="kb-seg" role="group" aria-label="Kind">
+        <Glide at={kind} />
         {(['bug', 'idea'] as const).map((k) => (
           <button key={k} data-testid={`feedback-kind-${k}`} aria-pressed={kind === k} onClick={() => setDraft({ kind: k })}>{k === 'bug' ? 'Bug' : 'Idea'}</button>
         ))}

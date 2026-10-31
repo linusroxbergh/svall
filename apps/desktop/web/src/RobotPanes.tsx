@@ -4,6 +4,7 @@ import { app, deps } from './boot.js';
 import { BrowserArea } from './BrowserArea.js';
 import { useApp } from './hooks.js';
 import { Changes } from './ide/Changes.js';
+import { Glide } from './Glide.js';
 import { FilesArea } from './ide/FilesArea.js';
 import { MachineLine } from './indicators.js';
 import { keyTip, type ActionId } from './keys.js';
@@ -84,6 +85,7 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
       <div className="phead" onPointerDown={(e) => e.stopPropagation()}>
         {side === 'left' && lead}
         <span className="tseg" role="tablist">
+          <Glide at={kindOf(surface)} />
           {KINDS.map(({ kind, label, action }) => (
             <button key={kind} className="tbtn" role="tab" data-testid={`pane-${side}-${kind}`} data-active={kindOf(surface) === kind}
               data-tip={side === 'left' ? keyTip(label, action, bindings) : label} onClick={() => set(pick(panes, side, kind))}>
