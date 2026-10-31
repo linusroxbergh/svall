@@ -84,6 +84,10 @@ The first build takes several minutes and about 1.5 GB of disk.
 The first `pnpm e2e` needs
 `pnpm --filter @svall/desktop-web exec playwright install chromium`.
 
+On macOS, test runs that start tmux servers (`pnpm test`, `pnpm e2e`) take one
+machine-wide lock, so only one goes at a time across worktrees, then wait while
+the 1-minute load is above the core count; `SVALL_NO_TEST_LOCK=1` skips both.
+
 - `packages/protocol`: state types and message schemas (zod).
 - `packages/svalld`: the daemon (tmux, state, hooks, transcripts, API).
 - `packages/cli`: the `svall` client.
