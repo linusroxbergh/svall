@@ -86,7 +86,8 @@
 .home .tok::before { background: color-mix(in srgb, var(--home-sand-press) 30%, transparent); }
 .tok.drag::before { display: none; }
 
-.tok .card { position: relative; width: var(--card-w); height: var(--card-h);
+/* the name and the status word print in one size */
+.tok .card { --label: calc(var(--tok) * .221); position: relative; width: var(--card-w); height: var(--card-h);
   border-radius: calc(var(--tok) * .12);
   display: flex; flex-direction: column; overflow: hidden;
   /* the map's grain inked in the card's tint; --grain offsets it so neighbours differ */
@@ -120,31 +121,38 @@
 
 .tok .nm { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center;
   padding: 0 calc(var(--tok) * .15) calc(var(--tok) * .04);
-  font-size: calc(var(--tok) * .295); font-weight: var(--w-semibold); line-height: 1.16; letter-spacing: var(--track-tight);
+  font-size: var(--label); font-weight: var(--w-bold); line-height: 1.08; letter-spacing: .05em; text-transform: uppercase;
   color: var(--ink-land); overflow: hidden; }
 .tok .nm span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
   overflow-wrap: anywhere; hyphens: none; }
 
 .tok .foot { flex: none; height: calc(var(--tok) * .46);
   display: flex; align-items: center; justify-content: space-between; gap: calc(var(--tok) * .08);
-  padding: 0 calc(var(--tok) * .20);
-  background: linear-gradient(color-mix(in srgb, var(--card-tint) 11%, transparent), color-mix(in srgb, var(--card-tint) 18%, transparent));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-tint) 24%, transparent); }
-.tok .foot .sw { font-size: calc(var(--tok) * .225); font-weight: var(--w-bold); letter-spacing: var(--track-caps);
+  padding: 0 calc(var(--tok) * .20); background-color: var(--foot); }
+/* the foot is printed in the status's colour; idle and a bare shell keep the card's band */
+.tok { --foot: var(--card-band); --on-foot: var(--ink-land); }
+.tok[data-status=working] { --foot: var(--working); --on-foot: var(--ink-on-working); }
+.tok[data-status=blocked] { --foot: var(--blocked); --on-foot: var(--ink-on-blocked); }
+.tok[data-status=done]    { --foot: var(--done); --on-foot: var(--ink-on-done); }
+.tok[data-status=moving]  { --foot: var(--moving); --on-foot: var(--ink-on-moving); }
+.tok[data-status=unknown] { --foot: var(--unknown); --on-foot: var(--ink-on-unknown); }
+.tok .foot .sw { font-size: var(--label); font-weight: var(--w-bold); letter-spacing: .05em;
   text-transform: uppercase; padding: calc(var(--tok) * .02) calc(var(--tok) * .13);
   border-radius: var(--r-xs); transition: background-color var(--dur-status) var(--ease), color var(--dur-status) var(--ease); }
-/* a sheen crosses a working pill now and then. It moves the background, not transform or opacity: a compositor
+.tok .foot .sw[data-status] { padding-left: 0; color: var(--on-foot); }
+/* a sheen crosses a working foot now and then. It moves the background, not transform or opacity: a compositor
    animation lifts the whole card into a layer of its own, which WebKit draws blurred */
-.tok .foot .sw[data-status=working] { background-repeat: no-repeat; background-size: 300% 100%;
+.tok[data-status=working] .foot { background-repeat: no-repeat; background-size: 300% 100%;
   background-image: linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cream) 42%, transparent) 50%, transparent 62%);
   animation: sheen var(--sheen) ease-in-out infinite; }
 @keyframes sheen { 0% { background-position: 100% 0; } 32%, 100% { background-position: 0 0; } }
+/* a new status fades in; the pointer darkens the foot quicker */
 .tok button.foot { border: 0; border-radius: 0; font: inherit; color: inherit; text-align: inherit; cursor: pointer;
-  transition: background var(--dur) var(--ease); }
-.tok button.foot:hover { background: linear-gradient(color-mix(in srgb, var(--card-tint) 6%, transparent), color-mix(in srgb, var(--card-tint) 10%, transparent)); }
+  transition: background-color var(--dur-status) var(--ease); }
+.tok button.foot:hover { background-color: color-mix(in srgb, var(--foot) 86%, var(--ink-land)); transition-duration: var(--dur); }
 .tok .foot .tg { flex: none; width: calc(var(--tok) * .30); height: calc(var(--tok) * .27);
-  color: color-mix(in srgb, var(--ink-land) 55%, transparent); transition: color var(--dur) var(--ease); }
-.tok button.foot:hover .tg { color: var(--ink-land); }
+  color: color-mix(in srgb, var(--on-foot) 70%, transparent); transition: color var(--dur) var(--ease); }
+.tok button.foot:hover .tg { color: var(--on-foot); }
 /* a footer with no status word still keeps its toggle on the right */
 .tok .foot .tg:only-child { margin-left: auto; }
 
@@ -181,9 +189,15 @@
   transition: width var(--dur-meter) var(--ease-out), background-color var(--dur-status) var(--ease); }
 .tok .nm { flex: none; height: calc(var(--tok) * .7); padding-top: calc(var(--tok) * .14); }
 .tok .stage { position: relative; flex: 1; min-height: 0; }
-/* faint ruling on the paper behind the robot */
-.tok .stage::before { content: ''; position: absolute; inset: 0 calc(var(--tok) * .1) calc(var(--tok) * .02); pointer-events: none;
-  background: repeating-linear-gradient(0deg, transparent 0 calc(var(--tok) * .14), color-mix(in srgb, var(--card-tint) 3.5%, transparent) calc(var(--tok) * .14) calc(var(--tok) * .16)); }
+/* a disc behind the robot in a tint of its own colour; mission control's crew stand in an arch instead */
+.tok .stage::before { content: ''; position: absolute; pointer-events: none;
+  left: calc(50% - var(--tok) * .975); top: calc(var(--tok) * .06); width: calc(var(--tok) * 1.95); height: calc(var(--tok) * 1.95); border-radius: 50%;
+  background: color-mix(in srgb, var(--robot, var(--card-band)) 30%, var(--card-0));
+  box-shadow: inset 0 0 0 calc(var(--tok) * .06) color-mix(in srgb, var(--robot, var(--card-band)) 46%, var(--card-0)); }
+.home .tok .stage::before { left: calc(var(--tok) * .2); right: calc(var(--tok) * .2); top: calc(var(--tok) * .03); bottom: calc(var(--tok) * .07);
+  width: auto; height: auto; border-radius: calc(var(--tok) * 1.1) calc(var(--tok) * 1.1) calc(var(--tok) * .05) calc(var(--tok) * .05); }
+.home .tok .stage::after { bottom: calc(var(--tok) * .1); }
+.home .tok .card::before { display: none; }
 .tok .stage::after { content: ''; position: absolute; left: 50%; bottom: calc(var(--tok) * .04); transform: translateX(-50%);
   width: calc(var(--tok) * 1.3); height: calc(var(--tok) * .14); border-radius: 50%;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--ink-land) 24%, transparent), transparent); }
