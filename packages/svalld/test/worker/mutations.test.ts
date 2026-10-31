@@ -223,6 +223,9 @@ describe('a worker serving its robots while the home is away', () => {
     expect(w.worker.outbox.after(w.worker.outbox.acked()).map((e) => e.kind)).toEqual(['robot.sync']);
     expect(await call('robot.update', { id: 'c_1', note: 'linked' })).toMatchObject({ result: { note: 'linked' } });
     expect(w.home.store.state.robots.c_1.note).toBe('linked');
+    const phone = { kind: 'phone', login: 'me@example.com', send: () => {}, backlog: () => 0 } as const;
+    expect(await dispatch({ id: 1, method: 'island.update', params: { id: 'i_1', name: 'phoned' } }, { ...w.worker.ctx, viewer: phone })).toMatchObject({ result: { name: 'phoned' } });
+    expect(w.home.store.state.islands.i_1.name).toBe('phoned');
     w.worker.store.update((d) => { d.robots.c_1.unread = false; });
     expect(await call('robot.update', { id: 'c_1', figure: 2 })).toMatchObject({ result: { figure: 2 } });
     // the home holds every mutation unacked, and the link stays live

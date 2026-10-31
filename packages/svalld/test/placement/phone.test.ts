@@ -172,13 +172,16 @@ describe('a worker serving the phone', () => {
     expect(p.fallbacks.row(W)).toMatchObject({ status: 'warn', action: 'check w1 again' });
   });
 
-  it('tells a worker that did not serve again when its machine is checked', async () => {
+  it('tells a worker that did not serve again when its machine is checked, and a check of one robot there has no phone row', async () => {
     const w = world({});
     const p = phones(w);
     await w.link();
     p.far.refuse = 'tailscale is not connected (Stopped)';
     await p.tick(true);
     p.far.refuse = undefined;
+    w.home.store.update((d) => { d.robots.c_1 = placed({ id: 'c_1', machine: W }); });
+    expect(await dispatch({ id: 1, method: 'machines.setup', params: { machine: W, robot: 'c_1' } }, p.ctx)).toEqual({ id: 1, result: { rows: [] } });
+    expect(p.fallbacks.fallbacks().fallbacks).toEqual([]);
     expect(await p.setup()).toMatchObject({ result: { rows: [{ key: 'phone', status: 'ok' }] } });
     expect(p.fallbacks.fallbacks()).toEqual(listed);
   });

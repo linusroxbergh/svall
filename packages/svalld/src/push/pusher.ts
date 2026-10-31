@@ -32,7 +32,7 @@ export function startPusher(o: {
       const status = agent?.status;
       const c = f.robots[robotId];
       const was = Object.hasOwn(before.robots, robotId) ? before.robots[robotId] : undefined;
-      if (url === undefined || !owns(c) || (was && !owns(was)) || !isNews(last.get(key)?.agent, agent) || !isPushStatus(status)) continue;
+      if (url === undefined || !isPushStatus(status) || !isNews(last.get(key)?.agent, agent) || !owns(c) || (was && !owns(was))) continue;
       const payload: PushPayload = {
         id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
         ...(o.machine && { machine: o.machine }),
