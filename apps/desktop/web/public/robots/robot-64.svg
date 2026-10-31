@@ -1,4 +1,4 @@
-<svg width="260" height="428" viewBox="126 52 260 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="atomic-title atomic-desc" class="r64" data-idle="blink blink tilt tilt orbit salute" data-work="fold fold orbit salute salute blink"><style>
+<svg width="260" height="428" viewBox="126 52 260 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="atomic-title atomic-desc" class="r64" data-idle="blink blink blink blink tilt tilt orbit salute" data-work="fold fold orbit salute salute blink blink"><style>
 .r64[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r64-blink .4s ease-in-out}
 .r64[data-act=tilt] .head{animation:r64-tilt 1.5s ease-in-out}
 .r64[data-act=tilt] .eyes{animation:r64-look 1.5s ease-in-out}

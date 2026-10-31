@@ -1,4 +1,4 @@
-<svg width="260" height="422" viewBox="134 56 260 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pump-title pump-desc" class="r70" data-idle="blink blink slosh slosh tally" data-work="pour pour twist tally slosh blink"><style>
+<svg width="260" height="422" viewBox="134 56 260 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pump-title pump-desc" class="r70" data-idle="blink blink blink blink slosh slosh tally" data-work="pour pour twist tally slosh blink blink"><style>
 .r70[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r70-blink .4s ease-in-out}
 .r70[data-act=pour] .body{animation:r70-lean 2s ease-in-out}
 .r70[data-act=pour] .hose{animation:r70-lift 2s ease-in-out}

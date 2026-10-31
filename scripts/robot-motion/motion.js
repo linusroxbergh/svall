@@ -1,7 +1,7 @@
 // Each robot rests, then plays one action from its own list (data-idle or data-work, by its card's state);
 // an action is the CSS animations its SVG keys on data-act, and it ends when they all finish. As on the map, rests
 // and action lengths vary up to a tenth either way
-const REST = { idle: 3500, working: 2000 };
+const REST = { idle: 3500, working: 1800 };
 const jitter = () => 0.9 + Math.random() * 0.2;
 const waiting = new Map();
 

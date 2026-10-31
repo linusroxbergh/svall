@@ -1,4 +1,4 @@
-<svg width="340" height="452" viewBox="86 24 340 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hydrant-title hydrant-desc" class="r91" data-idle="blink blink peer peer shift flush" data-work="spray spray flush shift peer blink"><style>
+<svg width="340" height="452" viewBox="86 24 340 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="hydrant-title hydrant-desc" class="r91" data-idle="blink blink blink blink peer peer shift flush" data-work="spray spray flush shift peer blink blink"><style>
 .r91[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r91-blink .4s ease-in-out}
 .r91[data-act=peer] .barrel{animation:r91-lean 1.8s ease-in-out}
 .r91[data-act=peer] .bonnet{animation:r91-tilt 1.8s ease-in-out}

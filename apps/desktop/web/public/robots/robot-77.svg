@@ -1,4 +1,4 @@
-<svg width="304" height="456" viewBox="104 22 304 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="piston-title piston-desc" class="r77" data-idle="blink blink dial rock" data-work="heave heave pump pump dial blink"><style>.r77[data-act=blink] .eyes{animation:r77-blink .45s ease-in-out}
+<svg width="304" height="456" viewBox="104 22 304 456" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="piston-title piston-desc" class="r77" data-idle="blink blink blink blink dial rock" data-work="heave heave pump pump dial blink blink"><style>.r77[data-act=blink] .eyes{animation:r77-blink .45s ease-in-out}
 .r77[data-act=dial] .up{animation:r77-lean 1.8s ease-in-out}
 .r77[data-act=dial] .head{animation:r77-peer 1.8s ease-in-out}
 .r77[data-act=dial] .eyes{animation:r77-down 1.8s ease-in-out}

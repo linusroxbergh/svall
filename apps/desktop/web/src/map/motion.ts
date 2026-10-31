@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { useApp } from '../hooks.js';
 
 // a robot rests, then plays one action from its data-work or data-idle list: the CSS animations its SVG keys on data-act
-export const REST = { idle: 3500, working: 2000 } as const;
+export const REST = { idle: 3500, working: 1800 } as const;
 const jitter = () => 0.9 + Math.random() * 0.2;
 
 type Run = { timer?: ReturnType<typeof setTimeout> };

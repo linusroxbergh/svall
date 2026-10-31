@@ -1,4 +1,4 @@
-<svg width="276" height="428" viewBox="118 50 276 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="valve-title valve-desc" class="r56" data-idle="blink blink shift shrug tap" data-work="twist twist jolt jolt shift tap"><style>
+<svg width="276" height="428" viewBox="118 50 276 428" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="valve-title valve-desc" class="r56" data-idle="blink blink blink blink shift shrug tap" data-work="twist twist jolt jolt shift tap"><style>
 .r56[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r56-blink .4s ease-in-out}
 .r56[data-act=shift] .bot{animation:r56-rock-r 1.9s ease-in-out}
 .r56[data-act=shift] .bot2{animation:r56-rock-l 1.9s ease-in-out}

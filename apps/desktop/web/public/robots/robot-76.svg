@@ -1,4 +1,4 @@
-<svg width="324" height="452" viewBox="94 24 324 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bellows-title bellows-desc" class="r76" data-idle="blink blink tilt dial squeeze" data-work="squeeze squeeze teeter teeter dial blink"><style>
+<svg width="324" height="452" viewBox="94 24 324 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bellows-title bellows-desc" class="r76" data-idle="blink blink blink blink tilt dial squeeze" data-work="squeeze squeeze teeter teeter dial blink blink"><style>
 .r76[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r76-blink .4s ease-in-out}
 .r76[data-act=tilt] .body{animation:r76-lean 1.4s ease-in-out}
 .r76[data-act=tilt] .head{animation:r76-tilt 1.4s ease-in-out}

@@ -1,4 +1,4 @@
-<svg width="284" height="452" viewBox="114 24 284 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="cycle-title cycle-desc" class="r74" data-idle="blink blink wobble wobble dial" data-work="roll roll spin dial wobble blink"><style>
+<svg width="284" height="452" viewBox="114 24 284 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="cycle-title cycle-desc" class="r74" data-idle="blink blink blink blink wobble wobble dial" data-work="roll roll spin dial wobble blink blink"><style>
 .r74[data-act=roll] .wheel{animation:r74-roll 1.8s ease-in-out}
 .r74[data-act=roll] .body{animation:r74-rock 1.8s ease-in-out}
 .r74[data-act=roll] .arm-l,.r74[data-act=roll] .arm-r{animation:r74-counter 1.8s ease-in-out}
