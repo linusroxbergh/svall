@@ -66,6 +66,7 @@ Every check is about this robot alone. A move that cannot happen shows every che
 and its own button or action, the first with its details behind it; `svall robot move` prints them one under the other.
 
 1. **The worker is reachable and runs this release.** "linus-vault is not reachable; try again when it is awake".
+   One that does not answer in time: "linus-vault did not answer; try again; if it keeps happening, Check it under Machines".
    "linus-vault runs X, this Mac Y; upgrade it under Machines", whose button **Upgrade linus-vault** upgrades it from
    the sheet and checks again, or "update svall on this Mac" when the worker's is the newer. A worker whose state schema or link protocol is not this Mac's stays linked, with its ssh connection
    and the terminals on it, but nothing else passes until it is upgraded, and its robots show unknown; two builds of
@@ -97,8 +98,10 @@ and its own button or action, the first with its details behind it; `svall robot
 4. **The repository is known to the worker.** At the main checkout's place there (`/Users/ada/code/app` on the Mac is
    `/home/ada/code/app` on the worker) it has a clone of the same repository, or nothing and a remote it can fetch
    from with its own credentials. "svall has no remote; push svall to a remote first". "linus-vault cannot read
-   github.com/ada/svall; log gh in there", with the terminal button. A path in the way is refused with its path, and
-   nothing there is ever reset or deleted to make room.
+   github.com/ada/svall; log gh in there", with the terminal button. A shallow clone on this Mac refuses, as its
+   oldest commit is not the root commit a full clone there holds: "svall is a shallow clone; git -C
+   '/Users/ada/code/svall' fetch --unshallow". A path in the way is refused with its path, and nothing there is ever
+   reset or deleted to make room.
 5. **No other robot, on any machine, is on this branch of this repository.** "board is on kanban too; put one of
    them on another branch first". A branch of its name on the worker, checked out or not, that holds commits the
    robot's lacks refuses too: "linus-vault has a branch kanban with commits this one lacks; merge or rename it there
@@ -171,7 +174,7 @@ recorded:
   system takes for one, or one whose name is a folder of the other's, refuses: "this Mac has a branch Fix-login, which
   it cannot keep beside fix-login; rename one of them first".
 - A worktree that changed refuses: "changes on this Mac in /Users/ada/code/app/.claude/worktrees/kanban since the
-  move; stash or commit them".
+  move; stash or commit them". It is looked at again right before it is reset.
 - An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
   since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
   worker's copy.
@@ -197,6 +200,7 @@ moves, the way back refuses:
   worktree on linus-vault first".
 - No clone at that place: "app is not cloned on this Mac; git clone 'git@github.com:ada/app.git' '/Users/ada/code/app'".
 - Something else there: "/Users/ada/code/app on this Mac is not a clone of app; move it out of the way first".
+- A shallow clone of app there: "app is a shallow clone; git -C '/Users/ada/code/app' fetch --unshallow".
 - A folder at the worktree's place: "/Users/ada/code/app/.claude/worktrees/scout on this Mac is in the way; move it out
   of the way first".
 - A worktree git still lists at that place, or on the robot's branch, whose folder is gone, the one the robot left
