@@ -10,9 +10,9 @@ const SIZE: Record<Grid, IconSize> = { 10: 'xs', 12: 'sm', 24: 'md' };
 
 type Props = { size?: IconSize };
 
-function Svg({ grid, size, fill, children }: Props & { grid: Grid; fill?: boolean; children: ReactNode }) {
+function Svg({ grid, size, fill, className, dir, children }: Props & { grid: Grid; fill?: boolean; className?: string; dir?: string; children: ReactNode }) {
   return (
-    <svg className={`icon-${size ?? SIZE[grid]}`} viewBox={`0 0 ${grid} ${grid}`} aria-hidden="true"
+    <svg className={`icon-${size ?? SIZE[grid]}${className ? ` ${className}` : ''}`} data-dir={dir} viewBox={`0 0 ${grid} ${grid}`} aria-hidden="true"
       fill={fill ? 'currentColor' : 'none'} stroke={fill ? undefined : 'currentColor'} strokeWidth={fill ? undefined : WEIGHT[grid]}
       strokeLinecap="round" strokeLinejoin="round">
       {children}
@@ -20,10 +20,10 @@ function Svg({ grid, size, fill, children }: Props & { grid: Grid; fill?: boolea
   );
 }
 
-const CARET = { up: 'M2 6.5 5 3.5 8 6.5', down: 'M2 3.5 5 6.5 8 3.5', left: 'M6.5 2 3.5 5 6.5 8', right: 'M3.5 2 6.5 5 3.5 8' };
-
-/** Every expand, collapse, next and back control points with this. */
-export const Caret = ({ dir, size }: Props & { dir: keyof typeof CARET }) => <Svg grid={10} size={size}><path d={CARET[dir]} /></Svg>;
+/** Every expand, collapse, next and back control points with this: drawn pointing down, icons.css turns it to its dir. */
+export const Caret = ({ dir, size }: Props & { dir: 'up' | 'down' | 'left' | 'right' }) => (
+  <Svg grid={10} size={size} className="caret" dir={dir}><path d="M2 3.5 5 6.5 8 3.5" /></Svg>
+);
 
 export const Check = ({ size }: Props) => <Svg grid={10} size={size}><path d="M1.8 5.4 4 7.6 8.4 2.6" /></Svg>;
 

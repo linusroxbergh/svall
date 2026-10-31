@@ -125,8 +125,8 @@
 .side > .acts .btn.move:hover { background: color-mix(in srgb, var(--away) 9%, transparent); }
 .btn.move > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .btn.move svg { color: var(--away); }
-.btn.move svg:last-child { transition: transform var(--dur) var(--ease); }
-.btn.move:hover svg:last-child { transform: translateX(2px); }
+.btn.move svg:last-child { transition: translate var(--dur) var(--ease); }
+.btn.move:hover svg:last-child { translate: 2px 0; }
 .side .sname { display: flex; align-items: center; gap: var(--sp-md); }
 .side-x { padding: 0 var(--sp-sm); background: none; font-size: var(--text-xl); line-height: 1; color: var(--ink-3); border-radius: var(--r-xs); }
 .side-x:hover { color: var(--ink); background: var(--fill-2); }

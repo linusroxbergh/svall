@@ -57,9 +57,6 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 }
 .fold span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fold small { flex: none; display: flex; align-items: center; gap: var(--sp-sm); font-size: var(--text-sm); font-weight: var(--w-medium); }
-/* the caret turns in place, so the name beside it stays put */
-.fold svg { transition: rotate var(--dur) var(--ease); }
-.fold[aria-expanded='false'] svg { rotate: -90deg; }
 .empty { padding: calc(var(--sp-3xl) + var(--sp-2xl)) var(--sp-3xl); text-align: center; color: var(--ink-3); }
 .fleet > section > .sheet-error { padding: 0 var(--sp-2xl) var(--sp-md); }
 

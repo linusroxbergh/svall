@@ -4,3 +4,8 @@
 .icon-sm { width: var(--icon-sm); height: var(--icon-sm); }
 .icon-md { width: var(--icon-md); height: var(--icon-md); }
 .icon-lg { width: var(--icon-lg); height: var(--icon-lg); }
+/* a caret turns to its dir, and eases the turn when a fold opens or shuts */
+.caret { transition: rotate var(--dur) var(--ease-out); }
+.caret[data-dir="up"] { rotate: 180deg; }
+.caret[data-dir="left"] { rotate: 90deg; }
+.caret[data-dir="right"] { rotate: -90deg; }

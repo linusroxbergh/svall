@@ -149,7 +149,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         <section key={island.id}>
           <h2>
             <button type="button" className="fold" aria-expanded={!folded} onClick={() => { if (edits(island)) fold(island); }}>
-              <Caret dir="down" size="sm" />
+              <Caret dir={folded ? 'right' : 'down'} size="sm" />
               <span>{island.name}</span>
               {folded && robots.length > 0 && (
                 <small>{robots.length}{robots.some((c) => wantsUser(c, fleet, via)) && <i className="pip" />}</small>

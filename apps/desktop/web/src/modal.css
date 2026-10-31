@@ -21,8 +21,8 @@
 .modal-sub { display: block; font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-3); }
 .modal-more > summary { cursor: pointer; list-style: none; font-size: var(--text-sm); color: var(--ink-3); user-select: none; }
 .modal-more > summary::-webkit-details-marker { display: none; }
-.modal-more > summary svg { margin-right: var(--sp-2xs); transition: rotate var(--dur-fast) var(--ease); }
-.modal-more[open] > summary svg { rotate: 90deg; }
+.modal-more > summary svg { margin-right: var(--sp-2xs); }
+.modal-more[open] > summary svg { rotate: 0deg; }
 .modal-more > summary:hover { color: var(--ink); }
 .modal-more-body { display: flex; flex-direction: column; gap: var(--sp-xs); margin-top: var(--sp-xs); color: var(--ink-2); }
 .modal-more-body > span { display: block; }
