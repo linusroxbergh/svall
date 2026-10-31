@@ -4,7 +4,7 @@ import { settleItems } from '../context/items.js';
 import { removeDocs } from '../docs.js';
 import { setNote } from '../fleet.js';
 import { isIslandId, isRobotId } from '../ids.js';
-import { addIsland, dropIsland, placeIsland, updateIsland, type IslandPatch } from '../islands.js';
+import { addIsland, dropIsland, updateIsland, type IslandPatch } from '../islands.js';
 import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '../layout.js';
 import type { Logger } from '../log.js';
 import type { Paths } from '../paths.js';
@@ -17,6 +17,7 @@ const takenLine = (worker: string, name: string, other: 'robot' | 'island') => `
 const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
 const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
 const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
+const HOME_HERE = 'mission control changes only on this Mac';
 
 /** A note with `line` added, once. */
 export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);
@@ -38,6 +39,7 @@ export const oneLine = (e: unknown): string => (e instanceof z.ZodError ? z.pret
 
 // a journaled update is taken whatever its note's length, which caps only what a request may ask for
 const Update = methods['robot.update'].params.extend({ note: z.string().optional() });
+const IslandCreate = methods['island.create'].params;
 const IslandUpdate = methods['island.update'].params;
 
 // what a robot's note says a mutation did, when it could not be applied
@@ -71,6 +73,8 @@ export class Replay {
   private made = new Map<MachineId, string[]>();
   // the robots a synced worker's mutations started here, checked once a report brings their repo
   private fresh = new Set<string>();
+  // the name each island a worker made here took in place of the one the worker gave it, which the worker's updates name as their base
+  private renamed = new Map<string, { from: string; to: string }>();
 
   constructor(private o: { store: Store; paths: Pick<Paths, 'docs'>; log: Logger; synced: (machine: MachineId) => boolean; homedir: string }) {}
 
@@ -199,14 +203,18 @@ export class Replay {
     });
   }
 
-  // under the worker's id, so a robot it started on the island lands on it here
+  // under the worker's id, so a robot it started on the island lands on it here, and within the limits a call has
   private createIsland(m: Mutation): void {
     const i = m.island;
     if (!i) throw new Error('it carries no island');
     if (!isIslandId(i.id)) throw new Error(`${JSON.stringify(i.id)} is not an island id`);
-    if (i.kind === 'home') throw new Error('mission control is this Mac\'s');
+    if (i.kind === 'home') throw new Error(HOME_HERE);
     if (Object.hasOwn(this.o.store.state.islands, i.id)) return;
-    this.o.store.update((d) => { placeIsland(d, structuredClone(i)); });
+    const p = IslandCreate.parse(i);
+    if (p.context?.length) throw new Error('it carries a context');
+    this.o.store.update((d) => { addIsland(d, p, i.id); });
+    const { name } = this.o.store.state.islands[i.id];
+    if (name !== i.name) this.renamed.set(i.id, { from: i.name, to: name });
   }
 
   // as a robot's update, but what the worker's update loses is logged, as an island has no note
@@ -218,6 +226,8 @@ export class Replay {
       return;
     }
     const i = islands[p.id];
+    if (i.kind === 'home') throw new Error(HOME_HERE);
+    const renamed = this.renamed.get(p.id);
     const next: IslandPatch = {};
     const lost: string[] = [];
     for (const k of ISLAND_FIELDS) {
@@ -225,7 +235,8 @@ export class Replay {
       const held = k === 'collapsed' ? Boolean(i.collapsed) : i[k];
       if (same(p[k], held)) continue;
       const taken = k === 'name' && Object.values(islands).some((o) => o.id !== i.id && o.name.toLowerCase() === p.name!.toLowerCase());
-      const here = !same(m.base?.[k], held);
+      const base = k === 'name' && renamed?.from === m.base?.name && renamed?.to === i.name ? i.name : m.base?.[k];
+      const here = !same(base, held);
       if (taken || here) lost.push(here ? lostLine(worker, k, p[k]) : takenLine(worker, p.name!, 'island'));
       else Object.assign(next, { [k]: p[k] });
     }

@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { Duplex, Writable } from 'node:stream';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Mutation, ROBOT_NOTE_MAX, cellKey, isLand, type FleetState, type Island, type Robot } from '@svall/protocol';
+import { HOME_ISLAND, INSTRUCTIONS_MAX, MAX_SIDE, Mutation, ROBOT_NOTE_MAX, cellKey, isLand, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { dispatch } from '../../src/api/methods.js';
 import { docsDir } from '../../src/docs.js';
 import { blockedCells, placementOk } from '../../src/layout.js';
@@ -397,16 +397,80 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(logged).toEqual([]);
   });
 
-  it('an island made offline on a place taken here is re-placed, and a name taken here gets a number', async () => {
-    const { w, call, replayed } = setup();
+  it('an island made offline on a place taken here is re-placed with the robot started on it, and a name taken here gets a number', async () => {
+    const { w, call, create, logged, replayed } = setup();
     const made = (await call('island.create', { name: 'docs' }) as { result: Island }).result;
+    const { id } = await create({ islandId: made.id });
     w.home.store.update((d) => { d.islands.i_h = { ...made, id: 'i_h', name: 'Docs' }; });
     await w.link();
     await replayed();
-    const { islands } = w.home.store.state;
+    const { islands, robots } = w.home.store.state;
     expect(islands[made.id].name).toBe('docs 2');
     expect(islands[made.id].position).not.toEqual(made.position);
     expect(placementOk(w.home.store.state, islands[made.id])).toBe(true);
+    expect(robots[id].islandId).toBe(made.id);
+    expect(isLand(islands[made.id], robots[id].cell)).toBe(true);
+    expect(logged).toEqual([]);
+  });
+
+  it('a rename made offline after a create the home gave a number applies, the number counting as the worker\'s name', async () => {
+    const { w, call, logged, replayed } = setup();
+    const made = (await call('island.create', { name: 'docs' }) as { result: Island }).result;
+    await call('island.update', { id: made.id, name: 'notes' });
+    w.home.store.update((d) => { d.islands.i_h = { ...island, id: 'i_h', name: 'Docs', position: { x: 40, y: 0 } }; });
+    await w.link();
+    await replayed();
+    expect(w.home.store.state.islands[made.id].name).toBe('notes');
+    expect(logged).toEqual([]);
+  });
+
+  it('an island update and delete applied again change nothing', async () => {
+    const home = { islands: { i_1: island, i_2: { ...island, id: 'i_2', name: 'b', position: { x: 10, y: 0 } } } };
+    const { w, call, journaled, logged, replayed, apply } = setup({ home });
+    w.worker.store.update((d) => { d.islands.i_2 = structuredClone(home.islands.i_2); });
+    await call('island.update', { id: 'i_1', name: 'renamed', description: 'kept', collapsed: true });
+    await call('island.delete', { id: 'i_2' });
+    const ms = journaled();
+    await w.link();
+    await replayed();
+    const held = structuredClone(w.home.store.state.islands);
+    expect(held.i_1).toMatchObject({ name: 'renamed', description: 'kept', collapsed: true });
+    expect(held.i_2).toBeUndefined();
+    for (const m of ms) await apply(m);
+    expect(w.home.store.state.islands).toEqual(held);
+    expect(logged).toEqual([]);
+  });
+
+  it('an island made offline is taken within the limits a call has: a side past the cap, a context or instructions past the cap is logged and not applied, and its fold, order and removed links are left off', async () => {
+    const { w, call, journaled, logged, apply } = setup({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } } } });
+    await call('island.create', { name: 'docs' });
+    const [m] = journaled();
+    const bad: Partial<Island>[] = [
+      { size: { w: MAX_SIDE + 1, h: 4 } },
+      { context: [{ kind: 'other', ref: 'https://example.com/spec', label: 'spec', source: 'manual' }] },
+      { instructions: 'x'.repeat(INSTRUCTIONS_MAX + 1) },
+    ];
+    for (const [n, o] of bad.entries()) await apply({ ...m, id: `mu_000000000${n}`, island: { ...m.island!, ...o } });
+    expect(Object.keys(w.home.store.state.islands)).toEqual(['i_1']);
+    expect(logged).toEqual(bad.map((_, n) => expect.stringMatching(new RegExp(`^w1: island\\.create mu_000000000${n} not applied: \\S`))));
+    await apply({ ...m, island: { ...m.island!, collapsed: true, order: 3, removedLinks: ['https://example.com/x'] } });
+    expect(w.home.store.state.islands[m.island!.id]).toEqual(m.island);
+  });
+
+  it('an island update of mission control, and an island made as mission control, are logged and not applied', async () => {
+    const home = { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, islands: { i_1: island, [HOME_ISLAND]: { ...island, id: HOME_ISLAND, kind: 'home' as const, name: 'mission control', position: { x: 20, y: 0 } } } };
+    const { w, call, journaled, logged, apply } = setup({ home });
+    await call('island.create', { name: 'docs' });
+    const [m] = journaled();
+    await apply({ id: 'mu_0000000008', method: 'island.update', params: { id: HOME_ISLAND, name: 'x', collapsed: true }, base: { name: 'mission control', collapsed: false }, snapshotVersion: 0, at: 1 });
+    await apply({ ...m, id: 'mu_0000000009', island: { ...m.island!, kind: 'home' } });
+    expect(w.home.store.state.islands[HOME_ISLAND]).toMatchObject({ name: 'mission control' });
+    expect(w.home.store.state.islands[HOME_ISLAND].collapsed).toBeUndefined();
+    expect(w.home.store.state.islands[m.island!.id]).toBeUndefined();
+    expect(logged).toEqual([
+      'w1: island.update mu_0000000008 not applied: mission control changes only on this Mac',
+      'w1: island.create mu_0000000009 not applied: mission control changes only on this Mac',
+    ]);
   });
 
   it('an island update keeps the value of a field the home changed since, and of a name another island has, and logs each; the other fields apply', async () => {

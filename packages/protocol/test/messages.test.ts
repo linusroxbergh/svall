@@ -177,8 +177,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 36', () => {
-    expect(PROTOCOL_VERSION).toBe(36);
+  it('is 37', () => {
+    expect(PROTOCOL_VERSION).toBe(37);
   });
 
   it('machines.setup and machines.consent take and answer', () => {

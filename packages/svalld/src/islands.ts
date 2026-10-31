@@ -25,21 +25,16 @@ export function createIsland({ store }: Deps, p: NewIsland): Island {
 }
 
 /** Adds an island to the draft where it clears every other. */
-export function addIsland(draft: FleetState, p: NewIsland): Island {
+export function addIsland(draft: FleetState, p: NewIsland, id = newId('i')): Island {
+  const size = p.size ?? DEFAULT_SIZE;
+  const wanted = p.position ?? defaultPosition(draft);
   const island: Island = {
-    id: newId('i'), name: p.name, description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
-    position: p.position ?? defaultPosition(draft), size: p.size ?? DEFAULT_SIZE, seed: p.seed ?? randomSeed(),
+    id, name: uniqueName(Object.values(draft.islands).map((i) => i.name), p.name), description: p.description ?? '', instructions: p.instructions ?? '', context: settleItems(p.context ?? [], []),
+    position: wanted, size, seed: p.seed ?? randomSeed(),
   };
   setDescription(island, island.description);
-  return placeIsland(draft, island);
-}
-
-/** Puts an island into the draft under a name no other has, at its position or the nearest that clears every other. */
-export function placeIsland(draft: FleetState, island: Island): Island {
-  const wanted = island.name;
-  island.name = uniqueName(Object.values(draft.islands).map((i) => i.name), wanted);
   island.position = freePosition(draft, island);
-  if (!placementOk(draft, island)) throw new Invalid(`island ${wanted} would overlap another island`);
+  if (!placementOk(draft, island)) throw new Invalid(`island ${p.name} would overlap another island`);
   // an island joining or leaving is where mission control takes its place again; between those it holds its row
   draft.islands[island.id] = island;
   settleHome(draft);
