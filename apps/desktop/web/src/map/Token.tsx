@@ -5,7 +5,7 @@ import { MachineLine, MONITORING, reviewText, subagentsText } from '../indicator
 import { contextPctOf, inReview, isMonitoring, isUnread, mainPr, subagentCount, type DisplayStatus } from '../selectors.js';
 import { LinkIcon } from './LinkIcon.js';
 import { Figure } from './Figure.js';
-import { figureOf } from '../portraits.js';
+import { colourOf, figureOf } from '../portraits.js';
 import { theme, tokenPx } from '../theme.js';
 import { seedNum } from './coast.js';
 import { hintLabel, hintText, statusWord } from './tokenText.js';
@@ -16,7 +16,7 @@ const RAIL_MAX = 3;
 function footInner(c: Robot, status: DisplayStatus, word: string | undefined, failed: string | undefined) {
   return (
     <>
-      {word && <span className="sw" data-status={status} style={{ backgroundColor: `var(--${status})`, color: `var(--ink-on-${status})` }}>{word}</span>}
+      {word && <span className="sw" data-status={status}>{word}</span>}
       {failed && <span className="sw" data-testid={`token-resume-error-${c.id}`} data-tip={failed} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>resume failed</span>}
       {c.hint && <span className="sw" data-testid={`token-hint-${c.id}`} data-tip={hintText(c)} style={{ background: 'var(--blocked)', color: 'var(--ink-on-blocked)' }}>{hintLabel(c)}</span>}
     </>
@@ -56,6 +56,7 @@ export const Token = memoByValue(function Token({
   const monitor = isMonitoring(c);
   const subs = subagentCount(c);
   const pct = contextPctOf(c);
+  const figure = figureOf(c);
   return (
     <div
       className={cls}
@@ -75,6 +76,7 @@ export const Token = memoByValue(function Token({
         ['--card-w' as string]: `${tokenPx.w}px`,
         ['--card-h' as string]: `${tokenPx.h}px`,
         ['--grain' as string]: `${Math.round(seedNum(c.id) * 96)}px ${Math.round(seedNum(c.id + '~') * 96)}px`,
+        ['--robot' as string]: colourOf(figure),
       }}
       {...pointer}
       onPointerEnter={onHoverStart}
@@ -85,7 +87,7 @@ export const Token = memoByValue(function Token({
         {machine && <MachineLine name={machine} short className="mach" testid={`token-machine-${c.id}`} />}
         <div className="edge">{pct !== undefined && <i style={{ width: `${pct}%` }} />}</div>
         <div className="nm"><span>{c.name}</span></div>
-        <Figure n={figureOf(c)} />
+        <Figure n={figure} />
         <button
           type="button"
           className="foot"
