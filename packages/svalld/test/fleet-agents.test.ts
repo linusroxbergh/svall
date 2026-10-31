@@ -66,7 +66,8 @@ runIf('Fleet agents', () => {
   });
 
   it('keeps an agent ctrl+z stopped, whose shell is in front until fg, and lets it go once it is killed', async () => {
-    const { fleet, store, tmux, home } = await boot({ pollMs: 60_000 });
+    // bash reaps the killed job at once; Ubuntu's /bin/sh, dash, only at its next prompt
+    const { fleet, store, tmux, home } = await boot({ pollMs: 60_000, shell: '/bin/bash' });
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
     const pidFile = path.join(home, 'agent.pid');
     // whether the stand-in agent is in front of its shell

@@ -17,7 +17,9 @@ const helperDir = fs.mkdtempSync('/tmp/svall-procs-');
 const helper = path.join(helperDir, 'svall-hook');
 const children: ChildProcess[] = [];
 
-beforeAll(() => { execFileSync('swiftc', ['-O', '-wmo', '-o', helper, ...hookHelperSources().filter((f) => f.endsWith('.swift'))]); }, 180_000);
+// svall-hook is the Mac app's Swift helper: swiftc and the processes it reads exist only on macOS
+const mac = process.platform === 'darwin';
+beforeAll(() => { if (mac) execFileSync('swiftc', ['-O', '-wmo', '-o', helper, ...hookHelperSources().filter((f) => f.endsWith('.swift'))]); }, 180_000);
 afterAll(() => fs.rmSync(helperDir, { recursive: true, force: true }));
 afterEach(() => { for (const c of children.splice(0)) c.kill('SIGKILL'); });
 
@@ -32,7 +34,7 @@ const child = (code: string): ChildProcess => {
   return c;
 };
 
-describe('svall-hook procs', () => {
+describe.runIf(mac)('svall-hook procs', () => {
   it('lists a child with its env marks, its parent and its memory', async () => {
     const c = child('setInterval(()=>{},1000)');
     await new Promise((r) => setTimeout(r, 300));
@@ -85,7 +87,7 @@ describe('svall-hook procs', () => {
 
 const alive = (pid: number): boolean => { try { process.kill(pid, 0); return true; } catch { return false; } };
 
-(hasTmux() ? describe : describe.skip)('deleting a robot', () => {
+(hasTmux() && mac ? describe : describe.skip)('deleting a robot', () => {
   const cleanup: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const f of cleanup.splice(0)) await f(); cleanHomes(); });
 

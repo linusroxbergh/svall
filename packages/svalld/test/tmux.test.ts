@@ -264,7 +264,8 @@ runIf('Tmux', () => {
     }
   });
 
-  it('pipes copied text to the system clipboard', async () => {
+  // the conf pipes copies to pbcopy only on macOS
+  it.runIf(process.platform === 'darwin')('pipes copied text to the system clipboard', async () => {
     const t = await boot();
     expect((await t.run('show-options', '-gv', 'copy-command')).trim()).toBe('pbcopy');
   });
@@ -598,7 +599,8 @@ setTimeout(() => { const fs = require('fs'); fs.writeFileSync(${JSON.stringify(r
 
 runIf('ControlClient', () => {
   afterEach(cleanHomes);
-  it('reports tmux stderr when the connection fails', async () => {
+  // Linux's tmux reads a file that is not a socket as a server with no sessions, not as a failed connect
+  it.runIf(process.platform === 'darwin')('reports tmux stderr when the connection fails', async () => {
     const home = makeHome();
     fs.writeFileSync(`${home}/tmux.conf`, tmuxConfText(Config.parse({})));
     fs.writeFileSync(`${home}/not-a-socket`, 'x');

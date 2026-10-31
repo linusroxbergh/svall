@@ -26,15 +26,15 @@ export async function stopFleets(): Promise<void> {
   for (const f of cleanup.splice(0)) await f();
 }
 
-export async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; scribe?: { agent?: AgentKind; model?: string }; state?: FleetState; fleetHome?: { actions?: HomeAction[]; offered?: string[] }; opening?: boolean; platform?: NodeJS.Platform; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
-  const { homeCwd, homeCommand, mainAgent, name, scribe, state, fleetHome, opening, ...deps } = extra;
+export async function boot(extra: { pollMs?: number; runTimeoutMs?: number; resumeMs?: number; homeCwd?: string; homeCommand?: string; linkDeps?: Partial<LinkDeps>; log?: Logger; agentsFound?: AgentKind[]; mainAgent?: AgentKind; name?: string; scribe?: { agent?: AgentKind; model?: string }; state?: FleetState; fleetHome?: { actions?: HomeAction[]; offered?: string[] }; opening?: boolean; platform?: NodeJS.Platform; shell?: string; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>; endOpts?: NonNullable<ConstructorParameters<typeof Fleet>[0]['endOpts']> } = {}) {
+  const { homeCwd, homeCommand, mainAgent, name, scribe, state, fleetHome, opening, shell = '/bin/sh', ...deps } = extra;
   // what ps shows the dormancy sweep
   const procs: Proc[] = [];
   const home = makeHome();
   const paths = resolvePaths(home);
   // the fleet an earlier run left on disk
   if (state) fs.writeFileSync(paths.state, JSON.stringify(state));
-  const config = Config.parse({ shell: '/bin/sh', home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}), ...fleetHome }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
+  const config = Config.parse({ shell, home: { cwd: homeCwd ?? path.join(home, 'mc'), ...(homeCommand ? { command: homeCommand } : {}), ...fleetHome }, ...(mainAgent ? { mainAgent } : {}), ...(name ? { name } : {}), ...(scribe ? { scribe } : {}) });
   if (fleetHome) fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: config.id, home: fleetHome }));
   fs.writeFileSync(paths.tmuxConf, tmuxConfText(config));
   const store = Store.load(paths.state, () => {});

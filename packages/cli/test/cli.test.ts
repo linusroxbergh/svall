@@ -125,7 +125,8 @@ describe('svall argument parsing', () => {
     expect(r.stderr).toMatch(/svall setup configures the private fleet/);
   });
 
-  it('setup --check says when the hooks or the shims are not what setup writes now, and changes nothing', async () => {
+  // the Mac's setup: on Linux, `svall setup` is the companion's, with no launchd, --agents or --if-needed
+  it.runIf(process.platform === 'darwin')('setup --check says when the hooks or the shims are not what setup writes now, and changes nothing', async () => {
     // what the check asks of the machine, answered without the real tools
     const bin = makeHome();
     fs.writeFileSync(path.join(bin, 'claude'), "#!/bin/sh\ncase \"$1\" in --version) echo '2.1.0 (Claude Code)';; auth) echo '{\"loggedIn\":true}';; esac\n", { mode: 0o755 });
@@ -310,7 +311,8 @@ describe('svall uninstall --login-shell', () => {
   });
 });
 
-describe('svall setup --agents', () => {
+// the Mac's setup: on Linux, `svall setup` is the companion's, with no launchd, --agents or --if-needed
+describe.runIf(process.platform === 'darwin')('svall setup --agents', () => {
   // stand-ins for the tmux and codex preflight asks for
   const tools = (home: string) => {
     const bin = path.join(home, 'bin');
@@ -515,7 +517,8 @@ describe('svall setup --agents', () => {
   });
 });
 
-describe('svall setup --if-needed', () => {
+// the Mac's setup: on Linux, `svall setup` is the companion's, with no launchd, --agents or --if-needed
+describe.runIf(process.platform === 'darwin')('svall setup --if-needed', () => {
   it('still restarts old daemons, and says why, when a settings file stops the rest', async () => {
     const home = makeHome();
     try {
@@ -530,7 +533,8 @@ describe('svall setup --if-needed', () => {
   });
 });
 
-describe('svall setup --if-needed --login-shell', () => {
+// the Mac's setup: on Linux, `svall setup` is the companion's, with no launchd, --agents or --if-needed
+describe.runIf(process.platform === 'darwin')('svall setup --if-needed --login-shell', () => {
   it('writes nothing when the login shell does not answer', async () => {
     const home = makeHome();
     try {
@@ -560,7 +564,8 @@ runIf('svall CLI', () => {
     return run({ SVALL_HOME: home }, ...args);
   }
 
-  it('drives the daemon end to end', async () => {
+  // a new fleet opens with the tour's shell only on a Mac, and the daemon here is this machine's
+  it.runIf(process.platform === 'darwin')('drives the daemon end to end', async () => {
     home = makeHome();
     const config = { shell: '/bin/sh', mainAgent: 'claude' };
     fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify(config));
