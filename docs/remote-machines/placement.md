@@ -247,9 +247,17 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
   notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
   Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
-  here since; it stays". A doc over 1 MB, or with a name a tar cannot carry (over 100 bytes), stays on the machine it is
-  on, the log saying so. A path that is a file on one machine and a folder on the other stops the link until one of them
-  changes it.
+  here since; it stays". A copy's name keeps to the 100 bytes a tar carries: a longer one is cut and ends in a short
+  hash of the doc's path, and a copy in a folder too deep for a tar goes a folder up, the note naming where. A doc over
+  1 MB, or with a name a tar cannot carry (over 100 bytes), stays on the machine it is on, the log saying so; on a
+  worker it also keeps from that worker any doc of this Mac's in its place: at its path, under it, or at a folder above
+  it.
+- A file made a folder, or a folder made a file, on one machine is taken by the other where that path has not changed
+  there since. Where it has, this Mac keeps its own, and the worker's doc lands beside the file or folder in its way,
+  named for its path from there, and the robot's note names it: "linus-vault wrote robots/c_4f2k9a/plan/a.md, but
+  robots/c_4f2k9a/plan is a file on this Mac; linus-vault's version is kept as
+  robots/c_4f2k9a/plan-a.4be0c1.linus-vault.mu_3k9x0q2m7a.conflict.md". A file made a folder, or a folder a file, on a
+  worker before it ran this release drains too, but leaves such a copy and a note behind.
 - A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
   cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:

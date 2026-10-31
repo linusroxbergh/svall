@@ -48,6 +48,44 @@ export function filesIn(dir: string): string[] {
   return found.filter((d) => d.isFile() && !DURABLE_TEMP.test(d.name)).map((d) => path.relative(dir, path.join(d.parentPath, d.name))).sort();
 }
 
+// what is at `file`, or with `follow` what a link there leads to; none where a file stands in its path
+const statOf = (file: string, follow = false): fs.Stats | undefined => {
+  try { return follow ? fs.statSync(file) : fs.lstatSync(file); } catch (e) {
+    const { code } = e as NodeJS.ErrnoException;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return undefined;
+    throw e;
+  }
+};
+
+// the file in `file`'s path below `dir`, which leaves no folder for it; a link to a folder is one, as filesIn has it
+function fileAbove(dir: string, file: string): string | undefined {
+  for (let p = path.dirname(file); p.startsWith(`${path.resolve(dir)}${path.sep}`); p = path.dirname(p)) {
+    const st = statOf(p, true);
+    if (st && !st.isDirectory()) return p;
+  }
+  return undefined;
+}
+
+// whether `file` is a folder holding only folders and a crashed write's temps, that lies in `dir` wherever links lead
+function emptyFolder(dir: string, file: string): boolean {
+  const only = (f: string): boolean => fs.readdirSync(f, { withFileTypes: true }).every((d) => (d.isFile() && DURABLE_TEMP.test(d.name)) || (d.isDirectory() && only(path.join(f, d.name))));
+  return statOf(file)?.isDirectory() === true && fs.realpathSync(file).startsWith(`${fs.realpathSync(dir)}${path.sep}`) && only(file);
+}
+
+// removes such a folder from the bottom up, false when a file made there meanwhile stops it
+function clearFolder(file: string): boolean {
+  for (const d of fs.readdirSync(file, { withFileTypes: true })) {
+    if (d.isDirectory() && !clearFolder(path.join(file, d.name))) return false;
+    if (d.isFile() && DURABLE_TEMP.test(d.name)) fs.rmSync(path.join(file, d.name), { force: true });
+  }
+  try { fs.rmdirSync(file); } catch (e) {
+    const { code } = e as NodeJS.ErrnoException;
+    if (code === 'ENOTEMPTY' || code === 'EEXIST') return false;
+    throw e;
+  }
+  return true;
+}
+
 /**
  * Calls `onChange` with each file under `dir` that changed once it has rested `debounceMs`: with its bytes, or with none
  * once it is gone. A folder that appears stands for each file in it.
@@ -59,7 +97,7 @@ function watchDocs(dir: string, onChange: (rel: string, data?: Buffer) => void, 
     timers.delete(rel);
     try {
       const file = path.join(dir, rel);
-      const st = fs.lstatSync(file, { throwIfNoEntry: false });
+      const st = statOf(file);
       if (!st) onChange(rel);
       else if (st.isDirectory()) for (const f of filesIn(file)) onChange(path.join(rel, f), fs.readFileSync(path.join(file, f)));
       else if (st.isFile()) onChange(rel, fs.readFileSync(file));
@@ -109,18 +147,35 @@ const shaOf = (file: string): string | undefined => {
 
 const keptIn = (dir: string, stem: string): string[] => {
   try { return fs.readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.startsWith(stem) && d.name.endsWith('.conflict.md')).map((d) => path.join(dir, d.name)); } catch (e) {
-    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    const { code } = e as NodeJS.ErrnoException;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return [];
     throw e;
   }
 };
 
-const keptLine = (file: string, worker: string, kept: string) => `${file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${path.basename(kept)}`;
-const stayedLine = (file: string, worker: string) => `${worker} deleted ${file}, which changed here since; it stays`;
+// at most `bytes` of `s` in UTF-8, cut between characters
+const cut = (s: string, bytes: number): string => {
+  let out = '';
+  for (const ch of s) {
+    if (Buffer.byteLength(out + ch) > bytes) break;
+    out += ch;
+  }
+  return out;
+};
 
-/** A worker's change the home did not take, relative to the docs: a write kept beside its file as `kept`, or a delete refused. */
-export type Conflict = { file: string; kept?: string };
+/** A worker's change the home did not take, relative to the docs: a write kept as `kept`, beside its file or, where this Mac
+ *  has a folder at its path or a file in it, beside that one, `under`; or a delete refused. */
+export type Conflict = { file: string; kept?: string; under?: string };
 // `made` is the sha the change was made on, none for no file
 type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made?: string; prev?: string | null };
+
+// a copy is named by its path from the docs unless it is beside the doc
+function lineOf(c: Conflict, worker: string): string {
+  if (!c.kept) return `${worker} deleted ${c.file}, which changed here since; it stays`;
+  const kept = path.dirname(c.kept) === path.dirname(c.file) ? path.basename(c.kept) : c.kept;
+  if (!c.under) return `${c.file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${kept}`;
+  return `${worker} wrote ${c.file}, but ${c.under} is a ${c.under === c.file ? 'folder' : 'file'} on this Mac; ${worker}'s version is kept as ${kept}`;
+}
 
 /** The robots a doc at `rel` concerns: the one whose folder it is in, or `machine`'s on its island, in its repository by this Mac's main root, or anywhere for the fleet's. */
 export function concerns(rel: string, state: FleetState, machine: MachineId, homedir: string): string[] {
@@ -135,7 +190,7 @@ export function concerns(rel: string, state: FleetState, machine: MachineId, hom
 /** Says a conflict in the note of each robot it concerns, as the user's line, so the scribe leaves it. */
 export function noteConflict(store: Store, machine: MachineId, c: Conflict, homedir: string): void {
   const name = store.state.machines?.[machine]?.name ?? machine;
-  const line = c.kept ? keptLine(c.file, name, c.kept) : stayedLine(c.file, name);
+  const line = lineOf(c, name);
   const ids = concerns(c.file, store.state, machine, homedir);
   if (ids.length) store.update((d) => { for (const id of ids) setNote(d.robots[id], withLine(d.robots[id].note, line)); });
 }
@@ -150,16 +205,28 @@ export class HomeDocs {
 
   constructor(readonly dir: string, private log: Logger, private nameOf: (machine: MachineId) => string, private holds: (robotId: string) => boolean, private quietMs = DOCS_QUIET_MS) {}
 
-  /** Takes a worker's change made on this Mac's copy or already held, else answers the conflict. A malformed event, or one in
-   *  the folder of a robot closed here, is logged and dropped; a failed write throws and stays in the outbox. */
+  /** Takes a worker's change made on this Mac's copy or already held, else answers the conflict, as for a write where this Mac
+   *  has a folder or a file in its path. A malformed event, or one in the folder of a robot closed here, is logged and dropped;
+   *  a failed write throws and stays in the outbox. */
   apply(kind: 'docs.write' | 'docs.delete', data: unknown, machine: MachineId): Conflict | undefined {
     const named = this.named(kind, data, machine);
     if (!named) return undefined;
     const { file, bytes, sha256, made } = named;
-    const here = shaOf(file);
+    // a file in its path leaves a delete nothing to remove
+    const above = fileAbove(this.dir, file);
+    if (above) return bytes ? this.conflict(named, machine, above) : undefined;
+    // a folder of docs, or a link to a folder, holds its place against a write, and no folder is a doc a delete could remove
+    const st = statOf(file, true);
+    const empty = emptyFolder(this.dir, file);
+    if (st?.isDirectory()) {
+      if (!bytes) return undefined;
+      if (!empty) return this.conflict(named, machine, file);
+    }
+    const here = st?.isFile() ? shaOf(file) : undefined;
     if (here !== sha256 && here !== made) return this.conflict(named, machine);
     if (!bytes) fs.rmSync(file, { force: true });
     else if (here !== sha256) {
+      if (empty && !clearFolder(file)) return this.conflict(named, machine, file);
       fs.mkdirSync(path.dirname(file), { recursive: true });
       writeDurable(file, bytes);
     }
@@ -186,25 +253,40 @@ export class HomeDocs {
     }
   }
 
-  // a write goes beside the file, into the copy kept of this machine's change before it if one holds that, so changes
-  // made apart keep one copy; a delete leaves the file
-  private conflict(n: Named, machine: MachineId): Conflict {
+  // a write goes beside the file, or beside what holds its place `under`, into the copy kept of this machine's change before
+  // it if one holds that, so changes made apart keep one copy; a delete leaves the file
+  private conflict(n: Named, machine: MachineId, under?: string): Conflict {
     const name = this.nameOf(machine);
     const file = path.relative(this.dir, n.file);
     if (!n.bytes) {
-      this.log.info(`docs: ${stayedLine(file, name)}`);
+      this.log.info(`docs: ${lineOf({ file }, name)}`);
       return { file };
     }
-    const dir = path.dirname(n.file);
-    const stem = `${path.basename(n.file, '.md')}.${name.replace(/[^A-Za-z0-9._-]/g, '-')}.`;
-    const mine = keptIn(dir, stem).map((f) => ({ f, sha256: shaOf(f) })).find((k) => k.sha256 && (k.sha256 === n.sha256 || k.sha256 === n.prev));
-    const kept = mine?.f ?? path.join(dir, `${stem}${n.id}.conflict.md`);
+    const tag = `.${name.replace(/[^A-Za-z0-9._-]/g, '-').slice(0, 32)}.`;
+    const tail = `${n.id}.conflict.md`;
+    const room = 100 - Buffer.byteLength(tag + tail);
+    // named for its path from its folder, within the 100 bytes a tar holds of a name; a name cut short or not beside the doc
+    // ends in a hash of the doc's path, so no other doc's copies share it
+    const stemIn = (dir: string) => {
+      const whole = path.relative(dir, n.file).replace(/\.md$/, '').replaceAll(path.sep, '-');
+      if (dir === path.dirname(n.file) && Buffer.byteLength(whole) <= room) return `${whole}${tag}`;
+      return `${cut(whole, room - 7)}.${sha256Hex(Buffer.from(file)).slice(0, 6)}${tag}`;
+    };
+    // in a folder further up while a tar cannot hold the whole path
+    let dir = path.dirname(under ?? n.file);
+    while (dir.startsWith(`${this.dir}${path.sep}`) && !ustarFits(Buffer.from(`./${path.relative(this.dir, dir)}/${stemIn(dir)}${tail}`))) dir = path.dirname(dir);
+    // the copy of this machine's change before it may be in any folder up the doc's path, as what held its place may be gone
+    const ups: string[] = [];
+    for (let d = path.dirname(n.file); d === this.dir || d.startsWith(`${this.dir}${path.sep}`); d = path.dirname(d)) ups.push(d);
+    const mine = ups.flatMap((d) => keptIn(d, stemIn(d))).map((f) => ({ f, sha256: shaOf(f) })).find((k) => k.sha256 && (k.sha256 === n.sha256 || k.sha256 === n.prev));
+    const kept = mine?.f ?? path.join(dir, `${stemIn(dir)}${tail}`);
     if (mine?.sha256 !== n.sha256) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(path.dirname(kept), { recursive: true });
       writeDurable(kept, n.bytes);
     }
-    this.log.info(`docs: ${keptLine(file, name, kept)}`);
-    return { file, kept: path.relative(this.dir, kept) };
+    const c = { file, kept: path.relative(this.dir, kept), ...(under && { under: path.relative(this.dir, under) }) };
+    this.log.info(`docs: ${lineOf(c, name)}`);
+    return c;
   }
 
   /** Calls `changed` once the docs have rested after a change, with the machine whose event made it, if one did. */
@@ -245,6 +327,8 @@ export class WorkerDocs {
   private pending = new Map<string, { seq: number; sha256?: string }>();
   // a doc too large to journal, by the sha256 it was refused at, so it is said once
   private refused = new Map<string, string>();
+  // a doc of the home's not taken while one of this machine's holds its place, by the sha256 it came at, so it is said once
+  private untaken = new Map<string, string>();
   private queue: Promise<void> = Promise.resolve();
   private unwatch?: () => void;
 
@@ -283,6 +367,8 @@ export class WorkerDocs {
     this.refused.delete(rel);
     const last = this.pending.get(rel);
     if (sha256 === (last ? last.sha256 : this.synced[rel])) return;
+    // the removal of a doc the home has above or below this path goes first, so the home has room for this one
+    if (data) for (const k of new Set([...Object.keys(this.synced), ...this.pending.keys()])) if (rel.startsWith(`${k}/`) || k.startsWith(`${rel}/`)) this.journal(k);
     const base = this.synced[rel];
     const made = { id: newMutationId(), path: rel, ...(base && { base }), ...(last && { prev: last.sha256 ?? null }) };
     const seq = data ? this.o.connection.journal('docs.write', { ...made, data: data.toString('base64'), sha256 }) : this.o.connection.journal('docs.delete', made);
@@ -317,22 +403,34 @@ export class WorkerDocs {
   private settle(from: string, seq: number): void {
     this.catchUp();
     const theirs = new Set(filesIn(from));
-    for (const rel of new Set([...theirs, ...filesIn(this.o.dir), ...Object.keys(this.synced)])) {
-      const last = this.pending.get(rel);
-      if ((last?.seq ?? 0) > seq || this.refused.has(rel)) continue;
+    const stays = (rel: string) => (this.pending.get(rel)?.seq ?? 0) > seq || this.refused.has(rel);
+    // removals first, so that a path the home made a file or a folder has room
+    for (const rel of new Set([...filesIn(this.o.dir), ...Object.keys(this.synced)])) {
+      if (theirs.has(rel) || stays(rel)) continue;
       const file = path.join(this.o.dir, rel);
-      if (!theirs.has(rel)) {
-        fs.rmSync(file, { force: true });
-        delete this.synced[rel];
-        continue;
-      }
+      if (statOf(file)?.isDirectory() === false) fs.rmSync(file);
+      delete this.synced[rel];
+    }
+    for (const rel of theirs) {
+      if (stays(rel)) continue;
+      const file = path.join(this.o.dir, rel);
       const data = fs.readFileSync(path.join(from, rel));
       const sha256 = sha256Hex(data);
+      const last = this.pending.get(rel);
       // caught up, the file holds the last change journaled or else what the last tar brought
       if ((last ? last.sha256 : this.synced[rel]) !== sha256) {
+        // a doc that stays here holds its place: until the home has taken it, or for good if it is one this machine cannot
+        // send; a link here is replaced, and a folder holding only folders cleared
+        if (fileAbove(this.o.dir, file) || (statOf(file)?.isDirectory() && !(emptyFolder(this.o.dir, file) && clearFolder(file)))) {
+          if (this.untaken.get(rel) !== sha256) this.o.log.info(`docs: the home's ${rel} is not taken while a doc of this machine's holds its place`);
+          this.untaken.set(rel, sha256);
+          delete this.synced[rel];
+          continue;
+        }
         fs.mkdirSync(path.dirname(file), { recursive: true });
         writeDurable(file, data);
       }
+      this.untaken.delete(rel);
       this.synced[rel] = sha256;
     }
     for (const [rel, { seq: s }] of this.pending) if (s <= seq) this.pending.delete(rel);
