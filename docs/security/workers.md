@@ -214,15 +214,15 @@ reset and kill a move, a worker or an install makes, with what authorises it:
   line does not. (`test/app-notice.test.ts`)
 - **Open items for the release:**
   - **GhosttyKit's own licence texts.** Only Ghostty's text ships. MIT, BSD and Apache-2.0 ask that a binary copy
-    carry their text, and FreeType's FTL a credit line in the documentation; zlib, libpng and BSL-1.0 (utfcpp) ask
-    nothing of a binary copy. The texts are best collected when the kit is built, from zig's package cache.
+    carry their text, and FreeType's FTL a credit line in the documentation; zlib and libpng ask nothing of a binary
+    copy. The texts are best collected when the kit is built, from zig's package cache.
   - **libintl** (GNU gettext, LGPL-2.1-or-later) is linked statically. The LGPL asks that the app ship with the LGPL's
     text and libintl's source, or a written offer of it, and with what a recipient needs to relink the app against a
     changed libintl: the app's object files or source and the kit's build script. That has to reach whoever receives
     the app, whether or not the repository is public.
-  - **The object check's generic names.** `app-notice.test.ts` attributes objects named `log`, `version`, `timer`,
-    `print`, `st` or `empty` to the component that brings one today, so a new dependency with an object of such a name
-    would be counted as that component.
+  - **The object check's generic names.** `app-notice.test.ts` attributes objects named `log`, `version` or `st` to the
+    component that brings one today, so a new dependency with an object of such a name would be counted as that
+    component.
 
 ## Service and file permissions
 

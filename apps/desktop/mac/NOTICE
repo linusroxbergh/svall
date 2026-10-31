@@ -16,7 +16,6 @@ glslang  BSD-3-Clause, BSD-2-Clause, MIT, Apache-2.0, GPL-3.0-or-later WITH Biso
 SPIRV-Cross  Apache-2.0  https://github.com/KhronosGroup/SPIRV-Cross
 simdutf  Apache-2.0 OR MIT  https://github.com/simdutf/simdutf
 Highway  Apache-2.0 OR BSD-3-Clause  https://github.com/google/highway
-utfcpp  BSL-1.0  https://github.com/nemtrif/utfcpp
 GNU gettext (libintl)  LGPL-2.1-or-later  https://www.gnu.org/software/gettext/
 Dear ImGui  MIT  https://github.com/ocornut/imgui
 stb  MIT OR Unlicense  https://github.com/nothings/stb

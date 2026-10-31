@@ -92,7 +92,7 @@ function pin(root: string, zip: string, stamp = version(A)): void {
 function kitZip(stamp: string, drop?: 'lib' | 'terminfo' | 'shell-integration', slice = 'macos-arm64'): string {
   const d = tmp();
   write(d, 'kit/version', `${stamp}\n`);
-  if (drop !== 'lib') write(d, `kit/GhosttyKit.xcframework/${slice}/libghostty-fat.a`, 'lib');
+  if (drop !== 'lib') write(d, `kit/GhosttyKit.xcframework/${slice}/libghostty-internal.a`, 'lib');
   if (drop !== 'terminfo') write(d, 'kit/share/terminfo/78/xterm-ghostty', 'terminfo');
   if (drop !== 'shell-integration') write(d, 'kit/share/ghostty/shell-integration/zsh/ghostty-integration', 'zsh');
   write(d, 'kit/share/ghostty/themes/Svall', 'theme');
@@ -166,7 +166,7 @@ test('fetch installs the kit for the recorded Ghostty commit from the public rel
   expect(r.status).toBe(0);
   expect(kitVersion(root)).toBe(version(A));
   expect(fs.existsSync(path.join(root, 'vendor/ghostty-kit/share/terminfo/78/xterm-ghostty'))).toBe(true);
-  expect(fs.existsSync(path.join(root, 'vendor/ghostty-kit/GhosttyKit.xcframework/macos-arm64/libghostty-fat.a'))).toBe(true);
+  expect(fs.existsSync(path.join(root, 'vendor/ghostty-kit/GhosttyKit.xcframework/macos-arm64/libghostty-internal.a'))).toBe(true);
   expect(fs.readFileSync(f.log, 'utf8')).toContain(`https://github.com/linusroxbergh/svall/releases/download/ghostty-kit/GhosttyKit-${version(A)}-arm64.zip`);
   expect(run(root, ['current']).status).toBe(0);
 });

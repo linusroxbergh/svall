@@ -274,7 +274,10 @@ Svall first launches stays with Ghostty until you claim it there.
 | Cmd+Shift+S | Sidebar and side card | | |
 
 Clicking a link asks whether to open it in the robot's browser or
-yours, and selecting text copies it. A robot on a worker copies through OSC 52,
+yours, and selecting text copies it. With Shift held, a selection or middle-click
+goes to Ghostty instead of tmux: the selection copies and the middle-click pastes,
+unless your Ghostty config's `copy-on-select` or `middle-click-action` says
+otherwise. A robot on a worker copies through OSC 52,
 which your Ghostty config's `clipboard-write` governs: `ask` asks at every copy,
 and `deny` drops it. Terminals attach to tmux, so Ghostty's `initial-command`
 and `input` are ignored.

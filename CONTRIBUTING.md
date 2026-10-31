@@ -63,7 +63,7 @@ newer from the App Store. Open Xcode once to accept its license, then run:
 
     sudo xcode-select -s /Applications/Xcode.app
     xcodebuild -downloadComponent MetalToolchain
-    brew install zig@0.15
+    brew install zig@0.17
 
 The first build takes several minutes and about 1.5 GB of disk.
 
