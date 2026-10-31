@@ -86,18 +86,22 @@ describe('service worker notifications', () => {
 type Req = { url: string; method: string; mode: string };
 
 // the worker as the phone build leaves it, with a Mac that answers navigations as `net` says
-function kept(net: (req: Req) => Promise<string>) {
+function kept(answer: (req: Req) => Promise<string>) {
+  const net = (req: Req) => answer(req).then((body) => new Response(body));
   const listeners: Record<string, (e: unknown) => void> = {};
   const stores = new Map<string, Map<string, string>>([['svall-old', new Map([['/', 'old page']])]]);
   const caches = {
     open: (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name)!;
-      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => net({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((b) => { store.set(u, b); }))) });
+      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => answer({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((b) => { store.set(u, b); }))) });
     },
     keys: () => Promise.resolve([...stores.keys()]),
     delete: (name: string) => Promise.resolve(stores.delete(name)),
-    match: (u: string) => Promise.resolve([...stores.values()].find((m) => m.has(u))?.get(u)),
+    match: (u: string) => {
+      const body = [...stores.values()].find((m) => m.has(u))?.get(u);
+      return Promise.resolve(body === undefined ? undefined : new Response(body, { headers: { 'content-security-policy': "default-src 'self'" } }));
+    },
   };
   const self = {
     addEventListener: (name: string, fn: (e: unknown) => void) => { listeners[name] = fn; },
@@ -107,15 +111,20 @@ function kept(net: (req: Req) => Promise<string>) {
   };
   const source = fs.readFileSync(new URL('../public/sw.js', import.meta.url), 'utf8')
     .replace(/^const BUILD = .*;$/m, `const BUILD = ${JSON.stringify({ version: 'v2', files: ['/', '/assets/app.js', '/robots/a.png'] })};`);
-  vm.runInNewContext(source, { self, caches, fetch: net, setTimeout, URL });
+  vm.runInNewContext(source, { self, caches, fetch: net, setTimeout, URL, Response });
   const lifecycle = async (name: string) => { let done: unknown; listeners[name]({ waitUntil: (p: unknown) => { done = p; } }); await done; };
   // what the page is handed for a request, or undefined when the worker leaves it to the browser
   const fetch = (path: string, mode = 'cors', method = 'GET'): Promise<string> | undefined => {
-    let answer: Promise<string> | undefined;
-    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method, mode }, respondWith: (p: Promise<string>) => { answer = p; } });
-    return answer;
+    let handed: Promise<Response> | undefined;
+    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method, mode }, respondWith: (p: Promise<Response>) => { handed = p; } });
+    return handed?.then((r) => r.text());
   };
-  return { install: () => lifecycle('install'), activate: () => lifecycle('activate'), fetch, stores };
+  const headers = (path: string) => {
+    let handed: Promise<Response> | undefined;
+    listeners.fetch({ request: { url: new URL(path, 'https://mac.ts.net').href, method: 'GET', mode: 'navigate' }, respondWith: (p: Promise<Response>) => { handed = p; } });
+    return handed!.then((r) => Object.fromEntries(r.headers));
+  };
+  return { install: () => lifecycle('install'), activate: () => lifecycle('activate'), fetch, headers, stores };
 }
 
 describe('service worker page keeping', () => {
@@ -150,11 +159,11 @@ describe('service worker page keeping', () => {
     expect(await sw.fetch('/robot/c_a', 'navigate')).toBe('fresh page');
   });
 
-  it('opens the kept page once the Mac has not answered for 2.5 s, or as soon as it cannot be reached', async () => {
+  it('opens the kept page once the Mac has not answered for 2.5 s, or as soon as it cannot be reached, and marks it as the kept one', async () => {
     vi.useFakeTimers();
     let navigations = 0;
     const sw = kept((req) => {
-      if (req.mode !== 'navigate') return Promise.resolve('kept page');
+      if (req.mode !== 'navigate') return Promise.resolve('<html lang="en">kept page</html>');
       navigations += 1;
       return navigations === 1 ? new Promise(() => {}) : Promise.reject(new TypeError('Load failed'));
     });
@@ -165,8 +174,10 @@ describe('service worker page keeping', () => {
     await vi.advanceTimersByTimeAsync(2499);
     expect(page).toBeUndefined();
     await vi.advanceTimersByTimeAsync(1);
-    expect(page).toBe('kept page');
-    expect(await sw.fetch('/', 'navigate')).toBe('kept page');
+    expect(page).toBe('<html data-kept lang="en">kept page</html>');
+    expect(await sw.fetch('/', 'navigate')).toBe('<html data-kept lang="en">kept page</html>');
+    // the page carries the headers it was kept with, the CSP among them
+    expect(await sw.headers('/')).toMatchObject({ 'content-security-policy': "default-src 'self'" });
   });
 
   it('waits on the network when nothing was kept', async () => {

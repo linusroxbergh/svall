@@ -66,7 +66,9 @@ test('a phone whose Mac is off opens the page it kept, controls the robots on th
     for (const ws of macs.splice(0)) await ws.close();
     await page.reload();
     const row = (name: string) => page.locator('.row', { hasText: name });
-    await expect(row('bob')).toHaveAttribute('data-status', 'unknown', { timeout: 15_000 });
+    await expect(page.locator('html[data-kept]')).toHaveCount(1);
+    await expect(page.locator('.fleet .conn')).toHaveText('on linus-vault · mac asleep', { timeout: 10_000 });
+    await expect(row('bob')).toHaveAttribute('data-status', 'unknown');
     await expect(row('ada')).toHaveAttribute('data-status', 'shell');
     await expect(page.getByRole('button', { name: 'New island' })).toHaveCount(0);
     await expect(page.getByRole('textbox', { name: 'Mission control' })).toHaveCount(0);

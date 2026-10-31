@@ -25,9 +25,12 @@ export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string):
 /** The worker a phone reaches the fleet through while the home does not answer, and the home it stands in for. */
 export type Via = { machine: MachineId; home: MachineId };
 
+/** The home as a worker's copy of the fleet names it; before that copy arrives, by what it is. */
+export const homeName = (f: Machines, via: Via): string => f.machines?.[via.home]?.name ?? 'the Mac';
+
 /** The machine a robot runs on, while the home has lost its link to it; through a worker, any machine but that worker. */
 export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined => {
-  if (via) return c.machine === via.machine ? undefined : machineName(f, c.machine ?? via.home);
+  if (via) return c.machine === via.machine ? undefined : isPlaced(c) ? machineName(f, c.machine) : homeName(f, via);
   return isPlaced(c) && f.machines?.[c.machine]?.reachable === false ? machineName(f, c.machine) : undefined;
 };
 

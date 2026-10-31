@@ -25,6 +25,8 @@ test('through a worker, every robot not running there is away, whatever the stal
   const via = { machine: VAULT, home: HOME };
   expect(awayLine(f, { machine: VAULT }, via)).toBeUndefined();
   expect(awayLine(f, {}, via)).toBe('mac is asleep');
+  // before the worker's copy names the home
+  expect(awayLine({ machines: {} }, {}, via)).toBe('the Mac is asleep');
   expect(awayLine(f, { machine: BOX }, via)).toBe('box is not reachable');
   expect([elsewhere({ machine: VAULT }, via), elsewhere({}, via), elsewhere({ machine: BOX }, via), elsewhere({})]).toEqual([false, true, true, false]);
   const blocked = chr('c0', 'i', { x: 0, y: 0 }, { agent: { kind: 'claude', sessionId: 's', status: 'blocked', lastActivityAt: 0 } });

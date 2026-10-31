@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { PROTOCOL_VERSION, type MachineId } from '@svall/protocol';
+import { LOGIN_REFUSED, PROTOCOL_VERSION, UNPAIRED, type MachineId } from '@svall/protocol';
 import type { Api } from '../../src/api.js';
 import type { PhoneContext } from '../../src/mobile/boot.js';
 import { fleet } from '../fixtures.js';
@@ -40,7 +40,12 @@ beforeEach(() => {
   vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', hash: '', reload });
 });
 // a page from an earlier test would answer this one's events too
-afterEach(() => { for (const api of apis.splice(0)) api().stop(); vi.unstubAllGlobals(); vi.useRealTimers(); });
+afterEach(() => {
+  for (const api of apis.splice(0)) api().stop();
+  document.documentElement.removeAttribute('data-kept');
+  vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
 
 test('a phone left on an older page loads the new one once, and again after a later upgrade', async () => {
   (await boot()).hello(PROTOCOL_VERSION + 1);
@@ -113,6 +118,48 @@ test('a Mac that does not answer hands the fleet to a worker it named, which han
   expect(store.getState().fleet.robots.c0.name).toBe('c0');
   expect(api().heard).toBeGreaterThan(0);
   expect(mac.sent.map((m) => m.method)).toContain('mobile.fallbacks');
+});
+
+test('a page the service worker opened from its copy turns to a worker at once, and the Mac still wins once it answers', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
+  document.documentElement.setAttribute('data-kept', '');
+  const { store } = await start();
+  const worker = Socket.all.find(isWorker)!;
+  expect(worker).toBeDefined();
+  worker.hello();
+  expect(store.getState().via).toEqual({ machine: VAULT, home: HOME });
+  Socket.all.filter((s) => !isWorker(s)).at(-1)!.hello();
+  expect(worker.closed).toBe(true);
+  expect(store.getState().via).toBeUndefined();
+});
+
+test('a worker that refuses the phone is passed over, and its refusal never asks to pair again', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
+  const { store } = await start();
+  await vi.advanceTimersByTimeAsync(4000);
+  for (const code of [UNPAIRED, LOGIN_REFUSED, 4401]) {
+    const worker = Socket.all.filter(isWorker).at(-1)!;
+    worker.onclose!({ code });
+    expect(store.getState().status).not.toMatch(/unpaired|refused/);
+    expect(store.getState().via).toBeUndefined();
+    // the next try, before it too gives up on a greeting
+    await vi.advanceTimersByTimeAsync(2500);
+  }
+});
+
+test('a Mac that names no worker any more leaves none to fall back to', async () => {
+  vi.useFakeTimers();
+  localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
+  const socket = await boot();
+  socket.hello();
+  socket.answer('mobile.fallbacks', { home: HOME, fallbacks: [] });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(localStorage.getItem('svall.fallbacks')).not.toContain('p4ss');
+  socket.close();
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(Socket.all.filter(isWorker)).toEqual([]);
 });
 
 test("a fleet that arrives from a worker after the Mac is back is not the page's", async () => {

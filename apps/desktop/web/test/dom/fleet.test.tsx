@@ -193,7 +193,9 @@ test('through a worker, the list offers no new island, settings or island sheet,
   expect(screen.queryByRole('button', { name: 'New island' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'beta options' })).toBeNull();
-  expect(container.querySelector('.conn')!.textContent).toBe('all quiet');
+  expect(screen.queryByRole('button', { name: 'New robot on mission control' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'New robot on alpha' })).toBeTruthy();
+  expect(container.querySelector('.conn')!.textContent).toBe('on linus-vault · mac asleep');
   const status = (name: string) => screen.getByText(name).closest('.row')!.getAttribute('data-status');
   expect([status('c0'), status('c1'), status('c2')]).toEqual(['shell', 'unknown', 'unknown']);
   // only a robot running on the worker can be closed from it

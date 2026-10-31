@@ -115,6 +115,8 @@ function createPhone(): PhoneContext {
     pick();
   };
   mac.api.onOpen = () => { mac.api.call('mobile.fallbacks', {}).then(keepFallbacks, () => {}); };
+  // the service worker opened its kept page because the Mac did not answer, so the workers start without waiting on it
+  if (document.documentElement.hasAttribute('data-kept')) startWorkers();
   pair(() => mac.api.start());
 
   // a network change can leave the socket open here and dead at the far end: back in view or online, one that hears

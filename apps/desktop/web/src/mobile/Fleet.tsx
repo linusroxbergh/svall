@@ -2,7 +2,7 @@ import { useRef, useState, type PointerEvent, type JSX } from 'react';
 import { starredOf, type Robot, type Island } from '@svall/protocol';
 import { createRobot } from '../actions.js';
 import { memoByValue, useApp } from '../hooks.js';
-import { elsewhere } from '../placement.js';
+import { elsewhere, homeName, machineName } from '../placement.js';
 import { figureOf, figureUrl } from '../portraits.js';
 import { islandCwd, startOf, statusOf, wantsUser } from '../selectors.js';
 import { phone } from './boot.js';
@@ -124,7 +124,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
         {!via && <button type="button" className="icon" aria-label="New island" onClick={() => setSheet({ kind: 'island' })}>+</button>}
         {!via && <button type="button" className="icon" aria-label="Settings" onClick={() => setSheet({ kind: 'settings' })}>⚙</button>}
         <span className="conn" data-status={status}>
-          {status === 'online' ? (need ? `${need} waiting` : 'all quiet') : status}
+          {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
         </span>
       </header>
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in fleet.json, then quit and reopen Svall.</p>}
@@ -151,9 +151,11 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
               )}
             </button>
             {!via && <button type="button" className="icon" aria-label={`${island.name} options`} onClick={() => setSheet({ kind: 'islandMenu', islandId: island.id })}>…</button>}
-            {/* the island's own folder is the Mac's, so a worker asks which of its own to start in */}
-            <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
-              onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}>+</button>
+            {/* the island's own folder is the Mac's, so a worker asks which of its own to start in; it starts no mission control */}
+            {!(via && island.kind === 'home') && (
+              <button type="button" className="icon add" aria-label={`New robot on ${island.name}`} disabled={adding}
+                onClick={() => (via ? setSheet({ kind: 'robot', islandId: island.id }) : void add(island.id))}>+</button>
+            )}
           </h2>
           {failed?.islandId === island.id && <p className="sheet-error">{failed.message}</p>}
           {!island.collapsed && robots.map((c) => (

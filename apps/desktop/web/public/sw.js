@@ -13,10 +13,13 @@ self.addEventListener('activate', (e) => e.waitUntil(caches.keys()
   .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
   .then(() => self.clients.claim())));
 
+// the kept page says so on its root, so it turns to a worker without waiting on the Mac first
+const marked = (res) => res.text().then((html) => new Response(html.replace('<html', '<html data-kept'), { headers: res.headers }));
+
 // the Mac's page when it answers in time; past that, or when it cannot be reached, the one kept from it
 function navigate(req) {
   const net = fetch(req);
-  const kept = () => caches.match('/').then((hit) => hit || net);
+  const kept = () => caches.match('/').then((hit) => (hit ? marked(hit) : net));
   return Promise.race([net, new Promise((r) => setTimeout(r, RACE_MS)).then(kept)]).catch(kept);
 }
 
