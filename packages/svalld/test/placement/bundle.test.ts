@@ -181,7 +181,7 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(whole.commits).toEqual({ count: 3, prerequisites: [] });
   });
 
-  it('an unticked .env stays behind and is named; a ticked one travels; a tracked changed .env is reported by trackedCredentials', async () => {
+  it('an unticked .env stays behind and is named; a ticked one travels; a key a carried commit holds is reported by trackedCredentials', async () => {
     const { at, g } = scratch();
     const src = at('src');
     g(at(''), 'init', '-q', src);
@@ -216,7 +216,43 @@ describe.skipIf(!hasGit)('bundle', () => {
     expect(fs.readFileSync(path.join(dst, 'deploy.pem'), 'utf8')).toBe('PEM\n');
     expect(fs.existsSync(path.join(dst, 'node_modules'))).toBe(false);
 
-    expect(await trackedCredentials(src, hooklessGit, manifest)).toEqual(['.env.example', 'id_rsa.pub']);
+    expect(await trackedCredentials(src, hooklessGit, manifest)).toEqual({ uncommitted: [], committed: ['id_rsa.pub'] });
+  });
+
+  it('trackedCredentials leaves out a deletion and a .env template, and names one a carried commit or the staged patch holds though a later change removes it', async () => {
+    const { at, g } = scratch();
+    const src = at('src');
+    g(at(''), 'init', '-q', src);
+    put(src, '.env', 'KEY=1\n');
+    put(src, '.env.example', 'KEY=\n');
+    put(src, '.netrc', 'machine x\n');
+    put(src, 'server.key', 'KEY\n');
+    g(src, 'add', '.');
+    g(src, 'commit', '-qm', 'base');
+    const base = g(src, 'rev-parse', 'HEAD');
+
+    g(src, 'rm', '-q', '--cached', '.env');
+    put(src, '.env.example', 'KEY=\nOTHER=\n');
+    put(src, 'config/.ENV.Sample', 'KEY=\n');
+    g(src, 'add', '.env.example', 'config/.ENV.Sample');
+    g(src, 'commit', '-qm', 'untrack .env, add templates');
+    put(src, 'deploy.pem', 'PEM\n');
+    g(src, 'add', 'deploy.pem');
+    g(src, 'commit', '-qm', 'a key');
+    g(src, 'rm', '-q', 'deploy.pem');
+    g(src, 'commit', '-qm', 'no key');
+
+    fs.rmSync(path.join(src, '.netrc'));
+    g(src, 'rm', '-q', '--cached', 'server.key');
+    put(src, '.env.template', 'KEY=\n');
+    put(src, 'id_ed25519', 'KEY\n');
+    g(src, 'add', '-f', '.env.template', 'id_ed25519');
+    fs.rmSync(path.join(src, 'id_ed25519'));
+
+    const manifest = await buildBundle(src, { git: hooklessGit, into: at('bundle'), have: [base], carry: [] });
+    expect(manifest.commits).toEqual({ count: 3, prerequisites: [base] });
+    expect(await trackedCredentials(src, hooklessGit, manifest)).toEqual({ uncommitted: ['id_ed25519'], committed: ['deploy.pem'] });
+    expect(await trackedCredentials(src, hooklessGit, manifest, { head: true })).toEqual({ uncommitted: [], committed: ['deploy.pem'] });
   });
 
   it('a file named like a credential in any case, or like any ssh key, stays behind, and a worktree a move takes back keeps it where git matches ignore patterns by case', async () => {

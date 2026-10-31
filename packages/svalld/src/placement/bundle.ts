@@ -19,6 +19,7 @@ export const isCredential = (p: string): boolean => CREDENTIAL.some((re) => re.t
 // what a left worktree's fingerprint recorded by Svall 0.24 or earlier leaves out, matched by case
 const CREDENTIAL_024 = ['.env*', '*.pem', 'id_rsa*', '*.tfvars', '*.key', '.netrc'].map((p) => new RegExp(`^${p.replaceAll('.', '\\.').replaceAll('*', '.*')}$`));
 export const wasCredential = (p: string): boolean => CREDENTIAL_024.some((re) => re.test(path.posix.basename(p)));
+const ENV_TEMPLATE = /^\.env\.(example|sample|template)$/i;
 
 export const BUNDLE_MAX = 100 * 1024 * 1024;
 
@@ -233,14 +234,21 @@ export async function applyBundle(root: string, dir: string, manifest: BundleMan
   if (await digest(root, git, manifest.untracked) !== manifest.fingerprint) throw new Error(`${root} does not hold what the move carried`);
 }
 
-/** The credential files the bundle carries as tracked changes or in its commits, which no tick can leave behind; `head` as buildBundle's. */
-export async function trackedCredentials(root: string, git: GitRunner, manifest: BundleManifest, o: { head?: boolean } = {}): Promise<string[]> {
-  const names = async (args: string[]): Promise<string[]> => (await must(git, args, root)).split('\0');
-  const touched = [
-    ...(o.head ? [] : [...await names(['diff', '--cached', '--name-only', '-z', '--no-renames']), ...await names(['diff', '--name-only', '-z', '--no-renames'])]),
-    ...(manifest.commits
-      ? await names(['log', '--no-show-signature', '--format=', '--name-only', '-z', '--no-renames', manifest.base, ...manifest.commits.prerequisites.map((p) => `^${p}`), '--'])
-      : []),
-  ];
-  return [...new Set(touched)].filter((p) => p && isCredential(p)).sort(byCodeUnit);
+/**
+ * The credential files the bundle carries as tracked changes or in its commits, which no tick can leave behind, but
+ * a deletion, whose patch holds only what HEAD or the index held, and a template; `head` as buildBundle's.
+ */
+export async function trackedCredentials(root: string, git: GitRunner, manifest: BundleManifest, o: { head?: boolean } = {}): Promise<{ uncommitted: string[]; committed: string[] }> {
+  const names = async (...runs: string[][]): Promise<string[]> => {
+    const touched: string[] = [];
+    for (const args of runs) touched.push(...(await must(git, args, root)).split('\0'));
+    return [...new Set(touched)].filter((p) => p && isCredential(p) && !ENV_TEMPLATE.test(path.posix.basename(p))).sort(byCodeUnit);
+  };
+  const nameOnly = ['--name-only', '-z', '--no-renames', '--diff-filter=d'];
+  return {
+    uncommitted: o.head ? [] : await names(['diff', '--cached', ...nameOnly], ['diff', ...nameOnly]),
+    committed: manifest.commits
+      ? await names(['log', '--no-show-signature', '--format=', ...nameOnly, manifest.base, ...manifest.commits.prerequisites.map((p) => `^${p}`), '--'])
+      : [],
+  };
 }

@@ -439,7 +439,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     t.g(root, 'add', '-f', '.env');
     t.g(root, 'commit', '-qm', 'env');
     expect(await refusal(depsOf(t, [on(root)]), { ownWorktree: true }))
-      .toEqual({ reason: '.env is tracked and would travel with the branch', action: 'commit or revert .env first', details: [] });
+      .toEqual({ reason: '.env is in commits that would travel with the branch', action: 'rewrite them without .env first', details: [] });
   });
 
   it('check 6: its own worktree changes nothing for a robot in a worktree: its changes travel, and a changed tracked .env refuses', async () => {
@@ -456,7 +456,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     put(wt, 'a.txt', 'one\nedited\n');
     const c = on(wt, { main: root, branch: 'kb' });
     expect(await refusal(depsOf(t, [c]), { ownWorktree: true }))
-      .toEqual({ reason: '.env is tracked and would travel with the branch', action: 'commit or revert .env first', details: [] });
+      .toEqual({ reason: '.env is tracked and would travel with the branch', action: 'untrack or revert .env first', details: [] });
 
     t.g(wt, 'checkout', '-q', '--', '.env');
     const { sheet: s, plan } = await sheet(depsOf(t, [c]), { ownWorktree: true });
@@ -611,8 +611,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     t.g(wt, 'add', '-f', '.env');
     t.g(wt, 'commit', '-qm', 'env');
     put(wt, '.env', 'KEY=2\n');
-    expect(await refusal(depsOf(t, [c]))).toEqual({ reason: '.env is tracked and would travel with the branch', action: 'commit or revert .env first', details: [] });
-    t.g(wt, 'reset', '-q', '--hard', 'HEAD~1');
+    expect(await refusal(depsOf(t, [c]))).toEqual({
+      reason: '.env is in commits that would travel with the branch', action: 'rewrite them without .env first', details: [],
+      more: [{ reason: '.env is tracked and would travel with the branch', action: 'untrack or revert .env first' }],
+    });
+    t.g(wt, 'reset', '-q', '--soft', 'HEAD~1');
+    t.g(wt, 'rm', '-q', '--cached', '-f', '.env');
+    expect((await sheet(depsOf(t, [c]))).sheet).toMatchObject({ credentialFiles: ['.env'], stays: ['.env stays here', 'node_modules is not carried'] });
+    expect(fs.readFileSync(path.join(wt, '.env'), 'utf8')).toBe('KEY=2\n');
 
     const long = `notes/${'x'.repeat(101)}`;
     put(wt, long, 'x\n');
@@ -626,6 +632,26 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     const r = await refusal(depsOf(t, [c]));
     expect(r.reason).toContain('101.0 MB, over the 100 MB a move carries');
     expect(r.action).toBe('push its commits or ignore its large files first');
+  });
+
+  it('check 6: a carried commit that untracks a .env, or edits a tracked .env template, moves', async () => {
+    const t = machines();
+    const root = t.repo('code/svall');
+    put(root, '.env', 'KEY=1\n');
+    put(root, '.env.example', 'KEY=\n');
+    t.g(root, 'add', '-f', '.env', '.env.example');
+    t.g(root, 'commit', '-qm', 'env');
+    t.g(root, 'push', '-q', 'origin', 'main');
+    const wt = `${root}/.claude/worktrees/kb`;
+    t.g(root, 'worktree', 'add', '-q', '-b', 'kb', wt);
+    const c = on(wt, { main: root, branch: 'kb' });
+
+    t.g(wt, 'rm', '-q', '--cached', '.env');
+    put(wt, '.env.example', 'KEY=\nOTHER=\n');
+    t.g(wt, 'commit', '-qam', 'untrack .env');
+    put(wt, '.env.example', 'KEY=\nOTHER=\nMORE=\n');
+    const { sheet: s } = await sheet(depsOf(t, [c]));
+    expect(s).toMatchObject({ commits: 1, changedFiles: 1, credentialFiles: ['.env'], stays: ['.env stays here'] });
   });
 
   it('check 1: a worker linked on a build whose state or link this Mac cannot read names its release, or a different build of the same one', async () => {

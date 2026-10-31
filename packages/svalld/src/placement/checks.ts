@@ -377,11 +377,11 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
       const into = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-check-'));
       try {
         const manifest = await buildBundle(repo.root, { git: d.git, into, have, carry: o.carry ?? [], head: keep });
-        const tracked = await trackedCredentials(repo.root, d.git, manifest, { head: keep });
-        if (tracked.length) {
-          const list = tracked.join(', ');
-          fail({ reason: `${list} ${tracked.length > 1 ? 'are' : 'is'} tracked and would travel with the branch`, action: `commit or revert ${list} first` });
-        }
+        const { uncommitted, committed } = await trackedCredentials(repo.root, d.git, manifest, { head: keep });
+        const is = (files: string[]): string => `${files.join(', ')} ${files.length > 1 ? 'are' : 'is'}`;
+        // a later commit that removes it leaves it in the commit before
+        if (committed.length) fail({ reason: `${is(committed)} in commits that would travel with the branch`, action: `rewrite them without ${committed.join(', ')} first` });
+        if (uncommitted.length) fail({ reason: `${is(uncommitted)} tracked and would travel with the branch`, action: `untrack or revert ${uncommitted.join(', ')} first` });
         const changed = await changedFiles(repo.root, d.git);
         if (keep) {
           const listed = await untrackedFiles(repo.root, d.git);
