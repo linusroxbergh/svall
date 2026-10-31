@@ -7,6 +7,7 @@
   "packageManager": "pnpm@12.6.0",
   "scripts": {
     "test": "vitest run",
+    "test:linux": "node scripts/test-linux.mjs",
     "integration:placement": "node scripts/integration/robot-placement.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p apps/desktop/web/tsconfig.json && tsc --noEmit -p services/feedback",
     "svalld": "tsx packages/svalld/src/bin.ts",

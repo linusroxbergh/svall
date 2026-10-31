@@ -26,6 +26,19 @@ RUN userdel -r ubuntu 2>/dev/null || true
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 
+# the tmux-driven unit tests, as scripts/test-linux.mjs runs them from a Mac: python3 for the pty fixture, and the pinned
+# Node and the tmux 3.7c a release ships, from a build context `bits` holding only those two
+FROM machine AS tests
+RUN apt-get update && apt-get install -y --no-install-recommends python3 xz-utils && rm -rf /var/lib/apt/lists/*
+ARG NODE PNPM
+COPY --from=bits $NODE /tmp/node.tar.xz
+ENV COREPACK_HOME=/opt/corepack LANG=C.UTF-8
+RUN tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components 1 && rm /tmp/node.tar.xz \
+ && corepack enable pnpm && corepack prepare "pnpm@$PNPM" --activate && pnpm --version && chmod -R a+rX /opt/corepack
+COPY --from=bits tmux /usr/local/bin/tmux
+# the checkout is mounted from the Mac, owned by an account the container does not have
+RUN useradd -m -s /bin/bash -u 1000 tester && git config --system safe.directory '*'
+
 FROM machine
 
 # the one account on each machine, in /home/svall until a run moves it; key logins only, and never locked

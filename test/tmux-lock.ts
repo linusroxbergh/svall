@@ -57,7 +57,7 @@ export async function takeTmuxLock(o: Options = {}): Promise<() => void> {
 export function refusal(): string | undefined {
   if (process.platform !== 'darwin' || process.env.CI || process.env.SVALL_TMUX_ON_MAC === '1') return undefined;
   return "svall tests: the tmux-driven tests (svalld-tmux, cli-tmux, e2e) can hang macOS's tty layer until a reboot, "
-    + "so they don't run here; SVALL_TMUX_ON_MAC=1 runs them";
+    + "so they don't run here; pnpm test:linux runs the vitest ones in Linux, and SVALL_TMUX_ON_MAC=1 runs them here";
 }
 
 export default async function setup(): Promise<(() => void) | undefined> {
