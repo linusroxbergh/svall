@@ -44,7 +44,7 @@
     "./worker/mode": "./src/worker/mode.ts"
   },
   "scripts": {
-    "test": "vitest run --root ../.. --project svalld"
+    "test": "vitest run --root ../.. --project 'svalld*'"
   },
   "dependencies": {
     "@svall/protocol": "workspace:*",

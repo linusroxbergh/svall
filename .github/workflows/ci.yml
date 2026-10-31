@@ -31,6 +31,9 @@ jobs:
       - run: pnpm --filter @svall/desktop-web build
       - run: pnpm --filter @svall/desktop-web build:site
       - run: pnpm test
+        # the runner holds only this run
+        env:
+          SVALL_NO_TEST_LOCK: "1"
       # the app's Swift tests link GhosttyKit, prebuilt for the Ghostty commit HEAD records
       - run: |
           scripts/ghostty-kit.sh fetch

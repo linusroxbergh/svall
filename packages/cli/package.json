@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "scripts": { "test": "vitest run --root ../.. --project cli" },
+  "scripts": { "test": "vitest run --root ../.. --project 'cli*'" },
   "dependencies": {
     "@svall/svalld": "workspace:*",
     "@svall/protocol": "workspace:*",
