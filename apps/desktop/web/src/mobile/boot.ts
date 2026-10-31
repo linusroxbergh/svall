@@ -115,9 +115,10 @@ function createPhone(): PhoneContext {
     pick();
   };
   mac.api.onOpen = () => { mac.api.call('mobile.fallbacks', {}).then(keepFallbacks, () => {}); };
-  // the service worker opened its kept page because the Mac did not answer, so the workers start without waiting on it
-  if (document.documentElement.hasAttribute('data-kept')) startWorkers();
-  pair(() => mac.api.start());
+  // the service worker opened its kept page because the Mac did not answer, so the workers start without waiting on it;
+  // a kept page was paired before it was kept, so the Mac's socket waits on no pairing either
+  if (document.documentElement.hasAttribute('data-kept')) { startWorkers(); mac.api.start(); pair(() => {}); }
+  else pair(() => mac.api.start());
 
   // a network change can leave the socket open here and dead at the far end: back in view or online, one that hears
   // nothing soon is dropped for a fresh one. Terminal output counts, since the answer can queue behind it; a worker

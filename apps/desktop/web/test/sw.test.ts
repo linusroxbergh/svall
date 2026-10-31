@@ -86,15 +86,15 @@ describe('service worker notifications', () => {
 type Req = { url: string; method: string; mode: string };
 
 // the worker as the phone build leaves it, with a Mac that answers navigations as `net` says
-function kept(answer: (req: Req) => Promise<string>) {
-  const net = (req: Req) => answer(req).then((body) => new Response(body));
+function kept(answer: (req: Req) => Promise<string | Response>) {
+  const net = (req: Req) => answer(req).then((body) => (body instanceof Response ? body : new Response(body)));
   const listeners: Record<string, (e: unknown) => void> = {};
   const stores = new Map<string, Map<string, string>>([['svall-old', new Map([['/', 'old page']])]]);
   const caches = {
     open: (name: string) => {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name)!;
-      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => answer({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((b) => { store.set(u, b); }))) });
+      return Promise.resolve({ addAll: (urls: string[]) => Promise.all(urls.map((u) => net({ url: `https://mac.ts.net${u}`, method: 'GET', mode: 'cors' }).then((r) => r.text()).then((b) => { store.set(u, b); }))) });
     },
     keys: () => Promise.resolve([...stores.keys()]),
     delete: (name: string) => Promise.resolve(stores.delete(name)),
@@ -178,6 +178,16 @@ describe('service worker page keeping', () => {
     expect(await sw.fetch('/', 'navigate')).toBe('<html data-kept lang="en">kept page</html>');
     // the page carries the headers it was kept with, the CSP among them
     expect(await sw.headers('/')).toMatchObject({ 'content-security-policy': "default-src 'self'" });
+  });
+
+  it('opens the kept page for a Mac that is awake while svalld is down, and hands on the error when nothing was kept', async () => {
+    const down = (req: Req) => Promise.resolve(req.mode === 'navigate' ? new Response('bad gateway', { status: 502 }) : '<html>kept page</html>');
+    const sw = kept(down);
+    await sw.install();
+    await sw.activate();
+    expect(await sw.fetch('/', 'navigate')).toBe('<html data-kept>kept page</html>');
+    sw.stores.clear();
+    expect(await sw.fetch('/', 'navigate')).toBe('bad gateway');
   });
 
   it('waits on the network when nothing was kept', async () => {

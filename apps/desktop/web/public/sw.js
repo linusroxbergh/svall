@@ -16,11 +16,13 @@ self.addEventListener('activate', (e) => e.waitUntil(caches.keys()
 // the kept page says so on its root, so it turns to a worker without waiting on the Mac first
 const marked = (res) => res.text().then((html) => new Response(html.replace('<html', '<html data-kept'), { headers: res.headers }));
 
-// the Mac's page when it answers in time; past that, or when it cannot be reached, the one kept from it
+// the Mac's page when it answers in time; past that, or when it cannot be reached, the one kept from it. Tailscale
+// answers 502 for a Mac that is awake while svalld is not
 function navigate(req) {
   const net = fetch(req);
+  const served = net.then((res) => (res.status >= 500 ? Promise.reject(res) : res));
   const kept = () => caches.match('/').then((hit) => (hit ? marked(hit) : net));
-  return Promise.race([net, new Promise((r) => setTimeout(r, RACE_MS)).then(kept)]).catch(kept);
+  return Promise.race([served, new Promise((r) => setTimeout(r, RACE_MS)).then(kept)]).catch(kept);
 }
 
 // the manifest carries the pass and /pair and /rpc are the Mac's answers, so only the build's own files are kept

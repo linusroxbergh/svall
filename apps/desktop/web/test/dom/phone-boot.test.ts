@@ -124,9 +124,13 @@ test('a page the service worker opened from its copy turns to a worker at once, 
   vi.useFakeTimers();
   localStorage.setItem('svall.fallbacks', JSON.stringify(FALLBACKS));
   document.documentElement.setAttribute('data-kept', '');
+  // a Home Screen app opens on its pass, whose pairing a Mac that is off never answers
+  vi.stubGlobal('fetch', () => new Promise(() => {}));
+  vi.stubGlobal('location', { protocol: 'https:', host: 'fleet.ts.net', pathname: '/', hash: '#p4ss', reload });
   const { store } = await start();
   const worker = Socket.all.find(isWorker)!;
   expect(worker).toBeDefined();
+  expect(Socket.all.filter((s) => !isWorker(s))).toHaveLength(1);
   worker.hello();
   expect(store.getState().via).toEqual({ machine: VAULT, home: HOME });
   Socket.all.filter((s) => !isWorker(s)).at(-1)!.hello();
