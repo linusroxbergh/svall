@@ -110,8 +110,10 @@ and its own button or action, the first with its details behind it; `svall robot
    to at most 100 MB. An untracked file in the worktree named like a credential in any case (`.env*`, `*.pem`,
    `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `*.tfvars`, `*.key`, `.netrc`) stays here unless you tick
    **copy .env to linus-vault** in the sheet (`--carry`); the
-   CLI names it: ".env stays here". A tracked one that changed, or that a carried commit holds, cannot stay behind: "commit or revert .env
-   first". A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
+   CLI names it: ".env stays here". A tracked one that changed cannot stay behind: "untrack or revert .env first". Nor
+   can one a carried commit holds, even if a later commit removes it: ".env is in commits that would travel with the
+   branch; rewrite them without .env first". A tracked one's deletion travels, as does a change to a tracked template
+   (`.env.example`, `.env.sample`, `.env.template`). A robot given its own worktree (check 3) carries none of main's changes, so there only a carried commit
    holding one refuses, and the sheet names main's credential files: ".env stays in svall's main checkout".
 7. **The agent is idle, or you choose Interrupt it now.** "kanban is working; interrupt it now". "a command is
    running; move anyway and it ends". In the app the sheet ticks the box for it, **Interrupt it now: kanban is

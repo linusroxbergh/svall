@@ -150,13 +150,15 @@ the keys in your agent setup, agent logins and ssh keys.
 
 - **Credential files in a worktree.** An untracked file named like a credential in any case (`.env*`, `*.pem`,
   `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`, `*.tfvars`, `*.key`, `.netrc`) stays where it is unless ticked
-  in the sheet; a tracked one that changed, or that a
-  carried commit holds, refuses the move. A robot given its own worktree off a main checkout carries none of main's
+  in the sheet; a tracked one that changed, or that a carried commit holds even if a later one removes it, refuses the
+  move. A tracked one's deletion travels, as does a change to a tracked template (`.env.example`, `.env.sample`,
+  `.env.template`). A robot given its own worktree off a main checkout carries none of main's
   changes, so there only a carried commit holding one refuses. One that stays is left on that machine, as a worktree a move takes back is
   cleaned but for such files. One ticked travels, and stays on the destination when the robot leaves again.
-  (`bundle.test.ts` "an unticked .env stays behind and is named; a ticked one travels; a tracked changed .env is
-  reported by trackedCredentials", "a file named like a credential in any case, or like any ssh key, stays behind, and
-  a worktree a move takes back keeps it where git matches ignore patterns by case"; `checks.test.ts` "check 6: …")
+  (`bundle.test.ts` "an unticked .env stays behind and is named; a ticked one travels; a key a carried commit holds
+  is reported by trackedCredentials", "trackedCredentials leaves out a deletion and a .env template, …", "a file named
+  like a credential in any case, or like any ssh key, stays behind, and a worktree a move takes back keeps it where
+  git matches ignore patterns by case"; `checks.test.ts` "check 6: …")
 - **Keys a machine keeps.** What the mirror copied with a ticked key stays on the machine until it is unticked or
   `svall uninstall` runs there, which takes back each copy still as the mirror wrote it. `svall host remove --forget`
   leaves them there. (`mirror-apply.test.ts` "takeBackCopies empties each value the record holds as copied while it is
