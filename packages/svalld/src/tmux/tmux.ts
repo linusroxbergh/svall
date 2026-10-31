@@ -125,8 +125,12 @@ export function parseViewerScreen(out: string, lines: number): Buffer {
   return Buffer.from(`${screen}${cup(y, x)}${modes}${shown ? '' : '\x1b[?25l'}`, 'utf8');
 }
 
+// a worker's screens and `svall robot read` ask for 40 and 50 lines
+const CONTROL_CAPTURE_LINES = 100;
+
 export class Tmux {
   private rawPaste?: Promise<string[]>;
+  private control?: ControlClient;
 
   constructor(readonly socket: string, private conf: string, readonly binary = resolveTmux()) {}
 
@@ -145,6 +149,17 @@ export class Tmux {
     });
     if (input) p.child.stdin!.on('error', () => {}).end(input);
     return (await p).stdout;
+  }
+
+  // read-only commands, asked of the control client while it answers; ones it cannot answer, or that fail there, run as
+  // before in a client of their own, which gives the same error
+  private async query(commands: string[][], signal?: AbortSignal): Promise<string> {
+    const c = this.control;
+    if (!signal && c?.answering && commands.flat().every((a) => !a.includes("'"))) {
+      const reply = await c.ask(commands.map((args) => args.map((a) => `'${a}'`).join(' ')));
+      if (reply !== undefined) return Buffer.from(reply, 'latin1').toString('utf8');
+    }
+    return this.call(commands.flatMap((args, i) => (i ? [';', ...args] : args)), signal);
   }
 
   async serverPid(): Promise<number | undefined> {
@@ -200,7 +215,7 @@ export class Tmux {
 
   async listSessions(): Promise<LiveSession[]> {
     const list = listing(['session_name', 'session_attached', 'session_created']);
-    const out = await this.run('list-sessions', '-F', list.format).catch(() => '');
+    const out = await this.query([['list-sessions', '-F', list.format]]).catch(() => '');
     return list.rows(out).map(([name, attached, created]) => ({ name, attached: Number(attached), created: Number(created) * 1000 }));
   }
 
@@ -246,7 +261,8 @@ export class Tmux {
   }
 
   connect(): ControlClient {
-    return new ControlClient({ binary: this.binary, socket: this.socket, conf: this.conf, session: SESSION });
+    this.control = new ControlClient({ binary: this.binary, socket: this.socket, conf: this.conf, session: SESSION });
+    return this.control;
   }
 
   // `secret` goes through the session's environment, set on stdin as ps shows every argument, and unset once the
@@ -310,7 +326,9 @@ export class Tmux {
   }
 
   async capture(paneId: string, lines: number, signal?: AbortSignal): Promise<Buffer> {
-    const out = await this.call(['capture-pane', '-p', '-t', paneId, '-S', `-${lines}`], signal);
+    const args = ['capture-pane', '-p', '-t', paneId, '-S', `-${lines}`];
+    // the control client writes no pane's output until a reply is out, so a long history goes through a client of its own
+    const out = await (lines > CONTROL_CAPTURE_LINES ? this.call(args, signal) : this.query([args], signal));
     return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
   }
 
@@ -323,13 +341,13 @@ export class Tmux {
   }
 
   async screen(paneId: string): Promise<Screen> {
-    return parseScreen(await this.run('display', '-p', '-t', paneId, '#{cursor_flag} #{cursor_y} #{pane_current_command}', ';', 'capture-pane', '-p', '-e', '-t', paneId));
+    return parseScreen(await this.query([['display', '-p', '-t', paneId, '#{cursor_flag} #{cursor_y} #{pane_current_command}'], ['capture-pane', '-p', '-e', '-t', paneId]]));
   }
 
   async listWindows(signal?: AbortSignal): Promise<LiveWindow[]> {
     const list = listing(['window_id', 'pane_id', 'pane_pid', 'window_name', 'pane_current_command', 'window_activity', 'pane_dead', 'pane_current_path']);
     // one row per window: a split window would otherwise yield several rows under the same name.
-    const out = await this.call(['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', list.format], signal);
+    const out = await this.query([['list-panes', '-s', '-t', SESSION, '-f', '#{pane_active}', '-F', list.format]], signal);
     return list.rows(out)
       .map(([windowId, paneId, panePid, name, command, activity, dead, path]) => {
         const seconds = Number(activity);

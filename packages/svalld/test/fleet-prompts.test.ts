@@ -5,11 +5,21 @@ import type { AgentKind, Robot } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { markDormant, RESUME_NOTE } from '../src/dormancy.js';
 import { Dormant, Invalid } from '../src/errors.js';
+import type { Fleet } from '../src/fleet.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
+import type { Tmux } from '../src/tmux/tmux.js';
 import { boot, cleanup, OSID, pane, stopFleets } from './fleet-boot.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
+
+// a window svalld kills once its robot is dormant is ending until it closes, so no poll takes it back meanwhile
+async function endWindow({ fleet, tmux }: { fleet: Fleet; tmux: Tmux }, id: string, windowId: string): Promise<void> {
+  const ended = tmux.killWindow(windowId);
+  fleet['ending'].set(id, ended);
+  await ended;
+  fleet['ending'].delete(id);
+}
 
 runIf('Fleet prompts', () => {
   afterEach(async () => { await stopFleets(); cleanHomes(); });
@@ -625,7 +635,7 @@ runIf('Fleet prompts', () => {
     await waitFor(() => b.store.state.robots[c.id].agent?.status === 'done');
     // dormant before the kill, as svalld ends an agent, so its revive is set at once
     b.store.update((d) => { markDormant(d.robots[c.id]); });
-    await b.tmux.killWindow(c.tmux!.windowId);
+    await endWindow(b, c.id, c.tmux!.windowId);
     expect(b.store.state.robots[c.id].revive?.command).toBe(`opencode -s ${OSID}`);
     await b.fleet.run(c.id, 'second', true);
     await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
@@ -641,7 +651,7 @@ runIf('Fleet prompts', () => {
     const c = await b.fleet.createRobot({ islandId: b.fleet.createIsland({ name: 'opencode' }).id, cwd: '/tmp', command: 'opencode', run: 'first' });
     await waitFor(() => b.store.state.robots[c.id].agent?.status === 'done');
     b.store.update((d) => { d.robots[c.id].agent!.status = 'working'; markDormant(d.robots[c.id]); });
-    await b.tmux.killWindow(c.tmux!.windowId);
+    await endWindow(b, c.id, c.tmux!.windowId);
     expect(b.store.state.robots[c.id].revive).toEqual({ command: `opencode -s ${OSID}`, interrupted: true });
     await b.fleet.resumeInterrupted();
     await waitFor(() => b.fleet.readPrompts(c.id, 5).length === 2);
