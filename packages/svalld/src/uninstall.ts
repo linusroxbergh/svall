@@ -166,8 +166,8 @@ export async function runUninstall(o: {
   for (const [current, next] of edits) requireWritable(current, next);
   const done = await quitApp(o.homes, o.app, `${SHIM} uninstall`, o.skipPid);
   for (const [current, next, what] of edits) {
-    // Codex needs no hooks file, so one that held only Svall's goes, unless it links elsewhere
-    const emptied = codexes.includes(current) && !Object.keys(next).length && Object.keys(current.settings).length > 0;
+    // neither agent needs its file, so one that held only Svall's goes, unless it links elsewhere
+    const emptied = !Object.keys(next).length && Object.keys(current.settings).length > 0;
     if (emptied && !fs.lstatSync(current.file).isSymbolicLink()) {
       fs.rmSync(current.file);
       done.push(`removed ${current.file}`);

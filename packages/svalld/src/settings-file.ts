@@ -41,6 +41,20 @@ export function requireWritable(current: JsonSettings, next: Record<string, unkn
   } catch {
     throw new Error(`${current.file} links to ${real}, whose folder is not writable; make the change in ${real} or replace the link with a regular file, then run again`);
   }
+  try {
+    fs.accessSync(real, fs.constants.W_OK);
+  } catch {
+    throw new Error(`${current.file} is read-only, so nothing was changed; make it writable and run again`);
+  }
+}
+
+const BACKUPS_KEPT = 3;
+
+// setup runs again on every update, so only the newest backups stay
+function pruneBackups(file: string): void {
+  const prefix = `${path.basename(file)}.bak-`;
+  const old = fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(prefix) && /^\d+$/.test(f.slice(prefix.length))).sort().slice(0, -BACKUPS_KEPT);
+  for (const f of old) fs.rmSync(path.join(path.dirname(file), f), { force: true });
 }
 
 // an unchanged file is left as it is, so repeated runs leave no pile of backups
@@ -57,6 +71,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     const backup = `${current.file}.bak-${Date.now()}`;
     fs.writeFileSync(backup, current.text, { mode });
     fs.chmodSync(backup, mode);
+    pruneBackups(current.file);
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });

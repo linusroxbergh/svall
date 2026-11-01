@@ -206,6 +206,14 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
   });
 
+  it('removes a Claude settings file that setup made', async () => {
+    const f = installed();
+    fs.rmSync(f.settingsPath);
+    await runSetup(f.o);
+    expect(await runUninstall(f.o)).toContain(`removed ${f.settingsPath}`);
+    expect(fs.existsSync(f.settingsPath)).toBe(false);
+  });
+
   it('quits each open window once by its pid, waiting for it to go before the next, and before it takes anything back', async () => {
     const f = installed();
     await runSetup(f.o);

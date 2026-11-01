@@ -50,6 +50,28 @@ describe('writeJsonSettings', () => {
       process.umask(umask);
     }
   });
+
+  it('keeps only the newest three backups, and backups of the user own', () => {
+    const file = path.join(makeHome(), 'settings.json');
+    fs.writeFileSync(file, '{}');
+    fs.writeFileSync(`${file}.bak-mine`, '{}');
+    for (const [i, stamp] of ['1700000000001', '1700000000002', '1700000000003', '1700000000004'].entries()) {
+      fs.writeFileSync(`${file}.bak-${stamp}`, '{}');
+      writeJsonSettings(readJsonSettings(file), { n: i }, 'settings');
+    }
+    const left = fs.readdirSync(path.dirname(file)).filter((f) => f.includes('.bak-')).sort();
+    expect(left).toHaveLength(4);
+    expect(left).toContain('settings.json.bak-mine');
+    expect(left.some((f) => f.endsWith('1700000000004'))).toBe(false);
+  });
+
+  it('refuses a read-only file, writing nothing', () => {
+    const file = path.join(makeHome(), 'settings.json');
+    fs.writeFileSync(file, '{}', { mode: 0o444 });
+    expect(() => writeJsonSettings(readJsonSettings(file), { model: 'x' }, 'settings')).toThrow(/read-only/);
+    expect(fs.readFileSync(file, 'utf8')).toBe('{}');
+    expect(fs.readdirSync(path.dirname(file))).toEqual(['settings.json']);
+  });
 });
 
 describe('installHookScripts', () => {
