@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.json",
-  "compilerOptions": { "lib": ["ES2022", "WebWorker"], "types": [], "paths": {} },
+  "compilerOptions": { "lib": ["ES2022", "WebWorker"], "types": ["@cloudflare/workers-types"], "paths": {} },
   "include": ["src/**/*.ts", "test/**/*.ts"]
 }
