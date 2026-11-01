@@ -1,4 +1,4 @@
-<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc" class="r80" data-idle="blink blink blink blink shift snip" data-work="ching ching crank crank snip blink blink"><style>
+<svg width="320" height="450" viewBox="106 26 320 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="register-title register-desc" class="r80" data-idle="blink blink blink blink shift snip" data-work="ching ching crank crank snip blink blink" data-rare="nap"><style>
 .r80[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r80-blink .4s ease-in-out}
 .r80[data-act=snip] .arm-l{animation:r80-lift 2s ease-in-out}
 .r80[data-act=snip] .fore-l{animation:r80-hang 2s ease-in-out}
@@ -69,7 +69,22 @@
 @keyframes r80-pop3{0%,100%{transform:none}22%{transform:scaleY(1.8333)}34%,64%{transform:scaleY(1.6667)}84%{transform:scaleY(.9167)}}
 @keyframes r80-pop4{0%,100%{transform:none}22%{transform:scaleY(1.5)}34%,64%{transform:scaleY(1.4)}84%{transform:scaleY(.95)}}
 @keyframes r80-pop5{0%,100%{transform:none}22%{transform:scaleY(2.25)}34%,64%{transform:scaleY(2)}84%{transform:scaleY(.875)}}
-</style>
+.r80[data-act=nap] .up{animation:r80-nap-up 8.2s ease-in-out}
+.r80[data-act=nap] .head{animation:r80-nap-head 8.2s ease-in-out}
+.r80[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r80-nap-eyes 8.2s ease-in-out}
+.r80[data-act=nap] .arm-l{animation:r80-nap-arm-l 8.2s ease-in-out}
+.r80[data-act=nap] .fore-l{animation:r80-nap-fore-l 8.2s ease-in-out}
+.r80[data-act=nap] .arm-r{animation:r80-nap-arm-r 8.2s ease-in-out}
+.r80[data-act=nap] .fore-r{animation:r80-nap-fore-r 8.2s ease-in-out}
+.r80[data-act=nap] .flag{animation:r80-nap-flag 8.2s ease-in-out}
+@keyframes r80-nap-up{0%{transform:none}12.2%{transform:translate(0px,2.5px)}19.5%{transform:translate(0px,1.6px)}29.3%{transform:translate(0px,5px)}39%{transform:translate(0px,3.8px)}45.7%{transform:translate(0px,6.2px)}52.4%{transform:translate(0px,3.8px)}59.1%{transform:translate(0px,6.2px)}65.9%{transform:translate(0px,4.2px)}70.7%{transform:translate(0px,8px)}72.9%{transform:translate(0px,-4.5px)}75.6%{transform:translate(0px,1.2px)}79.3%{transform:translate(0px,-.6px)}84.1%{transform:translate(0px,.3px)}100%{transform:none}}
+@keyframes r80-nap-head{0%{transform:none}4.3%{transform:none}12.2%{transform:translate(0px,3px) rotate(-2deg)}17.7%{transform:translate(0px,1.5px) rotate(-1deg)}28%{transform:translate(0px,8px) rotate(3.5deg)}32.9%{transform:translate(0px,6.5px) rotate(2.8deg)}45.7%{transform:translate(0px,7.5px) rotate(3.4deg)}59.1%{transform:translate(0px,8px) rotate(3.6deg)}66.5%{transform:translate(0px,8px) rotate(3.4deg)}70.7%{transform:translate(0px,13px) rotate(7deg)}72.9%{transform:translate(0px,-6px) rotate(-3deg)}75.4%{transform:translate(0px,1px)}79.3%{transform:rotate(-4.5deg)}83.5%{transform:rotate(3.8deg)}87.8%{transform:rotate(-1.2deg)}92.7%{transform:translate(0px,.3px) rotate(.4deg)}100%{transform:none}}
+@keyframes r80-nap-eyes{0%{transform:none}7.3%{transform:scale(1,.55)}12.2%{transform:translate(0px,1px) scale(1,.4)}17.7%{transform:scale(1,.75)}27.4%{transform:translate(0px,1px) scale(1,.1)}70.7%{transform:translate(0px,1px) scale(1,.1)}72.9%{transform:translate(0px,-1px) scale(1,1.18)}75%{transform:scale(1,1)}79.3%{transform:translate(-8px,0px) scale(1,1)}83.5%{transform:translate(8px,0px) scale(1,1)}88.4%{transform:scale(1,1)}100%{transform:none}}
+@keyframes r80-nap-arm-l{0%{transform:none}29.3%{transform:rotate(-6deg)}45.7%{transform:rotate(-7deg)}59.1%{transform:rotate(-7deg)}68.3%{transform:rotate(-6.5deg)}70.7%{transform:rotate(-8deg)}72.9%{transform:rotate(11deg)}76.2%{transform:rotate(-4deg)}80.5%{transform:rotate(1.5deg)}85.4%{transform:rotate(-.5deg)}100%{transform:none}}
+@keyframes r80-nap-fore-l{0%{transform:none}30%{transform:rotate(-5deg)}46.5%{transform:rotate(-6deg)}59.9%{transform:rotate(-6deg)}69%{transform:rotate(-5.5deg)}71.5%{transform:rotate(-7deg)}73.7%{transform:rotate(9deg)}77%{transform:rotate(-3deg)}81.2%{transform:rotate(1.2deg)}86.1%{transform:rotate(-.4deg)}100%{transform:none}}
+@keyframes r80-nap-arm-r{0%{transform:none}29.3%{transform:rotate(6deg)}45.7%{transform:rotate(7deg)}59.1%{transform:rotate(7deg)}68.3%{transform:rotate(6.5deg)}70.7%{transform:rotate(8deg)}72.9%{transform:rotate(-11deg)}76.2%{transform:rotate(4deg)}80.5%{transform:rotate(-1.5deg)}85.4%{transform:rotate(.5deg)}100%{transform:none}}
+@keyframes r80-nap-fore-r{0%{transform:none}30%{transform:rotate(5deg)}46.5%{transform:rotate(6deg)}59.9%{transform:rotate(6deg)}69%{transform:rotate(5.5deg)}71.5%{transform:rotate(7deg)}73.7%{transform:rotate(-9deg)}77%{transform:rotate(3deg)}81.2%{transform:rotate(-1.2deg)}86.1%{transform:rotate(.4deg)}100%{transform:none}}
+@keyframes r80-nap-flag{0%{transform:none}29.3%{transform:rotate(1.5deg)}45.7%{transform:rotate(2deg)}70.7%{transform:rotate(3deg)}72.9%{transform:rotate(-6deg)}75.6%{transform:rotate(4deg)}78.7%{transform:rotate(-2.5deg)}82.3%{transform:rotate(1.5deg)}86.6%{transform:rotate(-.6deg)}90.2%{transform:none}100%{transform:none}}</style>
   <title id="register-title">Register — cash register robot</title>
   <desc id="register-desc">A burgundy cash register robot with brass trim, its rounded square eyes in the amount window of its display head under a row of pop-up tab flags, a sloped bank of round keys on its chest, a cash drawer with a brass knob, a jointed pincer arm, a crank handle for its other arm, and short stout legs.</desc>
   <g class="tip-r" style="transform-origin:334px 476px"><g class="tip-l" style="transform-origin:178px 476px">
@@ -122,12 +137,24 @@
   </g>
   </g>
   <!-- Short stout legs -->
-  <rect x="194" y="384" width="40" height="66" fill="#913648"/>
-  <rect x="278" y="384" width="40" height="66" fill="#913648"/>
-  <path d="M220 384h14v66h-14Zm84 0h14v66h-14Z" fill="#6c2333"/>
-  <path d="M194 416h40m44 0h40" stroke="#f6c354" stroke-width="8"/>
-  <path d="M182 470v-8q0-14 14-14h36q14 0 14 14v8Zm84 0v-8q0-14 14-14h36q14 0 14 14v8Z" fill="#6c2333"/>
-  <path d="M178 466h72v10h-72Zm84 0h72v10h-72Z" fill="#3d4853"/>
+  <g class="leg-l" style="transform-origin:214px 450px">
+  <rect x="194" y="356" width="40" height="94" fill="#913648"/>
+  <path d="M220 356h14v94h-14Z" fill="#6c2333"/>
+  <path d="M194 416h40" stroke="#f6c354" stroke-width="8"/>
+  <g class="foot-l" style="transform-origin:214px 450px">
+  <path d="M182 470v-8q0-14 14-14h36q14 0 14 14v8Zm0 0Z" fill="#6c2333"/>
+  <path d="M178 466h72v10h-72Zm0 0Z" fill="#3d4853"/>
+  </g>
+  </g>
+  <g class="leg-r" style="transform-origin:298px 450px">
+  <rect x="278" y="356" width="40" height="94" fill="#913648"/>
+  <path d="M304 356h14v94h-14Z" fill="#6c2333"/>
+  <path d="M278 416h40" stroke="#f6c354" stroke-width="8"/>
+  <g class="foot-r" style="transform-origin:298px 450px">
+  <path d="M266 470v-8q0-14 14-14h36q14 0 14 14v8Zm0 0Z" fill="#6c2333"/>
+  <path d="M262 466h72v10h-72Zm0 0Z" fill="#3d4853"/>
+  </g>
+  </g>
   <g class="up" style="transform-origin:256px 392px">
   <!-- Register body with keys and a cash drawer -->
   <rect x="234" y="176" width="44" height="18" fill="#3d4853"/>

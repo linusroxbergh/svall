@@ -1,4 +1,4 @@
-<svg width="184" height="414" viewBox="164 64 184 414" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="radar-title radar-desc" class="r54" data-idle="blink blink blink blink scan rock wave" data-work="scan scan tune tune rock blink blink"><style>.r54[data-act=blink] .iris{animation:r54-blink .4s ease-in-out}
+<svg width="184" height="414" viewBox="164 64 184 414" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="radar-title radar-desc" class="r54" data-idle="blink blink blink blink scan rock wave" data-work="scan scan tune tune rock blink blink" data-rare="nap"><style>.r54[data-act=blink] .iris{animation:r54-blink .4s ease-in-out}
 .r54[data-act=scan] .head{animation:r54-sweep 2s ease-in-out}
 .r54[data-act=scan] .lens{animation:r54-seek 2s ease-in-out}
 .r54[data-act=scan] .iris{animation:r54-focus 2s ease-in-out}
@@ -42,14 +42,32 @@
 @keyframes r54-lean-r{0%,100%{transform:none}30%,62%{transform:rotate(1deg)}80%{transform:rotate(-.4deg)}}
 @keyframes r54-raise{0%,100%{transform:none}14%{transform:rotate(12deg)}32%,70%{transform:rotate(95deg)}86%{transform:rotate(12deg)}95%{transform:rotate(-2deg)}}
 @keyframes r54-wave{0%,100%{transform:none}14%{transform:rotate(-95deg)}32%{transform:rotate(-273deg)}41%{transform:rotate(-261deg)}50%{transform:rotate(-283deg)}59%{transform:rotate(-263deg)}70%{transform:rotate(-273deg)}86%{transform:rotate(-95deg)}95%{transform:rotate(3deg)}}
-@keyframes r54-cock{0%,100%{transform:none}30%,70%{transform:rotate(4deg)}84%{transform:rotate(-1deg)}}</style>
+@keyframes r54-cock{0%,100%{transform:none}30%,70%{transform:rotate(4deg)}84%{transform:rotate(-1deg)}}
+.r54[data-act=nap] .body{animation:r54-nap-body 8.2s ease-in-out}
+.r54[data-act=nap] .pelvis{animation:r54-nap-pelvis 8.2s ease-in-out}
+.r54[data-act=nap] .legs{animation:r54-nap-legs 8.2s ease-in-out}
+.r54[data-act=nap] .head{animation:r54-nap-head 8.2s ease-in-out}
+.r54[data-act=nap] .lens{animation:r54-nap-lens 8.2s ease-in-out}
+.r54[data-act=nap] .iris{animation:r54-nap-iris 8.2s ease-in-out}
+.r54[data-act=nap] .arm-r{animation:r54-nap-arm-r 8.2s ease-in-out}
+.r54[data-act=nap] .arm-l{animation:r54-nap-arm-l 8.2s ease-in-out}
+.r54[data-act=nap] .fore-r{animation:r54-nap-fore-r 8.2s ease-in-out}
+.r54[data-act=nap] .fore-l{animation:r54-nap-fore-l 8.2s ease-in-out}
+@keyframes r54-nap-body{0%{transform:none}9.76%{transform:translate(0px,1.2px)}15.85%{transform:translate(0px,2.6px)}20.73%{transform:translate(0px,1.6px)}30.49%{transform:translate(0px,3.8px)}35.37%{transform:translate(0px,3px)}43.9%{transform:translate(0px,4.6px)}51.22%{transform:translate(0px,3.4px)}58.54%{transform:translate(0px,4.8px)}65.85%{transform:translate(0px,3.6px)}70.73%{transform:translate(0px,6.5px)}72.93%{transform:translate(0px,-3.5px)}76.22%{transform:translate(0px,1.2px)}81.1%{transform:translate(0px,-0.5px)}86.59%{transform:translate(0px,0.3px)}92.68%{transform:none}100%{transform:none}}
+@keyframes r54-nap-pelvis{0%{transform:none}9.76%{transform:translate(0px,1.2px)}15.85%{transform:translate(0px,2.6px)}20.73%{transform:translate(0px,1.6px)}30.49%{transform:translate(0px,3.8px)}35.37%{transform:translate(0px,3px)}43.9%{transform:translate(0px,4.6px)}51.22%{transform:translate(0px,3.4px)}58.54%{transform:translate(0px,4.8px)}65.85%{transform:translate(0px,3.6px)}70.73%{transform:translate(0px,6.5px)}72.93%{transform:translate(0px,-3.5px)}76.22%{transform:translate(0px,1.2px)}81.1%{transform:translate(0px,-0.5px)}86.59%{transform:translate(0px,0.3px)}92.68%{transform:none}100%{transform:none}}
+@keyframes r54-nap-legs{0%{transform:none}9.76%{transform:scaleY(0.978)}15.85%{transform:scaleY(0.952)}20.73%{transform:scaleY(0.97)}30.49%{transform:scaleY(0.93)}35.37%{transform:scaleY(0.944)}43.9%{transform:scaleY(0.915)}51.22%{transform:scaleY(0.937)}58.54%{transform:scaleY(0.911)}65.85%{transform:scaleY(0.933)}70.73%{transform:scaleY(0.88)}72.93%{transform:scaleY(1.065)}76.22%{transform:scaleY(0.978)}81.1%{transform:scaleY(1.009)}86.59%{transform:scaleY(0.994)}92.68%{transform:none}100%{transform:none}}
+@keyframes r54-nap-head{0%{transform:none}9.76%{transform:rotate(2deg)}15.85%{transform:rotate(7deg)}20.73%{transform:rotate(2deg)}30.49%{transform:rotate(9deg)}35.37%{transform:rotate(5deg)}43.9%{transform:rotate(10deg)}51.22%{transform:rotate(9deg)}58.54%{transform:rotate(10.5deg)}65.85%{transform:rotate(10deg)}70.73%{transform:rotate(16deg)}72.93%{transform:rotate(-7deg)}76.22%{transform:rotate(2.5deg)}81.1%{transform:rotate(-2deg)}86.59%{transform:rotate(0.8deg)}92.68%{transform:none}100%{transform:none}}
+@keyframes r54-nap-lens{0%{transform:none}72.93%{transform:none}76.22%{transform:translate(-9px,0px)}81.1%{transform:translate(9px,0px)}86.59%{transform:translate(-2px,0px)}92.68%{transform:none}100%{transform:none}}
+@keyframes r54-nap-iris{0%{transform:none}9.76%{transform:scaleY(0.55)}15.85%{transform:scaleY(0.35)}20.73%{transform:scaleY(0.8)}30.49%{transform:scaleY(0.1)}70.73%{transform:scaleY(0.1)}72.93%{transform:none}100%{transform:none}}
+@keyframes r54-nap-arm-r{0%{transform:none}9.76%{transform:rotate(-1.5deg)}15.85%{transform:rotate(-3deg)}20.73%{transform:rotate(-2deg)}30.49%{transform:rotate(-4.5deg)}35.37%{transform:rotate(-4deg)}43.9%{transform:rotate(-5deg)}51.22%{transform:rotate(-4.5deg)}58.54%{transform:rotate(-5deg)}65.85%{transform:rotate(-4.5deg)}70.73%{transform:rotate(-6deg)}72.93%{transform:rotate(10deg)}76.22%{transform:rotate(3deg)}81.1%{transform:rotate(-1.8deg)}86.59%{transform:rotate(0.8deg)}92.68%{transform:rotate(-0.3deg)}100%{transform:none}}
+@keyframes r54-nap-arm-l{0%{transform:none}0.61%{transform:none}10.37%{transform:rotate(1.5deg)}16.46%{transform:rotate(3deg)}21.34%{transform:rotate(2deg)}31.1%{transform:rotate(4.5deg)}35.98%{transform:rotate(4deg)}44.51%{transform:rotate(5deg)}51.83%{transform:rotate(4.5deg)}59.15%{transform:rotate(5deg)}66.46%{transform:rotate(4.5deg)}71.34%{transform:rotate(6deg)}73.54%{transform:rotate(-10deg)}76.83%{transform:rotate(-3deg)}81.71%{transform:rotate(1.8deg)}87.2%{transform:rotate(-0.8deg)}93.29%{transform:rotate(0.3deg)}100%{transform:none}}
+@keyframes r54-nap-fore-r{0%{transform:none}1.22%{transform:none}10.98%{transform:rotate(3deg)}17.07%{transform:rotate(6deg)}21.95%{transform:rotate(4deg)}31.71%{transform:rotate(8deg)}36.59%{transform:rotate(7deg)}45.12%{transform:rotate(9deg)}52.44%{transform:rotate(8deg)}59.76%{transform:rotate(9deg)}67.07%{transform:rotate(8deg)}71.95%{transform:rotate(10deg)}74.15%{transform:rotate(-24deg)}77.44%{transform:rotate(5deg)}82.32%{transform:rotate(-3deg)}87.8%{transform:rotate(1deg)}93.9%{transform:rotate(-0.3deg)}100%{transform:none}}
+@keyframes r54-nap-fore-l{0%{transform:none}1.83%{transform:none}11.59%{transform:rotate(-3deg)}17.68%{transform:rotate(-6deg)}22.56%{transform:rotate(-4deg)}32.32%{transform:rotate(-8deg)}37.2%{transform:rotate(-7deg)}45.73%{transform:rotate(-9deg)}53.05%{transform:rotate(-8deg)}60.37%{transform:rotate(-9deg)}67.68%{transform:rotate(-8deg)}72.56%{transform:rotate(-10deg)}74.76%{transform:rotate(24deg)}78.05%{transform:rotate(-5deg)}82.93%{transform:rotate(3deg)}88.41%{transform:rotate(-1deg)}94.51%{transform:rotate(0.3deg)}100%{transform:none}}</style>
   <title id="radar-title">Radar — dish head robot</title>
   <desc id="radar-desc">A slender red robot whose head is a forward facing radar dish with a lens feed held on three struts as its eye, on a slim neck, with thin arms and two legs.</desc>
   <g class="rock-l" style="transform-origin:214px 476px"><g class="rock-r" style="transform-origin:298px 476px">
   <!-- Legs and feet -->
-  <path d="m238 386-4 54m40-54 4 54" stroke="#697785" stroke-width="14"/>
-  <circle cx="236" cy="414" r="9" fill="#3d4853"/>
-  <circle cx="276" cy="414" r="9" fill="#3d4853"/>
+  <g class="legs" style="transform-origin:256px 440px"><path d="m238 386-4 54m40-54 4 54" stroke="#697785" stroke-width="14"/><circle cx="236" cy="414" r="9" fill="#3d4853"/><circle cx="276" cy="414" r="9" fill="#3d4853"/></g>
   <path d="M216 470v-8q0-16 16-16h4q16 0 16 16v8Zm44 0v-8q0-16 16-16h4q16 0 16 16v8Z" fill="#c2443a"/>
   <path d="M240 447q12 3 12 15v8h-10v-8q0-10-2-15Zm44 0q12 3 12 15v8h-10v-8q0-10-2-15Z" fill="#a83b32"/>
   <path d="M214 466h40v10h-40Zm44 0h40v10h-40Z" fill="#3d4853"/>
@@ -59,7 +77,7 @@
   <g class="arm-r" style="transform-origin:300px 282px"><path d="M300 282l34 44" fill="none" stroke="#697785" stroke-width="10" stroke-linejoin="round"/></g>
   </g>
   <!-- Slender body -->
-  <rect x="228" y="370" width="56" height="18" rx="5" fill="#3d4853"/>
+  <g class="pelvis" style="transform-origin:256px 376px"><rect x="228" y="370" width="56" height="18" rx="5" fill="#3d4853"/></g>
   <g class="body" style="transform-origin:256px 376px">
   <path d="M222 262h68q14 0 14 14l-8 84q-2 14-16 14h-48q-14 0-16-14l-8-84q0-14 14-14Z" fill="#c2443a"/>
   <path d="M222 262h12l-2 112q-14 0-16-14l-8-84q0-14 14-14Z" fill="#e0675d"/>

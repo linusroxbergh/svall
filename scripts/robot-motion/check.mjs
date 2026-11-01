@@ -73,7 +73,7 @@ const inPage = {
       }
     }
     const p = mk();
-    return { idle: p.dataset.idle || '', work: p.dataset.work || '' };
+    return { idle: p.dataset.idle || '', work: p.dataset.work || '', rare: p.dataset.rare || '' };
   },
   pose: ([act, K]) => {
     const rows = ['row', 'small'].map((id) => [...document.querySelectorAll(`#${id} svg`)]);
@@ -160,9 +160,9 @@ for (const n of process.argv.slice(2)) {
     if (restPx !== 0) problems.push(`${name}: still image differs from ${BASE_REF} by ${restPx} px`);
 
     const lists = await page.evaluate(inPage.build, [n, K]);
-    const acts = [...new Set(`${lists.idle} ${lists.work}`.split(' ').filter(Boolean))];
+    const acts = [...new Set(`${lists.idle} ${lists.work} ${lists.rare}`.split(' ').filter(Boolean))];
     if (!acts.length) problems.push('no actions in data-idle or data-work');
-    if (name === 'chromium') out.push(`idle: ${lists.idle || '(none)'}\nwork: ${lists.work || '(none)'}`);
+    if (name === 'chromium') out.push(`idle: ${lists.idle || '(none)'}\nwork: ${lists.work || '(none)'}\nrare: ${lists.rare || '(none)'}`);
     for (const act of acts) {
       const { end, inf, count, startOff, endOff, rects } = await page.evaluate(inPage.pose, [act, K]);
       if (inf) problems.push(`${act}: an animation never ends`);

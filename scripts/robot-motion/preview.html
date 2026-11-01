@@ -14,6 +14,7 @@
   label{font-size:13px;color:#B9C2CC}
   button{font:12px/1 -apple-system,system-ui,sans-serif;padding:5px 9px;border-radius:6px;border:1px solid #4a5d72;background:#33475c;color:#E9E4D6;cursor:pointer}
   button.w{border-color:#8a7440;background:#4d4430}
+  button.r{border-color:#7a5a8a;background:#45344d}
   .island{background:var(--grass);border-radius:28px;padding:20px 24px;display:flex;gap:24px;flex-wrap:wrap;align-items:flex-end;justify-content:center}
   .lbl{font-size:12px;text-align:center;color:var(--ink-land);margin-top:6px;font-weight:600}
   .big{height:300px} .big svg{height:100%;width:auto;display:block}
@@ -22,7 +23,7 @@
 
   /* the app's robot card (map.css .tok), one token unit at the map's usual scale */
   .tk{position:relative}
-  .card{--tok:29.3px;--st:var(--idle);position:relative;width:calc(var(--tok)*2.56);height:calc(var(--tok)*3.66);border-radius:calc(var(--tok)*.21);
+  .card{--tok:29.3px;--st:var(--idle);position:relative;width:calc(var(--tok)*2.66);height:calc(var(--tok)*3.73);border-radius:calc(var(--tok)*.21);
     display:flex;flex-direction:column;overflow:hidden;
     background:url('card-grain.png') 37px 61px/96px 96px,linear-gradient(var(--card-0) 0%,var(--card-1) 62%,var(--card-2) 100%);
     box-shadow:0 1px 0 color-mix(in srgb,var(--card-tint) 16%,transparent),0 1px 2px var(--shade-1)}
@@ -55,7 +56,7 @@
 <body>
 <main>
   <h1>Robot motion</h1>
-  <p>Each action is short and returns to the still pose. Buttons play one action now on all copies of that robot and show its length before the ±10% (grey: idle list, yellow: working list). The <code>today</code> card is the static image. <code>?r=01,02</code> shows only those robots; without it, every robot with motion.</p>
+  <p>Each action is short and returns to the still pose. Buttons play one action now on all copies of that robot and show its length before the ±10% (grey: idle list, yellow: working list, purple: rare list). The <code>today</code> card is the static image. <code>?r=01,02</code> shows only those robots; without it, every robot with motion.</p>
   <label>How often <input type="range" id="often" min="0.5" max="3" step="0.25" value="1" style="vertical-align:middle;width:200px"> <b id="oftenTxt"></b></label>
   <div id="robots"></div>
 </main>
@@ -97,7 +98,8 @@
       const probe = svg();
       const list = (s) => [...new Set((s || '').split(' ').filter(Boolean))];
       const btns = list(probe.dataset.idle).map((a) => `<button data-a="${a}">${a}</button>`).join('')
-        + list(probe.dataset.work).filter((a) => !list(probe.dataset.idle).includes(a)).map((a) => `<button class="w" data-a="${a}">${a}</button>`).join('');
+        + list(probe.dataset.work).filter((a) => !list(probe.dataset.idle).includes(a)).map((a) => `<button class="w" data-a="${a}">${a}</button>`).join('')
+        + list(probe.dataset.rare).map((a) => `<button class="r" data-a="${a}">${a}</button>`).join('');
       sec.innerHTML = `<h2>robot-${n} ${btns || '<span style="color:#B9C2CC;font-weight:400">no actions yet</span>'}</h2>
         <div class="island">
           <div><div class="big idle"></div><div class="act"></div><div class="lbl">idle</div></div>

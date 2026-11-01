@@ -1,4 +1,4 @@
-<svg width="326" height="392" viewBox="98 86 326 392" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bore-title bore-desc" class="r55" data-idle="blink blink blink blink scan scan thud" data-work="drill drill drill heft heft thud blink blink"><style>.r55[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r55-blink .4s ease-in-out}
+<svg width="326" height="392" viewBox="98 86 326 392" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bore-title bore-desc" class="r55" data-idle="blink blink blink blink scan scan thud" data-work="drill drill drill heft heft thud blink blink" data-rare="nap"><style>.r55[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r55-blink .4s ease-in-out}
 .r55[data-act=drill] .body{animation:r55-brace 2s ease-in-out}
 .r55[data-act=drill] .arm-l{animation:r55-thrust 2s ease-in-out}
 .r55[data-act=drill] .fore-l{animation:r55-aim 2s ease-in-out}
@@ -36,10 +36,28 @@
 @keyframes r55-land{0%,100%{transform:none}26%{transform:translate(0,-1px)}36%{transform:translate(0,-1px);animation-timing-function:ease-in}46%{transform:translate(0,1.7px)}62%{transform:translate(0,-.4px)}78%{transform:translate(0,.2px)}90%{transform:none}}
 @keyframes r55-flare-l{0%,100%{transform:none}30%{transform:rotate(-.6deg)}50%{transform:rotate(1.6deg)}66%{transform:rotate(-.8deg)}82%{transform:rotate(.4deg)}}
 @keyframes r55-flare-r{0%,4%,100%{transform:none}34%{transform:rotate(.6deg)}54%{transform:rotate(-1.6deg)}70%{transform:rotate(.8deg)}86%{transform:rotate(-.4deg)}}
-@keyframes r55-bob{0%,40%,100%{transform:none}52%{transform:translate(0,2px)}68%{transform:translate(0,-.6px)}84%{transform:translate(0,.2px)}}</style>
+@keyframes r55-bob{0%,40%,100%{transform:none}52%{transform:translate(0,2px)}68%{transform:translate(0,-.6px)}84%{transform:translate(0,.2px)}}
+.r55[data-act=nap] .top{animation:r55-nap-top 8.4s ease-in-out}
+.r55[data-act=nap] .head{animation:r55-nap-head 8.4s ease-in-out}
+.r55[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r55-nap-eyes 8.4s ease-in-out}
+.r55[data-act=nap] .arm-l{animation:r55-nap-arm-l 8.4s ease-in-out}
+.r55[data-act=nap] .arm-r{animation:r55-nap-arm-r 8.4s ease-in-out}
+.r55[data-act=nap] .fore-l{animation:r55-nap-fore-l 8.4s ease-in-out}
+.r55[data-act=nap] .fore-r{animation:r55-nap-fore-r 8.4s ease-in-out}
+.r55[data-act=nap] .claw{animation:r55-nap-claw 8.4s ease-in-out}
+.r55[data-act=nap] .lamp{animation:r55-nap-lamp 8.4s ease-in-out}
+@keyframes r55-nap-top{0%{transform:none}10.7%{transform:translate(0px,2px) rotate(0.3deg)}16.7%{transform:translate(0px,1px)}26.2%{transform:translate(0px,5px) rotate(0.6deg)}32.1%{transform:translate(0px,4px) rotate(0.4deg)}44%{transform:translate(0px,6px) rotate(0.6deg)}50%{transform:translate(0px,4.8px) rotate(0.4deg)}56%{transform:translate(0px,6.4px) rotate(0.7deg)}61.9%{transform:translate(0px,5px) rotate(0.4deg)}67.9%{transform:translate(0px,7px) rotate(0.8deg)}70.8%{transform:translate(0px,8px) rotate(1deg)}73.2%{transform:translate(0px,-3.5px) rotate(-1deg)}76.8%{transform:translate(0px,1.2px) rotate(0.3deg)}82.1%{transform:translate(0px,-0.5px) rotate(-0.1deg)}88.1%{transform:translate(0px,0.2px)}100%{transform:none}}
+@keyframes r55-nap-head{0%{transform:none}6%{transform:none}10.7%{transform:translate(0px,3px) rotate(-3deg)}16.7%{transform:translate(0px,1px)}26.2%{transform:translate(0px,6px) rotate(6deg)}32.1%{transform:translate(0px,5px) rotate(5deg)}44%{transform:translate(0px,7px) rotate(7deg)}56%{transform:translate(0px,7.5px) rotate(7.5deg)}63.1%{transform:translate(0px,7px) rotate(7deg)}70.8%{transform:translate(0px,10px) rotate(11deg)}73.2%{transform:translate(0px,-7px) rotate(-5deg)}75.6%{transform:none}78.6%{transform:rotate(-7deg)}82.7%{transform:rotate(6deg)}87.5%{transform:rotate(-2deg)}92.9%{transform:translate(0px,0.3px) rotate(0.5deg)}100%{transform:none}}
+@keyframes r55-nap-eyes{0%{transform:none}7.1%{transform:scaleY(1)}10.7%{transform:scaleY(0.5)}15.5%{transform:scaleY(0.8)}22.6%{transform:scaleY(0.1)}70.8%{transform:scaleY(0.1)}73.2%{transform:scaleY(1.15)}75.6%{transform:scaleY(1)}78.6%{transform:translateX(-5px) scaleY(1)}82.7%{transform:translateX(5px) scaleY(1)}88.1%{transform:scaleY(1)}100%{transform:none}}
+@keyframes r55-nap-arm-l{0%{transform:none}26.2%{transform:rotate(4deg)}44%{transform:rotate(5deg)}56%{transform:rotate(5.5deg)}67.9%{transform:rotate(5deg)}70.8%{transform:rotate(6.5deg)}73.2%{transform:rotate(-9deg)}76.8%{transform:rotate(4deg)}81%{transform:rotate(-1.5deg)}86.9%{transform:rotate(0.5deg)}100%{transform:none}}
+@keyframes r55-nap-arm-r{0%{transform:none}26.9%{transform:rotate(-4deg)}44.8%{transform:rotate(-5deg)}56.7%{transform:rotate(-5.5deg)}68.6%{transform:rotate(-5deg)}71.5%{transform:rotate(-6.5deg)}73.9%{transform:rotate(9deg)}77.5%{transform:rotate(-4deg)}81.7%{transform:rotate(1.5deg)}87.6%{transform:rotate(-0.5deg)}100%{transform:none}}
+@keyframes r55-nap-fore-l{0%{transform:none}27.4%{transform:rotate(4.5deg)}45.2%{transform:rotate(5.3deg)}57.1%{transform:rotate(6deg)}69%{transform:rotate(5.3deg)}72%{transform:rotate(7.5deg)}74.4%{transform:rotate(-9deg)}78%{transform:rotate(4.5deg)}82.1%{transform:rotate(-1.5deg)}88.1%{transform:rotate(0.5deg)}100%{transform:none}}
+@keyframes r55-nap-fore-r{0%{transform:none}28.1%{transform:rotate(-4.5deg)}46%{transform:rotate(-5.2deg)}57.9%{transform:rotate(-6deg)}69.8%{transform:rotate(-5.2deg)}72.7%{transform:rotate(-7.5deg)}75.1%{transform:rotate(9deg)}78.7%{transform:rotate(-4.5deg)}82.9%{transform:rotate(1.5deg)}88.8%{transform:rotate(-0.4deg)}100%{transform:none}}
+@keyframes r55-nap-claw{0%{transform:none}72.6%{transform:rotate(-9deg)}76.2%{transform:rotate(6deg)}80.4%{transform:rotate(-3deg)}84.5%{transform:rotate(1.5deg)}89.3%{transform:none}100%{transform:none}}
+@keyframes r55-nap-lamp{0%{fill:#f6c354}16.7%{fill:#a8863a}69%{fill:#8c6f2f}73.2%{fill:#ffe28f}83.3%{fill:#ffd56a}100%{fill:#f6c354}}</style>
   <title id="bore-title">Bore — mining robot</title>
   <desc id="bore-desc">A stout yellow mining robot with a domed helmet and headlamp over a visored head, one arm ending in a grooved conical drill, the other in a heavy two jaw claw, and sturdy legs on slate boots.</desc>
-  <g class="body" style="transform-origin:256px 358px">
+  <g class="body top" style="transform-origin:256px 358px">
   <!-- Drill arm -->
   <g class="arm-l" style="transform-origin:164px 254px">
   <path d="m164 254-34 62" stroke="#697785" stroke-width="26"/>
@@ -69,14 +87,21 @@
   </g>
   </g>
   <!-- Sturdy legs and boots -->
-  <path d="m212 358-2 46m90-46 2 46" stroke="#697785" stroke-width="26"/>
+  <g class="leg-l" style="transform-origin:212px 358px">
+  <path d="m212 358-2 46" stroke="#697785" stroke-width="26"/>
   <rect x="186" y="404" width="48" height="46" fill="#e0a52e"/>
-  <rect x="278" y="404" width="48" height="46" fill="#e0a52e"/>
-  <path d="M220 404h14v46h-14Zm92 0h14v46h-14Z" fill="#b07f1c"/>
+  <path d="M220 404h14v46h-14Z" fill="#b07f1c"/>
   <rect x="182" y="390" width="56" height="24" rx="10" fill="#f0c050"/>
+  <g class="foot-l" style="transform-origin:211px 462px"><path d="M174 476v-16q0-14 14-14h48q12 0 12 12v18Zm0 0Z" fill="#3d4853"/></g>
+  </g>
+  <g class="leg-r" style="transform-origin:300px 358px">
+  <path d="m300 358 2 46" stroke="#697785" stroke-width="26"/>
+  <rect x="278" y="404" width="48" height="46" fill="#e0a52e"/>
+  <path d="M312 404h14v46h-14Z" fill="#b07f1c"/>
   <rect x="274" y="390" width="56" height="24" rx="10" fill="#f0c050"/>
-  <path d="M174 476v-16q0-14 14-14h48q12 0 12 12v18Zm90 0v-18q0-12 12-12h48q14 0 14 14v16Z" fill="#3d4853"/>
-  <g class="body" style="transform-origin:256px 358px">
+  <g class="foot-r" style="transform-origin:301px 462px"><path d="M264 476v-18q0-12 12-12h48q14 0 14 14v16Zm0 0Z" fill="#3d4853"/></g>
+  </g>
+  <g class="body top" style="transform-origin:256px 358px">
   <circle cx="212" cy="358" r="18" fill="#3d4853"/>
   <circle cx="300" cy="358" r="18" fill="#3d4853"/>
   <!-- Stout torso -->

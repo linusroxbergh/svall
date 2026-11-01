@@ -1,4 +1,4 @@
-<svg width="336" height="452" viewBox="88 24 336 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="belly-title belly-desc" class="r90" data-idle="blink blink blink blink peer peer shift draft" data-work="clack clack draft shift peer blink blink"><style>
+<svg width="336" height="452" viewBox="88 24 336 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="belly-title belly-desc" class="r90" data-idle="blink blink blink blink peer peer shift draft" data-work="clack clack draft shift peer blink blink" data-rare="nap"><style>
 .r90[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r90-blink .4s ease-in-out}
 .r90[data-act=peer] .belly{animation:r90-lean 1.8s ease-in-out}
 .r90[data-act=peer] .head{animation:r90-tilt 1.8s ease-in-out}
@@ -39,22 +39,37 @@
 @keyframes r90-jaw-a{0%,24%,40%,56%,100%{transform:none}32%,48%{transform:rotate(-12deg)}}
 @keyframes r90-jaw-b{0%,24%,40%,56%,100%{transform:none}32%,48%{transform:rotate(12deg)}}
 @keyframes r90-brace{0%,100%{transform:none}30%{transform:rotate(3deg)}70%{transform:rotate(-1deg)}}
-@keyframes r90-lean-r{0%,100%{transform:none}24%,66%{transform:rotate(1deg)}84%{transform:rotate(-.3deg)}}
 @keyframes r90-cock{0%,100%{transform:none}20%,66%{transform:rotate(2.5deg)}84%{transform:rotate(-.5deg)}}
 @keyframes r90-side{0%,100%{transform:none}16%,70%{transform:translate(6px,2px)}}
-</style>
+.r90[data-act=nap] .belly{animation:r90-nap-belly 8.2s ease-in-out}
+.r90[data-act=nap] .head{animation:r90-nap-head 8.2s ease-in-out}
+.r90[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r90-nap-eyes 8.2s ease-in-out}
+.r90[data-act=nap] .pipe{animation:r90-nap-pipe 8.2s ease-in-out}
+.r90[data-act=nap] .arm-r{animation:r90-nap-arm-r 8.2s ease-in-out}
+.r90[data-act=nap] .arm-l{animation:r90-nap-arm-l 8.2s ease-in-out}
+@keyframes r90-nap-belly{0%{transform:none}12.2%{transform:translate(0px,2.2px)}19.5%{transform:translate(0px,1.4px)}29.3%{transform:translate(0px,4.5px)}39%{transform:translate(0px,3.4px)}45.7%{transform:translate(0px,5.6px)}52.4%{transform:translate(0px,3.4px)}59.1%{transform:translate(0px,5.6px)}65.9%{transform:translate(0px,3.8px)}70.7%{transform:translate(0px,7px)}72.9%{transform:translate(0px,-4px)}75.6%{transform:translate(0px,1px)}79.3%{transform:translate(0px,-0.5px)}84.1%{transform:translate(0px,0.3px)}100%{transform:none}}
+@keyframes r90-nap-head{0%{transform:none}4.3%{transform:none}12.2%{transform:translate(0px,3px) rotate(-2deg)}17.7%{transform:translate(0px,1.5px) rotate(-1deg)}28%{transform:translate(0px,6px) rotate(3.5deg)}32.9%{transform:translate(0px,5px) rotate(2.8deg)}45.7%{transform:translate(0px,6px) rotate(3.4deg)}59.1%{transform:translate(0px,6.5px) rotate(3.6deg)}66.5%{transform:translate(0px,6.5px) rotate(3.4deg)}70.7%{transform:translate(0px,10px) rotate(7deg)}72.9%{transform:translate(0px,-4px) rotate(-3deg)}75.4%{transform:translate(0px,1px)}79.3%{transform:rotate(-4.5deg)}83.5%{transform:rotate(3.8deg)}87.8%{transform:rotate(-1.2deg)}92.7%{transform:translate(0px,0.3px) rotate(0.4deg)}100%{transform:none}}
+@keyframes r90-nap-eyes{0%{transform:none}7.3%{transform:scale(1,0.55)}12.2%{transform:scale(1,0.4)}17.7%{transform:scale(1,0.75)}27.4%{transform:scale(1,0.1)}70.7%{transform:scale(1,0.1)}72.9%{transform:scale(1,1.18)}75%{transform:scale(1,1)}79.3%{transform:translate(-5px,0px) scale(1,1)}83.5%{transform:translate(5px,0px) scale(1,1)}88.4%{transform:scale(1,1)}100%{transform:none}}
+@keyframes r90-nap-pipe{0%{transform:none}29.3%{transform:rotate(3deg)}45.7%{transform:rotate(4deg)}59.1%{transform:rotate(4deg)}68.3%{transform:rotate(3.5deg)}70.7%{transform:rotate(5deg)}72.9%{transform:rotate(-9deg)}76.2%{transform:rotate(6deg)}80.5%{transform:rotate(-3deg)}85.4%{transform:rotate(1.5deg)}90.2%{transform:rotate(-0.5deg)}100%{transform:none}}
+@keyframes r90-nap-arm-r{0%{transform:none}29.3%{transform:rotate(-4deg)}45.7%{transform:rotate(-5deg)}59.1%{transform:rotate(-5deg)}68.3%{transform:rotate(-4.5deg)}70.7%{transform:rotate(-6deg)}72.9%{transform:rotate(8deg)}76.2%{transform:rotate(-3deg)}80.5%{transform:rotate(1.2deg)}85.4%{transform:rotate(-0.4deg)}100%{transform:none}}
+@keyframes r90-nap-arm-l{0%{transform:none}29.3%{transform:rotate(4deg)}45.7%{transform:rotate(5deg)}59.1%{transform:rotate(5deg)}68.3%{transform:rotate(4.5deg)}70.7%{transform:rotate(6deg)}72.9%{transform:rotate(-8deg)}76.2%{transform:rotate(3deg)}80.5%{transform:rotate(-1.2deg)}85.4%{transform:rotate(0.4deg)}100%{transform:none}}</style>
   <title id="belly-title">Belly — pot-belly stove robot</title>
   <desc id="belly-desc">A chubby jade enamel pot-belly stove robot with two eyes behind the arched mica windows of its feed door, a domed lid and a short flue pipe with a damper on top, a draft wheel on its round belly, stove-pipe arms ending in a poker and a pair of tongs, on splayed cast legs with round feet.</desc>
   <g class="bot" style="transform-origin:256px 476px">
   <!-- Splayed cast legs and round feet -->
+  <g class="leg-l">
   <path d="M186 392L222 392L206 448L166 448Z" fill="#3d4853"/>
-  <path d="M326 392L290 392L306 448L346 448Z" fill="#3d4853"/>
   <path d="M179.6 410H216.9L214 420H176Z" fill="#697785"/>
-  <path d="M332.4 410H295.1L298 420H336Z" fill="#697785"/>
   <path d="M146 476v-6q0-32 40-32t40 32v6Z" fill="#2b7a66"/>
-  <path d="M286 476v-6q0-32 40-32t40 32v6Z" fill="#2b7a66"/>
   <path d="M198 439q26 6 28 31v6h-14v-6q0-18-14-31Z" fill="#1d5c4c"/>
+  </g>
+  <g class="leg-r">
+  <path d="M326 392L290 392L306 448L346 448Z" fill="#3d4853"/>
+  <path d="M332.4 410H295.1L298 420H336Z" fill="#697785"/>
+  <path d="M286 476v-6q0-32 40-32t40 32v6Z" fill="#2b7a66"/>
   <path d="M338 439q26 6 28 31v6h-14v-6q0-18-14-31Z" fill="#1d5c4c"/>
+  </g>
+  <g class="body">
   <!-- Cast base ring -->
   <rect x="156" y="364" width="200" height="30" rx="10" fill="#3d4853"/>
   <path d="M166 364H346q10 0 10 10v2H156v-2q0-10 10-10Z" fill="#697785"/>
@@ -128,6 +143,7 @@
   <circle cx="406" cy="374" r="5" fill="#92a1b2"/>
   <circle cx="360" cy="240" r="20" fill="#3d4853"/>
   <circle cx="360" cy="240" r="9" fill="#92a1b2"/>
+  </g>
   </g>
   </g>
   </g>

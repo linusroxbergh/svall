@@ -1,8 +1,16 @@
-// Each robot rests, then plays one action from its own list (data-idle or data-work, by its card's state);
-// an action is the CSS animations its SVG keys on data-act, and it ends when they all finish. As on the map, rests
-// and action lengths vary up to a tenth either way
+// Each robot rests, then plays one action from its own list (data-idle or data-work, by its card's state; an idle one
+// plays each data-rare action at RARE odds instead); an action is the CSS animations its SVG keys on data-act, and it
+// ends when they all finish. As on the map, rests and action lengths vary up to a tenth either way
 const REST = { idle: 3500, working: 1800 };
+const RARE = 0.005;
 const jitter = () => 0.9 + Math.random() * 0.2;
+const list = (s) => (s || '').split(' ').filter(Boolean);
+const any = (acts) => acts[Math.floor(Math.random() * acts.length)];
+const pick = (bot, working) => {
+  if (working) return any(list(bot.dataset.work));
+  const rare = list(bot.dataset.rare), roll = Math.random();
+  return roll < RARE * rare.length ? rare[Math.floor(roll / RARE)] : any(list(bot.dataset.idle));
+};
 const waiting = new Map();
 
 async function play(bot, act) {
@@ -20,8 +28,8 @@ function cycle(bot, first) {
   const centre = REST[working ? 'working' : 'idle'];
   waiting.set(bot, setTimeout(async () => {
     waiting.delete(bot);
-    const acts = ((working ? bot.dataset.work : bot.dataset.idle) || '').split(' ').filter(Boolean);
-    if (acts.length && !bot.dataset.act) await play(bot, acts[Math.floor(Math.random() * acts.length)]);
+    const act = pick(bot, working);
+    if (act && !bot.dataset.act) await play(bot, act);
     cycle(bot);
   }, centre * (first ? Math.random() : jitter())));
 }

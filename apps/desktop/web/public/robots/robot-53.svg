@@ -1,4 +1,4 @@
-<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc" class="r53" data-idle="blink blink blink blink cock cock preen shift" data-work="strike strike preen shift cock blink blink"><style>
+<svg width="300" height="436" viewBox="106 42 300 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mantis-title mantis-desc" class="r53" data-idle="blink blink blink blink cock cock preen shift" data-work="strike strike preen shift cock blink blink" data-rare="nap"><style>
 .r53[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r53-blink .4s ease-in-out}
 .r53[data-act=cock] .body{animation:r53-brace 1.4s ease-in-out}
 .r53[data-act=cock] .head{animation:r53-cock 1.4s ease-in-out}
@@ -49,7 +49,27 @@
 @keyframes r53-snap-r{0%,100%{transform:none}16%{transform:rotate(-12deg)}28%{transform:rotate(82deg)}34%{transform:rotate(86deg)}46%{transform:rotate(80deg)}62%{transform:rotate(-8deg)}76%{transform:rotate(3deg)}90%{transform:rotate(-1deg)}}
 @keyframes r53-flick-l{0%,100%{transform:none}16%{transform:rotate(-6deg)}28%{transform:rotate(14deg)}40%{transform:rotate(-8deg)}54%{transform:rotate(4deg)}68%{transform:rotate(-2deg)}}
 @keyframes r53-flick-r{0%,100%{transform:none}16%{transform:rotate(6deg)}28%{transform:rotate(-14deg)}40%{transform:rotate(8deg)}54%{transform:rotate(-4deg)}68%{transform:rotate(2deg)}}
-</style>
+
+.r53[data-act=nap] .body{animation:r53-nap-body 8.2s ease-in-out}
+.r53[data-act=nap] .abdomen{animation:r53-nap-abdomen 8.2s ease-in-out}
+.r53[data-act=nap] .head{animation:r53-nap-head 8.2s ease-in-out}
+.r53[data-act=nap] .eyes{animation:r53-nap-eyes 8.2s ease-in-out;transform-box:fill-box;transform-origin:center}
+.r53[data-act=nap] .ant-l{animation:r53-nap-antl 8.2s ease-in-out}
+.r53[data-act=nap] .ant-r{animation:r53-nap-antr 8.2s ease-in-out}
+.r53[data-act=nap] .arm-l{animation:r53-nap-arml 8.2s ease-in-out}
+.r53[data-act=nap] .arm-r{animation:r53-nap-armr 8.2s ease-in-out}
+.r53[data-act=nap] .fore-l{animation:r53-nap-forel 8.2s ease-in-out}
+.r53[data-act=nap] .fore-r{animation:r53-nap-forer 8.2s ease-in-out}
+@keyframes r53-nap-body{0%{transform:none}9.8%{transform:translate(0px,3px)}24.4%{transform:translate(0px,5px)}41.5%{transform:translate(0px,6.5px)}48.8%{transform:translate(0px,5.2px)}57.3%{transform:translate(0px,6.6px)}64.6%{transform:translate(0px,5.4px)}69.5%{transform:translate(0px,7px)}72.6%{transform:translate(0px,-3px)}75.6%{transform:translate(0px,1.5px)}79.3%{transform:translate(0px,-0.6px)}84.1%{transform:translate(0px,0.3px)}100%{transform:none}}
+@keyframes r53-nap-abdomen{0%{transform:none}1%{transform:none}10.7%{transform:translate(0px,3.3px)}25.4%{transform:translate(0px,5.5px)}42.4%{transform:translate(0px,7.2px)}49.8%{transform:translate(0px,5.7px)}58.3%{transform:translate(0px,7.3px)}65.6%{transform:translate(0px,5.9px)}70.5%{transform:translate(0px,7.7px)}73.5%{transform:translate(0px,-3.3px)}76.6%{transform:translate(0px,1.7px)}80.2%{transform:translate(0px,-0.7px)}85.1%{transform:translate(0px,0.3px)}100%{transform:none}}
+@keyframes r53-nap-head{0%{transform:none}7.3%{transform:translate(0px,3px) rotate(3deg)}14.6%{transform:translate(0px,1px) rotate(1deg)}24.4%{transform:translate(0px,6px) rotate(6deg)}31.7%{transform:translate(0px,3.5px) rotate(3.5deg)}41.5%{transform:translate(0px,9px) rotate(8deg)}58.5%{transform:translate(0px,9.5px) rotate(8.5deg)}67.1%{transform:translate(0px,10px) rotate(9deg)}72.6%{transform:translate(0px,-5px) rotate(-5deg)}76.2%{transform:translate(0px,1px) rotate(1.5deg)}79.9%{transform:rotate(-6deg)}84.1%{transform:rotate(5deg)}88.4%{transform:rotate(-1.2deg)}92.7%{transform:rotate(0.4deg)}100%{transform:none}}
+@keyframes r53-nap-eyes{0%{transform:translate(0px,0) scale(1,1)}7.3%{transform:translate(0px,0) scale(1,0.5)}14.6%{transform:translate(0px,0) scale(1,0.8)}24.4%{transform:translate(0px,0) scale(1,0.1)}67.1%{transform:translate(0px,0) scale(1,0.1)}72.6%{transform:translate(0px,0) scale(1,1.2)}76.8%{transform:translate(0px,0) scale(1,1)}79.9%{transform:translate(-7px,0) scale(1,1)}84.1%{transform:translate(7px,0) scale(1,1)}88.4%{transform:translate(0px,0) scale(1,1)}100%{transform:none}}
+@keyframes r53-nap-antl{0%{transform:none}24.4%{transform:rotate(-10deg)}41.5%{transform:rotate(-16deg)}67.1%{transform:rotate(-18deg)}72.6%{transform:rotate(14deg)}75.6%{transform:rotate(-7deg)}79.3%{transform:rotate(4deg)}83.5%{transform:rotate(-2deg)}89%{transform:none}100%{transform:none}}
+@keyframes r53-nap-antr{0%{transform:none}0.7%{transform:none}25.1%{transform:rotate(10deg)}42.2%{transform:rotate(16deg)}67.8%{transform:rotate(18deg)}73.3%{transform:rotate(-14deg)}76.3%{transform:rotate(7deg)}80%{transform:rotate(-4deg)}84.3%{transform:rotate(2deg)}89.8%{transform:none}100%{transform:none}}
+@keyframes r53-nap-arml{0%{transform:none}24.4%{transform:rotate(3deg)}41.5%{transform:rotate(5deg)}67.1%{transform:rotate(5deg)}72.6%{transform:rotate(-12deg)}76.8%{transform:rotate(4deg)}81.7%{transform:rotate(-1.5deg)}86.6%{transform:rotate(0.5deg)}100%{transform:none}}
+@keyframes r53-nap-armr{0%{transform:none}24.4%{transform:rotate(-3deg)}41.5%{transform:rotate(-5deg)}67.1%{transform:rotate(-5deg)}72.6%{transform:rotate(12deg)}76.8%{transform:rotate(-4deg)}81.7%{transform:rotate(1.5deg)}86.6%{transform:rotate(-0.5deg)}100%{transform:none}}
+@keyframes r53-nap-forel{0%{transform:none}1%{transform:none}25.4%{transform:rotate(4.5deg)}42.4%{transform:rotate(7.5deg)}68%{transform:rotate(7.5deg)}73.5%{transform:rotate(-18deg)}77.8%{transform:rotate(6deg)}82.7%{transform:rotate(-2.2deg)}87.6%{transform:rotate(0.8deg)}100%{transform:none}}
+@keyframes r53-nap-forer{0%{transform:none}1%{transform:none}25.4%{transform:rotate(-4.5deg)}42.4%{transform:rotate(-7.5deg)}68%{transform:rotate(-7.5deg)}73.5%{transform:rotate(18deg)}77.8%{transform:rotate(-6deg)}82.7%{transform:rotate(2.3deg)}87.6%{transform:rotate(-0.7deg)}100%{transform:none}}</style>
   <title id="mantis-title">Mantis — insect robot</title>
   <desc id="mantis-desc">A slender olive insect robot with a triangular head and two wide set eyes, long aerials, folded front arms ending in pincers, a narrow thorax over a segmented abdomen and four thin jointed legs.</desc>
   <!-- Aerials -->

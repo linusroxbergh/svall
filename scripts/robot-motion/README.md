@@ -29,6 +29,15 @@ each rest and each action's speed varied by ±10%. As an `<img>` (fleet list, pi
   follow-through (a damped settle after the stop), a small anticipation before a big move, and weight that suits the
   robot (heavy ones slower and smaller, light ones quicker).
 
+## Rare actions
+- `data-rare="…"` on the root lists them. An idle robot plays each one at 0.5% odds (`RARE` in `motion.ts`) instead of a
+  regular action, a working robot never. They are the exception to "short": `lean` ~14s, `nap` ~8s, `fix` ~4.5s.
+- They may move the whole robot but stay calm (no hops), and never leave the card: it clips at viewBox centre x
+  ± 0.6024 × viewBox height, and its picture area ends 0.05 × height above the viewBox top.
+- `lean`: side-steps to an edge, tilts 6–10° into it with a hand planted on it, holds ~9s with blinks, walks back.
+  `nap`: dozes off in slow nods with eyes closed, jolts awake. `fix`: a part glitches, the robot thumps it twice, it
+  settles.
+
 ## File format
 - Root `<svg>`: keep width, height and viewBox; add `class="rNN"`, `data-idle="…"` and `data-work="…"`.
 - One `<style>` as the root's first child. Every selector starts `.rNN[data-act=NAME]`, every keyframes name starts

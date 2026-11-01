@@ -1,4 +1,4 @@
-<svg width="358" height="410" viewBox="80 66 358 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="octo-title octo-desc" class="r51" data-idle="blink blink blink blink peer peer bob beckon" data-work="wave wave beckon bob peer blink blink"><style>.r51[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r51-blink .4s ease-in-out}
+<svg width="358" height="410" viewBox="80 66 358 410" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="octo-title octo-desc" class="r51" data-idle="blink blink blink blink peer peer bob beckon" data-work="wave wave beckon bob peer blink blink" data-rare="nap"><style>.r51[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r51-blink .4s ease-in-out}
 .r51[data-act=peer] .body{animation:r51-peer 1.6s ease-in-out}
 .r51[data-act=peer] .eyes{animation:r51-look 1.6s ease-in-out}
 .r51[data-act=peer] .ant{animation:r51-ant 1.6s ease-in-out}
@@ -33,7 +33,25 @@
 @keyframes r51-raise{0%,100%{transform:none}16%{transform:rotate(-6deg)}40%{transform:rotate(-4deg)}64%{transform:rotate(-5deg)}84%{transform:rotate(1.5deg)}}
 @keyframes r51-wave{0%,6%,100%{transform:none}24%{transform:rotate(-11deg)}44%{transform:rotate(13deg)}62%{transform:rotate(-8deg)}78%{transform:rotate(4deg)}90%{transform:rotate(-1.5deg)}}
 @keyframes r51-curl{0%,12%,100%{transform:none}32%{transform:rotate(-11deg)}52%{transform:rotate(13deg)}70%{transform:rotate(-8deg)}86%{transform:rotate(4deg)}96%{transform:rotate(-1deg)}}
-@keyframes r51-ripple{0%,100%{transform:none}25%{transform:rotate(3.5deg)}55%{transform:rotate(-2.5deg)}80%{transform:rotate(1deg)}}</style>
+@keyframes r51-ripple{0%,100%{transform:none}25%{transform:rotate(3.5deg)}55%{transform:rotate(-2.5deg)}80%{transform:rotate(1deg)}}
+.r51[data-act=nap] .body{animation:r51-nap-body 8.2s ease-in-out}
+.r51[data-act=nap] .eyes{animation:r51-nap-eyes 8.2s ease-in-out;transform-box:fill-box;transform-origin:center}
+.r51[data-act=nap] .ant{animation:r51-nap-ant 8.2s ease-in-out}
+.r51[data-act=nap] .arm-l{animation:r51-nap-arml 8.2s ease-in-out}
+.r51[data-act=nap] .arm-r{animation:r51-nap-armr 8.2s ease-in-out}
+.r51[data-act=nap] .t1{animation:r51-nap-t1 8.2s ease-in-out}
+.r51[data-act=nap] .t2{animation:r51-nap-t2 8.2s ease-in-out}
+.r51[data-act=nap] .t3{animation:r51-nap-t3 8.2s ease-in-out}
+.r51[data-act=nap] .t4{animation:r51-nap-t4 8.2s ease-in-out}
+@keyframes r51-nap-body{0%{transform:none}9.8%{transform:translate(0px,3px) rotate(1deg)}24.4%{transform:translate(0px,5px) rotate(2.5deg)}30.5%{transform:translate(0px,3.5px) rotate(1.5deg)}41.5%{transform:translate(0px,6.5px) rotate(4deg)}58.5%{transform:translate(0px,6px) rotate(4.5deg)}67.1%{transform:translate(0px,7px) rotate(5deg)}72.6%{transform:translate(0px,-4px) rotate(-3deg)}76.2%{transform:translate(0px,2px) rotate(0.5deg)}79.9%{transform:translate(0px,-0.6px) rotate(-2deg)}84.1%{transform:translate(0px,0.4px) rotate(1.2deg)}90.2%{transform:none}100%{transform:none}}
+@keyframes r51-nap-eyes{0%{transform:translate(0px,0) scale(1,1)}7.3%{transform:translate(0px,0) scale(1,0.5)}14.6%{transform:translate(0px,0) scale(1,0.8)}24.4%{transform:translate(0px,0) scale(1,0.1)}67.1%{transform:translate(0px,0) scale(1,0.1)}72.6%{transform:translate(0px,0) scale(1,1.2)}76.8%{transform:translate(0px,0) scale(1,1)}79.9%{transform:translate(-9px,0) scale(1,1)}84.1%{transform:translate(9px,0) scale(1,1)}88.4%{transform:translate(0px,0) scale(1,1)}100%{transform:none}}
+@keyframes r51-nap-ant{0%{transform:none}12.2%{transform:rotate(6deg)}24.4%{transform:rotate(14deg)}41.5%{transform:rotate(20deg)}67.1%{transform:rotate(22deg)}72.6%{transform:rotate(-16deg)}75.6%{transform:rotate(9deg)}79.3%{transform:rotate(-5deg)}83.5%{transform:rotate(3deg)}89%{transform:none}100%{transform:none}}
+@keyframes r51-nap-arml{0%{transform:none}24.4%{transform:rotate(3deg)}41.5%{transform:rotate(4deg)}67.1%{transform:rotate(4deg)}72.6%{transform:rotate(-7deg)}76.8%{transform:rotate(3deg)}81.7%{transform:rotate(-1.2deg)}86.6%{transform:rotate(0.4deg)}100%{transform:none}}
+@keyframes r51-nap-armr{0%{transform:none}24.4%{transform:rotate(-3deg)}41.5%{transform:rotate(-4deg)}67.1%{transform:rotate(-4deg)}72.6%{transform:rotate(7deg)}76.8%{transform:rotate(-3deg)}81.7%{transform:rotate(1.2deg)}86.6%{transform:rotate(-0.4deg)}100%{transform:none}}
+@keyframes r51-nap-t1{0%{transform:none}29.3%{transform:rotate(1.2deg)}41.5%{transform:rotate(-1deg)}58.5%{transform:rotate(1.2deg)}67.1%{transform:rotate(-0.8deg)}72.6%{transform:rotate(-4deg)}76.8%{transform:rotate(2.5deg)}81.7%{transform:rotate(-1deg)}86.6%{transform:rotate(0.3deg)}100%{transform:none}}
+@keyframes r51-nap-t2{0%{transform:none}0.6%{transform:none}29.9%{transform:rotate(-1.2deg)}42.1%{transform:rotate(1deg)}59.1%{transform:rotate(-1.2deg)}67.7%{transform:rotate(0.8deg)}73.2%{transform:rotate(4deg)}77.4%{transform:rotate(-2.5deg)}82.3%{transform:rotate(1deg)}87.2%{transform:rotate(-0.3deg)}100%{transform:none}}
+@keyframes r51-nap-t3{0%{transform:none}1.2%{transform:none}30.5%{transform:rotate(-0.7deg)}42.7%{transform:rotate(0.6deg)}59.8%{transform:rotate(-0.7deg)}68.3%{transform:rotate(0.5deg)}73.8%{transform:rotate(2.4deg)}78%{transform:rotate(-1.5deg)}82.9%{transform:rotate(0.6deg)}87.8%{transform:rotate(-0.2deg)}100%{transform:none}}
+@keyframes r51-nap-t4{0%{transform:none}1.8%{transform:none}31.1%{transform:rotate(0.7deg)}43.3%{transform:rotate(-0.6deg)}60.4%{transform:rotate(0.7deg)}68.9%{transform:rotate(-0.5deg)}74.4%{transform:rotate(-2.4deg)}78.7%{transform:rotate(1.5deg)}83.5%{transform:rotate(-0.6deg)}88.4%{transform:rotate(0.2deg)}100%{transform:none}}</style>
   <title id="octo-title">Octo — tentacle robot</title>
   <desc id="octo-desc">A sky blue robot with a domed head, big eyes behind a wide visor and a ring of lights, standing on four jointed tentacles with one more raised and curled and another curled down.</desc>
   <!-- Jointed tentacles -->

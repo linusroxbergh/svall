@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { act, render, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { addFigure, REST, setMotion, useRobotMotion } from '../../src/map/motion.js';
+import { addFigure, RARE, REST, setMotion, useRobotMotion } from '../../src/map/motion.js';
 import { inlineFigure, Figure } from '../../src/map/Figure.js';
 import { figureUrl } from '../../src/portraits.js';
 import { freshStore, store } from './harness.js';
@@ -18,10 +18,10 @@ const removes: (() => void)[] = [];
 const TIMELINE = {};
 
 // a robot on a card with the given status; an action it plays moves two parts and lasts until end() is called
-function robot(status: string) {
+function robot(status: string, rare = '') {
   const card = document.createElement('div');
   card.dataset.status = status;
-  card.innerHTML = '<svg data-idle="blink" data-work="type"></svg>';
+  card.innerHTML = `<svg data-idle="blink" data-work="type" data-rare="${rare}"></svg>`;
   document.body.append(card);
   const bot = card.firstElementChild as SVGElement;
   const r = { bot, parts: [] as { finished: Promise<void>; playbackRate: number; timeline: object | null }[], end: () => {} };
@@ -63,6 +63,19 @@ describe('the robot scheduler', () => {
     await tick();
     expect(idle.bot.dataset.act).toBe('blink');
     expect(busy.bot.dataset.act).toBe('type');
+  });
+
+  it('plays each rare action at RARE odds when idle, never when working', async () => {
+    const random = vi.mocked(Math.random);
+    for (const [roll, act] of [[0, 'lean'], [RARE * 1.5, 'nap'], [RARE * 2, 'blink']] as const) {
+      random.mockReturnValue(roll);
+      const idle = robot('idle', 'lean nap'), busy = robot('working', 'lean nap');
+      setMotion(true);
+      await tick(REST.idle);
+      expect(idle.bot.dataset.act).toBe(act);
+      expect(busy.bot.dataset.act).toBe('type');
+      setMotion(false);
+    }
   });
 
   it('clears the action once its animations finish, then rests before the next', async () => {
