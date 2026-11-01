@@ -1,6 +1,6 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
-import { useEffect, useRef, useState, type JSX, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react';
 import { useApp, useFitHeight } from '../hooks.js';
 import { Arrow, Backspace, Caret, More, Return } from '../icons.js';
 import { awayLine, elsewhere } from '../placement.js';
@@ -11,7 +11,7 @@ import { KEY_ROW } from './keys.js';
 import { KeysSheet } from './KeysSheet.js';
 import { RobotMenu } from './RobotMenu.js';
 import { statusLabel } from './list.js';
-import { dragToScroll, holdScroll, scrollTerm, withoutClicks } from './scroll.js';
+import { dragToScroll, holdScroll, onHold, scrollTerm, withoutClicks } from './scroll.js';
 import { linkTerminal, type TerminalLink } from './term.js';
 
 // smaller type means more columns; Claude Code's TUI only lays out narrow when the window itself is
@@ -23,6 +23,10 @@ const FACE: Record<string, [ReactNode, string]> = {
 
 const SIZES = [9, 10, 11, 13];
 const SIZE_KEY = 'svall.mobile.fontSize';
+const FONT = '"JetBrains Mono", ui-monospace, monospace';
+
+// the terminal's text as it stood at a long press, laid over its cells so the phone's own selection and Copy take it
+type Frozen = { text: string; scroll: number; style: CSSProperties };
 
 const tokenOf = (name: string) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 // xterm parses its own colours, so the selection's alpha rides as a hex byte on the token: 40 is the editor's 25%
@@ -69,9 +73,11 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const [answering, setAnswering] = useState(false);
   const [answerError, setAnswerError] = useState<string>();
   const [sendError, setSendError] = useState<string>();
+  const [frozen, setFrozen] = useState<Frozen>();
+  const frozenText = useRef<HTMLPreElement>(null);
 
   useEffect(() => {
-    const term = new Xterm({ fontSize: sizeRef.current, fontFamily: '"JetBrains Mono", ui-monospace, monospace', theme: theme(), cursorBlink: true, scrollback: 4000 });
+    const term = new Xterm({ fontSize: sizeRef.current, fontFamily: FONT, theme: theme(), cursorBlink: true, scrollback: 4000 });
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(host.current!);
@@ -84,6 +90,25 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     });
     const lineHeight = () => (host.current?.querySelector('.xterm-screen')?.clientHeight ?? 0) / term.rows || 16;
     const stopScroll = dragToScroll(host.current!, (n) => scrollTerm(term, n), lineHeight);
+    const stopHold = onHold(host.current!, () => {
+      const cells = host.current?.querySelector('.xterm-screen');
+      const rows = host.current?.querySelector('.xterm-rows');
+      const stage = host.current?.parentElement;
+      if (!cells || !rows || !stage) return;
+      const b = term.buffer.active;
+      const at = cells.getBoundingClientRect();
+      const origin = stage.getBoundingClientRect();
+      const top = at.top - origin.top;
+      const line = at.height / term.rows;
+      setFrozen({
+        text: Array.from({ length: b.length }, (_, i) => b.getLine(i)?.translateToString(true) ?? '').join('\n'),
+        scroll: b.viewportY * line,
+        style: {
+          top, left: at.left - origin.left, width: at.width, height: at.height, maxHeight: `calc(100% - ${top}px)`,
+          font: `${term.options.fontSize}px/${line}px ${FONT}`, letterSpacing: getComputedStyle(rows).letterSpacing,
+        },
+      });
+    });
     link.current = l;
     // the wheel steps of one drag move go as one input
     let typed = '';
@@ -98,6 +123,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     observer.observe(host.current!);
     return () => {
       stopScroll();
+      stopHold();
       observer.disconnect();
       l.close();
       term.dispose();
@@ -164,6 +190,8 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
 
   useEffect(() => writeDraft(id, prompt), [id, prompt]);
 
+  useLayoutEffect(() => { if (frozen && frozenText.current) frozenText.current.scrollTop = frozen.scroll; }, [frozen]);
+
   useFitHeight(field, prompt);
 
   const size = (step: 1 | -1) => {
@@ -172,7 +200,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
     setFontSize(next);
   };
 
-  const key = (seq: string) => { xterm.current?.scrollToBottom(); link.current?.input(seq); };
+  const key = (seq: string) => { setFrozen(undefined); xterm.current?.scrollToBottom(); link.current?.input(seq); };
 
   const answer = async (a: 'approve' | 'deny') => {
     if (answering) return;
@@ -192,6 +220,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const send = () => {
     const text = prompt;
     if (!text.trim() || !here) return;
+    setFrozen(undefined);
     xterm.current?.scrollToBottom();
     setPrompt('');
     setSendError(undefined);
@@ -215,6 +244,12 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       </header>
       <div className="stage">
         <div className="screen" ref={host} />
+        {frozen && (
+          <>
+            <pre className="frozen" ref={frozenText} style={frozen.style} data-testid="phone-select">{frozen.text}</pre>
+            <button type="button" className="frozen-done" onClick={() => setFrozen(undefined)}>done</button>
+          </>
+        )}
         {unreachable && (
           <p className="unreachable" role="status" data-testid="phone-unreachable">{unreachable}</p>
         )}

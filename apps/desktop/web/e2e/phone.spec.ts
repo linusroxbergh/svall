@@ -228,3 +228,46 @@ test('the phone page says over a placed robot\'s terminal that its worker is not
   await page.getByRole('button', { name: /^ada/ }).click();
   await expect(page.getByRole('status')).toHaveText('linus-vault is not reachable');
 });
+
+test.describe('on a touch screen', () => {
+  test.use({ hasTouch: true, viewport: { width: 390, height: 700 } });
+
+  test('a long press lays the terminal\'s text over it to select natively, until done', async ({ page }) => {
+    const f = fleet();
+    Object.assign(f.robots.c0, { name: 'ada' });
+    const screen = Array.from({ length: 80 }, (_, i) => `line ${String(i + 1).padStart(2, '0')}`).join('\r\n');
+    await page.routeWebSocket((url) => !url.searchParams.has('token'), (ws) => {
+      ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }));
+      ws.onMessage((raw) => {
+        const m = JSON.parse(String(raw)) as { id: number; method: string };
+        const result = m.method === 'state.get' ? f : m.method === 'term.open' ? { screen: Buffer.from(screen).toString('base64') } : {};
+        ws.send(JSON.stringify({ id: m.id, result }));
+      });
+    });
+    await page.goto('/mobile.html');
+    await page.getByRole('button', { name: /^ada/ }).click();
+    await expect(page.locator('.xterm-rows')).toContainText('line 80');
+    // the fit settles over a few resizes, the terminal widening its host until the columns fit
+    await expect.poll(() => page.locator('.screen').evaluate((el) => el.getBoundingClientRect().width)).toBe(390);
+
+    const box = (await page.locator('.screen').boundingBox())!;
+    const cdp = await page.context().newCDPSession(page);
+    const point = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await page.waitForTimeout(500);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+
+    const frozen = page.getByTestId('phone-select');
+    await expect(frozen).toContainText('line 01');
+    await expect(frozen).toContainText('line 80');
+    // in the terminal's own cells, scrolled to where it stood
+    expect(await frozen.boundingBox()).toEqual(await page.locator('.xterm-screen').boundingBox());
+    expect(await frozen.evaluate((el) => el.scrollHeight - el.clientHeight - el.scrollTop)).toBe(0);
+
+    await frozen.dblclick({ position: { x: 5, y: 5 } });
+    expect(await page.evaluate(() => getSelection()?.toString())).toBe('line');
+
+    await page.getByRole('button', { name: 'done' }).click();
+    await expect(frozen).toHaveCount(0);
+  });
+});

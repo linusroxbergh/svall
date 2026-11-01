@@ -10,7 +10,7 @@ import { cwdChoices } from '../src/mobile/choices.js';
 import { islandCwd } from '../src/selectors.js';
 import { disablePush, enablePush, keyBytes, needsInstall, readPush, sameApplicationServerKey, setPushStatuses, subscriptionParams } from '../src/mobile/push.js';
 import { dragOffset, isSwipe, REVEAL, settle } from '../src/mobile/swipe.js';
-import { dragToScroll, holdScroll, lineSteps, scrollTerm, withoutClicks, type TouchSurface } from '../src/mobile/scroll.js';
+import { dragToScroll, holdScroll, lineSteps, onHold, scrollTerm, withoutClicks, type TouchSurface } from '../src/mobile/scroll.js';
 import { KEY_ROW, keyGroups } from '../src/mobile/keys.js';
 import { startMission } from '../src/mobile/mission.js';
 
@@ -448,6 +448,40 @@ describe('phone terminal scrolling', () => {
       expect(live.size).toBe(0);
     } finally {
       vi.unstubAllGlobals();
+    }
+  });
+});
+
+describe('a long press on the phone terminal', () => {
+  const at = (...points: [number, number][]) => ({ touches: points.map(([clientX, clientY]) => ({ clientX, clientY })) });
+
+  it('fires once a still finger rests, and not for a drift, a lift or a second finger', () => {
+    vi.useFakeTimers();
+    try {
+      const { handlers, surface, fire } = touchHarness();
+      let held = 0;
+      const dispose = onHold(surface, () => { held += 1; });
+
+      fire('touchstart', at([10, 10]));
+      fire('touchmove', at([13, 13]));
+      vi.advanceTimersByTime(400);
+      expect(held).toBe(1);
+
+      fire('touchstart', at([10, 10]));
+      fire('touchmove', at([10, 20]));
+      fire('touchstart', at([50, 50]));
+      fire('touchend', at());
+      fire('touchstart', at([10, 10], [40, 40]));
+      vi.advanceTimersByTime(400);
+      expect(held).toBe(1);
+
+      fire('touchstart', at([10, 10]));
+      dispose();
+      vi.advanceTimersByTime(400);
+      expect(held).toBe(1);
+      expect(handlers.size).toBe(0);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });
