@@ -1,8 +1,11 @@
 Svall's public feedback endpoint creates issues in `FEEDBACK_REPO` using a GitHub App installation. CORS allows the
 app's web view; direct HTTP clients can also submit, so it is not an authentication boundary.
 
-POST requests consume the approximate per-IP limit of 5/minute before any body is read. Bodies are limited to
-256 KiB of streamed bytes, including when Content-Length is absent or incorrect. Invalid reports never reserve a
+Unsupported media types are rejected before charging the IP allowance, so a cross-origin webpage's simple POSTs
+cannot consume a visitor's quota. JSON POSTs consume the approximate per-IP limit of 5/minute before any body is
+read, including malformed JSON. Bodies are limited to 256 KiB of streamed bytes, including when Content-Length
+is absent or incorrect. The buffer grows as bytes arrive; idle uploads do not reserve its maximum capacity.
+A total 10-second upload deadline cancels idle or trickling bodies with 408. Invalid reports never reserve a
 submission slot. A second approximate, per-location limit of 30/minute sheds load before calling durable storage.
 
 All locations reserve through the same `FeedbackBudget` Durable Object, named for `FEEDBACK_REPO`. It atomically

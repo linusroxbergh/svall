@@ -88,6 +88,28 @@ test('a body that is not JSON-typed is 415, so no other page can post without th
   expect(f).not.toHaveBeenCalled();
 });
 
+test('simple cross-origin POSTs cannot consume the visitor IP allowance', async () => {
+  let used = 0;
+  const limit = vi.fn(async () => ({ success: ++used <= 5 }));
+  const visitor = { ...env, LIMITER: { limit } };
+  const f = ok();
+  for (const type of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data']) {
+    for (let i = 0; i < 5; i++) {
+      const res = await handle(post('x', {
+        Origin: 'https://attacker.invalid', 'content-type': type, 'CF-Connecting-IP': '192.0.2.1',
+      }), visitor, f as unknown as typeof fetch);
+      expect(res.status).toBe(415);
+    }
+  }
+  expect(limit).not.toHaveBeenCalled();
+  const valid = await handle(post(JSON.stringify({ kind: 'idea', text: 'A real report' }), {
+    Origin: 'svall://app', 'CF-Connecting-IP': '192.0.2.1',
+  }), visitor, f as unknown as typeof fetch);
+  expect(valid.status).toBe(201);
+  expect(limit).toHaveBeenCalledOnce();
+  expect(limit).toHaveBeenCalledWith({ key: '192.0.2.1' });
+});
+
 test('the local submission limit refuses a report before reserving worldwide budget', async () => {
   const f = vi.fn();
   const res = await handle(post(JSON.stringify({ kind: 'bug', text: 'x' })), { ...env, SUBMISSION_LIMITER: limiter(false) }, f);
@@ -137,6 +159,86 @@ function streamed(chunks: Uint8Array[], headers: Record<string, string> = {}) {
   }, { duplex: 'half' }));
   return { req, cancelled, reads: () => reads };
 }
+
+function heldUpload() {
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  let reading!: () => void;
+  const started = new Promise<void>((resolve) => { reading = resolve; });
+  const cancelled = vi.fn();
+  const body = new ReadableStream<Uint8Array>({
+    start(c) { controller = c; },
+    pull() { reading(); },
+    cancel: cancelled,
+  }, { highWaterMark: 0 });
+  const req = new Request('https://svall.dev/api/feedback', Object.assign({
+    method: 'POST', headers: { 'content-type': 'application/json' }, body,
+  }, { duplex: 'half' }));
+  return { req, started, controller, cancelled };
+}
+
+test('an idle upload allocates no maximum-sized body buffer before receiving data', async () => {
+  const upload = heldUpload();
+  const allocations: number[] = [];
+  const observed = new Proxy(Uint8Array, {
+    construct(target, args, newTarget) {
+      if (typeof args[0] === 'number') allocations.push(args[0]);
+      return Reflect.construct(target, args, newTarget);
+    },
+  });
+  vi.stubGlobal('Uint8Array', observed);
+  const pending = handle(upload.req, env, vi.fn());
+  try {
+    await upload.started;
+    expect(Math.max(0, ...allocations)).toBeLessThanOrEqual(1024);
+  } finally {
+    upload.controller.close();
+    await pending;
+    vi.unstubAllGlobals();
+  }
+});
+
+test.each(['idle', 'trickle', 'unacknowledged cancellation'])('the total upload deadline cancels %s bodies', async (mode) => {
+  vi.useFakeTimers();
+  const upload = heldUpload();
+  if (mode === 'unacknowledged cancellation') upload.cancelled.mockImplementation(() => new Promise(() => {}));
+  const f = vi.fn();
+  let settled = false;
+  const pending = handle(upload.req, env, f).then((res) => { settled = true; return res; });
+  try {
+    await upload.started;
+    await vi.advanceTimersByTimeAsync(4000);
+    if (mode === 'trickle') upload.controller.enqueue(new TextEncoder().encode(' '));
+    await vi.advanceTimersByTimeAsync(4000);
+    if (mode === 'trickle') upload.controller.enqueue(new TextEncoder().encode(' '));
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const res = await pending;
+    expect(res.status).toBe(408);
+    expect(res.headers.get('access-control-allow-origin')).toBe('svall://app');
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(upload.cancelled).toHaveBeenCalledOnce();
+    expect(env.SUBMISSION_LIMITER.limit).not.toHaveBeenCalled();
+    expect(env.BUDGET.getByName).not.toHaveBeenCalled();
+    expect(f).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    try { upload.controller.close(); } catch { /* the deadline already closed it */ }
+    await pending;
+    vi.useRealTimers();
+  }
+});
+
+test.each(['complete', 'oversized'])('a %s body clears its upload deadline', async (mode) => {
+  vi.useFakeTimers();
+  try {
+    const upload = streamed([new Uint8Array(mode === 'complete' ? 0 : 256 * 1024 + 1)]);
+    expect((await handle(upload.req, env, vi.fn())).status).toBe(mode === 'complete' ? 400 : 413);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(upload.cancelled).toHaveBeenCalledTimes(mode === 'complete' ? 0 : 1);
+  } finally { vi.useRealTimers(); }
+});
 
 test.each<Record<string, string>>([{}, { 'content-length': '1' }])('a streamed upload stops at the byte limit with length header %j', async (headers) => {
   const upload = streamed(Array.from({ length: 32 }, () => new Uint8Array(64 * 1024)), headers);
