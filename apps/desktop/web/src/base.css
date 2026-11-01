@@ -170,6 +170,9 @@ textarea.fld { padding-block: var(--sp-md); }
 .lp > .ib { align-self: stretch; height: auto; margin-right: calc(-1 * var(--sp-sm)); border-radius: var(--r-pill); }
 .lp[data-pinned="true"] .lg { color: var(--sel); }
 .side .lp, .hover-card .lp { max-width: 100%; box-sizing: border-box; }
+/* the pill's line box is its font size, so a clipped label needs the taller one to keep its descenders */
+.pill .clip-head { line-height: var(--lh); }
+.side .pill.lp { height: var(--ctl-sm); font-size: var(--text-sm); }
 .sdot { width: var(--dot); height: var(--dot); border-radius: 50%; background: var(--shell); display: inline-block; flex: none; }
 .sdot[data-status="working"] { background: var(--working); color: var(--working); }
 .sdot[data-status="idle"] { background: var(--idle); color: var(--idle); }
