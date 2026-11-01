@@ -1,0 +1,13 @@
+// svall.dev's appcast.xml, latest.json and install.sh, deployed by scripts/release.sh from dist/feeds
+{
+  "name": "svall-feeds",
+  "account_id": "4518483d318c36043e137e17e7fea694",
+  "compatibility_date": "2026-10-23",
+  "assets": { "directory": "../dist/feeds" },
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "svall.dev/appcast.xml*", "zone_name": "svall.dev" },
+    { "pattern": "svall.dev/latest.json*", "zone_name": "svall.dev" },
+    { "pattern": "svall.dev/install.sh*", "zone_name": "svall.dev" }
+  ]
+}

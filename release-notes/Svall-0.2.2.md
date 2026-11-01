@@ -1,0 +1,3 @@
+- Svall sets its text in Funnel Sans.
+- Agents leave a note only when a later agent will need it, and update one before adding another.
+- Fixed leftover processes from opening terminals that could pile up and run the Mac out of terminal sessions.

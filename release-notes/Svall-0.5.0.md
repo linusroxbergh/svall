@@ -1,0 +1,4 @@
+- OpenCode 2 support; OpenCode 1.x is no longer supported.
+- A card stays working while its agent runs a background shell.
+- Characters started on a task work in their own worktree.
+- Long prompts sent to a busy agent arrive whole.

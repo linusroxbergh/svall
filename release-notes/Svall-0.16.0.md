@@ -1,0 +1,5 @@
+- Move a fleet to another machine: repos, worktrees, docs and Codex sessions land where they belong, on any Linux account and home path.
+- Add Machine names the command for each fix, opens a terminal on the machine for fixes left to you, and compares agent versions with this Mac's.
+- The Linux companion carries its own tmux and runs on arm64 too.
+- Releases are signed, and Svall is open source under GPL-3.0-or-later.
+- Squarer, more consistent look: every dialog closes from the × top right, a waiting update shows above the dock, and new robot portraits.

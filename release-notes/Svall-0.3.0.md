@@ -1,0 +1,4 @@
+- Character cards show their status in deeper colours, and a working agent shows three typing dots in its footer.
+- An agent that a restart cut off mid-turn picks up again on its own, and is told what was lost.
+- Last command shows the questions an agent asked and your answers, and note fields open taller.
+- Svall checks for updates every hour, and shows a starting island while the fleet starts.

@@ -1,0 +1,4 @@
+- Robot cards show the context used as a bar along their top edge, leaving room for bigger robots.
+- Cards are a little larger, and every robot stands the same size whatever the length of its name.
+- A card shows at most three link chips; a +N chip counts the rest.
+- Two robots leave the lineup; characters that had them get another.

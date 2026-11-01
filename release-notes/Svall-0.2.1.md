@@ -1,0 +1,5 @@
+- Delete skills, agents, commands and memory files from the Resources shelf, with Undo
+- Right-click menus on the sidebar, map cards and islands match the app's look
+- An available update shows as a blue dot on Settings, with an Update button at its foot
+- Deleting a character from its side card asks first
+- Phone fixes and many smaller fixes from a full code review

@@ -1,0 +1,3 @@
+- 34 new robots for your characters, and the ones that stay are touched up to match.
+- Characters without a picked robot may show a different one.
+- The scribe runs on faster, cheaper models by default: Haiku with Claude, gpt-6-luna with Codex.

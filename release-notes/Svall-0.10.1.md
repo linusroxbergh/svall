@@ -1,0 +1,2 @@
+- Robots make their new worktrees inside the repo, not beside it, whatever agent they run.
+- An OpenCode robot that moves its session into a worktree stays on that worktree, so the side panel and file viewer show where it works.

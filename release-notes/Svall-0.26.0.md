@@ -1,0 +1,5 @@
+- Menus, dialogs, switches, cards and folders ease in and out, and hold still with Reduce Motion
+- Robot cards stand on a disc in their robot's colour, with a status-coloured foot
+- Undoing a move keeps the branches and edits of the worktree it took back
+- Text, icons and field edges keep their contrast everywhere, in light and dark
+- Icons, buttons, menus, rows and dialogs look and behave the same across the app

@@ -1,0 +1,4 @@
+- Remote machines (experimental): move a fleet and its agent sessions to an always-on Linux machine over SSH, from Settings → The fleet.
+- A second terminal running an agent survives quitting, closing the window and sleep.
+- Settings split into fleet.json and node.json; the fleet state moves to schema 9 and older builds refuse it.
+- host, handover, gateway, fleet, connect, connection-info and version are now commands; a fleet with one of those names is renamed via svall setup.

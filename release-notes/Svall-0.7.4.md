@@ -1,0 +1,3 @@
+- Cards say Working in their footer, like Done and Blocked.
+- A PR in review and a running monitor show as small marks on a card's top-right corner.
+- Link chips beside cards are off by default. Turn them on in Settings → links on cards.

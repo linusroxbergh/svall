@@ -1,0 +1,5 @@
+- Island cards count the subagents each agent has running.
+- Svall can keep your Mac awake while agents work or wait on you.
+- Settings open in their own window, with editable keyboard shortcuts.
+- A new fleet opens with a shell on Island 1 and a short tour.
+- Codex characters run without the shared app-server, so their cards stay accurate (needs Codex 0.156 or newer).

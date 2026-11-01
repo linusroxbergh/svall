@@ -1,0 +1,5 @@
+- Retro: a mission control button reviews what your agents did and proposes changes to skills, reviews and instructions
+- Moving a robot to another machine shows each step, holds up on a busy machine, and can give the robot a worktree of its own
+- A robot on another machine names it everywhere, and text you select in its terminal reaches your Mac's clipboard
+- Tooltips open quickly, and mission control's buttons say what they start
+- Agents name robots and islands as links that select them in the app

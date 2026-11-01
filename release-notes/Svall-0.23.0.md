@@ -1,0 +1,4 @@
+- Retro reads every session into a card of its own and gives one checked summary.
+- Retro places sessions by the repos they worked in.
+- Machine rows in Settings fix what they can: Set up, Update here, Repair, Forget.
+- `svall app show` lays out the app window from the command line.

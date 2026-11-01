@@ -1,0 +1,2 @@
+- Double-clicking a board card that peeks out under the bottom of a column opens that card, not the one below it.
+- Right-clicking a robot on the map or in the sidebar offers Open terminal.

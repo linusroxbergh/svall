@@ -7,6 +7,7 @@
   },
   "ignore": ["vendor/**"],
   "ignoreFiles": ["**/*.d.mts"],
+  "ignoreDependencies": ["wrangler"],
   "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "screencapture", "script", "sips", "ssh-keygen", "svall", "swiftc"],
   "ignoreExportsUsedInFile": { "type": true, "interface": true }
 }

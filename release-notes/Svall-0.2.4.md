@@ -1,0 +1,2 @@
+- The map's sea, islands and cards sit a shade darker.
+- First-run setup is clearer and keeps your choices while it rechecks for agents.

@@ -1,0 +1,2 @@
+- The status report groups characters by what they need from you: needs you, ready to review, working, quiet.
+- A short note or instructions in the side card no longer scrolls while it has empty rows.

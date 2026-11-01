@@ -1,0 +1,5 @@
+- Your phone keeps working when your Mac is off: tick "Phone while this Mac is off" for a Linux machine, and the phone app switches to it on its own, same app, no new QR code.
+- While the Mac is off, the phone can still open, answer, start and close robots on that machine, and make and change islands; the Mac catches up when it's back.
+- Moving robots to a Linux machine is sturdier: safer handling of keys, clearer checks in the Machines panel, and agents that start reliably there.
+- Svall runs on Ghostty 1.4.
+- Faster start and fewer slowdowns with many robots.

@@ -1,0 +1,4 @@
+- Each section of the side card folds from its title, and its bottom edge drags to a height; double-click the edge to fit it again.
+- The side card no longer scrolls: sections share its height, every title stays in sight, and Finder and Resources stay visible.
+- Notes and instructions grow with their text.
+- A second click on the agent profile field closes its list.

@@ -1,0 +1,2 @@
+- A link you click in a terminal now asks above the terminal card, so its buttons respond.
+- A dropped island stays where you drop it instead of flashing back.

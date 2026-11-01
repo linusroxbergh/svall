@@ -1,0 +1,5 @@
+- Quitting Svall stops your agents, and every quit asks first.
+- Hooks and the status line run faster. Codex asks once to trust Svall's hooks again.
+- Terminal links ask where to open. Right-click a card on the map to delete it, and drag to resize the Resources shelf.
+- Smoother first setup, and slimmer side-panel tabs.
+- Cards link every PR a character works on, and a question stops showing red once you answer it.

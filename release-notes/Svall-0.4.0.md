@@ -1,0 +1,4 @@
+- OpenCode joins Claude Code and Codex: type `opencode` in a character, or run `svall char new --opencode`, and its card shows status, model, context and what it asks.
+- Approve and Deny in the app answer OpenCode's permission asks and questions.
+- Mission control and the scribe can run on OpenCode (`svall agent opencode`), on its free Zen model too.
+- OpenCode characters resume with `opencode -s` when reopened.

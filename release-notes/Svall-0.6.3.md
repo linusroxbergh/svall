@@ -1,0 +1,2 @@
+- Island grass is calmer: no dark grain or dots, just soft meadow tones and a drier rim.
+- Cards and the lighthouse have a lighter paper grain.

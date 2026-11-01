@@ -4,5 +4,6 @@ packages:
 
 allowBuilds:
   esbuild: true
+  workerd: false
 
 minimumReleaseAgeStrict: true

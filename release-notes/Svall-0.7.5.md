@@ -1,0 +1,1 @@
+- Cards on the map are a little wider.
