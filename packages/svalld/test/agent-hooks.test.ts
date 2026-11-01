@@ -159,6 +159,11 @@ describe('hookCommand and nodeRun', () => {
     expect(sh((wrapped as { statusLine: { command: string } }).statusLine.command, { SVALL_ROBOT_ID: 'c1' })).toBe('ran echo mine');
   });
 
+  it('exits quietly inside a robot once the fleet home holding the script is gone', () => {
+    const { dir, pinned } = scripts();
+    expect(sh(`(${hookCommand(pinned, path.join(dir, 'gone', 'agent-hook.mjs'), 'claude')}); echo "exit:$?"`, { SVALL_ROBOT_ID: 'c1' })).toBe('exit:0\n');
+  });
+
   it('skips node outside a robot', () => {
     const { script, pinned } = scripts();
     expect(sh(hookCommand(pinned, script, 'claude'), { SVALL_ROBOT_ID: '' })).toBe('');

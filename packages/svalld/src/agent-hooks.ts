@@ -167,9 +167,9 @@ export const statusWrapper = (node: string, script: string): string => {
 };
 
 // outside a robot the shell exits before anything starts, as every session on the machine runs this hook;
-// $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it
+// $PPID is the agent, which tells it apart from a `claude -p` or `codex exec` run inside it; a deleted fleet home is no hook error
 export const hookCommand = (node: string, script: string, backend: AgentKind): string =>
-  `${HOOK_GUARD} { ${ifOtherVariant(script, 'exit 0')}; ${helperOr(script, `${backend} "$PPID"`, nodeRun(node, script))}; }`;
+  `${HOOK_GUARD} { ${ifOtherVariant(script, 'exit 0')}; ${helperOr(script, `${backend} "$PPID"`, `[ -f ${shq(script)} ] || exit 0; ${nodeRun(node, script)}`)}; }`;
 
 /** Codex's hooks file when Codex is wanted here (on PATH, or its home exists); throws on one that is not JSON. */
 export const readCodexHooks = (codex: CodexPaths, wanted = fs.existsSync(codex.dir)): JsonSettings | undefined =>

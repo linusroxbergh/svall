@@ -155,22 +155,27 @@ export async function runUninstall(o: {
   // Linux setup put the hooks under the agent homes the daemon's unit is given, which this command's env may not name
   const agentHomes = linux ? await agentHomesEnv(o.run ?? realRun) : {};
   const settingsPaths = once([...o.settingsPaths, ...(agentHomes.CLAUDE_CONFIG_DIR ? [path.join(agentHomes.CLAUDE_CONFIG_DIR, 'settings.json')] : [])]);
-  const edits = settingsPaths.map((file): [JsonSettings, Record<string, unknown>, string] => {
-    const settings = readJsonSettings(file);
-    return [settings, unmergeStatusLine(unmergeHooks(settings.settings, paths.hookScript), paths.statusScript), 'claude hooks and statusline removed'];
-  });
-  const codexes = once([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])
-    .filter((file) => fs.existsSync(file)).map((file) => readJsonSettings(file));
-  for (const codex of codexes) edits.push([codex, unmergeHooks(codex.settings, paths.hookScript), 'codex hooks removed']);
+  type Take = (settings: Record<string, unknown>) => Record<string, unknown>;
+  const claude: Take = (s) => unmergeStatusLine(unmergeHooks(s, paths.hookScript), paths.statusScript);
+  const codex: Take = (s) => unmergeHooks(s, paths.hookScript);
+  const edits: [JsonSettings, Take, string][] = [
+    ...settingsPaths.map((file): [JsonSettings, Take, string] => [readJsonSettings(file), claude, 'claude hooks and statusline removed']),
+    ...once([o.codex.hooks, ...(agentHomes.CODEX_HOME ? [codexPaths(agentHomes).hooks] : [])])
+      .filter((file) => fs.existsSync(file)).map((file): [JsonSettings, Take, string] => [readJsonSettings(file), codex, 'codex hooks removed']),
+  ];
+  // neither agent needs its file, so one that held only Svall's goes, unless it links elsewhere
+  const removing = (current: JsonSettings, next: Record<string, unknown>) =>
+    !Object.keys(next).length && Object.keys(current.settings).length > 0 && !fs.lstatSync(current.file).isSymbolicLink();
   // a file that cannot take its change stops the run before anything is removed
-  for (const [current, next] of edits) requireWritable(current, next);
+  for (const [current, take] of edits) requireWritable(current, take(current.settings), removing(current, take(current.settings)));
   const done = await quitApp(o.homes, o.app, `${SHIM} uninstall`, o.skipPid);
-  for (const [current, next, what] of edits) {
-    // Codex needs no hooks file, so one that held only Svall's goes, unless it links elsewhere
-    const emptied = codexes.includes(current) && !Object.keys(next).length && Object.keys(current.settings).length > 0;
-    if (emptied && !fs.lstatSync(current.file).isSymbolicLink()) {
-      fs.rmSync(current.file);
-      done.push(`removed ${current.file}`);
+  for (const [{ file }, take, what] of edits) {
+    // read again, as an agent may write its file while the app takes its time to quit
+    const current = readJsonSettings(file);
+    const next = take(current.settings);
+    if (removing(current, next)) {
+      fs.rmSync(file);
+      done.push(`removed ${file}`);
     } else done.push(...writeJsonSettings(current, next, what));
   }
   done.push(...removeOpencodePlugin(o.opencode));
