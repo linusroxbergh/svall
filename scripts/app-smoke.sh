@@ -62,6 +62,7 @@ check "the bundled daemon starts" daemon
 check "uninstall runs" 'cli uninstall --json --from-app >/dev/null'
 check "uninstall took the plist" '[ ! -f "$PLIST" ]'
 check "uninstall took the shim" '[ ! -f "$HOME/.local/bin/svall" ]'
-check "uninstall took the hooks" '[ -f "$HOME/.claude/settings.json" ] && ! grep -q agent-hook "$HOME/.claude/settings.json"'
+# setup's settings.json here holds only Svall's hooks and statusline, so uninstall removes the file
+check "uninstall took the hooks" '[ ! -e "$HOME/.claude/settings.json" ]'
 check "uninstall left the app" '[ -d "$T/Apps/Svall.app" ]'
 exit "$FAILED"
