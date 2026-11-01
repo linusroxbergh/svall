@@ -4,7 +4,7 @@ import { formatJsonSettings, readJsonSettings } from './settings-file.js';
 import { editUserFiles, readUserFile, requireWritableUserFile, type UserFileEdit } from './user-file.js';
 
 // Exact command prefixes, shared by the user rules and OpenCode's robot environment.
-export const SVALL_COMMANDS = [
+const SVALL_COMMANDS = [
   'status', ...['robot', 'char'].flatMap((noun) => ['new', 'list', 'read', 'show', 'wait', 'move', 'update', 'send'].map((verb) => `${noun} ${verb}`)),
   ...['list', 'show', 'create', 'update', 'arrange'].map((verb) => `island ${verb}`), 'scribe sweep',
   ...['plan', 'run', 'wait', 'status', 'findings', 'show', 'mark'].map((verb) => `retro ${verb}`),

@@ -30,3 +30,7 @@ vendor/tmux/
 __pycache__/
 dist/
 .pnpm-store/
+# design context kept on the maintainer's machine
+PRODUCT.md
+DESIGN.md
+.impeccable/

@@ -96,7 +96,7 @@ export const endRun = (run: HostRun, code: number): HostRun => ({ ...run, runnin
 
 export const rowToStep = ({ key, ...row }: SetupRow): HostStep => ({ step: `${MIRROR}${key}`, ...row });
 /** A setup step by what the protocol asks of a row: its key, tick and gap. */
-export const stepToRow = (s: HostStep): Pick<SetupRow, 'key' | 'tick' | 'gap'> => ({ key: s.step.slice(MIRROR.length), tick: s.tick, gap: s.gap });
+const stepToRow = (s: HostStep): Pick<SetupRow, 'key' | 'tick' | 'gap'> => ({ key: s.step.slice(MIRROR.length), tick: s.tick, gap: s.gap });
 /** Whether a setup step stands aside: it runs only on a Mac, or is ticked as not needed there. */
 export const asideStep = (s: HostStep): boolean => s.step.startsWith(MIRROR) && aside(stepToRow(s));
 

@@ -1,7 +1,7 @@
 # Trademark
 
-The licence covers Svall's code, not its name or icon. "Svall", the Svall icon
-and svall.dev identify the builds published at https://svall.dev and
+The GPL covers the files in this repository, the icon's included, but grants no
+trademark rights. "Svall", the Svall icon and svall.dev identify the builds published at https://svall.dev and
 https://github.com/linusroxbergh/svall.
 
 You may say that something is built on, based on or works with Svall. A fork,

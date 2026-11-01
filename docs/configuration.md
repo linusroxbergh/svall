@@ -33,10 +33,9 @@ belongs to this machine alone:
   through the `AGENTS.md` built from it. The skills behind the buttons live
   there too; list `/svall-organise` or `/svall-rename` in `home.actions` to give
   them a button. Claude Code and Codex each ask once whether to trust the
-  folder. Fleets whose `fleet.json` names no `home.cwd` share `~/.svall/home`,
-  and a fleet that shares its folder cannot be handed over: set `home.cwd` in
-  one's `fleet.json` to give it its own, such as `~/.svall-work/home` for the
-  fleet in `~/.svall-work`. Its crew already open keeps working in the old
+  folder. Fleets whose `fleet.json` names no `home.cwd` share `~/.svall/home`:
+  set `home.cwd` in one's `fleet.json` to give it its own, such as
+  `~/.svall-work/home` for the fleet in `~/.svall-work`. Its crew already open keeps working in the old
   folder, so copy over any notes you want in the new one.
 - The daemon runs under launchd, without your shell's environment. The fleet's
   `.env` gives the Claude scribe every value in it, and gives new robot
