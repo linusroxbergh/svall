@@ -1,0 +1,5 @@
+- Remote machines: a check leads with what needs you, with one-click fixes, and variables a server needs are set from their row
+- A move sheet shows every blocker at once, each with its own button
+- A robot's card says when its machine is out of reach
+- Mac-only servers and programs a machine does not need stand aside from the setup count
+- Phone: key row, keys sheet, mission control and multi-question dialogs; a plain click follows terminal links

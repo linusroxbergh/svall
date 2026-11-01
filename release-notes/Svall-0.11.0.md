@@ -1,0 +1,5 @@
+- Typing plain `codex` in a robot's terminal now works; no more `--no-daemon`.
+- Notification banners name the robot and its island.
+- Island cards are a little larger, and larger still on a roomy map.
+- OpenCode robots show the monitor mark while a background shell runs.
+- A prompt sent to Claude Code mid-turn shows as the last command.

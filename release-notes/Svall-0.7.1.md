@@ -1,0 +1,4 @@
+- ⌘J / ⌘K step through the sidebar's rows in order, a starred character on its island as well as under Starred.
+- With an island picked on the map, ⌘J goes to its first character.
+- A card's context cells fill as context is used: empty for a fresh session, full when it runs out.
+- Robots on the map cards are a little larger.

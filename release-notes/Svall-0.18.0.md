@@ -1,0 +1,4 @@
+- The Map/Board switch shows over the map too.
+- Board cards show their island's name.
+- Auto-place has Place now: the scribe moves every card to the column its work is at, even with Auto-place off.
+- A column's menu is Rename, Collapse and Delete; drag a column by its grip to reorder it.

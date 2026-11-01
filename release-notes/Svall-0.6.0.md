@@ -1,0 +1,5 @@
+- Star a character to keep it in a Starred block at the top of the sidebar, and on your phone.
+- OpenCode typed into a character's terminal shows working and done on its card.
+- Renaming an island keeps its place in the sidebar.
+- A card whose agent only has a Monitor running shows done instead of staying yellow.
+- Characters an agent starts get names that say what the work is about.

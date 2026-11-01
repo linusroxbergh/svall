@@ -1,0 +1,4 @@
+- Characters are robots now, 45 of them. Settings → The fleet → characters switches back to animals.
+- The side card's ‹ › arrows step through the robots.
+- Map cards show the context left as five cells, with the status badge on the corner.
+- Island grass is softer, with no light rim along the shore.

@@ -1,0 +1,5 @@
+- Move a robot to a Linux worker machine and back.
+- Ctrl-click a path in a robot's terminal to open it in Files.
+- Board: Place also sorts dormant robots, island chips get arrows when they overflow, and columns widen a little on wide windows.
+- The editor keeps your place and your edits when the file changes on disk.
+- A Codex robot stays marked as waiting while an approval is open.

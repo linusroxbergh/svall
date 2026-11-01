@@ -1,0 +1,4 @@
+- While your Mac sleeps, `svall` in a robot's terminal on a Linux machine starts, updates and closes robots there; the Mac takes in what they did once it is back.
+- Your agent setup follows a robot to a Linux machine: MCP servers, plugins and Codex and OpenCode settings, and no key reaches the machine without its tick.
+- The whole-fleet handover is gone; a Linux machine that was your fleet's gateway becomes a worker with `svall host upgrade <machine>`.
+- Svall carries no rsync, and a Linux machine needs none.

@@ -1,0 +1,2 @@
+- Updating always installs the newest version, even one released while Svall was open.
+- Svall reopens after an update even with several fleet windows open.

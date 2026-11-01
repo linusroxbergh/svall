@@ -1,0 +1,4 @@
+- The map no longer slows down and freezes every 30 seconds after Svall has been open for a day.
+- The map redraws islands and robots with less work, so it stays smoother with many characters.
+- The Load panel counts CPU in cores out of your Mac's ("2.4 of 18 cores"), with Svall itself listed last.
+- Sending a prompt works in Claude Code sessions that draw their own cursor.

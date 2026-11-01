@@ -1,0 +1,4 @@
+- The board is now a kanban of your whole fleet: every robot is a card in a column (To do, In progress, In review, Done). Drag a card or right-click › Move to; its agent is told nothing.
+- Rename, reorder, collapse, add and delete columns in place, and filter the board by island or by robots that need you.
+- The scribe can place robots in the column that fits their work. Turn it on from the board's question, the Auto-place chip or Settings; a robot you move by hand stays where you put it.
+- A robot's terminal opens in a card over the board, as it does on the map.

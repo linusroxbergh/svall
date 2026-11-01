@@ -1,0 +1,3 @@
+- Updating shows what's new in every version since yours, not just the latest.
+- The PR and monitor marks on a card's corner stand out from the card.
+- The Resources lighthouse is drawn in the robots' style.

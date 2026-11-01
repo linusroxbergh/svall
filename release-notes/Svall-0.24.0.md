@@ -1,0 +1,5 @@
+- Command palette on ⌘⇧P
+- Send feedback from inside the app
+- Robots can message each other with `svall robot send`, and `svall robot read --last` prints a robot's final answer
+- Retro findings read as a short explainer
+- ⌘G's mission control takes the terminal as soon as it's ready

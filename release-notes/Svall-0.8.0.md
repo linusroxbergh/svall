@@ -1,0 +1,2 @@
+- Robots on the map now come alive: each plays its own short actions now and then, a little busier while working.
+- Turn it off under Settings → This machine → Robot motion. Robots also stay still when macOS reduces motion.

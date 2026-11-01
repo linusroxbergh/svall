@@ -1,0 +1,2 @@
+- Islands have a softer, textured ground, and character cards and the lighthouse a light paper grain.
+- Starred rows in the sidebar show the character's full name first.

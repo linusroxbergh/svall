@@ -1,0 +1,4 @@
+- Islands, cards and name pills stay sharp at every map zoom
+- Character names show the area of the work, like "#472 auth review"
+- A fresh install picks a free port when the default one is taken
+- Agent notes focus on what a later agent will need

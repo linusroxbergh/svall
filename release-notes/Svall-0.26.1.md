@@ -1,0 +1,2 @@
+- Robot cards show each robot on the card's paper, without a disc behind it
+- A robot card's name prints a touch larger

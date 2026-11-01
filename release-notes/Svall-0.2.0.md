@@ -1,0 +1,5 @@
+- Hidden islands leave the map. The sidebar brings them back, and the fleet arranges round them.
+- Rename islands and characters from their right-click menu in the sidebar.
+- A new character opens its side card, and one made on mission control starts your main agent.
+- A waiting update shows in the title bar, and Svall opened from the disk image hands over to the copy in Applications.
+- Setup says which CLI it needs, with install commands to copy, and the notifications switch asks again after a decline.

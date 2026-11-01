@@ -1,0 +1,5 @@
+- Cmd+Shift+S hides both side panels.
+- An agent suspended with ctrl+z keeps its place until you bring it back with fg.
+- Reviving an agent whose folder is gone opens somewhere that works, or says why it can't.
+- A Claude card stops showing red once its question is answered.
+- On the phone, Claude Code's fullscreen mode keeps its scrollback and scrolls.

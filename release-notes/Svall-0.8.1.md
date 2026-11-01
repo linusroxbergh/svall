@@ -1,0 +1,1 @@
+- Mission control's cards are the same size as island cards, whatever the window size or zoom.

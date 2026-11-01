@@ -1,0 +1,5 @@
+- Phone pairing uses a pass carried in the QR code
+- Deeper sea and squarer island cards
+- Sleeping agents resume more reliably
+- Phone tells you when an agent's terminal has closed
+- Fixes for filter focus, the tour after an upgrade, and Load panel errors

@@ -1,0 +1,3 @@
+- A Load tab in the dock shows CPU, memory and processes for Svall and every robot, with Sleep and Delete on each.
+- The robot pane lists the robot's cpu, ram and processes under Details.
+- Deleting a robot ends every process it started, servers left running in the background included.

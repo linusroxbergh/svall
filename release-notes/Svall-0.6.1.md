@@ -1,0 +1,3 @@
+- A character whose PR is in review or that runs a monitor is marked in the sidebar and on its card; the PR's chip on the card opens it.
+- Starred characters wear a gold star.
+- The next/previous character keys go through Starred first, including characters on collapsed islands.
