@@ -1,8 +1,9 @@
 .side { position: relative; width: var(--side-w); flex: none; overflow: hidden auto; background: var(--surface-2); border-left: 1px solid var(--line-soft);
-  padding: calc(var(--sp-2xl) + var(--sp-xs)) var(--sp-lg); padding-left: var(--sp-xl); display: flex; flex-direction: column; gap: var(--sp-2xl); box-sizing: border-box; }
+  padding: calc(var(--sp-2xl) + var(--sp-xs)) var(--sp-xl); display: flex; flex-direction: column; gap: var(--sp-2xl); box-sizing: border-box; }
 /* a labelled section: its parts sit close, and sections keep the column's gap between them */
 .side .sec { --sec-head: 20px; position: relative; flex: none; display: flex; flex-direction: column; gap: var(--sp-sm); }
-.side .sec > .kicker { height: var(--sec-head); }
+.side .sec > .kicker { height: var(--sec-head); gap: var(--sp-xs); }
+.side .sec > .kicker .set-info > .ib { margin-left: 0; }
 /* the sections share what the card's head and foot leave and never scroll it: a fitted one gives way before a pinned one,
    and one squeezed under its content scrolls inside */
 .side-secs { flex: 1 1 0; min-height: 0; overflow: clip; container-type: size; display: flex; flex-direction: column; gap: var(--sp-2xl); }
@@ -11,6 +12,7 @@
   min-height: clamp(calc(var(--sec-head) + var(--sp-sm)), calc((100cqh - 5 * var(--sp-2xl)) / 6), calc(var(--sec-head) + var(--sp-sm) + 40px)); }
 .side .sec:has(> .sec-body:empty) { min-height: auto; }
 .side .sec[data-fit="true"] { flex-shrink: 1000; }
+.sec-body:empty { display: none; }
 .sec-body { flex: 1 1 auto; min-height: 0; overflow: hidden auto; display: flex; flex-direction: column; gap: var(--sp-sm); }
 /* a section the user opens drops its contents in; one open as its card appears shows them at once */
 .sec-body[data-opened] { transition: opacity var(--dur) var(--ease-out), translate var(--dur) var(--ease-out); }
@@ -26,15 +28,16 @@
    a terminal surface is a native view over everything the page draws */
 .side-collapse { right: calc(var(--side-w) - var(--edge-lip-w)); border-left: 0; border-radius: 0 var(--r-md) var(--r-md) 0; }
 .side-show { right: 0; border-right: 0; border-radius: var(--r-md) 0 0 var(--r-md); }
-/* the portrait beside the name, and the branch on a line of its own so both get the full width */
-.side-head { display: flex; align-items: center; gap: var(--sp-xl); }
+/* the portrait beside the name, and under them the robot's own lines, the branch on one of its own so both get the full width */
+.side-id { display: flex; flex-direction: column; gap: var(--sp-xs); }
+.side-head { display: flex; align-items: center; gap: var(--sp-xl); margin-bottom: var(--sp-xs); }
 .side-star[aria-pressed="true"] { color: var(--star); }
 .side-branch { display: flex; align-items: center; min-width: 0; color: var(--ink-3); font-size: var(--text-sm); }
-.side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .side-branch .badge { flex: none; }
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
-/* a robot on a worker: the machine it runs on, close under its name */
-.side-on { gap: var(--sp-sm); margin-top: calc(-1 * var(--sp-md)); font-size: var(--text-md); }
+/* a robot on a worker: the machine it runs on */
+.side-on { gap: var(--sp-sm); font-size: var(--text-sm); }
 .side-on b { font-weight: var(--w-semibold); }
 /* a robot whose worker this Mac has lost: why, and the run that tells more */
 .side-away { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-sm); color: var(--ink-3); font-size: var(--text-sm); }
@@ -63,8 +66,8 @@
 .side .fld.inline:focus-visible { outline: 2px solid var(--sand); outline-offset: 2px; }
 .side .opens { display: flex; gap: var(--sp-md); }
 .side .opens .btn { flex: 1; }
-.side .addlink { display: flex; gap: var(--sp-md); align-items: center; }
-.side .addlink .btn { flex: none; }
+.side .addlink { display: flex; gap: var(--sp-md); }
+.side .addlink .btn { flex: none; height: auto; }
 .side-profile { display: flex; gap: var(--sp-md); align-items: center; }
 .side .side-profile .fld { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-md); min-width: 0;
   text-align: left; cursor: pointer; transition: background var(--dur-fast) var(--ease); }
@@ -85,6 +88,7 @@
 .side-profile-hint { flex: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); color: var(--ink-3); }
 .side-profile-hint[data-error="true"] { color: var(--danger); }
 .side .pills { margin-top: 0; }
+.side .sec .rows { border-top: 0; padding-top: 0; }
 .side .row { padding: var(--sp-xs) 0; align-items: center; }
 .side .row b.mono { font-size: var(--text-xs); }
 .side .row .meter { flex: 1; margin: 0; }
@@ -98,8 +102,11 @@
 .side-gap { flex-wrap: wrap; }
 .side-gap .var-field { flex-basis: 100%; }
 .side-gap .var-field .fld { flex: 1; width: auto; min-width: 0; }
-.side-docs-new { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; color: var(--ink-cool); cursor: pointer; }
+.side-docs-new { margin-left: auto; display: inline-flex; align-items: center; gap: var(--sp-xs); padding: 0; border: 0; background: none;
+  font-size: var(--text-sm); font-weight: var(--w-medium); color: var(--ink-cool); cursor: pointer; }
+.side-docs-new:hover { background: none; color: var(--ink); }
 .side-doc { display: flex; flex-direction: column; gap: var(--sp-2xs); padding: var(--sp-xs) var(--sp-md); border: 0; border-radius: var(--r-sm); background: var(--fill-1); font: inherit; color: var(--ink); text-align: left; cursor: pointer; }
+.side-doc b { font-size: var(--text-md); font-weight: var(--w-semibold); }
 .side-doc span { font-size: var(--text-xs); color: var(--ink-3); }
 .side-doc span[data-error="true"] { color: var(--danger); }
 
@@ -162,6 +169,6 @@
 .side .cmd-nav { margin-left: auto; display: flex; align-items: center; gap: var(--sp-2xs); }
 .side .cmd-nav b { min-width: 4ch; text-align: center; font-size: var(--text-xs); font-weight: var(--w-medium); letter-spacing: 0; color: var(--ink-3); }
 .side .cmd-text { margin: 0; max-height: 88px; overflow: hidden auto; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
-  font-family: var(--mono); font-size: var(--text-sm); line-height: var(--lh); color: var(--ink-2);
-  background: var(--surface-1); border: 1px solid var(--line-soft); border-radius: var(--r-md); padding: var(--sp-md) var(--sp-lg); }
+  font-size: var(--text-md); line-height: var(--lh); color: var(--ink-2);
+  background: var(--fill-1); border: 1px solid transparent; border-radius: var(--r-sm); padding: var(--sp-md) var(--sp-lg); }
 .side .sec[data-fit="false"] .cmd-text { flex: 1 1 auto; max-height: none; }

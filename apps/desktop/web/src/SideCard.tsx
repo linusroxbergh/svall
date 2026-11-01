@@ -11,8 +11,6 @@ import { Caret, Mac, Machine, Star } from './icons.js';
 import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
-import { useLoad } from './load.js';
-import { coresText, memText } from './loadText.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
@@ -40,14 +38,14 @@ function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   const { list, at, step } = usePromptHistory(app.api, id, agent);
   if (!agent) return null;
   return (
-    <Section name="robot.command" title="Last command" testid="side-prompt" head={list.length > 0 && (
+    <Section name="robot.command" title="Last command" testid="side-prompt" head={list.length > 1 && (
       <span className="cmd-nav">
-        <button className="ib xs filled" data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
+        <button className="ib xs" data-testid="side-prompt-prev" aria-label="Earlier command" disabled={at >= list.length - 1} onClick={() => step(1)}><Caret dir="left" /></button>
         <b className="tnum" data-testid="side-prompt-pos">{at + 1}/{list.length}</b>
-        <button className="ib xs filled" data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
+        <button className="ib xs" data-testid="side-prompt-next" aria-label="Later command" disabled={at === 0} onClick={() => step(-1)}><Caret dir="right" /></button>
       </span>
     )}>
-      <p className="cmd-text" data-testid="side-prompt-text">{list[at] ?? 'nothing sent yet'}</p>
+      <p className="cmd-text" data-testid="side-prompt-text">{list[at]?.trim().replace(/\n{3,}/g, '\n\n') ?? 'nothing sent yet'}</p>
     </Section>
   );
 }
@@ -75,10 +73,6 @@ export function SideCard({ id }: { id: string }) {
   const islands = useApp((s) => s.fleet.islands);
   const fleet = { machines, islands };
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
-  const details = useApp((s) => !s.sections['robot.details']?.shut);
-  const active = useApp((s) => s.active);
-  // only a robot on this Mac shows its load
-  const load = useLoad(details && active && !!c && !isPlaced(c)).load?.robots?.[id];
   const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
   const hostRunning = useApp((s) => !!s.host?.running);
@@ -103,28 +97,30 @@ export function SideCard({ id }: { id: string }) {
       <div className="kicker" style={{ color: accent }}>
         <i className="sdot" data-status={status} />{status === 'unknown' ? 'unreachable' : status}{isUnread(c) ? ' · unread' : ''}
       </div>
-      <div className="side-head">
-        <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
-        <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
-          onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
-        <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
-          aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
-      </div>
-      {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
-      {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
-      {c.repo && (
-        <div className="side-branch" data-testid="side-branch">
-          <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
+      <div className="side-id">
+        <div className="side-head">
+          <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
+          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
+            onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
+          <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
+            aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
-      )}
-      {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
+        {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
+        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
+        {c.repo && (
+          <div className="side-branch" data-testid="side-branch">
+            <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
+          </div>
+        )}
+        {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
+      </div>
       <div className="side-secs">
         {placed && isPlaced(c) && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
           <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
-        <Section name="robot.instructions" title="Agent instructions" head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
+        <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
           <AgentProfilePick id={id} />
           <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
             onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
@@ -157,13 +153,6 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <LastActivity at={c.agent?.lastActivityAt ?? c.shell.lastOutputAt} />
-            {load && !placed && (
-              <>
-                <div className="row"><span>cpu</span><b className="tnum" data-testid="side-cpu">{coresText(load.cpu)} cores</b></div>
-                <div className="row"><span>ram</span><b className="tnum" data-testid="side-ram">{memText(load.mem)}</b></div>
-                <div className="row"><span>procs</span><b className="tnum" data-testid="side-procs">{load.procs}</b></div>
-              </>
-            )}
             {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
           </div>
         </Section>

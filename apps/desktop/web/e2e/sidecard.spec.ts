@@ -65,6 +65,7 @@ test('edits a robot from the side card', async ({ page, svall }) => {
   await card.getByTestId('side-note').blur();
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].note).toBe('what it does');
 
+  await card.getByTestId('sec-fold-robot.instructions').click();
   await card.getByTestId('side-instructions').fill('merge without asking');
   await card.getByTestId('side-instructions').blur();
   await expect.poll(async () => (await svall.api.call('state.get', {})).robots[c.id].instructions).toBe('merge without asking');
@@ -434,6 +435,7 @@ test('an empty note or description opens six lines tall, and instructions three'
   await svall.open();
   await page.getByTestId(`sb-robot-${c.id}`).click();
   expect(await lines('side-note')).toBe(6);
+  await page.getByTestId('sec-fold-robot.instructions').click();
   expect(await lines('side-instructions')).toBe(3);
   await svall.open('map');
   await page.getByTestId(`island-label-${island.id}`).click();

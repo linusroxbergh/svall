@@ -18,7 +18,7 @@ export function DocsList({ tier, id }: { tier: 'island' | 'robot'; id: string })
   const open = (naming: boolean) => app.store.getState().toggleResources(true, { where: source.rootId, what: 'docs', naming });
   return (
     <Section name={`${tier}.docs`} title="Docs" testid="side-docs"
-      head={<button className="side-docs-new res-open" data-testid="side-docs-new" data-tip="Write a doc in the shelf" onClick={() => open(true)}><Plus size="xs" />new doc</button>}>
+      head={<button className="side-docs-new res-open" data-testid="side-docs-new" data-tip="Write a doc in the shelf" onClick={() => open(true)}><Plus size="xs" />New doc</button>}>
       {items.map((i) => {
         const o = i.open;
         return (

@@ -14,11 +14,10 @@ Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
 let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
-let load: unknown;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
   return why ? Promise.reject(new Error(why))
-    : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : method === 'load.get' ? load ?? {}
+    : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] }
       : method === 'machines.setup' ? { rows: [] } : {});
 });
 const calls = () => call.mock.calls as [string, Record<string, unknown>][];
@@ -51,10 +50,11 @@ function IslandSide() {
 const updates = () => calls().filter(([m]) => m === 'robot.update' || m === 'island.update');
 const field = (testId: string) => screen.getByTestId(testId) as HTMLTextAreaElement;
 const type = (el: HTMLTextAreaElement, value: string) => { el.focus(); fireEvent.change(el, { target: { value } }); };
+// the instructions start folded, so a test typing there unfolds them first
+const instructions = () => { fireEvent.click(screen.getByTestId('sec-fold-robot.instructions')); return field('side-instructions'); };
 
 beforeEach(() => {
   refuse = undefined;
-  load = undefined;
   freshStore();
   store.getState().select('c0', true);
 });
@@ -64,9 +64,15 @@ test('the note takes no more than the fleet does', () => {
   expect(field('side-note').maxLength).toBe(ROBOT_NOTE_MAX);
 });
 
+test('the agent instructions start folded', () => {
+  render(<Side />);
+  expect(screen.getByTestId('sec-fold-robot.instructions').getAttribute('aria-expanded')).toBe('false');
+  expect(screen.queryByTestId('side-instructions')).toBeNull();
+});
+
 test('a draft in one robot\'s instructions never shows or saves on the next one', () => {
   render(<Side />);
-  type(field('side-instructions'), 'run the tests first');
+  type(instructions(), 'run the tests first');
   // the selection moves without the field hearing a blur, as a removed field in WebKit never does
   act(() => store.getState().select('c1', true));
   expect(field('side-instructions').value).toBe('');
@@ -138,7 +144,7 @@ test('a press on another token saves the rename to the robot it was typed for', 
 
 test('the next-robot key saves the draft to the robot it was typed for', async () => {
   render(<Side />);
-  type(field('side-instructions'), 'never push to main');
+  type(instructions(), 'never push to main');
   await act(() => dispatchKey({ type: 'nextRobot' }, { store, api: { call } as never, bridge }));
   expect(store.getState().selectedId).toBe('c1');
   expect(updates()).toEqual([['robot.update', { id: 'c0', instructions: 'never push to main' }]]);
@@ -147,7 +153,7 @@ test('the next-robot key saves the draft to the robot it was typed for', async (
 // the shell swallows the chord, so the field is removed without the blur a click would have sent
 test.each(['toggleSideCard', 'toggleView'] as const)('%s saves the draft before the card goes', async (chord) => {
   render(<MapCard />);
-  type(field('side-instructions'), 'never push to main');
+  type(instructions(), 'never push to main');
   await act(() => dispatchKey({ type: chord }, { store, api: { call } as never, bridge }));
   expect(screen.queryByTestId('side-instructions')).toBeNull();
   expect(updates()).toEqual([['robot.update', { id: 'c0', instructions: 'never push to main' }]]);
@@ -156,7 +162,7 @@ test.each(['toggleSideCard', 'toggleView'] as const)('%s saves the draft before 
 // the shell asks before it quits, and nothing blurs the field on the way out
 test('a quit saves the draft before it answers', async () => {
   render(<Side />);
-  type(field('side-instructions'), 'never push to main');
+  type(instructions(), 'never push to main');
   let ask = (_: FromShell) => {};
   let savedFirst: boolean | undefined;
   const stop = followQuit({ store, api: () => undefined, bridge: {
@@ -439,7 +445,6 @@ test('a worker on another build answers, so a robot here still offers to move th
 });
 
 test('a placed robot wears its machine, moves back to this Mac, and its folder buttons act there', async () => {
-  load = { at: 0, cores: 8, total: { cpu: 1, mem: 1, procs: 1 }, app: { cpu: 0, mem: 0, procs: 0 }, robots: { c0: { cpu: 0.5, mem: 1e8, procs: 3, shellOnly: false, sleepable: false } } };
   withVault(true, { machine: VAULT, cwd: '/home/ada/svall' });
   await act(async () => { render(<Side />); });
   expect(screen.getByTestId('side-machine').textContent).toBe('Runs on linus-vault');
@@ -448,8 +453,6 @@ test('a placed robot wears its machine, moves back to this Mac, and its folder b
   expect(screen.getByTestId('side-machine').closest('.kicker')).toBeNull();
   expect(moves()).toEqual(['Move to this Mac']);
   expect(foot()).toEqual(['Move to this Mac', 'Terminal there', 'Resources', 'Open terminal', 'Delete robot']);
-  expect(screen.queryByTestId('side-cpu')).toBeNull();
-  expect(calls().some(([m]) => m === 'load.get')).toBe(false);
   // what of its agent setup will not work there, which here is nothing
   expect(calls()).toContainEqual(['machines.setup', { machine: VAULT, robot: 'c0' }]);
   expect(document.querySelector('[data-section="robot.machine"]')).toBeNull();
