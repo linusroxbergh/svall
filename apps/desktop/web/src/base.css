@@ -184,8 +184,12 @@ textarea.fld { padding-block: var(--sp-md); }
 /* a segmented control: one mode of a few, its pressed fill the glide behind it; the strip's corner is its buttons' plus its padding */
 .seg { position: relative; isolation: isolate; box-sizing: border-box; flex: none; display: inline-flex; height: var(--ctl-md); padding: var(--sp-2xs);
   border: 1px solid var(--line-soft); border-radius: var(--r-md); background: var(--fill-1); }
-.seg > button { flex: none; display: inline-flex; align-items: center; gap: var(--sp-md); padding: 0 var(--sp-2xl); border: 0; border-radius: var(--r-sm); background: none;
+/* Funnel Sans sits its capitals low in the line box; the hairline under lifts them to the middle of the pill */
+.seg > button { flex: none; display: inline-flex; align-items: center; gap: var(--sp-md); margin-bottom: 1px; padding: 0 var(--sp-2xl); border: 0; border-radius: var(--r-sm); background: none;
   font-size: var(--text-md); font-weight: var(--w-semibold); color: var(--ink-3); white-space: nowrap; }
+/* every button as wide as the widest */
+.seg.even { display: inline-grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
+.seg.even > button { justify-content: center; }
 .seg > button:hover { background: none; color: var(--ink); }
 .seg > button:is([aria-pressed="true"], [data-active="true"]) { color: var(--ink); cursor: default; }
 .glide { position: absolute; z-index: -1; top: var(--sp-2xs); bottom: var(--sp-2xs); left: 0; border-radius: var(--r-sm); background: var(--fill-3); pointer-events: none;

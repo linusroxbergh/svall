@@ -19,7 +19,7 @@ export function ViewSwitch() {
       onClick={() => { if (view !== v) app.store.getState().setView(v); }}>{label}</button>
   );
   return (
-    <div className="seg" role="group" aria-label="View">
+    <div className="seg even" role="group" aria-label="View">
       <Glide at={view} from={from && `[data-testid="view-${from}"]`} />{tab('map', 'Map')}{tab('board', 'Board')}
     </div>
   );
