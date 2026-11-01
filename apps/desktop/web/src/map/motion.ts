@@ -1,9 +1,13 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useApp } from '../hooks.js';
 
-// a robot rests, then plays one action from its data-work or data-idle list: the CSS animations its SVG keys on data-act
+// a robot rests, then plays one action from its data-work or data-idle list: the CSS animations its SVG keys on data-act.
+// An idle robot plays each action on its data-rare list instead, at RARE odds each
 export const REST = { idle: 3500, working: 1800 } as const;
+export const RARE = 0.005;
 const jitter = () => 0.9 + Math.random() * 0.2;
+const list = (s?: string) => (s ?? '').split(' ').filter(Boolean);
+const any = (acts: string[]) => acts[Math.floor(Math.random() * acts.length)];
 
 type Run = { timer?: ReturnType<typeof setTimeout> };
 const bots = new Map<SVGElement, Run>();
@@ -18,10 +22,16 @@ function rest(bot: SVGElement, first = false): void {
   run.timer = setTimeout(() => void play(bot, run), centre * (first ? Math.random() : jitter()));
 }
 
+function pick(bot: SVGElement): string | undefined {
+  if (working(bot)) return any(list(bot.dataset.work));
+  const rare = list(bot.dataset.rare), roll = Math.random();
+  return roll < RARE * rare.length ? rare[Math.floor(roll / RARE)] : any(list(bot.dataset.idle));
+}
+
 async function play(bot: SVGElement, run: Run): Promise<void> {
-  const acts = ((working(bot) ? bot.dataset.work : bot.dataset.idle) ?? '').split(' ').filter(Boolean);
-  if (acts.length) {
-    bot.dataset.act = acts[Math.floor(Math.random() * acts.length)];
+  const act = pick(bot);
+  if (act) {
+    bot.dataset.act = act;
     const parts = bot.getAnimations({ subtree: true });
     // one rate for every part, so they stay in step
     const rate = 1 / jitter();

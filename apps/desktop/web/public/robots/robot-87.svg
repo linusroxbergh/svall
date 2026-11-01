@@ -1,4 +1,4 @@
-<svg width="308" height="450" viewBox="102 26 308 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="capsule-title capsule-desc" class="r87" data-idle="blink blink blink blink bank bank tuck wave" data-work="boost boost wave bank tuck blink blink"><style>
+<svg width="308" height="450" viewBox="102 26 308 450" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="capsule-title capsule-desc" class="r87" data-idle="blink blink blink blink bank bank tuck wave" data-work="boost boost wave bank tuck blink blink" data-rare="nap"><style>
 .r87[data-act=boost] .pod{animation:r87-lift 2s ease-in-out}
 .r87[data-act=boost] .flame{animation:r87-thrust 2s ease-in-out}
 .r87[data-act=boost] .arm-l{animation:r87-trail-l 2s ease-in-out}
@@ -43,6 +43,22 @@
 @keyframes r87-down{0%,84%,100%{transform:none}24%,66%{transform:translateY(5px)}}
 @keyframes r87-glow{0%,100%{fill:#f6c354}34%,62%{fill:#fadb98}}
 @keyframes r87-blink{0%,100%{transform:none}40%,55%{transform:scaleY(.1)}}
+.r87[data-act=nap] .pod{transform-origin:256px 380px;animation:r87-nap-pod 8.2s ease-in-out}
+.r87[data-act=nap] .lamp{animation:r87-nap-lamp 8.2s ease-in-out}
+.r87[data-act=nap] .flame{animation:r87-nap-flame 8.2s ease-in-out}
+.r87[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r87-nap-eyes 8.2s ease-in-out}
+.r87[data-act=nap] .arm-l{animation:r87-nap-arm-l 8.2s ease-in-out}
+.r87[data-act=nap] .arm-r{animation:r87-nap-arm-r 8.2s ease-in-out}
+.r87[data-act=nap] .fore-l{animation:r87-nap-fore-l 8.2s ease-in-out}
+.r87[data-act=nap] .fore-r{animation:r87-nap-fore-r 8.2s ease-in-out}
+@keyframes r87-nap-pod{0%{transform:none}4.3%{transform:none}12.2%{transform:translate(0px,2px) rotate(-2deg)}17.7%{transform:translate(0px,1px) rotate(-1deg)}28%{transform:translate(0px,5px) rotate(3.5deg)}32.9%{transform:translate(0px,4px) rotate(2.8deg)}45.7%{transform:translate(0px,5.5px) rotate(3.4deg)}59.1%{transform:translate(0px,6px) rotate(3.6deg)}66.5%{transform:translate(0px,6px) rotate(3.4deg)}70.7%{transform:translate(0px,9px) rotate(5.5deg)}72.9%{transform:translate(0px,-6px) rotate(-3deg)}75.4%{transform:translate(0px,1.5px)}79.3%{transform:translate(0px,-.5px) rotate(-4deg)}83.5%{transform:translate(0px,.5px) rotate(3.8deg)}87.8%{transform:rotate(-1.2deg)}92.7%{transform:rotate(.4deg)}100%{transform:none}}
+@keyframes r87-nap-flame{0%{transform:none}12.2%{transform:scale(1,1)}29.3%{transform:scale(1,.6)}45.7%{transform:scale(1,.5)}59.1%{transform:scale(1,.45)}70.7%{transform:scale(1,.4)}72.9%{transform:scale(1,1)}76.8%{transform:scale(1,.85)}81.7%{transform:scale(1,1)}86.6%{transform:scale(1,1)}100%{transform:none}}
+@keyframes r87-nap-eyes{0%{transform:none}7.3%{transform:scale(1,.55)}12.2%{transform:translate(0px,1px) scale(1,.4)}17.7%{transform:scale(1,.75)}27.4%{transform:translate(0px,2px) scale(1,.1)}70.7%{transform:translate(0px,3px) scale(1,.1)}72.9%{transform:translate(0px,-1px) scale(1,1.18)}75%{transform:scale(1,1)}79.3%{transform:translate(-6px,0px) scale(1,1)}83.5%{transform:translate(6px,0px) scale(1,1)}88.4%{transform:scale(1,1)}100%{transform:none}}
+@keyframes r87-nap-arm-l{0%{transform:none}29.3%{transform:rotate(-6deg)}45.7%{transform:rotate(-7deg)}59.1%{transform:rotate(-7deg)}68.3%{transform:rotate(-6.5deg)}70.7%{transform:rotate(-8deg)}72.9%{transform:rotate(11deg)}76.2%{transform:rotate(-4deg)}80.5%{transform:rotate(1.5deg)}85.4%{transform:rotate(-.5deg)}100%{transform:none}}
+@keyframes r87-nap-arm-r{0%{transform:none}29.3%{transform:rotate(6deg)}45.7%{transform:rotate(7deg)}59.1%{transform:rotate(7deg)}68.3%{transform:rotate(6.5deg)}70.7%{transform:rotate(8deg)}72.9%{transform:rotate(-11deg)}76.2%{transform:rotate(4deg)}80.5%{transform:rotate(-1.5deg)}85.4%{transform:rotate(.5deg)}100%{transform:none}}
+@keyframes r87-nap-fore-l{0%{transform:none}30%{transform:rotate(-5deg)}46.5%{transform:rotate(-6deg)}59.9%{transform:rotate(-6deg)}69%{transform:rotate(-5.5deg)}71.5%{transform:rotate(-7deg)}73.7%{transform:rotate(9deg)}77%{transform:rotate(-3deg)}81.2%{transform:rotate(1.2deg)}86.1%{transform:rotate(-.4deg)}100%{transform:none}}
+@keyframes r87-nap-fore-r{0%{transform:none}30%{transform:rotate(5deg)}46.5%{transform:rotate(6deg)}59.9%{transform:rotate(6deg)}69%{transform:rotate(5.5deg)}71.5%{transform:rotate(7deg)}73.7%{transform:rotate(-9deg)}77%{transform:rotate(3deg)}81.2%{transform:rotate(-1.2deg)}86.1%{transform:rotate(.4deg)}100%{transform:none}}
+@keyframes r87-nap-lamp{0%,100%{fill:#f6c354}29.3%{fill:#c9a24c}59.1%{fill:#a98a44}70.7%{fill:#a98a44}72.9%{fill:#fbe0a4}79.3%{fill:#f6c354}}
 </style>
   <title id="capsule-title">Capsule — jet capsule robot</title>
   <desc id="capsule-desc">A plum capsule robot shaped like a tall rounded pod, with a teal visor across its upper body holding two eyes on a slate band, three vent lines and a panel of lights on its front, short jointed arms with plum cuffs and two finger grippers at its sides, and a flared collar over a jet nozzle that keeps it floating on three flat yellow flames.</desc>

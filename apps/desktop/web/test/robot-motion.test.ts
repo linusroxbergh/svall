@@ -16,7 +16,7 @@ describe('robot motion', () => {
   it.each(moving)('robot-$n keys every animation on its own data-act and moves only transform and fill', ({ n, src }) => {
     const root = src.match(/<svg\b[^>]*>/)![0];
     expect(root).toMatch(new RegExp(`\\sclass="[^"]*\\br${n}\\b`));
-    const lists = ['idle', 'work'].flatMap((k) => root.match(new RegExp(`\\sdata-${k}="([^"]*)"`))?.[1].split(' ').filter(Boolean) ?? []);
+    const lists = ['idle', 'work', 'rare'].flatMap((k) => root.match(new RegExp(`\\sdata-${k}="([^"]*)"`))?.[1].split(' ').filter(Boolean) ?? []);
     expect(lists.length).toBeGreaterThan(0);
 
     const styles = src.match(/<style>([\s\S]*?)<\/style>/g)!;

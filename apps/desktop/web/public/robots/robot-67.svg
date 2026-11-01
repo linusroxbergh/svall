@@ -1,4 +1,4 @@
-<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc" class="r67" data-idle="blink blink blink blink peer peer shift lever" data-work="crank crank crank lever shift peer"><style>
+<svg width="244" height="420" viewBox="134 58 244 420" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="reel-title reel-desc" class="r67" data-idle="blink blink blink blink peer peer shift lever" data-work="crank crank crank lever shift peer" data-rare="lean nap fix"><style>
 .r67[data-act=blink] .lens{transform-box:fill-box;transform-origin:center;animation:r67-blink .4s ease-in-out}
 .r67[data-act=peer] .head{animation:r67-cock 1.6s ease-in-out}
 .r67[data-act=peer] .look{animation:r67-side 1.6s ease-in-out}
@@ -35,10 +35,70 @@
 @keyframes r67-nod{0%,4%,100%{transform:none}20%{transform:translateY(4.5px) rotate(3deg)}41%{transform:translateY(-.5px)}61%{transform:translateY(5px) rotate(3.5deg)}82%{transform:translateY(-.5px)}91%{transform:translateY(.6px)}}
 @keyframes r67-heave{0%,4%,41%,82%,100%{transform:none}20%{transform:rotate(.6deg)}61%{transform:rotate(.7deg)}}
 @keyframes r67-watch{0%,100%{transform:none}12%,80%{transform:translate(3px,1.5px)}}
+.r67[data-act=lean] .all{animation:r67-lean-all 14.4s ease-in-out}
+.r67[data-act=lean] .up{animation:r67-lean-up 14.4s ease-in-out}
+.r67[data-act=lean] .shin-n,.r67[data-act=lean] .shin-f{animation:r67-lean-shin-n 14.4s ease-in-out}
+.r67[data-act=lean] .leg-n{animation:r67-lean-leg-n 14.4s ease-in-out}
+.r67[data-act=lean] .leg-f{animation:r67-lean-leg-f 14.4s ease-in-out}
+.r67[data-act=lean] .arm-l{animation:r67-lean-arm-l 14.4s ease-in-out}
+.r67[data-act=lean] .fore-l{animation:r67-lean-fore-l 14.4s ease-in-out}
+.r67[data-act=lean] .arm-r{animation:r67-lean-arm-r 14.4s ease-in-out}
+.r67[data-act=lean] .fore-r{animation:r67-lean-fore-r 14.4s ease-in-out}
+.r67[data-act=lean] .head{animation:r67-lean-head 14.4s ease-in-out}
+.r67[data-act=lean] .lens{transform-box:fill-box;transform-origin:center;animation:r67-lean-lens 14.4s ease-in-out}
+.r67[data-act=nap] .up{animation:r67-nap-up 8.4s ease-in-out}
+.r67[data-act=nap] .head{animation:r67-nap-head 8.4s ease-in-out}
+.r67[data-act=nap] .lens{transform-box:fill-box;transform-origin:center;animation:r67-nap-lens 8.4s ease-in-out}
+.r67[data-act=nap] .arm-l{animation:r67-nap-arm-l 8.4s ease-in-out}
+.r67[data-act=nap] .arm-r{animation:r67-nap-arm-r 8.4s ease-in-out}
+.r67[data-act=nap] .fore-l{animation:r67-nap-fore-l 8.4s ease-in-out}
+.r67[data-act=nap] .fore-r{animation:r67-nap-fore-r 8.4s ease-in-out}
+.r67[data-act=nap] .needle{animation:r67-nap-needle 8.4s ease-in-out}
+.r67[data-act=nap] .lever{animation:r67-nap-lever 8.4s ease-in-out}
+.r67[data-act=nap] .reel{animation:r67-nap-reel 8.4s ease-in-out}
+.r67[data-act=fix] .needle{animation:r67-fix-needle 4.6s ease-in-out}
+.r67[data-act=fix] .head{animation:r67-fix-head 4.6s ease-in-out}
+.r67[data-act=fix] .look{animation:r67-fix-look 4.6s ease-in-out}
+.r67[data-act=fix] .up{animation:r67-fix-up 4.6s ease-in-out}
+.r67[data-act=fix] .arm-r{animation:r67-fix-arm-r 4.6s ease-in-out}
+.r67[data-act=fix] .fore-r{animation:r67-fix-fore-r 4.6s ease-in-out}
+.r67[data-act=fix] .lever{animation:r67-fix-lever 4.6s ease-in-out}
+@keyframes r67-lean-all{0%{transform:none}2.43%{transform:translate(2px,0px)}3.96%{transform:translate(-3.3px,0px)}5.56%{transform:translate(-8.7px,0px)}7.08%{transform:translate(-14px,0px)}8.68%{transform:translate(-19.3px,0px)}10.21%{transform:translate(-24.7px,0px)}11.81%{transform:translate(-30px,0px)}84.03%{transform:translate(-30px,0px)}85.56%{transform:translate(-25px,0px)}87.15%{transform:translate(-20px,0px)}88.68%{transform:translate(-15px,0px)}90.28%{transform:translate(-10px,0px)}91.81%{transform:translate(-5px,0px)}93.4%{transform:none}100%{transform:none}}
+@keyframes r67-lean-up{0%{transform:none}2.43%{transform:translate(0px,1.5px)}3.19%{transform:translate(0px,-1.2px)}3.96%{transform:translate(0px,1.3px)}4.76%{transform:translate(0px,-1.2px)}5.56%{transform:translate(0px,0.3px)}6.32%{transform:translate(0px,-1.2px)}7.08%{transform:translate(0px,1.3px)}7.88%{transform:translate(0px,-1.2px)}8.68%{transform:translate(0px,0.3px)}9.44%{transform:translate(0px,-1.2px)}10.21%{transform:translate(0px,1.3px)}11.01%{transform:translate(0px,-1.2px)}11.81%{transform:translate(0px,0.3px)}12.15%{transform:translate(0px,0.3px)}18.75%{transform:translate(-9.4px,1px) rotate(-6deg)}20.14%{transform:translate(-10.4px,0.9px) rotate(-6.8deg)}21.88%{transform:translate(-9.4px,1px) rotate(-6deg)}29.86%{transform:translate(-9.4px,1px) rotate(-6deg)}33.33%{transform:translate(-9.4px,-0.5px) rotate(-6deg)}36.81%{transform:translate(-9.4px,1px) rotate(-6deg)}55.56%{transform:translate(-9.4px,1px) rotate(-6deg)}59.03%{transform:translate(-9.4px,-0.5px) rotate(-6deg)}62.5%{transform:translate(-9.4px,1px) rotate(-6deg)}79.17%{transform:translate(-9.4px,1px) rotate(-6deg)}81.25%{transform:translate(-7.5px,1.7px) rotate(-4.5deg)}84.03%{transform:rotate(1.2deg)}84.79%{transform:translate(0px,-1.2px)}85.56%{transform:translate(0px,1.3px)}86.35%{transform:translate(0px,-1.2px)}87.15%{transform:translate(0px,0.3px)}87.92%{transform:translate(0px,-1.2px)}88.68%{transform:translate(0px,1.3px)}89.48%{transform:translate(0px,-1.2px)}90.28%{transform:translate(0px,0.3px)}91.04%{transform:translate(0px,-1.2px)}91.81%{transform:translate(0px,1.3px)}92.6%{transform:translate(0px,-1.2px)}93.4%{transform:translate(0px,0.3px)}95.14%{transform:translate(0px,2.4px)}96.88%{transform:translate(0px,-0.5px)}98.61%{transform:none}100%{transform:none}}
+@keyframes r67-lean-shin-n{0%{transform:none}12.15%{transform:none}18.75%{transform:rotate(-5deg)}20.14%{transform:rotate(-5.5deg)}21.88%{transform:rotate(-5deg)}79.17%{transform:rotate(-5deg)}81.25%{transform:rotate(-4deg)}84.03%{transform:none}100%{transform:none}}
+@keyframes r67-lean-leg-n{0%{transform:none}2.43%{transform:none}3.19%{transform:translate(-2.7px,-9px)}3.96%{transform:translate(-5.3px,0px)}5.56%{transform:none}6.32%{transform:translate(-2.7px,-9px)}7.08%{transform:translate(-5.3px,0px)}8.68%{transform:none}9.44%{transform:translate(-2.7px,-9px)}10.21%{transform:translate(-5.3px,0px)}11.81%{transform:none}84.03%{transform:none}85.56%{transform:translate(-5px,0px)}86.35%{transform:translate(-2.5px,-9px)}87.15%{transform:none}88.68%{transform:translate(-5px,0px)}89.48%{transform:translate(-2.5px,-9px)}90.28%{transform:none}91.81%{transform:translate(-5px,0px)}92.6%{transform:translate(-2.5px,-9px)}93.4%{transform:none}100%{transform:none}}
+@keyframes r67-lean-leg-f{0%{transform:none}2.43%{transform:none}3.96%{transform:translate(5.3px,0px)}4.76%{transform:translate(2.7px,-9px)}5.56%{transform:none}7.08%{transform:translate(5.3px,0px)}7.88%{transform:translate(2.7px,-9px)}8.68%{transform:none}10.21%{transform:translate(5.3px,0px)}11.01%{transform:translate(2.7px,-9px)}11.81%{transform:none}84.03%{transform:none}84.79%{transform:translate(2.5px,-9px)}85.56%{transform:translate(5px,0px)}87.15%{transform:none}87.92%{transform:translate(2.5px,-9px)}88.68%{transform:translate(5px,0px)}90.28%{transform:none}91.04%{transform:translate(2.5px,-9px)}91.81%{transform:translate(5px,0px)}93.4%{transform:none}100%{transform:none}}
+@keyframes r67-lean-arm-l{0%{transform:none}5.56%{transform:rotate(3deg)}8.33%{transform:rotate(-3deg)}9.03%{transform:none}12.15%{transform:rotate(3.2deg)}17.36%{transform:rotate(32.5deg)}19.44%{transform:rotate(31.5deg)}77.78%{transform:rotate(31.5deg)}79.86%{transform:rotate(32.8deg)}82.64%{transform:rotate(6.3deg)}85.42%{transform:rotate(4deg)}88.19%{transform:rotate(-3deg)}90.97%{transform:rotate(2deg)}94.44%{transform:rotate(-1deg)}100%{transform:none}}
+@keyframes r67-lean-fore-l{0%{transform:none}6.25%{transform:rotate(4deg)}9.03%{transform:rotate(-3deg)}12.15%{transform:rotate(13.9deg)}17.36%{transform:rotate(96.6deg)}19.44%{transform:rotate(92.9deg)}77.78%{transform:rotate(92.9deg)}79.86%{transform:rotate(97.5deg)}82.64%{transform:rotate(18.6deg)}85.42%{transform:rotate(6deg)}88.19%{transform:rotate(-4deg)}91.67%{transform:rotate(3deg)}95.14%{transform:rotate(-1.2deg)}100%{transform:none}}
+@keyframes r67-lean-arm-r{0%{transform:none}3.47%{transform:rotate(-3deg)}6.94%{transform:rotate(3deg)}10.42%{transform:rotate(-2deg)}13.89%{transform:none}18.75%{transform:rotate(8.3deg)}20.83%{transform:rotate(5deg)}22.92%{transform:rotate(7.7deg)}79.17%{transform:rotate(7.7deg)}83.33%{transform:rotate(-3deg)}86.11%{transform:rotate(4deg)}88.89%{transform:rotate(-3deg)}92.36%{transform:rotate(2deg)}95.83%{transform:rotate(-1deg)}100%{transform:none}}
+@keyframes r67-lean-fore-r{0%{transform:none}4.17%{transform:rotate(-4deg)}7.64%{transform:rotate(4deg)}11.11%{transform:rotate(-3deg)}13.89%{transform:none}18.75%{transform:rotate(-4deg)}21.53%{transform:rotate(2deg)}24.31%{transform:none}79.17%{transform:none}84.72%{transform:rotate(-5deg)}88.19%{transform:rotate(4deg)}91.67%{transform:rotate(-3deg)}95.83%{transform:rotate(1deg)}100%{transform:none}}
+@keyframes r67-lean-head{0%{transform:none}2.08%{transform:rotate(-3deg)}11.81%{transform:rotate(-2deg)}16.67%{transform:none}20.14%{transform:rotate(-5deg)}22.22%{transform:rotate(-3.5deg)}24.31%{transform:rotate(-4.2deg)}38.89%{transform:rotate(-4.2deg)}43.75%{transform:rotate(2deg)}51.39%{transform:rotate(2deg)}56.94%{transform:rotate(-4.2deg)}79.17%{transform:rotate(-4.2deg)}82.64%{transform:none}84.72%{transform:rotate(2deg)}93.4%{transform:rotate(1deg)}95.83%{transform:rotate(-1deg)}100%{transform:none}}
+@keyframes r67-lean-lens{0%{transform:none}2.08%{transform:translate(-5px,0px)}11.81%{transform:translate(-5px,0px)}17.36%{transform:translate(-2px,0px)}20.83%{transform:none}29.17%{transform:none}29.65%{transform:scale(1,0.1)}30.56%{transform:none}38.89%{transform:none}43.75%{transform:translate(-5px,0px)}48.61%{transform:translate(-5px,0px)}49.1%{transform:translate(-5px,0px) scale(1,0.1)}50%{transform:translate(-5px,0px)}51.39%{transform:translate(-5px,0px)}56.94%{transform:none}66.67%{transform:none}67.15%{transform:scale(1,0.1)}68.06%{transform:none}79.17%{transform:none}82.64%{transform:translate(3px,0px)}93.4%{transform:translate(3px,0px)}96.53%{transform:none}100%{transform:none}}
+@keyframes r67-nap-up{0%{transform:none}7.14%{transform:none}14.29%{transform:translate(0px,4px)}22.62%{transform:translate(0px,3px)}29.76%{transform:translate(0px,4.2px)}36.9%{transform:translate(0px,3px)}44.05%{transform:translate(0px,4.3px)}51.19%{transform:translate(0px,3.1px)}58.33%{transform:translate(0px,4.6px)}63.69%{transform:translate(0px,5.5px)}66.07%{transform:translate(0px,-3.5px)}69.64%{transform:translate(0px,1.2px)}73.81%{transform:translate(0px,-0.6px)}78.57%{transform:translate(0px,0.3px)}83.33%{transform:none}100%{transform:none}}
+@keyframes r67-nap-head{0%{transform:none}5.95%{transform:none}13.1%{transform:translate(0px,4.5px) rotate(3deg)}20.24%{transform:translate(0px,1.5px) rotate(1deg)}29.76%{transform:translate(0px,6px) rotate(5deg)}38.1%{transform:translate(0px,2.5px) rotate(2deg)}47.62%{transform:translate(0px,6.5px) rotate(5.5deg)}54.76%{transform:translate(0px,3px) rotate(2.5deg)}61.9%{transform:translate(0px,9px) rotate(8deg)}65.48%{transform:translate(0px,9.5px) rotate(8deg)}67.26%{transform:translate(0px,-5px) rotate(-4deg)}70.83%{transform:translate(0px,1px) rotate(-7deg)}76.19%{transform:rotate(6deg)}81.55%{transform:rotate(-2.5deg)}86.9%{transform:rotate(1deg)}91.67%{transform:none}100%{transform:none}}
+@keyframes r67-nap-lens{0%{transform:none}4.76%{transform:none}10.71%{transform:scale(1,0.5)}17.86%{transform:scale(1,0.1)}55.95%{transform:scale(1,0.1)}58.93%{transform:scale(1,0.4)}61.9%{transform:scale(1,0.1)}65.48%{transform:scale(1,0.1)}66.9%{transform:scale(1,1.1)}70.24%{transform:translate(-4px,0px)}76.19%{transform:translate(4px,0px)}82.14%{transform:none}100%{transform:none}}
+@keyframes r67-nap-arm-l{0%{transform:none}7.14%{transform:none}22.62%{transform:rotate(-2deg)}36.9%{transform:rotate(-2.5deg)}51.19%{transform:rotate(-2.5deg)}65.48%{transform:rotate(-3deg)}67.86%{transform:rotate(7deg)}70.83%{transform:rotate(-5deg)}74.4%{transform:rotate(3.5deg)}78.57%{transform:rotate(-1.5deg)}83.33%{transform:rotate(0.5deg)}100%{transform:none}}
+@keyframes r67-nap-arm-r{0%{transform:none}7.14%{transform:none}22.62%{transform:rotate(2deg)}36.9%{transform:rotate(2.5deg)}51.19%{transform:rotate(2.5deg)}65.48%{transform:rotate(3deg)}69.05%{transform:rotate(-7deg)}72.02%{transform:rotate(5deg)}75.6%{transform:rotate(-3.5deg)}79.76%{transform:rotate(1.5deg)}84.52%{transform:rotate(-0.5deg)}100%{transform:none}}
+@keyframes r67-nap-fore-l{0%{transform:none}22.62%{transform:rotate(4deg)}51.19%{transform:rotate(5deg)}65.48%{transform:rotate(5deg)}68.45%{transform:rotate(-9deg)}71.43%{transform:rotate(7deg)}75%{transform:rotate(-4deg)}79.76%{transform:rotate(2deg)}84.52%{transform:rotate(-0.6deg)}100%{transform:none}}
+@keyframes r67-nap-fore-r{0%{transform:none}22.62%{transform:rotate(-4deg)}51.19%{transform:rotate(-5deg)}65.48%{transform:rotate(-5deg)}69.64%{transform:rotate(9deg)}72.62%{transform:rotate(-7deg)}76.19%{transform:rotate(4deg)}80.95%{transform:rotate(-2deg)}85.71%{transform:rotate(0.6deg)}100%{transform:none}}
+@keyframes r67-nap-needle{0%{transform:none}7.14%{transform:none}19.05%{transform:rotate(95deg)}65.48%{transform:rotate(95deg)}67.86%{transform:rotate(-25deg)}70.83%{transform:rotate(12deg)}75%{transform:rotate(-4deg)}79.76%{transform:none}100%{transform:none}}
+@keyframes r67-nap-lever{0%{transform:none}7.14%{transform:none}23.81%{transform:rotate(8deg)}65.48%{transform:rotate(8deg)}67.86%{transform:rotate(-6deg)}71.43%{transform:rotate(2deg)}76.19%{transform:none}100%{transform:none}}
+@keyframes r67-nap-reel{0%{transform:none}7.14%{transform:none}17.86%{transform:rotate(3deg)}53.57%{transform:rotate(5deg)}61.9%{transform:rotate(12deg)}65.48%{transform:rotate(12deg)}67.86%{transform:rotate(-10deg)}71.43%{transform:rotate(5deg)}76.19%{transform:rotate(-2deg)}80.95%{transform:none}100%{transform:none}}
+@keyframes r67-fix-needle{0%{transform:none}2.17%{transform:none}3.91%{transform:rotate(80deg)}5.65%{transform:rotate(-20deg)}7.39%{transform:rotate(150deg)}9.13%{transform:rotate(40deg)}10.87%{transform:rotate(220deg)}13.04%{transform:rotate(110deg)}15.22%{transform:rotate(180deg)}44.57%{transform:rotate(180deg)}45.65%{transform:rotate(170deg)}53.26%{transform:rotate(180deg)}54.35%{transform:rotate(168deg)}56.96%{transform:rotate(14deg)}60.87%{transform:rotate(-6deg)}65.22%{transform:rotate(2deg)}69.57%{transform:none}100%{transform:none}}
+@keyframes r67-fix-head{0%{transform:none}15.22%{transform:none}23.91%{transform:translate(0px,3px) rotate(-5deg)}43.48%{transform:translate(0px,3px) rotate(-5deg)}45.22%{transform:translate(0px,4.5px) rotate(-6deg)}48.91%{transform:translate(0px,3px) rotate(-5deg)}54.35%{transform:translate(0px,3px) rotate(-5deg)}56.09%{transform:translate(0px,4.5px) rotate(-6deg)}59.78%{transform:translate(0px,3px) rotate(-5deg)}69.57%{transform:translate(0px,3px) rotate(-5deg)}76.09%{transform:translate(0px,-1px)}80.43%{transform:translate(0px,4px)}85.87%{transform:translate(0px,-0.5px)}91.3%{transform:none}100%{transform:none}}
+@keyframes r67-fix-look{0%{transform:none}15.22%{transform:none}23.91%{transform:translate(-2px,3px)}69.57%{transform:translate(-2px,3px)}76.09%{transform:none}100%{transform:none}}
+@keyframes r67-fix-up{0%{transform:none}15.22%{transform:none}23.91%{transform:translate(0px,1.2px)}44.57%{transform:translate(0px,1.2px)}45.65%{transform:translate(0px,2.6px)}50%{transform:translate(0px,1.2px)}54.35%{transform:translate(0px,1.2px)}55.43%{transform:translate(0px,2.8px)}60.87%{transform:translate(0px,1.2px)}71.74%{transform:translate(0px,1.2px)}78.26%{transform:none}100%{transform:none}}
+@keyframes r67-fix-arm-r{0%{transform:none}19.57%{transform:none}34.78%{transform:rotate(178.4deg)}38.04%{transform:rotate(178.4deg)}42.39%{transform:rotate(-44.6deg)}44.35%{transform:rotate(-40.6deg)}46.74%{transform:rotate(-48.6deg)}53.26%{transform:rotate(-44.6deg)}55.22%{transform:rotate(-30.1deg)}57.83%{transform:rotate(-48.6deg)}65.22%{transform:rotate(-46.6deg)}73.91%{transform:rotate(2deg)}80.43%{transform:rotate(-1deg)}85.87%{transform:rotate(0.4deg)}100%{transform:none}}
+@keyframes r67-fix-fore-r{0%{transform:none}19.57%{transform:none}34.78%{transform:rotate(147.1deg)}38.04%{transform:rotate(147.1deg)}42.39%{transform:rotate(131.1deg)}44.35%{transform:rotate(125.1deg)}46.74%{transform:rotate(139.1deg)}53.26%{transform:rotate(131.1deg)}55.22%{transform:rotate(120.8deg)}57.83%{transform:rotate(139.1deg)}65.22%{transform:rotate(135.1deg)}73.91%{transform:rotate(3deg)}80.43%{transform:rotate(-2deg)}85.87%{transform:rotate(0.6deg)}100%{transform:none}}
+@keyframes r67-fix-lever{0%{transform:none}2.17%{transform:none}3.91%{transform:rotate(-30deg)}5.65%{transform:rotate(6deg)}7.39%{transform:rotate(-45deg)}9.13%{transform:rotate(-10deg)}10.87%{transform:rotate(-55deg)}15.22%{transform:rotate(-40deg)}44.35%{transform:rotate(-40deg)}46.09%{transform:rotate(-30deg)}53.26%{transform:rotate(-38deg)}55.22%{transform:rotate(-36deg)}57.83%{transform:rotate(5deg)}61.96%{transform:rotate(-2deg)}65.22%{transform:none}100%{transform:none}}
 </style>
   <title id="reel-title">Reel — film projector robot</title>
   <desc id="reel-desc">A forest green robot whose head is a film projector with two spoked reels standing on top and two round lens eyes, a boxy body with a dial, a lever switch and vent slats, ring jointed arms with pincers, and legs with ring knees on flat feet.</desc>
   <g class="tip-r" style="transform-origin:314px 476px"><g class="tip-l" style="transform-origin:198px 476px">
+  <g class="all" style="transform-origin:256px 478px">
+  <g class="leg-n"><g class="shin-n" style="transform-origin:226px 452px"><path d="M226 344v108" stroke="#697785" stroke-width="13"/><circle cx="226" cy="398" r="13" fill="#3d4853"/><circle cx="226" cy="398" r="6" fill="#92a1b2"/></g><path d="M206 452h40q6 0 6 6v10h-52v-10q0-6 6-6Z" fill="#3f8a55"/><path d="M238 452h8q6 0 6 6v10h-14Z" fill="#2c6b40"/><path d="M198 468h56v8h-56Z" fill="#3d4853"/></g>
+  <g class="leg-f"><g class="shin-f" style="transform-origin:286px 452px"><path d="M286 344v108" stroke="#697785" stroke-width="13"/><circle cx="286" cy="398" r="13" fill="#3d4853"/><circle cx="286" cy="398" r="6" fill="#92a1b2"/></g><path d="M266 452h40q6 0 6 6v10h-52v-10q0-6 6-6Z" fill="#3f8a55"/><path d="M298 452h8q6 0 6 6v10h-14Z" fill="#2c6b40"/><path d="M258 468h56v8h-56Z" fill="#3d4853"/></g>
+  <g class="up" style="transform-origin:256px 344px">
   <!-- Film reels -->
   <g class="head" style="transform-origin:274px 198px">
     <rect x="208" y="96" width="12" height="26" fill="#697785"/>
@@ -67,15 +127,6 @@
     <circle cx="150" cy="276" r="12" fill="#3d4853"/>
     <circle cx="150" cy="276" r="5" fill="#92a1b2"/>
   </g>
-  <!-- Legs with ring knees and flat feet -->
-  <path d="M226 344v108m60-108v108" stroke="#697785" stroke-width="13"/>
-  <circle cx="226" cy="398" r="13" fill="#3d4853"/>
-  <circle cx="286" cy="398" r="13" fill="#3d4853"/>
-  <circle cx="226" cy="398" r="6" fill="#92a1b2"/>
-  <circle cx="286" cy="398" r="6" fill="#92a1b2"/>
-  <path d="M206 452h40q6 0 6 6v10h-52v-10q0-6 6-6Zm60 0h40q6 0 6 6v10h-52v-10q0-6 6-6Z" fill="#3f8a55"/>
-  <path d="M238 452h8q6 0 6 6v10h-14Zm60 0h8q6 0 6 6v10h-14Z" fill="#2c6b40"/>
-  <path d="M198 468h56v8h-56Zm60 0h56v8h-56Z" fill="#3d4853"/>
   <!-- Boxy body with a dial and a lever switch -->
   <rect x="238" y="194" width="36" height="20" fill="#3d4853"/>
   <rect x="180" y="210" width="152" height="136" rx="14" fill="#3f8a55"/>
@@ -128,5 +179,5 @@
       </g>
     </g>
   </g>
-  </g></g>
+  </g></g></g></g>
 </svg>

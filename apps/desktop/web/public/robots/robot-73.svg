@@ -1,4 +1,4 @@
-<svg width="236" height="452" viewBox="138 24 236 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="clerk-title clerk-desc" class="r73" data-idle="blink blink blink blink lean shrug tap" data-work="stamp stamp tap lean blink blink"><style>
+<svg width="236" height="452" viewBox="138 24 236 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="clerk-title clerk-desc" class="r73" data-idle="blink blink blink blink lean shrug tap" data-work="stamp stamp tap lean blink blink" data-rare="nap"><style>
 .r73[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r73-blink .4s ease-in-out}
 .r73[data-act=lean] .body{animation:r73-lean 1.8s ease-in-out}
 .r73[data-act=lean] .head{animation:r73-peer 1.8s ease-in-out}
@@ -53,6 +53,24 @@
 @keyframes r73-brace{0%,100%{transform:none}34%,46%{transform:rotate(2deg)}58%{transform:rotate(-4deg)}72%{transform:rotate(2deg)}86%{transform:rotate(-1deg)}}
 @keyframes r73-kick{0%,56%,100%{transform:none}64%{transform:rotate(-50deg)}74%{transform:rotate(15deg)}84%{transform:rotate(-6deg)}93%{transform:rotate(2deg)}}
 @keyframes r73-ant-stamp{0%,100%{transform:none}38%{transform:rotate(6deg)}59%{transform:rotate(-12deg)}71%{transform:rotate(8deg)}82%{transform:rotate(-4deg)}92%{transform:rotate(2deg)}}
+.r73[data-act=nap] .body{animation:r73-nap-body 8.2s ease-in-out}
+.r73[data-act=nap] .head{animation:r73-nap-head 8.2s ease-in-out}
+.r73[data-act=nap] .ant{animation:r73-nap-ant 8.2s ease-in-out}
+.r73[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r73-nap-eyes 8.2s ease-in-out}
+.r73[data-act=nap] .arm-l{animation:r73-nap-arm-l 8.2s ease-in-out}
+.r73[data-act=nap] .fore-l{animation:r73-nap-fore-l 8.2s ease-in-out}
+.r73[data-act=nap] .arm-r{animation:r73-nap-arm-r 8.2s ease-in-out}
+.r73[data-act=nap] .fore-r{animation:r73-nap-fore-r 8.2s ease-in-out}
+.r73[data-act=nap] .needle{animation:r73-nap-needle 8.2s ease-in-out}
+@keyframes r73-nap-body{0%,90.2%,100%{transform:translate(0px,0px) rotate(0deg)}12.2%{transform:translate(0px,2.5px) rotate(0deg)}19.5%{transform:translate(0px,1.8px) rotate(0deg)}29.3%{transform:translate(0px,4.5px) rotate(0.6deg)}40.2%{transform:translate(0px,3.3px) rotate(0.4deg)}47%{transform:translate(0px,5.4px) rotate(0.8deg)}53.7%{transform:translate(0px,3.5px) rotate(0.4deg)}60.4%{transform:translate(0px,5.6px) rotate(0.8deg)}65.9%{transform:translate(0px,4px) rotate(0.6deg)}70.1%{transform:translate(0px,7.5px) rotate(1.4deg)}72.2%{transform:translate(0px,-3.5px) rotate(-1deg)}75%{transform:translate(0px,1.4px) rotate(0deg)}79.3%{transform:translate(0px,-0.6px) rotate(0.5deg)}84.8%{transform:translate(0px,0.3px) rotate(-0.2deg)}}
+@keyframes r73-nap-head{0%,4.9%,100%{transform:translate(0px,0px) rotate(0deg)}12.2%{transform:translate(0px,3px) rotate(1.5deg)}18.3%{transform:translate(0px,1.2px) rotate(0.5deg)}28.7%{transform:translate(0px,6px) rotate(4deg)}34.1%{transform:translate(0px,5px) rotate(3.2deg)}47%,65.9%{transform:translate(0px,6px) rotate(3.8deg)}60.4%{transform:translate(0px,6.2px) rotate(4deg)}70.1%{transform:translate(0px,9px) rotate(6.5deg)}72.2%{transform:translate(0px,-3px) rotate(-4.5deg)}75%{transform:translate(0px,0.5px) rotate(0deg)}79.3%{transform:translate(0px,0px) rotate(-3.2deg)}83.5%{transform:translate(0px,0px) rotate(2.4deg)}89%{transform:translate(0px,0px) rotate(-0.8deg)}95.1%{transform:translate(0px,0px) rotate(0.2deg)}}
+@keyframes r73-nap-ant{0%,92.7%,100%{transform:rotate(0deg)}28.7%,75.6%{transform:rotate(7deg)}34.1%{transform:rotate(3deg)}70.1%{transform:rotate(12deg)}72.2%{transform:rotate(-12deg)}80.5%{transform:rotate(-3deg)}86.6%{transform:rotate(1.2deg)}}
+@keyframes r73-nap-eyes{0%,74.4%,88.4%,100%{transform:translate(0px,0px) scale(1,1)}7.3%{transform:translate(0px,0px) scale(1,0.6)}12.2%{transform:translate(0px,1px) scale(1,0.45)}18.3%{transform:translate(0px,0px) scale(1,0.75)}28%,70.1%{transform:translate(0px,1px) scale(1,0.1)}72.2%{transform:translate(0px,-1px) scale(1,1.25)}79.3%{transform:translate(-5px,0px) scale(1,1)}83.5%{transform:translate(5px,0px) scale(1,1)}}
+@keyframes r73-nap-arm-l{0%,100%{transform:rotate(0deg)}29.3%{transform:rotate(5deg)}47%,60.4%{transform:rotate(6deg)}68.3%{transform:rotate(5.5deg)}70.1%{transform:rotate(7deg)}72.2%{transform:rotate(-9deg)}76.2%{transform:rotate(4deg)}80.5%{transform:rotate(-1.4deg)}85.4%{transform:rotate(0.5deg)}}
+@keyframes r73-nap-fore-l{0%,100%{transform:rotate(0deg)}30%,69%{transform:rotate(8deg)}47.7%,61.1%{transform:rotate(9deg)}70.9%{transform:rotate(10deg)}72.9%{transform:rotate(-12deg)}77%{transform:rotate(6deg)}81.2%{transform:rotate(-2deg)}86.1%{transform:rotate(0.8deg)}}
+@keyframes r73-nap-arm-r{0%,100%{transform:rotate(0deg)}29.3%{transform:rotate(-5deg)}47%,60.4%{transform:rotate(-6deg)}68.3%{transform:rotate(-5.5deg)}70.1%{transform:rotate(-7deg)}72.2%{transform:rotate(9deg)}76.2%{transform:rotate(-4deg)}80.5%{transform:rotate(1.4deg)}85.4%{transform:rotate(-0.5deg)}}
+@keyframes r73-nap-fore-r{0%,100%{transform:rotate(0deg)}30%,69%{transform:rotate(-8deg)}47.7%,61.1%{transform:rotate(-9deg)}70.9%{transform:rotate(-10deg)}72.9%{transform:rotate(12deg)}77%{transform:rotate(-6deg)}81.2%{transform:rotate(2deg)}86.1%{transform:rotate(-0.8deg)}}
+@keyframes r73-nap-needle{0%,85.4%,100%{transform:rotate(0deg)}24.4%{transform:rotate(30deg)}46.3%{transform:rotate(70deg)}68.3%{transform:rotate(80deg)}72.2%{transform:rotate(-40deg)}76.2%{transform:rotate(15deg)}80.5%{transform:rotate(-6deg)}}
 </style>
   <title id="clerk-title">Clerk — pedestal robot</title>
   <desc id="clerk-desc">A cyan tin-toy robot with a square head, two ringed eyes and an antenna knob, a boxy torso with a chest dial and a row of switches, ring jointed arms with pincers, standing on a single column with a ring joint over a heavy domed base.</desc>

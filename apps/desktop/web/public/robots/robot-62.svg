@@ -1,4 +1,4 @@
-<svg width="280" height="422" viewBox="116 56 280 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="meter-title meter-desc" class="r62" data-idle="tilt tilt shrug bob" data-work="bob bob peak shrug tilt"><style>
+<svg width="280" height="422" viewBox="116 56 280 422" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="meter-title meter-desc" class="r62" data-idle="tilt tilt shrug bob" data-work="bob bob peak shrug tilt" data-rare="lean nap fix"><style>
 .r62[data-act=tilt] .head{animation:r62-tilt 1.8s ease-in-out}
 .r62[data-act=tilt] .vu{animation:r62-glance 1.8s ease-in-out}
 .r62[data-act=tilt] .ant{animation:r62-ant 1.8s ease-in-out}
@@ -44,17 +44,86 @@
 @keyframes r62-jerk-r{0%,100%{transform:none}6%{transform:translateY(1px) rotate(2deg)}14%{transform:translateY(-6px) rotate(-22deg)}24%{transform:translateY(-5px) rotate(-19deg)}44%{transform:translateY(1px) rotate(4deg)}60%{transform:translateY(0) rotate(-2deg)}76%{transform:translateY(0) rotate(.8deg)}}
 @keyframes r62-flinch-l{0%,100%{transform:none}6%{transform:rotate(2deg)}16%{transform:rotate(-40deg)}26%{transform:rotate(-44deg)}48%{transform:rotate(8deg)}64%{transform:rotate(-4deg)}82%{transform:rotate(1.5deg)}}
 @keyframes r62-flinch-r{0%,100%{transform:none}6%{transform:rotate(-2deg)}16%{transform:rotate(40deg)}26%{transform:rotate(44deg)}48%{transform:rotate(-8deg)}64%{transform:rotate(4deg)}82%{transform:rotate(-1.5deg)}}
+.r62[data-act=lean] .all{animation:r62-lean-all 14.1s ease-in-out}
+.r62[data-act=lean] .leg-l{animation:r62-lean-leg-l 14.1s ease-in-out}
+.r62[data-act=lean] .leg-r{animation:r62-lean-leg-r 14.1s ease-in-out}
+.r62[data-act=lean] .bot{animation:r62-lean-bot 14.1s ease-in-out}
+.r62[data-act=lean] .shin-l,.r62[data-act=lean] .shin-r{animation:r62-lean-shin-l 14.1s ease-in-out}
+.r62[data-act=lean] .arm-l{animation:r62-lean-arm-l 14.1s ease-in-out}
+.r62[data-act=lean] .fore-l{animation:r62-lean-fore-l 14.1s ease-in-out}
+.r62[data-act=lean] .arm-r{animation:r62-lean-arm-r 14.1s ease-in-out}
+.r62[data-act=lean] .fore-r{animation:r62-lean-fore-r 14.1s ease-in-out}
+.r62[data-act=lean] .hand-l{animation:r62-lean-hand-l 14.1s ease-in-out}
+.r62[data-act=lean] .head{animation:r62-lean-head 14.1s ease-in-out}
+.r62[data-act=lean] .vu{animation:r62-lean-vu 14.1s ease-in-out}
+.r62[data-act=lean] .ant{animation:r62-lean-ant 14.1s ease-in-out}
+.r62[data-act=nap] .bot{animation:r62-nap-bot 8.2s ease-in-out}
+.r62[data-act=nap] .pop{animation:r62-nap-pop 8.2s ease-in-out}
+.r62[data-act=nap] .neck{animation:r62-nap-neck 8.2s ease-in-out}
+.r62[data-act=nap] .head{animation:r62-nap-head 8.2s ease-in-out}
+.r62[data-act=nap] .vu{animation:r62-nap-vu 8.2s ease-in-out}
+.r62[data-act=nap] .arm-l{animation:r62-nap-arm-l 8.2s ease-in-out}
+.r62[data-act=nap] .fore-l{animation:r62-nap-fore-l 8.2s ease-in-out}
+.r62[data-act=nap] .arm-r{animation:r62-nap-arm-r 8.2s ease-in-out}
+.r62[data-act=nap] .fore-r{animation:r62-nap-fore-r 8.2s ease-in-out}
+.r62[data-act=nap] .ant{animation:r62-nap-ant 8.2s ease-in-out}
+.r62[data-act=nap] .bulb{animation:r62-nap-bulb 8.2s ease-in-out}
+.r62[data-act=fix] .vr{animation:r62-fix-vr 4.6s ease-in-out}
+.r62[data-act=fix] .vl{animation:r62-fix-vl 4.6s ease-in-out}
+.r62[data-act=fix] .ant{animation:r62-fix-ant 4.6s ease-in-out}
+.r62[data-act=fix] .head{animation:r62-fix-head 4.6s ease-in-out}
+.r62[data-act=fix] .pop{animation:r62-fix-pop 4.6s ease-in-out}
+.r62[data-act=fix] .neck{animation:r62-fix-neck 4.6s ease-in-out}
+.r62[data-act=fix] .arm-r{animation:r62-fix-arm-r 4.6s ease-in-out}
+.r62[data-act=fix] .fore-r{animation:r62-fix-fore-r 4.6s ease-in-out}
+.r62[data-act=fix] .bot{animation:r62-fix-bot 4.6s ease-in-out}
+@keyframes r62-lean-all{0%,2.1%,95.4%,100%{transform:none}3.7%,93.8%{transform:translate(-9px,0)}5.3%,92.2%{transform:translate(-18px,0)}6.9%,90.6%{transform:translate(-27px,0)}8.5%,89%{transform:translate(-36px,0)}10.1%,87.4%{transform:translate(-45px,0)}11.7%,12.8%,80.1%,85.8%{transform:translate(-54px,0)}}
+@keyframes r62-lean-leg-l{0%,2.1%,5.3%,8.5%,11.7%,85.8%,89%,92.2%,95.4%,100%{transform:none}2.9%,6.1%,9.3%{transform:translate(-4.5px,-10px)}3.7%,6.9%,10.1%,87.4%,90.6%,93.8%{transform:translate(-9px,0)}88.2%,91.4%,94.6%{transform:translate(-4.5px,-9px)}}
+@keyframes r62-lean-leg-r{0%,2.1%,5.3%,8.5%,11.7%,85.8%,89%,92.2%,95.4%,100%{transform:none}3.7%,6.9%,10.1%,87.4%,90.6%,93.8%{transform:translate(9px,0)}4.5%,7.7%,10.9%{transform:translate(4.5px,-9px)}86.6%,89.8%,93%{transform:translate(4.5px,-10px)}}
+@keyframes r62-lean-bot{0%,2.1%,4.3%,12.4%,100%{transform:none}2.9%,4.5%,6.1%,7.7%,9.3%,10.9%,86.6%,88.2%,89.8%,91.4%,93%,94.6%{transform:translate(0,-1.5px) rotate(0deg)}3%,3.7%,6.9%,10.1%,87.4%,90.6%,93.8%{transform:translate(0,2.5px) rotate(0deg)}5.3%,8.5%,11.7%,89%,92.2%,95.4%{transform:translate(0,0.5px) rotate(0deg)}12.8%{transform:translate(0,0.1px) rotate(0deg)}18.1%{transform:translate(-9.2px,1.5px) rotate(-10deg)}18.4%{transform:translate(-9.3px,1.6px) rotate(-10.1deg)}19.3%{transform:translate(-9.6px,1.2px) rotate(-10.4deg)}20.7%{transform:translate(-9.2px,0.5px) rotate(-10deg)}20.9%,24.1%,38.3%,56%,70.2%,80.1%{transform:translate(-9.2px,0.4px) rotate(-10deg)}31.2%,63.1%{transform:translate(-9.2px,-1.4px) rotate(-10deg)}82.3%{transform:translate(-9.9px,1.9px) rotate(-10.7deg)}85.1%{transform:translate(-2px,-0.9px) rotate(-2.1deg)}85.8%{transform:translate(0,-1.2px) rotate(0deg)}96.5%{transform:translate(0,3px) rotate(0deg)}98%{transform:translate(0,-0.8px) rotate(0deg)}99.3%{transform:translate(0,0.3px) rotate(0deg)}}
+@keyframes r62-lean-shin-l{0%,12.8%,85.8%,100%{transform:none}18.1%,20.7%,80.1%{transform:rotate(-5deg)}19.3%{transform:rotate(-5.2deg)}82.3%{transform:rotate(-5.4deg)}}
+@keyframes r62-lean-arm-l{0%,2.1%,99.3%,100%{transform:none}5.3%,88.3%{transform:rotate(-4deg)}8.5%,90.1%{transform:rotate(3deg)}10.3%{transform:rotate(-10deg)}11.7%{transform:rotate(8deg)}15.6%{transform:rotate(51deg)}17%{transform:rotate(78.8deg)}18.1%,20.7%,80.1%{transform:rotate(92.7deg)}19.3%{transform:rotate(93.9deg)}82.3%{transform:rotate(90.7deg)}83.7%{transform:rotate(55.6deg)}85.1%,86.5%{transform:rotate(-8deg)}91.8%{transform:rotate(-3deg)}94.3%{transform:rotate(2deg)}97.5%{transform:rotate(-1deg)}}
+@keyframes r62-lean-fore-l{0%,2.1%,99.3%,100%{transform:none}5.3%{transform:rotate(-5deg)}8.5%,91.8%{transform:rotate(4deg)}10.3%{transform:rotate(90deg)}11.7%,86.5%{transform:rotate(140deg)}15.6%,83.7%{transform:rotate(112deg)}17%{transform:rotate(92deg)}18.1%,20.7%,80.1%{transform:rotate(70.4deg)}19.3%{transform:rotate(71.9deg)}82.3%{transform:rotate(73.4deg)}85.1%{transform:rotate(148deg)}88.3%{transform:rotate(20deg)}90.1%{transform:rotate(-6deg)}94.3%{transform:rotate(-2deg)}97.5%{transform:rotate(1deg)}}
+@keyframes r62-lean-arm-r{0%,2.1%,15.6%,85.5%,99.3%,100%{transform:none}5.3%{transform:rotate(4deg)}8.5%{transform:rotate(-3deg)}11.7%{transform:rotate(2deg)}19.1%{transform:rotate(7.5deg)}20.9%{transform:rotate(5.5deg)}22.7%,80.1%{transform:rotate(6.5deg)}87.9%{transform:rotate(-4deg)}91.1%{transform:rotate(3deg)}94.3%{transform:rotate(-2deg)}97.5%{transform:rotate(1deg)}}
+@keyframes r62-lean-fore-r{0%,2.1%,16%,24.8%,80.1%,100%{transform:none}5.7%{transform:rotate(5deg)}8.9%{transform:rotate(-4deg)}12.1%{transform:rotate(3deg)}19.9%{transform:rotate(6deg)}21.6%{transform:rotate(-2deg)}23.4%{transform:rotate(1deg)}86.2%,91.8%{transform:rotate(4deg)}88.7%{transform:rotate(-5deg)}95%{transform:rotate(-3deg)}98.2%{transform:rotate(1.5deg)}}
+@keyframes r62-lean-hand-l{0%,8.5%,86.5%,100%{transform:none}11.7%{transform:rotate(5.4deg) scale(0.95,1)}15.6%{transform:rotate(8.1deg) scale(0.9,1)}17%{transform:rotate(18.9deg) scale(0.75,1)}18.1%,80.1%{transform:rotate(27deg) scale(0.6,1)}82.3%{transform:rotate(31deg) scale(0.6,1)}83.7%{transform:rotate(10.8deg) scale(0.85,1)}}
+@keyframes r62-lean-head{0%,16.3%,83.3%,100%{transform:none}1.8%{transform:rotate(-3deg)}5.3%,11.7%{transform:rotate(-2deg)}8.5%{transform:rotate(-4deg)}19.5%{transform:rotate(4.5deg)}21.3%{transform:rotate(3.2deg)}23%,41.8%,58.9%,80.1%{transform:rotate(3.8deg)}46.8%,53.9%{transform:rotate(-2.5deg)}85.8%{transform:rotate(3deg)}95.4%{transform:rotate(2deg)}97.5%{transform:rotate(-1.5deg)}98.9%{transform:rotate(0.5deg)}}
+@keyframes r62-lean-vu{0%,16.3%,27%,30.1%,32.3%,41.8%,58.9%,61%,64.2%,66.3%,73.8%,77%,80.9%,100%{transform:none}1.8%,11.7%{transform:rotate(-22deg)}27.8%{transform:rotate(46deg);animation-timing-function:ease-out}31.2%,65.2%{transform:rotate(6deg)}46.8%,53.9%{transform:rotate(-26deg)}61.8%{transform:rotate(52deg);animation-timing-function:ease-out}74.6%{transform:rotate(40deg);animation-timing-function:ease-out}83.3%,95.4%{transform:rotate(24deg)}97.5%{transform:rotate(-6deg)}98.9%{transform:rotate(2deg)}}
+@keyframes r62-lean-ant{0%,2.1%,15.6%,18.4%,28.4%,80.1%,100%{transform:none}3.9%{transform:rotate(6deg)}6.4%,95.4%{transform:rotate(-4deg)}9.2%,91.8%{transform:rotate(5deg)}12.4%{transform:rotate(-3deg)}20.2%{transform:rotate(10deg)}22.3%{transform:rotate(-6deg)}24.5%,97.5%{transform:rotate(3deg)}26.6%,99.3%{transform:rotate(-1deg)}83%{transform:rotate(-8deg)}85.8%{transform:rotate(9deg)}88.7%{transform:rotate(-5deg)}}
+@keyframes r62-nap-bot{0%,3.7%,87.8%,100%{transform:none}19.5%{transform:translate(0,4px)}29.3%,48.8%{transform:translate(0,2.6px)}39%{transform:translate(0,4.2px)}58.5%{transform:translate(0,4.4px)}65.9%{transform:translate(0,3px)}73.2%{transform:translate(0,4.5px)}76.2%{transform:translate(0,5px)}77.7%{transform:translate(0,-2px);animation-timing-function:ease-out}80.5%{transform:translate(0,1px)}84.1%{transform:translate(0,-0.4px)}}
+@keyframes r62-nap-pop{0%,12.2%,86.6%,100%{transform:none}22%{transform:translateY(4px)}28%{transform:translateY(1.5px)}41.5%{transform:translateY(6px)}47.6%{transform:translateY(3px)}61%{transform:translateY(7px)}73.2%{transform:translateY(7.5px)}76.2%{transform:translateY(12px);animation-timing-function:ease-in}77.7%{transform:translateY(-5px);animation-timing-function:ease-out}80.5%{transform:translateY(1px)}83.5%{transform:translateY(-0.5px)}}
+@keyframes r62-nap-neck{0%,12.2%,22%,28%,41.5%,47.6%,61%,73.2%,80.5%,86.6%,100%{transform:none}76.2%{transform:none;animation-timing-function:ease-in}77.7%{transform:scaleY(1.25);animation-timing-function:ease-out}83.5%{transform:scaleY(1.02)}}
+@keyframes r62-nap-head{0%,12.2%,93.9%,100%{transform:none}22%{transform:rotate(3deg)}28%{transform:rotate(1deg)}41.5%{transform:rotate(-3deg)}47.6%{transform:rotate(-1deg)}61%{transform:rotate(2deg)}73.2%{transform:rotate(2.5deg)}76.2%{transform:rotate(5deg);animation-timing-function:ease-in}77.7%{transform:rotate(-2deg);animation-timing-function:ease-out}81.1%{transform:rotate(-4.5deg)}84.8%{transform:rotate(4.5deg)}88.4%{transform:rotate(-1.2deg)}91.5%{transform:rotate(0.4deg)}}
+@keyframes r62-nap-vu{0%,4.9%,93.9%,100%{transform:none}19.5%{transform:rotate(-30deg)}76.2%{transform:rotate(-32deg)}77.7%{transform:rotate(26deg);animation-timing-function:ease-out}81.1%{transform:rotate(-24deg)}84.8%{transform:rotate(24deg)}88.4%{transform:rotate(-6deg)}91.5%{transform:rotate(2deg)}}
+@keyframes r62-nap-arm-l{0%,4.9%,91.5%,100%{transform:none}19.5%,76.2%{transform:rotate(-8deg)}77.7%{transform:rotate(12deg);animation-timing-function:ease-out}80.5%{transform:rotate(-4deg)}84.1%{transform:rotate(2.5deg)}87.8%{transform:rotate(-1deg)}}
+@keyframes r62-nap-fore-l{0%,6.1%,92.7%,100%{transform:none}22%,76.2%{transform:rotate(6deg)}78.2%{transform:rotate(-14deg);animation-timing-function:ease-out}81.1%{transform:rotate(7deg)}84.8%{transform:rotate(-3deg)}88.4%{transform:rotate(1.2deg)}}
+@keyframes r62-nap-arm-r{0%,4.9%,91.5%,100%{transform:none}19.5%,76.2%{transform:rotate(8deg)}77.7%{transform:rotate(-12deg);animation-timing-function:ease-out}80.5%{transform:rotate(4deg)}84.1%{transform:rotate(-2.5deg)}87.8%{transform:rotate(1deg)}}
+@keyframes r62-nap-fore-r{0%,6.1%,92.7%,100%{transform:none}22%,76.2%{transform:rotate(-6deg)}78.2%{transform:rotate(14deg);animation-timing-function:ease-out}81.1%{transform:rotate(-7deg)}84.8%{transform:rotate(3deg)}88.4%{transform:rotate(-1.2deg)}}
+@keyframes r62-nap-ant{0%,12.2%,96.3%,100%{transform:none}23.2%{transform:rotate(3deg)}41.5%{transform:rotate(-3deg)}62.2%{transform:rotate(2deg)}76.2%{transform:rotate(4deg)}77.7%{transform:rotate(-14deg);animation-timing-function:ease-out}79.9%{transform:rotate(10deg)}82.9%{transform:rotate(-6deg)}86%{transform:rotate(3.5deg)}89.6%{transform:rotate(-1.5deg)}93.3%{transform:rotate(0.5deg)}}
+@keyframes r62-nap-bulb{0%,9.8%,77.4%,100%{fill:#f6c354}26.8%,76.2%{fill:#a99a72}}
+@keyframes r62-fix-vr{0%,4.3%,68.9%,100%{transform:none}5.7%{transform:rotate(34deg)}7%{transform:rotate(10deg)}8.3%{transform:rotate(42deg)}9.6%{transform:rotate(6deg)}10.9%{transform:rotate(48deg)}12.2%{transform:rotate(22deg)}13.5%{transform:rotate(54deg)}14.8%{transform:rotate(30deg)}16.5%,19.6%,55.4%{transform:rotate(62deg)}18.5%{transform:rotate(58deg)}57.6%{transform:rotate(-8deg);animation-timing-function:ease-out}62%{transform:rotate(5deg)}65.9%{transform:rotate(-2deg)}}
+@keyframes r62-fix-vl{0%,25%,71.7%,100%{transform:none}33.7%,64.1%{transform:rotate(22deg)}}
+@keyframes r62-fix-ant{0%,4.3%,19.1%,46.7%,55.4%,66.3%,79.3%,94.6%,100%{transform:none}6.5%,10.9%{transform:rotate(6deg)}8.7%,13%{transform:rotate(-5deg)}15.2%,51.5%,82.6%{transform:rotate(4deg)}17.4%,63.7%,87%{transform:rotate(-2deg)}48.5%{transform:rotate(-7deg)}54.1%{transform:rotate(-1deg)}57.2%{transform:rotate(-8deg)}60.2%{transform:rotate(5deg)}91.3%{transform:rotate(0.6deg)}}
+@keyframes r62-fix-head{0%,25%,72.8%,80.4%,100%{transform:none}33.7%,46.7%,51.1%,55.4%,59.8%,64.1%{transform:rotate(7deg)}48%{transform:rotate(3.5deg);animation-timing-function:ease-out}56.7%{transform:rotate(3deg);animation-timing-function:ease-out}77.2%{transform:rotate(-1deg)}}
+@keyframes r62-fix-pop{0%,72.8%,94.6%,100%{transform:none}77.2%{transform:translateY(3.5px)}81.5%{transform:translateY(-1px)}85.9%{transform:translateY(2px)}90.2%{transform:translateY(-0.4px)}}
+@keyframes r62-fix-neck{0%,72.8%,94.6%,100%{transform:none}77.2%{transform:scaleY(0.825)}81.5%{transform:scaleY(1.05)}85.9%{transform:scaleY(0.9)}90.2%{transform:scaleY(1.02)}}
+@keyframes r62-fix-arm-r{0%,30.4%,85.9%,100%{transform:none}42.4%,45.7%,51.1%,59.8%,64.1%{transform:rotate(-41.6deg)}47.8%,56.5%{transform:rotate(-42.5deg)}72.8%{transform:rotate(3deg)}77.2%{transform:rotate(-1.5deg)}81.5%{transform:rotate(0.6deg)}}
+@keyframes r62-fix-fore-r{0%,30.4%,87%,100%{transform:none}38%,68.5%{transform:rotate(-90deg)}42.4%,45.7%,51.1%,59.8%,64.1%{transform:rotate(-152deg)}47.8%,56.5%{transform:rotate(-164deg);animation-timing-function:ease-out}73.9%{transform:rotate(6deg)}78.3%{transform:rotate(-3deg)}82.6%{transform:rotate(1deg)}}
+@keyframes r62-fix-bot{0%,4.3%,19.6%,30.4%,73.9%,83.7%,100%{transform:none}6.5%,42.4%,55.4%,59.8%,64.1%{transform:translate(0,-1px)}10.9%,56.7%{transform:translate(0,0.5px)}78.3%{transform:translate(0,1.5px)}}
 </style>
   <title id="meter-title">Meter — gauge robot</title>
   <desc id="meter-desc">A sage boxy robot whose eyes are two analogue VU meters with matching needles, with ear knobs, a row of dials and a toggle switch on its chest, ring jointed arms with three finger hands, and legs with ring knees on flat feet.</desc>
-  <g class="bot">
+  <g class="all" style="transform-origin:182px 476px">
+  <g class="bot" style="transform-origin:256px 352px">
   <!-- Arms with three finger hands -->
   <g class="arm-l" style="transform-origin:176px 232px">
     <path d="M176 232l-38 48" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
     <g class="fore-l" style="transform-origin:138px 280px">
       <path d="M138 280v50" fill="none" stroke="#697785" stroke-width="14" stroke-linejoin="round"/>
+      <g class="hand-l" style="transform-origin:138px 330px">
       <path d="M130 342l-6 24M138 344v26M146 342l6 24" stroke="#3d4853" stroke-width="7" stroke-linecap="round"/>
       <rect x="124" y="326" width="28" height="16" rx="5" fill="#7d9c6a"/>
+      </g>
     </g>
     <circle cx="138" cy="280" r="13" fill="#3d4853"/>
     <circle cx="138" cy="280" r="6" fill="#92a1b2"/>
@@ -75,16 +144,28 @@
   </g>
   </g>
   <!-- Legs with ring knees and flat feet -->
-  <rect x="200" y="352" width="28" height="98" fill="#7d9c6a"/>
-  <rect x="284" y="352" width="28" height="98" fill="#7d9c6a"/>
-  <path d="M218 352h10v98h-10Zm84 0h10v98h-10Z" fill="#5f7d4f"/>
+  <g class="leg-l" style="transform-origin:214px 352px">
+  <g class="shin-l" style="transform-origin:214px 458px">
+  <rect x="200" y="336" width="28" height="122" fill="#7d9c6a"/>
+  <path d="M218 336h10v122h-10Z" fill="#5f7d4f"/>
   <circle cx="214" cy="404" r="16" fill="#3d4853"/>
-  <circle cx="298" cy="404" r="16" fill="#3d4853"/>
   <circle cx="214" cy="404" r="8" fill="#92a1b2"/>
+  </g>
+  <!-- the empty second contour keeps each foot drawn as it was when both shared a path -->
+  <path d="M186 470v-8q0-12 12-12h36q12 0 12 12v8Zm0 0Z" fill="#5f7d4f"/>
+  <path d="M182 466h68v10h-68Z" fill="#3d4853"/>
+  </g>
+  <g class="leg-r" style="transform-origin:298px 352px">
+  <g class="shin-r" style="transform-origin:298px 458px">
+  <rect x="284" y="336" width="28" height="122" fill="#7d9c6a"/>
+  <path d="M302 336h10v122h-10Z" fill="#5f7d4f"/>
+  <circle cx="298" cy="404" r="16" fill="#3d4853"/>
   <circle cx="298" cy="404" r="8" fill="#92a1b2"/>
-  <path d="M186 470v-8q0-12 12-12h36q12 0 12 12v8Zm80 0v-8q0-12 12-12h36q12 0 12 12v8Z" fill="#5f7d4f"/>
-  <path d="M182 466h68v10h-68Zm80 0h68v10h-68Z" fill="#3d4853"/>
-  <g class="bot">
+  </g>
+  <path d="M266 470v-8q0-12 12-12h36q12 0 12 12v8Zm0 0Z" fill="#5f7d4f"/>
+  <path d="M262 466h68v10h-68Z" fill="#3d4853"/>
+  </g>
+  <g class="bot" style="transform-origin:256px 352px">
   <g class="head" style="transform-origin:256px 200px"><g class="neck" style="transform-origin:256px 202px">
     <rect x="236" y="182" width="40" height="20" fill="#3d4853"/>
     <rect x="236" y="190" width="40" height="4" fill="#697785"/>
@@ -110,7 +191,7 @@
   <!-- Aerial and ear knobs -->
   <g class="ant" style="transform-origin:256px 93px">
     <rect x="252" y="70" width="8" height="24" fill="#697785"/>
-    <circle cx="256" cy="68" r="9" fill="#f6c354"/>
+    <circle class="bulb" cx="256" cy="68" r="9" fill="#f6c354"/>
   </g>
   <rect x="154" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
   <rect x="342" y="116" width="16" height="44" rx="5" fill="#3d4853"/>
@@ -125,10 +206,11 @@
   <path d="M191.5 137.4a32 32 0 0 1 49 0m31 0a32 32 0 0 1 49 0" fill="none" stroke="#3d4853" stroke-width="2"/>
   <path d="M191.5 137.4l4.6 3.9M202.5 129l2.5 5.4M216 126v6M229.5 129l-2.5 5.4M271.5 137.4l4.6 3.9M282.5 129l2.5 5.4M296 126v6M309.5 129l-2.5 5.4" stroke="#3d4853" stroke-width="2.5" stroke-linecap="round"/>
   <path d="m240.5 137.4-4.6 3.9m84.6-3.9-4.6 3.9" stroke="#c2443a" stroke-width="2.5" stroke-linecap="round"/>
-  <g class="vu" style="transform-origin:216px 158px"><path d="M216 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
-  <g class="vu" style="transform-origin:296px 158px"><path d="M296 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
+  <g class="vu vl" style="transform-origin:216px 158px"><path d="M216 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
+  <g class="vu vr" style="transform-origin:296px 158px"><path d="M296 158l-7.8-29" stroke="#3d4853" stroke-width="3" stroke-linecap="round"/></g>
   <circle cx="216" cy="158" r="5" fill="#3d4853"/>
   <circle cx="296" cy="158" r="5" fill="#3d4853"/>
   </g></g>
+  </g>
   </g>
 </svg>

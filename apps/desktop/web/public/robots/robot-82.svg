@@ -1,4 +1,4 @@
-<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc" class="r82" data-idle="blink blink blink blink tilt shrug return" data-work="type type return return tilt"><style>
+<svg width="252" height="452" viewBox="122 24 252 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="typist-title typist-desc" class="r82" data-idle="blink blink blink blink tilt shrug return" data-work="type type return return tilt" data-rare="lean nap fix"><style>
 .r82[data-act=blink] .spool{animation:r82-blink .4s ease-in-out}
 .r82[data-act=tilt] .head{animation:r82-tilt 1.6s ease-in-out}
 .r82[data-act=tilt] .spool{animation:r82-look 1.6s ease-in-out}
@@ -37,7 +37,6 @@
 @keyframes r82-reach{0%,100%{transform:none}22%,70%{transform:rotate(-8deg)}86%{transform:rotate(1.5deg)}}
 @keyframes r82-tap{0%,100%{transform:none}22%{transform:rotate(68deg)}30%{transform:rotate(75deg)}36%{transform:rotate(68deg)}44%{transform:rotate(75deg)}50%{transform:rotate(68deg)}58%{transform:rotate(75deg)}64%,70%{transform:rotate(68deg)}87%{transform:rotate(-5deg)}}
 @keyframes r82-watch{0%,100%{transform:none}18%,72%{transform:translate(3px,3px)}}
-@keyframes r82-lean-in{0%,100%{transform:none}24%,70%{transform:rotate(.6deg)}86%{transform:rotate(-.2deg)}}
 @keyframes r82-carriage{0%,6%{transform:none}10%,16%{transform:translate(-11px)}20%,26%{transform:translate(-22px)}30%,36%{transform:translate(-33px)}44%{transform:translate(-36px)}55%{transform:translate(10px)}67%{transform:translate(-4px)}79%{transform:translate(1.4px)}90%{transform:translate(-.4px)}100%{transform:none}}
 @keyframes r82-flutter{0%,48%,100%{transform:none}57%{transform:rotate(-4deg)}69%{transform:rotate(2.5deg)}81%{transform:rotate(-1deg)}92%{transform:rotate(.3deg)}}
 @keyframes r82-pull{0%,32%,100%{transform:none}43%{transform:rotate(26deg)}54%{transform:rotate(-4deg)}66%{transform:rotate(2deg)}80%{transform:rotate(-.6deg)}}
@@ -45,9 +44,67 @@
 @keyframes r82-jolt{0%,48%,100%{transform:none}58%{transform:rotate(-4deg)}72%{transform:rotate(2deg)}86%{transform:rotate(-.6deg)}}
 @keyframes r82-brace{0%,34%,100%{transform:none}44%{transform:rotate(-1.8deg)}56%{transform:rotate(1.6deg)}70%{transform:rotate(-.6deg)}84%{transform:rotate(.2deg)}}
 @keyframes r82-key{0%,100%{fill:#fff8de}35%,65%{fill:#92a1b2}}
+.r82[data-act=lean] .all{animation:r82-lean-all 15s ease-in-out}
+.r82[data-act=lean] .leg-r{animation:r82-lean-leg-r 15s ease-in-out}
+.r82[data-act=lean] .leg-l{animation:r82-lean-leg-l 15s ease-in-out}
+.r82[data-act=lean] .spool{animation:r82-lean-spool 15s ease-in-out}
+.r82[data-act=lean] .head{animation:r82-lean-head 15s ease-in-out}
+.r82[data-act=lean] .shin-r{animation:r82-lean-shin-r 15s ease-in-out}
+.r82[data-act=lean] .shin-l{animation:r82-lean-shin-l 15s ease-in-out}
+.r82[data-act=lean] .up{animation:r82-lean-up 15s ease-in-out}
+.r82[data-act=lean] .claw{animation:r82-lean-claw 15s ease-in-out}
+.r82[data-act=lean] .cfore{animation:r82-lean-cfore 15s ease-in-out}
+.r82[data-act=lean] .lever{animation:r82-lean-lever 15s ease-in-out}
+.r82[data-act=lean] .lfore{animation:r82-lean-lfore 15s ease-in-out}
+.r82[data-act=lean] .paper{animation:r82-lean-paper 15s ease-in-out}
+.r82[data-act=nap] .ub{animation:r82-nap-ub 8.2s ease-in-out}
+.r82[data-act=nap] .head{animation:r82-nap-head 8.2s ease-in-out}
+.r82[data-act=nap] .spool{animation:r82-nap-spool 8.2s ease-in-out}
+.r82[data-act=nap] .paper{animation:r82-nap-paper 8.2s ease-in-out}
+.r82[data-act=nap] .claw{animation:r82-nap-claw 8.2s ease-in-out}
+.r82[data-act=nap] .cfore{animation:r82-nap-cfore 8.2s ease-in-out}
+.r82[data-act=nap] .lever{animation:r82-nap-lever 8.2s ease-in-out}
+.r82[data-act=nap] .lfore{animation:r82-nap-lfore 8.2s ease-in-out}
+.r82[data-act=fix] .ub{animation:r82-fix-ub 4.6s ease-in-out}
+.r82[data-act=fix] .head{animation:r82-fix-head 4.6s ease-in-out}
+.r82[data-act=fix] .spool{animation:r82-fix-spool 4.6s ease-in-out}
+.r82[data-act=fix] .paper{animation:r82-fix-paper 4.6s ease-in-out}
+.r82[data-act=fix] .claw{animation:r82-fix-claw 4.6s ease-in-out}
+.r82[data-act=fix] .cfore{animation:r82-fix-cfore 4.6s ease-in-out}
+.r82[data-act=fix] .key{animation:r82-fix-key 4.6s ease-in-out}
+@keyframes r82-lean-all{0%,98.3%,100%{transform:none}1.5%{transform:translate(-2px,1.5px)}2.3%,95%{transform:translate(0,.5px)}3.1%,94.1%{transform:translate(3px,-1.5px)}4%,93.3%{transform:translate(7.5px,2px)}4.8%,92.5%{transform:translate(12px,-1.5px)}5.7%,91.7%{transform:translate(15px,.5px)}6.5%,90.8%{transform:translate(18px,-1.5px)}7.3%,90%{transform:translate(22.5px,2px)}8.1%,89.1%{transform:translate(27px,-1.5px)}9%,88.3%{transform:translate(30px,.5px)}9.8%,87.5%{transform:translate(33px,-1.5px)}10.7%,86.7%{transform:translate(37.5px,2px)}11.5%,85.8%{transform:translate(42px,-1.5px)}12.3%,85%{transform:translate(45px,.5px)}96.7%{transform:translate(0,1px)}}
+@keyframes r82-lean-leg-r{0%,2.3%,5.7%,9%,12.3%,85%,88.3%,91.7%,95%,100%{transform:none}3.1%,6.5%,9.8%{transform:translate(4.5px,-10px)}4%,7.3%,10.7%,86.7%,90%,93.3%{transform:translate(7.5px,0)}87.5%,90.8%,94.1%{transform:translate(4.5px,-9px)}}
+@keyframes r82-lean-leg-l{0%,2.3%,5.7%,9%,12.3%,85%,88.3%,91.7%,95%,100%{transform:none}4%,7.3%,10.7%,86.7%,90%,93.3%{transform:translate(-7.5px,0)}4.8%,8.1%,11.5%{transform:translate(-4.5px,-9px)}85.8%,89.1%,92.5%{transform:translate(-4.5px,-10px)}}
+@keyframes r82-lean-spool{0%,16.3%,24.7%,26.3%,41.7%,43.3%,47.3%,62.7%,67.7%,69.3%,79.3%,97.7%,100%{transform:none}1.7%,12.3%{transform:translate(4px,1px)}25.5%,42.5%,68.5%{transform:scaleY(.1)}51.3%,58.7%{transform:translate(-5px,1.5px)}81.3%,94.3%{transform:translate(-4px,1px)}}
+@keyframes r82-lean-head{0%,100%{transform:none}2%{transform:rotate(2deg)}5.7%,91.7%{transform:rotate(-1.5deg)}9%,88.3%{transform:rotate(1.5deg)}12.3%,85%{transform:rotate(-1deg)}16.3%{transform:rotate(-6.5deg)}18.3%{transform:rotate(-4.5deg)}20.3%,46.7%,63.3%,79.3%{transform:rotate(-5deg)}50.7%,59.3%{transform:rotate(-8.5deg)}81.3%{transform:rotate(-3deg)}83.3%{transform:rotate(3deg)}95%{transform:rotate(1deg)}97.3%{transform:rotate(-.5deg)}}
+@keyframes r82-lean-shin-r{0%,12.3%,85%,100%{transform:none}14%{transform:rotate(2deg)}16%{transform:rotate(5.3deg)}17.7%,37.3%,74.7%{transform:rotate(4.8deg)}19%,33.3%,42%,70.7%,79.3%{transform:rotate(5deg)}81%{transform:rotate(5.5deg)}83%{transform:rotate(-.6deg)}84.3%{transform:rotate(.3deg)}}
+@keyframes r82-lean-shin-l{0%,12.3%,85%,100%{transform:none}14%{transform:rotate(2deg)}16%{transform:rotate(5.3deg)}17.7%,37.3%,74.7%{transform:rotate(4.8deg)}19%,33.3%,42%,70.7%,79.3%{transform:rotate(5deg)}81%{transform:rotate(5.5deg)}83%{transform:rotate(-.6deg)}84.3%{transform:rotate(.3deg)}}
+@keyframes r82-lean-up{0%,12.3%,85%,100%{transform:none}14%{transform:translate(3.6px,.1px) rotate(4.8deg)}16%{transform:translate(9.5px,.4px) rotate(12.8deg)}17.7%{transform:translate(8.6px,.4px) rotate(11.6deg)}19%,33.3%,42%,70.7%,79.3%{transform:translate(8.9px,.4px) rotate(12deg)}37.3%,74.7%{transform:translate(8.5px,.4px) rotate(11.5deg)}81%{transform:translate(9.8px,.5px) rotate(13.2deg)}83%{transform:translate(-1.1px,0) rotate(-1.5deg)}84.3%{transform:translate(.4px,0) rotate(.6deg)}}
+@keyframes r82-lean-claw{0%,100%{transform:none}5%{transform:rotate(-3deg)}8.3%,96.3%{transform:rotate(2deg)}11.7%{transform:rotate(-2deg)}13.1%{transform:rotate(-45deg)}14%{transform:rotate(-86.3deg)}16%{transform:rotate(-98.1deg)}17.7%,33.3%,42%,70.7%,79.3%{transform:rotate(-95.9deg)}37.3%,74.7%{transform:rotate(-94.5deg)}81%{transform:rotate(-99.2deg)}81.9%{transform:rotate(-103.2deg)}83%{transform:rotate(-8deg)}84.3%{transform:rotate(5deg)}85%{transform:rotate(-1deg)}88%{transform:rotate(3deg)}91.3%{transform:rotate(-2.5deg)}98.3%{transform:rotate(-.6deg)}}
+@keyframes r82-lean-cfore{0%,100%{transform:none}5%,83%{transform:rotate(4deg)}8.3%,96.3%{transform:rotate(-3deg)}11.7%,91.3%{transform:rotate(3deg)}13.1%{transform:rotate(-55deg)}14%{transform:rotate(-60.7deg)}16%{transform:rotate(-48.9deg)}17.7%,33.3%,42%,70.7%,79.3%{transform:rotate(-48.7deg)}37.3%,74.7%{transform:rotate(-48.5deg)}81%{transform:rotate(-49deg)}81.9%{transform:rotate(-94deg)}84.3%{transform:rotate(6deg)}85%{transform:rotate(-2deg)}88%{transform:rotate(-4deg)}98.3%{transform:rotate(1deg)}}
+@keyframes r82-lean-lever{0%,100%{transform:none}5%{transform:rotate(3deg)}8.3%{transform:rotate(-2deg)}11.7%,91%{transform:rotate(2deg)}16%{transform:rotate(-9deg)}18%{transform:rotate(-7deg)}20%,79.3%{transform:rotate(-7.6deg)}83%{transform:rotate(4deg)}87.7%{transform:rotate(-3deg)}96.7%{transform:rotate(-1.5deg)}}
+@keyframes r82-lean-lfore{0%,100%{transform:none}5.7%{transform:rotate(5deg)}9%{transform:rotate(-4deg)}16.3%{transform:rotate(-12deg)}18.7%{transform:rotate(-9deg)}21%,79.3%{transform:rotate(-10deg)}83.7%{transform:rotate(7deg)}88.3%{transform:rotate(-5deg)}91.7%{transform:rotate(4deg)}97%{transform:rotate(-2.5deg)}}
+@keyframes r82-lean-paper{0%,23%,82.7%,100%{transform:none}4.7%{transform:rotate(-2.5deg)}8%,96.3%{transform:rotate(2deg)}11.3%,91%{transform:rotate(-2deg)}16.3%{transform:rotate(3deg)}18.7%{transform:rotate(-1.2deg)}21%{transform:rotate(.4deg)}84.3%{transform:rotate(-3.5deg)}87.7%{transform:rotate(2.5deg)}98.7%{transform:rotate(-.8deg)}}
+@keyframes r82-nap-ub{0%,100%{transform:none}12.2%{transform:translate(0,2.5px)}19.5%{transform:translate(0,1.6px)}29.3%{transform:translate(0,5px)}39%,52.4%{transform:translate(0,3.8px)}45.7%,59.1%{transform:translate(0,6.2px)}65.9%{transform:translate(0,4.2px)}70.7%{transform:translate(0,8px)}72.9%{transform:translate(0,-4.5px)}75.6%{transform:translate(0,1.2px)}79.3%{transform:translate(0,-.6px)}84.1%{transform:translate(0,.3px)}}
+@keyframes r82-nap-head{0%,4.3%,100%{transform:none}12.2%{transform:translate(0,4px) rotate(-2deg)}17.7%{transform:translate(0,2px) rotate(-1deg)}28%{transform:translate(0,10px) rotate(3.5deg)}32.9%{transform:translate(0,8.5px) rotate(2.8deg)}45.7%{transform:translate(0,9.5px) rotate(3.4deg)}59.1%{transform:translate(0,10px) rotate(3.6deg)}66.5%{transform:translate(0,10px) rotate(3.4deg)}70.7%{transform:translate(0,17px) rotate(7deg)}72.9%{transform:translate(0,-6px) rotate(-3deg)}75.4%{transform:translate(0,1px)}79.3%{transform:rotate(-4.5deg)}83.5%{transform:rotate(3.8deg)}87.8%{transform:rotate(-1.2deg)}92.7%{transform:translate(0,.3px) rotate(.4deg)}}
+@keyframes r82-nap-spool{0%,75%,88.4%,100%{transform:none}7.3%{transform:scaleY(.6)}12.2%{transform:translate(0,1px) scaleY(.4)}17.7%{transform:scaleY(.8)}27.4%,70.7%{transform:translate(0,1px) scaleY(.1)}72.9%{transform:translate(0,-1px) scaleY(1.2)}79.3%{transform:translate(-5px,0)}83.5%{transform:translate(5px,0)}}
+@keyframes r82-nap-paper{0%,89.6%,100%{transform:none}12.2%,70.7%{transform:rotate(1.5deg)}18.3%{transform:rotate(-.8deg)}29.3%{transform:rotate(2.2deg)}35.4%{transform:rotate(1deg)}72.9%{transform:rotate(-6.5deg)}75.4%{transform:rotate(4.5deg)}78.3%{transform:rotate(-2.6deg)}81.7%{transform:rotate(1.3deg)}85.4%{transform:rotate(-.5deg)}}
+@keyframes r82-nap-claw{0%,100%{transform:none}29.3%{transform:rotate(6deg)}45.7%,59.1%{transform:rotate(7deg)}68.3%{transform:rotate(6.5deg)}70.7%{transform:rotate(8deg)}72.9%{transform:rotate(-11deg)}76.2%{transform:rotate(4deg)}80.5%{transform:rotate(-1.5deg)}85.4%{transform:rotate(.5deg)}}
+@keyframes r82-nap-cfore{0%,100%{transform:none}30%{transform:rotate(5deg)}46.5%,59.9%{transform:rotate(6deg)}69%{transform:rotate(5.5deg)}71.5%{transform:rotate(7deg)}73.7%{transform:rotate(-9deg)}77%{transform:rotate(3deg)}81.2%{transform:rotate(-1.2deg)}86.1%{transform:rotate(.4deg)}}
+@keyframes r82-nap-lever{0%,100%{transform:none}29.3%{transform:rotate(-4deg)}45.7%,59.1%{transform:rotate(-5deg)}68.3%{transform:rotate(-4.5deg)}70.7%{transform:rotate(-6deg)}72.9%{transform:rotate(10deg)}76.2%{transform:rotate(-3.5deg)}80.5%{transform:rotate(1.2deg)}85.4%{transform:rotate(-.4deg)}}
+@keyframes r82-nap-lfore{0%,100%{transform:none}30%{transform:rotate(-8deg)}46.5%,59.9%{transform:rotate(-9deg)}69%{transform:rotate(-8.5deg)}71.5%{transform:rotate(-10deg)}73.7%{transform:rotate(11deg)}77%{transform:rotate(-4deg)}81.2%{transform:rotate(1.5deg)}86.1%{transform:rotate(-.5deg)}}
+@keyframes r82-fix-ub{0%,8.7%,38%,41.7%,45.2%,50%,64.1%,100%{transform:none}2.2%{transform:translate(0,-1.2px)}5.4%{transform:translate(0,.4px)}39.3%,46.5%{transform:translate(-1px,0) rotate(-.6deg)}68.5%{transform:translate(0,1.8px)}75%{transform:translate(0,-.6px)}81.5%{transform:translate(0,.2px)}}
+@keyframes r82-fix-head{0%,19.6%,64.1%,89.1%,100%{transform:none}26.1%,38%,41.7%,45.2%{transform:rotate(3deg)}39.3%,46.5%{transform:translate(-1.5px,0) rotate(.5deg)}50%{transform:rotate(2.5deg)}56.5%{transform:rotate(.5deg)}69.6%{transform:translate(0,4px)}76.1%{transform:translate(0,-1px)}82.6%{transform:translate(0,.4px)}}
+@keyframes r82-fix-spool{0%,18.5%,54.3%,64.1%,77.2%,100%{transform:none}25%,50%{transform:translate(-1.5px,-3px)}69.6%{transform:translate(0,1px) scaleY(.5)}}
+@keyframes r82-fix-paper{0%,54.3%,100%{transform:none}1.3%{transform:translate(0,1.5px) rotate(2.5deg)}2.6%{transform:translate(0,1px) rotate(-2deg)}3.9%{transform:translate(0,2.5px) rotate(3deg)}5.4%{transform:translate(0,2px) rotate(-1.5deg)}7.2%{transform:translate(0,3.5px) rotate(5deg)}9.8%{transform:translate(0,5.5px) rotate(8.2deg)}12%{transform:translate(0,5.5px) rotate(7.2deg)}13.5%,45.2%{transform:translate(0,5.5px) rotate(7.5deg)}46.7%{transform:translate(0,-.5px) rotate(-1.6deg)}49.1%{transform:rotate(.9deg)}51.7%{transform:rotate(-.3deg)}}
+@keyframes r82-fix-claw{0%,25%,100%{transform:none}33.7%,36.5%,43%,50%{transform:rotate(-22.7deg)}38%,45.2%{transform:rotate(-57.5deg)}39.6%,46.7%{transform:rotate(-47.1deg)}59.8%{transform:rotate(4deg)}66.3%{transform:rotate(-2deg)}72.8%{transform:rotate(.8deg)}}
+@keyframes r82-fix-cfore{0%,25%,100%{transform:none}35%,36.5%,43%,50%{transform:rotate(-166.1deg)}38%,45.2%{transform:rotate(-147.3deg)}39.6%,46.7%{transform:rotate(-153.6deg)}61.3%{transform:rotate(6deg)}67.8%{transform:rotate(-3deg)}74.3%{transform:rotate(1deg)}}
+@keyframes r82-fix-key{0%,3.5%,8.7%,13%,100%{transform:none;fill:#fff8de}1.7%,6.5%{transform:translate(0px,1.6px);fill:#92a1b2}}
 </style>
   <title id="typist-title">Typist — typewriter robot</title>
   <desc id="typist-desc">An olive typewriter robot whose head is the carriage: a black platen roller with knobs at each end, a typed sheet of paper rising above it, and two ribbon spools as the eyes. A tall torso carries a nameplate and a bank of round keys with a space bar; the left arm is the long carriage return lever with a flat paddle, the right a jointed claw, on two legs with olive shoes.</desc>
+  <g class="all" style="transform-origin:256px 476px">
+  <g class="up" style="transform-origin:256px 350px">
   <!-- Sheet of paper rising above the platen -->
   <g class="ub" style="transform-origin:256px 330px"><g class="head" style="transform-origin:276px 164px">
   <g class="paper" style="transform-origin:256px 86px">
@@ -57,20 +114,38 @@
   </g>
   <rect x="200" y="70" width="112" height="7" rx="3.5" fill="#697785"/>
   </g></g>
-  <!-- Legs with shoes -->
+  <!-- Legs with shoes, the left drawn last so it can cross in front -->
   <rect x="226" y="324" width="60" height="24" fill="#3d4853"/>
-  <path d="M230 346v104M282 346v104" stroke="#697785" stroke-width="14"/>
-  <path d="M206 470v-8q0-14 14-14h20q14 0 14 14v8Zm52 0v-8q0-14 14-14h20q14 0 14 14v8Z" fill="#7f8440"/>
-  <path d="M242 449q12 3 12 13v8h-12Zm52 0q12 3 12 13v8h-12Z" fill="#5c6130"/>
-  <path d="M202 466h56v10h-56Zm52 0h56v10h-56Z" fill="#3d4853"/>
-  <circle cx="230" cy="350" r="13" fill="#3d4853"/>
+  </g>
+  <g class="leg-r" style="transform-origin:282px 350px">
+  <g class="shin-r" style="transform-origin:282px 452px"><path d="M282 346v104" stroke="#697785" stroke-width="14"/></g>
+  <g class="foot-r" style="transform-origin:282px 452px">
+  <path d="M258 470v-8q0-14 14-14h20q14 0 14 14v8Z" fill="#7f8440"/>
+  <path d="M294 449q12 3 12 13v8h-12Z" fill="#5c6130"/>
+  <path d="M254 466h56v10h-56Z" fill="#3d4853"/>
+  </g>
+  <g class="shin-r" style="transform-origin:282px 452px">
   <circle cx="282" cy="350" r="13" fill="#3d4853"/>
-  <circle cx="230" cy="350" r="5.5" fill="#92a1b2"/>
   <circle cx="282" cy="350" r="5.5" fill="#92a1b2"/>
-  <circle cx="230" cy="400" r="12" fill="#3d4853"/>
   <circle cx="282" cy="400" r="12" fill="#3d4853"/>
-  <circle cx="230" cy="400" r="5" fill="#92a1b2"/>
   <circle cx="282" cy="400" r="5" fill="#92a1b2"/>
+  </g>
+  </g>
+  <g class="leg-l" style="transform-origin:230px 350px">
+  <g class="shin-l" style="transform-origin:230px 452px"><path d="M230 346v104" stroke="#697785" stroke-width="14"/></g>
+  <g class="foot-l" style="transform-origin:230px 452px">
+  <path d="M206 470v-8q0-14 14-14h20q14 0 14 14v8Z" fill="#7f8440"/>
+  <path d="M242 449q12 3 12 13v8h-12Z" fill="#5c6130"/>
+  <path d="M202 466h56v10h-56Z" fill="#3d4853"/>
+  </g>
+  <g class="shin-l" style="transform-origin:230px 452px">
+  <circle cx="230" cy="350" r="13" fill="#3d4853"/>
+  <circle cx="230" cy="350" r="5.5" fill="#92a1b2"/>
+  <circle cx="230" cy="400" r="12" fill="#3d4853"/>
+  <circle cx="230" cy="400" r="5" fill="#92a1b2"/>
+  </g>
+  </g>
+  <g class="up" style="transform-origin:256px 350px">
   <g class="ub" style="transform-origin:256px 330px">
   <!-- Carriage return lever arm with a flat paddle -->
   <g class="lever" style="transform-origin:190px 206px">
@@ -143,6 +218,8 @@
   <path d="M294.3 124.6a13 13 0 0 1-10.6 22.4 13 13 0 0 0 10.6-22.4Z" fill="#4fb0c5"/>
   <circle cx="289.5" cy="129.5" r="4" fill="#fffae0"/>
   <circle cx="281.5" cy="139" r="1.8" fill="#fffae0"/>
+  </g>
+  </g>
   </g>
   </g>
   </g>

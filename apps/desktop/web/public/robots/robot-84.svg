@@ -1,4 +1,4 @@
-<svg width="332" height="452" viewBox="92 24 332 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fitter-title fitter-desc" class="r84" data-idle="blink blink blink blink tilt tilt shift shrug" data-work="ratchet ratchet shift shrug tilt blink blink"><style>
+<svg width="332" height="452" viewBox="92 24 332 452" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fitter-title fitter-desc" class="r84" data-idle="blink blink blink blink tilt tilt shift shrug" data-work="ratchet ratchet shift shrug tilt blink blink" data-rare="nap"><style>
 .r84[data-act=blink] .eyes{transform-box:fill-box;transform-origin:center;animation:r84-blink .4s ease-in-out}
 .r84[data-act=tilt] .head{animation:r84-cock 1.8s ease-in-out}
 .r84[data-act=tilt] .eyes{animation:r84-look 1.8s ease-in-out}
@@ -39,27 +39,48 @@
 @keyframes r84-brace{0%,100%{transform:none}14%{transform:translate(0,4px) rotate(.9deg)}26%,52%,78%{transform:translate(0,4px) rotate(1.6deg)}36%,62%{transform:translate(0,4px) rotate(.9deg)}92%{transform:translate(0,-.5px) rotate(-.3deg)}}
 @keyframes r84-watch{0%,100%{transform:none}14%,82%{transform:rotate(-4deg)}92%{transform:rotate(1deg)}}
 @keyframes r84-down{0%,100%{transform:none}12%,84%{transform:translate(-6px,3px)}}
-</style>
+.r84[data-act=nap] .upper{animation:r84-nap-upper 8.2s ease-in-out}
+.r84[data-act=nap] .head{animation:r84-nap-head 8.2s ease-in-out}
+.r84[data-act=nap] .eyes{transform-box:fill-box;transform-origin:center;animation:r84-nap-eyes 8.2s ease-in-out}
+.r84[data-act=nap] .arm-r{animation:r84-nap-arm-r 8.2s ease-in-out}
+.r84[data-act=nap] .fore-r{animation:r84-nap-fore-r 8.2s ease-in-out}
+.r84[data-act=nap] .arm-l{animation:r84-nap-arm-l 8.2s ease-in-out}
+.r84[data-act=nap] .fore-l{animation:r84-nap-fore-l 8.2s ease-in-out}
+@keyframes r84-nap-upper{0%{transform:none}12.2%{transform:translate(0px,2.2px)}19.5%{transform:translate(0px,1.4px)}29.3%{transform:translate(0px,4.5px)}39%{transform:translate(0px,3.4px)}45.7%{transform:translate(0px,5.6px)}52.4%{transform:translate(0px,3.4px)}59.1%{transform:translate(0px,5.6px)}65.9%{transform:translate(0px,3.8px)}70.7%{transform:translate(0px,7px)}72.9%{transform:translate(0px,-4px)}75.6%{transform:translate(0px,1px)}79.3%{transform:translate(0px,-0.5px)}84.1%{transform:translate(0px,0.3px)}100%{transform:none}}
+@keyframes r84-nap-head{0%{transform:none}4.3%{transform:none}12.2%{transform:translate(0px,3.5px) rotate(-2deg)}17.7%{transform:translate(0px,1.8px) rotate(-1deg)}28%{transform:translate(0px,8px) rotate(3.5deg)}32.9%{transform:translate(0px,7px) rotate(2.8deg)}45.7%{transform:translate(0px,8px) rotate(3.4deg)}59.1%{transform:translate(0px,8.5px) rotate(3.6deg)}66.5%{transform:translate(0px,8.5px) rotate(3.4deg)}70.7%{transform:translate(0px,14px) rotate(7deg)}72.9%{transform:translate(0px,-5px) rotate(-3deg)}75.4%{transform:translate(0px,1px)}79.3%{transform:rotate(-4.5deg)}83.5%{transform:rotate(3.8deg)}87.8%{transform:rotate(-1.2deg)}92.7%{transform:translate(0px,0.3px) rotate(0.4deg)}100%{transform:none}}
+@keyframes r84-nap-eyes{0%{transform:none}7.3%{transform:scale(1,0.55)}12.2%{transform:scale(1,0.4)}17.7%{transform:scale(1,0.75)}27.4%{transform:scale(1,0.1)}70.7%{transform:scale(1,0.1)}72.9%{transform:scale(1,1.18)}75%{transform:scale(1,1)}79.3%{transform:translate(-5px,0px) scale(1,1)}83.5%{transform:translate(5px,0px) scale(1,1)}88.4%{transform:scale(1,1)}100%{transform:none}}
+@keyframes r84-nap-arm-r{0%{transform:none}29.3%{transform:rotate(-4deg)}45.7%{transform:rotate(-5deg)}59.1%{transform:rotate(-5deg)}68.3%{transform:rotate(-4.5deg)}70.7%{transform:rotate(-6deg)}72.9%{transform:rotate(8deg)}76.2%{transform:rotate(-3deg)}80.5%{transform:rotate(1.2deg)}85.4%{transform:rotate(-0.4deg)}100%{transform:none}}
+@keyframes r84-nap-fore-r{0%{transform:none}30%{transform:rotate(-3deg)}46.5%{transform:rotate(-4deg)}59.9%{transform:rotate(-4deg)}69%{transform:rotate(-3.5deg)}71.5%{transform:rotate(-5deg)}73.7%{transform:rotate(7deg)}77%{transform:rotate(-2.5deg)}81.2%{transform:rotate(1deg)}86.1%{transform:rotate(-0.3deg)}100%{transform:none}}
+@keyframes r84-nap-arm-l{0%{transform:none}29.3%{transform:rotate(4deg)}45.7%{transform:rotate(5deg)}59.1%{transform:rotate(5deg)}68.3%{transform:rotate(4.5deg)}70.7%{transform:rotate(6deg)}72.9%{transform:rotate(-8deg)}76.2%{transform:rotate(3deg)}80.5%{transform:rotate(-1.2deg)}85.4%{transform:rotate(0.4deg)}100%{transform:none}}
+@keyframes r84-nap-fore-l{0%{transform:none}30%{transform:rotate(3deg)}46.5%{transform:rotate(4deg)}59.9%{transform:rotate(4deg)}69%{transform:rotate(3.5deg)}71.5%{transform:rotate(5deg)}73.7%{transform:rotate(-7deg)}77%{transform:rotate(2.5deg)}81.2%{transform:rotate(-1deg)}86.1%{transform:rotate(0.3deg)}100%{transform:none}}</style>
   <title id="fitter-title">Fitter — plumbing robot</title>
   <desc id="fitter-desc">A steel blue robot built from pipe fittings: a square bolted flange for a head with a pipe running through it, two tall oval eyes behind a round sight glass and a capped vent on top, a pipe cross for a torso with flanged ends and a yellow valve handwheel on the chest, pipe arms with elbow joints ending in a pipe wrench jaw and a two finger grip, and pipe legs with union nut knees standing on floor flanges.</desc>
   <g class="tip-r" style="transform-origin:332px 476px"><g class="tip-l" style="transform-origin:180px 476px">
   <!-- Pipe legs with union nut knees on floor flanges -->
-  <rect x="196" y="360" width="32" height="92" fill="#6b90b6"/>
-  <rect x="196" y="360" width="7" height="92" fill="#8fb1d1"/>
-  <rect x="221" y="360" width="7" height="92" fill="#4e7096"/>
-  <rect x="190" y="398" width="44" height="18" rx="3" fill="#3d4853"/>
-  <path d="M202 401V413M222 401V413" stroke="#697785" stroke-width="3"/>
-  <rect x="192" y="444" width="40" height="14" fill="#4e7096"/>
-  <rect x="180" y="456" width="64" height="20" rx="6" fill="#3d4853"/>
-  <circle cx="190" cy="466" r="3.5" fill="#92a1b2"/><circle cx="234" cy="466" r="3.5" fill="#92a1b2"/>
+  <g class="leg-r" style="transform-origin:300px 452px">
   <rect x="284" y="360" width="32" height="92" fill="#6b90b6"/>
   <rect x="284" y="360" width="7" height="92" fill="#8fb1d1"/>
   <rect x="309" y="360" width="7" height="92" fill="#4e7096"/>
   <rect x="278" y="398" width="44" height="18" rx="3" fill="#3d4853"/>
   <path d="M290 401V413M310 401V413" stroke="#697785" stroke-width="3"/>
+  </g>
+  <g class="foot-r">
   <rect x="280" y="444" width="40" height="14" fill="#4e7096"/>
   <rect x="268" y="456" width="64" height="20" rx="6" fill="#3d4853"/>
   <circle cx="278" cy="466" r="3.5" fill="#92a1b2"/><circle cx="322" cy="466" r="3.5" fill="#92a1b2"/>
+  </g>
+  <g class="leg-l" style="transform-origin:212px 452px">
+  <rect x="196" y="360" width="32" height="92" fill="#6b90b6"/>
+  <rect x="196" y="360" width="7" height="92" fill="#8fb1d1"/>
+  <rect x="221" y="360" width="7" height="92" fill="#4e7096"/>
+  <rect x="190" y="398" width="44" height="18" rx="3" fill="#3d4853"/>
+  <path d="M202 401V413M222 401V413" stroke="#697785" stroke-width="3"/>
+  </g>
+  <g class="foot-l">
+  <rect x="192" y="444" width="40" height="14" fill="#4e7096"/>
+  <rect x="180" y="456" width="64" height="20" rx="6" fill="#3d4853"/>
+  <circle cx="190" cy="466" r="3.5" fill="#92a1b2"/><circle cx="234" cy="466" r="3.5" fill="#92a1b2"/>
+  </g>
   <g class="upper" style="transform-origin:256px 366px">
   <!-- Hip pipe with elbows into the legs -->
   <rect x="206" y="330" width="100" height="32" fill="#6b90b6"/>
