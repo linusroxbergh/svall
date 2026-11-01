@@ -127,7 +127,7 @@
   /* a robot's status colour fading to its next, and its context meter filling */
   --dur-status: .4s; --dur-meter: .6s;
   /* the periods of the looping animations */
-  --pulse-fast: 1.2s; --ping: 2.4s; --pulse-slow: 3.2s; --sheen: 4.5s; --swell: 48s; --swell-2: 67s;
+  --pulse-fast: 1.2s; --ping: 2.4s; --pulse-slow: 3.2s; --sheen: 6s; --swell: 48s; --swell-2: 67s;
 
   --w-light: 300; --w-regular: 400; --w-medium: 500; --w-semibold: 600; --w-bold: 700; --w-heavy: 800;
   --track-tight: -.02em; --track-snug: .04em; --track-loose: .06em; --track-caps: .12em;

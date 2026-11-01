@@ -143,7 +143,7 @@
 /* a sheen crosses a working foot now and then. It moves the background, not transform or opacity: a compositor
    animation lifts the whole card into a layer of its own, which WebKit draws blurred */
 .tok[data-status=working] .foot { background-repeat: no-repeat; background-size: 300% 100%;
-  background-image: linear-gradient(105deg, transparent 38%, color-mix(in srgb, var(--cream) 42%, transparent) 50%, transparent 62%);
+  background-image: linear-gradient(105deg, transparent 33%, color-mix(in srgb, var(--cream) 26%, transparent) 50%, transparent 67%);
   animation: sheen var(--sheen) ease-in-out infinite; }
 @keyframes sheen { 0% { background-position: 100% 0; } 32%, 100% { background-position: 0 0; } }
 /* a new status fades in; the pointer darkens the foot quicker */
