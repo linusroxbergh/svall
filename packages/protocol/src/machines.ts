@@ -32,6 +32,9 @@ export const FleetConfig = z.object({
   // buttons svalld has offered once, with their rules in the crew's settings, so one the user deletes stays deleted
   home: Home.extend({ command: z.string().optional(), model: ModelPicks.optional(), offered: z.array(z.string()).optional() }).prefault({}),
   defaultCwd: z.string().default(DEFAULT_CWD),
+  newRobotStart: z.enum(['agent', 'shell']).optional(),
+  svallPermissions: z.boolean().optional(),
+  onboarding: z.object({ firstProject: z.string().optional(), scribe: z.boolean() }).optional(),
   // the agent the scribe, mission control's crew and `svall robot new --run` use by default; absent, the private fleet's, else
   // claude, unless only other agents are installed
   mainAgent: AgentKind.optional(),

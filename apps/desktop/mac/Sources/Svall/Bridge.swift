@@ -64,13 +64,14 @@ enum ToShell: Decodable {
     case retitle
     case windowSize(width: Double, height: Double)
     case setupPlan
-    case setupRun(agents: [String], found: [String], projects: String)
+    case setupRun(agents: [String], found: [String], projects: String, mainAgent: String, firstProject: String?, scribe: Bool, svallPermissions: Bool, newRobotStart: String)
+    case setupLogin(agent: String)
     case folderPick(start: String)
     case awake(reason: String?)
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -117,7 +118,8 @@ enum ToShell: Decodable {
         case "retitle": self = .retitle
         case "window.size": self = .windowSize(width: try c.decode(Double.self, forKey: .width), height: try c.decode(Double.self, forKey: .height))
         case "setup.plan": self = .setupPlan
-        case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects))
+        case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects), mainAgent: try c.decode(String.self, forKey: .mainAgent), firstProject: try c.decodeIfPresent(String.self, forKey: .firstProject), scribe: try c.decode(Bool.self, forKey: .scribe), svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions), newRobotStart: try c.decode(String.self, forKey: .newRobotStart))
+        case "setup.login": self = .setupLogin(agent: try c.decode(String.self, forKey: .agent))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
         case "menu.state": self = .menuState(chords: try c.decode([String: String].self, forKey: .chords), state: try c.decode(MenuState.self, forKey: .state))

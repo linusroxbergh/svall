@@ -62,7 +62,7 @@ function shimDirOnPath(d: PreflightDeps): Check {
 // 1 is the CLI's own "not signed in"; anything else (a timeout, an unknown subcommand) leaves it unknown
 const exitCode = (e: unknown): unknown => (e as { code?: unknown }).code;
 
-async function signedIn(d: PreflightDeps, kind: AgentKind): Promise<boolean | undefined> {
+export async function signedIn(d: PreflightDeps, kind: AgentKind): Promise<boolean | undefined> {
   const a = AGENTS[kind];
   try {
     // the fleet's API keys ride along, as they do into a robot's shell

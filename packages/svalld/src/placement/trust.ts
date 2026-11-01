@@ -21,11 +21,11 @@ function textOf(file: string): string | undefined {
   }
 }
 
-// Claude keys a project by its real path composed to NFC; a file missing or one it cannot parse is left as it is
-function seedClaude(agentHome: string, key: string): 'seeded' | 'skipped' {
+// Claude keys a project by its real path composed to NFC; onboarding may create a missing config.
+function seedClaude(agentHome: string, key: string, create = false): 'seeded' | 'skipped' {
   const file = configOf(agentHome);
   let config: unknown;
-  try { config = JSON.parse(textOf(file) ?? ''); } catch { return 'skipped'; }
+  try { config = JSON.parse(textOf(file) ?? (create ? '{}' : '')); } catch { return 'skipped'; }
   if (!config || typeof config !== 'object' || Array.isArray(config)) return 'skipped';
   const projects = ((config as { projects?: unknown }).projects ?? {}) as Record<string, Record<string, unknown> | undefined>;
   if (projects[key]?.hasTrustDialogAccepted === true) return 'seeded';
@@ -57,7 +57,7 @@ export const nap = (ms: number, signal?: AbortSignal): Promise<void> => new Prom
  * apply does, and only while no agent of that kind runs to write over it. Rejects once a mirror held them `waitMs`; OpenCode never asks.
  */
 export async function seedTrust(
-  kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean>; waitMs: number },
+  kind: AgentKind, clone: string, o: { agentHome: string; homedir: string; agentRunning: () => Promise<boolean>; waitMs: number; create?: boolean },
 ): Promise<'seeded' | 'skipped'> {
   if (kind === 'opencode') return 'seeded';
   const signal = AbortSignal.timeout(o.waitMs);
@@ -67,7 +67,7 @@ export async function seedTrust(
   try {
     if (await o.agentRunning()) return 'skipped';
     const key = realPath(clone);
-    return kind === 'claude' ? seedClaude(o.agentHome, key.normalize('NFC')) : seedCodex(o.agentHome, key);
+    return kind === 'claude' ? seedClaude(o.agentHome, key.normalize('NFC'), o.create) : seedCodex(o.agentHome, key);
   } finally {
     unlock();
   }

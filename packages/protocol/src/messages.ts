@@ -331,6 +331,7 @@ export const methods = {
   'placing.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'worktrees.set': { params: z.object({ enabled: z.boolean() }), result: z.object({}) },
   'dormancy.set': { params: z.object({ hours: z.number().int().min(0) }), result: z.object({}) },
+  'robotPreferences.set': { params: z.object({ newRobotStart: z.enum(['agent', 'shell']).optional(), svallPermissions: z.boolean().optional() }), result: z.object({}) },
   'mainAgent.set': { params: z.object({ agent: AgentKind }), result: z.object({}) },
   // the model the scribe or mission control's crew runs on `agent`'s CLI; with none, that CLI's default
   'model.set': { params: z.object({ of: z.enum(['scribe', 'home']), agent: AgentKind, model: z.string().min(1).optional() }), result: z.object({}) },

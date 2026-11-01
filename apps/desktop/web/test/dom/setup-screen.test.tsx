@@ -42,12 +42,15 @@ function shell(plan: SetupPlan) {
   return { sent, receive, reply };
 }
 
+const next = () => fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+
 test('file changes are available on demand and follow the selected agents', () => {
   shell(ready);
+  fireEvent.click(screen.getByLabelText('Codex'));
+  next(); next();
   const details = screen.getByText(/Review changes/).closest('details')!;
   expect(details.open).toBe(false);
-  fireEvent.click(screen.getByLabelText('Codex'));
-  expect(screen.queryByText('Codex hooks')).toBeNull();
+  expect(screen.queryByText('Codex: hooks')).toBeNull();
   expect(screen.getByText('2 locations')).toBeTruthy();
   fireEvent.click(screen.getByText(/Review changes/));
   expect(details.open).toBe(true);
@@ -62,12 +65,11 @@ test('missing agents show one installer at a time', () => {
   expect(screen.getByText('install-codex')).toBeTruthy();
   expect(screen.queryByText('install-claude')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-  expect(s.sent.at(-1)).toEqual({ type: 'copy', text: 'install-codex' });
+  expect(s.sent.at(-1)).toMatchObject({ type: 'copy', text: 'install-codex' });
 });
 
 test('rechecks on native activation, focus and visibility without duplicate in-flight requests or locking choices', () => {
   const s = shell(missing);
-  fireEvent.change(screen.getByLabelText('Projects folder'), { target: { value: '~/work' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Codex' }));
   s.receive({ type: 'app.active', active: false });
   expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(1);
@@ -76,7 +78,7 @@ test('rechecks on native activation, focus and visibility without duplicate in-f
   fireEvent(document, new Event('visibilitychange'));
   expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(2);
   expect(screen.getByRole('button', { name: 'Checking…' }).hasAttribute('disabled')).toBe(true);
-  expect(screen.getByLabelText('Projects folder').closest('fieldset')!.disabled).toBe(false);
+  expect(screen.getByRole('radio', { name: 'Codex' }).closest('fieldset')!.disabled).toBe(false);
   s.reply();
   expect((screen.getByRole('radio', { name: 'Codex' }) as HTMLInputElement).checked).toBe(true);
   fireEvent(document, new Event('visibilitychange'));
@@ -85,31 +87,34 @@ test('rechecks on native activation, focus and visibility without duplicate in-f
   fireEvent.focus(window);
   expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(4);
   s.reply(ready);
-  expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('~/work');
   fireEvent.focus(window);
-  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(4);
+  expect(s.sent.filter((m) => m.type === 'setup.plan')).toHaveLength(5);
 });
 
 test('rechecking preserves existing agent selections and even an intentionally empty folder', () => {
   const blocked = { ...ready, blockers: ['Shell did not answer.'] };
   const s = shell(blocked);
   fireEvent.click(screen.getByLabelText('Codex'));
+  s.reply(ready);
+  next();
   fireEvent.change(screen.getByLabelText('Projects folder'), { target: { value: '' } });
   s.receive({ type: 'app.active', active: true });
   s.reply(ready);
+  fireEvent.click(screen.getByRole('button', { name: 'Back' }));
   expect((screen.getByLabelText('Codex') as HTMLInputElement).checked).toBe(false);
+  next();
   expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('');
 });
 
 test('running setup communicates progress and locks configuration', () => {
   const s = shell(ready);
+  next(); next();
   fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
-  expect(s.sent.at(-1)).toEqual({ type: 'setup.run', agents: ['claude', 'codex'], found: ['claude', 'codex'], projects: '~/Developer' });
+  expect(s.sent.at(-1)).toMatchObject({ type: 'setup.run', agents: ['claude', 'codex'], found: ['claude', 'codex'], projects: '~/Developer' });
   expect((screen.getByRole('button', { name: 'Setting up…' }) as HTMLButtonElement).disabled).toBe(true);
   expect(screen.getByRole('status').textContent).toMatch(/Connecting your agents/);
-  expect(screen.getByLabelText('Projects folder').closest('fieldset')!.disabled).toBe(true);
+  expect(screen.getByLabelText('Automatically update robot notes').closest('fieldset')!.disabled).toBe(true);
   s.receive({ type: 'folder.picked', path: '/unexpected' });
-  expect((screen.getByLabelText('Projects folder') as HTMLInputElement).value).toBe('~/Developer');
   s.receive({ type: 'setup.result', step: 'run', ok: false, json: 'Could not write hooks. Try again.' });
   expect(screen.getByRole('alert').textContent).toMatch(/Could not write hooks/);
   expect((screen.getByRole('button', { name: 'Set up Svall' }) as HTMLButtonElement).disabled).toBe(false);
@@ -117,6 +122,7 @@ test('running setup communicates progress and locks configuration', () => {
 
 test('successful setup retains actionable warnings before continuing', () => {
   const s = shell(ready);
+  next(); next();
   fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
   s.receive({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ warnings: ['Trust the Codex hooks once.'] }) });
   expect(screen.getByText('Svall is set up')).toBeTruthy();
@@ -132,4 +138,25 @@ test('Help\'s Send Feedback… opens the form on the setup page, and Esc closes 
   expect(await screen.findByText('Diagnostics unavailable')).toBeTruthy();
   fireEvent.keyDown(screen.getByTestId('feedback-text'), { key: 'Escape' });
   expect(screen.queryByTestId('feedback-panel')).toBeNull();
+});
+
+
+test('skips only a single definitely signed-in CLI and keeps sign-in unknown visible', () => {
+  shell({ ...ready, agents: [{ ...ready.agents[0]!, signedIn: true }] });
+  expect(screen.getByRole('heading', { name: 'Choose where you work' })).toBeTruthy();
+});
+
+test('collects main agent, project and preferences without writing until the last action', () => {
+  const s = shell(ready);
+  fireEvent.click(screen.getByRole('radio', { name: 'Codex main' }));
+  next();
+  fireEvent.click(screen.getByRole('button', { name: 'Choose a project…' }));
+  expect(s.sent.at(-1)).toEqual({ type: 'folder.pick', start: '~/Developer' });
+  s.receive({ type: 'folder.picked', path: '~/Developer/storefront' });
+  expect(screen.getByText('storefront')).toBeTruthy();
+  next();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Automatically update robot notes' }));
+  expect(s.sent.filter((m) => m.type === 'setup.run')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
+  expect(s.sent.at(-1)).toMatchObject({ type: 'setup.run', mainAgent: 'codex', firstProject: '~/Developer/storefront', scribe: false, svallPermissions: true, newRobotStart: 'agent' });
 });

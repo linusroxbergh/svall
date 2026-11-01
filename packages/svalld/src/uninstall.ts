@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import { startupFile, setupPath } from './setup-path.js';
+import { setSvallPermissions } from './svall-permissions.js';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import { codexPaths, type CodexPaths } from './codex/install.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
@@ -144,7 +146,7 @@ const once = (files: string[]): string[] => {
 // takes back what setup put outside the fleet homes: the hooks, statusline and plugin running `home`'s scripts, every
 // fleet's phone link, service and tmux server, the mirror's copied keys, the releases and the shims; fleet data stays for purge
 export async function runUninstall(o: {
-  home: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
+  home: string; userHome?: string; homes: string[]; settingsPaths: string[]; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; launchctl: boolean;
   mobile: MobileDeps; app: AppQuit; tmux?: string; skipPid?: number; platform?: NodeJS.Platform; unitDir?: string; prefix?: string; cache?: string; run?: Run;
 }): Promise<string[]> {
   // $TMUX names the server the caller's terminal runs in; stopping it would end this run before the shims and the report
@@ -177,6 +179,11 @@ export async function runUninstall(o: {
       fs.rmSync(file);
       done.push(`removed ${file}`);
     } else done.push(...writeJsonSettings(current, next, what));
+  }
+  for (const file of settingsPaths) done.push(...setSvallPermissions(file, o.codex.dir, false, []));
+  for (const shell of o.userHome ? ['zsh', 'bash', 'fish'] : []) {
+    const file = startupFile(o.userHome!, shell, shell === 'zsh' ? process.env.ZDOTDIR : undefined);
+    if (file && fs.existsSync(file)) done.push(...setupPath(file, o.shimDir, shell === 'fish', true));
   }
   done.push(...removeOpencodePlugin(o.opencode));
   if (agentHomes.XDG_CONFIG_HOME) done.push(...removeOpencodePlugin(opencodePaths(agentHomes)));

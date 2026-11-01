@@ -15,6 +15,8 @@ import { HOOK_SCRIPT, expandHome, realPath, resolvePaths, type Paths } from './p
 import { assetDir, hookHelperSource, hookHelperSources, variant, type Runtime } from './runtime.js';
 import { readJsonSettings, readOrUndefined, writeJsonSettings, type JsonSettings } from './settings-file.js';
 import { shq } from './text.js';
+import { setupPath } from './setup-path.js';
+import { setSvallPermissions } from './svall-permissions.js';
 
 // the scripts speak the daemon's socket protocol, so every daemon start refreshes them and the helper that stands in
 // for them; without a built helper the scripts run
@@ -235,6 +237,7 @@ export type SetupOptions = {
   home: string; settingsPath: string; codex: CodexPaths; opencode: OpencodePaths; launchAgentsDir: string; shimDir: string; runtime: Runtime;
   // the agent CLIs on PATH; absent, Claude counts as installed
   agents?: AgentKind[]; integrations?: AgentKind[];
+  pathFile?: string; pathFish?: boolean; svallPermissions?: boolean;
 };
 
 export type SetupState = { settings?: JsonSettings; codexHooks?: JsonSettings; opencodeWanted: boolean; removals: Removal[]; hooksStale: boolean; shimsStale: boolean; plistStale: boolean };
@@ -267,6 +270,8 @@ export async function runSetup(o: SetupOptions & { launchctl: boolean; replaceSe
   const user = setupUser({ ...o, settings: state.settings, codexHooks: state.codexHooks, replaceSettings: o.replaceSettings ?? true });
   for (const [current, next, what] of state.removals) user.push(...writeJsonSettings(current, next, what));
   user.push(...(state.opencodeWanted ? installOpencodePlugin(o.opencode) : removeOpencodePlugin(o.opencode)));
+  if (o.pathFile) user.push(...setupPath(o.pathFile, o.shimDir, o.pathFish));
+  if (o.svallPermissions !== undefined) user.push(...setSvallPermissions(o.settingsPath, o.codex.dir, o.svallPermissions, [...(state.settings ? ['claude'] : []), ...(state.codexHooks ? ['codex'] : [])]));
   if (!o.launchctl) return [...home, ...user];
   return [...home, ...user, await bootstrapAgent(o.launchAgentsDir, LAUNCHD_LABEL)];
 }

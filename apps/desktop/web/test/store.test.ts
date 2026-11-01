@@ -568,10 +568,10 @@ describe('store', () => {
     expect(s().ide.c1).toBeUndefined();
     expect(s().ide.c0).toBeUndefined();
   });
-  it('opens the settings on a machine that has none of its own, once', () => {
+  it('leaves Settings closed on first open and persists later changes', () => {
     const storage = memStorage();
     const store = createAppStore(storage);
-    expect(store.getState().settingsOpen).toBe(true);
+    expect(store.getState().settingsOpen).toBe(false);
     // a launch that only asks spends nothing: the answer is the card being closed
     expect(storage.settings).toBeUndefined();
     store.getState().setFleet(fleet());
@@ -587,7 +587,7 @@ describe('store', () => {
     // the connect screen stands where the card would be, so there was nothing on screen to close
     store.getState().toggleSettings(false);
     expect(storage.settings).toBeUndefined();
-    expect(createAppStore(storage).getState().settingsOpen).toBe(true);
+    expect(createAppStore(storage).getState().settingsOpen).toBe(false);
   });
   it('a closed settings card writes the settings it shows, on any launch', () => {
     const storage = memStorage();

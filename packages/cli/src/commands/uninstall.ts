@@ -55,6 +55,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
         uninstall: () => run({
           home: profileHome(PRIVATE),
           homes: fleetHomes(os.homedir()),
+          userHome: os.homedir(),
           settingsPaths: userPaths().claudeSettingsFiles,
           codex: codexPaths(),
           opencode: opencodePaths(),

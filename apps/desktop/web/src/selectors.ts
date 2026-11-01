@@ -19,7 +19,7 @@ export const homeIsland = (f: FleetState): Island | undefined => Object.values(f
 
 // mission control's crew start with the home command; anywhere else a new robot is a shell
 export const startOf = (f: FleetState, islandId: string): { command?: string } =>
-  (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : {});
+  (f.islands[islandId]?.kind === 'home' ? { command: f.home.command } : f.newRobotStart === 'agent' ? { command: f.mainAgent ?? 'claude' } : {});
 
 // a fleet object is replaced only by a patch or a snapshot, while every row's selector asks again on every store change
 const crews = new WeakMap<FleetState, Map<string, Robot[]>>();
