@@ -122,4 +122,12 @@ describe('sessionLanding', () => {
   it('a robot with no transcript has no files', async () => {
     expect(await sessionLanding(robotAt(WT), fs)).toEqual({ sourceHome: '', files: [] });
   });
+
+  it('a Claude session never prompted, which wrote no transcript yet, has no files; any other missing transcript refuses', async () => {
+    const none: SessionFs = { ...fs, lstat: async (p) => { throw Object.assign(new Error(`${p} is not there`), { code: 'ENOENT' }); } };
+    const t = `/Users/ada/.claude/projects/-p/${ID}.jsonl`;
+    expect(await sessionLanding(robotAt(WT, { agent: { kind: 'claude', sessionId: ID, transcriptPath: t } as never }), none)).toEqual({ sourceHome: '', files: [] });
+    const rollout = `/Users/ada/.codex/sessions/2026/10/25/rollout-2026-10-25T10-00-00-${ID}.jsonl`;
+    await expect(sessionLanding(robotAt(WT, { agent: { kind: 'codex', sessionId: ID, transcriptPath: rollout } as never }), none)).rejects.toThrow('is not there');
+  });
 });

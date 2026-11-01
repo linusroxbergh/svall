@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { ApiError, MachineId, MoveId, MovePhase, ObjectName, Robot, TransferSession, type LeftBehind, type Refusal } from '@svall/protocol';
 import { AGENTS } from '../agents.js';
+import { unsaved } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import { DurableJson } from '../durable.js';
 import { boundary, type Failpoint } from '../failpoints.js';
@@ -118,6 +119,7 @@ async function stageSessions(c: Robot, paths: MovePlan['paths'], into: string, r
     const a = slot?.agent;
     if (!a?.transcriptPath || !dest) continue;
     const { sourceHome, files } = await sessionLanding({ ...c, agent: a });
+    if (!files.length) continue;
     const transcript = path.posix.relative(sourceHome, a.transcriptPath);
     if (!dest.endsWith(`/${transcript}`)) throw new Error(`${a.kind} session ${a.sessionId} has no place at ${dest}`);
     const n = String(sessions.length);
@@ -468,9 +470,11 @@ export async function wake(w: Wake, j: MoveJournal): Promise<string | undefined>
     return undefined;
   }
   const agent = c.revive?.command ? c.agent : undefined;
+  // a session never prompted starts fresh, under an id of its own
+  const fresh = !!unsaved(c);
   let heard!: () => void;
   const started = new Promise<undefined>((resolve) => { heard = () => resolve(undefined); });
-  const unheard = w.fleet.onSessionStart((robotId, term, sessionId) => { if (robotId === id && term === undefined && sessionId === agent?.sessionId) heard(); });
+  const unheard = w.fleet.onSessionStart((robotId, term, sessionId) => { if (robotId === id && term === undefined && (fresh || sessionId === agent?.sessionId)) heard(); });
   let failed!: (error: string) => void;
   const dormant = new Promise<string>((resolve) => { failed = resolve; });
   const unwatched = w.store.subscribe(() => {

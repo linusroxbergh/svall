@@ -444,6 +444,21 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.mac1.opened).toEqual(['c_1']);
   });
 
+  it('a Claude robot never prompted moves with no session, and starts fresh there without waiting on its old session', async () => {
+    const w = open({ notInRepo: true });
+    const home = await w.start();
+    const transcript = (claude: string) => path.join(claude, 'projects/-Users-ada-code-app', `${SID}.jsonl`);
+    fs.rmSync(transcript(w.macClaude));
+
+    const began = Date.now();
+    await home.placement.start('c_1', W);
+    expect(Date.now() - began).toBeLessThan(5000);
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: path.join(w.far, 'notes') });
+    expect(fs.existsSync(transcript(w.farClaude))).toBe(false);
+    expect(w.vault.lines.at(-1)?.text).toMatch(/^claude\b/);
+    expect(w.vault.lines.at(-1)?.text).not.toContain('--resume');
+  });
+
   it('an OpenCode robot moves with its session written out of OpenCode here and read into OpenCode there, and comes back the same way', async () => {
     const w = open({ opencode: true });
     const home = await w.start();
