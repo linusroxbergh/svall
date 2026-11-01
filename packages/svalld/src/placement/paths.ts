@@ -36,10 +36,15 @@ export function destinationPaths(c: Robot, clone: string, homes: Homes): {
   };
 }
 
+// Claude writes no transcript until the first prompt; such a session carries nothing and starts fresh where it lands
+const unprompted = (a: NonNullable<Robot['agent']>, fs: SessionFs): Promise<boolean> => (a.kind !== 'claude'
+  ? Promise.resolve(false)
+  : fs.lstat(a.transcriptPath!).then(() => false, (e: NodeJS.ErrnoException) => e.code === 'ENOENT'));
+
 /** The agent home a robot's session lies in on the source and its files relative to it, which land at the same place under the destination's. */
 export async function sessionLanding(c: Robot, fs: SessionFs = realSessionFs): Promise<{ sourceHome: string; files: string[] }> {
   const a = c.agent;
-  if (!a?.transcriptPath) return { sourceHome: '', files: [] };
+  if (!a?.transcriptPath || await unprompted(a, fs)) return { sourceHome: '', files: [] };
   const { home, files } = await sessionAdapter(a.kind).discover(a.transcriptPath, a.sessionId, fs);
   return { sourceHome: home, files };
 }

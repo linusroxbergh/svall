@@ -695,7 +695,7 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(d.asked.map((a) => a.method)).toEqual(['system.info']);
   });
 
-  it('sessionBytes counts the session files that travel, which land under the worker\'s agent home; a session with no transcript is refused', async () => {
+  it('sessionBytes counts the session files that travel, which land under the worker\'s agent home; a Claude session never prompted carries nothing', async () => {
     const t = machines();
     const transcript = `${t.mac}/.claude/projects/-p/${ID}.jsonl`;
     put(path.dirname(transcript), `${ID}.jsonl`, 'x'.repeat(1234));
@@ -705,8 +705,8 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     expect(plan.paths.transcriptPath).toBe(`${t.far}/.claude/projects/-p/${ID}.jsonl`);
 
     const gone = `${t.mac}/.claude/projects/-p/${ID.replace('0b', '1b')}.jsonl`;
-    const r = await refusal(depsOf(t, [shellIn(t, { agent: { ...claude('idle', gone)!, sessionId: ID.replace('0b', '1b') } })]));
-    expect(r.action).toBe('start it fresh first');
+    const { sheet: fresh } = await sheet(depsOf(t, [shellIn(t, { agent: { ...claude('idle', gone)!, sessionId: ID.replace('0b', '1b') } })]));
+    expect(fresh.sessionBytes).toBe(0);
   });
 });
 

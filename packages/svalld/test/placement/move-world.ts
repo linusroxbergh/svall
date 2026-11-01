@@ -38,6 +38,7 @@ import { makeHome } from '../helpers.js';
 import { H, W, island } from './world.js';
 
 export const SID = '0b1c2d3e-4f50-4162-8394-a5b6c7d8e9f0';
+const FRESH_SID = '3e4f5061-7283-4495-a6b7-d8e9f0a1b2c3';
 const SID2 = '1c2d3e4f-5061-4273-84a5-b6c7d8e9f0a1';
 export const OSID = 'ses_0123456789abAbCdEfGhIjKlMn';
 const CLAUDE = '2.1.300';
@@ -114,10 +115,11 @@ class Box {
     sendLine: async (paneId: string, text: string) => {
       this.lines.push({ paneId, text });
       const w = this.byPane(paneId);
-      const resumed = /^claude\b.*--resume (\S+)/.exec(text) ?? /^opencode\b.* -s (\S+)/.exec(text);
-      if (!w || !resumed) return;
+      // a fresh Claude reports a session of its own
+      const sid = (/^claude\b.*--resume (\S+)/.exec(text) ?? /^opencode\b.* -s (\S+)/.exec(text))?.[1] ?? (/^claude\b/.test(text) ? FRESH_SID : undefined);
+      if (!w || !sid) return;
       w.job = text;
-      setImmediate(() => this.started?.(w.name, resumed[1]));
+      setImmediate(() => this.started?.(w.name, sid));
     },
     sendBytes: async (paneId: string, bytes: Buffer) => { this.keys.push({ paneId, text: bytes.toString('latin1') }); },
     killWindow: async (windowId: string) => {
