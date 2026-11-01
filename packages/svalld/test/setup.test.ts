@@ -51,18 +51,17 @@ describe('writeJsonSettings', () => {
     }
   });
 
-  it('keeps only the newest three backups, and backups of the user own', () => {
+  it('keeps only the newest three backups it stamped, the one just written among them, and none of the user own', () => {
     const file = path.join(makeHome(), 'settings.json');
     fs.writeFileSync(file, '{}');
-    fs.writeFileSync(`${file}.bak-mine`, '{}');
-    for (const [i, stamp] of ['1700000000001', '1700000000002', '1700000000003', '1700000000004'].entries()) {
-      fs.writeFileSync(`${file}.bak-${stamp}`, '{}');
-      writeJsonSettings(readJsonSettings(file), { n: i }, 'settings');
-    }
-    const left = fs.readdirSync(path.dirname(file)).filter((f) => f.includes('.bak-')).sort();
-    expect(left).toHaveLength(4);
-    expect(left).toContain('settings.json.bak-mine');
-    expect(left.some((f) => f.endsWith('1700000000004'))).toBe(false);
+    const mine = ['settings.json.bak-mine', 'settings.json.bak-2', 'settings.json.bak-1730000000'];
+    for (const f of mine) fs.writeFileSync(path.join(path.dirname(file), f), '{}');
+    // stamped in the future, as a clock set back or a synced folder would leave them
+    for (const stamp of ['9000000000001', '9000000000002', '9000000000003']) fs.writeFileSync(`${file}.bak-${stamp}`, '{}');
+    const [line] = writeJsonSettings(readJsonSettings(file), { model: 'x' }, 'settings');
+    const written = path.basename(line.replace('backup -> ', ''));
+    expect(fs.readdirSync(path.dirname(file)).filter((f) => f.includes('.bak-')).sort())
+      .toEqual([...mine, written, 'settings.json.bak-9000000000002', 'settings.json.bak-9000000000003'].sort());
   });
 
   it('refuses a read-only file, writing nothing', () => {

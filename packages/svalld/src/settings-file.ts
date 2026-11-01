@@ -32,8 +32,9 @@ export function readJsonSettings(file: string): JsonSettings {
   }
 }
 
-/** Throws when `next` changes a file that links into a folder that cannot be written, such as home-manager's store. */
-export function requireWritable(current: JsonSettings, next: Record<string, unknown>): void {
+/** Throws when `next` changes a file that links into a folder that cannot be written, such as home-manager's store, or,
+ *  unless the file is to be removed, a file that is read-only. */
+export function requireWritable(current: JsonSettings, next: Record<string, unknown>, removing = false): void {
   if (current.text === undefined || same(current.settings, next)) return;
   const real = fs.realpathSync(current.file);
   try {
@@ -41,6 +42,7 @@ export function requireWritable(current: JsonSettings, next: Record<string, unkn
   } catch {
     throw new Error(`${current.file} links to ${real}, whose folder is not writable; make the change in ${real} or replace the link with a regular file, then run again`);
   }
+  if (removing) return;
   try {
     fs.accessSync(real, fs.constants.W_OK);
   } catch {
@@ -50,10 +52,12 @@ export function requireWritable(current: JsonSettings, next: Record<string, unkn
 
 const BACKUPS_KEPT = 3;
 
-// setup runs again on every update, so only the newest backups stay
-function pruneBackups(file: string): void {
+// setup runs again on every update, so only the newest backups it stamped stay, the one just written among them
+function pruneBackups(file: string, backup: string): void {
   const prefix = `${path.basename(file)}.bak-`;
-  const old = fs.readdirSync(path.dirname(file)).filter((f) => f.startsWith(prefix) && /^\d+$/.test(f.slice(prefix.length))).sort().slice(0, -BACKUPS_KEPT);
+  const old = fs.readdirSync(path.dirname(file))
+    .filter((f) => f.startsWith(prefix) && /^\d{13}$/.test(f.slice(prefix.length)) && f !== path.basename(backup))
+    .sort().slice(0, -(BACKUPS_KEPT - 1));
   for (const f of old) fs.rmSync(path.join(path.dirname(file), f), { force: true });
 }
 
@@ -71,7 +75,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     const backup = `${current.file}.bak-${Date.now()}`;
     fs.writeFileSync(backup, current.text, { mode });
     fs.chmodSync(backup, mode);
-    pruneBackups(current.file);
+    pruneBackups(current.file, backup);
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });

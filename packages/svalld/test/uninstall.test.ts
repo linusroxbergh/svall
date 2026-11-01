@@ -206,12 +206,31 @@ describe('runUninstall', () => {
     expect(fs.readdirSync(f.o.codex.dir)).toEqual([]);
   });
 
-  it('removes a Claude settings file that setup made', async () => {
+  it('removes a Claude settings file that setup made, even once it is read-only', async () => {
     const f = installed();
     fs.rmSync(f.settingsPath);
     await runSetup(f.o);
+    fs.chmodSync(f.settingsPath, 0o444);
     expect(await runUninstall(f.o)).toContain(`removed ${f.settingsPath}`);
     expect(fs.existsSync(f.settingsPath)).toBe(false);
+  });
+
+  it('keeps what an agent writes into its settings while the app quits', async () => {
+    const f = installed();
+    fs.rmSync(f.settingsPath);
+    await runSetup(f.o);
+    fs.writeFileSync(path.join(f.home, 'app.pid'), `101\t${f.home}`);
+    let open = true;
+    const app: AppQuit = {
+      isApp: () => open,
+      quit: async () => {
+        const s = JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'));
+        fs.writeFileSync(f.settingsPath, JSON.stringify({ ...s, model: 'opus' }));
+      },
+      wait: async () => { open = false; },
+    };
+    await runUninstall({ ...f.o, app });
+    expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual({ model: 'opus' });
   });
 
   it('quits each open window once by its pid, waiting for it to go before the next, and before it takes anything back', async () => {
