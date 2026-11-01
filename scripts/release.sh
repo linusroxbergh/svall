@@ -1,9 +1,9 @@
 #!/bin/sh
-# Builds, signs, notarizes and packages Svall into dist/, publishes the DMG as a GitHub release, and uploads the appcast and
-# latest.json that name it to svall.dev.
+# Builds, signs, notarizes and packages Svall into dist/, publishes the DMG as a GitHub release, and deploys the appcast,
+# latest.json and install.sh as the svall-feeds Worker on svall.dev.
 # SVALL_RELEASE_KEY, which only --adhoc goes without, signs the controller and companions the app carries.
-# --adhoc does the same unsigned and stops before notarizing and uploading. SVALL_NOTES names a Markdown file the update
-# dialog shows as this version's notes, above those of every release since the installed one.
+# --adhoc does the same unsigned and stops before notarizing and uploading. release-notes/Svall-<version>.md holds the
+# notes the update dialog shows for this version, above those of every release since the installed one.
 set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -23,13 +23,15 @@ REPO=linusroxbergh/svall
 DOWNLOADS="https://github.com/$REPO/releases/download/v$VERSION"
 fail() { echo "release: $*" >&2; exit 1; }
 notarize() { xcrun notarytool submit "$1" --keychain-profile "$NOTARY" --wait | tee /dev/stderr | grep -q 'status: Accepted' || fail "notarization of $1 was not accepted"; }
-NOTES="${SVALL_NOTES:-}"
-[ -z "$NOTES" ] || [ -f "$NOTES" ] || fail "SVALL_NOTES names no file: $NOTES"
 # the DMG's window is laid out by Finder, so a terminal Finder will not answer stops here rather than after notarizing
 osascript -e 'tell application "Finder" to get name of startup disk' >/dev/null ||
   fail "this terminal may not control Finder; allow it in System Settings > Privacy & Security > Automation"
 
+# the runtime bundles node_modules, which must be what the lockfile names
+pnpm install --frozen-lockfile
+
 if [ -z "$ADHOC" ]; then
+  [ -f "release-notes/Svall-$VERSION.md" ] || fail "release-notes/Svall-$VERSION.md is missing; add it in the version's bump PR"
   [ -z "$(git status --porcelain)" ] || fail "the tree has changes"
   [ "$(git rev-parse --abbrev-ref HEAD)" = main ] || fail "release from main"
   git fetch -q origin main || fail "could not fetch main from origin"
@@ -51,10 +53,10 @@ if [ -z "$ADHOC" ]; then
   : "${SVALL_RELEASE_KEY:?set SVALL_RELEASE_KEY to the release signing key; see docs/integration.md}"
   node -e 'import(process.argv[1]).then((m) => m.releaseKey())' "$ROOT/scripts/release-stage.mjs" ||
     fail "SVALL_RELEASE_KEY cannot sign this release"
-  : "${SVALL_HOST:?set SVALL_HOST to the ssh host of the server}" "${SVALL_SITE_DIR:?set SVALL_SITE_DIR to the site folder on it}"
   gh auth status >/dev/null 2>&1 || fail "gh is not signed in, and the DMG is published as a GitHub release; run gh auth login"
-  # the server is first used after notarizing, so one that does not answer stops the release here
-  ssh "$SVALL_HOST" "test -d '$SVALL_SITE_DIR/releases'" || fail "$SVALL_HOST did not answer, or has no $SVALL_SITE_DIR/releases"
+  # the feeds deploy after notarizing, so a wrangler that cannot reach the account stops the release here
+  pnpm exec wrangler whoami 2>/dev/null | grep -q 4518483d318c36043e137e17e7fea694 ||
+    fail "wrangler is not signed in to svall.dev's Cloudflare account; run pnpm exec wrangler login"
   # Sparkle offers only a higher CFBundleVersion, and a commit count falls if history is ever rewritten
   LATEST="$(curl -sS -w '\n%{http_code}' https://svall.dev/latest.json)" || fail "could not read https://svall.dev/latest.json"
   case "$(printf '%s\n' "$LATEST" | tail -n 1)" in
@@ -69,8 +71,6 @@ else
   ID=-
 fi
 
-# the runtime bundles node_modules, which must be what the lockfile names
-pnpm install --frozen-lockfile
 # the controller the app carries is named the tag its companions are published under
 SVALL_RELEASE_NAME="v$VERSION" pnpm app:build
 APP=apps/desktop/mac/build.noindex/Svall.app
@@ -114,14 +114,12 @@ if [ -z "$ADHOC" ]; then
   rm -f dist/releases/Svall.dmg
   # the appcast carries every release's notes under its version, newest first, and the app shows those above its own
   rm -rf dist/notes && mkdir dist/notes
-  rsync -a --include='Svall-*.md' --exclude='*' "$SVALL_HOST:$SVALL_SITE_DIR/releases/" dist/notes/
-  if [ -n "$NOTES" ]; then cp "$NOTES" "dist/notes/Svall-$VERSION.md"; else echo '- Small fixes and improvements.' > "dist/notes/Svall-$VERSION.md"; fi
+  cp release-notes/Svall-*.md dist/notes/
   for f in $(ls dist/notes | sort -rV); do v="${f#Svall-}"; printf '## %s\n\n' "${v%.md}"; cat "dist/notes/$f"; echo; done > "dist/releases/Svall-$VERSION.md"
   "$(scripts/sparkle-tools.sh)/generate_appcast" --embed-release-notes --download-url-prefix "$DOWNLOADS/" dist/releases
   mv dist/releases/appcast.xml dist/appcast.xml
   # installed copies download what the enclosure names, and a prefix without its slash would name a missing file
   grep -qF "url=\"$DOWNLOADS/Svall-$VERSION.dmg\"" dist/appcast.xml || fail "the appcast does not name $DOWNLOADS/Svall-$VERSION.dmg"
-  cp "dist/notes/Svall-$VERSION.md" dist/releases/
 fi
 ln -sf "Svall-$VERSION.dmg" dist/releases/Svall.dmg
 if [ -n "$ADHOC" ]; then
@@ -131,7 +129,7 @@ fi
 # the release, with the DMG the feeds name, is public before the feeds; past the tag a second run refuses, so a failed or
 # stopped step prints what finishes it, from the DMG the appcast signed. Svall.dmg is the copy svall.dev/download reaches
 # through the latest release.
-FEEDS="rsync -a dist/releases/Svall-$VERSION.md '$SVALL_HOST:$SVALL_SITE_DIR/releases/' && rsync -a dist/appcast.xml dist/latest.json scripts/install.sh '$SVALL_HOST:$SVALL_SITE_DIR/'"
+FEEDS="rm -rf dist/feeds && mkdir dist/feeds && cp dist/appcast.xml dist/latest.json scripts/install.sh dist/feeds/ && pnpm exec wrangler deploy --config site/feeds.wrangler.jsonc"
 FINISH="echo '$SHA  $DMG' | shasum -a 256 -c - && gh release upload v$VERSION --repo $REPO --clobber -- $DMG dist/releases/Svall.dmg && gh release edit v$VERSION --repo $REPO --draft=false --latest --notes-file dist/notes/Svall-$VERSION.md && curl -fsIL -o /dev/null $DOWNLOADS/Svall-$VERSION.dmg && $FEEDS"
 REDO="gh release create v$VERSION --repo $REPO --verify-tag --title v$VERSION --notes-file dist/notes/Svall-$VERSION.md unless it exists, then $FINISH"
 git tag "v$VERSION"

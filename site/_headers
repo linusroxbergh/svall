@@ -1,0 +1,5 @@
+# the page and its scripts keep their names across deploys, so each load checks them: a cached script against a newer page breaks it
+/
+  Cache-Control: no-cache
+/map/*
+  Cache-Control: no-cache

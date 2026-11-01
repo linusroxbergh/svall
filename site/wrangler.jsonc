@@ -1,0 +1,8 @@
+// svall.dev's page, deployed by scripts/site-deploy.sh from the files it copies into dist/site
+{
+  "name": "svall-site",
+  "account_id": "4518483d318c36043e137e17e7fea694",
+  "compatibility_date": "2026-10-23",
+  "assets": { "directory": "../dist/site" },
+  "workers_dev": true
+}
