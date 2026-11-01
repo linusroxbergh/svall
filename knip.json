@@ -5,7 +5,8 @@
     "packages/cli": { "entry": ["test/fixtures/*.{mjs,ts}"] },
     "packages/svalld": { "entry": ["hooks/*.{mjs,js}", "test/fixtures/*.{mjs,cjs}", "src/retro/index-worker.ts"] }
   },
+  "ignore": ["vendor/**"],
   "ignoreFiles": ["**/*.d.mts"],
-  "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "script", "sips", "ssh-keygen", "swiftc"],
+  "ignoreBinaries": ["ar", "ditto", "hdiutil", "iconutil", "infocmp", "magick", "screencapture", "script", "sips", "ssh-keygen", "svall", "swiftc"],
   "ignoreExportsUsedInFile": { "type": true, "interface": true }
 }

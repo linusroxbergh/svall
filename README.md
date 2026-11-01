@@ -28,9 +28,10 @@ waiting on you or done.
   opens each in an editor.
 - Every terminal has a browser, a file editor and the working tree's changes
   beside it.
-- The scribe names each robot and keeps its note up to date.
-- Mission control's buttons start a helper agent that updates or reports on
-  the fleet.
+- The scribe, a background run of your own agent CLI, names each robot and
+  keeps its note up to date.
+- Mission control, the fixed island at the bottom of the map, has buttons that
+  start a helper agent that updates or reports on the fleet.
 - A macOS banner tells you when an agent is blocked or done. A blocked one has
   Approve and Deny on it.
 - Your phone gets the fleet and any terminal over Tailscale, with push
@@ -70,8 +71,8 @@ CLIs.
 
 4. A new fleet opens with Island 1 holding one robot, a shell in your
    projects folder, and a short tour of the map. The shell becomes an agent
-   when you type `claude`, `codex` or `opencode`. `+ New island` on the sandbar
-   at the bottom makes another island, and Cmd+T another robot. With more
+   when you type `claude`, `codex` or `opencode`. `+ New island` on mission
+   control, the island at the bottom, makes another, and Cmd+T another robot. With more
    than one CLI installed, the app asks which one the scribe and mission
    control run. Change it later in Settings or with `svall agent codex`.
 
@@ -83,7 +84,7 @@ Svall has no AI account or billing of its own. The provider whose key you use
 bills the calls.
 
 For Claude Code, put an
-[Anthropic API key](https://console.anthropic.com/settings/keys) in the private
+[Anthropic API key](https://platform.claude.com/settings/keys) in the private
 fleet's `.env` (another fleet's is `~/.svall-<fleet>/.env`):
 
     mkdir -p ~/.svall
@@ -91,7 +92,7 @@ fleet's `.env` (another fleet's is `~/.svall-<fleet>/.env`):
     chmod 600 ~/.svall/.env
     nano ~/.svall/.env
 
-Add `ANTHROPIC_API_KEY=your-key` on its own line, and keep the key out of this
+Add `ANTHROPIC_API_KEY=your-key` on its own line, and keep the key out of any
 repository and your shell history. New robot shells and the Claude scribe
 read it, and it signs Claude Code in; `svall doctor` shows whether it did. A
 shell that is already running keeps its old environment, so after changing the
@@ -153,8 +154,8 @@ to this Mac and remove each machine with `svall host remove <name>` first:
 
 ### When something breaks
 
-Choose Help, Send Feedback… in the app, describe what happened and send it.
-The report can carry diagnostics, which See what's sent shows before you send.
+Choose Help → Send Feedback… in the app, describe what happened and send it.
+The report can carry diagnostics, which **See what's sent** shows before you send.
 
 `svall doctor` checks what the fleet needs and prints the end of the daemon's
 log, `~/.svall/svalld.log`. It names your home and paths, so read it before
@@ -208,8 +209,8 @@ has the steps.
 - **Scribe**: about a minute after an agent stops with new work, and every ten
   minutes or so while it keeps working, a headless `claude -p`, `codex exec`
   or `opencode run` writes the robot's name, note and links, and the
-  island's description. Notes you wrote stay, and a name you gave only gains a PR or
-  ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
+  island's description. Notes you wrote stay, and a name you gave only gains a
+  PR or ticket id. Passes start at most once a minute, so a busy fleet can run 60 an
   hour, and each costs money on an API key. A new fleet asks before turning the
   scribe on, and you can turn it off in Settings. With board placing on, the
   same pass also moves the robot to the board column that fits, unless you
@@ -244,12 +245,12 @@ has the steps.
   rewrites reloads unless you have changed it.
 - **Changes** (Cmd+4): each file's diff against HEAD, or against the point
   where the branch left main.
-- **Resources** (Cmd+Shift+R, or the lighthouse islet): what `~/.claude`,
+- **Resources** (Cmd+Shift+R, or the lighthouse islet on the map): what `~/.claude`,
   `~/.codex`, the fleet's docs and each repository give your agents.
   `~/.claude.json` and `~/.codex/auth.json` hold tokens and never open.
 - **Settings** (Cmd+,): this machine, browser, keyboard, notifications, phone,
-  and the fleet's name, main agent, scribe, their models and idle timeout. `Usage`, next to
-  it, shows the plan limits of your running agents without using any, and the
+  and the fleet's name, main agent, scribe, their models and idle timeout.
+  `Usage`, next to it, shows the plan limits of your running agents without using any, and the
   login they belong to.
 
 ### Keyboard
@@ -277,7 +278,7 @@ Clicking a link asks whether to open it in the robot's browser or
 yours, and selecting text copies it. With Shift held, a selection or middle-click
 goes to Ghostty instead of tmux: the selection copies and the middle-click pastes,
 unless your Ghostty config's `copy-on-select` or `middle-click-action` says
-otherwise. A robot on a worker copies through OSC 52,
+otherwise. A robot on a [remote machine](#remote-machines) copies through OSC 52,
 which your Ghostty config's `clipboard-write` governs: `ask` asks at every copy,
 and `deny` drops it. Terminals attach to tmux, so Ghostty's `initial-command`
 and `input` are ignored.
@@ -314,7 +315,7 @@ and `input` are ignored.
     svall mobile off
 
 - Open the link on your phone, then choose Share → Add to Home Screen. You get
-  every island and robot as a list, the starred ones also first, and a
+  every island and robot as a list, starred ones first, and a
   robot's terminal full screen with Esc, Tab, Shift-Tab, Ctrl-C, arrows and
   Return above the keyboard; `⋯` lists the agent's other keys and slash
   commands. A prompt typed under the list starts a mission control robot on
@@ -365,15 +366,22 @@ one you turn off it takes them out:
 - `~/.codex/hooks.json` (or `$CODEX_HOME/hooks.json`): the same hook.
 - `~/.config/opencode/plugins/svall.js` (or under `$XDG_CONFIG_HOME`): Svall's
   OpenCode plugin.
+- With *Let robots run svall without asking* on, as it is by default:
+  `permissions.allow` rules in that Claude Code file for the `svall` commands
+  robots use to start, message and wait for each other, with
+  `~/.claude/svall-permissions.json` recording which rules are Svall's, and
+  `~/.codex/rules/svall.rules` for Codex. OpenCode robots get the same rules in
+  their environment, and a robot's `svall robot new --command` may then only
+  pick an agent's model. Turning it off in Settings takes them out.
 
 A change to the Claude Code or Codex file keeps a `.bak-<time>` copy, the
 newest three per file. Setup and uninstall rewrite the file only when its
 settings change, keeping its key order, indent, line endings and final
 newline, and a file of plain ASCII in plain ASCII; in a file of several
-lines, an array or object written on one line comes back spread over several. Each start of the app puts back
-hooks that are missing or out of date, so to keep an agent's hooks out, leave
-it off on the setup screen or run `svall setup --agents <list>`. Setup also
-writes:
+lines, an array or object written on one line comes back spread over several.
+Each start of the app puts back hooks that are missing or out of date, so to
+keep an agent's hooks out, leave it off on the setup screen or run
+`svall setup --agents <list>`. Setup also writes:
 
 - `~/Library/LaunchAgents/io.github.linusroxbergh.svall.svalld*.plist`, one per
   fleet, which the app uses to start each daemon.
@@ -412,7 +420,7 @@ send:
   `gh auth status`.
 - A report sent from Send Feedback goes to svall.dev, which sees your IP
   address, and is filed in a private repository only the maintainer reads.
-  Diagnostics are optional, and See what's sent shows them before you send:
+  Diagnostics are optional, and **See what's sent** shows them before you send:
   versions, your agents and the end of the daemon's log, which can name your
   robots, islands and repos, with your home written as `~`.
 - Svall checks `https://svall.dev/appcast.xml` for updates, which tells
@@ -436,5 +444,6 @@ and how Svall works. There is no CLA.
 
 ## License
 
-GPL-3.0-or-later, see [`LICENSE`](LICENSE). The name and icon are not covered by
-the licence, see [`TRADEMARK.md`](TRADEMARK.md).
+Copyright (C) 2026 Linus Roxbergh. GPL-3.0-or-later, see [`LICENSE`](LICENSE).
+The GPL grants no rights to the name "Svall" or its icon as trademarks, see
+[`TRADEMARK.md`](TRADEMARK.md).

@@ -17,7 +17,7 @@ const SHOWN = ['show', 'hide'];
 const shown = (v?: Shown): boolean | undefined => (v === undefined ? undefined : v === 'show');
 
 /** What `svall app show` asks of the app, from its robot and flags. */
-export function showParams(id: string | undefined, o: Opts): AppShow {
+function showParams(id: string | undefined, o: Opts): AppShow {
   if (id === undefined) {
     const robotOnly = (['left', 'right', 'ratio', 'file', 'preview'] as const).find((k) => o[k] !== undefined);
     if (robotOnly) throw new Error(`--${robotOnly} needs a robot: svall app show <robot> --${robotOnly} …`);

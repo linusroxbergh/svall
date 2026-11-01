@@ -11,7 +11,7 @@ type Command = { label: string; key?: string; run: () => void };
 const keyDeps = (): KeyDeps => { const d = deps(); try { return { ...d, browser: app.browser() }; } catch { return d; } };
 
 // every action the keys reach, then the menu's commands that have none; Quit stays with the shell
-export const commandsOf = (b: Bindings): Command[] => [
+const commandsOf = (b: Bindings): Command[] => [
   ...actionIds().filter((id) => id !== 'palette' && id !== 'quit').map((id) => ({
     label: ACTIONS[id].label,
     key: keyLabel(id, b),
@@ -23,7 +23,7 @@ export const commandsOf = (b: Bindings): Command[] => [
 ];
 
 // each word typed has to be in the label, in any order
-export const matching = (list: Command[], query: string): Command[] => {
+const matching = (list: Command[], query: string): Command[] => {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return list.filter((c) => words.every((w) => c.label.toLowerCase().includes(w)));
 };
