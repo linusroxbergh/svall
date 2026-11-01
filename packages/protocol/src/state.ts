@@ -46,7 +46,7 @@ export function updatesIn(run: string): AgentKind[] | undefined {
   const kinds = run.split(' && ').map((c) => AgentKind.options.find((k) => AGENT_UPDATE[k] === c));
   return kinds.every((k) => k !== undefined) ? kinds : undefined;
 }
-/** What a check's sentence says before the agent updates it leaves to this Mac, each joined by `, then `. */
+/** What a check's sentence says before the command it leaves to this Mac; agent updates there are each joined by `, then `. */
 export const ON_THIS_MAC = 'on this Mac, run ';
 /** The agents a check's sentence leaves to update on this Mac. */
 export function updatesHere(said: string): AgentKind[] | undefined {

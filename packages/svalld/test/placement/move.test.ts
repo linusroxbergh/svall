@@ -2,10 +2,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
+import { AGENTS } from '../../src/agents.js';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
+import type { AgentProbe, AgentProber } from '../../src/sessions/registry.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, waitForPolls } from '../helpers.js';
 import { Crash, OSID, SID, listed, moveWorld, state, until, type MoveWorld } from './move-world.js';
@@ -602,6 +604,29 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     fs.writeFileSync(merge, `${w.g(w.farWt, 'rev-parse', 'HEAD')}\n`);
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: false, refusal: { reason: `${w.farWt} is in the middle of a merge`, action: 'finish or abort it first' } });
     fs.rmSync(merge);
+    expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
+  });
+
+  it.each<[string, Partial<AgentProbe>, { reason: string; action: string }]>([
+    ['is not installed', { version: undefined }, { reason: 'claude is not installed on this Mac', action: `on this Mac, run ${AGENTS.claude.installCommand}` }],
+    ["is older than the worker's", { version: '2.1.299' }, { reason: 'this Mac runs claude 2.1.299, w1 2.1.300', action: 'on this Mac, run claude update' }],
+    ['is not logged in', { loggedIn: false }, { reason: 'claude is not logged in on this Mac', action: 'on this Mac, run claude auth login' }],
+  ])("a return refuses, before anything moves, while this Mac's claude %s", async (_, mac, refusal) => {
+    const w = open();
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    const d = home.placement['d'] as { agents: AgentProber };
+    const probe = d.agents;
+    // asked afresh, so a check right after the command sees it
+    const asked: (boolean | undefined)[] = [];
+    d.agents = async (fresh) => { asked.push(fresh); return (await probe(fresh)).map((p) => ({ ...p, ...mac })); };
+    expect(await home.placement.check('c_1', H)).toEqual({ ok: false, refusal: { ...refusal, details: [] } });
+    expect(asked).toEqual([true]);
+    await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `${refusal.reason}; ${refusal.action}` });
+    expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
+    expect(home.store.state.robots.c_1.moving).toBeUndefined();
+    expect(w.worker.store.state.robots.c_1.tmux).toBeDefined();
+    d.agents = probe;
     expect(await home.placement.check('c_1', H)).toMatchObject({ ok: true });
   });
 

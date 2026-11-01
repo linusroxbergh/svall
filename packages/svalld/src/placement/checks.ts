@@ -10,7 +10,7 @@ import { NotFound } from '../errors.js';
 import { clean, holds } from '../path-tools.js';
 import { relocate } from './relocate.js';
 import type { Classified } from './rest.js';
-import { cliRunner, sessionAdapter, type AgentProbe, type AgentProber } from '../sessions/registry.js';
+import { cliRunner, sessionAdapter, type AgentProber } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello, WorkerLink } from '../link/home.js';
 import { must, remoteGit, webUrl, type GitRunner } from '../links/git.js';
@@ -150,14 +150,18 @@ export function homesOf(from: string, to: string, local: { kind: AgentKind; home
   return { user, agent };
 }
 
-function agentFailures(c: Robot, local: AgentProbe[], far: AgentAdapter[], name: string): Failure[] {
+type Agents = { name: string; agents: Pick<AgentAdapter, 'kind' | 'version' | 'loggedIn'>[] };
+
+/** Why robot `c`'s agents cannot run on `to` as on `from`: not installed there, older there, or not logged in there. */
+export function agentFailures(c: Robot, from: Agents, to: Agents): Failure[] {
   const kinds = new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined));
+  const name = to.name;
   return [...kinds].flatMap((kind): Failure[] => {
     const { bin, installCommand, updateCommand, loginHint } = AGENTS[kind];
-    const [here, there] = [local.find((p) => p.kind === kind), far.find((a) => a.kind === kind)];
+    const [here, there] = [from.agents.find((a) => a.kind === kind), to.agents.find((a) => a.kind === kind)];
     if (!there?.version) return [{ reason: `${bin} is not installed on ${name}`, action: `install ${bin} on ${name}`, run: installCommand }];
     if (here?.version && compareVersions(there.version, here.version) === -1) {
-      return [{ reason: `${name} runs ${bin} ${there.version}, this Mac ${here.version}`, action: `update ${bin} on ${name}`, run: updateCommand }];
+      return [{ reason: `${name} runs ${bin} ${there.version}, ${from.name} ${here.version}`, action: `update ${bin} on ${name}`, run: updateCommand }];
     }
     // an OpenCode logged in on neither machine runs on a model that needs no login
     if (!there.loggedIn && !(kind === 'opencode' && here?.loggedIn === false)) return [{ reason: `${bin} is not logged in on ${name}`, action: `log ${bin} in there`, run: loginHint }];
@@ -277,7 +281,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const local = await d.agents();
   const info = hello && await ask<SystemInfo>('system.info', {}, hello.release !== d.release);
   const agents = info?.agentAdapters ?? [];
-  if (info) for (const f of agentFailures(c, local, agents, name)) fail(f);
+  if (info) for (const f of agentFailures(c, { name: 'this Mac', agents: local }, { name, agents })) fail(f);
   const homes = hello && info ? homesOf(d.homedir, hello.home, local, agents) : undefined;
   let session = 0;
   try {

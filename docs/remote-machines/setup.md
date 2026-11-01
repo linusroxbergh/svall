@@ -14,7 +14,7 @@ machine needs, how to add it, and how to look after it.
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
 | Tools | tmux, Git | Git (`sudo apt install git`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
-| Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same, each at the Mac's release or newer, since a move refuses a machine whose agent is older |
+| Agents | Claude Code 2.1.251 or newer, Codex 0.156.0 or newer and OpenCode 2.0.22 or newer, for the agents your fleet runs, each logged in on each machine | the same, each at the Mac's release or newer, since a move refuses a machine whose agent is older; a move back refuses this Mac the same way |
 
 On the Mac, tmux 3.5 or newer is recommended, because Shift+Enter needs it. The Linux machine runs the tmux 3.7c Svall
 brings, as Ubuntu 24.04 ships 3.4.

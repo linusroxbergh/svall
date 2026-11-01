@@ -210,7 +210,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   };
   const doing = fix && 'doing' in fix ? fix : undefined;
   const step = doing?.upgrade && host?.running ? host.steps.at(-1)?.step : undefined;
-  // the agents a move out checks there: the robot's, and its second terminal's
+  // the agents a move checks where it lands: the robot's, and its second terminal's
   const kinds = [...new Set([c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined))];
   const pick = (f: string) => setCarry((was) => (was.includes(f) ? was.filter((x) => x !== f) : [...was, f]));
 
@@ -233,7 +233,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
             <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
             <ul className="move-checks">
               <li>{far} is reachable{to && " and on this Mac's release"}</li>
-              {to && kinds.length > 0 && <li>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')} {kinds.length === 1 ? 'is' : 'are'} installed, current and logged in on {where}</li>}
+              {kinds.length > 0 && <li>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')} {kinds.length === 1 ? 'is' : 'are'} installed, current and logged in on {where}</li>}
               <li>{c.repo ? 'its branch, changes and session can travel' : 'its session can travel'}</li>
             </ul>
           </div>
