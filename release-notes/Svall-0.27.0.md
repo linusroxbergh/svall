@@ -1,0 +1,5 @@
+- On the phone, a long press on a robot's terminal selects its text, so you can copy it.
+- A Claude robot you just made can move to a server straight away and starts fresh there.
+- Moving a robot back to this Mac first checks this Mac's agent, and says what to run if it's missing, older or logged out.
+- With "Let robots run svall without asking" on, robots can start new robots only with an agent and model, not any command.
+- The side card reads cleaner, setup keeps at most three backups of each settings file, and idle robots fidget less.
