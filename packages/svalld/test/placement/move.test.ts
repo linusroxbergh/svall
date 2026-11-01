@@ -617,8 +617,11 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     const d = home.placement['d'] as { agents: AgentProber };
     const probe = d.agents;
-    d.agents = async (fresh) => (await probe(fresh)).map((p) => ({ ...p, ...mac }));
+    // asked afresh, so a check right after the command sees it
+    const asked: (boolean | undefined)[] = [];
+    d.agents = async (fresh) => { asked.push(fresh); return (await probe(fresh)).map((p) => ({ ...p, ...mac })); };
     expect(await home.placement.check('c_1', H)).toEqual({ ok: false, refusal: { ...refusal, details: [] } });
+    expect(asked).toEqual([true]);
     await expect(home.placement.start('c_1', H)).rejects.toMatchObject({ code: 'refused', message: `${refusal.reason}; ${refusal.action}` });
     expect(home.store.state.robots.c_1).toMatchObject({ machine: W });
     expect(home.store.state.robots.c_1.moving).toBeUndefined();

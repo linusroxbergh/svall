@@ -545,9 +545,8 @@ export class Placement {
 
   // where the robot lands here, in this Mac's clone at the worker's clone's place, whose refs the bundle builds on
   private async returnPlan(c: Robot, from: MachineId, hello: WorkerHello): Promise<{ plan: MovePlan; back?: LeftBehind } | { failure: Failure }> {
-    const info = await this.d.links.call<SystemInfo>(from, 'system.info', {}).catch((e: Error) => e);
+    const [info, local] = await Promise.all([this.d.links.call<SystemInfo>(from, 'system.info', {}).catch((e: Error) => e), this.d.agents(true)]);
     if (info instanceof Error) return { failure: unanswered(info, this.name(from)) };
-    const local = await this.d.agents(true);
     // the sheet's buttons act on the worker, so the action names what to run here
     const agents = agentFailures(c, { name: this.name(from), agents: info.agentAdapters }, { name: 'this Mac', agents: local })
       .map(({ run, ...f }) => ({ ...f, action: `${ON_THIS_MAC}${run}` }));
