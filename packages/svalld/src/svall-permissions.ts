@@ -32,7 +32,9 @@ function permissionEdits(settingsPath: string, codexHome: string, enabled: boole
       if (!Object.keys(p).length) delete settings.permissions;
       edits.push({ current: readUserFile(settingsPath, 0o644), next: formatJsonSettings(current.text, settings), what: 'Claude Code svall permissions' });
     }
-    edits.push({ current: owned, next: ours.length ? `${JSON.stringify(ours, null, 2)}\n` : undefined, what: 'Claude Code permission ownership', backup: false });
+    const ownershipEdit = { current: owned, next: ours.length ? `${JSON.stringify(ours, null, 2)}\n` : undefined, what: 'Claude Code permission ownership', backup: false };
+    // Record additions before granting them; remove their record only after revoking them. Both orders survive a crash.
+    if (ours.length) edits.unshift(ownershipEdit); else edits.push(ownershipEdit);
   }
   const rules = path.join(codexHome, 'rules/svall.rules');
   const current = readUserFile(rules);

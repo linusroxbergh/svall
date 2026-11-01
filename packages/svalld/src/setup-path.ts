@@ -43,7 +43,8 @@ export function setupPath(file: string, shimDir: string, fish = false, remove = 
   if (record) {
     const rest = records.filter((r) => r.file !== current.target);
     if (!remove) rest.push(owned ?? { file: current.target, created: current.text === undefined });
-    edits.push({ current: record, next: rest.length ? `${JSON.stringify(rest, null, 2)}\n` : undefined, what: 'Svall PATH ownership', backup: false });
+    const recordEdit = { current: record, next: rest.length ? `${JSON.stringify(rest, null, 2)}\n` : undefined, what: 'Svall PATH ownership', backup: false };
+    if (remove) edits.push(recordEdit); else edits.unshift(recordEdit);
   }
   return editUserFiles(edits);
 }

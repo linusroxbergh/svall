@@ -34,8 +34,16 @@ export function requireWritableUserFile(current: UserFile): void {
 }
 
 function backup(current: UserFile): string {
-  const file = `${current.target}.bak-${Date.now()}`;
-  fs.writeFileSync(file, current.text!, { mode: current.mode });
+  let stamp = Date.now(), file: string;
+  for (;;) {
+    file = `${current.target}.bak-${stamp++}`;
+    try {
+      fs.writeFileSync(file, current.text!, { mode: current.mode, flag: 'wx' });
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+    }
+  }
   fs.chmodSync(file, current.mode);
   const prefix = `${path.basename(current.target)}.bak-`;
   const old = fs.readdirSync(path.dirname(current.target))
@@ -55,6 +63,11 @@ function put(current: UserFile, text: string | undefined): void {
 /** Preflight all destinations before changing one; restore their previous bytes if a later write fails. */
 export function editUserFiles(edits: UserFileEdit[]): string[] {
   const changed = edits.filter(({ current, next }) => current.text !== next);
+  const targets = new Set<string>();
+  for (const { current } of changed) {
+    if (targets.has(current.target)) throw new Error(`multiple user-file edits resolve to ${current.target}`);
+    targets.add(current.target);
+  }
   for (const { current } of changed) requireWritableUserFile(current);
   const done = changed.filter(({ current, backup: keep }) => current.text !== undefined && keep !== false).map(({ current }) => backup(current));
   const attempted: UserFile[] = [];

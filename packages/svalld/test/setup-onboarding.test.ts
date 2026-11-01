@@ -174,6 +174,39 @@ it('rolls back Claude permissions and ownership if a later Codex write fails', (
   expect(fs.existsSync(path.join(codex, 'rules/svall.rules'))).toBe(false);
 });
 
+it('persists Claude ownership before granting permissions and retains it until revocation is written', () => {
+  const home = fs.realpathSync(makeHome());
+  const settings = path.join(home, '.claude/settings.json');
+  const ownership = path.join(home, '.claude/svall-permissions.json');
+  const rename = fs.renameSync;
+  let observed = 0;
+  vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+    if (to === settings) {
+      expect(JSON.parse(fs.readFileSync(ownership, 'utf8'))).toContain('Bash(svall robot new:*)');
+      observed++;
+    }
+    return rename(from, to);
+  });
+  setSvallPermissions(settings, path.join(home, '.codex'), true, ['claude']);
+  setSvallPermissions(settings, path.join(home, '.codex'), false, []);
+  expect(observed).toBe(2);
+  expect(fs.existsSync(ownership)).toBe(false);
+});
+
+it('persists a created startup file’s ownership before installing its PATH block', () => {
+  const home = fs.realpathSync(makeHome());
+  const file = path.join(home, '.bash_profile');
+  const record = pathRecordFile(home);
+  const rename = fs.renameSync;
+  vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+    if (to === file) expect(JSON.parse(fs.readFileSync(record, 'utf8'))).toEqual([{ file, created: true }]);
+    return rename(from, to);
+  });
+  setupPath(file, '/svall/bin', false, false, record);
+  removeSetupPaths(home);
+  expect(fs.existsSync(file)).toBe(false);
+});
+
 it('updates Codex permission rules through a link without breaking it', () => {
   const home = fs.realpathSync(makeHome());
   const settings = path.join(home, 'settings.json');

@@ -24,7 +24,7 @@ function writeTrust(current: UserFile, next: string, record?: TrustRecord, recor
     const ownership = readUserFile(recordFile);
     const records: TrustRecord[] = ownership.text ? JSON.parse(ownership.text) : [];
     records.push(record);
-    edits.push({ current: ownership, next: `${JSON.stringify(records, null, 2)}\n`, what: 'Mission control trust ownership', backup: false });
+    edits.unshift({ current: ownership, next: `${JSON.stringify(records, null, 2)}\n`, what: 'Mission control trust ownership', backup: false });
   }
   editUserFiles(edits);
 }
