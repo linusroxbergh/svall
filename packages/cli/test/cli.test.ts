@@ -324,6 +324,21 @@ describe.runIf(process.platform === 'darwin')('svall setup --agents', () => {
   const fleetJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'fleet.json'), 'utf8'));
   const nodeJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'node.json'), 'utf8'));
 
+  it('leaves a read-only startup file manual in both the plan and setup', async () => {
+    const home = makeHome();
+    const file = path.join(home, '.zshrc');
+    fs.writeFileSync(file, '# managed elsewhere\n', { mode: 0o444 });
+    const env = { HOME: home, PATH: tools(home), SHELL: '/bin/zsh' };
+    const plan = await run(env, 'setup', '--plan');
+    expect(plan.code).toBe(0);
+    expect(JSON.parse(plan.stdout).pathFile).toBeUndefined();
+    const result = await run(env, '--json', 'setup', '--no-launchctl', '--agents', 'codex');
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).warnings).toContainEqual(expect.stringContaining('not on PATH'));
+    expect(fs.readFileSync(file, 'utf8')).toBe('# managed elsewhere\n');
+    expect(fs.existsSync(path.join(home, '.svall/setup-path.json'))).toBe(false);
+  });
+
   it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
     const home = makeHome();
     try {

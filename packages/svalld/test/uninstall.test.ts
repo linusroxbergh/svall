@@ -16,6 +16,8 @@ import { machineId } from '../src/machine.js';
 import { BUNDLE_ID, LAUNCHD_LABEL } from '../src/profile.js';
 import { bundleRuntime, checkoutRuntime } from '../src/runtime.js';
 import { runSetup, shimText } from '../src/setup.js';
+import { pathRecordFile, setupPath, startupFile } from '../src/setup-path.js';
+import { seedTrust, trustRecordFile } from '../src/placement/trust.js';
 import { appQuit, fleetData, fleetHomes, purge, quitApp, runUninstall, type AppQuit } from '../src/uninstall.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -96,6 +98,50 @@ describe('fleetHomes', () => {
 });
 
 describe('runUninstall', () => {
+  it('cleans owned PATH, permissions and mission-control trust while retaining chosen-project trust', async () => {
+    const f = installed();
+    const claude = path.dirname(f.settingsPath);
+    vi.stubEnv('CLAUDE_CONFIG_DIR', claude);
+    fs.mkdirSync(f.o.codex.dir, { recursive: true });
+    const recordFile = trustRecordFile(f.home);
+    const mission = path.join(f.home, 'home');
+    const project = path.join(f.root, 'project');
+    for (const kind of ['claude', 'codex'] as const) {
+      const options = { agentHome: kind === 'claude' ? claude : f.o.codex.dir, homedir: f.root, agentRunning: async () => false, waitMs: 1000, create: true };
+      await seedTrust(kind, mission, { ...options, recordFile });
+      await seedTrust(kind, project, options);
+    }
+    await runSetup({ ...f.o, agents: ['claude', 'codex'], svallPermissions: true });
+    const profile = startupFile(f.root, '/bin/bash')!;
+    setupPath(profile, f.shimDir, false, false, pathRecordFile(f.home));
+    await runUninstall({ ...f.o, userHome: f.root });
+    expect(fs.existsSync(profile)).toBe(false);
+    expect(fs.existsSync(pathRecordFile(f.home))).toBe(false);
+    expect(fs.existsSync(recordFile)).toBe(false);
+    expect(fs.existsSync(path.join(f.o.codex.dir, 'rules/svall.rules'))).toBe(false);
+    expect(fs.existsSync(path.join(claude, 'svall-permissions.json'))).toBe(false);
+    expect(JSON.parse(fs.readFileSync(f.settingsPath, 'utf8'))).toEqual(f.mine);
+    const trust = JSON.parse(fs.readFileSync(path.join(claude, '.claude.json'), 'utf8')).projects;
+    expect(Object.keys(trust)).toEqual([fs.realpathSync(f.root) + '/project']);
+    const codex = fs.readFileSync(f.o.codex.config, 'utf8');
+    expect(codex).toContain('/project');
+    expect(codex).not.toContain('/home"]');
+  });
+
+  it('rejects an unowned Codex rules destination before setup changes hooks or startup files', async () => {
+    const f = installed();
+    fs.mkdirSync(path.join(f.o.codex.dir, 'rules'), { recursive: true });
+    fs.writeFileSync(path.join(f.o.codex.dir, 'rules/svall.rules'), '# mine\n');
+    const profile = path.join(f.root, '.zshrc');
+    fs.writeFileSync(profile, '# mine\n');
+    const before = fs.readFileSync(f.settingsPath, 'utf8');
+    await expect(runSetup({ ...f.o, agents: ['claude', 'codex'], svallPermissions: true, pathFile: profile }))
+      .rejects.toThrow('not managed by Svall');
+    expect(fs.readFileSync(f.settingsPath, 'utf8')).toBe(before);
+    expect(fs.readFileSync(profile, 'utf8')).toBe('# mine\n');
+    expect(fs.existsSync(f.shimDir)).toBe(false);
+  });
+
   it('takes back a key a fleet\'s mirror copied into the agent files its daemons write, by that fleet\'s record', async () => {
     const f = installed();
     const claudeDir = path.join(f.root, 'agent/.claude');

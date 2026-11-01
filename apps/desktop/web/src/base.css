@@ -65,7 +65,7 @@ textarea { overflow-x: hidden; }
 .setup-main { color: var(--ink-2); font-size: var(--text-md); }
 .setup .setup-hint { color: var(--ink-3); font-size: var(--text-md); }
 .setup-optional { text-transform: none; letter-spacing: normal; font-weight: var(--w-regular); }
-.setup-project { font-family: var(--sans); flex: 1; display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
+.setup-folder .setup-project { font-family: var(--sans); flex: 1; display: flex; align-items: center; gap: var(--sp-md); min-width: 0; }
 .setup-project code { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .setup-project .ib { margin-left: auto; flex-shrink: 0; }
 .setup-preferences { display: flex; flex-direction: column; }

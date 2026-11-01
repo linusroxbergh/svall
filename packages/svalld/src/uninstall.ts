@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { startupFile, setupPath } from './setup-path.js';
+import { removeSetupPaths, startupFile, setupPath } from './setup-path.js';
 import { setSvallPermissions } from './svall-permissions.js';
+import { removeOwnedTrust, trustRecordFile } from './placement/trust.js';
 import { unmergeHooks, unmergeStatusLine } from './agent-hooks.js';
 import { codexPaths, type CodexPaths } from './codex/install.js';
 import { SystemdError, daemonReload, disableUnit, realRun, type Run } from './linux/service.js';
@@ -181,9 +182,14 @@ export async function runUninstall(o: {
     } else done.push(...writeJsonSettings(current, next, what));
   }
   for (const file of settingsPaths) done.push(...setSvallPermissions(file, o.codex.dir, false, []));
+  done.push(...removeSetupPaths(o.home));
   for (const shell of o.userHome ? ['zsh', 'bash', 'fish'] : []) {
-    const file = startupFile(o.userHome!, shell, shell === 'zsh' ? process.env.ZDOTDIR : undefined);
+    const file = startupFile(o.userHome!, shell, shell === 'zsh' ? process.env.ZDOTDIR : undefined, process.env.XDG_CONFIG_HOME);
     if (file && fs.existsSync(file)) done.push(...setupPath(file, o.shimDir, shell === 'fish', true));
+  }
+  // Older setup runs may have used another bash fallback or the default fish config home.
+  for (const file of o.userHome ? ['.bash_profile', '.bash_login', '.profile', '.config/fish/conf.d/svall.fish'].map((f) => path.join(o.userHome!, f)) : []) {
+    if (fs.existsSync(file)) done.push(...setupPath(file, o.shimDir, false, true));
   }
   done.push(...removeOpencodePlugin(o.opencode));
   if (agentHomes.XDG_CONFIG_HOME) done.push(...removeOpencodePlugin(opencodePaths(agentHomes)));
@@ -210,6 +216,7 @@ export async function runUninstall(o: {
       () => { done.push(`could not stop tmux server ${sock}`); },
     );
   }
+  for (const home of new Set([o.home, ...o.homes])) done.push(...await removeOwnedTrust(trustRecordFile(home), o.userHome ?? os.homedir()));
   // the keys a home's mirror copied into the agent files its daemons wrote, now that nothing runs to write them back; the
   // mirror is loaded here, as it leads through docs-sync to the fleet, which loads this one
   const { takeBackCopies } = await import('./placement/mirror-apply.js');

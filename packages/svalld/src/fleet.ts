@@ -36,7 +36,7 @@ import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import { claudePaths, expandHome, userPaths, type Paths } from './paths.js';
-import { seedTrust } from './placement/trust.js';
+import { seedTrust, trustRecordFile } from './placement/trust.js';
 import { setSvallPermissions, opencodeSvallRules } from './svall-permissions.js';
 import type { Router } from './placement/router.js';
 import { SHIM } from './profile.js';
@@ -161,9 +161,11 @@ export class Fleet extends EventEmitter<Events> {
       const cwd = this.deps.config.onboarding?.firstProject ?? this.deps.config.defaultCwd;
       if (this.deps.config.onboarding) {
         // Seed at launch, after the user chose these folders; placement keeps its running-agent guard.
-        for (const dir of [this.deps.config.home.cwd, cwd]) {
+        for (const [index, dir] of [this.deps.config.home.cwd, cwd].entries()) {
           await seedTrust(agent, expandHome(dir), { agentHome: agent === 'claude' ? claudePaths().dir : codexPaths().dir,
-            homedir: os.homedir(), agentRunning: async () => false, waitMs: 5000, create: true }).catch((e) => this.deps.log.error(`first robot trust: ${String(e)}`));
+            homedir: os.homedir(), agentRunning: async () => false, waitMs: 5000, create: true,
+            ...(index === 0 ? { recordFile: trustRecordFile(this.deps.paths.home) } : {}),
+          }).catch((e) => this.deps.log.error(`first robot trust: ${String(e)}`));
         }
         this.setScribe(this.deps.config.onboarding.scribe);
       }

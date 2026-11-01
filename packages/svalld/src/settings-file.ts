@@ -11,7 +11,7 @@ export type JsonSettings = { file: string; text?: string; settings: Record<strin
 export const same = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b);
 
 /** `next`, whose keys keep the order the file's had, as JSON written the way `text` is: its indent, line endings and trailing newline, and only ASCII if it held only ASCII. */
-function formatLike(text: string | undefined, next: Record<string, unknown>): string {
+export function formatJsonSettings(text: string | undefined, next: Record<string, unknown>): string {
   if (text === undefined) return `${JSON.stringify(next, null, 2)}\n`;
   const lead = /^[ \t]+(?=")/m.exec(text)?.[0];
   // a file written on one line stays on one; one with nothing nested to tell by gets two spaces
@@ -79,7 +79,7 @@ export function writeJsonSettings(current: JsonSettings, next: Record<string, un
     done.push(`backup -> ${backup}`);
   }
   fs.mkdirSync(path.dirname(current.file), { recursive: true });
-  writeDurable(file, Buffer.from(formatLike(current.text, next)), { mode: mode ?? 0o644 });
+  writeDurable(file, Buffer.from(formatJsonSettings(current.text, next)), { mode: mode ?? 0o644 });
   // the umask narrows the mode a file is created with, so the one it had is set again
   if (mode !== undefined) fs.chmodSync(file, mode);
   done.push(`${what} -> ${current.file}`);

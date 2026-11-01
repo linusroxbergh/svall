@@ -9,7 +9,7 @@ import { opencodeAdapter } from '../../src/sessions/opencode.js';
 import { silentLogger } from '../../src/log.js';
 import { wake, type MoveJournal } from '../../src/placement/move-steps.js';
 import { lockAgentFiles } from '../../src/kernel-lock.js';
-import { answerTrustPrompt, seedTrust } from '../../src/placement/trust.js';
+import { answerTrustPrompt, removeOwnedTrust, seedTrust, trustRecordFile } from '../../src/placement/trust.js';
 import type { Screen } from '../../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -26,6 +26,73 @@ function worker() {
 }
 
 describe('seedTrust', () => {
+  it.each(['claude', 'codex'] as const)('writes %s trust through a dotfile symlink and keeps a backup and mode', async (kind) => {
+    const w = worker();
+    const file = path.join(w.agentHome, kind === 'claude' ? '.claude.json' : 'config.toml');
+    const target = path.join(w.base, 'dotfile');
+    const before = kind === 'claude' ? '{"theme":"dark"}\n' : 'model = "mine"\n';
+    fs.writeFileSync(target, before, { mode: 0o640 });
+    fs.symlinkSync(target, file);
+    await seedTrust(kind, w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 1000 });
+    expect(fs.lstatSync(file).isSymbolicLink()).toBe(true);
+    expect(fs.readFileSync(target, 'utf8')).toContain(w.clone);
+    expect(fs.statSync(target).mode & 0o777).toBe(0o640);
+    const backup = fs.readdirSync(w.base).find((f) => f.startsWith('dotfile.bak-'))!;
+    expect(fs.readFileSync(path.join(w.base, backup), 'utf8')).toBe(before);
+  });
+
+  it.each(['claude', 'codex'] as const)('removes only recorded mission-control trust from %s, retaining the chosen project', async (kind) => {
+    const w = worker();
+    const file = path.join(w.agentHome, kind === 'claude' ? '.claude.json' : 'config.toml');
+    const mc = path.join(w.base, 'mission-control');
+    const recordFile = trustRecordFile(w.base);
+    const opts = { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 1000, create: true };
+    await seedTrust(kind, mc, { ...opts, recordFile });
+    await seedTrust(kind, w.clone, opts);
+    await removeOwnedTrust(recordFile, w.base);
+    const text = fs.readFileSync(file, 'utf8');
+    const config = kind === 'claude' ? JSON.parse(text) : parseToml(text);
+    expect(config.projects[mc]).toBeUndefined();
+    expect(config.projects[w.clone]).toEqual(kind === 'claude' ? { hasTrustDialogAccepted: true } : { trust_level: 'trusted' });
+    expect(fs.existsSync(recordFile)).toBe(false);
+  });
+
+  it.each(['claude', 'codex'] as const)('preserves %s mission-control trust that predates onboarding', async (kind) => {
+    const w = worker();
+    const file = path.join(w.agentHome, kind === 'claude' ? '.claude.json' : 'config.toml');
+    const before = kind === 'claude' ? JSON.stringify({ projects: { [w.clone]: { hasTrustDialogAccepted: true } } })
+      : `[projects.${JSON.stringify(w.clone)}]\ntrust_level = "trusted"\n`;
+    fs.writeFileSync(file, before);
+    const recordFile = trustRecordFile(w.base);
+    await seedTrust(kind, w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 1000, recordFile });
+    await removeOwnedTrust(recordFile, w.base);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+
+  it('restores an earlier Claude trust value while keeping later project metadata', async () => {
+    const w = worker();
+    const file = path.join(w.agentHome, '.claude.json');
+    fs.writeFileSync(file, JSON.stringify({ projects: { [w.clone]: { hasTrustDialogAccepted: false, lastCost: 2 } } }));
+    const recordFile = trustRecordFile(w.base);
+    await seedTrust('claude', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 1000, recordFile });
+    const config = JSON.parse(fs.readFileSync(file, 'utf8'));
+    config.projects[w.clone].lastCost = 4;
+    fs.writeFileSync(file, JSON.stringify(config));
+    await removeOwnedTrust(recordFile, w.base);
+    expect(JSON.parse(fs.readFileSync(file, 'utf8')).projects[w.clone]).toEqual({ hasTrustDialogAccepted: false, lastCost: 4 });
+  });
+
+  it('keeps a Codex trust table the user has extended instead of leaving its keys under another header', async () => {
+    const w = worker();
+    const file = path.join(w.agentHome, 'config.toml');
+    const recordFile = trustRecordFile(w.base);
+    await seedTrust('codex', w.clone, { agentHome: w.agentHome, homedir: w.base, agentRunning: async () => false, waitMs: 1000, recordFile });
+    fs.appendFileSync(file, 'custom = "kept"\n');
+    const before = fs.readFileSync(file, 'utf8');
+    await removeOwnedTrust(recordFile, w.base);
+    expect(fs.readFileSync(file, 'utf8')).toBe(before);
+  });
+
   it('seeds the clone root in .claude.json keeping unrelated keys, and skips while a claude process runs', async () => {
     const w = worker();
     const file = path.join(w.agentHome, '.claude.json');

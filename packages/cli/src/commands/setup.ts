@@ -20,7 +20,7 @@ import { ownRuntime, releaseRuntime, runtimeVersion, type Runtime } from '@svall
 import { readJsonSettings, readOrUndefined } from '@svall/svalld/settings-file';
 import { cliCommand, refreshFleetPlists, runSetup, setupState, shimsCurrent, type SetupOptions, type SetupState } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
-import { startupFile } from '@svall/svalld/setup-path';
+import { writableStartupFile } from '@svall/svalld/setup-path';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
@@ -105,7 +105,7 @@ async function planAction(r: Run, integrations: AgentKind[] | undefined): Promis
     fleets: r.homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: r.launchAgentsDir, runtime: r.runtime })),
     shimDir: r.shimDir, pathEnv: r.answered ? process.env.PATH ?? '' : '', answered: r.answered, cli: cliCommand(r.runtime),
   });
-  plan.pathFile = plan.shimOnPath ? undefined : startupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR);
+  plan.pathFile = plan.shimOnPath ? undefined : writableStartupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR, process.env.XDG_CONFIG_HOME);
   plan.codexRules = path.join(r.codex.dir, 'rules/svall.rules');
   plan.mainAgent = mainAgent(peekConfig(r.paths).mainAgent, found.map((a) => a.kind));
   plan.trustPaths = { claude: claudePaths().json, codex: path.join(r.codex.dir, 'config.toml') };
@@ -366,7 +366,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
         }
       }
       const options: SetupOptions = { ...r, agents: findAgents(process.env.PATH ?? ''), integrations,
-        pathFile: answered && !(process.env.PATH ?? '').split(':').includes(r.shimDir) ? startupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR) : undefined,
+        pathFile: answered && !(process.env.PATH ?? '').split(':').includes(r.shimDir) ? writableStartupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR, process.env.XDG_CONFIG_HOME) : undefined,
         pathFish: path.basename(process.env.SHELL ?? '') === 'fish', svallPermissions: choices?.svallPermissions ?? peekConfig(r.paths).svallPermissions,
       };
       // setupState throws on a file setup could not write back, so --check covers it too
