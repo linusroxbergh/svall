@@ -102,6 +102,14 @@ button { font: inherit; color: inherit; background: none; border: 0; }
 .stage { position: relative; flex: 1; min-height: 0; display: flex; }
 .screen { flex: 1; min-height: 0; padding: var(--sp-xs) var(--sp-2xs) 0 var(--sp-sm); touch-action: none; }
 .screen .xterm-viewport { overscroll-behavior: contain; }
+.frozen {
+  position: absolute; margin: 0; overflow: hidden auto; overscroll-behavior: contain; white-space: pre;
+  color: var(--ink); background: var(--surface-0); -webkit-user-select: text; user-select: text;
+}
+.frozen-done {
+  position: absolute; right: var(--sp-lg); bottom: var(--sp-lg); padding: var(--sp-md) var(--sp-xl); border-radius: var(--r-md);
+  background: var(--sand); color: var(--ink-sand); font-weight: var(--w-semibold);
+}
 .unreachable {
   position: absolute; top: 0; left: 0; right: 0; margin: 0; padding: var(--sp-md) var(--sp-xl);
   text-align: center; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--unknown);

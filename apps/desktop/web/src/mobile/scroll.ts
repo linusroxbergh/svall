@@ -11,6 +11,8 @@ const FRICTION = 0.95; // of the speed kept per 16ms
 const REST = 0.02; // px/ms under which a flick has stopped
 const STALE = 80; // ms a finger may rest before lifting and still count as a flick
 const SLOP = 5; // px a finger may drift and still be a tap
+// ms a still finger takes to be a long press, short of the phone's own (~500ms)
+const HOLD = 350;
 
 /** A finger's travel in pixels as whole lines, the remainder carried so a slow drag still adds up. */
 export function lineSteps(lineHeight: number): (dy: number) => number {
@@ -63,6 +65,37 @@ export function scrollTerm(term: DraggedTerm, n: number): void {
  *  mouse reports only wheel steps go through: buttons 64–67, plus the modifier bits 4, 8 and 16. */
 export function withoutClicks(data: string): string {
   return data.replace(/\x1b\[<(\d+);\d+;\d+[Mm]/g, (report, button: string) => ((Number(button) & ~31) === 64 ? report : ''));
+}
+
+/** One finger resting in place past HOLD calls held; a drift past SLOP, a lift or a second finger calls it off. */
+export function onHold(el: TouchSurface, held: () => void): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let x = 0;
+  let y = 0;
+  const cancel = () => { clearTimeout(timer); timer = undefined; };
+  const start = (e: TouchEvent) => {
+    cancel();
+    if (e.touches.length !== 1) return;
+    x = e.touches[0].clientX;
+    y = e.touches[0].clientY;
+    timer = setTimeout(() => { timer = undefined; held(); }, HOLD);
+  };
+  const move = (e: TouchEvent) => {
+    const t = e.touches[0];
+    if (e.touches.length !== 1 || Math.hypot(t.clientX - x, t.clientY - y) > SLOP) cancel();
+  };
+
+  el.addEventListener('touchstart', start, { passive: true });
+  el.addEventListener('touchmove', move, { passive: true });
+  el.addEventListener('touchend', cancel);
+  el.addEventListener('touchcancel', cancel);
+  return () => {
+    cancel();
+    el.removeEventListener('touchstart', start);
+    el.removeEventListener('touchmove', move);
+    el.removeEventListener('touchend', cancel);
+    el.removeEventListener('touchcancel', cancel);
+  };
 }
 
 /** xterm scrolls on wheel events only, so a one-finger drag becomes scrollLines and a flick coasts to a stop. */
