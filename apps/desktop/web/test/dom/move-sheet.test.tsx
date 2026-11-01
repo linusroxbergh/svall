@@ -88,7 +88,7 @@ test('while it checks, the sheet says what it checks', async () => {
   ]);
 });
 
-test('on the way back, the sheet checks only that the machine it is on answers', async () => {
+test("on the way back, the sheet checks that the machine it is on answers and this Mac's agent", async () => {
   act(() => store.getState().applyPatch([
     { op: 'add', path: '/robots/c0/machine', value: VAULT },
     { op: 'add', path: '/robots/c0/agent', value: { kind: 'claude', sessionId: 's1', status: 'idle' } },
@@ -96,7 +96,7 @@ test('on the way back, the sheet checks only that the machine it is on answers',
   call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : method === 'system.info' ? Promise.resolve({ machineId: HOME }) : Promise.resolve({})));
   await open();
   expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent))
-    .toEqual(['linus-vault is reachable', 'its branch, changes and session can travel']);
+    .toEqual(['linus-vault is reachable', 'Claude Code is installed, current and logged in on this Mac', 'its branch, changes and session can travel']);
 });
 
 test('a running move shows one line per step as it gets there under a bar of six, and once through Done closes the sheet', async () => {

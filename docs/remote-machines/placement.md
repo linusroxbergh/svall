@@ -185,6 +185,10 @@ recorded:
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
   working; interrupt it now", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
   interrupts what still runs there after that long, then rests it.
+- The robot's agent on this Mac refuses as check 2 does the worker's: "claude is not installed on this Mac; on this
+  Mac, run curl -fsSL https://claude.ai/install.sh | bash", "this Mac runs claude 2.1.299, linus-vault 2.1.300; on
+  this Mac, run claude update", "claude is not logged in on this Mac; on this Mac, run claude auth login". Run it in a
+  terminal here, then **Check again**.
 - A worker that sends no sheet of what comes back refuses: "linus-vault did not answer the move sheet in 30 s; try
   again", or on a release without one, "linus-vault runs a release without move.sheet; upgrade it under Machines".
 
