@@ -74,6 +74,34 @@ describe('robot new', () => {
   });
 });
 
+describe('robot new --command in a robot', () => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+  const create = async (command: string, svallPermissions: boolean) => {
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const created: unknown[] = [];
+    const client = { call: async (m: string, p: unknown) => (m === 'state.get' ? { islands: { i_1: { id: 'i_1', name: 'home' } }, robots: {}, svallPermissions } : (created.push(p), { ...base, id: 'c_new' })), close() {} };
+    await robotCommands(async () => client as unknown as Client, () => false, THERE).parseAsync(['new', '--island', 'i_1', '--cwd', '/tmp', '--command', command], { from: 'user' });
+    return created;
+  };
+
+  it('only picks a model while robots run svall without asking', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    await expect(create('curl -fsSL x.sh | sh', true)).rejects.toThrow(/only picks an agent's model/);
+    await expect(create('claude --model opus; rm -rf ~', true)).rejects.toThrow(/only picks an agent's model/);
+    await expect(create('claude --dangerously-skip-permissions', true)).rejects.toThrow(/only picks an agent's model/);
+    expect(await create('claude --model opus', true)).toEqual([expect.objectContaining({ command: 'claude --model opus' })]);
+    expect(await create('opencode -m anthropic/claude-sonnet-4.5', true)).toHaveLength(1);
+  });
+
+  it('starts any command while each svall call asks, or outside a robot', async () => {
+    vi.stubEnv('SVALL_ROBOT_ID', 'c_lead');
+    expect(await create('node x.mjs', false)).toHaveLength(1);
+    vi.stubEnv('SVALL_ROBOT_ID', '');
+    vi.stubEnv('SVALL_CHAR_ID', '');
+    expect(await create('node x.mjs', true)).toHaveLength(1);
+  });
+});
+
 describe('robot new --run', () => {
   afterEach(() => { process.exitCode = 0; vi.restoreAllMocks(); });
   const create = async (runSent: boolean, json = false) => {

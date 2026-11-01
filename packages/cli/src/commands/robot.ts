@@ -13,6 +13,8 @@ import { robotSetupText, type There } from './host.js';
 import { int, parseDuration, point } from './parse.js';
 import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 
+const MODEL_ONLY = /^(claude|codex|opencode) (--model|-m) [\w.:/-]+$/;
+
 /** The agent `svall robot new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
 export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
   const named = o.agent === true ? main : o.agent ?? (o.claude ? 'claude' : o.codex ? 'codex' : o.opencode ? 'opencode' : undefined);
@@ -96,6 +98,10 @@ Handing work to a new robot:
       if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
       const cell = point(o.cell, '--cell');
       await withFleet(connect, async (c, state) => {
+        // with svallPermissions on, an agent's svall calls skip the permission prompt, so a command it starts may only pick a model
+        if (o.command && state.svallPermissions && (process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID) && !MODEL_ONLY.test(o.command.trim())) {
+          throw new Error('in a robot, --command only picks an agent\'s model ("claude --model opus") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
+        }
         const agent = agentFor(o, state.mainAgent ?? 'claude');
         // the daemon would give a taken name a number, and the name would go on reaching the robot that has it
         const name = o.name?.toLowerCase();

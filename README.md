@@ -371,7 +371,8 @@ one you turn off it takes them out:
   robots use to start, message and wait for each other, with
   `~/.claude/svall-permissions.json` recording which rules are Svall's, and
   `~/.codex/rules/svall.rules` for Codex. OpenCode robots get the same rules in
-  their environment. Turning it off in Settings takes them out.
+  their environment, and a robot's `svall robot new --command` may then only
+  pick an agent's model. Turning it off in Settings takes them out.
 
 A change to the Claude Code or Codex file keeps a `.bak-<time>` copy, the
 newest three per file. Setup and uninstall rewrite the file only when its
