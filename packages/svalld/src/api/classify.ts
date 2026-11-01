@@ -48,6 +48,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'placing.set': 'mutation',
   'worktrees.set': 'mutation',
   'dormancy.set': 'mutation',
+  'robotPreferences.set': 'mutation',
   'mainAgent.set': 'mutation',
   'model.set': 'mutation',
   'retro.plan': 'mutation',

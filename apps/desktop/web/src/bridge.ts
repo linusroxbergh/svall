@@ -81,7 +81,8 @@ export type ToShell =
   // the window's content size in points, its top left corner staying put
   | { type: 'window.size'; width: number; height: number }
   | { type: 'setup.plan' }
-  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string }
+  | { type: 'setup.login'; agent: AgentKind }
+  | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string; mainAgent: AgentKind; firstProject?: string; scribe: boolean; svallPermissions: boolean; newRobotStart: 'agent' | 'shell' }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string }
   // keeps the Mac from idle-sleeping under this reason; none lets go

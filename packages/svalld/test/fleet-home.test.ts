@@ -7,7 +7,7 @@ import { placementOk } from '../src/layout.js';
 import { silentLogger } from '../src/log.js';
 import { expandHome, resolvePaths } from '../src/paths.js';
 import { boot, cleanup, stopFleets } from './fleet-boot.js';
-import { cleanHomes, hasTmux, makeHome } from './helpers.js';
+import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -101,6 +101,22 @@ runIf('Fleet home', () => {
     // the next start reads the fleet the last one left
     const again = await boot({ opening: true, state: structuredClone(store.state) });
     expect(Object.values(again.store.state.islands).map((i) => i.name)).toEqual(['mission control']);
+  });
+
+  it.each([undefined, 'project'])('starts onboarding in the chosen project or projects folder (%s)', async (chosen) => {
+    const projects = makeHome();
+    const project = path.join(projects, 'storefront');
+    fs.mkdirSync(project);
+    const { store, tmux } = await boot({ opening: true, platform: 'darwin', mainAgent: 'codex', agentsFound: ['codex'],
+      defaultCwd: projects, onboarding: { scribe: true, ...(chosen ? { firstProject: project } : {}) } });
+    const first = Object.values(store.state.islands).find((i) => i.kind !== 'home')!;
+    expect(first.name).toBe(chosen ? 'storefront' : 'Island 1');
+    const robots = Object.values(store.state.robots);
+    expect(robots).toHaveLength(1);
+    expect(robots[0]).toMatchObject({ islandId: first.id, cwd: chosen ? project : projects });
+    expect(store.state.scribeAsk).toBeUndefined();
+    expect(store.state.scribeOff).toBeUndefined();
+    await waitFor(async () => (await tmux.capture(robots[0].tmux!.paneId, 50)).toString().includes('codex'));
   });
 
   it('opens a new fleet on a Linux machine with an empty island, so the fleet host add started there stays unused for enable', async () => {

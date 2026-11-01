@@ -65,7 +65,7 @@ describe('setupPlan', () => {
       settingsPath: '/u/.claude/settings.json', codexHooks: '/u/.codex/hooks.json', opencodePlugin: '/u/.config/opencode/plugins/svall.js', launchAgentsDir: '/l', fleets: [], shimDir: '/b', pathEnv: '', answered: true, cli: 'svall' });
     expect(plan.integrations).toEqual(['codex']);
     expect(plan.writes.filter((w) => w.agent)).toEqual([
-      { what: 'Claude Code hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' },
+      { what: 'Claude Code: hooks and status line', path: '/u/.claude/settings.json', agent: 'claude' },
       { what: 'Codex hooks', path: '/u/.codex/hooks.json', agent: 'codex' },
     ]);
   });

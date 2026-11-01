@@ -18,6 +18,19 @@ function ctx() {
   return { calls, api, store };
 }
 
+it('new robot buttons use the chosen main agent and keep shell defaults for existing fleets', async () => {
+  const c = ctx();
+  await newRobotOn(c, 'i_a');
+  expect(c.calls.at(-1)).toMatchObject({ method: 'robot.create', params: { islandId: 'i_a' } });
+  expect((c.calls.at(-1)?.params as { command?: string }).command).toBeUndefined();
+  c.store.getState().setFleet({ ...fleet(), mainAgent: 'codex', newRobotStart: 'agent' });
+  await newRobotOn(c, 'i_a');
+  expect(c.calls.at(-1)).toMatchObject({ method: 'robot.create', params: { command: 'codex' } });
+  c.store.getState().selectIsland('i_a');
+  await newNamedRobot(c, { name: '', note: '', refs: [] });
+  expect(c.calls.at(-1)).toMatchObject({ method: 'robot.create', params: { command: 'codex' } });
+});
+
 describe('newRobotTarget', () => {
   it('lands beside the selected robot, in its cwd', async () => {
     const c = ctx();

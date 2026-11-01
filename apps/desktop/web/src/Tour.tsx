@@ -1,4 +1,4 @@
-import { HOME_ISLAND } from '@svall/protocol';
+import { AGENT_LABEL, HOME_ISLAND } from '@svall/protocol';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { app } from './boot.js';
 import { holdCutout, recut } from './cutout.js';
@@ -14,7 +14,7 @@ type Side = 'top' | 'bottom' | 'left' | 'right';
 type Anchor = { id?: string; islandId?: string; cardOpen: boolean };
 // the sentence a key starts, which goes with the key when the user leaves it unbound
 type Hint = (id: Parameters<typeof keyLabel>[0], rest: string) => string;
-type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: Hint, cwd: string) => ReactNode };
+type Step = { at: (a: Anchor) => { sel: string; side: Side }; title: string; body: (k: Hint, cwd: string, agent: string, bindings: Parameters<typeof keyLabel>[1]) => ReactNode };
 
 const STEPS: Step[] = [
   {
@@ -22,7 +22,7 @@ const STEPS: Step[] = [
     at: ({ id, cardOpen }) => (id && cardOpen ? { sel: `[data-testid="sb-robot-${id}"]`, side: 'right' }
       : { sel: id ? `[data-testid="token-${id}"]` : '[data-testid^="island-new-"]', side: 'bottom' }),
     title: 'Your first robot',
-    body: (k, cwd) => <>A shell in <code>{cwd}</code>. Double-click it or press Enter, then type <code>claude</code>, <code>codex</code> or <code>opencode</code>.{k('newRobot', 'makes another.')}</>,
+    body: (k, cwd, agent) => <>{agent}, started in <code>{cwd}</code>. Its card shows whether it is working, waiting on you or done. Double-click it or press Enter to talk to it.{k('newRobot', 'makes another.')}</>,
   },
   {
     at: () => ({ sel: '[data-testid="side-card"]', side: 'left' }),
@@ -45,7 +45,20 @@ const STEPS: Step[] = [
     // an open terminal card covers mission control's row on the map
     at: ({ cardOpen }) => (cardOpen ? { sel: `[data-testid="sb-folder-${HOME_ISLAND}"]`, side: 'right' } : { sel: '[data-testid="island-label-home"], [data-testid="home-arrange"], [data-testid^="home-action-"], [data-testid="home-new-island"], [data-testid="home-new"]', side: 'top' }),
     title: 'Mission control',
-    body: (k) => <>Its robots look after the fleet, not your code. The buttons are quick actions.{k('missionControl', 'asks it anything.')} The first time, it asks you to trust its folder.</>,
+    body: (k) => <>Its robots look after the fleet, not your code. The buttons are quick actions.{k('missionControl', 'asks it anything.')}</>,
+  },
+  {
+    at: () => ({ sel: '', side: 'bottom' }),
+    title: 'Keys worth knowing',
+    body: (_k, _cwd, _agent, bindings) => {
+      const next = keyLabel('nextRobot', bindings), previous = keyLabel('prevRobot', bindings);
+      const rows = [
+        ['↩', 'Open the selected robot'], [keyLabel('newRobot', bindings), 'New robot'],
+        [[next, previous].filter(Boolean).join(' '), next && previous ? 'Next and previous robot' : next ? 'Next robot' : 'Previous robot'],
+        [keyLabel('missionControl', bindings), 'Ask mission control'], [keyLabel('toggleView', bindings), 'Map or board'], [keyLabel('palette', bindings), 'Every command'],
+      ];
+      return <><dl className="tour-keys">{rows.filter(([key]) => key).map(([key, label]) => <div key={label}><dt><kbd>{key}</kbd></dt><dd>{label}</dd></div>)}</dl><p>Change them in Settings → Keyboard.</p></>;
+    },
   },
 ];
 
@@ -61,7 +74,7 @@ export const readStep = (): number => {
   }
 };
 
-// the oldest robot off mission control: the shell a new fleet starts with
+// The oldest robot off mission control is the one setup started.
 const firstRobot = (s: AppState) => Object.values(s.fleet.robots).find((c) => s.fleet.islands[c.islandId]?.kind !== 'home');
 
 // radius is the corner of the one element matched, so the ring keeps a pill round and a card's corners soft
@@ -100,6 +113,7 @@ export function Tour() {
   const first = useApp((s) => firstRobot(s)?.id);
   const islandId = useApp((s) => firstRobot(s)?.islandId);
   const cwd = useApp((s) => shortPath(firstRobot(s)?.cwd ?? s.fleet.defaultCwd ?? '~'));
+  const agent = useApp((s) => { const c = firstRobot(s); const kind = c?.agent?.kind ?? s.fleet.mainAgent; return kind ? AGENT_LABEL[kind] : 'A shell'; });
   const bindings = useApp((s) => s.settings.bindings);
   const [box, setBox] = useState<Box>();
   const [size, setSize] = useState({ w: 300, h: 0 });
@@ -117,10 +131,10 @@ export function Tour() {
   // the map pans, the side card eases in and the window resizes, so the anchor and the window are measured every
   // frame; the bubble moves with them, and the hole a terminal under it gives up has to follow
   useEffect(() => {
-    if (!selector) return;
+    setBox(undefined);
     let raf = 0, held = '';
     const tick = () => {
-      const b = boxOf(selector);
+      const b = selector ? boxOf(selector) : undefined;
       setBox((prev) => (sameBox(prev, b) ? prev : b));
       setView((prev) => (prev.w === innerWidth && prev.h === innerHeight ? prev : { w: innerWidth, h: innerHeight }));
       const el = bubble.current;
@@ -184,7 +198,7 @@ export function Tour() {
       <div key={`tour-${step}`} ref={bubble} className="tour dialog" data-testid="tour" data-side={box ? at.side : undefined} style={place(at.side, box, size.w, size.h, vw, vh)} role="dialog" aria-label={cur.title}>
         <div className="kicker">{step + 1} of {STEPS.length}</div>
         <div className="tour-title">{cur.title}</div>
-        <div className="tour-body">{cur.body(k, cwd)}</div>
+        <div className="tour-body">{cur.body(k, cwd, agent, bindings)}</div>
         <div className="tour-acts">
           {!last && <button className="btn ghost" data-testid="tour-skip" onClick={() => go(STEPS.length)}>Skip tour</button>}
           <button className="btn pri" data-testid="tour-next" onClick={() => go(step + 1)}>{last ? 'Done' : 'Next'}</button>

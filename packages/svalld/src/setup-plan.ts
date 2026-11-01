@@ -18,7 +18,7 @@ export function setupPlan(o: {
   const agents = [...o.found, ...o.folders.filter((f) => !o.found.some((a) => a.kind === f.kind)).map((f) => ({ ...f, folderOnly: true }))];
   const has = (k: AgentKind) => agents.some((a) => a.kind === k);
   const writes = [
-    ...(has('claude') ? [{ what: 'Claude Code hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
+    ...(has('claude') ? [{ what: 'Claude Code: hooks and status line', path: o.settingsPath, agent: 'claude' as const }] : []),
     ...(has('codex') ? [{ what: 'Codex hooks', path: o.codexHooks, agent: 'codex' as const }] : []),
     ...(has('opencode') ? [{ what: 'OpenCode plugin', path: o.opencodePlugin, agent: 'opencode' as const }] : []),
     { what: 'Service that keeps fleets running', path: plistFile(o.launchAgentsDir, LAUNCHD_LABEL) },

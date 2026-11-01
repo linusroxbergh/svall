@@ -199,6 +199,7 @@ const handlers: Handlers = {
   'placing.set': (p, { fleet }) => { fleet.setPlacing(p.enabled); return {}; },
   'worktrees.set': (p, { fleet }) => { fleet.setWorktrees(p.enabled); return {}; },
   'dormancy.set': (p, { fleet }) => { fleet.setDormancy(p.hours); return {}; },
+  'robotPreferences.set': (p, { fleet }) => { fleet.setRobotPreferences(p); return {}; },
   'mainAgent.set': (p, { fleet }) => { fleet.setMainAgent(p.agent); return {}; },
   'model.set': (p, { fleet }) => { fleet.setModel(p.of, p.agent, p.model); return {}; },
   'fleets.list': async (_p, { fleets }) => ({ fleets: await fleets.list() }),

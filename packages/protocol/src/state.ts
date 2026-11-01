@@ -260,6 +260,8 @@ export const FleetState = z.object({
   dormantAfterHours: z.number().int().min(0).optional(),
   // the agent mission control's crew and `svall robot new --run` start by default
   mainAgent: AgentKind.optional(),
+  newRobotStart: z.enum(['agent', 'shell']).optional(),
+  svallPermissions: z.boolean().optional(),
   // the agent CLIs svalld finds on its PATH
   agentsFound: z.array(AgentKind).optional(),
   // the agent the scribe runs: fleet.json's scribe.agent, else the main agent

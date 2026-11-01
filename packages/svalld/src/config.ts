@@ -216,7 +216,7 @@ function patchConfigFile(file: string, schema: z.ZodTypeAny, patch: Raw): void {
 
 export const patchFleetConfig = (file: string, patch: Raw): void => patchConfigFile(file, FleetConfig, patch);
 
-export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd'>>
+export type ConfigPatch = Partial<Pick<Config, 'mainAgent' | 'name' | 'integrations' | 'defaultCwd' | 'newRobotStart' | 'svallPermissions' | 'onboarding'>>
   & { mobile?: Pick<Config['mobile'], 'httpsPort'>; home?: Pick<Config['home'], 'model'>; scribe?: Pick<Config['scribe'], 'model'> };
 
 /** Sets each key of `patch` in fleet.json or node.json, whichever holds it, split out first if need be; `say` as for `initConfig`. */

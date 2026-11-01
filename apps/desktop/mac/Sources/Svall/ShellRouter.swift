@@ -239,8 +239,19 @@ final class ShellRouter {
                 guard response == .OK, let url = panel.url else { return }
                 self?.bridge.send(.folderPicked(path: (url.path as NSString).abbreviatingWithTildeInPath))
             }
-        case .setupRun(let agents, let found, let projects):
-            AppRuntime.run(["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ","), "--projects", projects]) { [weak self] ok, text in
+        case .setupLogin(let agent):
+            guard let command = ["claude": "claude auth login", "codex": "codex login", "opencode": "opencode auth login"][agent] else { return }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let task = Process()
+                task.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+                task.arguments = ["-e", "tell application \"Terminal\"\nactivate\ndo script \"\(command)\"\nend tell"]
+                try? task.run()
+            }
+        case .setupRun(let agents, let found, let projects, let mainAgent, let firstProject, let scribe, let svallPermissions, let newRobotStart):
+            var args = ["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ","), "--projects", projects,
+                        "--main-agent", mainAgent, "--scribe", scribe ? "on" : "off", "--svall-permissions", svallPermissions ? "on" : "off", "--new-robots", newRobotStart]
+            if let firstProject { args += ["--first-project", firstProject] }
+            AppRuntime.run(args) { [weak self] ok, text in
                 // the home setup made did not exist when launch claimed it and named its browser store
                 if ok {
                     _ = SvallHome.claim()

@@ -20,18 +20,19 @@ import { ownRuntime, releaseRuntime, runtimeVersion, type Runtime } from '@svall
 import { readJsonSettings, readOrUndefined } from '@svall/svalld/settings-file';
 import { cliCommand, refreshFleetPlists, runSetup, setupState, shimsCurrent, type SetupOptions, type SetupState } from '@svall/svalld/setup';
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
+import { writableStartupFile } from '@svall/svalld/setup-path';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { grouped, renderGroups, useColor, type Check } from '../checks-view.js';
 import { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { checkLine, preflight, realPreflightDeps, requireReady } from './preflight.js';
+import { checkLine, preflight, realPreflightDeps, requireReady, signedIn } from './preflight.js';
 import type { Target } from '../target.js';
 
 const execFileP = promisify(execFile);
 
-type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean };
+type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean; mainAgent?: string; firstProject?: string; scribe?: string; newRobots?: string; svallPermissions?: string };
 type Choices = Parameters<typeof saveConfig>[1];
 
 type Run = Omit<SetupOptions, 'agents' | 'integrations'> & { answered: boolean; json: boolean; paths: Paths; homes: string[] };
@@ -67,6 +68,26 @@ function parseChoices(o: Flags, r: Run): Choices | undefined {
     if (o.plan || o.check || o.ifNeeded) throw new Error('--projects is for a setup that writes everything');
     choices = { ...choices, defaultCwd: projectsFolder(o.projects) };
   }
+  if (o.mainAgent !== undefined) {
+    if (!AGENT_KINDS.includes(o.mainAgent as AgentKind) || !o.agents?.split(',').includes(o.mainAgent)
+      || !findAgents(process.env.PATH ?? '').includes(o.mainAgent as AgentKind)) throw new Error('the main agent must be a selected runnable agent');
+    choices = { ...choices, mainAgent: o.mainAgent as AgentKind };
+  }
+  if (o.newRobots !== undefined) {
+    if (o.newRobots !== 'agent' && o.newRobots !== 'shell') throw new Error('--new-robots must be agent or shell');
+    choices = { ...choices, newRobotStart: o.newRobots };
+  }
+  if (o.svallPermissions !== undefined) {
+    if (!['on', 'off'].includes(o.svallPermissions)) throw new Error('--svall-permissions must be on or off');
+    choices = { ...choices, svallPermissions: o.svallPermissions === 'on' };
+  }
+  if (o.scribe !== undefined) {
+    if (!['on', 'off'].includes(o.scribe)) throw new Error('--scribe must be on or off');
+    const project = o.firstProject && projectsFolder(o.firstProject);
+    if (project && !fs.statSync(expandHome(project), { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${project} is not a directory`);
+    choices = { ...choices, onboarding: { scribe: o.scribe === 'on', ...(project ? { firstProject: project } : {}) } };
+  }
+  if ((o.plan || o.check || o.ifNeeded) && choices) throw new Error('setup choices are for a setup that writes everything');
   return choices;
 }
 
@@ -74,7 +95,8 @@ async function planAction(r: Run, integrations: AgentKind[] | undefined): Promis
   const found = await Promise.all(findAgents(process.env.PATH ?? '').map(async (kind) => {
     const bin = path.join(onPath(AGENTS[kind].bin, process.env.PATH ?? '')!, AGENTS[kind].bin);
     const version = await execFileP(bin, ['--version'], { timeout: 5_000 }).then((res) => res.stdout.trim().split('\n')[0], () => undefined);
-    return { kind, path: bin, version };
+    const login = await signedIn(realPreflightDeps(r.home), kind);
+    return { kind, path: bin, version, signedIn: login };
   }));
   // the stand-in folders say nothing of whether the user's own PATH holds the shim
   const plan = setupPlan({
@@ -83,6 +105,11 @@ async function planAction(r: Run, integrations: AgentKind[] | undefined): Promis
     fleets: r.homes.filter((h) => profileOf(h) !== PRIVATE && !plistCurrent({ home: h, label: label(h), launchAgentsDir: r.launchAgentsDir, runtime: r.runtime })),
     shimDir: r.shimDir, pathEnv: r.answered ? process.env.PATH ?? '' : '', answered: r.answered, cli: cliCommand(r.runtime),
   });
+  plan.pathFile = plan.shimOnPath ? undefined : writableStartupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR, process.env.XDG_CONFIG_HOME);
+  plan.codexRules = path.join(r.codex.dir, 'rules/svall.rules');
+  plan.mainAgent = mainAgent(peekConfig(r.paths).mainAgent, found.map((a) => a.kind));
+  plan.trustPaths = { claude: claudePaths().json, codex: path.join(r.codex.dir, 'config.toml') };
+  if (plan.pathFile) plan.writes.push({ what: 'Puts the svall command on your PATH', path: plan.pathFile });
   process.stdout.write(`${JSON.stringify(plan)}\n`);
 }
 
@@ -122,7 +149,7 @@ async function refreshAction(r: Run, stale: string[], system: boolean, unwritabl
 }
 
 async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; system: boolean; ifNeeded?: boolean }): Promise<void> {
-  const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {} }));
+  const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {} })).filter((w) => !o.options.pathFile || !/not on PATH/.test(w));
   if (o.choices) {
     fs.mkdirSync(r.home, { recursive: true });
     if (o.choices.defaultCwd) fs.mkdirSync(expandHome(o.choices.defaultCwd), { recursive: true });
@@ -304,6 +331,11 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
     .option('--agents <list>', 'the agents to install hooks for, comma-separated; saved for later runs')
     .option('--found <list>', 'the agents the setup screen showed; those left out of --agents stay off (default: the agents found now)')
     .option('--projects <dir>', 'where new robots start, made if missing; saved as defaultCwd')
+    .option('--main-agent <kind>', 'main agent selected during setup')
+    .option('--first-project <dir>', 'project for the first island and robot')
+    .option('--scribe <on|off>', 'automatic notes selected during onboarding')
+    .option('--new-robots <agent|shell>', 'what the app starts for new robots')
+    .option('--svall-permissions <on|off>', 'allow robot svall commands')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .action(async (o: Flags) => {
@@ -333,7 +365,10 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
           return;
         }
       }
-      const options: SetupOptions = { ...r, agents: findAgents(process.env.PATH ?? ''), integrations };
+      const options: SetupOptions = { ...r, agents: findAgents(process.env.PATH ?? ''), integrations,
+        pathFile: answered && !(process.env.PATH ?? '').split(':').includes(r.shimDir) ? writableStartupFile(os.homedir(), process.env.SHELL ?? '', process.env.ZDOTDIR, process.env.XDG_CONFIG_HOME) : undefined,
+        pathFish: path.basename(process.env.SHELL ?? '') === 'fish', svallPermissions: choices?.svallPermissions ?? peekConfig(r.paths).svallPermissions,
+      };
       // setupState throws on a file setup could not write back, so --check covers it too
       if (o.check) return checkAction(r, setupState(options));
       // a refresh goes on past a file it could not write back, to restart old daemons

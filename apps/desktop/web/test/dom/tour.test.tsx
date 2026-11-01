@@ -77,31 +77,31 @@ test('a key the user left unbound drops the sentence that names it', () => {
     return out;
   };
   const bound = bodies();
-  expect(bound[0]).toMatch(/opencode\. ⌘T makes another\.$/);
+  expect(bound[0]).toMatch(/talk to it\. ⌘T makes another\.$/);
   expect(bound[1]).toMatch(/add your own\. ⌘I shows or hides it\.$/);
   expect(bound[2]).toMatch(/here\. ⌘⇧R opens it\.$/);
   expect(bound[4]).toContain('quick actions. ⌘G asks it anything.');
   act(() => store.getState().setSettings({ bindings: { newRobot: null, toggleSideCard: null, toggleResources: null, missionControl: null } }));
   const unbound = bodies();
-  expect(unbound[0]).toMatch(/opencode\.$/);
+  expect(unbound[0]).toMatch(/talk to it\.$/);
   expect(unbound[1]).toMatch(/add your own\.$/);
   expect(unbound[2]).toMatch(/here\.$/);
-  expect(unbound[4]).toContain('quick actions. The first time');
+  expect(unbound[4]).toMatch(/quick actions\.$/);
 });
 
 test('a press outside the bubble, on the page or on a terminal, goes to the next step', () => {
   const { getByTestId } = render(<><Tour /><div data-testid="sea" /></>);
   const kicker = () => getByTestId('tour').querySelector('.kicker')!.textContent;
   fireEvent.pointerDown(getByTestId('tour').querySelector('.tour-body')!);
-  expect(kicker()).toBe('1 of 5');
+  expect(kicker()).toBe('1 of 6');
   fireEvent.pointerDown(getByTestId('sea'));
-  expect(kicker()).toBe('2 of 5');
+  expect(kicker()).toBe('2 of 6');
   act(() => shell({ type: 'shell.pressedAway' }));
-  expect(kicker()).toBe('3 of 5');
+  expect(kicker()).toBe('3 of 6');
   // a dialog over the page takes its own presses
   act(() => store.getState().setMissionPrompt(true));
   fireEvent.pointerDown(getByTestId('sea'));
-  expect(kicker()).toBe('3 of 5');
+  expect(kicker()).toBe('3 of 6');
 });
 
 test('a tour with nothing to point at stays mid-window as the window resizes', async () => {
@@ -132,4 +132,15 @@ test('an anchor outside the window is out of sight: the bubble stands mid-window
   await frame();
   expect(container.querySelector('.tour-ring')).not.toBeNull();
   expect(getByTestId('tour').dataset.side).toBe('bottom');
+});
+
+
+test('the final key list uses rebound keys and omits unbound actions', () => {
+  localStorage.setItem('svall.tour', '5');
+  act(() => store.getState().setSettings({ bindings: { newRobot: 'cmd+n', missionControl: null } }));
+  const { getByTestId, queryByText } = render(<Tour />);
+  expect(getByTestId('tour').textContent).toContain('Keys worth knowing');
+  expect(getByTestId('tour').textContent).toContain('⌘N');
+  expect(queryByText('Ask mission control')).toBeNull();
+  expect(getByTestId('tour').dataset.side).toBeUndefined();
 });

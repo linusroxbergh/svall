@@ -35,7 +35,9 @@ import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
-import { expandHome, userPaths, type Paths } from './paths.js';
+import { claudePaths, expandHome, userPaths, type Paths } from './paths.js';
+import { seedTrust, trustRecordFile } from './placement/trust.js';
+import { setSvallPermissions, opencodeSvallRules } from './svall-permissions.js';
 import type { Router } from './placement/router.js';
 import { SHIM } from './profile.js';
 import { reconcile, secondName, snapshot } from './reconcile.js';
@@ -153,9 +155,21 @@ export class Fleet extends EventEmitter<Events> {
     const opening = this.ensureHome();
     this.syncAgents();
     this.agentEvents.recordCurrent((c) => this.runsHere(c));
-    // the shell is for the Mac app's tour, so a new fleet on Linux starts with no robot
+    // The Mac opens on its first robot; a companion on Linux stays unused until work is placed there.
     if (opening && (this.deps.platform ?? process.platform) === 'darwin') {
-      await this.createRobot({ islandId: opening, cwd: this.deps.config.defaultCwd })
+      const agent = mainAgent(this.deps.config.mainAgent, this.deps.agentsFound ?? []);
+      const cwd = this.deps.config.onboarding?.firstProject ?? this.deps.config.defaultCwd;
+      if (this.deps.config.onboarding) {
+        // Seed at launch, after the user chose these folders; placement keeps its running-agent guard.
+        for (const [index, dir] of [this.deps.config.home.cwd, cwd].entries()) {
+          await seedTrust(agent, expandHome(dir), { agentHome: agent === 'claude' ? claudePaths().dir : codexPaths().dir,
+            homedir: os.homedir(), agentRunning: async () => false, waitMs: 5000, create: true,
+            ...(index === 0 ? { recordFile: trustRecordFile(this.deps.paths.home) } : {}),
+          }).catch((e) => this.deps.log.error(`first robot trust: ${String(e)}`));
+        }
+        this.setScribe(this.deps.config.onboarding.scribe);
+      }
+      await this.createRobot({ islandId: opening, cwd, ...(this.deps.config.onboarding ? { command: AGENTS[agent].bin } : {}) })
         .catch((e) => this.deps.log.error(`first robot: ${String(e)}`));
     }
     this.deps.store.update((d) => { if (this.deps.config.name) d.name = this.deps.config.name; else delete d.name; });
@@ -375,8 +389,9 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
-    // a new fleet opens with one island beside mission control, for start to put a shell on; only its first start makes it, so a deleted one stays gone
-    return first ? this.createIsland({ name: 'Island 1' }).id : undefined;
+    // A new fleet opens with one island for its first robot; a later start leaves a deleted island gone.
+    const project = this.deps.config.onboarding?.firstProject;
+    return first ? this.createIsland({ name: project ? path.basename(expandHome(project)) || '/' : 'Island 1' }).id : undefined;
   }
 
   // the fleet.json patch offering the retro button and its rules once, recorded there so a button the user deletes
@@ -437,6 +452,8 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => {
       d.mainAgent = mainAgent(this.deps.config.mainAgent, found);
       d.agentsFound = found;
+      d.newRobotStart = this.deps.config.newRobotStart;
+      d.svallPermissions = this.deps.config.svallPermissions;
       d.scribeAgent = this.deps.config.scribe.agent ?? d.mainAgent;
       d.scribeModel = this.model('scribe', d.scribeAgent);
       d.home.command = this.crewCommand();
@@ -479,6 +496,14 @@ export class Fleet extends EventEmitter<Events> {
   /** The pass a robot's home asked for over its transcript here, which writes nothing. */
   scribeRead(id: string, only?: Only, columns?: Column[], sweep?: true): Promise<FarPass | undefined> {
     return this.scribe.readRobot(id, only, columns, sweep);
+  }
+
+  setRobotPreferences(p: { newRobotStart?: 'agent' | 'shell'; svallPermissions?: boolean }): void {
+    if (p.svallPermissions !== undefined) setSvallPermissions(path.join(claudePaths().dir, 'settings.json'), codexPaths().dir,
+      p.svallPermissions, (this.deps.agentsFound ?? []).filter((k) => this.deps.config.integrations?.includes(k) ?? true));
+    saveConfig(this.deps.paths, p);
+    Object.assign(this.deps.config, p);
+    this.syncAgents();
   }
 
   setScribe(enabled: boolean): void {
@@ -570,7 +595,7 @@ export class Fleet extends EventEmitter<Events> {
         // a hidden island comes back to take the robot, as one placed there for it does
         if (p.cell && d.islands[p.islandId].collapsed) unfold(d, p.islandId, this.deps.log);
       });
-      if (p.command) await this.deps.tmux.sendLine(w.paneId, this.launchLine(id, withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context), prompt), true);
+      if (p.command) await this.deps.tmux.sendLine(w.paneId, this.launchLine(id, withAddDirs(p.command, this.deps.store.state.islands[p.islandId].context, this.deps.config.svallPermissions), prompt), true);
       this.deps.created?.(this.deps.store.state.robots[id], p);
     } catch (e) {
       // the island filled up while the window was being created, or the start command never reached the pane
@@ -606,7 +631,7 @@ export class Fleet extends EventEmitter<Events> {
     const { opencodeConfig, opencodeReplaced } = this.deps.paths;
     // every TUI in a directory shares one live tab strip, so a robot's OpenCode shows only its own session. The
     // highlights dialog after an update hides the cursor, which holds safe send; ctrl+z undoes instead of suspending
-    const cli = { OPENCODE_CLI_CONFIG_CONTENT: JSON.stringify({ tabs: { mode: 'off' }, highlights: false, keybinds: { 'terminal.suspend': 'none', 'input.undo': 'ctrl+z,ctrl+-,super+z' } }) };
+    const cli = { ...(this.deps.config.svallPermissions ? { OPENCODE_CONFIG_CONTENT: JSON.stringify({ permissions: opencodeSvallRules() }) } : {}), OPENCODE_CLI_CONFIG_CONTENT: JSON.stringify({ tabs: { mode: 'off' }, highlights: false, keybinds: { 'terminal.suspend': 'none', 'input.undo': 'ctrl+z,ctrl+-,super+z' } }) };
     try {
       for (const f of linkOpencodeConfig(opencodeConfig, o, opencodeReplaced)) this.deps.log.error(`opencode config: ${f}`);
       return { ...cli, OPENCODE_CONFIG_DIR: opencodeConfig };
@@ -831,7 +856,7 @@ export class Fleet extends EventEmitter<Events> {
     if (c.revive?.interrupted && fresh === undefined) prompt = !prompt ? resumeNote(moved) : robotSender(prompt) ? `${prompt}\n\n${resumeNote(moved)}` : `${resumeNote(moved)}\n\n${prompt}`;
     const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], byMove, id) : undefined;
     try {
-      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context]), prompt);
+      const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context], this.deps.config.svallPermissions), prompt);
       this.deps.store.update((d) => {
         const cur = d.robots[id];
         cur.tmux = { windowId: w.windowId, paneId: w.paneId };
@@ -938,7 +963,7 @@ export class Fleet extends EventEmitter<Events> {
     const unprompted = c.second ? unsaved(c.second) : undefined;
     if (unprompted !== undefined) fresh ??= { command: unprompted, prompt: '' };
     const revive = fresh || !c.second?.revive ? '' : resumeHere(c.second.revive.command, c.second.agent?.kind === 'codex' && !!this.goneFolder(c.second));
-    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context]);
+    const launch = withAddDirs(withoutV1Flags(fresh?.command ?? revive), [...(island?.context ?? []), ...c.context], this.deps.config.svallPermissions);
     const command = fresh ? this.launchLine(secondName(id), launch, fresh.prompt) : withStandalone(launch);
     const w = await this.deps.tmux.newWindow(secondName(id), cwd, this.robotEnv(id, { SVALL_TERM: '2' }), this.robotKeys());
     if (!this.deps.store.state.robots[id]) {

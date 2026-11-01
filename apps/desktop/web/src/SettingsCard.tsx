@@ -197,6 +197,19 @@ function Machines() {
   );
 }
 
+function RobotPreferences() {
+  const start = useApp((s) => s.fleet.newRobotStart ?? 'shell');
+  const permissions = useApp((s) => s.fleet.svallPermissions ?? false);
+  const set = (p: { newRobotStart?: 'agent' | 'shell'; svallPermissions?: boolean }) => {
+    const d = deps();
+    d.api.call('robotPreferences.set', p).catch((e: Error) => d.store.getState().showToast(e.message));
+  };
+  return <>
+    <div className="row"><span>new robots start</span><b><select className="fld inline" aria-label="New robots start" value={start} onChange={(e) => set({ newRobotStart: e.target.value as 'agent' | 'shell' })}><option value="agent">Your main agent</option><option value="shell">A shell</option></select></b></div>
+    <div className="row"><span>let robots run svall without asking<Info id="svall-permissions">Robots can start, message and wait for other robots without a permission prompt. New sessions read this choice.</Info></span><b><button className="set-switch" role="switch" aria-label="Let robots run svall without asking" aria-checked={permissions} onClick={() => set({ svallPermissions: !permissions })}>{permissions ? 'on' : 'off'}</button></b></div>
+  </>;
+}
+
 function Scribe() {
   const on = useApp((s) => !s.fleet.scribeOff && !s.fleet.scribeAsk);
   const error = useApp((s) => s.fleet.scribeError);
@@ -210,6 +223,7 @@ function Scribe() {
         <FleetName />
         <MainAgent />
         <HomeModel />
+        <RobotPreferences />
         <div className="row">
           <span>scribe<Info id="scribe">Updates names, notes and links after an agent stops. Each pass is a headless {AGENT_LABEL[scribeAgent]} call and may cost API credits.</Info></span>
           <b><button className="set-switch" role="switch" aria-checked={on} data-testid="set-scribe" onClick={flip}>{on ? 'on' : 'off'}</button></b>

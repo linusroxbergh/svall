@@ -211,7 +211,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     notifyPermission: 'unknown',
     update: undefined,
     sidebarOpen: storage?.getSidebarOpen() ?? true,
-    settingsOpen: firstRun,
+    settingsOpen: false,
     settingsAsk: undefined,
     capturingKey: undefined,
     usageOpen: false,

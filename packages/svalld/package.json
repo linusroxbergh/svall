@@ -26,6 +26,7 @@
     "./settings-file": "./src/settings-file.ts",
     "./setup": "./src/setup.ts",
     "./login-env": "./src/login-env.ts",
+    "./setup-path": "./src/setup-path.ts",
     "./setup-plan": "./src/setup-plan.ts",
     "./uninstall": "./src/uninstall.ts",
     "./profile": "./src/profile.ts",

@@ -274,13 +274,13 @@ describe('svall uninstall --login-shell', () => {
     fs.mkdirSync(cfg);
     const script = path.join(home, '.svall', 'hooks', 'agent-hook.mjs');
     const settings = path.join(cfg, 'settings.json');
-    fs.writeFileSync(settings, JSON.stringify(mergeHooks({}, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
+    fs.writeFileSync(settings, JSON.stringify(mergeHooks({ theme: 'dark' }, `[ -z "$SVALL_CHAR_ID" ] || { node '${script}' claude; }`, script)));
     const shell = path.join(home, 'fake-shell');
-    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
+    fs.writeFileSync(shell, `#!/bin/sh\necho __SVALL_ENV__; echo /usr/bin:/bin; echo __SVALL_ENV__; echo ${cfg}; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__; echo __SVALL_ENV__\n`, { mode: 0o755 });
     const env = { HOME: home, SHELL: shell, PATH: `${DOUBLES}:${path.dirname(process.execPath)}:/usr/bin:/bin`, SVALL_HOME: '', TMUX: '' };
     try {
       const r = await run(env, '--json', 'uninstall', '--from-app', '--no-launchctl', '--login-shell');
-      expect(r.code).toBe(0);
+      expect(r.code, r.stderr).toBe(0);
       expect(JSON.parse(fs.readFileSync(settings, 'utf8')).hooks ?? {}).toEqual({});
       // the app deletes its Library data itself once it has quit
       const library = path.join(home, 'Library');
@@ -323,6 +323,21 @@ describe.runIf(process.platform === 'darwin')('svall setup --agents', () => {
   };
   const fleetJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'fleet.json'), 'utf8'));
   const nodeJson = (home: string) => JSON.parse(fs.readFileSync(path.join(home, '.svall', 'node.json'), 'utf8'));
+
+  it('leaves a read-only startup file manual in both the plan and setup', async () => {
+    const home = makeHome();
+    const file = path.join(home, '.zshrc');
+    fs.writeFileSync(file, '# managed elsewhere\n', { mode: 0o444 });
+    const env = { HOME: home, PATH: tools(home), SHELL: '/bin/zsh' };
+    const plan = await run(env, 'setup', '--plan');
+    expect(plan.code).toBe(0);
+    expect(JSON.parse(plan.stdout).pathFile).toBeUndefined();
+    const result = await run(env, '--json', 'setup', '--no-launchctl', '--agents', 'codex');
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).warnings).toContainEqual(expect.stringContaining('not on PATH'));
+    expect(fs.readFileSync(file, 'utf8')).toBe('# managed elsewhere\n');
+    expect(fs.existsSync(path.join(home, '.svall/setup-path.json'))).toBe(false);
+  });
 
   it('keeps off an agent the setup screen showed and the user left out, and makes the one left on the main agent', async () => {
     const home = makeHome();

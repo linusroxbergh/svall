@@ -4,6 +4,9 @@ import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
 import { shortPath } from './paths.js';
+import { Close } from './icons.js';
+import { DEFAULT_SETTINGS } from './settings.js';
+import { localAppStorage, TOUR_KEY } from './store/persist.js';
 
 export function Setup() {
   const [bridge] = useState(createBridge);
@@ -19,6 +22,14 @@ export function Setup() {
 
 function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [plan, setPlan] = useState<SetupPlan>();
+  const [step, setStep] = useState(1);
+  const [main, setMain] = useState<AgentKind>('claude');
+  const [firstProject, setFirstProject] = useState('');
+  const [notify, setNotify] = useState(true);
+  const [scribe, setScribe] = useState(true);
+  const [permissions, setPermissions] = useState(true);
+  const [newRobots, setNewRobots] = useState<'agent' | 'shell'>('agent');
+  const picking = useRef<'projects' | 'project'>('projects');
   const [off, setOff] = useState<AgentKind[]>([]);
   const [projects, setProjects] = useState('');
   const [busy, setBusy] = useState(false);
@@ -37,7 +48,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   }, [bridge]);
 
   useEffect(() => bridge.onMessage((m) => {
-    if (m.type === 'folder.picked') { if (pending.current !== 'run') setProjects(m.path); return; }
+    if (m.type === 'folder.picked') { if (pending.current !== 'run') { if (picking.current === 'project') setFirstProject(m.path); else setProjects(m.path); } return; }
     if (m.type !== 'setup.result') return;
     pending.current = undefined;
     setBusy(false);
@@ -52,18 +63,27 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       // Rechecking after an external install keeps choices made on this screen.
       const seen = previousPlan.current?.agents.map((a) => a.kind) ?? [];
       setOff((old) => [...new Set([...old, ...p.agents.map((a) => a.kind).filter((k) => !seen.includes(k) && p.integrations && !p.integrations.includes(k))])]);
-      if (!previousPlan.current) setProjects((typed) => typed || p.projects);
+      if (!previousPlan.current) {
+        setProjects((typed) => typed || p.projects);
+        setMain(p.mainAgent ?? p.agents.find((a) => !a.folderOnly && (!p.integrations || p.integrations.includes(a.kind)))?.kind ?? 'claude');
+        if (p.agents.length === 1 && p.agents[0]?.signedIn === true && !p.blockers.length) setStep(2);
+      }
       previousPlan.current = p;
       setError(undefined);
       return;
     }
+    const storage = localAppStorage(window.__svallHome);
+    const settings = storage?.getSettings() ?? DEFAULT_SETTINGS;
+    storage?.setSettings({ ...settings, notifications: { ...settings.notifications, on: notify } });
+    try { localStorage.setItem(TOUR_KEY, '0'); } catch { /* optional persistence */ }
+    if (notify) bridge.send({ type: 'notify.enable' });
     const run = data as { warnings: string[] };
     if (run.warnings.length) setWarnings(run.warnings);
     else window.location.replace('/');
-  }), [bridge]);
+  }), [bridge, notify]);
   useEffect(check, [check]);
   useEffect(() => {
-    const recheck = () => { if (previousPlan.current?.blockers.length) check(); };
+    const recheck = () => { if (previousPlan.current) check(); };
     const visible = () => { if (document.visibilityState === 'visible') recheck(); };
     const unsubscribe = bridge.onMessage((m) => { if (m.type === 'app.active' && m.active) recheck(); });
     window.addEventListener('focus', recheck);
@@ -93,7 +113,14 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   );
   if (!plan) return <div className="connect" data-testid="setup" role="status">Looking for Claude Code, Codex and OpenCode…</div>;
   const on = plan.agents.filter((a) => !off.includes(a.kind));
-  const writes = plan.writes.filter((w) => !w.agent || !off.includes(w.agent));
+  const runnable = on.filter((a) => !a.folderOnly);
+  const agent = runnable.find((a) => a.kind === main)?.kind ?? runnable[0]?.kind ?? main;
+  const writes = plan.writes.filter((w) => !w.agent || !off.includes(w.agent)).map((w) => ({ ...w,
+    what: w.agent === 'claude' ? `Claude Code: hooks, status line${permissions ? ' and svall permissions' : ''}`
+      : w.agent === 'codex' ? 'Codex: hooks' : w.agent === 'opencode' ? 'OpenCode: plugin' : w.what }));
+  if (permissions && on.some((a) => a.kind === 'codex') && plan.codexRules) writes.push({ what: 'Codex: svall permissions', path: plan.codexRules });
+  if (plan.trustPaths?.[agent]) writes.splice(1, 0, { what: `${AGENT_LABEL[agent]}: folder trust for mission control${firstProject ? ` and ${firstProject.split('/').filter(Boolean).at(-1) ?? '/'}` : ''}`, path: plan.trustPaths[agent]! });
+  const pick = (which: 'projects' | 'project') => { picking.current = which; bridge.send({ type: 'folder.pick', start: projects.trim() || '~' }); };
   const line = `export PATH="$HOME/.local/bin:$PATH"`;
   const installer = plan.install?.find((i) => i.kind === installAgent) ?? plan.install?.[0];
   const run = () => {
@@ -102,16 +129,17 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     setBusy(true);
     setRunning(true);
     setError(undefined);
-    bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind), projects: projects.trim() });
+    bridge.send({ type: 'setup.run', agents: on.map((a) => a.kind), found: plan.agents.map((a) => a.kind), projects: projects.trim(), mainAgent: agent, firstProject: firstProject || undefined, scribe, svallPermissions: permissions, newRobotStart: newRobots });
   };
   return (
     <Page>
       <header className="setup-intro">
-        <h1>Set up Svall</h1>
-        <p>Connect your agents and choose where new robots start.</p>
+        <div className="setup-progress" aria-label={`Step ${step} of 3`}><div>{[1, 2, 3].map((n) => <span key={n} data-complete={n <= step} />)}</div><span>Step {step} of 3</span></div>
+        <h1>{step === 1 ? 'Connect your agents' : step === 2 ? 'Choose where you work' : 'While your agents work'}</h1>
+        <p>{step === 1 ? 'Svall runs your robots with these.' : step === 2 ? 'Robots start in your projects folder.' : 'Change any of these later in Settings.'}</p>
       </header>
       <fieldset className="setup-fields" disabled={running} aria-busy={busy} aria-label="Setup options">
-        {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
+        {step === 1 && <>{plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
         {plan.install && <section>
           <h2>Choose an agent to install</h2>
           <div className="setup-agent-choice" role="radiogroup" aria-label="Agent to install">
@@ -134,47 +162,66 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
           </div>}
         </section>}
         {plan.agents.length > 0 && <section>
-          <h2>Your agents</h2>
-          <p>Your robots run these. Uncheck one to leave it alone.</p>
           <div className="setup-list">
             {plan.agents.map((a) => (
-              <label key={a.kind} className="setup-row">
-                <span>
+              <div key={a.kind} className="setup-row">
+                <label>
                   <input type="checkbox" checked={!off.includes(a.kind)} aria-label={AGENT_LABEL[a.kind]}
                     onChange={(e) => setOff((o) => (e.target.checked ? o.filter((k) => k !== a.kind) : [...o, a.kind]))} />
                   <span className="setup-agent-name">{AGENT_LABEL[a.kind]}<small data-tip={a.path}>{shortPath(a.path)}</small></span>
-                </span>
-                <span className="setup-agent-status">{a.folderOnly ? 'CLI not found' : 'Ready'}{a.version && <small>{a.version}</small>}</span>
-              </label>
+                </label>
+                <div className="setup-agent-actions">
+                  <span className="setup-agent-status" data-warning={!a.folderOnly && a.signedIn !== true}>{a.folderOnly ? 'CLI not found' : a.signedIn === true ? 'Signed in' : a.signedIn === false ? 'Not signed in' : 'Sign-in unknown'}{a.version && <small>{a.version}</small>}</span>
+                  {!a.folderOnly && a.signedIn !== true && <button type="button" className="btn sm" onClick={() => bridge.send({ type: 'setup.login', agent: a.kind })}>Sign in…</button>}
+                  {plan.agents.filter((r) => !r.folderOnly).length > 1 && !a.folderOnly && <label className="setup-main"><input type="radio" name="main-agent" aria-label={`${AGENT_LABEL[a.kind]} main`} checked={agent === a.kind} disabled={off.includes(a.kind)} onChange={() => setMain(a.kind)} />Main</label>}
+                </div>
+              </div>
             ))}
           </div>
+          <p className="setup-hint">The main agent also runs mission control and the note updates. Uncheck an agent to leave it alone.</p>
         </section>}
-        <section>
-          <h2>Projects folder</h2>
-          <p>New robots start here instead of your home folder.</p>
-          <div className="setup-folder">
-            <input type="text" className="fld" value={projects} aria-label="Projects folder" {...AS_TYPED} onChange={(e) => setProjects(e.target.value)} />
-            <button type="button" className="btn" onClick={() => bridge.send({ type: 'folder.pick', start: projects.trim() || '~' })}>Choose…</button>
+        </>}
+        {step === 2 && <>
+          <section>
+            <h2>Projects folder</h2>
+            <div className="setup-folder">
+              <input type="text" className="fld" value={projects} aria-label="Projects folder" {...AS_TYPED} onChange={(e) => setProjects(e.target.value)} />
+              <button type="button" className="btn" onClick={() => pick('projects')}>Choose…</button>
+            </div>
+          </section>
+          <section>
+            <h2>First project <span className="setup-optional">· optional</span></h2>
+            <div className="setup-folder">
+              <div className="fld setup-project">{firstProject ? <><span>{firstProject.split('/').filter(Boolean).at(-1) ?? '/'}</span><code>{shortPath(firstProject)}</code><button type="button" className="ib" aria-label="Clear first project" onClick={() => setFirstProject('')}><Close /></button></> : <span className="setup-hint">None. Your first robot starts in {projects || 'your projects folder'}.</span>}</div>
+              <button type="button" className="btn" onClick={() => pick('project')}>{firstProject ? 'Change…' : 'Choose a project…'}</button>
+            </div>
+            {firstProject && <p className="setup-hint">Svall makes an island for it and starts your main agent there.</p>}
+          </section>
+        </>}
+        {step === 3 && <>
+          <div className="setup-list setup-preferences">
+            {[
+              { title: 'Notify me when an agent needs me', text: 'A banner with Approve and Deny when an agent asks for permission, and one when it finishes.', value: notify, set: setNotify },
+              { title: 'Automatically update robot notes', text: "When an agent finishes, Svall asks your main agent for a short summary and updates the robot’s name and note. Each update uses a little of your plan or API credit.", value: scribe, set: setScribe },
+              { title: 'Let robots run svall without asking', text: 'Robots can start, message and wait for other robots without a permission prompt.', value: permissions, set: setPermissions },
+            ].map((p) => <label className="setup-preference" key={p.title}><span><input type="checkbox" aria-label={p.title} checked={p.value} onChange={(e) => p.set(e.target.checked)} />{p.title}</span><small>{p.text}</small></label>)}
+            <div className="setup-preference"><label className="setup-new">New robots start<select className="fld" aria-label="New robots start" value={newRobots} onChange={(e) => setNewRobots(e.target.value as 'agent' | 'shell')}><option value="agent">Your main agent</option><option value="shell">A shell</option></select></label><small>What ⌘T opens.</small></div>
           </div>
-        </section>
-        {/* the installers write to the svall command's folder, so the Install section gives this line */}
-        {!plan.shimOnPath && !plan.install && <section>
-          <h2>The svall command</h2>
-          <p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p>
-          <Command bridge={bridge} text={line} />
-        </section>}
+          {!plan.shimOnPath && !plan.pathFile && <section><p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p><Command bridge={bridge} text={line} /></section>}
+          <section className="setup-review">
+            <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
+            <details>
+              <summary>Review changes <span>{writes.length} locations</span></summary>
+              <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
+            </details>
+          </section>
+        </>}
       </fieldset>
-      <section className="setup-review">
-        <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
-        <details>
-          <summary>Review changes <span>{writes.length} locations</span></summary>
-          <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
-        </details>
-      </section>
       {error && <p className="setup-error" role="alert">{error}</p>}
       <div className="setup-acts">
         {/* the main agent must be one whose CLI setup found */}
-        <button type="button" className="btn pri" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0 || !projects.trim()} onClick={run}>{running ? 'Setting up…' : 'Set up Svall'}</button>
+        <button type="button" className="btn pri" disabled={busy || !on.some((a) => !a.folderOnly) || plan.blockers.length > 0 || (step > 1 && !projects.trim())} onClick={() => step < 3 ? setStep(step + 1) : run()}>{running ? 'Setting up…' : step < 3 ? 'Continue' : 'Set up Svall'}</button>
+        {step > 1 && <button type="button" className="btn" disabled={running} onClick={() => setStep(step - 1)}>Back</button>}
         {plan.blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
       </div>
       <p className="setup-status" role="status">{running ? 'Connecting your agents and configuring Svall…' : busy ? 'Looking for your agents…' : ''}</p>

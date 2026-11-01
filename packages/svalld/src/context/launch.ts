@@ -1,5 +1,6 @@
 import path from 'node:path';
 import type { AgentKind, ContextItem } from '@svall/protocol';
+import { opencodeSvallRules } from '../svall-permissions.js';
 import { shq } from '../text.js';
 
 // the folder access an OpenCode launch sets ahead of its command
@@ -13,7 +14,7 @@ export const isAgentCommand = (command: string): boolean => agentKindOf(command)
 
 // an agent command gains access to every folder item and every file item's folder: claude and codex as --add-dir,
 // opencode, which has no such flag, as permission rules
-export function withAddDirs(command: string, items: ContextItem[]): string {
+export function withAddDirs(command: string, items: ContextItem[], svallPermissions = false): string {
   const kind = agentKindOf(command);
   const dirs = [...new Set(items.flatMap((it) => (it.kind === 'folder' ? [it.ref] : it.kind === 'file' ? [path.dirname(it.ref)] : [])))];
   if (!kind || !dirs.length) return command;
@@ -22,7 +23,7 @@ export function withAddDirs(command: string, items: ContextItem[]): string {
     const rules = dirs.filter((d) => !/[*?]/.test(d)).map((d) => ({ action: 'external_directory', resource: path.join(path.resolve(d), '*'), effect: 'allow' }));
     if (!rules.length) return command;
     // this config loads last, so its rules follow the user's top-level ones and win; an agent's own rules still come after
-    return `OPENCODE_CONFIG_CONTENT=${shq(JSON.stringify({ permissions: rules }))} ${command}`;
+    return `OPENCODE_CONFIG_CONTENT=${shq(JSON.stringify({ permissions: [...rules, ...(svallPermissions ? opencodeSvallRules() : [])] }))} ${command}`;
   }
   return dirs.reduce((cmd, d) => `${cmd} --add-dir ${shq(d)}`, command);
 }
