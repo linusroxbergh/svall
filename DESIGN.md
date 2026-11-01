@@ -217,7 +217,7 @@ A night sea of blue-slate surfaces, cream inks, sand chrome, and a small set of 
 - **Map sea**: map-0 (lightest) to map-2 (deepest), with a grain and contour lines.
 - **Inks**: ink for primary text, ink-2 for secondary, ink-3 for tertiary text, placeholders and ghost icons, ink-cool for a section's kicker.
 - **Lines and fills**, cream at low alpha: line-soft and line for hairlines and a field's border, line-strong for a lit pill's edge; fill-1, fill-2 and fill-3 for hover, selected and pressed.
-- **Card paper**: card-0 to card-2 with a grain, card-band for the foot, ink-land for the printed name.
+- **Card paper**: card-0 to card-2 with a grain, card-band for the foot, ink-land darkened by 30% for the printed name.
 
 ### Named Rules
 **The Accent Rule.** Sand means focus, active, current or primary, and the text cursor. Blue means a selected item, a drop target, a link or selected text. Never swap them, and never use either as decoration.
@@ -304,7 +304,7 @@ Three heights: 22px (`--ctl-sm`) for any control inside a settings or detail row
 - **Field** (`.fld`): fill-1 inside a line hairline, sm radius, ink-3 placeholder; the fill, not the edge, marks it. Focus turns the border sand; no glow.
 
 ### Robot cards
-- **Map card**: cream paper with grain, a printed frame, the robot's portrait, its name in ink-land, and a foot in its status ink with the status word and a terminal toggle. Focus inside the paper is drawn in ink-sand, because sand would vanish there.
+- **Map card**: cream paper with grain, a printed frame, the robot's portrait, its name in ink-land darkened by 30%, and a foot in its status ink with the status word and a terminal toggle. Focus inside the paper is drawn in ink-sand, because sand would vanish there.
 - **Board card** (`.kc`): surface-2 with a status dot and word, its note in ink-3, a coral tint when it needs you, and the blue selection ring when picked.
 
 ## Do's and Don'ts
