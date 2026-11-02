@@ -91,13 +91,14 @@ main { overflow-x: clip; }
 .sea::before { content: ''; position: absolute; inset: 0; background-image: radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 1.4px); background-size: 44px 44px; }
 .stage .world { position: absolute; z-index: 1; top: 0; transform-origin: 0 0; filter: brightness(var(--map-tone)); }
 .map { display: contents; }
-.narrow .map { display: block; position: relative; margin: 40px calc(-1 * var(--gutter)) 0; }
+/* below 960px the map sits under the text with 14px of sea either side, in LAYOUTS.narrow's box from src/landing/main.tsx */
+@media (width < 960px) { .map { display: block; position: relative; width: calc(100% + 2 * var(--gutter) - 28px); margin: 40px calc(14px - var(--gutter)) 0;
+  aspect-ratio: 748 / 894; max-height: calc(.72 * 894px); } }
 .map-world, .map-world *, .map-world *::before, .map-world *::after { box-sizing: revert; }
 .map-world { font: var(--text-lg)/1.45 var(--sans); user-select: none; }
 
 .features { position: relative; z-index: 2; max-width: clamp(420px, 41vw, 520px); margin-top: 56px; }
-.narrow .hero, .narrow .features { max-width: 520px; }
-.narrow .features { margin-top: 64px; }
+@media (width < 960px) { .stage .hero, .features { max-width: 520px; } .features { margin-top: 64px; } }
 .features h2 { margin: 0 0 14px; font-size: 1.0625rem; font-weight: 600; letter-spacing: -.01em; }
 :is(.features, .how, .ctx) ul { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--sp-lg); }
 .how ul { max-width: 560px; }
@@ -114,8 +115,8 @@ h2 { margin: 0; font-size: clamp(1.7rem, 1.2rem + 1.6vw, 2.4rem); font-weight: 6
 .sub { margin: 14px 0 0; font-size: 1.0625rem; color: var(--body); text-wrap: pretty; }
 
 
-/* ⌘G: a scene drawn with the app's own map */
-.scene { position: relative; }
+/* ⌘G: a scene drawn with the app's own map, at most SIZE's 900×600 from src/landing/flow.tsx */
+.scene { position: relative; width: 100%; aspect-ratio: 3 / 2; max-height: 600px; }
 /* it stands on the page's own sea: its edges fade into it, and mission control and the lighthouse stand up from the
    foot so their land fades out rather than ends */
 .scene-map { position: absolute; top: 0; left: 0; transform-origin: 0 0; overflow: hidden; transition: opacity .5s var(--ease);
@@ -311,17 +312,17 @@ footer.wrap { margin-top: clamp(72px, 11vh, 120px); padding-top: 20px; padding-b
     <button type="button" role="tab" aria-selected="false" aria-controls="shot" tabindex="-1">Markdown</button>
   </div>
   <div class="frame" id="shot" role="tabpanel">
-    <img class="on" src="shots/board.avif?v=e6500af9" loading="lazy" alt="The board: every robot as a card in the column its work has reached, the selected one's details beside it">
-    <img src="shots/map.avif?v=c9241e7c" loading="lazy" alt="The map: islands of robot cards, each with its agent's status, and mission control's island with the lighthouse at the foot">
+    <img class="on" src="shots/board.avif?v=e6500af9" width="2400" height="1530" loading="lazy" alt="The board: every robot as a card in the column its work has reached, the selected one's details beside it">
+    <img src="shots/map.avif?v=c9241e7c" width="2400" height="1530" loading="lazy" alt="The map: islands of robot cards, each with its agent's status, and mission control's island with the lighthouse at the foot">
     <div class="view-phone" role="img" aria-label="The map on the Mac with the phone's QR code open, and a phone beside it showing the fleet, then an agent's terminal">
-      <img src="shots/phone.avif?v=c8d6f5a3" loading="lazy" alt="">
+      <img src="shots/phone.avif?v=c8d6f5a3" width="2400" height="1530" loading="lazy" alt="">
       <div class="phone">
-        <div class="phone-screen"><img src="shots/phone-list.avif?v=b57c0506" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=2f602764" loading="lazy" alt=""></div>
+        <div class="phone-screen"><img src="shots/phone-list.avif?v=b57c0506" width="600" height="1300" loading="lazy" alt=""><img src="shots/phone-terminal.avif?v=2f602764" width="600" height="1300" loading="lazy" alt=""></div>
       </div>
     </div>
-    <img src="shots/browser.avif?v=6c327ad3" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
-    <img src="shots/files.avif?v=ea8a4886" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
-    <img src="shots/markdown.avif?v=d1ec44fd" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
+    <img src="shots/browser.avif?v=6c327ad3" width="2400" height="1530" loading="lazy" alt="Claude Code on the left, the robot's browser on the right">
+    <img src="shots/files.avif?v=ea8a4886" width="2400" height="1530" loading="lazy" alt="Claude Code on the left, the robot's files on the right">
+    <img src="shots/markdown.avif?v=d1ec44fd" width="2400" height="1530" loading="lazy" alt="Claude Code on the left, the repo's README as formatted text on the right">
   </div>
 </section>
 

@@ -25,7 +25,7 @@ const SG = crewGrid(2), RG = crewGrid(3);
 const SHORE_AT: Cell = { x: 0, y: 0 }, REVIEWS_AT: Cell = { x: SG.size.w + 3, y: 0 };
 const WORLD_W = (REVIEWS_AT.x + RG.size.w) * theme.cell;
 
-// the scene is drawn at this size and scaled to its column; k is the map's zoom inside it
+// the scene is drawn at this size and scaled to its column, as .scene in site/index.html; k is the map's zoom inside it
 const SIZE = { w: 900, h: 600, k: 0.8, top: 74 };
 
 const MC: Member = { id: 'mc', name: 'review open PRs', figure: 46, status: 'working', ctx: 4, links: [] };
@@ -206,7 +206,6 @@ const map = host.querySelector<HTMLElement>('.scene-map')!;
 function fit() {
   const s = Math.min(1, host.clientWidth / SIZE.w);
   Object.assign(map.style, { width: `${SIZE.w}px`, height: `${SIZE.h}px`, transform: `scale(${s})`, left: `${(host.clientWidth - SIZE.w * s) / 2}px` });
-  host.style.height = `${SIZE.h * s}px`;
 }
 fit();
 addEventListener('resize', fit);
