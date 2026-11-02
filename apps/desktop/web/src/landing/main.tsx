@@ -47,7 +47,8 @@ const GRIDS = ISLANDS.map((i) => crewGrid(i.crew.length));
 
 // wide: the text holds the left column and the islands cascade down the right; narrow: the map under the text, less the last island;
 // og: the link preview's, when the page opens as #og, islands under and beside the headline for site-og.mjs to frame.
-// w and h are the world's box in px, k the most it is zoomed to, at each shown island's position in cells
+// w and h are the world's box in px, k the most it is zoomed to, at each shown island's position in cells;
+// narrow's box is also .map's in site/index.html
 const LAYOUTS: Record<'wide' | 'narrow' | 'og', { w: number; h: number; k: number; at: Cell[] }> = {
   wide: { w: 2200, h: 1000, k: 0.72, at: [{ x: 20, y: 14 }, { x: 22, y: 4 }, { x: 33, y: 5 }, { x: 30, y: 15 }] },
   narrow: { w: 748, h: 894, k: 0.72, at: [{ x: 5, y: 10 }, { x: 0, y: 2 }, { x: 10, y: 3 }] },
@@ -127,10 +128,9 @@ const x0 = Math.min(...LAYOUTS.wide.at.map((c) => c.x)) * theme.cell;
 const spanW = Math.max(...LAYOUTS.wide.at.map((c, i) => c.x + GRIDS[i].size.w)) * theme.cell - x0;
 
 const root = createRoot(world);
-const wideMQ = matchMedia('(min-width: 960px)');
 function place() {
-  const wide = wideMQ.matches, L = location.hash === '#og' ? LAYOUTS.og : wide ? LAYOUTS.wide : LAYOUTS.narrow;
-  stage.classList.toggle('narrow', !wide);
+  // the page's CSS picks the layout: below 960px it gives the map a box of its own
+  const wide = getComputedStyle(map).display === 'contents', L = location.hash === '#og' ? LAYOUTS.og : wide ? LAYOUTS.wide : LAYOUTS.narrow;
   const pad = parseFloat(getComputedStyle(stage).paddingLeft);
   let k: number, left: string;
   if (wide) {
@@ -139,15 +139,14 @@ function place() {
     k = Math.min(L.k, (stage.clientWidth - pad - from) / spanW);
     left = `${from + (stage.clientWidth - from - spanW * k) / 2 - x0 * k}px`;
   } else {
-    // the same map under the text, across the screen with a little sea either side
-    k = Math.min(L.k, (stage.clientWidth - 28) / L.w);
+    // the same map under the text, filling the box the page's CSS keeps for it
+    k = map.getBoundingClientRect().height / L.h;
     left = `calc(50% - ${(L.w * k) / 2}px)`;
   }
   Object.assign(world.style, { width: `${L.w}px`, height: `${L.h}px`, transform: `scale(${k})`, left });
   // cards scale as they do in the app at this zoom; island names stay legible however far the map zooms out
   world.style.setProperty('--k', String(cardScale(k) / k));
   world.style.setProperty('--lk', String(Math.max(labelScale(k), 0.7) / k));
-  map.style.height = wide ? '' : `${L.h * k}px`;
   flushSync(() => root.render(<DemoMap at={L.at} />));
   world.style.top = '';
   stage.style.minHeight = '';

@@ -51,9 +51,11 @@ if (sizes.some((s) => s.w !== sizes[0].w || s.h !== sizes[0].h)) {
 
 // Chrome draws nothing for an AVIF from sips with an odd width or height
 const even = (n) => 2 * Math.round(n / 2);
+const dims = {};
 const avif = (name, from, src, width) => {
   const { w: sw, h: sh } = size(from);
   const w = even(Math.min(width, sw)), h = even((w * sh) / sw);
+  dims[name] = { w, h };
   const to = path.join(out, `${name}.avif`);
   execFileSync('sips', ['-s', 'format', 'avif', '-s', 'formatOptions', '80', '-z', String(h), String(w), from, '--out', to], { stdio: 'ignore' });
   console.log(`${name.padEnd(14)} ${path.basename(src)} -> site/shots/${name}.avif (${Math.round(fs.statSync(to).size / 1024)} KB)`);
@@ -64,12 +66,14 @@ VIEWS.forEach((view, i) => avif(view, windows[i], files[i], WIDTH));
 SCREENS.forEach((screen, i) => avif(screen, screens[i], screens[i], SCREEN_WIDTH));
 fs.rmSync(tmp, { recursive: true });
 
-// a shot keeps its name, so the page asks for it by its content's hash and no cache serves the old one
+// a shot keeps its name, so the page asks for it by its content's hash and no cache serves the old one; its size
+// holds its room on the page before it loads
 const page = path.join(root, 'site/index.html');
 let html = fs.readFileSync(page, 'utf8');
 for (const name of NAMES) {
   const v = crypto.createHash('sha256').update(fs.readFileSync(path.join(out, `${name}.avif`))).digest('hex').slice(0, 8);
-  html = html.replace(new RegExp(`shots/${name}\\.avif(\\?v=\\w+)?"`), `shots/${name}.avif?v=${v}"`);
+  html = html.replace(new RegExp(`shots/${name}\\.avif(\\?v=\\w+)?"( width="\\d+" height="\\d+")?`),
+    `shots/${name}.avif?v=${v}" width="${dims[name].w}" height="${dims[name].h}"`);
 }
 fs.writeFileSync(page, html);
 
