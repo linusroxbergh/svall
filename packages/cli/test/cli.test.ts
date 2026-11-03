@@ -109,7 +109,9 @@ describe('svall argument parsing', () => {
     const r = await run({}, 'handover');
     expect(r.code).toBe(1);
     expect(r.stderr).toContain('svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine');
-    for (const w of ['gateway', 'fleet', 'connect']) expect((await run({}, w)).stderr).toContain(`svall ${w} is gone with the fleet handover`);
+    for (const w of ['gateway', 'connect']) expect((await run({}, w)).stderr).toContain(`svall ${w} is gone with the fleet handover`);
+    // fleet is the command of a fleet's home
+    expect(await run({}, 'fleet')).toMatchObject({ code: 1, stderr: expect.stringContaining('enroll-worker') });
     expect(isProfileName('handover')).toBe(false);
   });
 
