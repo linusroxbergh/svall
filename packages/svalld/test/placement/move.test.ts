@@ -473,7 +473,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(fs.readFileSync(log(w.farOpencode), 'utf8')).toBe(fs.readFileSync(log(w.macOpencode), 'utf8'));
     expect(fs.existsSync(path.join(w.farOpencode, 'exports'))).toBe(false);
     expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: w.farWt, agent: { kind: 'opencode', transcriptPath: log(w.farOpencode) } });
-    expect(w.vault.lines.at(-1)?.text).toMatch(new RegExp(`^opencode .*-s ${OSID}$`));
+    expect(w.vault.lines.at(-1)?.text).toMatch(new RegExp(`^FORCE_HYPERLINK=1 opencode .*-s ${OSID}$`));
 
     // a turn there, then the way back replaces this Mac's older copy with the worker's
     w.opencode.far.sessions.get(OSID)!.messages.push({ id: 'msg_3' });
@@ -481,7 +481,7 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     expect(w.opencode.mac.sessions.get(OSID)).toEqual({ directory: w.wt, messages: [{ id: 'msg_1' }, { id: 'msg_2' }, { id: 'msg_3' }] });
     expect(home.store.state.robots.c_1).toMatchObject({ cwd: w.wt, agent: { kind: 'opencode', transcriptPath: log(w.macOpencode) } });
     expect(home.store.state.robots.c_1.machine).toBeUndefined();
-    expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^opencode .*-s ${OSID}$`));
+    expect(w.mac1.lines.at(-1)?.text).toMatch(new RegExp(`^FORCE_HYPERLINK=1 opencode .*-s ${OSID}$`));
   });
 
   it('a return refuses an OpenCode session this Mac went on with meanwhile before it touches the Mac worktree, and its copy stays', async () => {

@@ -5,10 +5,13 @@ import { shq } from '../text.js';
 
 // the folder access an OpenCode launch sets ahead of its command
 const ACCESS = /^\s*OPENCODE_CONFIG_CONTENT='(?:[^']|'\\'')*'\s+/;
+// OpenCode marks links as OSC 8 only for a terminal it trusts with them, which tmux is not; a click on a link Ghostty
+// can't see, a label or a wrapped URL's tail, then reaches OpenCode, which opens it itself instead of Svall asking
+const HYPERLINKS = /^\s*(?:FORCE_HYPERLINK=1\s+(?=opencode(\s|$)))?/;
 
 // the agent a command starts, as fleet.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>
-  /^\s*(claude|codex|opencode)(\s|$)/.exec(command.replace(ACCESS, ''))?.[1] as AgentKind | undefined;
+  /^\s*(claude|codex|opencode)(\s|$)/.exec(command.replace(ACCESS, '').replace(HYPERLINKS, ''))?.[1] as AgentKind | undefined;
 
 export const isAgentCommand = (command: string): boolean => agentKindOf(command) !== undefined;
 
@@ -39,8 +42,8 @@ export function withStandalone(command: string): string {
   }
   if (agentKindOf(command) !== 'opencode') return command;
   const access = ACCESS.exec(command)?.[0] ?? '';
-  const rest = command.slice(access.length);
-  return access + (/\s--(standalone|server)(\s|=|$)/.test(unquoted(rest)) ? rest : rest.replace(/^\s*opencode/, '$& --standalone'));
+  const rest = command.slice(access.length).replace(HYPERLINKS, '');
+  return `${access}FORCE_HYPERLINK=1 ${/\s--(standalone|server)(\s|=|$)/.test(unquoted(rest)) ? rest : rest.replace(/^\s*opencode/, '$& --standalone')}`;
 }
 
 // a revive saved under OpenCode 1 may carry -m or --agent, which 2's TUI refuses; dormancy saved their values plain
