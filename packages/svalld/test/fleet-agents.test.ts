@@ -2,10 +2,12 @@ import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { Agent } from '@svall/protocol';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { markDormant, markSlotDormant } from '../src/dormancy.js';
 import type { HookEvent } from '../src/hooks/receiver.js';
 import { resolvePaths } from '../src/paths.js';
+import { secondName } from '../src/reconcile.js';
 import { boot, cleanup, pane, stopFleets } from './fleet-boot.js';
 import { cleanHomes, hasTmux, makeHome, waitFor, waitForPolls } from './helpers.js';
 
@@ -136,23 +138,36 @@ runIf('Fleet agents', () => {
     const rollout = path.join(makeHome(), 'r.jsonl');
     const event = (payload: unknown) => JSON.stringify({ timestamp: new Date().toISOString(), type: 'event_msg', payload }) + '\n';
     const ended = (turn_id: string) => event({ type: 'task_complete', turn_id, last_agent_message: null, error: { message: 'You have hit your usage limit.', codex_error_info: 'usage_limit_exceeded' } });
-    const prompt = (id: string, background?: true) => store.update((d) => {
-      d.robots[c.id].agent = { kind: 'codex', sessionId: 's', transcriptPath: rollout, status: 'working', lastActivityAt: Date.now(), lastPrompt: { id, text: 'go', at: Date.now() }, ...(background && { background }) };
-      d.robots[c.id].unread = false;
-    });
+    const agent = (id: string, more: Partial<Agent> = {}): Agent =>
+      ({ kind: 'codex', sessionId: 's', transcriptPath: rollout, status: 'working', lastActivityAt: Date.now(), lastPrompt: { id, text: 'go', at: Date.now() }, ...more });
+    const prompt = (id: string, more?: Partial<Agent>) => store.update((d) => { d.robots[c.id].agent = agent(id, more); d.robots[c.id].unread = false; });
     fs.writeFileSync(rollout, event({ type: 'task_started', turn_id: 't1' }));
     prompt('t1');
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent?.status).toBe('working');
+    // a question still up is left to its answer
     fs.appendFileSync(rollout, ended('t1'));
+    prompt('t1', { status: 'blocked' });
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent?.status).toBe('blocked');
+    prompt('t1');
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent).toMatchObject({ status: 'done', prompt: 'You have hit your usage limit.' });
     expect(store.state.robots[c.id].unread).toBe(true);
     // background work outlives the turn it was started in
     fs.appendFileSync(rollout, event({ type: 'task_started', turn_id: 't2' }) + ended('t2'));
-    prompt('t2', true);
+    prompt('t2', { background: true });
     await fleet['poll']['tick']();
     expect(store.state.robots[c.id].agent?.status).toBe('working');
+    // the second terminal's turn settles the same way
+    await fleet.openSecond(c.id);
+    await tmux.sendLine(store.state.robots[c.id].second!.tmux!.paneId, 'sleep 600', true);
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === secondName(c.id) && w.command === 'sleep'));
+    const rollout2 = path.join(makeHome(), 'r2.jsonl');
+    fs.writeFileSync(rollout2, event({ type: 'task_started', turn_id: 't3' }) + ended('t3'));
+    store.update((d) => { d.robots[c.id].second!.agent = agent('t3', { transcriptPath: rollout2 }); d.robots[c.id].second!.unread = false; });
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].second).toMatchObject({ agent: { status: 'done', prompt: 'You have hit your usage limit.' }, unread: true });
   });
 
   it("takes a Claude agent's question for answered once its empty prompt line is back, as while an approved command runs", async () => {
