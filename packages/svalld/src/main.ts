@@ -31,6 +31,7 @@ import { Phones } from './phones.js';
 import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from './placement/far-viewers.js';
+import { Drops, dropCalls } from './drops.js';
 import { Mirror, mirrorCalls } from './placement/mirror.js';
 import { PhoneFallbacks } from './placement/phone.js';
 import { readMirrorVars } from './placement/mirror-config.js';
@@ -292,7 +293,7 @@ async function start(opts: Options): Promise<Daemon> {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, dropCalls({ connection }));
   }
   const placement = links && new Placement({
     store, fleet, links, me, paths, git: hooklessGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
@@ -380,7 +381,7 @@ async function start(opts: Options): Promise<Daemon> {
       // diagnostics read the last minute's agent probe; a worker gives none
       ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
-      mirror: homeMirror, fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
+      mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

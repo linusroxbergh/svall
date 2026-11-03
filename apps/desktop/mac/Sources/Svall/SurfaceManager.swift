@@ -114,6 +114,8 @@ final class SurfaceManager {
     var onFailed: (_ id: String, _ reason: String) -> Void = { _, _ in }
     var onFocused: (String) -> Void = { _ in }
     var onOpenURL: (String, String) -> Void = { _, _ in }
+    /// Files dropped, or an image pasted, into a terminal on another machine, for the page to send there.
+    var onDrop: (String, [DroppedFile]) -> Void = { _, _ in }
 
     convenience init(runtime: GhosttyRuntime, container: NSView, webView: NSView) {
         self.init(container: container, webView: webView) { SurfaceView(app: runtime.app, command: $0, frame: $1) }
@@ -151,7 +153,23 @@ final class SurfaceManager {
         // a robot's own master is gone: the page asks again, and the daemon answers once its link is back
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else { return onExited(id) }
         let program = switch route { case .remote: "ssh"; default: binary }
-        _ = make(id: id, command: command, program: program, rect: rect, opacity: opacity)
+        guard let view = make(id: id, command: command, program: program, rect: rect, opacity: opacity) else { return }
+        // a drop here types this Mac's paths, as Ghostty does; one on another machine is sent there first
+        guard case .remote = route else {
+            view.onDropFiles = { [weak view] urls in view?.type(ShellEscape.paths(urls.map(\.path))) }
+            return
+        }
+        view.onDropFiles = { [weak self] urls in self?.onDrop(id, DropFiles.shared.hold(urls)) }
+        view.onImagePaste = { [weak self] in
+            guard let self, let png = DropFiles.pastedImage(.general) else { return false }
+            self.onDrop(id, [DropFiles.shared.hold(png: png)])
+            return true
+        }
+    }
+
+    /// Types where a drop landed into terminal `id`, as a drop here is typed.
+    func type(id: String, paths: [String]) {
+        overlay[id]?.type(ShellEscape.paths(paths))
     }
 
     /// A terminal on another machine, with what the page asked for typed once its prompt is up. An ssh that ends before

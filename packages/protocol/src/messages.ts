@@ -23,6 +23,11 @@ const Instructions = z.string().max(INSTRUCTIONS_MAX);
 export const ROBOT_NOTE_MAX = 16 * 1024;
 export const RUN_TEXT_MAX = 256 * 1024;
 const RunText = z.string().max(RUN_TEXT_MAX);
+// a file dropped or an image pasted into a robot's terminal, sent to the daemon in parts of DROP_PART bytes
+export const DROP_MAX = 100 * 1024 * 1024;
+export const DROP_PART = 1024 * 1024;
+// the client's name for one drop's parts, which the daemon stages under it
+const Upload = z.string().regex(/^[0-9a-f]{32}$/);
 
 // one plan rate-limit window: the five-hour session, the week, or a model the week is scoped by;
 // at is when the agent reported a window read off its transcript, in ms, and a window read live has none
@@ -111,6 +116,8 @@ const SETUP_REPORT_MS = 2 * REPORT_MS;
 const CONSENT_TIMEOUT_MS = 15 * 60_000;
 // an agent's own update downloads its release
 export const AGENT_UPDATE_MS = 5 * 60_000;
+// a drop crosses the link to the robot's machine in 1 MiB parts
+const DROP_TIMEOUT_MS = 10 * 60_000;
 
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -129,6 +136,7 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'machines.consent' || method === 'machines.setVar') return CONSENT_TIMEOUT_MS;
   // the worker runs each update in turn, and the link takes 30 s beside them
   if (method === 'machines.updateAgents') return ((params as { kinds?: unknown[] }).kinds ?? []).length * AGENT_UPDATE_MS + 30_000;
+  if (method === 'robot.drop') return DROP_TIMEOUT_MS;
   return 0;
 };
 
@@ -433,6 +441,12 @@ export const methods = {
     params: Id.extend({ term: Term }),
     result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
   },
+  // `upload`: the client's id for one drop's parts, sent in order; robot.drop lands them on the robot's machine and says where
+  'drop.part': {
+    params: z.object({ upload: Upload, index: z.number().int().min(0).max(DROP_MAX / DROP_PART - 1), data: z.base64().max(Math.ceil(DROP_PART / 3) * 4) }),
+    result: z.object({}),
+  },
+  'robot.drop': { params: Id.extend({ upload: Upload, name: z.string().min(1).max(4096) }), result: z.object({ path: z.string() }) },
   'system.info': { params: z.object({}), result: SystemInfo },
   'feedback.preview': { params: z.object({}), result: z.object({ text: z.string() }) },
   // apps is how many app windows on the fleet were told
@@ -490,4 +504,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 38;
+export const PROTOCOL_VERSION = 39;

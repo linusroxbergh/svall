@@ -11,6 +11,10 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var onCloseRequested: (() -> Void)?
     /// A link followed in this terminal; without one it goes to the user's browser.
     var onOpenURL: ((String) -> Void)?
+    /// Files dropped on this terminal; without it, a drop is refused.
+    var onDropFiles: (([URL]) -> Void)?
+    /// A paste key pressed here, which answers true when it took the paste for an image of its own.
+    var onImagePaste: (() -> Bool)?
 
     var markedText = NSMutableAttributedString()
     var keyTextAccumulator: [String]?
@@ -54,6 +58,7 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
             return ghostty_surface_new(app, &cfg)
         }
         guard let surface else { return nil }
+        registerForDraggedTypes([.fileURL])
         // libghostty starts a surface focused, blinking its cursor and, once visible, drawing every vsync
         ghostty_surface_set_focus(surface, false)
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
@@ -123,6 +128,25 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     func setOccluded(_ occluded: Bool) {
         guard let surface else { return }
         ghostty_surface_set_occlusion(surface, !occluded)
+    }
+
+    // MARK: drops
+
+    private func fileURLs(_ sender: NSDraggingInfo) -> [URL] {
+        (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onDropFiles == nil || fileURLs(sender).isEmpty ? [] : .copy
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = fileURLs(sender)
+        guard let onDropFiles, !urls.isEmpty else { return false }
+        onDropFiles(urls)
+        return true
     }
 
     // MARK: size, scale, focus

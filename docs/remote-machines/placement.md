@@ -15,6 +15,15 @@ transcripts are; a worker that does not answer within 5 seconds is left out, and
 scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the
 worker reads the transcript, and this Mac writes the answer.
 
+A file dropped on a robot's terminal has its path typed at the prompt, as Ghostty types a drop; the agent attaches an
+image whose path it is given. For a robot on a worker the file goes there first, through this Mac's daemon and its
+link to the worker, and lands in a folder of its own in `/tmp/svall-drop-<uid>` there, readable by you alone; its path
+there is what is typed. **⌘V** or **⌃V** in that terminal, while what you copied is an image and no text, does the same
+with the image as `pasted-image-<date>-<time>.png`, where the agent's own ⌃V finds no clipboard on a server. A text
+paste is never sent anywhere. A drop carries at most 100 MB and no folder; one to a worker this Mac cannot reach
+says "linus-vault is not reachable" and types nothing. A drop folder there is removed a week after it came, when the
+next drop lands.
+
 ## Moving one
 
 On the robot's card, choose **Move to linus-vault** (one for each worker that answers), or **Move to this Mac** on a

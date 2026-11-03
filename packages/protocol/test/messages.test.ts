@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  BrowserTab, DROP_MAX, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
   PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
@@ -177,8 +177,17 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 38', () => {
-    expect(PROTOCOL_VERSION).toBe(38);
+  it('is 39', () => {
+    expect(PROTOCOL_VERSION).toBe(39);
+  });
+
+  it('was 38 without drops: drop.part takes one part of at most a mebibyte of a 32-hex upload, and robot.drop names it', () => {
+    const upload = 'ab'.repeat(16);
+    expect(methods['drop.part'].params.parse({ upload, index: 0, data: '' })).toEqual({ upload, index: 0, data: '' });
+    expect(methods['drop.part'].params.safeParse({ upload: '../x', index: 0, data: '' }).success).toBe(false);
+    expect(methods['drop.part'].params.safeParse({ upload, index: DROP_MAX / DROP_PART, data: '' }).success).toBe(false);
+    expect(methods['drop.part'].params.safeParse({ upload, index: 0, data: Buffer.alloc(DROP_PART + 3).toString('base64') }).success).toBe(false);
+    expect(methods['robot.drop'].params.parse({ id: 'c_1', upload, name: 'shot.png' })).toEqual({ id: 'c_1', upload, name: 'shot.png' });
   });
 
   it('machines.setup and machines.consent take and answer', () => {

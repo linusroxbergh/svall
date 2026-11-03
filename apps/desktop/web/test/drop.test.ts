@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { appendItems, parseDropTarget } from '../src/drop.js';
+import { DROP_PART, secondKey, type FleetState } from '@svall/protocol';
+import type { DropFile } from '../src/bridge.js';
+import { appendItems, dropOnTerminal, dropRefusal, parseDropTarget } from '../src/drop.js';
 import { fleet } from './fixtures.js';
 
 describe('drop targets', () => {
@@ -32,5 +34,58 @@ describe('drop targets', () => {
     appendItems({ call } as never, f, { kind: 'robot', id: 'c0' }, ['/gone'], onError);
     await new Promise((r) => setTimeout(r, 0));
     expect(onError).toHaveBeenCalledWith('no such file or folder: /gone');
+  });
+});
+
+const W = '3f0c1a52-4b6e-4c4f-9a39-2b7d0d1e6a11';
+// c0 on linus-vault, reachable or not
+function placed(reachable = true): FleetState {
+  const f = fleet();
+  f.machines = { [W]: { name: 'linus-vault', reachable, since: 1 } };
+  f.robots.c0.machine = W as never;
+  return f;
+}
+const file = (name: string, bytes: number, folder = false): DropFile => ({ token: `t-${name}`, name, bytes, folder });
+
+describe('a drop into a terminal on another machine', () => {
+  it('refuses a robot on a machine out of reach, a folder and a file over 100 MB, in the app\'s words', () => {
+    expect(dropRefusal(placed(false), 'c0', [file('a.png', 1)])).toBe('linus-vault is not reachable');
+    expect(dropRefusal(placed(), 'c0', [file('a.png', 1), file('src', 0, true)])).toBe('src is a folder; drop the files in it');
+    expect(dropRefusal(placed(), 'c0', [file('big.mov', 120 * 2 ** 20)])).toBe('big.mov is 120 MB, over the 100 MB a drop carries');
+    expect(dropRefusal(placed(), 'c0', [file('a.png', 100 * 2 ** 20)])).toBeUndefined();
+  });
+
+  it('sends each file in parts of at most a mebibyte, lands it, and types where each landed, in order', async () => {
+    const call = vi.fn(async (method: string, params: { name?: string }) => (method === 'robot.drop' ? { path: `/tmp/svall-drop-1000/x/${params.name}` } : {}));
+    const type = vi.fn();
+    const onError = vi.fn();
+    const sizes: Record<string, number> = { 'shot.png': DROP_PART + 5, 'b c.txt': 3 };
+    await dropOnTerminal({
+      api: { call } as never, fleet: placed(), key: secondKey('c0'), files: [file('shot.png', sizes['shot.png']), file('b c.txt', 3)],
+      read: async (f) => new Uint8Array(sizes[f.name]).fill(7).buffer, type, onError,
+    });
+    expect(onError).not.toHaveBeenCalled();
+    const parts = call.mock.calls.filter(([m]) => m === 'drop.part').map(([, p]) => p as unknown as { upload: string; index: number; data: string });
+    expect(parts.map((p) => [p.index, atob(p.data).length])).toEqual([[0, DROP_PART], [1, 5], [0, 3]]);
+    expect(parts[0].upload).toMatch(/^[0-9a-f]{32}$/);
+    expect(parts[0].upload).toBe(parts[1].upload);
+    expect(parts[2].upload).not.toBe(parts[0].upload);
+    expect(call.mock.calls.filter(([m]) => m === 'robot.drop').map(([, p]) => p)).toEqual([
+      { id: 'c0', upload: parts[0].upload, name: 'shot.png' }, { id: 'c0', upload: parts[2].upload, name: 'b c.txt' },
+    ]);
+    expect(type).toHaveBeenCalledWith(['/tmp/svall-drop-1000/x/shot.png', '/tmp/svall-drop-1000/x/b c.txt']);
+  });
+
+  it('types nothing when a file is refused, or when one does not land', async () => {
+    const type = vi.fn();
+    const onError = vi.fn();
+    const call = vi.fn();
+    await dropOnTerminal({ api: { call } as never, fleet: placed(false), key: 'c0', files: [file('a.png', 1)], read: vi.fn(), type, onError });
+    expect(call).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
+    call.mockImplementation(async (method: string) => { if (method === 'robot.drop') throw new Error('linus-vault is not reachable'); return {}; });
+    await dropOnTerminal({ api: { call } as never, fleet: placed(), key: 'c0', files: [file('a.png', 1)], read: async () => new ArrayBuffer(1), type, onError });
+    expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
+    expect(type).not.toHaveBeenCalled();
   });
 });

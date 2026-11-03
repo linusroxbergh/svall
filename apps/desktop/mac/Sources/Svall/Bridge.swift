@@ -30,6 +30,7 @@ enum ToShell: Decodable {
     case termHide(id: String)
     case termClose(id: String)
     case termFocus(id: String?)
+    case termType(id: String, paths: [String])
     case keysRegister(chords: [String])
     case keysCapture(on: Bool)
     case keysQuit(chord: String?)
@@ -71,7 +72,7 @@ enum ToShell: Decodable {
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -82,6 +83,7 @@ enum ToShell: Decodable {
         case "term.hide": self = .termHide(id: try c.decode(String.self, forKey: .id))
         case "term.close": self = .termClose(id: try c.decode(String.self, forKey: .id))
         case "term.focus": self = .termFocus(id: try c.decodeIfPresent(String.self, forKey: .id))
+        case "term.type": self = .termType(id: try c.decode(String.self, forKey: .id), paths: try c.decode([String].self, forKey: .paths))
         case "keys.register": self = .keysRegister(chords: try c.decode([String].self, forKey: .chords))
         case "keys.capture": self = .keysCapture(on: try c.decode(Bool.self, forKey: .on))
         case "keys.quit": self = .keysQuit(chord: try c.decodeIfPresent(String.self, forKey: .chord))
@@ -141,6 +143,7 @@ enum FromShell {
     case termFailed(id: String, reason: String)
     case termFocused(id: String)
     case termOpenUrl(id: String, url: String, x: Double, y: Double)
+    case termDrop(id: String, files: [DroppedFile])
     case appActive(Bool)
     case ghosttyConfigErrors([String])
     case dragOver(x: Double, y: Double)
@@ -189,6 +192,9 @@ enum FromShell {
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]
         case .termFocused(let id): return ["type": "term.focused", "id": id]
         case .termOpenUrl(let id, let url, let x, let y): return ["type": "term.openUrl", "id": id, "url": url, "x": x, "y": y]
+        case .termDrop(let id, let files):
+            let list = files.map(\.json)
+            return ["type": "term.drop", "id": id, "files": list]
         case .appActive(let active): return ["type": "app.active", "active": active]
         case .ghosttyConfigErrors(let errors): return ["type": "ghostty.configErrors", "errors": errors]
         case .dragOver(let x, let y): return ["type": "drag.over", "x": x, "y": y]
