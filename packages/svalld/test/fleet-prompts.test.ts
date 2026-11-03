@@ -275,9 +275,9 @@ runIf('Fleet prompts', () => {
       expect(store.state.robots[c.id].relayed).toBeUndefined();
       expect(store.state.robots[c.id].inbox).toHaveLength(1);
       // deny drops them, with a report whose request was among them, and holds the next
-      store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, held: 'h2' }; d.robots[c.id].report = { to: lead.id, tagged: true, after: 'u1' }; });
+      store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, user: 'u1', held: 'h2' }; d.robots[c.id].report = { to: lead.id, tagged: true, after: 'u1' }; });
       await fleet.answerPrompt(c.id, 'deny', 'h2');
-      expect([store.state.robots[c.id].relayed, store.state.robots[c.id].inbox, store.state.robots[c.id].report]).toEqual([{ n: RELAY_LIMIT }, undefined, undefined]);
+      expect([store.state.robots[c.id].relayed, store.state.robots[c.id].inbox, store.state.robots[c.id].report]).toEqual([{ n: RELAY_LIMIT, user: 'u1' }, undefined, undefined]);
       // and tells their senders
       expect(store.state.robots[lead.id].inbox).toEqual([{ from: c.id, text: `[svall] ${c.name} (${c.id}) did not take your message: the user dropped it` }]);
       expect(await fleet.send(c.id, lead.id, 'once more')).toBe('held');
