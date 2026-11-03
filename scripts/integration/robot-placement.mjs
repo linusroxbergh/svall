@@ -642,6 +642,87 @@ printf 'scout untracked
   originUntouched();
 }
 
+// ---------------------------------------------------------------------------------------------- a dial-out worker
+
+// what a connect to a unix socket on local meets: open, or the error's code
+const knock = (sock) => sh(L, `/opt/it/node/bin/node -e 'require("net").connect(process.argv[1]).on("connect", function () { console.log("open"); this.destroy(); }).on("error", (e) => console.log(e.code))' ${sock}`).stdout.trim();
+const inode = (sock) => sh(L, `stat -c %i ${sock} 2>/dev/null || echo none`).stdout.trim();
+const waitOn = (what, fn, seconds = 90) => {
+  for (let i = 0; i < seconds * 2; i++) { if (fn()) return; sh(L, 'sleep 0.5'); }
+  throw new Error(`${what} within ${seconds} s`);
+};
+// the ssh master remote's daemon holds to local
+const MASTER = `pkill -9 -f '^ssh -M -S .* svall@${L}$'`;
+
+function dialOut(ids) {
+  const ip = (m) => sh(m, `getent hosts ${m} | cut -d' ' -f1`).stdout.trim();
+  const blockLocal = `-p tcp -d ${ip(R)} --dport 22 -j DROP`;
+  sh(L, `iptables -I OUTPUT ${blockLocal}`, { root: true });
+  try {
+    check('local cannot reach remote over ssh', sh(L, `timeout 15 ssh -o BatchMode=yes -o ConnectTimeout=5 svall@${R} true`, { ok: false }).code !== 0, 'local still reaches remote');
+    sh(L, 'cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys', { input: sh(R, 'cat ~/.ssh/id_ed25519.pub').stdout });
+    sh(R, `ssh-keyscan -t ed25519 ${L} 2>/dev/null >> ~/.ssh/known_hosts && ssh -o BatchMode=yes svall@${L} true`);
+    const record = JSON.parse(sh(L, 'cat ~/.config/svall/machines.json').stdout).machines[ids.remote];
+    const since = linksOf()[ids.remote]?.since ?? 0;
+    // the home's half over remote's own ssh, its token on stdout into the worker's half on stdin, as a join does it
+    const enrol = sh(R, String.raw`set -eu
+umask 077
+ssh -o BatchMode=yes svall@${L} ~/.local/bin/svall --json home enroll-worker ${ids.remote} --name remote --platform linux --arch ${record.arch} --home ${HOMES[R]} --svall-base ${record.svallBase} > ~/enrol.json
+/opt/it/node/bin/node -e '
+const fs = require("fs");
+const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+fs.rmSync(process.argv[1]);
+require("child_process").execFileSync("svall", ["worker", "enroll", "--home-machine", a.homeMachineId, "--home-name", a.homeName, "--fleet-id", a.fleetId,
+  "--home-ssh", process.argv[2], "--home-socket", a.socket], { input: a.token, stdio: ["pipe", "ignore", "inherit"] });
+console.log(a.socket);
+' ~/enrol.json svall@${L}`);
+    const socket = enrol.stdout.trim().split('\n').at(-1);
+    const now = JSON.parse(sh(L, 'cat ~/.config/svall/machines.json').stdout).machines[ids.remote];
+    check('the record dials in', now.dial === 'worker' && now.ssh === undefined, () => brief(now));
+    const worker = JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout);
+    check('worker.json dials local', worker.homeSsh === `svall@${L}` && worker.homeSocket === socket && worker.homeMachineId === ids.local, () => brief({ ...worker, token: undefined }));
+    linked(ids, since);
+    check('the socket', /^srw-------/.test(sh(L, `ls -l ${socket}`).stdout) && socket.startsWith(`${HOMES[L]}/.svall/w/`), () => sh(L, `ls -la ${socket}`, { ok: false }).stdout);
+
+    if (ctx.at === 'remote') reposition(ids, 'local');
+    reposition(ids, 'remote');
+    const status = JSON.parse(sh(L, 'svall --json status').stdout);
+    check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
+
+    for (const m of [R, L]) {
+      const before = linksOf()[ids.remote]?.since;
+      sh(m, `systemctl --user restart ${UNIT}`);
+      linked(ids, before);
+      say(`   relinked after ${m}'s daemon restarted`);
+    }
+
+    // the dial cut and its tunnel killed: the home loses remote, and links again once remote can dial
+    const blockRemote = `-p tcp -d ${ip(L)} --dport 22 -j DROP`;
+    sh(R, `iptables -I OUTPUT ${blockRemote}`, { root: true });
+    const cut = linksOf()[ids.remote]?.since;
+    sh(R, MASTER, { ok: false });
+    waitOn('local marks remote unreachable', () => linksOf()[ids.remote]?.reachable === false);
+    sh(R, `iptables -D OUTPUT ${blockRemote}`, { root: true });
+    linked(ids, cut);
+
+    // a tunnel gone without its cancel leaves a socket that refuses; with no home to remove it, remote's dial replaces it
+    const down = linksOf()[ids.remote]?.since;
+    sh(L, `systemctl --user stop ${UNIT}`);
+    waitOn('the tunnel answers', () => knock(socket) === 'open');
+    const was = inode(socket);
+    sh(R, MASTER, { ok: false });
+    waitOn('the dead tunnel refuses', () => knock(socket) === 'ECONNREFUSED', 20);
+    check('the dead socket stays', inode(socket) === was, () => `${inode(socket)} vs ${was}`);
+    waitOn('remote binds the path again', () => inode(socket) !== was && knock(socket) === 'open');
+    sh(L, `systemctl --user start ${UNIT}`);
+    linked(ids, down);
+
+    reposition(ids, 'local');
+  } finally {
+    sh(L, `iptables -D OUTPUT ${blockLocal}`, { root: true, ok: false });
+  }
+}
+
 // ---------------------------------------------------------------------------------------------- the agent setup mirror
 
 /** The user-scope MCP servers `~/.claude.json` holds on `machine`. */
@@ -866,10 +947,10 @@ function faults(ids, list) {
 const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
-  12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home',
+  12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 14, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 15, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
@@ -903,6 +984,7 @@ try {
   if (steps.includes(12)) step(`12. ${STEPS[12]}`, () => agentSetup(ids, fx));
   if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
   if (steps.includes(14)) step(`14. ${STEPS[14]}`, () => bornOnWorker(ids, fx));
+  if (steps.includes(15)) step(`15. ${STEPS[15]}`, () => dialOut(ids));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);

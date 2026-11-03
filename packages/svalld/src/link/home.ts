@@ -1,11 +1,14 @@
+import { once } from 'node:events';
 import fs from 'node:fs';
+import net from 'node:net';
+import path from 'node:path';
 import type { Duplex } from 'node:stream';
 import { z } from 'zod';
 import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
 import { boundary } from '../failpoints.js';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
-import type { Paths } from '../paths.js';
+import { dialSocket, type Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
 import { addLine, oneLine, type Staged } from '../placement/replay.js';
@@ -30,7 +33,8 @@ const REHELLO_MS = 5 * 60_000;
 const ASK_MS = 5_000;
 
 export type Via = { ssh: string; controlSocket: string };
-export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via: Via }>;
+/** A link to a worker; `via`, the ssh route a terminal attaches through, none for a worker that dials in. */
+export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via?: Via }>;
 
 /** What a worker says of itself once it has taken the home's token; one that names no schema or protocol reads as another build. */
 const WorkerHello = z.object({
@@ -47,6 +51,8 @@ type Options = {
   store: Store;
   machines: () => MachineEntry[];
   connect: Transport;
+  /** For a machine whose record says it dials in. */
+  dialIn?: Transport;
   log: Logger;
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
@@ -79,6 +85,31 @@ export function sshTransport(o: { profile: string; log: Logger }): Transport {
       await master.close().catch((e: Error) => o.log.error(`${record.name}: the ssh master did not close: ${e.message}`));
     });
     return { stream, via: { ssh: record.ssh, controlSocket: master.socket } };
+  };
+}
+
+const socketId = (file: string): string | undefined => {
+  const s = fs.lstatSync(file, { throwIfNoEntry: false });
+  return s?.isSocket() ? `${s.dev}:${s.ino}` : undefined;
+};
+
+/** The socket a worker that dials in forwards its link.sock to, in this fleet home. */
+export function socketTransport(o: { paths: Pick<Paths, 'dialSockets'> }): Transport {
+  return async ({ id, record }) => {
+    const sock = dialSocket(o.paths, id);
+    const held = socketId(sock);
+    const stream = net.connect(sock);
+    try {
+      await once(stream, 'connect');
+    } catch (e) {
+      stream.destroy();
+      const code = (e as NodeJS.ErrnoException).code;
+      // a tunnel gone without its cancel leaves a socket that refuses; it goes while it is still the one that refused, so a
+      // worker binding the path again meanwhile keeps its own
+      if (code === 'ECONNREFUSED' && held && socketId(sock) === held) fs.rmSync(sock, { force: true });
+      throw new Error(code === 'ENOENT' || code === 'ECONNREFUSED' ? `${record.name} has not dialed in (${code} ${sock})` : (e as Error).message);
+    }
+    return { stream };
   };
 }
 
@@ -122,6 +153,11 @@ export class WorkerLink {
     this.name = entry.record.name;
   }
 
+  /** Whether the worker opens the link itself, into its socket in this fleet home. */
+  get dialsIn(): boolean {
+    return this.entry.record.dial === 'worker';
+  }
+
   connected(): boolean {
     return this.peer !== undefined;
   }
@@ -163,8 +199,9 @@ export class WorkerLink {
     void this.attempt();
   }
 
-  via(): Via {
-    if (!this.peer || !this.route) throw this.unreachable();
+  /** The ssh route to the linked worker, none for one that dials in. */
+  via(): Via | undefined {
+    if (!this.peer) throw this.unreachable();
     return this.route;
   }
 
@@ -259,7 +296,9 @@ export class WorkerLink {
       // read at each try: issuing a new token replaces the one the worker accepts
       token = tokenFor(this.o.paths, this.machine);
       if (!token) return this.lost(`no token for ${this.name} in ${this.o.paths.workersFile}`, false);
-      conn = await this.o.connect(this.entry);
+      const connect = this.dialsIn ? this.o.dialIn : this.o.connect;
+      if (!connect) return this.lost(`${this.name} dials in, which this svalld takes no link from`, false);
+      conn = await connect(this.entry);
     } catch (e) {
       return this.lost((e as Error).message);
     } finally {
@@ -460,6 +499,7 @@ export class HomeLinks {
   private queued?: { promise: Promise<number>; fire(): void };
   private unsubscribe?: () => void;
   private unwatchDocs?: () => void;
+  private sockets?: fs.FSWatcher;
   private oversize = false;
   // set while the links run
   private pushSoon?: () => void;
@@ -472,6 +512,7 @@ export class HomeLinks {
       this.pushSnapshot().catch((e: Error) => { if (!(e instanceof ApiError && e.code === 'too_large')) this.o.log.error(`snapshot not pushed: ${e.message}`); });
     };
     this.pushSoon = pushSoon;
+    this.watchSockets();
     this.refresh();
     // every change while a worker is synced reaches it
     this.unsubscribe = this.o.store.subscribe(() => { if ([...this.links.values()].some((l) => l.synced)) pushSoon(); });
@@ -487,6 +528,12 @@ export class HomeLinks {
     for (const link of this.links.values()) { link.greetAgain(); link.retryNow(); }
     try {
       for (const entry of this.o.machines()) {
+        const held = this.links.get(entry.id);
+        // a worker that has come to dial in, or stopped, is linked anew the other way
+        if (held && held.dialsIn !== (entry.record.dial === 'worker')) {
+          held.stop();
+          this.links.delete(entry.id);
+        }
         if (this.links.has(entry.id) || !tokenFor(this.o.paths, entry.id)) continue;
         const link = new WorkerLink(entry, this.o, pushSoon);
         this.links.set(entry.id, link);
@@ -501,12 +548,29 @@ export class HomeLinks {
     this.pushSoon = undefined;
     this.unsubscribe?.();
     this.unwatchDocs?.();
+    this.sockets?.close();
     for (const link of this.links.values()) link.stop();
     this.queued?.fire();
   }
 
   for(machine: MachineId): WorkerLink | undefined {
     return this.links.get(machine);
+  }
+
+  // a worker that dials in links once its socket appears, not at the end of a backoff, as after its Mac woke
+  private watchSockets(): void {
+    const dir = this.o.paths.dialSockets;
+    try {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+      fs.chmodSync(dir, 0o700);
+      this.sockets = fs.watch(dir, (_event, name) => {
+        const link = name && [...this.links.values()].find((l) => l.dialsIn && path.basename(dialSocket(this.o.paths, l.machine)) === name);
+        if (link && fs.existsSync(path.join(dir, name))) link.retryNow();
+      });
+      this.sockets.on('error', (e) => this.o.log.error(`${dir}: ${e.message}`));
+    } catch (e) {
+      this.o.log.error(`${dir} is not watched, so a worker that dials in links at its next try: ${(e as Error).message}`);
+    }
   }
 
   /** The workers a call reaches now. */

@@ -5,9 +5,10 @@ import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
 
-/** What `svalld --worker` leaves to the home. */
+/** What `svalld --worker` leaves to the home; a Mac keeps listing the fleets beside this one, which its File menu opens. */
 const OFF = ['mobile', 'push', 'scribe', 'fleets'] as const;
 export type Off = (typeof OFF)[number];
+const offOn = (platform: NodeJS.Platform): readonly Off[] => (platform === 'darwin' ? OFF.filter((o) => o !== 'fleets') : OFF);
 
 export const isWorker = (paths: Paths): boolean => fs.existsSync(paths.workerFile);
 
@@ -21,7 +22,8 @@ export function readWorkerFile(paths: Paths): WorkerFile {
   return parseConfig(text, paths.workerFile, WorkerFile);
 }
 
-export const workerOptions = (paths: Paths): { worker: WorkerFile; off: typeof OFF } => ({ worker: readWorkerFile(paths), off: OFF });
+export const workerOptions = (paths: Paths, platform: NodeJS.Platform = process.platform): { worker: WorkerFile; off: readonly Off[] } =>
+  ({ worker: readWorkerFile(paths), off: offOn(platform) });
 
 const refuse = (): Promise<never> => Promise.reject(new ApiError('not_on_worker', 'not on a worker'));
 

@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  BrowserTab, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
-  PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, emptyState, methods, robotMessage, serverWait, type Event,
+  BrowserTab, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MachineRecord, MobileStatus, PART_BYTES,
+  PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, WorkerFile, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
 describe('serverWait', () => {
@@ -43,7 +43,8 @@ describe('messages', () => {
   });
   it('term.attach takes an id and returns how to attach', () => {
     expect(methods['term.attach'].params.parse({ id: 'c_a' })).toEqual({ id: 'c_a' });
-    expect(methods['term.attach'].result.parse({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' })).toEqual({ socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux' });
+    const attach = { socket: '/tmp/x/tmux.sock', session: 'v-c_a', tmux: '/usr/bin/tmux', machine: 'home' };
+    expect(methods['term.attach'].result.parse(attach)).toEqual(attach);
   });
   it('robot.move takes an island and a cell', () => {
     expect(methods['robot.move'].params.parse({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } })).toEqual({ id: 'c', islandId: 'i', cell: { x: 1, y: 2 } });
@@ -190,6 +191,21 @@ describe('protocol version', () => {
     expect(methods['robot.drop'].params.parse({ id: 'c_1', upload, name: 'shot.png' })).toEqual({ id: 'c_1', upload, name: 'shot.png' });
   });
 
+  it('is 39 with term.attach naming the machine a robot runs on, and a worker that dials its home', () => {
+    const attach = { socket: '/s', session: 'v-c_a', tmux: '/t' };
+    expect(methods['term.attach'].result.safeParse(attach).success).toBe(false);
+    expect(methods['term.attach'].result.parse({ ...attach, machine: UUID_A }).machine).toBe(UUID_A);
+    expect(methods['term.attach'].result.safeParse({ ...attach, machine: 'studio' }).success).toBe(false);
+    const record = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall' };
+    expect(MachineRecord.parse({ ...record, dial: 'worker' }).dial).toBe('worker');
+    expect(MachineRecord.safeParse({ ...record, dial: 'both' }).success).toBe(false);
+    const worker = { homeMachineId: UUID_A, fleetId: UUID_A, token: 't'.repeat(32), homeName: 'studio' };
+    expect(WorkerFile.parse({ ...worker, homeSsh: 'ada@studio', homeSocket: '/home/ada/.svall/w/0123456789ab.sock' }).homeSsh).toBe('ada@studio');
+    expect(WorkerFile.safeParse({ ...worker, homeSsh: '-oProxyCommand=sh' }).success).toBe(false);
+    expect(WorkerFile.safeParse({ ...worker, homeSocket: '/home/a:b/.svall/w/x.sock' }).success).toBe(false);
+    expect(WorkerFile.safeParse({ ...worker, homeSocket: 'w/x.sock' }).success).toBe(false);
+  });
+
   it('machines.setup and machines.consent take and answer', () => {
     expect(methods['machines.consent'].params.parse({ machine: UUID_A, item: 'claude:mcp:linear', fields: ['env.K'], on: true }).on).toBe(true);
     expect(methods['machines.setup'].params.parse({ machine: UUID_A, waitMs: 5_000 }).waitMs).toBe(5_000);
@@ -216,7 +232,7 @@ describe('protocol version', () => {
     expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
     expect(methods['machines.refresh'].result.parse({})).toEqual({});
     const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
-    expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', via }).via).toEqual(via);
+    expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', machine: UUID_A, via }).via).toEqual(via);
   });
 
   it("was 30 with the board's columns, robots placed by hand or let go, placing.set, and a sweep of columns alone", () => {

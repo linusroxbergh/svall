@@ -46,7 +46,9 @@ describe('worker.json', () => {
     expect(isWorker(paths)).toBe(true);
     expect(() => readWorkerFile(paths)).toThrow(new RegExp(`${paths.workerFile}.*token`));
     fs.writeFileSync(paths.workerFile, JSON.stringify(workerFile));
-    expect(workerOptions(paths)).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'fleets'] });
+    expect(workerOptions(paths, 'linux')).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe', 'fleets'] });
+    // a Mac's File menu still lists and opens the fleets beside this one
+    expect(workerOptions(paths, 'darwin')).toEqual({ worker: workerFile, off: ['mobile', 'push', 'scribe'] });
   });
 });
 
@@ -85,7 +87,8 @@ runIf('svalld --worker', () => {
       expect(await api.call('state.get')).toMatchObject({ result: { version: 12 } });
       expect(await api.call('mobile.get')).toMatchObject({ error: { code: 'not_on_worker', message: 'not on a worker' } });
       expect(await api.call('usage.get')).toMatchObject({ result: { available: true, idle: true, windows: [] } });
-      expect(await api.call('fleets.list')).toMatchObject({ error: { code: process.platform === 'darwin' ? 'not_on_worker' : 'forbidden' } });
+      // a Mac worker's File menu lists the fleets beside this one; Linux has no app to ask
+      expect(await api.call('fleets.list')).toMatchObject(process.platform === 'darwin' ? { result: { fleets: expect.any(Array) } } : { error: { code: 'forbidden' } });
       // a change is the home's to make, and no home has linked
       const islands = structuredClone(d.store.state.islands);
       expect(await api.call('island.arrange', {})).toMatchObject({ error: { code: 'not_reachable', message: expect.stringMatching(/ cannot reach this Mac right now; try again when it is awake$/) } });

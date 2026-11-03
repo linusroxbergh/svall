@@ -107,6 +107,15 @@ export class MachineRegistry {
     return { id: machine, record: parsed };
   }
 
+  /** The machine under `id` with `record`, added or in place of the record it had. */
+  put(id: MachineId, record: MachineRecord): MachineEntry {
+    const parsed = MachineRecord.parse(record);
+    if (id === this.localId) throw new Error('the local machine is not a worker of its own fleet');
+    if (this.machines.get(id)?.name !== parsed.name) this.claimName(parsed.name);
+    this.machines.set(id, parsed);
+    return { id, record: parsed };
+  }
+
   rename(idOrName: string, name: string): void {
     const entry = this.need(idOrName);
     this.claimName(NAME.parse(name));

@@ -4,12 +4,14 @@ import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
 import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
+import { isWorker } from './worker/mode.js';
 
 const home = svallHome();
 fs.mkdirSync(home, { recursive: true });
 const paths = resolvePaths(home);
 const log = createLogger(paths.log);
-const worker = process.argv.includes('--worker') || undefined;
+// a Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker
+const asWorker = (): true | undefined => process.argv.includes('--worker') || isWorker(paths) || undefined;
 
 process.on('uncaughtException', (e) => log.error(`uncaught: ${e.stack ?? String(e)}`));
 process.on('unhandledRejection', (e) => log.error(`unhandled: ${String(e)}`));
@@ -31,7 +33,7 @@ async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
     try {
-      return await startDaemon({ home, log, worker });
+      return await startDaemon({ home, log, worker: asWorker() });
     } catch (e) {
       // no file here can fix that; the other build's setup restarts the agent onto its own program
       if (e instanceof OtherBuildHome) {

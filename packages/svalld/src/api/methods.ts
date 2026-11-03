@@ -22,7 +22,7 @@ import { releaseVersion } from '../release.js';
 import type { Retro } from '../retro/service.js';
 import { agentAdapters, type AgentProber } from '../sessions/registry.js';
 import type { Store } from '../store.js';
-import type { TerminalHub, Viewer } from '../terminals.js';
+import { elsewhere, type TerminalHub, type Viewer } from '../terminals.js';
 import { mergeUsage } from '../usage/merge.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
@@ -281,7 +281,11 @@ const handlers: Handlers = {
   'term.resize': async (p, { terminals, viewer }) => { await terminals.resize(p.id, p.cols, p.rows, viewer); return {}; },
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
-  'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
+  'term.attach': (p, { terminals, router, store }) => {
+    const at = router?.onWorker ? router.placedAt(p.id) : undefined;
+    if (at) throw elsewhere(store, p.id, at);
+    return terminals.attach(p.id, p.term);
+  },
   'drop.part': (p, ctx) => { dropsOf(ctx).part(p.upload, p.index, Buffer.from(p.data, 'base64'), ctx.signal); return {}; },
   'robot.drop': (p, ctx) => dropsOf(ctx).land(p.id, p.upload, p.name, ctx.signal),
   'system.info': (_p, { systemInfo }) => systemInfo(),
@@ -316,6 +320,8 @@ function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
   const id = (params as { id?: unknown }).id;
   const { robots } = ctx.store.state;
   if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
+  // a terminal attaches only to this machine's tmux: no route from here reaches another's, whatever the home would answer
+  if (method === 'term.attach') return false;
   return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
 }
 

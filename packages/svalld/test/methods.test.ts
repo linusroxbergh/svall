@@ -22,7 +22,7 @@ import { hasGit } from './git-fixture.js';
 import { cleanHomes, makeHome } from './helpers.js';
 import { editJson, farHome, macHome, mirroredFiles, statsOf } from './placement/mirror-homes.js';
 import { moveWorld, type MoveWorld } from './placement/move-world.js';
-import { W, island, placed, world } from './placement/world.js';
+import { H, W, island, placed, robot, until, world } from './placement/world.js';
 
 afterEach(cleanHomes);
 
@@ -460,9 +460,46 @@ describe('term.attach for a robot on another machine', () => {
       expect(await dispatch({ id: 1, method: 'term.attach', params: { id: 'c_1' } }, ctx)).toEqual({ id: 1, error: { code: 'not_reachable', message: 'w1 is not reachable' } });
       await w.link();
       expect(await dispatch({ id: 2, method: 'term.attach', params: { id: 'c_1' } }, ctx)).toEqual({
-        id: 2, result: { socket: tmux.socket, session: 'v-c_1', tmux: tmux.binary, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } },
+        id: 2, result: { socket: tmux.socket, session: 'v-c_1', tmux: tmux.binary, machine: W, via: { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' } },
       });
       expect(attached).toEqual([['v-c_1', '@3']]);
+    } finally {
+      await w.stop();
+    }
+  });
+
+  it('refuses the terminal of a robot on a worker that dials in, which no ssh route from the home reaches, and asks that worker nothing', async () => {
+    const live = placed({ id: 'c_1', name: 'kanban', tmux: { windowId: '@3', paneId: '%3' } });
+    const attached: string[][] = [];
+    const tmux = { socket: '/s', binary: '/t', attachSession: async (session: string, windowId: string) => { attached.push([session, windowId]); } };
+    const w = world({ home: { robots: { c_1: live } }, worker: { robots: { c_1: live } }, tmux, dialIn: true });
+    try {
+      await w.link();
+      expect(w.home.links.for(W)?.via()).toBeUndefined();
+      expect(await dispatch({ id: 1, method: 'term.attach', params: { id: 'c_1' } }, w.home.ctx)).toEqual({
+        id: 1, error: { code: 'elsewhere', message: 'kanban runs on w1; open it there' },
+      });
+      expect(attached).toEqual([]);
+    } finally {
+      await w.stop();
+    }
+  });
+
+  it("a worker attaches its own robot's terminal itself, home away or not, naming itself, and refuses one elsewhere without asking its home", async () => {
+    const here = placed({ id: 'c_1', tmux: { windowId: '@3', paneId: '%3' } });
+    const home = robot({ id: 'c_2', name: 'scout', tmux: { windowId: '@4', paneId: '%4' } });
+    const tmux = { socket: '/w/tmux.sock', binary: '/w/tmux', attachSession: async () => {} };
+    const w = world({ home: { robots: { c_1: here, c_2: home } }, worker: { robots: { c_1: here, c_2: home } }, tmux });
+    try {
+      const mine = { id: 1, result: { socket: '/w/tmux.sock', session: 'v-c_1', tmux: '/w/tmux', machine: W } };
+      expect(await dispatch({ id: 1, method: 'term.attach', params: { id: 'c_1' } }, w.worker.ctx)).toEqual(mine);
+      await w.link();
+      // named once the home's first snapshot lands
+      await until(() => expect(w.worker.store.state.machines?.[H]?.name).toBe('mac'));
+      expect(await dispatch({ id: 1, method: 'term.attach', params: { id: 'c_1' } }, w.worker.ctx)).toEqual(mine);
+      expect(await dispatch({ id: 2, method: 'term.attach', params: { id: 'c_2' } }, w.worker.ctx)).toEqual({
+        id: 2, error: { code: 'elsewhere', message: 'scout runs on mac; open it there' },
+      });
     } finally {
       await w.stop();
     }

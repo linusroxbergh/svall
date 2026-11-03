@@ -9,6 +9,7 @@ import { retroCommands } from './commands/retro.js';
 import { robotCommands } from './commands/robot.js';
 import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
+import { homeCommands } from './commands/home.js';
 import { hostCommands, thereOf } from './commands/host.js';
 import { islandCommands } from './commands/island.js';
 import { mobileCommand } from './commands/mobile.js';
@@ -89,6 +90,7 @@ export function buildProgram(): Command {
   program.addCommand(doctorCommand(target, json));
   program.addCommand(hostCommands(json, target));
   program.addCommand(workerCommands(target));
+  program.addCommand(homeCommands(target, json));
   program.addCommand(uninstallCommand(json));
   program.addCommand(connectionInfoCommand(home, json));
   program.addCommand(versionCommand(json, home));

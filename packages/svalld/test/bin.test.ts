@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -75,6 +76,23 @@ runIf('svalld bin', () => {
       await expect(new Tmux(p.tmuxSock, p.tmuxConf).run('list-sessions')).rejects.toThrow();
     } finally {
       if (daemon.exitCode === null) { daemon.kill('SIGTERM'); await once(daemon, 'exit'); }
+    }
+  }, 60_000);
+
+  it("runs as a worker with no --worker when the fleet home holds worker.json, as a Mac's launchd agent starts every fleet", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.workerFile, JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' }), { mode: 0o600 });
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => fs.existsSync(p.port), 30_000);
+      // the worker's end of the link, which only a worker listens on
+      expect(fs.lstatSync(p.linkSock).isSocket()).toBe(true);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
     }
   }, 60_000);
 

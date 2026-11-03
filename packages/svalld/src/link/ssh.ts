@@ -230,18 +230,27 @@ export class SshMaster {
    */
   async forward(remotePort: number): Promise<{ localPort: number; cancel: () => Promise<void> }> {
     const localPort = await freePort();
-    await this.tunnel('forward', localPort, remotePort);
+    await this.tunnel('forward', '-L', `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`);
     return { localPort, cancel: () => this.cancelForward(localPort, remotePort) };
   }
 
   cancelForward(localPort: number, remotePort: number): Promise<void> {
-    return this.tunnel('cancel', localPort, remotePort);
+    return this.tunnel('cancel', '-L', `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`);
   }
 
-  private async tunnel(command: 'forward' | 'cancel', localPort: number, remotePort: number): Promise<void> {
-    const spec = `127.0.0.1:${localPort}:127.0.0.1:${remotePort}`;
+  /**
+   * The far machine's socket `remote` onto the socket `local` here, made by sshd for the account alone. sshd refuses a
+   * path already there, and the master answers a forward it holds already without binding it again.
+   */
+  async reverseSocket(remote: string, local: string): Promise<{ cancel: () => Promise<void> }> {
+    const spec = `${remote}:${local}`;
+    await this.tunnel('forward', '-R', spec);
+    return { cancel: () => this.tunnel('cancel', '-R', spec) };
+  }
+
+  private async tunnel(command: 'forward' | 'cancel', kind: '-L' | '-R', spec: string): Promise<void> {
     // with no config read, it asks the master for this forward alone, not those a `Host *` block names
-    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, '-L', spec], []), { timeoutMs: CONTROL_TIMEOUT });
+    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, kind, spec], []), { timeoutMs: CONTROL_TIMEOUT });
     if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}: ${r.stderr.trim()}`);
   }
 

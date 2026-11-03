@@ -35,6 +35,12 @@ const fit = (screen: Buffer, max = Infinity): Buffer => {
 
 type Seen = { text: string; at: number; machine: MachineId; generation?: number };
 
+/** A terminal no route from this machine reaches: the robot runs where only that machine attaches to its tmux. */
+export function elsewhere(store: Store, id: string, machine: MachineId): ApiError {
+  const name = store.state.robots[id]?.name ?? id;
+  return new ApiError('elsewhere', `${name} runs on ${store.state.machines?.[machine]?.name ?? 'another machine'}; open it there`);
+}
+
 /** On the home: which robots run on a worker, and the links that reach each one. */
 type Remote = { router: Pick<Router, 'placedAt' | 'forward'>; links: Pick<HomeLinks, 'for' | 'call'> };
 
@@ -54,7 +60,8 @@ export class TerminalHub {
   private far?: FarTerminals;
   private screens = new Map<string, Seen>();
 
-  constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote) {
+  /** `here`, on a worker, its own machine id, which its terminals' attach names. */
+  constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote, private here?: MachineId) {
     this.far = remote && new FarTerminals({ links: remote.links, router: remote.router, log });
     if (remote) store.subscribe(() => { for (const [id, s] of this.screens) if (!this.placedAsSeen(id, s)) this.screens.delete(id); });
     fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
@@ -122,16 +129,19 @@ export class TerminalHub {
     const { remote } = this;
     const at = remote?.router.placedAt(id);
     if (remote && at) {
-      // the robot's tmux is on its machine, which a terminal reaches over the ssh master the link to it runs on
-      const far = await remote.router.forward(id, 'term.attach', { id, term })!;
+      // the robot's tmux is on its machine, which a terminal reaches over the ssh master the link to it runs on; a worker
+      // that dials in has no master here
       const link = remote.links.for(at);
-      if (!link) throw new ApiError('not_reachable', `${this.store.state.machines?.[at]?.name ?? at} is not reachable`);
-      return { ...far, via: link.via() };
+      if (link && !link.via()) throw elsewhere(this.store, id, at);
+      const far = await remote.router.forward(id, 'term.attach', { id, term })!;
+      const via = remote.links.for(at)?.via();
+      if (!via) throw new ApiError('not_reachable', `${this.store.state.machines?.[at]?.name ?? at} is not reachable`);
+      return { ...far, machine: at, via };
     }
     const { windowId } = this.fleet.terminal(id, term).tmux;
     const session = viewerSession(id, term);
     await this.tmux.attachSession(session, windowId);
-    return { socket: this.tmux.socket, session, tmux: this.tmux.binary };
+    return { socket: this.tmux.socket, session, tmux: this.tmux.binary, machine: this.here ?? 'home' };
   }
 
   async detach(id: string, signal?: AbortSignal): Promise<void> {

@@ -1,22 +1,24 @@
 import { z } from 'zod';
 import { isProfileName } from './names.js';
-import { FleetId, MachineId, MachinePath } from './ids.js';
+import { FleetId, MachineId, MachinePath, SshDestination } from './ids.js';
 import { AgentKind, DEFAULT_CWD, Home } from './state.js';
 
 // records name machines and fleets by these ids, not by names such as `trift`, so renaming a host leaves every record alone
-export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
+export { FleetId, MachineId, ObjectName, Sha256, SshDestination } from './ids.js';
 
 /**
- * One machine in the controller's registry; one reached directly has no `ssh`. `ssh` is held to a token that cannot read
- * as an ssh option; paths may hold anything, and are quoted where a remote command is built.
+ * One machine in the controller's registry; one reached directly has no `ssh`. Paths may hold anything, and are quoted
+ * where a remote command is built. `dial`: who opens the link to a worker, the home over ssh (the default) or the worker
+ * itself, into a socket in the home's fleet home.
  */
 export const MachineRecord = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, 'lowercase letters, digits and dashes, starting with a letter'),
-  ssh: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/, 'an ssh destination, starting with a letter or a digit').optional(),
+  ssh: SshDestination.optional(),
   platform: z.enum(['darwin', 'linux']),
   arch: z.string(),
   home: MachinePath,
   svallBase: MachinePath,
+  dial: z.enum(['home', 'worker']).optional(),
 });
 export type MachineRecord = z.infer<typeof MachineRecord>;
 

@@ -86,6 +86,8 @@ export async function stopWorlds(): Promise<void> {
  */
 export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
+  /** w1 dials in: its record says so, and the home reaches its link.sock with no ssh route for terminals. */
+  dialIn?: true;
   mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } }; homeLog?: Logger;
   usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
@@ -108,7 +110,9 @@ export function world(o: {
   // while `hold` holds, the next mutation waits
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
-    paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', machines: () => [entry], connect: o.connect ?? socketTo(workerPaths.linkSock),
+    paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', connect: o.connect ?? socketTo(workerPaths.linkSock),
+    machines: () => [o.dialIn ? { ...entry, record: { ...entry.record, dial: 'worker' } } : entry],
+    dialIn: async () => ({ stream: (await socketTo(workerPaths.linkSock)(entry)).stream }),
     onReport: (r, machine) => { if (applyReport(homeStore, r, machine) === 'applied') replay.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (kind === 'mutation') {
@@ -189,7 +193,7 @@ export function world(o: {
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
-  const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger);
+  const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
   const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, me: W });
   screens.start();
   const workerUsage = usageOf(workerStore, workerRouter);
@@ -212,7 +216,7 @@ export function world(o: {
     workerMirror?.calls,
   );
   const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
-  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, drops: workerDrops });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());

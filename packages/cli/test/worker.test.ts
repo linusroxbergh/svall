@@ -2,11 +2,16 @@ import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import net from 'node:net';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
-import { resolvePaths } from '@svall/svalld/paths';
+import { readRegistry } from '@svall/svalld/machine';
+import { dialSocket, resolvePaths } from '@svall/svalld/paths';
+import { tokenFor } from '@svall/svalld/placement/workers';
+import { LAUNCHD_LABEL } from '@svall/svalld/profile';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
+import { enrollHere } from '../src/commands/worker.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const tsx = path.join(root, 'node_modules/.bin/tsx');
@@ -15,7 +20,11 @@ const main = path.join(root, 'packages/cli/src/main.ts');
 afterEach(cleanHomes);
 
 function svall(home: string, ...args: string[]) {
-  const child = spawn(tsx, [main, ...args], { env: { ...process.env, SVALL_HOME: home } });
+  return svallIn({ SVALL_HOME: home }, ...args);
+}
+
+function svallIn(env: Record<string, string>, ...args: string[]) {
+  const child = spawn(tsx, [main, ...args], { env: { ...process.env, ...env } });
   let stdout = '';
   let stderr = '';
   child.stdout.on('data', (c: Buffer) => { stdout += c.toString(); });
@@ -67,6 +76,88 @@ describe('svall worker', () => {
     const file = resolvePaths(home).workerFile;
     expect(JSON.parse(fs.readFileSync(file, 'utf8'))).toEqual({ homeMachineId: ids.home, fleetId: ids.fleet, token, homeName: 'linus-mbp' });
     expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it('enroll with --home-ssh writes the destination and socket the worker dials, refusing one ssh would read as an option or either alone', async () => {
+    const home = makeHome();
+    const base = ['worker', 'enroll', '--home-machine', crypto.randomUUID(), '--home-name', 'studio', '--fleet-id', crypto.randomUUID()];
+    const enroll = async (...extra: string[]) => { const run = svall(home, ...base, ...extra); run.child.stdin.end('a'.repeat(48)); return run.done; };
+    const socket = '/home/ada/.svall/w/0123456789ab.sock';
+    for (const extra of [['--home-ssh', '-oProxyCommand=touch /tmp/x', '--home-socket', socket], ['--home-ssh', 'ada@studio'], ['--home-ssh', 'ada@studio', '--home-socket', '/home/a:b/x.sock']]) {
+      expect(await enroll(...extra)).toMatchObject({ code: 1, stderr: expect.stringContaining('worker.json not written') });
+      expect(fs.existsSync(resolvePaths(home).workerFile)).toBe(false);
+    }
+    expect(await enroll('--home-ssh', 'ada@studio', '--home-socket', socket)).toMatchObject({ code: 0 });
+    expect(JSON.parse(fs.readFileSync(resolvePaths(home).workerFile, 'utf8'))).toMatchObject({ homeSsh: 'ada@studio', homeSocket: socket });
+  });
+
+  it('enroll on a Mac restarts the fleet\'s launchd agent and waits for its daemon, as systemd does on Linux', async () => {
+    const bin = makeHome();
+    const calls = path.join(bin, 'calls');
+    fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\n`, { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    try {
+      const t = { name: 'private', home: makeHome(), managed: true };
+      const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID(), homeSsh: 'ada@studio', homeSocket: '/home/ada/.svall/w/0123456789ab.sock' };
+      const out: string[] = [];
+      const waited: string[] = [];
+      const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async (x: { home: string }) => { waited.push(x.home); return true; }, out: (l: string) => out.push(l) };
+      await enrollHere(t, o, d);
+      expect(fs.readFileSync(calls, 'utf8')).toBe(`kickstart -k gui/${os.userInfo().uid}/${LAUNCHD_LABEL}\n`);
+      expect(waited).toEqual([t.home]);
+      expect(out).toEqual([`restarted ${LAUNCHD_LABEL}`]);
+      expect(fs.existsSync(resolvePaths(t.home).workerFile)).toBe(true);
+      await expect(enrollHere(t, o, { ...d, daemonUp: async () => false })).rejects.toThrow(`${LAUNCHD_LABEL} did not answer after its restart; svall doctor says why`);
+      // a fleet home that is no profile's own has no launchd agent to restart
+      fs.rmSync(calls);
+      await enrollHere({ ...t, managed: false }, o, d);
+      expect(fs.existsSync(calls)).toBe(false);
+    } finally {
+      process.env.PATH = PATH;
+    }
+  });
+
+  it("home enroll-worker records a worker that dials in, issues it a token printed once in JSON, and a run again issues a newer one", async () => {
+    const home = makeHome();
+    fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
+    const env = { SVALL_HOME: home, SVALL_CONFIG_DIR: makeHome() };
+    const id = crypto.randomUUID();
+    const facts = ['--name', 'ada-mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/Users/ada/.svall'];
+    const enroll = () => svallIn(env, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    const first = await enroll();
+    expect(first).toMatchObject({ code: 0, stderr: '' });
+    const answer = JSON.parse(first.stdout);
+    expect(answer).toEqual({
+      homeMachineId: expect.any(String), homeName: expect.any(String), fleetId: JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).id,
+      socket: dialSocket(resolvePaths(home), id), token: tokenFor(resolvePaths(home), id as never),
+    });
+    expect(readRegistry(env.SVALL_CONFIG_DIR).find((m) => m.id === id)?.record).toEqual({ name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall', dial: 'worker' });
+    const again = JSON.parse((await enroll()).stdout);
+    expect(again.token).not.toBe(answer.token);
+    expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+    // a run that would show the token to a person issues none
+    const plain = await svallIn(env, 'home', 'enroll-worker', id, ...facts).done;
+    expect(plain).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('run it with --json') });
+    expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+  });
+
+  it('home enroll-worker refuses a fleet home whose socket would be past what a Unix socket path holds, and a worker\'s fleet home, issuing no token', async () => {
+    const long = path.join(makeHome(), 'x'.repeat(120 - makeHome().length));
+    fs.mkdirSync(long, { recursive: true });
+    const config = makeHome();
+    const id = crypto.randomUUID();
+    const facts = ['--name', 'ada-mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/Users/ada/.svall'];
+    fs.writeFileSync(resolvePaths(long).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
+    const r = await svallIn({ SVALL_HOME: long, SVALL_CONFIG_DIR: config }, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    expect(r).toMatchObject({ code: 1, stdout: '' });
+    expect(r.stderr).toMatch(/past the 10[37] a Unix socket path holds, so its listen fails with EINVAL, so no worker can dial into .*; use an account whose home is \d+ bytes shorter/);
+    expect(tokenFor(resolvePaths(long), id as never)).toBeUndefined();
+    expect(readRegistry(config).some((m) => m.id === id)).toBe(false);
+    const worker = makeHome();
+    fs.writeFileSync(resolvePaths(worker).workerFile, '{}');
+    const w = await svallIn({ SVALL_HOME: worker, SVALL_CONFIG_DIR: config }, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    expect(w).toMatchObject({ code: 1, stderr: expect.stringContaining("is a worker's fleet home; run this on the fleet's home") });
   });
 
   it('env writes VAR=value into the fleet .env, mode 600, replacing an earlier line and keeping the others', async () => {
