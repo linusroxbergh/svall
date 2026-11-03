@@ -7,9 +7,10 @@ import { createAppStore, type AppStore } from '../../src/store/index.js';
 import { chr, fleet } from '../fixtures.js';
 
 const browser = { start: vi.fn(), show: vi.fn(), move: vi.fn(), hide: vi.fn(), load: vi.fn(), go: vi.fn() };
+const send = vi.fn();
 let store: AppStore;
 vi.mock('../../src/boot.js', () => ({
-  app: { get store() { return store; }, bridge: { present: true, send: () => {}, onMessage: () => () => {} }, browser: () => browser },
+  app: { get store() { return store; }, bridge: { present: true, send, onMessage: () => () => {} }, browser: () => browser },
   deps: () => ({ store }),
 }));
 
@@ -29,4 +30,15 @@ test('the reload button stops a page while it loads', () => {
   act(() => store.getState().webviewState('t_1', { loading: false }));
   fireEvent.click(screen.getByTestId('browser-reload'));
   expect(browser.go).toHaveBeenLastCalledWith('t_1', 'reload');
+});
+
+test('import cookies names the active tab, so the shell reloads it once they are in', () => {
+  store = createAppStore();
+  setAppStore(store);
+  const f = fleet();
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: { tabs: [{ id: 't_1', url: 'https://a.test/', title: '' }], active: 't_1' } });
+  store.getState().setFleet(f);
+  render(<BrowserArea id="c0" />);
+  fireEvent.click(screen.getByTestId('browser-cookies'));
+  expect(send).toHaveBeenLastCalledWith({ type: 'browser.importCookies', tab: 't_1' });
 });
