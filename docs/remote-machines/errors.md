@@ -139,5 +139,5 @@ to fix with its name, what it lacks and the one thing to do.
 | Another fleet reaches the machine over ssh | home | `svall -p <that fleet> host remove <name>` first: the machine's record is the account's, so that fleet would lose its route. |
 | `--home-ssh` and `--home-socket` go together, or one is not what `worker.json` holds | worker | Give both, the destination an ssh destination and the socket the path `fleet enroll-worker` printed. |
 | Not this machine's socket | worker | Run `fleet enroll-worker` again with this machine's id. |
-| A fleet's home holding robots or workers | worker | `svall -p <empty fleet> worker enroll`: the home's first snapshot would erase them. A `worker.json` written by hand on such a fleet stops its daemon with the same words, until the file goes. |
+| A fleet's home holding robots, workers, or an island with a description, instructions, context or notes | worker | `svall -p <empty fleet> worker enroll`: the home's first snapshot would erase them. A `worker.json` written by hand on such a fleet stops its daemon with the same words, until the file goes. |
 | launchd has not loaded the fleet's job | worker | Open the fleet once with `svall <fleet>`, or `svall setup` for the private one. |

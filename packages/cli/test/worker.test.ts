@@ -152,6 +152,28 @@ describe('svall worker', () => {
     expect(fs.existsSync(paths.workerFile)).toBe(true);
   });
 
+  it('enroll refuses a fleet with anything on an island beyond mission control, robots or none, and takes the empty island a new fleet opens with', async () => {
+    const t = { name: 'work', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID() };
+    const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => crypto.randomUUID(), loaded: async () => true };
+    const empty = { name: 'Island 1', description: '', instructions: '', context: [] };
+    const islands = (i_a: object) => fs.writeFileSync(paths.state, JSON.stringify({ robots: {}, islands: { home: { ...empty, instructions: 'the crew' }, i_a } }));
+    for (const holding of [{ description: 'the plan' }, { instructions: 'be brief' }, { context: [{ kind: 'url' }] }]) {
+      islands({ ...empty, ...holding });
+      await expect(enrollHere(t, o, d)).rejects.toThrow(`worker.json not written: ${t.home} is a fleet's home and holds 1 island, which the first snapshot from studio would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+    }
+    islands(empty);
+    const docs = path.join(paths.docs, 'islands', 'i_a');
+    fs.mkdirSync(docs, { recursive: true });
+    fs.writeFileSync(path.join(docs, 'plan.md'), '---\ndescription: the plan\n---\n');
+    await expect(enrollHere(t, o, d)).rejects.toThrow('holds 1 island, which');
+    expect(fs.existsSync(paths.workerFile)).toBe(false);
+    fs.rmSync(docs, { recursive: true });
+    await enrollHere(t, o, d);
+    expect(fs.existsSync(paths.workerFile)).toBe(true);
+  });
+
   it("version --json names a home with its fleet's id, and a worker with the home it serves", async () => {
     const home = makeHome();
     const fleetId = crypto.randomUUID();

@@ -268,7 +268,7 @@ two halves:
    forwards its link to. A run again issues a new token, which replaces the one before.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
    --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker.
-   The home's first snapshot replaces what a fleet holds, so it refuses a fleet that has robots or workers of its own:
+   The home's first snapshot replaces what a fleet holds, so it refuses a fleet that has robots, workers or anything on an island of its own:
    enrol an empty one with `svall -p <empty fleet> worker enroll`, opened once with `svall <empty fleet>` so launchd has
    its job.
 

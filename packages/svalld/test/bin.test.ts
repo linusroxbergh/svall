@@ -180,6 +180,25 @@ runIf('svalld bin', () => {
     }
   }, 70_000);
 
+  it("waits on a fleet's home a worker.json would flip when all it holds is an island with something on it", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const log = () => (fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: { description: 'the plan' } } }));
+    fs.writeFileSync(p.workerFile, JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' }), { mode: 0o600 });
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes('svalld starts once it is fixed'), 30_000);
+      expect(log()).toContain(`${p.workerFile} makes this fleet home a worker, but it holds 1 island as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 60_000);
+
   it('waits for a config.json that does not parse to be fixed, rather than exiting for launchd to restart', async () => {
     const home = makeHome();
     homes.push(home);

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
-import { ApiError, WorkerFile } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, WorkerFile } from '@svall/protocol';
 import { InvalidConfig, parseConfig } from '../config.js';
+import { docsDir, listDocs } from '../docs.js';
 import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
@@ -28,17 +29,26 @@ export const workerOptions = (paths: Paths, platform: NodeJS.Platform = process.
 
 /**
  * What a fleet's home holds of its own here, by name, which a worker's first snapshot would erase: the robots not running
- * on `me` and its workers. Nothing once it has taken a snapshot, as what it holds is then a worker's copy.
+ * on `me`, the islands beyond mission control with anything on them, as a new fleet opens with an empty one, and its
+ * workers. Nothing once it has taken a snapshot, as what it holds is then a worker's copy.
  */
 export function heldAsHome(paths: Paths, me: string): string | undefined {
-  let state: { robots?: Record<string, { machine?: string }>; machines?: Record<string, { snapshot?: unknown }> } = {};
+  let state: {
+    robots?: Record<string, { machine?: string }>; machines?: Record<string, { snapshot?: unknown }>;
+    islands?: Record<string, { description?: string; instructions?: string; context?: unknown[] }>;
+  } = {};
   // one that cannot be read is set aside whatever happens to it, so nothing is erased
   try { state = JSON.parse(fs.readFileSync(paths.state, 'utf8')); } catch { /* none to lose */ }
   if (Object.values(state.machines ?? {}).some((m) => m.snapshot)) return undefined;
-  const robots = Object.values(state.robots ?? {}).filter((r) => r.machine !== me).length;
-  const workers = workerIds(paths).length;
-  const held = [robots && `${robots} robot${robots === 1 ? '' : 's'}`, workers && `${workers} worker${workers === 1 ? '' : 's'}`].filter(Boolean);
-  return held.length ? held.join(' and ') : undefined;
+  const islands = Object.entries(state.islands ?? {}).filter(([id, i]) =>
+    id !== HOME_ISLAND && (i.description || i.instructions || i.context?.length || listDocs(docsDir(paths.docs, 'island', id)).length));
+  const count = (n: number, what: string): string[] => (n ? [`${n} ${what}${n === 1 ? '' : 's'}`] : []);
+  const held = [
+    ...count(Object.values(state.robots ?? {}).filter((r) => r.machine !== me).length, 'robot'),
+    ...count(islands.length, 'island'),
+    ...count(workerIds(paths).length, 'worker'),
+  ];
+  return held.length ? new Intl.ListFormat('en').format(held) : undefined;
 }
 
 const refuse = (): Promise<never> => Promise.reject(new ApiError('not_on_worker', 'not on a worker'));

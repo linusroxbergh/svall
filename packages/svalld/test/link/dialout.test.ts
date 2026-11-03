@@ -51,6 +51,8 @@ async function through(socket: string): Promise<string> {
   return got;
 }
 
+// the forward answered, so its listener is up and the tunnel held, where a socket file alone may still refuse
+const dialed = (w: { said: string[] }) => until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
 const rewrite = (w: { worker: { workerFile: string } }, change: object) =>
   fs.writeFileSync(w.worker.workerFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(w.worker.workerFile, 'utf8')), homeSsh: undefined, ...change }));
 
@@ -72,7 +74,7 @@ describe('HomeDial', () => {
   it("opens one master to worker.json's homeSsh, clears its socket there before it asks the forward, and the socket reaches link.sock", async () => {
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     expect(await through(w.socket)).toBe('link\n');
     const [master] = masters();
     expect(masters()).toHaveLength(1);
@@ -95,7 +97,7 @@ describe('HomeDial', () => {
   it('on a master that answers, cancels the forward it holds before it clears and forwards again, as the master would not bind it twice', async () => {
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     const before = ssh.calls().length;
     w.dial.restore();
     await until(() => expect(forwards().filter((a) => a.includes('forward'))).toHaveLength(2));
@@ -112,7 +114,7 @@ describe('HomeDial', () => {
     vi.useFakeTimers({ toFake: ['setInterval'] });
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     ssh.dropMaster(w.dial.master()!.socket);
     // its listener went with it, and left the file
     await until(async () => expect(await through(w.socket).catch((e: Error) => e.message)).toMatch(/ECONNREFUSED/));
@@ -125,7 +127,7 @@ describe('HomeDial', () => {
     vi.useFakeTimers({ toFake: ['setInterval', 'Date'] });
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     vi.setSystemTime(Date.now() + 10 * HEARTBEAT_MS);
     vi.advanceTimersByTime(HEARTBEAT_MS);
     await until(() => expect(masters()).toHaveLength(2));
@@ -136,7 +138,7 @@ describe('HomeDial', () => {
     vi.useFakeTimers({ toFake: ['setInterval'] });
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     fs.rmSync(w.socket);
     vi.advanceTimersByTime(HEARTBEAT_MS);
     await until(() => expect(forwards().filter((a) => a.includes('forward'))).toHaveLength(2));
@@ -149,7 +151,7 @@ describe('HomeDial', () => {
     let linked = true;
     const w = await world({ linked: () => linked });
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     const probes = () => ssh.remoteCalls().filter((c) => c[0] === 'test' && c[1] === '-S');
     vi.advanceTimersByTime(HEARTBEAT_MS);
     await new Promise((r) => setTimeout(r, 300));
@@ -164,7 +166,7 @@ describe('HomeDial', () => {
   it('cancels its forward and closes its master on a clean stop, leaving a socket that refuses', async () => {
     const w = await world();
     w.dial.start();
-    await until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
+    await dialed(w);
     const master = w.dial.master()!.socket;
     await w.dial.stop();
     expect(forwards().at(-1)).toEqual(expect.arrayContaining(['-O', 'cancel', '-R', `${w.socket}:${w.worker.linkSock}`]));
@@ -177,7 +179,7 @@ describe('HomeDial', () => {
     vi.useFakeTimers({ toFake: ['setInterval'] });
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     const master = w.dial.master()!.socket;
     fs.rmSync(w.worker.workerFile);
     vi.advanceTimersByTime(HEARTBEAT_MS);
@@ -194,14 +196,14 @@ describe('HomeDial', () => {
     w.dial.start();
     await until(() => expect(masters()).toHaveLength(1));
     rewrite(w, { homeSsh: 'ada@studio' });
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     expect(masters().at(-1)?.slice(-2)).toEqual(['--', 'ada@studio']);
   });
 
   it('leaves the master to the old home for a homeSsh that names another', async () => {
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     const old = w.dial.master()!.socket;
     rewrite(w, { homeSsh: 'ada@elsewhere' });
     w.dial.restore();
@@ -212,7 +214,7 @@ describe('HomeDial', () => {
   it('closes its master and dials no more once worker.json names no home to dial', async () => {
     const w = await world();
     w.dial.start();
-    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    await dialed(w);
     const master = w.dial.master()!.socket;
     rewrite(w, { homeSocket: undefined });
     w.dial.restore();
@@ -255,7 +257,7 @@ describe('HomeDial', () => {
     const w = await world();
     vi.setSystemTime(Date.now() + 10 * HEARTBEAT_MS);
     w.dial.start();
-    await until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
+    await dialed(w);
     vi.advanceTimersByTime(HEARTBEAT_MS);
     await new Promise((r) => setTimeout(r, 1500));
     expect(masters()).toHaveLength(1);
