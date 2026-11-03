@@ -75,6 +75,13 @@ describe('reports', () => {
     expect(reportBegan(robot({ ...sent('', 'm3'), agent: { ...agent(), lastPrompt: { id: 'm3', text: `<pasted_content id="e0b1">\n${robotMessage({ name: 'lead', id: 'c_lead00' }, 'review    PR 472\nthen merge')}`, at: 0 } } }))).toBe(true);
   });
 
+  it("begins a started robot's report on its run, not on a first prompt of the user's, and holds while that prompt is the request", () => {
+    const run = (text: string, id = 'p1') => robot({ agent: { ...agent(), lastPrompt: { id, text, at: 0 } }, report: { to: 'c_lead00', says: says('review PR 472') } });
+    expect(reportBegan(run('review PR 472'))).toBe(true);
+    expect(reportBegan(run('what is 2+2?'))).toBe(false);
+    expect(reportBegan(robot({ ...run('what is 2+2?'), report: { to: 'c_lead00', says: says('review PR 472'), prompt: 'p1' } }))).toBe(false);
+  });
+
   it('is owed to a sender with an agent, live or dormant, once the request began', () => {
     const kid = robot({ agent: agent('p1'), report: { to: 'c_lead00' } });
     expect(owedTo({ robots: { c_lead00: lead } }, kid)?.id).toBe('c_lead00');

@@ -52,13 +52,13 @@ describe('relay', () => {
     await tick();
     kid((c) => { c.agent = agent('working', asked); });
     await tick();
-    kid((c) => { c.agent = agent('blocked', { ...asked, prompt: 'Write: notes.md', promptId: 'q3' }); });
+    kid((c) => { c.agent = agent('blocked', { ...asked, prompt: 'Write: notes.md', promptId: 'q3', askedTool: 'Write' }); });
     await tick();
     kid((c) => { c.agent = agent('done', asked); });
     await waitFor(() => said.length === 3);
     expect(said).toEqual([
-      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Bash: rm -rf build"` },
-      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Write: notes.md"` },
+      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Bash: rm -rf build"; its screen: svall robot read ${KID}` },
+      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Write: notes.md" on Write; its screen: svall robot read ${KID}` },
       { to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` },
     ]);
     await waitFor(() => !store.state.robots[LEAD].inbox);
@@ -105,6 +105,17 @@ describe('relay', () => {
     kid(then);
     await waitFor(() => said.length === 1);
     expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) ${line}` }]);
+    stop();
+  });
+
+  it('ends a request once another prompt joins its turn, as Claude Code takes one sent mid-turn under the same id', async () => {
+    const { store, said, stop, kid } = setup();
+    kid((c) => { c.report = { to: LEAD, after: 'p0', tagged: true, says: 'review PR 472' }; c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { c.agent = agent('working', prompt('p1', 'What is 2+2?')); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) stopped: another prompt joined its turn` }]);
+    expect(store.state.robots[KID].report).toBeUndefined();
     stop();
   });
 

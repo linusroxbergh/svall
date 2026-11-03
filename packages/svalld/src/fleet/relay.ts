@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { RELAY_LIMIT, isRobotSaid, reportBegan, robotNotice, robotSender, type FleetState, type Robot } from '@svall/protocol';
+import { RELAY_LIMIT, isRobotSaid, reportBegan, robotNotice, robotSender, saysIn, type FleetState, type Robot } from '@svall/protocol';
 import { RESUME_NOTE } from '../dormancy.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
@@ -83,19 +83,21 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     if (!c.tmux && c.revive?.interrupted) { r.resumed = true; return; }
     if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt && p.text.startsWith(RESUME_NOTE)) {
       r.prompt = p.id;
+      delete r.says;
       delete r.resumed;
     }
     // a prompt after the request's own ends it, as an Esc the poll had yet to read does
-    const over = !!p && p.id !== r.prompt;
+    const over = !!p && (p.id !== r.prompt || !saysIn(r, p.text));
     if (r.resumed && c.tmux && c.agent && !over) return;
     const a = c.agent;
     if (a?.status !== 'blocked' || !c.tmux || over) delete r.asked;
     else if (!r.asked) {
       r.asked = true;
       // the agent's own words, quoted: a line of svalld's carries no instruction
-      tell(d, r.to, c, `is blocked${a.prompt ? `, asking: "${a.prompt}"` : ''}`);
+      const asking = [a.prompt && `asking: "${a.prompt}"`, a.askedTool && `on ${a.askedTool}`].filter(Boolean).join(' ');
+      tell(d, r.to, c, `is blocked${asking ? `, ${asking}` : ''}; its screen: svall robot read ${c.id}`);
     }
-    const end = ending(c) ?? (over ? 'stopped: its turn was interrupted' : undefined);
+    const end = ending(c) ?? (!over ? undefined : p!.id === r.prompt ? 'stopped: another prompt joined its turn' : 'stopped: its turn was interrupted');
     if (end) { tell(d, r.to, c, end, true); delete c.report; }
   };
 

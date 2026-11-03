@@ -595,7 +595,7 @@ export class Fleet extends EventEmitter<Events> {
           name: uniqueName(names, p.name ?? randomName(new Set(names))),
           portrait: randomPortrait(new Set(Object.values(d.robots).map((c) => c.portrait))),
           note: p.note ?? '', ...(p.note && { noteSource: 'manual' as const }), instructions: '', ...(p.agentProfile && { agentProfile: p.agentProfile }), cwd, panePath, context: [],
-          ...(p.startedBy && { startedBy: p.startedBy }), ...(p.report && p.startedBy && { report: { to: p.startedBy } }),
+          ...(p.startedBy && { startedBy: p.startedBy }), ...(p.report && p.startedBy && p.run && { report: { to: p.startedBy, says: says(p.run) } }),
           tmux: { windowId: w.windowId, paneId: w.paneId },
           shell: { lastOutputAt: Date.now() }, unread: false,
           // on a worker the robot is its own from the first write, so its first hook is answered here
