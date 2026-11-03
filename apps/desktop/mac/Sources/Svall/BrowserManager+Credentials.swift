@@ -25,7 +25,7 @@ extension BrowserManager {
                 self.store.httpCookieStore.setCookie(cookie) { group.leave() }
             }
             group.notify(queue: .main) {
-                let page = tab.flatMap { self.overlay[$0] }
+                let page = haul.cookies.isEmpty ? nil : tab.flatMap { self.overlay[$0] }
                 page?.reload()
                 // all of them stuck means the key does not belong to this profile, which a bare zero would hide
                 let stuck = haul.stuck > 0 ? " \(haul.stuck) could not be decrypted." : ""
@@ -34,7 +34,7 @@ extension BrowserManager {
                 let session = haul.cookies.filter(\.isSessionOnly).count
                 let lasting = session > 0 ? " \(session) of them are session cookies, which last until Svall quits." : ""
                 NSAlert.tell("Imported \(haul.cookies.count) cookies from \(profile.name)\(haul.cut == nil ? "" : ", not all of them")",
-                          "Reload \(page == nil ? "an" : "any other") open tab for it to pick them up.\(stuck)\(cut)\(lasting)")
+                          "\(page == nil ? "Reload an" : "The tab reloaded with them; reload any other") open tab for it to pick them up.\(stuck)\(cut)\(lasting)")
             }
         }
     }
