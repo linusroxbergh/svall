@@ -118,7 +118,7 @@ const handlers: Handlers = {
   'robot.second': (p, { fleet }) => fleet.openSecond(p.id),
   'robot.run': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, p.text, p.enter, p.term) }),
   // run goes on to the machine the robot runs on
-  'robot.send': async (p, { fleet }) => ({ delivery: await fleet.run(p.id, fleet.message(p.id, p.from, p.text), true) }),
+  'robot.send': async (p, { fleet }) => ({ delivery: await fleet.send(p.id, p.from, p.text, p.report) }),
   // a placed robot's transcript is on the machine it runs on
   'robot.read': async (p, { fleet, router }) => router?.forward(p.id, 'robot.read', p) ?? {
     text: p.source === 'screen' ? await fleet.readScreen(p.id, p.lines, p.term) : p.source === 'last' ? fleet.readLast(p.id, p.term) : fleet.readTranscript(p.id, p.lines, p.term),

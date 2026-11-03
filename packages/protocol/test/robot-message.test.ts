@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { robotMessage, robotSender } from '../src/index.js';
+import { isRobotSaid, owedTo, reportBegan, robotMessage, robotNotice, robotSender, type Agent, type Robot } from '../src/index.js';
 
 const from = { name: '#472 auth (review)]', id: 'c_abc123' };
 
@@ -35,5 +35,44 @@ describe('robotSender', () => {
     expect(robotSender(`look at this:\n${sent}`)).toBeUndefined();
     expect(robotSender('[from robot a (c_abc123); reply with svall robot send c_zzz999]\nhi')).toBeUndefined();
     expect(robotSender('[from robot a (c_abc123); reply with svall robot send c_abc123] and more')).toBeUndefined();
+  });
+});
+
+describe('robotNotice', () => {
+  it("is one line naming the robot, which counts as robot-said, plain or inside Claude Code's paste wrapper", () => {
+    const n = robotNotice({ name: 'bob\nx', id: 'c_abc123' }, 'is blocked: Bash\n rm -rf build');
+    expect(n).toBe('[svall] bob x (c_abc123) is blocked: Bash rm -rf build');
+    expect(isRobotSaid(n)).toBe(true);
+    expect(isRobotSaid(`<pasted_content id="e0b1">\n${n}\n</pasted_content id="e0b1">`)).toBe(true);
+    expect(isRobotSaid(robotMessage(from, 'hi'))).toBe(true);
+    expect(isRobotSaid('[svall] is great')).toBe(false);
+    expect(isRobotSaid(`see:\n${n}`)).toBe(false);
+  });
+});
+
+describe('reports', () => {
+  const agent = (lastPrompt?: string): Agent => ({ kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 0, ...(lastPrompt && { lastPrompt: { id: lastPrompt, text: lastPrompt === 'p2' ? robotMessage({ name: 'lead', id: 'c_lead00' }, 'go') : 'mine', at: 0 } }) });
+  const robot = (extra: Partial<Robot>): Robot =>
+    ({ id: 'c_kid000', islandId: 'i', cell: { x: 0, y: 0 }, name: 'kid', note: '', portrait: 'fox', instructions: '', context: [], cwd: '/tmp', shell: { lastOutputAt: 0 }, unread: false, ...extra });
+  const lead = robot({ id: 'c_lead00', agent: agent() });
+
+  it("begins with the first prompt after the one on record, the sender's own when the request was its message, and holds to it", () => {
+    expect(reportBegan(robot({ agent: agent(), report: { to: 'c_lead00' } }))).toBe(false);
+    expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00' } }))).toBe(true);
+    expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p1' } }))).toBe(false);
+    expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p0', tagged: true } }))).toBe(false);
+    expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', tagged: true } }))).toBe(true);
+    // once begun, only while that prompt is the newest: a later one is another request
+    expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(true);
+    expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(false);
+  });
+
+  it('is owed to a sender that runs or resumes an agent, once the request began', () => {
+    const kid = robot({ agent: agent('p1'), report: { to: 'c_lead00' } });
+    expect(owedTo({ robots: { c_lead00: lead } }, kid)?.id).toBe('c_lead00');
+    expect(owedTo({ robots: {} }, kid)).toBeUndefined();
+    expect(owedTo({ robots: { c_lead00: { ...lead, agent: undefined } } }, kid)).toBeUndefined();
+    expect(owedTo({ robots: { c_lead00: { ...lead, agent: undefined, revive: { command: 'claude --resume x' } } } }, kid)?.id).toBe('c_lead00');
+    expect(owedTo({ robots: { c_lead00: lead } }, { ...kid, report: { to: 'c_lead00', after: 'p1' } })).toBeUndefined();
   });
 });

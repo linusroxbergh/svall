@@ -36,6 +36,11 @@
 .side-branch .mono { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-xs); }
 .side-branch .badge { flex: none; }
 .side-hint { color: var(--danger); font-size: var(--text-sm); }
+/* the robot that started this one, and those it started */
+.side-by { color: var(--ink-3); font-size: var(--text-sm); }
+.side-link { cursor: pointer; color: var(--ink); }
+.side-started-status { display: inline-flex; align-items: center; gap: var(--sp-sm); }
+.side-held-acts { display: flex; flex: none; gap: var(--sp-xs); }
 /* a robot on a worker: the machine it runs on */
 .side-on { gap: var(--sp-sm); font-size: var(--text-sm); }
 .side-on b { font-weight: var(--w-semibold); }

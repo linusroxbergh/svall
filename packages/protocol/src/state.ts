@@ -214,6 +214,19 @@ export const Robot = TerminalSlot.extend({
   left: LeftBehind.optional(),
   // its place among the starred, lowest first; absent, it is not starred
   star: z.number().int().optional(),
+  // the robot that ran `svall robot new` for it
+  startedBy: z.string().optional(),
+  // a report owed to robot `to` on the request that opens the turn after prompt `after`: robot `to`'s message when tagged,
+  // any prompt otherwise; prompt, the one that began it; asked, the robot's blocked spell is reported; resumed, a quit
+  // cut the request short and the resume's note carries it on
+  report: z.object({
+    to: z.string(), after: z.string().optional(), tagged: z.literal(true).optional(), prompt: z.string().optional(),
+    asked: z.literal(true).optional(), resumed: z.literal(true).optional(),
+  }).optional(),
+  // lines owed to this robot, oldest first, which svalld types in as its prompt line frees; end, a line that closes a report
+  inbox: z.array(z.object({ from: z.string(), text: z.string(), end: z.literal(true).optional() })).optional(),
+  // robot messages typed in since prompt `user`, the user's; held, the question shown while the next ones wait on the user
+  relayed: z.object({ n: z.number().int(), user: z.string().optional(), held: z.string().optional() }).optional(),
 });
 export type Robot = z.infer<typeof Robot>;
 

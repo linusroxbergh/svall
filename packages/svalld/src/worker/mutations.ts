@@ -42,8 +42,11 @@ export class WorkerMutations {
       this.journal({ method: 'robot.run', params: p, delivery });
       return { delivery };
     },
-    // journaled as the run it types, which the home applies as any other
-    'robot.send': async (p) => this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true }),
+    // journaled as the run it types, which the home applies as any other; the home keeps reports
+    'robot.send': async (p) => {
+      if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
+      return this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true });
+    },
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
     'island.create': async (p) => this.createIsland(p),

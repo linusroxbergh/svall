@@ -142,6 +142,9 @@ export const DiffBase = z.enum(['head', 'main']);
 export type DiffBase = z.infer<typeof DiffBase>;
 export const Delivery = z.enum(['delivered', 'queued']);
 export type Delivery = z.infer<typeof Delivery>;
+// held: the robot has taken RELAY_LIMIT robot messages since the user's last prompt, and this one waits on the user
+export const SendDelivery = z.enum([...Delivery.options, 'held']);
+export type SendDelivery = z.infer<typeof SendDelivery>;
 export const FsEntry = z.object({ name: z.string(), kind: z.enum(['file', 'dir']), ignored: z.boolean().optional() });
 export type FsEntry = z.infer<typeof FsEntry>;
 // from is the old path of a rename
@@ -234,6 +237,8 @@ export const methods = {
       islandId: z.string(), cwd: z.string(), name: z.string().optional(),
       command: z.string().optional(), cell: Cell.optional(),
       run: RunText.optional(), agentProfile: z.string().optional(),
+      // the robot starting it; report, that robot is owed a report on the run
+      startedBy: z.string().optional(), report: z.boolean().optional(),
     }),
     result: Robot.extend({ runSent: z.boolean().optional() }),
   },
@@ -267,7 +272,8 @@ export const methods = {
   // an agent waiting on an answer refuses the text with `blocked`; one with a draft or a dialog on screen holds it, queued
   'robot.run': { params: z.object({ id: z.string(), text: RunText, enter: z.boolean().default(true), term: Term }), result: z.object({ delivery: Delivery }) },
   // robot `from`'s message, typed as robot.run types it after a line naming the sender (robotMessage), which its cap leaves room for
-  'robot.send': { params: z.object({ id: z.string(), from: z.string(), text: z.string().max(RUN_TEXT_MAX - 1024) }), result: z.object({ delivery: Delivery }) },
+  // report: `from` is owed a report on it
+  'robot.send': { params: z.object({ id: z.string(), from: z.string(), text: z.string().max(RUN_TEXT_MAX - 1024), report: z.boolean().optional() }), result: z.object({ delivery: SendDelivery }) },
   'robot.read': {
     params: z.object({ id: z.string(), source: z.enum(['screen', 'transcript', 'last']).default('screen'), lines: z.number().int().min(1).default(50), term: Term }),
     result: z.object({ text: z.string() }),
@@ -484,4 +490,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 37;
+export const PROTOCOL_VERSION = 38;

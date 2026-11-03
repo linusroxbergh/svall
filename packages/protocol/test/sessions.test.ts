@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TransferFile, robotOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, type Agent, type Robot } from '../src/index.js';
+import { TransferFile, robotOfKey, contextPctOf, emptyState, isNews, isPushStatus, secondKey, sessionsOf, shownAgent, type Agent, type Robot } from '../src/index.js';
 
 const agent = (status: Agent['status'], extra: Partial<Agent> = {}): Agent => ({ kind: 'claude', sessionId: 's', status, lastActivityAt: 0, ...extra });
 const robot = (id: string, extra: Partial<Robot> = {}): Robot =>
@@ -26,10 +26,24 @@ describe('sessions', () => {
 
   it('counts a turn to blocked or done as one a device hears of, and a new question as news', () => {
     expect((['blocked', 'done', 'working', 'idle', undefined] as const).map(isPushStatus)).toEqual([true, true, false, false, false]);
-    expect(isNews(agent('working'), agent('blocked'))).toBe(true);
-    expect(isNews(undefined, agent('done'))).toBe(true);
-    expect(isNews(agent('blocked', { promptId: 'p1' }), agent('blocked', { promptId: 'p1' }))).toBe(false);
-    expect(isNews(agent('blocked', { promptId: 'p1' }), agent('blocked', { promptId: 'p2' }))).toBe(true);
+    const s = (a: ReturnType<typeof agent>, unread = false) => ({ key: 'a', robotId: 'a', agent: a, unread });
+    expect(isNews(s(agent('working')), s(agent('blocked')))).toBe(true);
+    expect(isNews(undefined, s(agent('done')))).toBe(true);
+    expect(isNews(s(agent('blocked', { promptId: 'p1' })), s(agent('blocked', { promptId: 'p1' })))).toBe(false);
+    expect(isNews(s(agent('blocked', { promptId: 'p1' })), s(agent('blocked', { promptId: 'p2' })))).toBe(true);
+  });
+
+  it('counts a finish that turns unread as news, as one a robot was told of that goes to the user after all', () => {
+    const s = (status: 'done' | 'idle', unread: boolean) => ({ key: 'a', robotId: 'a', agent: agent(status), unread });
+    expect(isNews(s('done', false), s('done', true))).toBe(true);
+    expect(isNews(s('done', true), s('done', true))).toBe(false);
+    expect(isNews(s('idle', false), s('idle', true))).toBe(false);
+  });
+
+  it('shows the user a question while robot messages wait on them', () => {
+    const f = { ...emptyState(), robots: { a: robot('a', { agent: agent('idle'), relayed: { n: 200, held: 'h1' } }) } };
+    expect(sessionsOf(f).get('a')?.agent).toEqual({ ...agent('idle'), status: 'blocked', prompt: '200 robot messages since your last prompt; let robots carry on?', promptId: 'h1' });
+    expect(shownAgent(robot('a', { agent: agent('idle'), relayed: { n: 3 } }))).toEqual(agent('idle'));
   });
 
   it('takes the fuller of the two contexts', () => {

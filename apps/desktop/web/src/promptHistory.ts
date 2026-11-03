@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { robotSender, type Robot } from '@svall/protocol';
+import { isRobotSaid, type Robot } from '@svall/protocol';
 import type { Api } from './api.js';
 
 const PROMPT_HISTORY = 30;
@@ -16,8 +16,8 @@ export function usePromptHistory(api: () => Pick<Api, 'call'>, id: string, agent
     api().call('robot.prompts', { id, limit: PROMPT_HISTORY * 4 })
       .then((r) => {
         if (!live) return;
-        // another robot's message is not a command the user sent
-        const list = r.prompts.filter((p) => !robotSender(p)).slice(0, PROMPT_HISTORY);
+        // another robot's message, or svalld's line, is not a command the user sent
+        const list = r.prompts.filter((p) => !isRobotSaid(p)).slice(0, PROMPT_HISTORY);
         // a new prompt pushes the one being read down the list; follow the prompt, not the index
         setHist((h) => {
           const reading = h.list[h.at];

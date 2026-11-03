@@ -1,6 +1,7 @@
 import { FitAddon } from '@xterm/addon-fit';
 import { Terminal as Xterm } from '@xterm/xterm';
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type JSX, type ReactNode } from 'react';
+import { shownAgent } from '@svall/protocol';
 import { useApp, useFitHeight } from '../hooks.js';
 import { Arrow, Backspace, Caret, More, Return } from '../icons.js';
 import { awayLine, elsewhere } from '../placement.js';
@@ -181,8 +182,9 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   }, [windowId]);
 
   // an answer stays in flight until the daemon reports the agent unblocked or on another question, so one tap answers once
-  const blocked = robot?.agent?.status === 'blocked';
-  const promptId = robot?.agent?.promptId;
+  const shown = robot && shownAgent(robot);
+  const blocked = shown?.status === 'blocked';
+  const promptId = shown?.promptId;
   // a question dialog's Enter picks the highlighted option, one question at a time
   const question = robot?.agent?.askedTool === 'AskUserQuestion';
   const asking = useRef(promptId);
@@ -267,7 +269,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
       </div>
       {blocked && robot && !elsewhere(robot, via) && (
         <div className="ask" role="status">
-          <p>{robot.agent?.prompt ?? `${robot.name} is waiting on you`}</p>
+          <p>{shown?.prompt ?? `${robot.name} is waiting on you`}</p>
           <span>
             <button type="button" disabled={answering} onClick={() => void answer('approve')}>{question ? 'select' : 'approve'}</button>
             <button type="button" disabled={answering} onClick={() => void answer('deny')}>{question ? 'cancel' : 'deny'}</button>

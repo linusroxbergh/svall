@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import type { Robot, Island, TerminalSlot } from '@svall/protocol';
+import { owedTo, type Robot, type Island, type TerminalSlot } from '@svall/protocol';
 import { lastTokenCount } from '../agent/codex-transcript.js';
 import { followRollout, type RolloutMark } from '../agent/codex-workdir.js';
 import { applyHook, applyStatus, type Slot } from '../agent/reducer.js';
@@ -82,6 +82,8 @@ export class AgentEvents {
         if (next.agent) delete next.hint;
         // the shell's activity shows again once the agent has gone, and its end is that activity
         else if (c.agent) next.shell.lastOutputAt = Date.now();
+        // a finish a robot asked for reaches that robot alone, so it comes in seen
+        if (next.agent?.status === 'done' && c.agent?.status !== 'done' && owedTo(d, next)) next.unread = false;
         d.robots[ev.robotId] = next;
       }
     });

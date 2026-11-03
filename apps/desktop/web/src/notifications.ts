@@ -51,7 +51,7 @@ export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { po
   for (const s of now.values()) {
     const status = s.agent?.status;
     // a new question while the agent stays blocked replaces the banner
-    if (!isPushStatus(status) || !isNews(before.get(s.key)?.agent, s.agent) || !next.settings.statuses.includes(status)) continue;
+    if (!isPushStatus(status) || !isNews(before.get(s.key), s) || !next.settings.statuses.includes(status)) continue;
     if (inView(s.robotId) || (status === 'done' && !s.unread)) continue;
     post.push(noticeFor(next, s, status));
     out.set(s.key, status);

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { AgentKind, Robot } from '@svall/protocol';
+import { RELAY_LIMIT, robotMessage, shownAgent, type AgentKind, type Robot } from '@svall/protocol';
 import { readComposer } from '../src/agent/composer.js';
 import { markDormant, RESUME_NOTE } from '../src/dormancy.js';
 import { Dormant, Invalid } from '../src/errors.js';
@@ -36,6 +36,16 @@ runIf('Fleet prompts', () => {
     await fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'Stop' } });
     await fleet.run(c.id, 'y', false);
     expect(store.state.robots[c.id].agent?.status).toBe('done');
+  });
+
+  it('records the robot that started a robot, and a report owed on its run, which needs both', async () => {
+    const { fleet, store } = await boot({ pollMs: 60_000, runTimeoutMs: 100 });
+    const island = fleet.createIsland({ name: 'x' }).id;
+    const lead = await fleet.createRobot({ islandId: island, cwd: '/tmp', name: 'lead' });
+    const kid = await fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: lead.id, report: true, command: 'true', run: 'go' });
+    expect(store.state.robots[kid.id]).toMatchObject({ startedBy: lead.id, report: { to: lead.id } });
+    await expect(fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: lead.id, report: true })).rejects.toThrow('a report needs the robot starting it and a run to report on');
+    await expect(fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: 'c_nope00' })).rejects.toThrow('no robot c_nope00');
   });
 
   it("tags a robot's message with its sender, refuses one to itself, and never types one into a plain shell", async () => {
@@ -241,6 +251,58 @@ runIf('Fleet prompts', () => {
       await waitFor(async () => readComposer('claude', await tmux.screen(c.tmux!.paneId)) === 'empty');
       expect(await fleet.run(c.id, 'go', true)).toBe('queued');
       expect(typed).toEqual([]);
+    });
+
+    it("sends a robot's message counted toward the limit, owes a report on the turn after the prompt before it, and holds one past the limit", async () => {
+      const { fleet, store, c, hook, typed } = await agentPane('claude');
+      const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+      await hook({ name: 'UserPromptSubmit', prompt: { id: 'u1', text: 'mine' } });
+      await hook({ name: 'Stop' });
+      expect(await fleet.send(c.id, lead.id, 'review it', true)).toBe('delivered');
+      expect(typed).toEqual([robotMessage(lead, 'review it')]);
+      expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, after: 'u1' });
+      expect(store.state.robots[c.id].relayed).toEqual({ n: 1, user: 'u1' });
+      store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, user: 'u1' }; });
+      expect(await fleet.send(c.id, lead.id, 'and again')).toBe('held');
+      expect(typed).toHaveLength(1);
+      const held = store.state.robots[c.id].relayed!.held!;
+      expect(store.state.robots[c.id].inbox).toEqual([{ from: lead.id, text: robotMessage(lead, 'and again') }]);
+      expect(shownAgent(store.state.robots[c.id])).toMatchObject({ status: 'blocked', promptId: held });
+      // the held question is svalld's: carry on lets the messages in, deny drops them
+      await fleet.answerPrompt(c.id, 'approve', held);
+      expect(store.state.robots[c.id].relayed).toBeUndefined();
+      expect(store.state.robots[c.id].inbox).toHaveLength(1);
+      // deny drops them, with a report whose request was among them, and holds the next
+      store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, held: 'h2' }; d.robots[c.id].report = { to: lead.id, tagged: true, after: 'u1' }; });
+      await fleet.answerPrompt(c.id, 'deny', 'h2');
+      expect([store.state.robots[c.id].relayed, store.state.robots[c.id].inbox, store.state.robots[c.id].report]).toEqual([{ n: RELAY_LIMIT }, undefined, undefined]);
+      expect(await fleet.send(c.id, lead.id, 'once more')).toBe('held');
+      // one report at a time, and no more held for the user than HELD_MAX
+      store.update((d) => { d.robots[c.id].report = { to: lead.id }; });
+      const other = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'other' });
+      await expect(fleet.send(c.id, other.id, 'mine too', true)).rejects.toThrow(`${c.name} owes lead a report; send without --report, or once it is done`);
+      store.update((d) => { d.robots[c.id].inbox = Array.from({ length: 20 }, () => ({ from: other.id, text: 'x' })); });
+      await expect(fleet.send(c.id, other.id, 'more')).rejects.toMatchObject({ code: 'blocked' });
+    });
+
+    it("types svalld's line and says once it went in, held or not, and when the session it waited for went first", async () => {
+      const { fleet, c, hook, screen, typed } = await agentPane('claude');
+      expect(await fleet.notify(c.id, '[svall] kid (c_kid000) is done')).toBe('sent');
+      await hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      const held = fleet.notify(c.id, '[svall] kid (c_kid000) is blocked');
+      await new Promise((r) => setTimeout(r, 100));
+      screen.mockResolvedValue(pane('claude-empty'));
+      expect(await held).toBe('sent');
+      expect(typed).toEqual(['[svall] kid (c_kid000) is done', '[svall] kid (c_kid000) is blocked']);
+      await hook({ name: 'Stop' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      const dropped = fleet.notify(c.id, '[svall] kid (c_kid000) was closed');
+      await new Promise((r) => setTimeout(r, 100));
+      await hook({ name: 'SessionEnd' });
+      await hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
+      expect(await dropped).toBe('retry');
+      expect(typed).toHaveLength(2);
     });
 
     it('is dropped with its robot', async () => {

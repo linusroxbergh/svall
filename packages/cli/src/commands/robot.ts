@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
 import { expandHome } from '@svall/svalld/paths';
-import { AgentKind, ApiError, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type Delivery, type MoveSheet } from '@svall/protocol';
+import { AgentKind, ApiError, RELAY_LIMIT, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type MoveSheet, type SendDelivery } from '@svall/protocol';
 import type { Client } from '../client.js';
 import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
@@ -14,6 +14,10 @@ import { int, parseDuration, point } from './parse.js';
 import { robotId, islandId, machineId, NoMatch } from './resolve.js';
 
 const MODEL_ONLY = /^(claude|codex|opencode) (--model|-m) [\w.:/-]+$/;
+
+// the robot this CLI runs in; a session an older svalld started carries SVALL_CHAR_ID
+const callerRobot = (): string | undefined => process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
+const REPORT_HELP = 'hear back when it is done, blocked or stops: svalld types a line into this robot';
 
 /** The agent `svall robot new` starts: a named one, or the main agent for a bare --agent or a --run with no --command. */
 export function agentFor(o: { agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; run?: string }, main: AgentKind): string | undefined {
@@ -51,11 +55,12 @@ function refuseMove(r: Refusal, json: boolean): void {
 /** `there`: how a machine is reached from this Mac's terminal, for the commands a move's list names. */
 export function robotCommands(connect: () => Promise<Client>, json: () => boolean, there: (machine: string) => There): Command {
   const cmd = new Command('robot').alias('char').description('manage robots');
-  // what run and send print: delivered or queued, or the refusal of an agent waiting on an answer, exiting 2
-  const deliver = async (send: () => Promise<{ delivery: Delivery }>): Promise<void> => {
+  // what run and send print: delivered, queued or held, or the refusal of an agent waiting on an answer, exiting 2
+  const deliver = async (send: () => Promise<{ delivery: SendDelivery }>): Promise<void> => {
     try {
       const r = await send();
-      printResult(r, json(), () => (r.delivery === 'queued' ? 'queued: it goes in once the prompt line is clear' : r.delivery));
+      printResult(r, json(), () => (r.delivery === 'queued' ? 'queued: it goes in once the prompt line is clear'
+        : r.delivery === 'held' ? `held: it has taken ${RELAY_LIMIT} robot messages since the user last prompted it; it goes in once the user lets it` : r.delivery));
     } catch (e) {
       if (!(e instanceof ApiError) || e.code !== 'blocked') throw e;
       process.stderr.write(`refused: ${e.message}\n`);
@@ -63,9 +68,11 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
     }
   };
 
-  cmd.command('list').description("list every robot, or one island's").option('--island <id>').action((o: { island?: string }) => withFleet(connect, async (_c, state) => {
+  cmd.command('list').description("list every robot, or one island's").option('--island <id>').option('--started-by <id>', 'only the robots that robot started')
+    .action((o: { island?: string; startedBy?: string }) => withFleet(connect, async (_c, state) => {
     const island = o.island ? islandId(state, o.island) : undefined;
-    const robots = Object.values(state.robots).filter((ch) => !island || ch.islandId === island);
+    const by = o.startedBy ? robotId(state, o.startedBy) : undefined;
+    const robots = Object.values(state.robots).filter((ch) => (!island || ch.islandId === island) && (!by || ch.startedBy === by));
     printResult(robots, json(), () => [table(robots.map((ch) => ({
       id: ch.id, island: state.islands[ch.islandId]?.name ?? ch.islandId, name: ch.name, state: stateOf(ch),
       ctx: contextOf(ch), branch: ch.repo?.branch ?? '', cwd: ch.cwd,
@@ -83,23 +90,29 @@ export function robotCommands(connect: () => Promise<Client>, json: () => boolea
     .option('--command <cmd>').option('--cell <x,y>')
     .option('--run <text>', 'type text and Enter once the agent has started; starts the main agent unless --agent or --command says otherwise; exits 2 when it could not be sent')
     .option('--agent-profile <name>', 'a role from the fleet\'s agent-profiles folder, e.g. reviewer')
+    .option('--report', `with --run, ${REPORT_HELP}`)
     .addHelpText('after', `
 Handing work to a new robot:
-  svall robot new --island <id> --cwd <path> --name "<name>" --run "<prompt>"
+  svall robot new --island <id> --cwd <path> --name "<name>" --run "<prompt>" --report
   - In a git repo, a robot is told to start in a new worktree unless Settings turns that off; --cwd can name a worktree whose branch is the work and no other agent is in.
   - The prompt is all it knows: goal, paths, links, what done looks like.
   - Names: at most 24 characters, lower case: PR or ticket id, area, task, one or two words each: "#472 auth review", not "#472 deep review".
   - New island: svall island create "<name>" --description "<one line>".
-  - Wait (svall robot wait <id> --until done,blocked) only when you need the result; closing is the user's call.
+  - --report: svalld types "[svall] <name> (<id>) …" into your prompt line when it is done, blocked or stops, so neither of you waits or polls. Closing it is the user's call.
   - Check its work: svall robot read <id> --transcript, and its cwd and branch in svall status --json.
-  - Message it, or any robot: svall robot send <id> "<text>"; it answers the same way. Its final message in full: svall robot read <id> --last.
+  - Message it, or any robot: svall robot send <id> "<text>" [--report]; it answers the same way. Its final message in full: svall robot read <id> --last.
   - Write ids out: a command holding $SVALL_ROBOT_ID asks the user for permission.`)
-    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string }) => {
+    .action(async (o: { island: string; cwd: string; name?: string; agent?: string | true; claude?: boolean; codex?: boolean; opencode?: boolean; command?: string; cell?: string; run?: string; agentProfile?: string; report?: boolean }) => {
       if (typeof o.agent === 'string' && !AgentKind.safeParse(o.agent).success) throw new Error(`unknown agent ${o.agent}; use claude, codex or opencode`);
+      const by = callerRobot();
+      if (o.report && !o.run) throw new Error('--report needs --run: it reports on that prompt');
+      if (o.report && !by) throw new Error('--report needs a robot to report to; run it inside one');
+      // a report goes to the robot's first terminal
+      if (o.report && process.env.SVALL_TERM === '2') throw new Error("start it from the robot's first terminal, where the report comes back");
       const cell = point(o.cell, '--cell');
       await withFleet(connect, async (c, state) => {
         // with svallPermissions on, an agent's svall calls skip the permission prompt, so a command it starts may only pick a model
-        if (o.command && state.svallPermissions && (process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID) && !MODEL_ONLY.test(o.command.trim())) {
+        if (o.command && state.svallPermissions && by && !MODEL_ONLY.test(o.command.trim())) {
           throw new Error('in a robot, --command only picks an agent\'s model ("claude --model opus") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
         }
         const agent = agentFor(o, state.mainAgent ?? 'claude');
@@ -109,6 +122,8 @@ Handing work to a new robot:
         if (taken) throw new Error(`robot "${taken.name}" already exists (${taken.id}); pick another name`);
         const ch = await c.call('robot.create', {
           islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ?? o.command, cell, run: o.run, agentProfile: o.agentProfile,
+          // a robot no longer in the fleet, as in an old terminal, started nothing
+          ...(by && Object.hasOwn(state.robots, by) && { startedBy: by }), ...(o.report && { report: true }),
         });
         printResult(ch, json(), () => ch.id);
         if (ch.runSent === false) {
@@ -180,14 +195,14 @@ Handing work to a new robot:
     .action((id: string, text: string[], o: { enter: boolean; term?: string }) => withFleet(connect, (c, state) =>
       deliver(() => c.call('robot.run', { id: robotId(state, id), text: text.join(' '), enter: o.enter, term: termOf(o.term) }))));
 
-  cmd.command('send <id> <text...>').description('message a robot as this one, which can answer the same way; prints delivered or queued, exits 2 when refused')
-    .action((id: string, text: string[]) => {
-      // a session an older svalld started carries SVALL_CHAR_ID
-      const from = process.env.SVALL_ROBOT_ID ?? process.env.SVALL_CHAR_ID;
+  cmd.command('send <id> <text...>').description('message a robot as this one, which can answer the same way; prints delivered, queued or held, exits 2 when refused')
+    .option('--report', REPORT_HELP)
+    .action((id: string, text: string[], o: { report?: boolean }) => {
+      const from = callerRobot();
       if (!from) throw new Error('run this inside a robot; svall robot run types as the user');
       // the header names the robot, not the terminal, so an answer goes to its first
       if (process.env.SVALL_TERM === '2') throw new Error("send from the robot's first terminal, where an answer comes back");
-      return withFleet(connect, (c, state) => deliver(() => c.call('robot.send', { id: robotId(state, id), from: robotId(state, from), text: text.join(' ') })));
+      return withFleet(connect, (c, state) => deliver(() => c.call('robot.send', { id: robotId(state, id), from: robotId(state, from), text: text.join(' '), ...(o.report && { report: true }) })));
     });
 
   cmd.command('read <id>').description("print the end of a robot's screen, or of its transcript, or its agent's last answer").option('--transcript')

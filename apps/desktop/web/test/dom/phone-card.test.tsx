@@ -38,7 +38,7 @@ function open(extra: Parameters<typeof chr>[3] = {}, onClosed = () => {}) {
 beforeEach(() => {
   calls.length = 0;
   refuse = undefined;
-  prompts = [`${header}\nreview it`, 'second ask', `<pasted_content id="e0b1">\n${header}\na long one`, 'first ask'];
+  prompts = [`${header}\nreview it`, 'second ask', `<pasted_content id="e0b1">\n${header}\na long one`, '[svall] kid (c_kid000) is done; full answer: svall robot read c_kid000 --last', 'first ask'];
   store = createAppStore();
   setAppStore(store);
 });
@@ -113,7 +113,7 @@ test('a refused edit says why beside it, and a refused ref goes back in the fiel
   expect(field.value).toBe('herdr.dev');
 });
 
-test("reads the prompts the user sent, newest first, without other robots' messages, and steps back through them", async () => {
+test("reads the prompts the user sent, newest first, without other robots' messages or svalld's lines, and steps back through them", async () => {
   await act(async () => { open({ agent: { kind: 'claude', status: 'idle', sessionId: 's1', lastActivityAt: 0 } as never }); });
   expect(screen.getByText('second ask')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Earlier command' }));

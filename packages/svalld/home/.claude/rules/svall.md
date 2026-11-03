@@ -48,9 +48,9 @@ control buttons; each finishes its task and stays `done` until closed.
 | new island (the scribe describes and links it) | `svall island create review` |
 | describe an island | `svall island update review --description "PRs waiting on a human"` |
 | tidy the map | `svall island arrange` |
-| start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall robot new --island review --cwd ~/repo --run "review PR 472"` |
-| start one in a role (a file in the fleet's agent-profiles folder) | `svall robot new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472"` |
-| start a Claude one on another model | `svall robot new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472"` |
+| start an agent on an island (the main agent; `--agent claude`, `codex` or `opencode` picks one) | `svall robot new --island review --cwd ~/repo --run "review PR 472" --report` |
+| start one in a role (a file in the fleet's agent-profiles folder) | `svall robot new --island review --cwd ~/repo --agent-profile reviewer --run "review PR 472" --report` |
+| start a Claude one on another model | `svall robot new --island review --cwd ~/repo --command "claude --model opus" --run "review PR 472" --report` |
 
 `svall robot wait` exits 0 on a matched state, 2 on timeout and 3 when the
 robot has no terminal (deleted or dormant), so a loop can branch on the exit code.
@@ -85,8 +85,13 @@ robot's agent gets at SessionStart; `svall robot show <name>` prints it.
 - A robot in a git repository is told to start its task in a new worktree,
   unless the user turned that off in Settings. `--cwd` is the repository, or a
   worktree whose branch is the work and no other agent is in.
-- Starting a robot to continue, review or take over work ends your part. Do
-  not wait on or watch it unless the user asked you to report back.
+- Hand work to a robot with `--report` on `svall robot new` or `svall robot send`.
+  Svall then types a `[svall] <name> (<id>) …` line into your prompt when it is
+  done, blocked or stops, and the user hears of its finish from you. Do not wait
+  on or watch it.
+- When a `[svall]` line comes in, tell the user what it says in one line, the
+  robot as a link; read `svall robot read <id> --last` first when the user asked
+  for its result.
 - Names are at most 24 characters, lower case: PR or ticket id, area, task, one
   or two words each: `#1907 auth review`, not `#1907 deep review` or
   `claude-2`.

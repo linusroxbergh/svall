@@ -293,6 +293,7 @@ and `input` are ignored.
     svall robot read <id> --transcript --lines 20
     svall robot read <id> --last                   # its agent's final answer, in full
     svall robot send <id> "<text>"                 # from inside a robot: a message it can answer
+    svall robot new ... --run "<prompt>" --report  # from inside a robot: it hears when that one is done, blocked or stops
     svall robot revive <id>                        # a dormant robot, resumed
     svall robot show <id>                          # the brief its agent gets
 

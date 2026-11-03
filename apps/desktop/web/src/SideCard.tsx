@@ -1,4 +1,4 @@
-import { ROBOT_NOTE_MAX, type Robot, type ContextItem, type MachineId, type Params } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, type Robot, type ContextItem, type FleetState, type MachineId, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveRobot, saveRobotContext, setStar } from './actions.js';
@@ -76,6 +76,9 @@ export function SideCard({ id }: { id: string }) {
   const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
   const hostRunning = useApp((s) => !!s.host?.running);
+  const by = useApp((s) => (c?.startedBy && Object.hasOwn(s.fleet.robots, c.startedBy) ? s.fleet.robots[c.startedBy] : undefined));
+  // the ids alone, so another robot's change redraws nothing here
+  const started = useApp((s) => Object.values(s.fleet.robots).filter((k) => k.startedBy === id).map((k) => k.id).join(' '));
   if (!c) return null;
 
   const status = statusOf(c, fleet);
@@ -113,6 +116,8 @@ export function SideCard({ id }: { id: string }) {
           </div>
         )}
         {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
+        {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={by} /></div>}
+        {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} />}
       </div>
       <div className="side-secs">
         {placed && isPlaced(c) && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
@@ -130,6 +135,13 @@ export function SideCard({ id }: { id: string }) {
             robotId={id} onChange={saveContext} />
           <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
         </Section>
+        {started && (
+          <Section name="robot.started" title="Robots it started">
+            <div className="rows" data-testid="side-started">
+              {started.split(' ').map((k) => <StartedRow key={k} id={k} machines={machines} />)}
+            </div>
+          </Section>
+        )}
         <DocsList tier="robot" id={id} />
         <LastCommand key={id} id={id} agent={c.agent} />
         <Section name="robot.details" title="Details">
@@ -180,6 +192,36 @@ export function SideCard({ id }: { id: string }) {
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>
+  );
+}
+
+const RobotLink = ({ c }: { c: Robot }) => (
+  <button className="copy side-link" data-tip={`Show ${c.name}`} onClick={() => app.store.getState().select(c.id)}>{c.name}</button>
+);
+
+function StartedRow({ id, machines }: { id: string; machines: FleetState['machines'] }) {
+  const c = useApp((s) => s.fleet.robots[id]);
+  if (!c) return null;
+  const status = statusOf(c, { machines });
+  return (
+    <div className="row"><b><RobotLink c={c} /></b>
+      <span className="side-started-status"><i className="sdot" data-status={status} />{status}{c.report ? ' · reports back' : ''}</span>
+    </div>
+  );
+}
+
+// robot messages waiting on the user, past the run of them a loop between robots would make
+function Held({ id, n, promptId }: { id: string; n: number; promptId: string }) {
+  const answer = (a: 'approve' | 'deny') => app.api().call('robot.answer', { id, answer: a, promptId })
+    .catch((e: Error) => app.store.getState().showToast(e.message, 'error'));
+  return (
+    <div className="side-away" data-testid="side-held">
+      <span>{n} robot messages since your last prompt; the next waits on you</span>
+      <span className="side-held-acts">
+        <button className="btn sm" data-testid="side-held-let" onClick={() => void answer('approve')}>Let in</button>
+        <button className="btn sm" data-testid="side-held-drop" onClick={() => void answer('deny')}>Drop</button>
+      </span>
+    </div>
   );
 }
 
