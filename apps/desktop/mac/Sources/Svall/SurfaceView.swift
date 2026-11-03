@@ -11,6 +11,10 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     var onCloseRequested: (() -> Void)?
     /// A link followed in this terminal; without one it goes to the user's browser.
     var onOpenURL: ((String) -> Void)?
+    /// Files dropped on this terminal; without it, a drop is refused.
+    var onDropFiles: (([URL]) -> Void)?
+    /// A paste key pressed here, which answers true when it took the paste for an image of its own.
+    var onImagePaste: (() -> Bool)?
 
     var markedText = NSMutableAttributedString()
     var keyTextAccumulator: [String]?
@@ -54,12 +58,16 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
             return ghostty_surface_new(app, &cfg)
         }
         guard let surface else { return nil }
+        registerForDraggedTypes([.fileURL])
         // libghostty starts a surface focused, blinking its cursor and, once visible, drawing every vsync
         ghostty_surface_set_focus(surface, false)
         for name in [NSWindow.didBecomeKeyNotification, NSWindow.didResignKeyNotification] {
             NotificationCenter.default.addObserver(self, selector: #selector(windowKeyChanged), name: name, object: nil)
         }
     }
+
+    /// A view with no terminal behind it, for a test of what is wired to one.
+    override init(frame frameRect: NSRect) { super.init(frame: frameRect) }
 
     required init?(coder: NSCoder) { fatalError("not supported") }
 
@@ -123,6 +131,21 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
     func setOccluded(_ occluded: Bool) {
         guard let surface else { return }
         ghostty_surface_set_occlusion(surface, !occluded)
+    }
+
+    // MARK: drops
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        onDropFiles != nil && sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        let urls = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
+        guard let onDropFiles, !urls.isEmpty else { return false }
+        onDropFiles(urls)
+        return true
     }
 
     // MARK: size, scale, focus

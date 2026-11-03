@@ -49,6 +49,7 @@ final class ShellRouter {
         surfaces.onExited = { [weak self] id in self?.bridge.send(.termExited(id: id)) }
         surfaces.onFailed = { [weak self] id, reason in self?.bridge.send(.termFailed(id: id, reason: reason)) }
         surfaces.onFocused = { [weak self] id in self?.bridge.send(.termFocused(id: id)) }
+        surfaces.onDrop = { [weak self] id, files in self?.bridge.send(.termDrop(id: id, files: files)) }
         // the page asks where the link opens, beside the pointer that followed it
         surfaces.onOpenURL = { [weak self] id, url in
             guard let self else { return }
@@ -201,6 +202,8 @@ final class ShellRouter {
             surfaces.close(id: id)
         case .termFocus(let id):
             surfaces.focus(id: id)
+        case .termType(let id, let paths):
+            surfaces.type(id: id, paths: paths)
         case .keysRegister(let chords):
             keys.registered = Set(chords)
         case .keysCapture(let on):

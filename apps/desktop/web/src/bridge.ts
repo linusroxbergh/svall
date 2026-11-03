@@ -7,6 +7,10 @@ export type Attach = { socket: string; session: string; tmux: string; via?: { ss
 // loopback that reaches the same port there
 export type MachineTerm = { ssh: string; type?: string; forward?: number };
 export type Connection = { host: string; port: number; token: string };
+// a file dropped, or an image pasted, into a terminal: its name, its size, and the token the shell serves its parts under
+export type DropFile = { token: string; name: string; bytes: number; folder: boolean };
+// served with the bundled page: under SVALL_DEV_URL no svall scheme answers, and a far drop says it could not be read
+export const DROP_URL = 'svall://app/__drop/';
 // what the Mac menu bar's titles follow: whether each panel is up, and a card open for Close and the browser
 export type MenuState = { view: 'map' | 'board'; sides: boolean; sideCard: boolean; resources: boolean; browser: boolean; card: boolean };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
@@ -35,6 +39,8 @@ export type ToShell =
   | { type: 'term.hide'; id: string }
   | { type: 'term.close'; id: string }
   | { type: 'term.focus'; id?: string }
+  // where a drop landed, typed into the terminal as a drop is
+  | { type: 'term.type'; id: string; paths: string[] }
   | { type: 'browser.show'; tab: string; rect: Rect; url?: string; focus?: boolean }
   | { type: 'browser.move'; tab: string; rect: Rect }
   | { type: 'browser.hide'; tab: string }
@@ -117,6 +123,8 @@ export type FromShell =
   | { type: 'drag.over'; x: number; y: number }
   | { type: 'drag.exit' }
   | { type: 'drag.drop'; paths: string[]; x: number; y: number }
+  // files dropped, or an image pasted, into a terminal attached to another machine, each read in parts at DROP_URL + its token
+  | { type: 'term.drop'; id: string; files: DropFile[] }
   | { type: 'notify.permission'; state: NotifyPermission }
   // the version a scheduled check found, empty when none waits
   | { type: 'update.available'; version: string }

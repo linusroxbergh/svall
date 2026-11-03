@@ -6,6 +6,7 @@ import { vi } from 'vitest';
 import { MachineId, emptyState, type FleetState, type Island, type Robot } from '@svall/protocol';
 import { answer, type Ctx } from '../../src/api/methods.js';
 import { Config } from '../../src/config.js';
+import { Drops, dropCalls } from '../../src/drops.js';
 import { Fleet } from '../../src/fleet.js';
 import { HomeLinks, type Transport } from '../../src/link/home.js';
 import { HomeConnection } from '../../src/link/worker.js';
@@ -152,9 +153,12 @@ export function world(o: {
   );
   const remoteWatches = new RemoteWatches({ links, router: homeRouter });
   const homeTerminals = new TerminalHub(homeFleet, untouchable, homeStore, homeLog, { router: homeRouter, links });
+  // each side's /tmp, where a drop lands
+  const tmp = { home: makeHome(), worker: makeHome() };
+  const homeDrops = new Drops({ dir: path.join(homePaths.cache, 'drops'), store: homeStore, router: homeRouter, links, machine: () => 'mac', folder: { tmp: tmp.home } });
   const homeCtx = ctxOf(homeStore, homeFleet, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
-    mirror: homeMirror, fleetFlag: '',
+    mirror: homeMirror, drops: homeDrops, fleetFlag: '',
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
@@ -168,8 +172,10 @@ export function world(o: {
       if (live) return;
       for (const v of farViewers.dropAll()) { workerWorkspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
+      workerDropCalls.linkLost();
     },
   });
+  const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
@@ -201,10 +207,12 @@ export function world(o: {
     handlers, o.far ?? {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
+      ...workerDropCalls.calls,
     }, workerDocs?.handlers,
     workerMirror?.calls,
   );
-  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace });
+  const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, drops: workerDrops });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());
@@ -218,6 +226,7 @@ export function world(o: {
         return () => { held = undefined; release(); };
       },
     },
+    tmp,
     worker: { paths: workerPaths, store: workerStore, fleet: workerFleet, router: workerRouter, connection, ctx: workerCtx, docs: workerDocs, outbox, tmux: workerTmux, mutations, usage: workerUsage, handlers, terminals },
     /** Both ends up, and the worker synced. */
     async link(): Promise<void> {

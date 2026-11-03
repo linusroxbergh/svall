@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import {
-  BrowserTab, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
+  BrowserTab, DROP_PART, ErrorFrame, FleetState, HelloReply, HelloResult, INSTRUCTIONS_MAX, MAX_SIDE, MAX_URL, MobileStatus, PART_BYTES,
   PROTOCOL_VERSION, ROBOT_NOTE_MAX, RUN_TEXT_MAX, RUN_TIMEOUT_MS, Refusal, Request, RequestPart, Robot, TerminalSlot, emptyState, methods, robotMessage, serverWait, type Event,
 } from '../src/index.js';
 
@@ -19,6 +19,7 @@ describe('serverWait', () => {
     expect(serverWait('robot.moveCheck', { id: 'c', machine: UUID_A })).toBe(3 * 60_000);
     // a retry waits out the worker's taking the snapshot, the robot's start there and the release
     expect(serverWait('robot.moveRetry', { moveId: 'mv_0123456789' })).toBe(5 * 60_000);
+    expect(serverWait('robot.drop', { id: 'c', upload: 'ab', name: 'x' })).toBe(10 * 60_000);
     // the setup rows wait for the link as long as asked, then for the worker's two answers; a tick waits for its push
     expect(serverWait('machines.setup', { machine: UUID_A })).toBe(20_000);
     expect(serverWait('machines.setup', { machine: UUID_A, waitMs: 5_000 })).toBe(25_000);
@@ -177,8 +178,16 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 38', () => {
-    expect(PROTOCOL_VERSION).toBe(38);
+  it('is 39', () => {
+    expect(PROTOCOL_VERSION).toBe(39);
+  });
+
+  it('was 38 without drops: drop.part takes one part of at most a mebibyte of a 32-hex upload, and robot.drop names it', () => {
+    const upload = 'ab'.repeat(16);
+    expect(methods['drop.part'].params.parse({ upload, index: 0, data: '' })).toEqual({ upload, index: 0, data: '' });
+    expect(methods['drop.part'].params.safeParse({ upload: '../x', index: 0, data: '' }).success).toBe(false);
+    expect(methods['drop.part'].params.safeParse({ upload, index: 0, data: Buffer.alloc(DROP_PART + 3).toString('base64') }).success).toBe(false);
+    expect(methods['robot.drop'].params.parse({ id: 'c_1', upload, name: 'shot.png' })).toEqual({ id: 'c_1', upload, name: 'shot.png' });
   });
 
   it('machines.setup and machines.consent take and answer', () => {

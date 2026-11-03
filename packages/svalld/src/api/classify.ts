@@ -98,6 +98,9 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'term.close': 'read',
   'term.lastScreen': 'read',
   'term.attach': 'terminal',
+  // answered where the parts were sent, whatever this says: STAGED in methods.ts
+  'drop.part': 'read',
+  'robot.drop': 'read',
   'system.info': 'read',
   'feedback.preview': 'read',
   // the app is the home's

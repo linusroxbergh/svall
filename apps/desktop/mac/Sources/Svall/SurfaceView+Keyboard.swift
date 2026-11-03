@@ -4,8 +4,15 @@ import GhosttyKit
 
 /// Ghostty's keyDown / performKeyEquivalent / flagsChanged logic, and the text input it needs.
 extension SurfaceView {
+    /// The ⌃V an agent pastes an image with, pressed once with nothing else held.
+    static func pastesImage(_ event: NSEvent) -> Bool {
+        let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
+        return !event.isARepeat && event.charactersIgnoringModifiers == "v" && mods == .control
+    }
+
     override func keyDown(with event: NSEvent) {
         guard let surface else { interpretKeyEvents([event]); return }
+        if Self.pastesImage(event), onImagePaste?() == true { return }
 
         let translationModsGhostty = Ghostty.eventModifierFlags(mods: ghostty_surface_key_translation_mods(surface, Ghostty.ghosttyMods(event.modifierFlags)))
         var translationMods = event.modifierFlags
@@ -51,6 +58,7 @@ extension SurfaceView {
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown, focused, let surface else { return false }
+        if Self.pastesImage(event), onImagePaste?() == true { return true }
 
         var probe = event.ghosttyKeyEvent(GHOSTTY_ACTION_PRESS)
         var flags = ghostty_binding_flags_e(0)

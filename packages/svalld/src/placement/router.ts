@@ -304,7 +304,7 @@ export function fileCalls(o: { workspace: Workspace; viewers: FarViewers; termin
   };
 }
 
-function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
+export function parse<S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> {
   const p = schema.safeParse(raw);
   if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
   return p.data;

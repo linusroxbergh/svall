@@ -26,18 +26,19 @@ import type { TerminalHub, Viewer } from '../terminals.js';
 import { mergeUsage } from '../usage/merge.js';
 import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
+import type { Drops } from '../drops.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
   phone?: PhoneFallbacks };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -53,6 +54,11 @@ const placementOf = ({ placement }: Ctx): Placement => {
 const retroOf = ({ retro }: Ctx): Retro => {
   if (!retro) throw new ApiError('not_on_worker', 'the retro runs on the fleet\'s home');
   return retro;
+};
+
+const dropsOf = ({ drops }: Ctx): Drops => {
+  if (!drops) throw new ApiError('not_found', 'this daemon takes no drops');
+  return drops;
 };
 
 // the agent configuration a worker takes is its home's
@@ -276,6 +282,8 @@ const handlers: Handlers = {
   'term.close': (p, { terminals, viewer }) => { terminals.close(p.id, viewer); return {}; },
   'term.lastScreen': (p, { terminals }) => terminals.lastScreen(p.id) ?? { text: '' },
   'term.attach': (p, { terminals }) => terminals.attach(p.id, p.term),
+  'drop.part': (p, ctx) => { dropsOf(ctx).part(p.upload, p.index, Buffer.from(p.data, 'base64'), ctx.signal); return {}; },
+  'robot.drop': (p, ctx) => dropsOf(ctx).land(p.id, p.upload, p.name, ctx.signal),
   'system.info': (_p, { systemInfo }) => systemInfo(),
   'app.show': (p, { store, apps }) => {
     if (p.id !== undefined && !Object.hasOwn(store.state.robots, p.id)) throw new ApiError('not_found', `no robot ${p.id}`);
@@ -299,10 +307,12 @@ export async function systemInfo(o: { machineId: MachineId; agents: AgentProber;
 
 // what a worker answers for a robot that runs on it, its home linked or not, so a phone there never waits on the link
 const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive']);
+// a drop's parts are staged on the daemon they were sent to, which lands them
+const STAGED = new Set<MethodName>(['drop.part', 'robot.drop']);
 
 // a worker answers a read of the fleet, or of a robot placed on it, from its mirror; any other call is its home's
 function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
-  if (!ctx.router?.onWorker) return false;
+  if (!ctx.router?.onWorker || STAGED.has(method)) return false;
   const id = (params as { id?: unknown }).id;
   const { robots } = ctx.store.state;
   if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
