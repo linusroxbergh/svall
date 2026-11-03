@@ -89,7 +89,7 @@ export const WORKER_OWNED = ['tmux', 'agent', 'unread', 'revive', 'resumeError',
 export const WorkerFile = z.object({
   homeMachineId: MachineId, fleetId: FleetId, token: z.string().min(32), homeName: z.string(),
   homeSsh: SshDestination.optional(),
-  homeSocket: MachinePath.refine((p) => !p.includes(':'), 'a path with no colon, which ssh reads as a forward\'s separator').optional(),
+  homeSocket: MachinePath.regex(/^[^:]*\/w\/[0-9a-f]{12}\.sock$/, 'a socket w/<12 hex>.sock in the home\'s fleet home, with no colon, which ssh reads as a forward\'s separator').optional(),
 });
 export type WorkerFile = z.infer<typeof WorkerFile>;
 

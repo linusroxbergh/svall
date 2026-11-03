@@ -204,6 +204,9 @@ describe('protocol version', () => {
     expect(WorkerFile.safeParse({ ...worker, homeSsh: '-oProxyCommand=sh' }).success).toBe(false);
     expect(WorkerFile.safeParse({ ...worker, homeSocket: '/home/a:b/.svall/w/x.sock' }).success).toBe(false);
     expect(WorkerFile.safeParse({ ...worker, homeSocket: 'w/x.sock' }).success).toBe(false);
+    for (const homeSocket of ['/home/ada/.ssh/authorized_keys', '/home/ada/.svall/state.json', '/home/ada/.svall/w/short.sock', '/home/ada/.svall/../w/0123456789ab.sock']) {
+      expect(WorkerFile.safeParse({ ...worker, homeSocket }).success).toBe(false);
+    }
   });
 
   it('machines.setup and machines.consent take and answer', () => {

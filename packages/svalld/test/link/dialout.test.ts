@@ -26,7 +26,7 @@ afterEach(async () => {
 });
 
 /** A worker whose worker.json dials `homeSsh`, its link.sock answered by a server here, and the home's fleet home beside it. */
-async function world(o: { homeSsh?: string } = {}) {
+async function world(o: { homeSsh?: string; linked?: () => boolean } = {}) {
   const worker = resolvePaths(makeHome());
   const home = resolvePaths(makeHome());
   const socket = dialSocket(home, W);
@@ -36,9 +36,10 @@ async function world(o: { homeSsh?: string } = {}) {
   const server = net.createServer((s) => { reached++; s.end('link\n'); });
   await new Promise<void>((r) => server.listen(worker.linkSock, r));
   stops.push(() => new Promise<void>((r) => server.close(() => r())));
-  const dial = new HomeDial({ paths: worker, log: silentLogger });
+  const said: string[] = [];
+  const dial = new HomeDial({ paths: worker, log: { ...silentLogger, info: (l: string) => { said.push(l); } }, me: W, linked: o.linked ?? (() => false) });
   stops.push(() => dial.stop());
-  return { worker, home, socket, dial, reached: () => reached };
+  return { worker, home, socket, dial, reached: () => reached, said };
 }
 
 /** What a connect to the home's socket reads, as the home's link would. */
@@ -49,6 +50,9 @@ async function through(socket: string): Promise<string> {
   for await (const c of s) got += String(c);
   return got;
 }
+
+const rewrite = (w: { worker: { workerFile: string } }, change: object) =>
+  fs.writeFileSync(w.worker.workerFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(w.worker.workerFile, 'utf8')), homeSsh: undefined, ...change }));
 
 // the ssh argv of each kind, in the order they were spawned
 const masters = () => ssh.calls().filter((a) => a.includes('-M'));
@@ -128,10 +132,39 @@ describe('HomeDial', () => {
     await until(async () => expect(await through(w.socket)).toBe('link\n'));
   });
 
-  it('cancels its forward and closes its master on a clean stop, leaving a socket that refuses', async () => {
+  it('binds its socket again once it is gone from the home while the link is down and the master up, which nothing else would notice', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval'] });
     const w = await world();
     w.dial.start();
     await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    fs.rmSync(w.socket);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await until(() => expect(forwards().filter((a) => a.includes('forward'))).toHaveLength(2));
+    await until(async () => expect(await through(w.socket)).toBe('link\n'));
+    expect(masters()).toHaveLength(1);
+  });
+
+  it('asks for no socket while the link is up, and forwards nothing again while its socket is there', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval'] });
+    let linked = true;
+    const w = await world({ linked: () => linked });
+    w.dial.start();
+    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    const probes = () => ssh.remoteCalls().filter((c) => c[0] === 'test' && c[1] === '-S');
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await new Promise((r) => setTimeout(r, 300));
+    expect(probes()).toEqual([]);
+    linked = false;
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await until(() => expect(probes()).toEqual([['test', '-S', w.socket]]));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(forwards().filter((a) => a.includes('forward'))).toHaveLength(1);
+  });
+
+  it('cancels its forward and closes its master on a clean stop, leaving a socket that refuses', async () => {
+    const w = await world();
+    w.dial.start();
+    await until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
     const master = w.dial.master()!.socket;
     await w.dial.stop();
     expect(forwards().at(-1)).toEqual(expect.arrayContaining(['-O', 'cancel', '-R', `${w.socket}:${w.worker.linkSock}`]));
@@ -154,6 +187,78 @@ describe('HomeDial', () => {
     vi.advanceTimersByTime(HEARTBEAT_MS);
     await new Promise((r) => setTimeout(r, 300));
     expect(ssh.calls()).toHaveLength(calls);
+  });
+
+  it('tries a dial that failed again, with the destination worker.json names by then', async () => {
+    const w = await world({ homeSsh: 'refused.test' });
+    w.dial.start();
+    await until(() => expect(masters()).toHaveLength(1));
+    rewrite(w, { homeSsh: 'ada@studio' });
+    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    expect(masters().at(-1)?.slice(-2)).toEqual(['--', 'ada@studio']);
+  });
+
+  it('leaves the master to the old home for a homeSsh that names another', async () => {
+    const w = await world();
+    w.dial.start();
+    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    const old = w.dial.master()!.socket;
+    rewrite(w, { homeSsh: 'ada@elsewhere' });
+    w.dial.restore();
+    await until(() => expect(masters().at(-1)?.slice(-2)).toEqual(['--', 'ada@elsewhere']));
+    await until(() => expect(ssh.masterPid(old)).toBeUndefined());
+  });
+
+  it('closes its master and dials no more once worker.json names no home to dial', async () => {
+    const w = await world();
+    w.dial.start();
+    await until(() => expect(fs.existsSync(w.socket)).toBe(true));
+    const master = w.dial.master()!.socket;
+    rewrite(w, { homeSocket: undefined });
+    w.dial.restore();
+    await until(() => expect(ssh.masterPid(master)).toBeUndefined());
+    const calls = ssh.calls().length;
+    w.dial.restore();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ssh.calls()).toHaveLength(calls);
+  });
+
+  it('asks no forward over a path that holds anything but a socket, which stays, and tries again', async () => {
+    const w = await world();
+    fs.mkdirSync(path.dirname(w.socket), { recursive: true, mode: 0o700 });
+    fs.writeFileSync(w.socket, 'keep');
+    w.dial.start();
+    await until(() => expect(ssh.calls().filter(isClear(w.socket)).length).toBeGreaterThanOrEqual(2));
+    expect(forwards()).toEqual([]);
+    expect(fs.readFileSync(w.socket, 'utf8')).toBe('keep');
+  });
+
+  it("spawns no ssh for a socket that is not this machine's", async () => {
+    const w = await world();
+    rewrite(w, { homeSsh: 'ada@studio', homeSocket: dialSocket(w.home, crypto.randomUUID()) });
+    w.dial.start();
+    await new Promise((r) => setTimeout(r, 300));
+    expect(ssh.calls()).toEqual([]);
+  });
+
+  it('gives up a dial under way at once when it stops, ending the master it was opening', async () => {
+    const w = await world({ homeSsh: 'check.test' });
+    w.dial.start();
+    await until(() => expect(masters()).toHaveLength(1));
+    const at = Date.now();
+    await w.dial.stop();
+    expect(Date.now() - at).toBeLessThan(5000);
+  });
+
+  it('reads no sleep into a daemon that took long to reach its start', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'Date'] });
+    const w = await world();
+    vi.setSystemTime(Date.now() + 10 * HEARTBEAT_MS);
+    w.dial.start();
+    await until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(masters()).toHaveLength(1);
   });
 
   it('spawns no ssh for a homeSsh that ssh would read as an option', async () => {

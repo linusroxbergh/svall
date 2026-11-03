@@ -706,6 +706,26 @@ console.log(a.socket);
     sh(R, `iptables -D OUTPUT ${blockRemote}`, { root: true });
     linked(ids, cut);
 
+    // a wake: a master frozen as on a Mac asleep keeps sshd's old listener, which takes the home's next stream, and no hello
+    // answers it; the socket remote binds as it wakes ends that wait, which would otherwise last until the stream's ping fails
+    const newDials = `-p tcp --syn -d ${ip(L)} --dport 22 -j DROP`;
+    const asleep = linksOf()[ids.remote]?.since;
+    sh(R, `iptables -I OUTPUT ${newDials}`, { root: true });
+    const frozen = sh(R, `pgrep -f '^ssh -M -S .* svall@${L}$'`).stdout.trim();
+    sh(R, `kill -STOP ${frozen}`);
+    waitOn('local marks remote unreachable', () => linksOf()[ids.remote]?.reachable === false);
+    sh(L, 'sleep 3');
+    check('the old listener still takes a stream', knock(socket) === 'open', () => knock(socket));
+    const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
+    const dialedBefore = dials();
+    sh(R, `iptables -D OUTPUT ${newDials}`, { root: true });
+    waitOn('remote dials again', () => dials() > dialedBefore);
+    const dialedAt = Date.now();
+    linked(ids, asleep);
+    const relink = Date.now() - dialedAt;
+    sh(R, `kill -9 ${frozen}`, { ok: false });
+    check('a wake onto a stream no hello answered links at once', relink < 5000, `${relink} ms after the dial`);
+
     // a tunnel gone without its cancel leaves a socket that refuses; with no home to remove it, remote's dial replaces it
     const down = linksOf()[ids.remote]?.since;
     sh(L, `systemctl --user stop ${UNIT}`);

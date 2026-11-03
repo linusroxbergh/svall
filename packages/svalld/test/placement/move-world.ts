@@ -378,7 +378,7 @@ export function moveWorld(o: {
     let ctx: Ctx | undefined;
     const replay = new Replay({ store, paths: homePaths, log: silentLogger, synced: (m) => links.for(m)?.synced === true, homedir: mac });
     const links: HomeLinks = new HomeLinks({
-      paths: homePaths, store, log: silentLogger, release: RELEASE, machines: () => [entry], connect: socketTo(workerPaths.linkSock),
+      paths: homePaths, store, log: silentLogger, release: RELEASE, machines: () => [entry], connect: socketTo(workerPaths.linkSock), dialIn: () => Promise.reject(new Error('no worker here dials in')),
       onReport: (r, machine) => {
         applied.push(`robot.sync ${r.robotId}`);
         applyReport(store, r, machine);

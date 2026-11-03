@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, type SetupRow } from '@svall/protocol';
 import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
@@ -244,6 +244,14 @@ describe('machines.setup and machines.consent', () => {
     expect(r.rows.find(byKey('claude:mcp:linear'))).toMatchObject({ status: 'ok', detail: 'keys copied to w1: env.LINEAR_API_KEY lin…90', tick: { on: true } });
     expect(workerJson().mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
     expect(others()).toEqual(before);
+  });
+
+  it('machines.consent saves a tick for a Mac, and writes nothing there', async () => {
+    await linked();
+    vi.spyOn(w.home.links.for(W)!, 'mirrored', 'get').mockReturnValue(false);
+    const before = fs.readFileSync(worker.claudeJson, 'utf8');
+    await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(fs.readFileSync(worker.claudeJson, 'utf8')).toBe(before);
   });
 
   it('machines.consent off empties the copied keys there on the same call', async () => {

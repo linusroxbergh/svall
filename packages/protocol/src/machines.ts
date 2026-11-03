@@ -4,12 +4,12 @@ import { FleetId, MachineId, MachinePath, SshDestination } from './ids.js';
 import { AgentKind, DEFAULT_CWD, Home } from './state.js';
 
 // records name machines and fleets by these ids, not by names such as `trift`, so renaming a host leaves every record alone
-export { FleetId, MachineId, ObjectName, Sha256, SshDestination } from './ids.js';
+export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
 
 /**
- * One machine in the controller's registry; one reached directly has no `ssh`. Paths may hold anything, and are quoted
- * where a remote command is built. `dial`: who opens the link to a worker, the home over ssh (the default) or the worker
- * itself, into a socket in the home's fleet home.
+ * One machine in the controller's registry; the local one and a worker that dials in have no `ssh`. Paths may hold
+ * anything, and are quoted where a remote command is built. `dial`: who opens the link to a worker, the home over ssh (the
+ * default) or the worker itself, into a socket in the home's fleet home.
  */
 export const MachineRecord = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, 'lowercase letters, digits and dashes, starting with a letter'),

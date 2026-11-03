@@ -99,7 +99,7 @@ function world(o: {
   type Hooks = Pick<ConstructorParameters<typeof HomeLinks>[0], 'onNotify' | 'onSynced' | 'onLost'>;
   const links = (connect: Transport = socketTo(workerPaths.linkSock), hooks: Hooks = {}) => {
     const l = new HomeLinks({
-      paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect,
+      paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: () => [entry, spare], connect, dialIn: () => Promise.reject(new Error('no worker here dials in')),
       onReport: (r, machine) => { seen.push(`report ${r.fields.cwd}`); reports.push(r.fields.cwd); applyReport(home, r, machine); },
       onEvent: async (kind) => { await o.onEvent?.(kind); seen.push(`event ${kind}`); },
       onInventory: async (inv, machine) => { seen.push(`inventory ${machine === W ? 'from vault' : machine} last ${inv.last} acked ${inv.acked} robots ${inv.robots.map((r) => r.fields.cwd).join(',')}`); },

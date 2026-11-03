@@ -27,6 +27,14 @@ export type FakeSsh = {
   clean: () => void;
 };
 
+// a marker a killed ssh left half written holds no pid, and kill(0) would signal this whole process group, vitest with it
+function term(marker: string): void {
+  try {
+    const pid = Number(fs.readFileSync(marker, 'utf8'));
+    if (pid > 0) process.kill(pid, 'SIGTERM');
+  } catch { /* already gone */ }
+}
+
 /** Puts a stand-in for ssh first on PATH and hands back what it recorded. */
 export function installFakeSsh(): FakeSsh {
   const dir = sweepAtExit(fs.mkdtempSync(`/tmp/svall-ssh-${crypto.randomBytes(3).toString('hex')}-`));
@@ -73,7 +81,7 @@ export function installFakeSsh(): FakeSsh {
     },
     dropMaster: (socket) => {
       const file = path.join(state, `${path.basename(socket)}.master`);
-      try { process.kill(Number(fs.readFileSync(file, 'utf8')), 'SIGTERM'); } catch { /* already gone */ }
+      term(file);
       fs.rmSync(file, { force: true });
     },
     execute: (o) => {
@@ -83,7 +91,7 @@ export function installFakeSsh(): FakeSsh {
     },
     clean: () => {
       for (const f of fs.readdirSync(state)) {
-        try { process.kill(Number(fs.readFileSync(path.join(state, f), 'utf8')), 'SIGTERM'); } catch { /* already gone */ }
+        term(path.join(state, f));
       }
       for (const [k, v] of Object.entries(env)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; }
       fs.rmSync(dir, { recursive: true, force: true });

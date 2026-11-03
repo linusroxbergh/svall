@@ -123,6 +123,9 @@ export function socketTooLong(socket: string, platform: NodeJS.Platform = proces
 export const dialSocket = (p: Pick<Paths, 'dialSockets'>, machine: string): string =>
   path.join(p.dialSockets, `${sha256Hex(machine).slice(0, 12)}.sock`);
 
+/** Whether `socket`, a path on the home, is the one `machine` forwards its link to, wherever that fleet home is. */
+export const isDialSocket = (socket: string, machine: string): boolean => socket === dialSocket({ dialSockets: path.dirname(socket) }, machine);
+
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile];
 

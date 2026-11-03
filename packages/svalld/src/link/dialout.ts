@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import type { WorkerFile } from '@svall/protocol';
 import type { Logger } from '../log.js';
-import type { Paths } from '../paths.js';
+import { isDialSocket, type Paths } from '../paths.js';
 import { shq } from '../text.js';
 import { readWorkerFile } from '../worker/mode.js';
 import { HEARTBEAT_MS } from './home.js';
@@ -12,29 +12,35 @@ const LAST_RETRY_MS = 60_000;
 // a beat this late was held up by sleep, after which the master's connection is likely dead while its process still answers
 const SLEPT_MS = 2 * HEARTBEAT_MS;
 
-// $1 the socket on the home: its folder made for this account alone, and what an earlier tunnel left at the path removed,
-// as sshd binds no path that is there
-const CLEAR = 'umask 077 && mkdir -p "$(dirname "$1")" && rm -f -- "$1"';
+// $1 the socket on the home: its folder made for this account alone, and the socket an earlier tunnel left at the path
+// removed, as sshd binds no path that is there; anything else there stays
+const CLEAR = 'umask 077 && mkdir -p "$(dirname "$1")" && { [ ! -e "$1" ] || [ -S "$1" ] || { echo "$1 is not a socket" >&2; exit 1; }; } && rm -f -- "$1"';
+
+type Tunnel = { socket: string; cancel: (signal?: AbortSignal) => Promise<void> };
+type Held = { master: SshMaster; tunnel?: Tunnel };
 
 /**
  * A worker's dial to its home: one ssh master to worker.json's `homeSsh`, carrying a forward of `homeSocket` there onto
  * this link.sock, which the home's link connects to. It keeps the tunnel up; the home's link keeps the stream.
  */
 export class HomeDial {
-  private held?: { master: SshMaster; cancel?: () => Promise<void> };
+  private held?: Held;
   private beat?: NodeJS.Timeout;
   private retry?: NodeJS.Timeout;
   private retryMs = FIRST_RETRY_MS;
   private lastWhy?: string;
-  private last = Date.now();
+  private last = 0;
   private stopped = false;
+  private readonly abort = new AbortController();
   private queued = false;
   private fresh = false;
   private running: Promise<void> = Promise.resolve();
 
-  constructor(private o: { paths: Paths; log: Logger }) {}
+  /** `linked`: whether the home's link over this tunnel is up. */
+  constructor(private o: { paths: Paths; log: Logger; me: string; linked: () => boolean }) {}
 
   start(): void {
+    this.last = Date.now();
     this.beat = setInterval(() => this.tick(), HEARTBEAT_MS);
     this.dial();
   }
@@ -53,12 +59,13 @@ export class HomeDial {
   async stop(): Promise<void> {
     this.halt();
     await this.running;
-    await this.held?.cancel?.().catch(() => undefined);
+    await this.held?.tunnel?.cancel().catch(() => undefined);
     await this.drop();
   }
 
   private halt(): void {
     this.stopped = true;
+    this.abort.abort();
     clearInterval(this.beat);
     clearTimeout(this.retry);
   }
@@ -86,9 +93,23 @@ export class HomeDial {
       return;
     }
     if (slept) return this.restore(true);
-    const held = this.held;
-    if (!held || this.retry || this.queued) return;
-    void held.master.check().then((up) => { if (!up && this.held === held) this.restore(true); });
+    const { held } = this;
+    if (!held?.tunnel || this.retry || this.queued) return;
+    this.verify(held, held.tunnel).catch((e: Error) => this.o.log.error(`the tunnel to the home was not checked: ${e.message}`));
+  }
+
+  // only a link that was live says it closed, so a socket gone before one came up is seen here or never
+  private async verify(held: Held, tunnel: Tunnel): Promise<void> {
+    const current = () => this.held === held && held.tunnel === tunnel;
+    const { signal } = this.abort;
+    if (!await held.master.check(signal)) {
+      if (current()) this.restore(true);
+      return;
+    }
+    if (this.o.linked() || !current()) return;
+    const r = await held.master.run(['test', '-S', shq(tunnel.socket)], { signal });
+    // 255 is ssh's own failure, which the next beat's check tells
+    if (r.code === 1 && current() && !this.o.linked()) this.restore();
   }
 
   private async attempt(fresh: boolean): Promise<void> {
@@ -96,7 +117,7 @@ export class HomeDial {
     this.retry = undefined;
     if (this.stopped) return;
     let worker: WorkerFile;
-    // read at each dial: an enrolment since names the home, its destination and its socket afresh
+    // read at each dial for where to dial; the token the link compares is held from this daemon's start
     try {
       worker = readWorkerFile(this.o.paths);
     } catch (e) {
@@ -111,19 +132,22 @@ export class HomeDial {
       this.halt();
       return this.drop();
     }
+    const { signal } = this.abort;
     try {
-      if (fresh || this.held?.master.destination !== homeSsh || !(await this.held.master.check())) {
+      if (!isDialSocket(homeSocket, this.o.me)) throw new Error(`${homeSocket} is not this machine's socket on ${worker.homeName}`);
+      if (fresh || this.held?.master.destination !== homeSsh || !(await this.held.master.check(signal))) {
         await this.drop();
-        this.held = { master: await SshMaster.open({ destination: homeSsh }) };
+        this.held = { master: await SshMaster.open({ destination: homeSsh, signal }) };
       } else {
         // the master answers a forward it holds already without binding it again, so the one it holds goes first
-        await this.held.cancel?.();
-        this.held.cancel = undefined;
+        await this.held.tunnel?.cancel(signal);
+        this.held.tunnel = undefined;
       }
       const held = this.held;
-      const r = await held.master.run(['sh', '-c', shq(CLEAR), 'svall-dial', shq(homeSocket)]);
+      const r = await held.master.run(['sh', '-c', shq(CLEAR), 'svall-dial', shq(homeSocket)], { signal });
       if (r.code !== 0) throw new Error(`${homeSocket} on ${worker.homeName} could not be cleared: ${r.stderr.trim() || `exit ${r.code ?? r.signal}`}`);
-      held.cancel = (await held.master.reverseSocket(homeSocket, this.o.paths.linkSock)).cancel;
+      const { cancel } = await held.master.reverseSocket(homeSocket, this.o.paths.linkSock, signal);
+      held.tunnel = { socket: homeSocket, cancel };
     } catch (e) {
       await this.drop();
       return this.lost((e as Error).message);

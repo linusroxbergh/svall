@@ -134,6 +134,12 @@ describe('host doctor', () => {
       answer(o);
       expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail' });
     }
+    // nor is any home to a fleet that serves none: most fleets, which have no worker.json here
+    fs.rmSync(resolvePaths(fleet).workerFile);
+    answer({ role: 'home', fleetId: FLEET });
+    const plain = await doctorHost('trift', deps({ registry: registered() }));
+    expect(plain.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    expect(plain.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok' });
   });
 
   it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {

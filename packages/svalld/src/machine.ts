@@ -30,6 +30,9 @@ export const registryFile = (dir: string = configDir()): string => path.join(dir
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
+/** Whether the registry lists a worker: a machine reached over ssh, or one that dials in. */
+export const listsWorker = (dir?: string): boolean => readRegistry(dir).some((m) => m.record.ssh !== undefined || m.record.dial === 'worker');
+
 /** Every machine in the registry; none while it has no file, as when a file stands where its folder would be. */
 export function readRegistry(dir: string = configDir()): MachineEntry[] {
   const file = registryFile(dir);

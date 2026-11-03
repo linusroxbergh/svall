@@ -4,6 +4,7 @@ import { InvalidConfig, parseConfig } from '../config.js';
 import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
+import { workerIds } from '../placement/workers.js';
 
 /** What `svalld --worker` leaves to the home; a Mac keeps listing the fleets beside this one, which its File menu opens. */
 const OFF = ['mobile', 'push', 'scribe', 'fleets'] as const;
@@ -24,6 +25,21 @@ export function readWorkerFile(paths: Paths): WorkerFile {
 
 export const workerOptions = (paths: Paths, platform: NodeJS.Platform = process.platform): { worker: WorkerFile; off: readonly Off[] } =>
   ({ worker: readWorkerFile(paths), off: offOn(platform) });
+
+/**
+ * What a fleet's home holds of its own here, by name, which a worker's first snapshot would erase: the robots not running
+ * on `me` and its workers. Nothing once it has taken a snapshot, as what it holds is then a worker's copy.
+ */
+export function heldAsHome(paths: Paths, me: string): string | undefined {
+  let state: { robots?: Record<string, { machine?: string }>; machines?: Record<string, { snapshot?: unknown }> } = {};
+  // one that cannot be read is set aside whatever happens to it, so nothing is erased
+  try { state = JSON.parse(fs.readFileSync(paths.state, 'utf8')); } catch { /* none to lose */ }
+  if (Object.values(state.machines ?? {}).some((m) => m.snapshot)) return undefined;
+  const robots = Object.values(state.robots ?? {}).filter((r) => r.machine !== me).length;
+  const workers = workerIds(paths).length;
+  const held = [robots && `${robots} robot${robots === 1 ? '' : 's'}`, workers && `${workers} worker${workers === 1 ? '' : 's'}`].filter(Boolean);
+  return held.length ? held.join(' and ') : undefined;
+}
 
 const refuse = (): Promise<never> => Promise.reject(new ApiError('not_on_worker', 'not on a worker'));
 

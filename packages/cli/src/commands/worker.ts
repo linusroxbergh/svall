@@ -8,14 +8,16 @@ import { WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
 import { writeDurable } from '@svall/svalld/durable';
 import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
-import { kickstart } from '@svall/svalld/launchd';
+import { isLoaded, kickstart } from '@svall/svalld/launchd';
 import { realRun } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
-import { resolvePaths } from '@svall/svalld/paths';
+import { machineId } from '@svall/svalld/machine';
+import { isDialSocket, resolvePaths } from '@svall/svalld/paths';
 import { PRIVATE, profileLabel } from '@svall/svalld/profile';
 import { releaseVersion } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { setupFleetHome } from '@svall/svalld/setup';
+import { heldAsHome, isWorker } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
 import type { Target } from '../target.js';
@@ -54,13 +56,15 @@ async function readSecret(name: string): Promise<string> {
 }
 
 type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string };
-type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void };
+type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; loaded: (label: string) => Promise<boolean> };
 
 const realEnrol: EnrolDeps = {
   platform: process.platform,
   token: async () => (await readAll(process.stdin)).trim(),
   daemonUp: (t) => daemonRuns(releaseVersion(), () => Client.connect(t.home)),
   out: (line) => { process.stdout.write(`${line}\n`); },
+  me: () => machineId(),
+  loaded: isLoaded,
 };
 
 /** worker.json written for the home named, then the fleet's daemon restarted as its worker: by systemd on Linux, by launchd on a Mac. */
@@ -72,6 +76,13 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
   const paths = resolvePaths(t.home);
   // ssh reads a colon in a forward's socket as its separator
   if (o.homeSsh !== undefined && paths.linkSock.includes(':')) throw new Error(`worker.json not written: ${paths.linkSock} holds a colon, which ssh cannot forward to`);
+  const me = d.me();
+  if (o.homeSocket !== undefined && !isDialSocket(o.homeSocket, me)) throw new Error(`worker.json not written: ${o.homeSocket} is not this machine's socket; give the one svall fleet enroll-worker names for machine ${me}`);
+  const held = isWorker(paths) ? undefined : heldAsHome(paths, me);
+  if (held) throw new Error(`worker.json not written: ${t.home} is a fleet's home and holds ${held}, which the first snapshot from ${o.homeName} would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+  if (d.platform === 'darwin' && t.managed && !await d.loaded(profileLabel(t.name))) {
+    throw new Error(`worker.json not written: launchd has not loaded ${profileLabel(t.name)}, so nothing would start this fleet as a worker; open it once with ${t.name === PRIVATE ? 'svall setup' : `svall ${t.name}`}, then enrol it`);
+  }
   // a companion's systemd runs each fleet it serves, which may not have a home there yet
   const linux = d.platform === 'linux' && t.managed;
   if (linux) setupFleetHome({ home: t.home, port: t.name === PRIVATE ? undefined : 0 });

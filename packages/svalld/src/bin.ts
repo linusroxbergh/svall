@@ -2,16 +2,23 @@ import fs from 'node:fs';
 import { NewerStateVersion, OlderStateVersion } from '@svall/protocol';
 import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
+import { machineId } from './machine.js';
 import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
-import { isWorker } from './worker/mode.js';
+import { heldAsHome, isWorker } from './worker/mode.js';
 
 const home = svallHome();
 fs.mkdirSync(home, { recursive: true });
 const paths = resolvePaths(home);
 const log = createLogger(paths.log);
-// a Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker
-const asWorker = (): true | undefined => process.argv.includes('--worker') || isWorker(paths) || undefined;
+// a Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker, but for a fleet's home
+const asWorker = (): true | undefined => {
+  if (process.argv.includes('--worker')) return true;
+  if (!isWorker(paths)) return undefined;
+  const held = heldAsHome(paths, machineId());
+  if (held) throw new InvalidConfig(`${paths.workerFile} makes this fleet home a worker, but it holds ${held} as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
+  return true;
+};
 
 process.on('uncaughtException', (e) => log.error(`uncaught: ${e.stack ?? String(e)}`));
 process.on('unhandledRejection', (e) => log.error(`unhandled: ${String(e)}`));

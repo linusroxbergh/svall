@@ -5,12 +5,13 @@ import { AGENTS, AGENT_KINDS, versionOk } from '@svall/svalld/agents';
 import { robotKeyEnv } from '@svall/svalld/claude';
 import { configuredMainAgent, fleetMainAgent } from '@svall/svalld/config';
 import { unitPath } from '@svall/svalld/linux/setup';
-import { readRegistry } from '@svall/svalld/machine';
+import { listsWorker } from '@svall/svalld/machine';
 import { resolvePaths, userPaths } from '@svall/svalld/paths';
 import { SHIM } from '@svall/svalld/profile';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { resolveTmux } from '@svall/svalld/tmux';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
+import { isWorker } from '@svall/svalld/worker/mode';
 import type { AgentKind } from '@svall/protocol';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { MARK, type Check } from '../checks-view.js';
@@ -134,8 +135,8 @@ export function realPreflightDeps(home: string, platform: NodeJS.Platform = proc
   let mainAgent: AgentKind | undefined;
   try { mainAgent = fleetMainAgent(home, configuredMainAgent(resolvePaths(home))); } catch { /* doctor's config check reports it */ }
   // a Linux machine runs Svall only as a worker; a registry that cannot be read may list one
-  let moves = platform === 'linux';
-  try { moves ||= readRegistry().some((m) => m.record.ssh !== undefined); } catch { moves = true; }
+  let moves = platform === 'linux' || isWorker(resolvePaths(home));
+  try { moves ||= listsWorker(); } catch { moves = true; }
   return {
     // a login probe, the one call given the fleet's keys, must not hold up install when it hangs
     run: async (cmd, args, o) => (await execFileP(cmd, args, {

@@ -11,7 +11,7 @@ import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { dialSocket, resolvePaths } from '../../src/paths.js';
-import { issueToken } from '../../src/placement/workers.js';
+import { dropToken, issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -35,7 +35,7 @@ const errors = (): Logger & { lines: string[] } => {
 };
 
 /** A home and a worker that dials it; `tunnel()` binds the home's socket onto the worker's link.sock, as sshd does for -R. */
-async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger } = {}) {
+async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
@@ -44,7 +44,7 @@ async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; 
   store.update((d) => { Object.assign(d, emptyState()); });
   const worker = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'studio' }, me: W, store,
-    outbox: Outbox.open(workerPaths), log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {},
+    outbox: Outbox.open(workerPaths), log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {}, onLink: o.onLink,
   });
   await worker.start();
   stops.push(() => worker.stop());
@@ -72,8 +72,9 @@ async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; 
     paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: o.machines ?? (() => [dialing]),
     connect: o.connect ?? (() => Promise.reject(new Error('the home never ssh-es to a worker that dials in'))),
     dialIn: (e) => { tries++; return dialIn(e); },
-    onReport: () => {}, onEvent: async () => {}, onInventory: async () => {},
+    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {},
     snapshot: () => ({ version: 1, state: home.state, agentHomes: { claude: '/c', codex: '/x', opencode: '/o' }, home: '/home/ada' }),
+    ...(o.mirror && { mirror: o.mirror }),
   });
   stops.push(() => links.stop());
   return { homePaths, workerPaths, token, home, worker, sock, tunnel, links, firsts, tries: () => tries };
@@ -97,6 +98,15 @@ describe('a worker that dials in', () => {
     expect(JSON.parse(w.firsts[0])).toMatchObject({ t: 'hello', token: w.token });
     expect(w.links.for(W)?.via()).toBeUndefined();
     expect(w.home.state.machines?.[W]).toMatchObject({ name: 'mac', reachable: true });
+  });
+
+  it('holds its socket folder to the account alone, whatever mode it found it at', async () => {
+    const w = await world();
+    w.links.start();
+    expect(fs.statSync(w.homePaths.dialSockets).mode & 0o777).toBe(0o700);
+    w.links.stop();
+    fs.chmodSync(w.homePaths.dialSockets, 0o755);
+    w.links.start();
     expect(fs.statSync(w.homePaths.dialSockets).mode & 0o777).toBe(0o700);
   });
 
@@ -115,15 +125,72 @@ describe('a worker that dials in', () => {
     expect(w.tries()).toBe(4);
   }, 15_000);
 
-  it('removes a socket that refuses, as a tunnel gone without its cancel leaves, and links once the worker binds the path again', async () => {
+  it('keeps a socket that refuses, which sshd may have bound and not yet listen on, and links once it answers', async () => {
     const w = await world();
     await staleSocket(w.sock);
-    expect(fs.lstatSync(w.sock).isSocket()).toBe(true);
     w.links.start();
-    await until(() => expect(fs.existsSync(w.sock)).toBe(false));
+    await until(() => expect(w.tries()).toBeGreaterThanOrEqual(2));
+    expect(fs.lstatSync(w.sock).isSocket()).toBe(true);
     expect(w.home.state.machines?.[W]?.reachable).toBe(false);
+    fs.rmSync(w.sock);
     await w.tunnel();
     await until(() => expect(w.links.for(W)?.synced).toBe(true), 1500);
+  });
+
+  it('gives up on a stream only an old listener took once its socket appears, as after a wake, and links at once', async () => {
+    const w = await world();
+    fs.mkdirSync(path.dirname(w.sock), { recursive: true, mode: 0o700 });
+    const open = new Set<net.Socket>();
+    const deaf = net.createServer((s) => { open.add(s); s.on('error', () => {}); });
+    await new Promise<void>((r) => deaf.listen(w.sock, r));
+    stops.push(() => new Promise<void>((r) => { deaf.close(() => r()); for (const s of open) s.destroy(); }));
+    w.links.start();
+    await until(() => expect(open.size).toBeGreaterThan(0));
+    fs.rmSync(w.sock);
+    await w.tunnel();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true), 1500);
+  });
+
+  it('keeps its backoff when the worker binds its socket again after a link it answered closed', async () => {
+    const w = await world({
+      onEvent: () => Promise.reject(new Error('no room left')),
+      onLink: (live) => { if (!live) { fs.rmSync(w.sock, { force: true }); void w.tunnel(); } },
+    });
+    await w.tunnel();
+    w.worker.journal('docs.write', { a: 1 });
+    w.links.start();
+    await new Promise((r) => setTimeout(r, 4000));
+    // the tries at 0, 1 and 3 s, where each binding's watch event would make it one per round trip
+    expect(w.tries()).toBeGreaterThanOrEqual(2);
+    expect(w.tries()).toBeLessThanOrEqual(4);
+  }, 10_000);
+
+  it('ends the link of a worker whose token it took back, and tries no more', async () => {
+    const w = await world();
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true));
+    dropToken(w.homePaths, W);
+    w.links.refresh();
+    await until(() => expect(w.home.state.machines?.[W]?.reachable).toBe(false));
+    const tries = w.tries();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(w.tries()).toBeLessThanOrEqual(tries + 1);
+    expect(w.worker.connected()).toBe(false);
+  });
+
+  it('pushes no agent configuration to a Mac, before a move included, and one to a Linux worker', async () => {
+    for (const [platform, pushes] of [['darwin', 0], ['linux', 2]] as const) {
+      const push = vi.fn(() => Promise.resolve({ sent: 0 }));
+      const w = await world({ machines: () => [{ id: W, record: { ...dialing.record, platform } }], mirror: { push, settled: () => Promise.resolve() } });
+      await w.tunnel();
+      w.links.start();
+      await until(() => expect(w.links.for(W)?.synced).toBe(true));
+      await w.links.pushMirror(W);
+      await w.links.mirrorSettled(W);
+      expect(push).toHaveBeenCalledTimes(pushes);
+      w.links.stop();
+    }
   });
 
   it('leaves anything at the path that is not a socket', async () => {
@@ -145,29 +212,15 @@ describe('a worker that dials in', () => {
     await until(() => expect(w.links.for(W)?.synced).toBe(true));
     expect(w.links.for(W)?.via()).toEqual({ ssh: 'mac', controlSocket: '/tmp/m' });
     await w.tunnel();
+    const stopped = vi.spyOn(w.links.for(W)!, 'stop');
     entry = dialing;
     w.links.refresh();
+    expect(stopped).toHaveBeenCalled();
     await until(() => expect(w.links.for(W)?.dialsIn && w.links.for(W)?.synced).toBe(true));
     expect(w.links.for(W)?.via()).toBeUndefined();
     entry = { id: W, record: { ...record, ssh: 'mac' } };
     w.links.refresh();
     await until(() => expect(!w.links.for(W)?.dialsIn && w.links.for(W)?.synced).toBe(true));
     expect(ssh).toBe(2);
-  });
-
-  it('is not linked by a home that takes no link from a worker that dials in', async () => {
-    const homePaths = resolvePaths(makeHome());
-    issueToken(homePaths, W);
-    const log = errors();
-    const home = Store.load(homePaths.state, () => {});
-    const links = new HomeLinks({
-      paths: homePaths, store: home, log, release: '1.2.3', machines: () => [dialing], connect: () => Promise.reject(new Error('no ssh')),
-      onReport: () => {}, onEvent: async () => {}, onInventory: async () => {},
-      snapshot: () => ({ version: 1, state: home.state, agentHomes: { claude: '/c', codex: '/x', opencode: '/o' }, home: '/home/ada' }),
-    });
-    stops.push(() => links.stop());
-    links.start();
-    await until(() => expect(home.state.machines?.[W]?.reachable).toBe(false));
-    expect(links.for(W)?.connected()).toBe(false);
   });
 });

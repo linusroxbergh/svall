@@ -261,19 +261,25 @@ says whether the companion is signed, and `svall host doctor` says it of the mac
 
 A fleet whose home is a server can have a Mac as its worker, which the server cannot reach over ssh: the Mac opens the
 link itself, over an ssh connection of its own to the server, and nothing on the server ever reaches the Mac. It takes
-two halves, run by hand until the app joins a server's fleet itself:
+two halves:
 
 1. On the home, `svall --json fleet enroll-worker <machine id> --name <name> --platform darwin --arch <arch> --home
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
    forwards its link to. A run again issues a new token, which replaces the one before.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
    --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker.
+   The home's first snapshot replaces what a fleet holds, so it refuses a fleet that has robots or workers of its own:
+   enrol an empty one with `svall -p <empty fleet> worker enroll`, opened once with `svall <empty fleet>` so launchd has
+   its job.
 
 The worker then keeps the link up through sleep, a new network and either daemon's restart. Its robots' terminals open
 on the worker itself; the home shows their screens, files and changes, but no terminal: "kanban runs on ada-mac; open
-it there". A Linux worker keeps the home dialing it. The socket, `w/<12 hex>.sock` in the home's fleet home, is a
-Unix socket like the hook socket and longer: a home's account home can be at most 80 bytes for the private fleet on
-Linux and 76 on a Mac, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
+it there". A Mac keeps its own agent setup: the home's mirror writes nothing there. A Linux worker keeps the home dialing
+it. `svall host remove <name>` on the home drops the record and the token and ends the link; the worker stays as it is
+until `svall uninstall` runs there. `svall host doctor` and `svall host upgrade` of the home cannot run from the worker,
+whose registry has no record of it. The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
+hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
+80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
 
 ## The phone while this Mac is off
 

@@ -1,8 +1,11 @@
+import os from 'node:os';
 import { Command } from 'commander';
+import { z } from 'zod';
 import { MachineId, MachineRecord, type FleetState } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { dialSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
-import { issueToken } from '@svall/svalld/placement/workers';
+import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
+import { fleetHomes } from '@svall/svalld/uninstall';
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client } from '../client.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -27,13 +30,22 @@ async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMach
   const paths = resolvePaths(t.home);
   if (isWorker(paths)) throw new Error(`${t.home} is a worker's fleet home; run this on the fleet's home`);
   const fleetId = readFleetConfig(paths).id;
-  const machine = MachineId.parse(id);
-  const record = MachineRecord.parse({ ...o, dial: 'worker' });
+  const parsedId = MachineId.safeParse(id);
+  if (!parsedId.success) throw new Error(`${id} is not a machine id: ${z.prettifyError(parsedId.error)}`);
+  const parsed = MachineRecord.safeParse({ ...o, dial: 'worker' });
+  if (!parsed.success) throw new Error(`${id} is not enrolled: ${z.prettifyError(parsed.error)}`);
+  const machine = parsedId.data;
+  const record = parsed.data;
   const socket = dialSocket(paths, machine);
-  const long = socketTooLong(socket);
+  // the home binds nothing, but its ssh and the worker's both read the path, and a Mac's holds the fewer bytes
+  const long = socketTooLong(socket, record.platform === 'darwin' ? 'darwin' : process.platform);
   if (long) throw new Error(`${long.message}, so no worker can dial into ${t.home}; use an account whose home is ${long.over} bytes shorter`);
   if (socket.includes(':')) throw new Error(`${socket} holds a colon, which ssh reads as a forward's separator, so no worker can dial into ${t.home}`);
   const registry = MachineRegistry.load();
+  // the record is the account's, so a machine another fleet here reaches over ssh would lose that route
+  const route = registry.get(machine)?.record.ssh;
+  const sharing = route ? fleetHomes(os.homedir()).find((h) => h !== t.home && tokenFor(resolvePaths(h), machine)) : undefined;
+  if (sharing) throw new Error(`the fleet in ${sharing} reaches ${record.name} over ssh at ${route}, which this would end; remove it from that fleet first`);
   registry.put(machine, record);
   registry.save();
   const token = issueToken(paths, machine);

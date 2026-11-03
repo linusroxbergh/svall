@@ -159,7 +159,7 @@ const handlers: Handlers = {
       return setupOf(ctx, p.machine, 0);
     }
     const link = ctx.links?.for(p.machine);
-    if (link?.connected()) {
+    if (link?.connected() && link.mirrored) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it

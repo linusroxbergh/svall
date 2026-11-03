@@ -1,8 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, emptyState } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
+import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { removeHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { BASE, FLEET, HOME, MAC, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, TOKEN, deps, events, fleet, ssh, step, useHostWorld, work } from './controller/host-world.js';
@@ -10,6 +11,22 @@ import { BASE, FLEET, HOME, MAC, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, 
 useHostWorld();
 
 describe('host remove', () => {
+  it('drops a worker that dials in and its token here, with nothing there to reach, and has its link looked at again', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
+    registry.save();
+    const paths = resolvePaths(fleet);
+    issueToken(paths, REMOTE);
+    const refreshLinks = vi.fn(() => Promise.resolve());
+    expect(await removeHost('ada-mac', {}, deps({ registry, refreshLinks }))).toMatchObject({ result: 'ready' });
+    expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'ada-mac dials in, so nothing here reaches it: it keeps Svall until svall uninstall runs there' });
+    expect(ssh.calls()).toEqual([]);
+    expect(registry.get('ada-mac')).toBeUndefined();
+    expect(MachineRegistry.load(path.join(work, 'config')).get('ada-mac')).toBeUndefined();
+    expect(tokenFor(paths, REMOTE)).toBeUndefined();
+    expect(refreshLinks).toHaveBeenCalledOnce();
+  });
+
   const registered = (destination: string): MachineRegistry => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({

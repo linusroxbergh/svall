@@ -24,7 +24,7 @@ import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -119,7 +119,7 @@ function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
     identity = machineIdentity(configDir(), hardware);
   } catch (e) {
     let listed: boolean;
-    try { listed = readRegistry().some((m) => m.record.ssh !== undefined || m.record.dial === 'worker'); } catch { listed = true; }
+    try { listed = listsWorker(); } catch { listed = true; }
     if (listed) throw new Error(machineIdFailure(e, { workers: true }), { cause: e });
     const id = MachineId.parse(crypto.randomUUID());
     log.error(`${machineIdFailure(e)}; no worker knows this Mac, so it runs as ${id}`);
@@ -254,7 +254,7 @@ async function start(opts: Options): Promise<Daemon> {
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
-  const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log }) : undefined;
+  const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),

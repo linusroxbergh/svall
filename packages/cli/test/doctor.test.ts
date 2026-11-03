@@ -16,6 +16,7 @@ import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { grouped } from '../src/checks-view.js';
 import type { HookTrust } from '@svall/svalld/codex/trust';
 import { codexCheck, doctor, doctorCommand, opencodeCheck, rebindMachineFile, reportLines, unattended, type DoctorDeps, type Report } from '../src/commands/doctor.js';
+import { resolvePaths } from '@svall/svalld/paths';
 import { preflight, realPreflightDeps, requireReady } from '../src/commands/preflight.js';
 
 const priv = { name: 'private', home: '/u/.svall', managed: true };
@@ -551,6 +552,23 @@ describe('doctor on Linux', () => {
     const unitPath = /^Environment="PATH=(.*)"$/m.exec(svalldUnit({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, fleet: 'private', home: '/u/.svall' }).text)![1];
     expect(realPreflightDeps('/u/.svall', 'linux').agentPath).toBe(unitPath);
     expect(realPreflightDeps('/u/.svall', 'darwin').agentPath).toBeUndefined();
+  });
+
+  it('checks the agent floor a move needs on a home whose only worker dials in, and on a Mac that is a worker', () => {
+    const config = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-preflight-'));
+    const worker = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-preflight-'));
+    const held = process.env.SVALL_CONFIG_DIR;
+    process.env.SVALL_CONFIG_DIR = config;
+    try {
+      expect(realPreflightDeps('/u/.svall', 'darwin').moves).toBe(false);
+      fs.writeFileSync(resolvePaths(worker).workerFile, '{}');
+      expect(realPreflightDeps(worker, 'darwin').moves).toBe(true);
+      fs.writeFileSync(path.join(config, 'machines.json'), JSON.stringify({ machines: { [crypto.randomUUID()]: { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall', dial: 'worker' } } }));
+      expect(realPreflightDeps('/u/.svall', 'darwin').moves).toBe(true);
+    } finally {
+      if (held === undefined) delete process.env.SVALL_CONFIG_DIR; else process.env.SVALL_CONFIG_DIR = held;
+      for (const d of [config, worker]) fs.rmSync(d, { recursive: true, force: true });
+    }
   });
 
   it('warns rather than fails when no agent CLI is installed, so setup runs on a fresh box', async () => {

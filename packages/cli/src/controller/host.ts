@@ -7,7 +7,7 @@ import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
-import { issueToken } from '@svall/svalld/placement/workers';
+import { dropToken, issueToken } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
@@ -522,6 +522,7 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
   const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
   if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
   const held = registry.get(o.name);
+  if (held?.record.dial === 'worker') throw new StepError(`${o.name} is a worker that dials in; remove it first or add this one under another name`);
   if (held && !held.record.ssh) throw new StepError(`${o.name} is this Mac's name; add the machine under another name`);
   if (held && held.record.ssh !== o.ssh) {
     throw new StepError(`${o.name} is already the machine at ${held.record.ssh}; remove it first or add this one under another name`);
@@ -678,6 +679,12 @@ async function sameMachine(master: SshMaster, entry: Registered): Promise<void> 
 const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Registered> => {
   const entry = need(registry, name);
   return { value: entry, detail: `${name} at ${entry.record.ssh}` };
+};
+
+// a worker that dials in is removed here alone, so it needs no ssh destination
+const removable = (registry: MachineRegistry, name: string): Outcome<MachineEntry> => {
+  const entry = registry.get(name);
+  return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(registry, name);
 };
 
 const failed = (name: string, err: unknown): Check => ({ name, status: 'fail', detail: (err as Error).message });
@@ -939,7 +946,7 @@ const svallAt = (home: string, d: HostDeps, args: string): string =>
   (home === d.fleet.home ? `svall ${d.fleet.profile ? `-p ${d.fleet.profile} ` : ''}${args}` : svallFor(home, d.homedir, args));
 
 /** Refuses while a robot of a fleet here runs on the machine or is moving to it, which an uninstall there would strand. */
-function placedOn(entry: Registered, d: HostDeps): void {
+function placedOn(entry: MachineEntry, d: HostDeps): void {
   const homes = [d.fleet.home, ...fleetHomes(d.homedir).filter((home) => home !== d.fleet.home)];
   const found = homes.flatMap((home) => {
     const file = resolvePaths(home).state;
@@ -1013,45 +1020,53 @@ async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Pr
 export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => {
-      const out = machineOutcome(d.registry, name);
+      const out = removable(d.registry, name);
       if (!o.forget) placedOn(out.value, d);
       return Promise.resolve(out);
     });
+    const { ssh } = entry.record;
     // never --purge from here: the fleets and their tmux servers are the far machine's to delete
     const uninstalled = await run.step('uninstall', async () => {
-      if (o.forget) return { value: undefined, status: 'skip' as const, detail: `${name} is left untouched: ${entry.record.ssh} keeps Svall until svall uninstall runs there` };
+      if (!ssh) return { value: undefined, status: 'skip' as const, detail: `${name} dials in, so nothing here reaches it: it keeps Svall until svall uninstall runs there` };
+      if (o.forget) return { value: undefined, status: 'skip' as const, detail: `${name} is left untouched: ${ssh} keeps Svall until svall uninstall runs there` };
       let master: SshMaster | undefined;
       try {
-        master = await d.openMaster(entry.record.ssh);
-        await sameMachine(master, entry);
-        await sharedWith(master, entry, d);
+        master = await d.openMaster(ssh);
+        const reached = entry as Registered;
+        await sameMachine(master, reached);
+        await sharedWith(master, reached, d);
         const r = await master.run([shq(svallExe(entry.record.svallBase)), 'uninstall'], { timeoutMs: PROBE_TIMEOUT });
         if (r.code !== 0) {
-          throw new StepError(`svall uninstall exited ${r.code} on ${entry.record.ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
-            `${onThere(entry.record.ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
+          throw new StepError(`svall uninstall exited ${r.code} on ${ssh}: ${r.stderr.trim().slice(0, 400) || 'no output'}`,
+            `${onThere(ssh, 'svall uninstall')} and see what stops it; svall host remove ${name} --forget drops the route and leaves the machine as it is`);
         }
         // its last line can name a command for that machine, such as the rm -rf of the fleets it kept
         const lines = r.stdout.trim().split('\n');
-        return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: `on ${entry.record.ssh}: ${lines.at(-1) || 'svall uninstall'}` };
+        return { value: lines.filter((l) => TAKE_BACK.test(l)), detail: `on ${ssh}: ${lines.at(-1) || 'svall uninstall'}` };
       } catch (err) {
         if (err instanceof StepError) throw err;
-        throw new StepError(`${entry.record.ssh} could not be reached: ${(err as Error).message}`,
+        throw new StepError(`${ssh} could not be reached: ${(err as Error).message}`,
           `svall host remove ${name} --forget drops the route and leaves the machine untouched`);
       } finally {
         await master?.close().catch(() => undefined);
       }
     });
-    await run.step('registry', () => {
-      for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) clearConsent(resolvePaths(home).mirrorConsent, entry.id);
+    await run.step('registry', async () => {
+      for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) {
+        clearConsent(resolvePaths(home).mirrorConsent, entry.id);
+        // nothing there ends the link of a worker that dials in, so its token goes, and with it the link
+        if (!ssh) dropToken(resolvePaths(home), entry.id);
+      }
       d.registry.remove(entry.id);
       d.registry.save();
-      return Promise.resolve({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
+      if (!ssh) await d.refreshLinks();
+      return ({ value: undefined, detail: uninstalled ? `${name} is no longer in the registry` : `${name} is forgotten; the machine was left untouched` });
     });
     if (!uninstalled?.length) return;
     const left = uninstalled.some((l) => KEYS_LEFT.test(l));
     await run.step('keys', () => Promise.resolve({
       value: undefined, detail: uninstalled.join('; '),
-      ...(left && { status: 'warn' as const, action: onThere(entry.record.ssh, 'take the keys the mirror copied out of the files named here, or delete those files') }),
+      ...(left && { status: 'warn' as const, action: onThere(ssh!, 'take the keys the mirror copied out of the files named here, or delete those files') }),
     }));
   });
 }

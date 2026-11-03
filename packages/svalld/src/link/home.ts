@@ -52,7 +52,7 @@ type Options = {
   machines: () => MachineEntry[];
   connect: Transport;
   /** For a machine whose record says it dials in. */
-  dialIn?: Transport;
+  dialIn: Transport;
   log: Logger;
   release: string;
   onReport(r: RobotSync, machine: MachineId): void;
@@ -88,25 +88,19 @@ export function sshTransport(o: { profile: string; log: Logger }): Transport {
   };
 }
 
-const socketId = (file: string): string | undefined => {
-  const s = fs.lstatSync(file, { throwIfNoEntry: false });
-  return s?.isSocket() ? `${s.dev}:${s.ino}` : undefined;
-};
-
-/** The socket a worker that dials in forwards its link.sock to, in this fleet home. */
+/**
+ * The socket a worker that dials in forwards its link.sock to, in this fleet home. A connect it refuses proves nothing of
+ * the socket, which sshd binds before it listens, so it stays for the worker that made it to clear.
+ */
 export function socketTransport(o: { paths: Pick<Paths, 'dialSockets'> }): Transport {
   return async ({ id, record }) => {
     const sock = dialSocket(o.paths, id);
-    const held = socketId(sock);
     const stream = net.connect(sock);
     try {
       await once(stream, 'connect');
     } catch (e) {
       stream.destroy();
       const code = (e as NodeJS.ErrnoException).code;
-      // a tunnel gone without its cancel leaves a socket that refuses; it goes while it is still the one that refused, so a
-      // worker binding the path again meanwhile keeps its own
-      if (code === 'ECONNREFUSED' && held && socketId(sock) === held) fs.rmSync(sock, { force: true });
       throw new Error(code === 'ENOENT' || code === 'ECONNREFUSED' ? `${record.name} has not dialed in (${code} ${sock})` : (e as Error).message);
     }
     return { stream };
@@ -144,6 +138,8 @@ export class WorkerLink {
   private connecting = false;
   private lastWhy?: string;
   private stopped = false;
+  // the worker greeted this stream, or the last one if none has opened since
+  private heard = false;
   // a docs push runs, and another is due after it
   private sendingDocs = false;
   private docsAgain = false;
@@ -199,6 +195,22 @@ export class WorkerLink {
     void this.attempt();
   }
 
+  /**
+   * The worker's socket appeared, as when it woke: a link whose last try reached no worker tries at once, giving up on a
+   * stream only an old listener of sshd's took. One a worker answered keeps its backoff, as a worker binds its socket
+   * again whenever a link it held closes.
+   */
+  socketAppeared(): void {
+    if (this.heard) return;
+    this.stream?.close();
+    this.retryNow();
+  }
+
+  /** Ends the stream, as for a worker whose token the home took back; a try after it finds none and stops there. */
+  close(): void {
+    this.stream?.close();
+  }
+
   /** The ssh route to the linked worker, none for one that dials in. */
   via(): Via | undefined {
     if (!this.peer) throw this.unreachable();
@@ -250,9 +262,14 @@ export class WorkerLink {
     return new Promise((done) => this.waiting.push({ version, done }));
   }
 
+  /** Whether it takes the home's agent configuration: a Mac keeps its own, as the mirror keeps no copy of what it replaces. */
+  get mirrored(): boolean {
+    return this.entry.record.platform !== 'darwin';
+  }
+
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
   pushMirror(): Promise<void> {
-    if (!this.o.mirror || !this.connected()) return Promise.resolve();
+    if (!this.o.mirror || !this.mirrored || !this.connected()) return Promise.resolve();
     return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
   }
 
@@ -292,13 +309,12 @@ export class WorkerLink {
     let token: string | undefined;
     let conn: Awaited<ReturnType<Transport>>;
     this.connecting = true;
+    this.heard = false;
     try {
       // read at each try: issuing a new token replaces the one the worker accepts
       token = tokenFor(this.o.paths, this.machine);
       if (!token) return this.lost(`no token for ${this.name} in ${this.o.paths.workersFile}`, false);
-      const connect = this.dialsIn ? this.o.dialIn : this.o.connect;
-      if (!connect) return this.lost(`${this.name} dials in, which this svalld takes no link from`, false);
-      conn = await connect(this.entry);
+      conn = await (this.dialsIn ? this.o.dialIn : this.o.connect)(this.entry);
     } catch (e) {
       return this.lost((e as Error).message);
     } finally {
@@ -377,6 +393,7 @@ export class WorkerLink {
       return;
     }
     const h = hello.data;
+    this.heard = true;
     clearTimeout(this.rehello);
     // the stream and the ssh master under it stay up, with every terminal on that master
     if (h.schema !== STATE_SCHEMA_VERSION || h.protocol !== PROTOCOL_VERSION) {
@@ -527,6 +544,7 @@ export class HomeLinks {
     if (!pushSoon) return;
     for (const link of this.links.values()) { link.greetAgain(); link.retryNow(); }
     try {
+      for (const link of this.links.values()) if (!tokenFor(this.o.paths, link.machine)) link.close();
       for (const entry of this.o.machines()) {
         const held = this.links.get(entry.id);
         // a worker whose record now says otherwise of who dials is linked anew the other way
@@ -565,7 +583,7 @@ export class HomeLinks {
       fs.chmodSync(dir, 0o700);
       this.sockets = fs.watch(dir, (_event, name) => {
         const link = name && [...this.links.values()].find((l) => l.dialsIn && path.basename(dialSocket(this.o.paths, l.machine)) === name);
-        if (link && fs.existsSync(path.join(dir, name))) link.retryNow();
+        if (link && fs.existsSync(path.join(dir, name))) link.socketAppeared();
       });
       this.sockets.on('error', (e) => this.o.log.error(`${dir}: ${e.message}`));
     } catch (e) {

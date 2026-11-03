@@ -119,7 +119,8 @@ export class SshMaster {
 
   private constructor(readonly destination: string, readonly socket: string) {}
 
-  static async open(o: { destination: string; socketDir?: string }): Promise<SshMaster> {
+  /** `signal` gives up on a master still opening, and kills it. */
+  static async open(o: { destination: string; socketDir?: string; signal?: AbortSignal }): Promise<SshMaster> {
     const socket = socketFor(ownSocketDir(o.socketDir ?? defaultSocketDir()), o.destination);
     const held = masters.get(socket);
     if (held) {
@@ -132,20 +133,20 @@ export class SshMaster {
       if (masters.get(socket) === held) masters.delete(socket);
       master?.release();
     }
-    const opening = SshMaster.start(o.destination, socket).catch((err: unknown) => { masters.delete(socket); throw err; });
+    const opening = SshMaster.start(o.destination, socket, o.signal).catch((err: unknown) => { masters.delete(socket); throw err; });
     masters.set(socket, opening);
     const master = await opening;
     master.refs++;
     return master;
   }
 
-  private static start(destination: string, socket: string): Promise<SshMaster> {
+  private static start(destination: string, socket: string, signal?: AbortSignal): Promise<SshMaster> {
     // whatever is on this socket was not spawned by this process, so it is never adopted
     fs.rmSync(socket, { force: true });
-    return new SshMaster(destination, socket).spawn();
+    return new SshMaster(destination, socket).spawn(signal);
   }
 
-  private async spawn(): Promise<SshMaster> {
+  private async spawn(signal?: AbortSignal): Promise<SshMaster> {
     // in a session of its own, so a terminal's Ctrl-C reaches only this process, which ends it on exit.
     // The user's ssh config for the destination neither forwards the agent or X11 to any session on it nor binds its forwards
     const child = spawn('ssh', [
@@ -168,7 +169,8 @@ export class SshMaster {
 
     const end = Date.now() + OPEN_TIMEOUT;
     for (;;) {
-      if (await this.check()) return this;
+      if (await this.check(signal)) return this;
+      if (signal?.aborted) throw this.fail('unreachable', `the ssh master to ${this.destination} was given up on`);
       // a master that could not be spawned, or died without a word, is the transport's failure
       if (gone) throw this.fail(child.pid === undefined || !stderr.trim() ? 'unreachable' : classifySsh(stderr), `ssh could not reach ${this.destination}: ${stderr.trim() || 'the control master exited'}`);
       // a master still waiting may have said what for, as one waiting on a Tailscale check does
@@ -197,8 +199,8 @@ export class SshMaster {
     return ['-S', this.socket, '-o', 'BatchMode=yes', ...control, '--', REMOTE_HOST, ...remote];
   }
 
-  async check(): Promise<boolean> {
-    const r = await runProcess('ssh', this.argv(['-O', 'check'], []), { timeoutMs: CONTROL_TIMEOUT });
+  async check(signal?: AbortSignal): Promise<boolean> {
+    const r = await runProcess('ssh', this.argv(['-O', 'check'], []), { timeoutMs: CONTROL_TIMEOUT, signal });
     return r.code === 0;
   }
 
@@ -242,15 +244,15 @@ export class SshMaster {
    * The far machine's socket `remote` onto the socket `local` here, made by sshd for the account alone. sshd refuses a
    * path already there, and the master answers a forward it holds already without binding it again.
    */
-  async reverseSocket(remote: string, local: string): Promise<{ cancel: () => Promise<void> }> {
+  async reverseSocket(remote: string, local: string, signal?: AbortSignal): Promise<{ cancel: (signal?: AbortSignal) => Promise<void> }> {
     const spec = `${remote}:${local}`;
-    await this.tunnel('forward', '-R', spec);
-    return { cancel: () => this.tunnel('cancel', '-R', spec) };
+    await this.tunnel('forward', '-R', spec, signal);
+    return { cancel: (s) => this.tunnel('cancel', '-R', spec, s) };
   }
 
-  private async tunnel(command: 'forward' | 'cancel', kind: '-L' | '-R', spec: string): Promise<void> {
+  private async tunnel(command: 'forward' | 'cancel', kind: '-L' | '-R', spec: string, signal?: AbortSignal): Promise<void> {
     // with no config read, it asks the master for this forward alone, not those a `Host *` block names
-    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, kind, spec], []), { timeoutMs: CONTROL_TIMEOUT });
+    const r = await runProcess('ssh', this.argv(['-F', 'none', '-O', command, kind, spec], []), { timeoutMs: CONTROL_TIMEOUT, signal });
     if (r.code !== 0) throw new SshError(classifySsh(r.stderr), `ssh could not ${command} ${spec} on ${this.destination}: ${r.stderr.trim()}`);
   }
 

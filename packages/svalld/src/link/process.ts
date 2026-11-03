@@ -42,6 +42,7 @@ export function runProcess(exe: string, argv: string[], o: RunOptions): Promise<
     };
     const timer = setTimeout(stop, o.timeoutMs);
     o.signal?.addEventListener('abort', stop, { once: true });
+    if (o.signal?.aborted) stop();
     const done = () => {
       clearTimeout(timer);
       if (killer) clearTimeout(killer);
