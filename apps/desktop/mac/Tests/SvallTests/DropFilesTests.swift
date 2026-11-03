@@ -1,40 +1,89 @@
 import AppKit
+import WebKit
 import XCTest
 @testable import Svall
 
 final class DropFilesTests: XCTestCase {
+    private func folder() throws -> URL {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: dir) }
+        return dir
+    }
+
     func testPathsAreTypedAsGhosttyTypesADrop() {
         XCTAssertEqual(ShellEscape.paths(["/tmp/svall-drop-501/aB3x/Screen Shot (1).png", "/tmp/a'b"]), #"/tmp/svall-drop-501/aB3x/Screen\ Shot\ \(1\).png /tmp/a\'b"#)
         // a newline would run what came before it
         XCTAssertEqual(ShellEscape.paths(["/tmp/a\nrm -rf ~", "/tmp/b"]), "/tmp/b")
     }
 
-    func testAFileIsServedOnceWithinFiveMinutesAndAFolderNotAtAll() throws {
-        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        defer { try? FileManager.default.removeItem(at: dir) }
+    /// A prepend character or a combining mark makes one grapheme with the metacharacter beside it, which a shell still reads.
+    func testAMetacharacterInAGraphemeWithItsNeighbourIsStillEscaped() {
+        XCTAssertEqual(ShellEscape.paths(["a\u{0D4E};id"]), "a\u{0D4E}\\;id")
+        XCTAssertEqual(ShellEscape.paths(["a\u{0D4E}>out.txt"]), "a\u{0D4E}\\>out.txt")
+        XCTAssertEqual(ShellEscape.paths([";\u{0301}rm"]), "\\;\u{0301}rm")
+    }
+
+    func testAFileIsReadPartByPartAndLetGoWithItsShortPart() throws {
+        let dir = try folder()
         let file = dir.appendingPathComponent("notes.txt")
         try Data("hello".utf8).write(to: file)
         let drops = DropFiles()
-        let now = Date()
-        let held = drops.hold([file, dir], now: now)
-        XCTAssertEqual(held[0].name, "notes.txt")
-        XCTAssertEqual(held[0].bytes, 5)
-        XCTAssertFalse(held[0].folder)
-        XCTAssertEqual(held[1], DroppedFile(token: "", name: dir.lastPathComponent, bytes: 0, folder: true))
-        XCTAssertEqual(drops.take(held[0].token, now: now), Data("hello".utf8))
-        XCTAssertNil(drops.take(held[0].token, now: now))
-        let late = drops.hold([file], now: now)[0]
-        XCTAssertNil(drops.take(late.token, now: now.addingTimeInterval(301)))
+        let held = drops.hold([file])[0]
+        XCTAssertEqual(held.name, "notes.txt")
+        XCTAssertEqual(held.bytes, 5)
+        XCTAssertFalse(held.folder)
+        XCTAssertEqual(drops.read(held.token, at: 0, size: 4), Data("hell".utf8))
+        XCTAssertEqual(drops.read(held.token, at: 4, size: 4), Data("o".utf8))
+        XCTAssertNil(drops.read(held.token, at: 0, size: 4))
+        // an exact number of parts ends with an empty one
+        let exact = drops.hold([file])[0]
+        XCTAssertEqual(drops.read(exact.token, at: 0, size: 5), Data("hello".utf8))
+        XCTAssertEqual(drops.read(exact.token, at: 5, size: 5), Data())
+        XCTAssertNil(drops.read(exact.token, at: 5, size: 5))
+        // a file gone since the drop has nothing to read
+        let gone = drops.hold([file])[0]
+        try FileManager.default.removeItem(at: file)
+        XCTAssertNil(drops.read(gone.token, at: 0, size: 4))
+        XCTAssertNil(drops.read(gone.token, at: 0, size: 4))
     }
 
-    func testAPastedImageIsAPngNamedForWhenItWasPasted() {
+    func testAFolderIsNamedAndNothingInItHeld() throws {
+        let dir = try folder()
+        XCTAssertEqual(DropFiles().hold([dir])[0], DroppedFile(token: "", name: dir.lastPathComponent, bytes: 0, folder: true))
+    }
+
+    func testALinkIsSizedAndReadAsWhatItNames() throws {
+        let dir = try folder()
+        let file = dir.appendingPathComponent("big.bin")
+        try Data(repeating: 7, count: 3000).write(to: file)
+        let toFile = dir.appendingPathComponent("link.bin"), toFolder = dir.appendingPathComponent("link-folder")
+        try FileManager.default.createSymbolicLink(at: toFile, withDestinationURL: file)
+        try FileManager.default.createSymbolicLink(at: toFolder, withDestinationURL: dir)
         let drops = DropFiles()
-        let at = Date(timeIntervalSince1970: 0)
-        let held = drops.hold(png: Data([1, 2, 3]), now: at)
-        XCTAssertEqual(held.name, DropFiles.pastedName(at: at))
-        XCTAssertTrue(held.name.hasPrefix("pasted-image-") && held.name.hasSuffix(".png"))
-        XCTAssertEqual(drops.take(held.token, now: at), Data([1, 2, 3]))
+        let held = drops.hold([toFile, toFolder])
+        XCTAssertEqual(held[0].name, "link.bin")
+        XCTAssertEqual(held[0].bytes, 3000)
+        XCTAssertEqual(drops.read(held[0].token, at: 0, size: 3000)?.count, 3000)
+        XCTAssertEqual(held[1], DroppedFile(token: "", name: "link-folder", bytes: 0, folder: true))
+    }
+
+    func testEveryFileOfADropOutlivesTheUploadOfThoseBeforeIt() {
+        let drops = DropFiles()
+        let now = Date()
+        let first = drops.hold(png: Data([1, 2, 3, 4]), now: now), second = drops.hold(png: Data([5]), now: now)
+        XCTAssertEqual(drops.read(first.token, at: 0, size: 2, now: now.addingTimeInterval(290)), Data([1, 2]))
+        XCTAssertEqual(drops.read(first.token, at: 2, size: 2, now: now.addingTimeInterval(580)), Data([3, 4]))
+        XCTAssertEqual(drops.read(second.token, at: 0, size: 2, now: now.addingTimeInterval(870)), Data([5]))
+        let late = drops.hold(png: Data([6]), now: now.addingTimeInterval(870))
+        XCTAssertNil(drops.read(late.token, at: 0, size: 2, now: now.addingTimeInterval(1170)))
+    }
+
+    func testAPastedImageIsAPngNamedForWhenItWasPasted() throws {
+        let drops = DropFiles()
+        let held = drops.hold(png: Data([1, 2, 3]))
+        XCTAssertNotNil(held.name.range(of: #"^pasted-image-\d{8}-\d{6}\.png$"#, options: .regularExpression))
+        XCTAssertEqual(drops.read(held.token, at: 0, size: 4), Data([1, 2, 3]))
     }
 
     func testOnlyAPasteboardWithAnImageAndNoTextPastesAnImage() throws {
@@ -65,5 +114,64 @@ final class DropFilesTests: XCTestCase {
         XCTAssertFalse(SurfaceView.pastesImage(key("v", [])))
         XCTAssertFalse(SurfaceView.pastesImage(key("c", .control)))
         XCTAssertFalse(SurfaceView.pastesImage(key("v", .control, repeating: true)))
+    }
+
+    func testThePageTypesWhereADropLandedAndIsToldOfWhatWasDropped() throws {
+        let json = #"{"type":"term.type","id":"c_1","paths":["/tmp/a b"]}"#
+        guard case .termType(let id, let paths) = try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) else {
+            return XCTFail("not a term.type")
+        }
+        XCTAssertEqual(id, "c_1")
+        XCTAssertEqual(paths, ["/tmp/a b"])
+        let told = FromShell.termDrop(id: "c_1", files: [DroppedFile(token: "t", name: "a.png", bytes: 3, folder: false)]).json
+        XCTAssertEqual(told["type"] as? String, "term.drop")
+        XCTAssertEqual(told["id"] as? String, "c_1")
+        let file = try XCTUnwrap((told["files"] as? [[String: Any]])?.first)
+        XCTAssertEqual(file["token"] as? String, "t")
+        XCTAssertEqual(file["name"] as? String, "a.png")
+        XCTAssertEqual(file["bytes"] as? Int, 3)
+        XCTAssertEqual(file["folder"] as? Bool, false)
+    }
+}
+
+private final class FakeSchemeTask: NSObject, WKURLSchemeTask {
+    let request: URLRequest
+    var status: Int?, body = Data(), finished = false, failed = false
+    init(_ url: String) { request = URLRequest(url: URL(string: url)!) }
+    func didReceive(_ response: URLResponse) { status = (response as? HTTPURLResponse)?.statusCode }
+    func didReceive(_ data: Data) { body.append(data) }
+    func didFinish() { finished = true }
+    func didFailWithError(_ error: Error) { failed = true }
+}
+
+final class WebAssetsDropTests: XCTestCase {
+    private func start(_ url: String) -> FakeSchemeTask {
+        let task = FakeSchemeTask(url)
+        WebAssets(root: FileManager.default.temporaryDirectory).webView(WKWebView(), start: task)
+        return task
+    }
+
+    func testTheDropRouteServesOnePartPerRequestAndFailsOnceItIsLetGo() {
+        let token = DropFiles.shared.hold(png: Data([1, 2, 3])).token
+        let first = start("svall://app/__drop/\(token)?at=0&size=2")
+        XCTAssertEqual(first.status, 200)
+        XCTAssertEqual(first.body, Data([1, 2]))
+        XCTAssertTrue(first.finished)
+        XCTAssertEqual(start("svall://app/__drop/\(token)?at=2&size=2").body, Data([3]))
+        XCTAssertTrue(start("svall://app/__drop/\(token)?at=0&size=2").failed)
+    }
+
+    func testTheDropRouteFailsWithoutARange() {
+        let token = DropFiles.shared.hold(png: Data([1])).token
+        XCTAssertTrue(start("svall://app/__drop/\(token)").failed)
+        XCTAssertTrue(start("svall://app/__drop/\(token)?at=-1&size=2").failed)
+        XCTAssertTrue(start("svall://app/__drop/\(token)?at=0&size=0").failed)
+    }
+
+    func testAnEmptyPartFinishesWithNoBody() {
+        let task = start("svall://app/__drop/\(DropFiles.shared.hold(png: Data()).token)?at=0&size=2")
+        XCTAssertEqual(task.status, 200)
+        XCTAssertEqual(task.body, Data())
+        XCTAssertTrue(task.finished)
     }
 }

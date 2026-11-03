@@ -443,7 +443,7 @@ export const methods = {
   },
   // `upload`: the client's id for one drop's parts, sent in order; robot.drop lands them on the robot's machine and says where
   'drop.part': {
-    params: z.object({ upload: Upload, index: z.number().int().min(0).max(DROP_MAX / DROP_PART - 1), data: z.base64().max(Math.ceil(DROP_PART / 3) * 4) }),
+    params: z.object({ upload: Upload, index: z.number().int().min(0), data: z.base64().max(Math.ceil(DROP_PART / 3) * 4) }),
     result: z.object({}),
   },
   'robot.drop': { params: Id.extend({ upload: Upload, name: z.string().min(1).max(4096) }), result: z.object({ path: z.string() }) },

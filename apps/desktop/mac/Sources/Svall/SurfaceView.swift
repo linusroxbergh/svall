@@ -132,18 +132,14 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
 
     // MARK: drops
 
-    private func fileURLs(_ sender: NSDraggingInfo) -> [URL] {
-        (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
-    }
-
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        onDropFiles == nil || fileURLs(sender).isEmpty ? [] : .copy
+        onDropFiles != nil && sender.draggingPasteboard.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) ? .copy : []
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = fileURLs(sender)
+        let urls = (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         guard let onDropFiles, !urls.isEmpty else { return false }
         onDropFiles(urls)
         return true

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { DROP_PART, MachineId, secondKey, type FleetState } from '@svall/protocol';
 import type { DropFile } from '../src/bridge.js';
-import { appendItems, dropOnTerminal, dropRefusal, inParts, parseDropTarget } from '../src/drop.js';
+import { appendItems, dropOnTerminal, dropRefusal, parseDropTarget } from '../src/drop.js';
 import { fleet } from './fixtures.js';
 
 describe('drop targets', () => {
@@ -55,6 +55,7 @@ describe('a drop into a terminal on another machine', () => {
     expect(dropRefusal(moving, 'c0', [file('a.png', 1)])).toBe('moving to linus-vault');
     expect(dropRefusal(placed(), 'c0', [file('a.png', 1), file('src', 0, true)])).toBe('src is a folder; drop the files in it');
     expect(dropRefusal(placed(), 'c0', [file('big.mov', 120 * 2 ** 20)])).toBe('big.mov is 120 MB, over the 100 MB a drop carries');
+    expect(dropRefusal(placed(), 'c0', [file('just.mov', 100 * 2 ** 20 + 1)])).toBe('just.mov is 101 MB, over the 100 MB a drop carries');
     expect(dropRefusal(placed(), 'c0', [file('a.png', 100 * 2 ** 20)])).toBeUndefined();
   });
 
@@ -63,13 +64,15 @@ describe('a drop into a terminal on another machine', () => {
     const type = vi.fn();
     const onError = vi.fn();
     const sizes: Record<string, number> = { 'shot.png': DROP_PART + 5, 'b c.txt': 3 };
+    const reads: [string, number][] = [];
     await dropOnTerminal({
       api: { call } as never, fleet: placed(), key: secondKey('c0'), files: [file('shot.png', sizes['shot.png']), file('b c.txt', 3)],
-      read: async (f) => new Response(new Uint8Array(sizes[f.name]).fill(7)).body!, type, onError,
+      read: async (f, at) => { reads.push([f.name, at]); return new Uint8Array(Math.max(0, Math.min(DROP_PART, sizes[f.name] - at))).fill(7); }, type, onError,
     });
     expect(onError).not.toHaveBeenCalled();
     const parts = call.mock.calls.filter(([m]) => m === 'drop.part').map(([, p]) => p as unknown as { upload: string; index: number; data: string });
     expect(parts.map((p) => [p.index, atob(p.data).length])).toEqual([[0, DROP_PART], [1, 5], [0, 3]]);
+    expect(reads).toEqual([['shot.png', 0], ['shot.png', DROP_PART], ['b c.txt', 0]]);
     expect(parts[0].upload).toMatch(/^[0-9a-f]{32}$/);
     expect(parts[0].upload).toBe(parts[1].upload);
     expect(parts[2].upload).not.toBe(parts[0].upload);
@@ -87,24 +90,24 @@ describe('a drop into a terminal on another machine', () => {
     expect(call).not.toHaveBeenCalled();
     expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
     call.mockImplementation(async (method: string) => { if (method === 'robot.drop') throw new Error('linus-vault is not reachable'); return {}; });
-    await dropOnTerminal({ api: { call } as never, fleet: placed(), key: 'c0', files: [file('a.png', 1)], read: async () => new Response('x').body!, type, onError });
+    await dropOnTerminal({ api: { call } as never, fleet: placed(), key: 'c0', files: [file('a.png', 1)], read: async () => new Uint8Array(1), type, onError });
     expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
     expect(type).not.toHaveBeenCalled();
   });
 });
 
-describe('a dropped file read in parts', () => {
-  const stream = (...chunks: number[]) => new ReadableStream<Uint8Array>({
-    start(c) { chunks.forEach((n, i) => c.enqueue(new Uint8Array(n).fill(i + 1))); c.close(); },
-  });
-  const sizes = async (s: ReadableStream<Uint8Array>) => { const out: number[] = []; for await (const p of inParts(s, 4)) out.push(p.length); return out; };
+describe('a dropped file read part by part', () => {
+  const sent = async (bytes: number) => {
+    const call = vi.fn(async (method: string, _params: unknown) => (method === 'robot.drop' ? { path: '/p' } : {}));
+    await dropOnTerminal({
+      api: { call } as never, fleet: placed(), key: 'c0', files: [file('a', bytes)], type: vi.fn(), onError: vi.fn(),
+      read: async (_f, at) => new Uint8Array(Math.max(0, Math.min(DROP_PART, bytes - at))),
+    });
+    return call.mock.calls.filter(([m]) => m === 'drop.part').map(([, p]) => atob((p as { data: string }).data).length);
+  };
 
-  it('comes in parts of exactly the size but the last, however the stream arrives, and as one empty part when empty', async () => {
-    expect(await sizes(stream(3, 6, 1))).toEqual([4, 4, 2]);
-    expect(await sizes(stream(8))).toEqual([4, 4]);
-    expect(await sizes(stream())).toEqual([0]);
-    const bytes: number[] = [];
-    for await (const p of inParts(stream(3, 2), 4)) bytes.push(...p);
-    expect(bytes).toEqual([1, 1, 1, 2, 2]);
+  it('sends one part for an empty file, and no empty part after an exact number of them', async () => {
+    expect(await sent(0)).toEqual([0]);
+    expect(await sent(2 * DROP_PART)).toEqual([DROP_PART, DROP_PART]);
   });
 });

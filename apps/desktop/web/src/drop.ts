@@ -1,6 +1,7 @@
 import { DROP_MAX, DROP_PART, robotOfKey, type ContextItem, type FleetState } from '@svall/protocol';
 import type { Api } from './api.js';
 import { DROP_URL, type Bridge, type DropFile } from './bridge.js';
+import { encode } from './mobile/term.js';
 import { awayLine, destinationName } from './placement.js';
 import type { AppStore } from './store/index.js';
 
@@ -35,35 +36,7 @@ export function dropRefusal(fleet: FleetState, id: string, files: DropFile[]): s
   const folder = files.find((f) => f.folder);
   if (folder) return `${folder.name} is a folder; drop the files in it`;
   const big = files.find((f) => f.bytes > DROP_MAX);
-  if (big) return `${big.name} is ${Math.round(big.bytes / MB)} MB, over the ${DROP_MAX / MB} MB a drop carries`;
-}
-
-const base64 = (bytes: Uint8Array): string => {
-  let s = '';
-  for (let at = 0; at < bytes.length; at += 0x8000) s += String.fromCharCode(...bytes.subarray(at, at + 0x8000));
-  return btoa(s);
-};
-
-/** The bytes of `stream` in parts of `size` but the last, as they arrive; nothing at all is one empty part. */
-export async function* inParts(stream: ReadableStream<Uint8Array>, size = DROP_PART): AsyncGenerator<Uint8Array> {
-  const reader = stream.getReader();
-  let held = new Uint8Array(size);
-  let at = 0;
-  let parts = 0;
-  for (let r = await reader.read(); !r.done; r = await reader.read()) {
-    for (let from = 0; from < r.value.length;) {
-      const n = Math.min(size - at, r.value.length - from);
-      held.set(r.value.subarray(from, from + n), at);
-      at += n;
-      from += n;
-      if (at < size) continue;
-      yield held;
-      parts++;
-      held = new Uint8Array(size);
-      at = 0;
-    }
-  }
-  if (at > 0 || parts === 0) yield held.subarray(0, at);
+  if (big) return `${big.name} is ${Math.ceil(big.bytes / MB)} MB, over the ${DROP_MAX / MB} MB a drop carries`;
 }
 
 const uploadId = (): string => [...crypto.getRandomValues(new Uint8Array(16))].map((b) => b.toString(16).padStart(2, '0')).join('');
@@ -73,7 +46,7 @@ const uploadId = (): string => [...crypto.getRandomValues(new Uint8Array(16))].m
  * refusal says why and types nothing.
  */
 export async function dropOnTerminal(o: {
-  api: Pick<Api, 'call'>; fleet: FleetState; key: string; files: DropFile[]; read(f: DropFile): Promise<ReadableStream<Uint8Array>>; type(paths: string[]): void; onError(message: string): void;
+  api: Pick<Api, 'call'>; fleet: FleetState; key: string; files: DropFile[]; read(f: DropFile, at: number): Promise<Uint8Array>; type(paths: string[]): void; onError(message: string): void;
 }): Promise<void> {
   const id = robotOfKey(o.key);
   const refused = dropRefusal(o.fleet, id, o.files);
@@ -82,8 +55,12 @@ export async function dropOnTerminal(o: {
   try {
     for (const f of o.files) {
       const upload = uploadId();
-      let index = 0;
-      for await (const part of inParts(await o.read(f))) await o.api.call('drop.part', { upload, index: index++, data: base64(part) });
+      // a part held at a time, the next asked of the shell once the daemon has this one; a short one is the last
+      for (let index = 0; ; index++) {
+        const part = await o.read(f, index * DROP_PART);
+        if (part.length > 0 || index === 0) await o.api.call('drop.part', { upload, index, data: encode(part) });
+        if (part.length < DROP_PART) break;
+      }
       paths.push((await o.api.call('robot.drop', { id, upload, name: f.name })).path);
     }
   } catch (e) {
@@ -92,10 +69,10 @@ export async function dropOnTerminal(o: {
   o.type(paths);
 }
 
-const readDrop = async (f: DropFile): Promise<ReadableStream<Uint8Array>> => {
-  const res = await fetch(DROP_URL + f.token).catch(() => undefined);
-  if (!res?.ok || !res.body) throw new Error(`${f.name} could not be read`);
-  return res.body;
+const readPart = async (f: DropFile, at: number): Promise<Uint8Array> => {
+  const res = await fetch(`${DROP_URL}${f.token}?at=${at}&size=${DROP_PART}`).catch(() => undefined);
+  if (!res?.ok) throw new Error(`${f.name} could not be read`);
+  return new Uint8Array(await res.arrayBuffer());
 };
 
 export function installDropHandlers(o: { bridge: Bridge; store: AppStore; api(): Api | undefined; doc?: Document }): void {
@@ -112,7 +89,7 @@ export function installDropHandlers(o: { bridge: Bridge; store: AppStore; api():
       const api = o.api();
       if (!api) return;
       void dropOnTerminal({
-        api, fleet: o.store.getState().fleet, key: m.id, files: m.files, read: readDrop,
+        api, fleet: o.store.getState().fleet, key: m.id, files: m.files, read: readPart,
         type: (paths) => o.bridge.send({ type: 'term.type', id: m.id, paths }), onError: (msg) => o.store.getState().showToast(msg),
       });
     }

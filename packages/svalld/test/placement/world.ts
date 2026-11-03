@@ -155,7 +155,7 @@ export function world(o: {
   const homeTerminals = new TerminalHub(homeFleet, untouchable, homeStore, homeLog, { router: homeRouter, links });
   // each side's /tmp, where a drop lands
   const tmp = { home: makeHome(), worker: makeHome() };
-  const homeDrops = new Drops({ dir: path.join(homePaths.cache, 'drops'), store: homeStore, router: homeRouter, links, folder: { tmp: tmp.home } });
+  const homeDrops = new Drops({ dir: path.join(homePaths.cache, 'drops'), store: homeStore, router: homeRouter, links, machine: () => 'mac', folder: { tmp: tmp.home } });
   const homeCtx = ctxOf(homeStore, homeFleet, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
     mirror: homeMirror, drops: homeDrops, fleetFlag: '',
@@ -172,8 +172,10 @@ export function world(o: {
       if (live) return;
       for (const v of farViewers.dropAll()) { workerWorkspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
+      workerDropCalls.linkLost();
     },
   });
+  const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
@@ -205,11 +207,11 @@ export function world(o: {
     handlers, o.far ?? {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
-      ...dropCalls({ connection, folder: { tmp: tmp.worker } }),
+      ...workerDropCalls.calls,
     }, workerDocs?.handlers,
     workerMirror?.calls,
   );
-  const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, folder: { tmp: tmp.worker } });
+  const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, drops: workerDrops });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());

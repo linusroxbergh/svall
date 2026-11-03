@@ -2,18 +2,21 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { ApiError, DROP_MAX, type MachineId } from '@svall/protocol';
+import { ApiError, DROP_MAX } from '@svall/protocol';
 import type { HomeLinks } from './link/home.js';
 import type { HomeConnection } from './link/worker.js';
-import type { Router } from './placement/router.js';
+import { parse, type Router } from './placement/router.js';
 import type { Store } from './store.js';
 
 // a drop folder older than this goes when the next drop lands on its machine
 const DROP_KEEP_MS = 7 * 86_400_000;
 // an upload no part has reached for this long is let go
 const UPLOAD_IDLE_MS = 60_000;
+// a drop.land waits for what is still in the ssh pipe to arrive
+const LAND_MS = 2 * 60_000;
+// an offer the home neither lands nor forgets goes after this, past the longest a client waits for robot.drop
+const OFFER_MS = 15 * 60_000;
 const NAME_BYTES = 255;
-
 
 /** The name a drop lands under: its last path component, without control or format characters, at most 255 bytes with its extension kept. */
 export function dropName(raw: string): string {
@@ -48,16 +51,33 @@ export function dropFolder(o: { tmp?: string; uid?: number; now?: number } = {})
   return fs.mkdtempSync(`${root}/`);
 }
 
+// where a drop lands, on the machine `machine` names
+type Landing = { machine: () => string; folder?: Parameters<typeof dropFolder>[0] };
+
+// a new folder and the file's path in it; a write that fills a worker's disk would close its link, so one that would is refused here
+function landing(name: string, bytes: number, o: Landing): { dir: string; file: string } {
+  const dir = dropFolder(o.folder);
+  const { bavail, bsize } = fs.statfsSync(dir);
+  const safe = dropName(name);
+  if (bavail * bsize >= bytes) return { dir, file: path.join(dir, safe) };
+  fs.rmSync(dir, { recursive: true, force: true });
+  throw new ApiError('too_large', `${o.machine()} has no room in /tmp for ${safe}`);
+}
+
 /** Copies `file` into a drop folder here as `name` made safe, for its owner alone, and answers where it landed. */
-export function landHere(file: string, name: string, at: Parameters<typeof dropFolder>[0] = {}): string {
-  const dest = path.join(dropFolder(at), dropName(name));
-  fs.copyFileSync(file, dest, fs.constants.COPYFILE_EXCL);
-  fs.chmodSync(dest, 0o600);
+export async function landHere(file: string, name: string, o: Landing): Promise<string> {
+  const { dir, file: dest } = landing(name, fs.statSync(file).size, o);
+  try {
+    await fs.promises.copyFile(file, dest, fs.constants.COPYFILE_EXCL);
+    await fs.promises.chmod(dest, 0o600);
+  } catch (e) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    throw e;
+  }
   return dest;
 }
 
 type Upload = { file: string; fd: number; next: number; bytes: number; hash: crypto.Hash; idle: NodeJS.Timeout; unlisten(): void };
-type Staged = { file: string; sha256: string };
 
 /**
  * The drops the API takes in parts, each staged in `dir` until robot.drop lands it on the robot's machine. One whose socket
@@ -67,8 +87,8 @@ export class Drops {
   private uploads = new Map<string, Upload>();
 
   constructor(private o: {
-    dir: string; store: Store; router: Pick<Router, 'runsHere' | 'placedAt'>; links?: Pick<HomeLinks, 'call' | 'for'>; folder?: Parameters<typeof dropFolder>[0];
-  }) {
+    dir: string; store: Store; router: Pick<Router, 'runsHere' | 'placedAt'>; links?: Pick<HomeLinks, 'for'>;
+  } & Landing) {
     fs.rmSync(o.dir, { recursive: true, force: true });
   }
 
@@ -103,86 +123,95 @@ export class Drops {
 
   /** Lands upload `upload` as `name` on the machine robot `id` runs on, and answers its path there. */
   async land(id: string, upload: string, name: string, signal?: AbortSignal): Promise<{ path: string }> {
-    const staged = this.take(upload);
+    const staged = this.release(upload);
+    if (!staged) throw new ApiError('not_found', `no drop ${upload} is under way`);
     try {
       const { robots, machines } = this.o.store.state;
       if (!Object.hasOwn(robots, id)) throw new ApiError('not_found', `no robot ${id}`);
       const m = robots[id].moving;
       if (m) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? 'this Mac'}`);
-      if (this.o.router.runsHere(robots[id])) return { path: landHere(staged.file, name, this.o.folder) };
-      const at = this.o.router.placedAt(id) as MachineId;
+      if (this.o.router.runsHere(robots[id])) return { path: await landHere(staged.file, name, this.o) };
+      const at = this.o.router.placedAt(id);
       // a worker reaches no machine but its home, and keeps a drop to its own robots
-      if (!this.o.links) throw new ApiError('not_reachable', `${machines?.[at]?.name ?? at} is not reachable`);
+      const link = at && this.o.links?.for(at);
+      if (!link) throw new ApiError('not_reachable', `${at ? machines?.[at]?.name ?? at : id} is not reachable`);
       const blob = `drop_${crypto.randomUUID()}`;
-      await this.o.links.call(at, 'drop.blob', { id: blob, sha256: staged.sha256, name }, { signal });
-      await this.o.links.for(at)!.sendBlob(blob, staged.file);
-      return z.object({ path: z.string() }).parse(await this.o.links.call(at, 'drop.land', { id: blob }, { signal }));
+      await link.call('drop.blob', { id: blob, sha256: staged.hash.digest('hex'), bytes: staged.bytes, name }, { signal });
+      await link.sendBlob(blob, staged.file);
+      // no page is left to type the path of a drop whose socket closed on the way, so what came is removed
+      if (signal?.aborted) {
+        await link.call('drop.forget', { id: blob });
+        throw new ApiError('aborted', 'the page that sent this drop is gone');
+      }
+      return Landed.parse(await link.call('drop.land', { id: blob }, { timeoutMs: LAND_MS }));
     } finally {
       fs.rmSync(staged.file, { force: true });
     }
   }
 
-  private take(upload: string): Staged {
+  private release(upload: string): Upload | undefined {
     const u = this.uploads.get(upload);
-    if (!u) throw new ApiError('not_found', `no drop ${upload} is under way`);
+    if (!u) return undefined;
     this.uploads.delete(upload);
     clearTimeout(u.idle);
     u.unlisten();
     fs.closeSync(u.fd);
-    return { file: u.file, sha256: u.hash.digest('hex') };
+    return u;
   }
 
   private drop(upload: string): void {
-    const u = this.uploads.get(upload);
-    if (!u) return;
-    this.uploads.delete(upload);
-    clearTimeout(u.idle);
-    u.unlisten();
-    fs.closeSync(u.fd);
-    fs.rmSync(u.file, { force: true });
+    const u = this.release(upload);
+    if (u) fs.rmSync(u.file, { force: true });
   }
 }
 
-const Offer = z.object({ id: z.string(), sha256: z.string(), name: z.string() });
-const Land = z.object({ id: z.string() });
+const Offer = z.object({ id: z.string(), sha256: z.string(), bytes: z.number().int().nonnegative(), name: z.string() });
+const OfferId = z.object({ id: z.string() });
+const Landed = z.object({ path: z.string() });
 
-/** A worker's side: a drop the home sends lands in a drop folder here, kept only once it arrives as it left. */
-export function dropCalls(o: { connection: Pick<HomeConnection, 'receiveBlob'>; folder?: Parameters<typeof dropFolder>[0] }): Record<string, (raw: unknown) => Promise<unknown>> {
-  const blobs = new Map<string, { dir: string; file: string; sha256: string; got: Promise<{ sha256: string }> }>();
-  const parse = <S extends z.ZodType>(schema: S, raw: unknown): z.infer<S> => {
-    const p = schema.safeParse(raw);
-    if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
-    return p.data;
-  };
+/**
+ * A worker's side: a drop the home sends lands in a drop folder here, kept only once it arrives as it left and the home
+ * says to. One the home forgets, or that it leaves for 15 minutes or across a lost link, is removed.
+ */
+export function dropCalls(o: { connection: Pick<HomeConnection, 'receiveBlob'> } & Landing): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
+  const blobs = new Map<string, { dir: string; file: string; sha256: string; got: Promise<{ sha256: string }>; expiry: NodeJS.Timeout }>();
   const forget = (id: string): void => {
     const b = blobs.get(id);
+    if (!b) return;
     blobs.delete(id);
-    if (b) fs.rmSync(b.dir, { recursive: true, force: true });
+    clearTimeout(b.expiry);
+    fs.rmSync(b.dir, { recursive: true, force: true });
   };
   return {
-    'drop.blob': async (raw) => {
-      const { id, sha256, name } = parse(Offer, raw);
-      const dir = dropFolder(o.folder);
-      const file = path.join(dir, dropName(name));
-      fs.closeSync(fs.openSync(file, 'wx', 0o600));
-      const got = o.connection.receiveBlob(id, file);
-      // a link that closes before the landing leaves nothing behind
-      got.catch(() => forget(id));
-      blobs.set(id, { dir, file, sha256, got });
-      return { ready: true };
-    },
-    'drop.land': async (raw) => {
-      const { id } = parse(Land, raw);
-      const b = blobs.get(id);
-      if (!b) throw new ApiError('not_found', `no drop ${id} came here`);
-      blobs.delete(id);
-      try {
-        if ((await b.got).sha256 !== b.sha256) throw new ApiError('invalid', `${path.basename(b.file)} did not arrive as it left`);
-      } catch (e) {
-        fs.rmSync(b.dir, { recursive: true, force: true });
-        throw e;
-      }
-      return { path: b.file };
+    linkLost: () => { for (const id of [...blobs.keys()]) forget(id); },
+    calls: {
+      'drop.blob': async (raw) => {
+        const { id, sha256, bytes, name } = parse(Offer, raw);
+        const { dir, file } = landing(name, bytes, o);
+        fs.closeSync(fs.openSync(file, 'wx', 0o600));
+        const got = o.connection.receiveBlob(id, file);
+        got.catch(() => forget(id));
+        blobs.set(id, { dir, file, sha256, got, expiry: setTimeout(() => forget(id), OFFER_MS).unref() });
+        return { ready: true };
+      },
+      'drop.forget': async (raw) => {
+        forget(parse(OfferId, raw).id);
+        return {};
+      },
+      'drop.land': async (raw) => {
+        const { id } = parse(OfferId, raw);
+        const b = blobs.get(id);
+        if (!b) throw new ApiError('not_found', `no drop ${id} came here`);
+        blobs.delete(id);
+        clearTimeout(b.expiry);
+        try {
+          if ((await b.got).sha256 !== b.sha256) throw new ApiError('invalid', `${path.basename(b.file)} did not arrive as it left`);
+        } catch (e) {
+          fs.rmSync(b.dir, { recursive: true, force: true });
+          throw e;
+        }
+        return { path: b.file };
+      },
     },
   };
 }

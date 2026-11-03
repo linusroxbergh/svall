@@ -260,8 +260,12 @@ async function start(opts: Options): Promise<Daemon> {
       if (live) return;
       for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
+      workerDrops?.linkLost();
     },
   });
+  // what a drop's refusal calls this machine: the home's registry names a worker
+  const machineName = () => store.state.machines?.[me]?.name ?? os.hostname().split('.')[0];
+  const workerDrops = connection && dropCalls({ connection, machine: machineName });
   const farViewers = connection && new FarViewers({ connection });
   const workerMirror = connection && mirrorCalls({
     claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
@@ -289,11 +293,11 @@ async function start(opts: Options): Promise<Daemon> {
   const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
   // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (connection && worker && workerDocs && farViewers && workerMirror) {
+  if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, dropCalls({ connection }));
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
   }
   const placement = links && new Placement({
     store, fleet, links, me, paths, git: hooklessGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
@@ -381,7 +385,7 @@ async function start(opts: Options): Promise<Daemon> {
       // diagnostics read the last minute's agent probe; a worker gives none
       ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
-      mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
+      mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

@@ -1,15 +1,20 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DROP_MAX, DROP_PART, type Response } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
-import { dropCalls, dropFolder, dropName, landHere } from '../src/drops.js';
+import { Drops, dropCalls, dropFolder, dropName, landHere } from '../src/drops.js';
 import { sha256Hex } from '../src/hash.js';
+import { resolvePaths } from '../src/paths.js';
+import { Store } from '../src/store.js';
 import { makeHome } from './helpers.js';
-import { H, W, placed, robot, stopWorlds, world } from './placement/world.js';
+import { H, W, island, placed, robot, stopWorlds, world } from './placement/world.js';
 
-afterEach(stopWorlds);
+afterEach(async () => {
+  vi.useRealTimers();
+  await stopWorlds();
+});
 
 const uid = process.getuid!();
 const mode = (f: string): number => fs.statSync(f).mode & 0o777;
@@ -47,12 +52,12 @@ describe('a drop name', () => {
 });
 
 describe('the drop folder', () => {
-  it('is this user\'s own at 0700, a new one per drop, and a drop in it is theirs alone and never overwritten', () => {
+  it('is this user\'s own at 0700, a new one per drop, and a drop in it is theirs alone and never overwritten', async () => {
     const tmp = makeHome();
     const src = path.join(tmp, 'src');
     fs.writeFileSync(src, 'one');
-    const a = landHere(src, 'shot.png', { tmp });
-    const b = landHere(src, 'shot.png', { tmp });
+    const a = await landHere(src, 'shot.png', { machine: () => 'w1', folder: { tmp } });
+    const b = await landHere(src, 'shot.png', { machine: () => 'w1', folder: { tmp } });
     const root = path.join(tmp, `svall-drop-${uid}`);
     expect(a).not.toBe(b);
     for (const f of [a, b]) {
@@ -126,7 +131,7 @@ describe('a drop through the API', () => {
   });
 
   it('refuses a robot on a worker the home cannot reach, in the app\'s words, and keeps nothing staged', async () => {
-    const w = world({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
+    const w = world({ home: { machines: { [W]: { name: 'w1', reachable: false, since: 1 } }, robots: { c_1: placed({ id: 'c_1' }) } } });
     const r = await drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x'));
     expect(r).toMatchObject({ error: { code: 'not_reachable', message: 'w1 is not reachable' } });
     expect(fs.readdirSync(path.join(w.home.paths.cache, 'drops'))).toEqual([]);
@@ -143,7 +148,33 @@ describe('a drop through the API', () => {
     w.home.store.update((d) => { d.robots.c_1.moving = { id: 'mv_0123456789', to: W, phase: 'prepare' } as never; });
     expect(await drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x'))).toMatchObject({ error: { code: 'moving', message: 'moving to w1' } });
     const phone = { ...w.home.ctx, viewer: { ...w.home.ctx.viewer, kind: 'phone' as const } };
-    expect(await drop(phone, 'c_1', 'a.png', Buffer.from('x'))).toMatchObject({ error: { code: 'forbidden' } });
+    const upload = crypto.randomBytes(16).toString('hex');
+    expect(await dispatch({ id: 1, method: 'drop.part', params: { upload, index: 0, data: '' } }, phone)).toMatchObject({ error: { code: 'forbidden' } });
+    expect(await dispatch({ id: 1, method: 'robot.drop', params: { id: 'c_1', upload, name: 'a.png' } }, phone)).toMatchObject({ error: { code: 'forbidden' } });
+  });
+
+  it('refuses in words a drop past the disk\'s room here, and leaves no folder', async () => {
+    const w = world({ home: { robots: { c_1: robot({ id: 'c_1' }) } } });
+    const room = vi.spyOn(fs, 'statfsSync').mockReturnValue({ bavail: 0, bsize: 4096 } as fs.StatsFs);
+    const r = await drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x'));
+    room.mockRestore();
+    expect(r).toMatchObject({ error: { code: 'too_large', message: 'mac has no room in /tmp for a.png' } });
+    expect(fs.readdirSync(path.join(w.tmp.home, `svall-drop-${uid}`))).toEqual([]);
+  });
+
+  it('lets go of a drop no part has reached for a minute', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const w = world({ home: { robots: { c_1: robot({ id: 'c_1' }) } } });
+    const drops = w.home.ctx.drops!;
+    const upload = crypto.randomBytes(16).toString('hex');
+    drops.part(upload, 0, Buffer.from('x'));
+    vi.advanceTimersByTime(59_000);
+    drops.part(upload, 1, Buffer.from('y'));
+    vi.advanceTimersByTime(59_000);
+    expect(fs.readdirSync(path.join(w.home.paths.cache, 'drops'))).toEqual([upload]);
+    vi.advanceTimersByTime(1_000);
+    expect(fs.readdirSync(path.join(w.home.paths.cache, 'drops'))).toEqual([]);
+    await expect(drops.land('c_1', upload, 'x')).rejects.toThrow(`no drop ${upload} is under way`);
   });
 
   it('refuses a part out of order, a part of a drop never begun, and what no part says is base64', async () => {
@@ -181,22 +212,81 @@ describe('a drop through the API', () => {
 describe('a drop the home sends a worker', () => {
   const blob = (receive: (into: string) => Promise<{ sha256: string }>) => {
     const tmp = makeHome();
-    return { tmp, calls: dropCalls({ connection: { receiveBlob: (_id, into) => receive(into) }, folder: { tmp } }) };
+    return { tmp, ...dropCalls({ connection: { receiveBlob: (_id, into) => receive(into) }, machine: () => 'w1', folder: { tmp } }) };
   };
+  const folders = (tmp: string) => fs.readdirSync(path.join(tmp, `svall-drop-${uid}`));
+  const offer = { id: 'd1', sha256: sha256Hex('x'), bytes: 1, name: 'a.txt' };
 
   it('is refused and removed when it does not arrive as it left', async () => {
     const { tmp, calls } = blob(async (into) => { fs.writeFileSync(into, 'other'); return { sha256: sha256Hex('other') }; });
-    await calls['drop.blob']({ id: 'd1', sha256: sha256Hex('meant'), name: 'a.txt' });
+    await calls['drop.blob']({ ...offer, sha256: sha256Hex('meant') });
     await expect(calls['drop.land']({ id: 'd1' })).rejects.toThrow('a.txt did not arrive as it left');
-    expect(fs.readdirSync(path.join(tmp, `svall-drop-${uid}`))).toEqual([]);
+    expect(folders(tmp)).toEqual([]);
   });
 
-  it('leaves nothing behind when the link closes before it lands', async () => {
+  it('leaves nothing behind when the link closes before it has all come', async () => {
     let fail!: (e: Error) => void;
     const { tmp, calls } = blob(() => new Promise((_resolve, reject) => { fail = reject; }));
-    await calls['drop.blob']({ id: 'd1', sha256: sha256Hex('x'), name: 'a.txt' });
+    await calls['drop.blob'](offer);
+    expect(folders(tmp)).toHaveLength(1);
     fail(new Error('the link is closed'));
-    await expect(calls['drop.land']({ id: 'd1' })).rejects.toThrow();
-    expect(fs.readdirSync(path.join(tmp, `svall-drop-${uid}`))).toEqual([]);
+    await vi.waitFor(() => expect(folders(tmp)).toEqual([]));
+    await expect(calls['drop.land']({ id: 'd1' })).rejects.toThrow('no drop d1 came here');
+  });
+
+  it('leaves nothing behind when the link is lost after it has all come', async () => {
+    const { tmp, calls, linkLost } = blob(async () => ({ sha256: sha256Hex('x') }));
+    await calls['drop.blob'](offer);
+    linkLost();
+    expect(folders(tmp)).toEqual([]);
+    await expect(calls['drop.land']({ id: 'd1' })).rejects.toThrow('no drop d1 came here');
+  });
+
+  it('leaves nothing behind when the home never says what becomes of it, and a landing stops that clock', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { tmp, calls } = blob(async () => ({ sha256: sha256Hex('x') }));
+    await calls['drop.blob'](offer);
+    await calls['drop.blob']({ ...offer, id: 'd2' });
+    const { path: kept } = await calls['drop.land']({ id: 'd2' }) as { path: string };
+    vi.advanceTimersByTime(15 * 60_000);
+    expect(folders(tmp)).toEqual([path.basename(path.dirname(kept))]);
+  });
+
+  it('refuses in words what would not fit, which would otherwise close the link as the write failed', async () => {
+    const { tmp, calls } = blob(async () => ({ sha256: sha256Hex('x') }));
+    await expect(calls['drop.blob']({ ...offer, bytes: Number.MAX_SAFE_INTEGER })).rejects.toThrow('w1 has no room in /tmp for a.txt');
+    expect(folders(tmp)).toEqual([]);
+  });
+
+  // a home whose link is this worker's calls, with `sent` standing in for the blob crossing it
+  function linked(sent: () => void) {
+    const tmp = makeHome();
+    const { calls } = dropCalls({ connection: { receiveBlob: async () => ({ sha256: sha256Hex('x') }) }, machine: () => 'w1', folder: { tmp } });
+    const link = {
+      call: (method: string, params: unknown) => calls[method](params),
+      sendBlob: async () => sent(),
+    };
+    const home = makeHome();
+    const store = Store.load(resolvePaths(home).state, () => {});
+    store.update((d) => { d.islands.i_1 = island; d.robots.c_1 = placed({ id: 'c_1' }); });
+    const drops = new Drops({
+      dir: path.join(home, 'drops'), store, router: { runsHere: () => false, placedAt: () => W }, links: { for: () => link as never }, machine: () => 'mac',
+    });
+    const upload = crypto.randomBytes(16).toString('hex');
+    drops.part(upload, 0, Buffer.from('x'));
+    return { tmp, drops, upload };
+  }
+
+  it('is removed when the page that sent it leaves while it crosses, as no one is left to type its path', async () => {
+    const ac = new AbortController();
+    const { tmp, drops, upload } = linked(() => ac.abort());
+    await expect(drops.land('c_1', upload, 'a.txt', ac.signal)).rejects.toThrow('the page that sent this drop is gone');
+    expect(folders(tmp)).toEqual([]);
+  });
+
+  it('lands once it has crossed, for the page still there', async () => {
+    const { tmp, drops, upload } = linked(() => {});
+    const { path: at } = await drops.land('c_1', upload, 'a.txt', new AbortController().signal);
+    expect(folders(tmp)).toEqual([path.basename(path.dirname(at))]);
   });
 });
