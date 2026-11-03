@@ -12,31 +12,36 @@ Change nothing except your own note.
    something, run `svall robot read <name>`, and
    `svall robot read <name> --transcript --lines 30` when the screen is not
    enough.
-3. Print a one-line count, then these sections in this order, a blank line
-   between them, skipping empty ones. Write each robot's name as a link to its
-   id, which selects it on click:
+3. Print a one-line count, then a block for each island where a robot waits
+   on the user, the island with most waiting first. List only robots that wait
+   on the user, each on its own, never merged with another: Status, one
+   sentence on what it was doing and where that stands; Action, one sentence on
+   what the user should do, with the options. Write each island and robot name
+   as a link to its id, which selects it on click (`svall status` lists island
+   ids):
 
        12 robots: 1 needs you, 2 to review, 2 working, 7 quiet
 
-       Needs you
-       - [bob](svall://robot/c_abc123) — asks whether to drop the failing auth test (SV-41)
+       **[svall](svall://island/i_abc123)**
 
-       Ready to review
-       - [review-472](svall://robot/c_def456) — reviewed PR #472, 2 blocking comments
-       - [deploy](svall://robot/c_ghi789) — shipped 0.8.1 to svall.dev
+       [bob](svall://robot/c_abc123) · needs you
+       - Status: Stopped fixing SV-41 because the auth test fails on main too, not only on its branch.
+       - Action: Tell it to drop the test, skip it for now, or fix main first.
 
-       Working
-       - [api-tests](svall://robot/c_jkl012), [docs](svall://robot/c_mno345)
+       [review-472](svall://robot/c_def456) · to review
+       - Status: Reviewed PR #472 and drafted 2 blocking comments on token refresh, not posted yet.
+       - Action: Read them, then have it post or soften them.
 
-       Quiet
-       - 6 dormant, 1 idle
+       **[website](svall://island/i_def456)**
 
-   Needs you: blocked, or asking a question. Ready to review: done or unread,
-   PRs waiting on the user, failures only the user can fix. Each of these gets
-   a very short line on what it asks or did. Working: one line each only when
-   notable, else one comma list. Quiet: one count line.
+       [deploy](svall://robot/c_ghi789) · to review
+       - Status: Shipped 0.8.1 to svall.dev and the smoke check passed.
+       - Action: Glance at the site, then close it.
+
+   Needs you: blocked, or asking a question. To review: done or unread, PRs
+   waiting on the user, failures only the user can fix.
 4. Save the same report as your own note, so it shows on your card. The card
-   shows the note as plain text, so write the names there without links. Your
+   shows the note as plain text, so write it there without links or bold. Your
    id is the `c_…` in the `svall robot show` line that ends your Svall context.
    Write the id out: a command holding `$SVALL_ROBOT_ID` waits for the user's
    approval. The quoted heredoc keeps quotes and backticks copied from other
@@ -45,12 +50,13 @@ Change nothing except your own note.
        svall robot update c_abc123 --note-file /dev/stdin <<'EOF'
        3 robots: 1 needs you, 1 to review, 1 quiet
 
-       Needs you
-       - bob — asks whether to drop the failing auth test (SV-41)
+       svall
 
-       Ready to review
-       - review-472 — reviewed PR #472, 2 blocking comments
+       bob · needs you
+       - Status: Stopped fixing SV-41 because the auth test fails on main too, not only on its branch.
+       - Action: Tell it to drop the test, skip it for now, or fix main first.
 
-       Quiet
-       - 1 dormant
+       review-472 · to review
+       - Status: Reviewed PR #472 and drafted 2 blocking comments on token refresh, not posted yet.
+       - Action: Read them, then have it post or soften them.
        EOF

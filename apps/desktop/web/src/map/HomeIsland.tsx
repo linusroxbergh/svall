@@ -15,7 +15,7 @@ const PAD_CELLS = theme.pad / theme.cell;
 
 // what the shipped skills do, said by the button that runs one; a button of the user's own says its prompt
 const SKILLS: Record<string, string[]> = {
-  '/svall-status': ["Reads every robot's screen", "Lists who needs you, what's ready to review and what's working", 'Saves that report as its note; changes nothing else'],
+  '/svall-status': ["Reads every robot's screen", "Lists, island by island, each robot that needs you: where it's at and what to do", 'Saves that report as its note; changes nothing else'],
   '/svall-update-info': ["The scribe reads every agent's transcript", 'Updates robot names, notes and links, and island descriptions', 'Keeps notes and descriptions you wrote', 'Takes a few minutes'],
   '/svall-rename': ["The scribe reads every agent's transcript", "Renames each robot for what it's doing", 'Takes a few minutes'],
   '/svall-organise': ["Updates every robot's name, note and links", 'Moves robots onto islands that fit their work, making new islands as needed', 'Describes every island', "Leaves mission control's robots where they are"],
