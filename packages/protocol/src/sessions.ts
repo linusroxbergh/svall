@@ -12,18 +12,22 @@ export const robotOfKey = (key: string): string => (key.endsWith(SECOND) ? key.s
 
 export const isPushStatus = (s: AgentStatus | undefined): s is PushStatus => (PUSH_STATUSES as readonly string[]).includes(s ?? '');
 
-// one agent session: a robot's main terminal, or its second one, keyed as above
-export type Session = { key: string; robotId: string; term?: 2; agent?: Agent; unread: boolean };
+// one agent session: a robot's main terminal, or its second one, keyed as above; held, its agent shows the question robot
+// messages waiting on the user ask
+export type Session = { key: string; robotId: string; term?: 2; agent?: Agent; unread: boolean; held?: true };
 
 export const sessionsOf = (f: FleetState): Map<string, Session> =>
   new Map(Object.values(f.robots).flatMap((c): [string, Session][] => [
-    [c.id, { key: c.id, robotId: c.id, agent: shownAgent(c), unread: c.unread }],
+    [c.id, { key: c.id, robotId: c.id, agent: shownAgent(c), unread: c.unread, ...(shownAgent(c) !== c.agent && { held: true as const }) }],
     ...(c.second ? [[secondKey(c.id), { key: secondKey(c.id), robotId: c.id, term: 2, agent: c.second.agent, unread: c.second.unread }] as [string, Session]] : []),
   ]));
 
 /** Whether a session has something new to tell: another status, a new question while it stays blocked, or a finish now unread. */
-export const isNews = (was: Session | undefined, now: Session): boolean =>
-  now.agent?.status !== was?.agent?.status || now.agent?.promptId !== was?.agent?.promptId || (now.agent?.status === 'done' && now.unread && !was?.unread);
+export const isNews = (was: Session | undefined, now: Session): boolean => {
+  // the held question going says nothing new of the agent behind it, unless that agent asks
+  if (was?.held && !now.held) return now.agent?.status === 'blocked';
+  return now.agent?.status !== was?.agent?.status || now.agent?.promptId !== was?.agent?.promptId || (now.agent?.status === 'done' && now.unread && !was?.unread);
+};
 
 // the fuller of the robot's contexts: the one nearer to trouble
 export const contextPctOf = (c: Robot): number | undefined => {

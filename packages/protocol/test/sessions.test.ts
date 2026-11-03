@@ -43,7 +43,17 @@ describe('sessions', () => {
   it('shows the user a question while robot messages wait on them', () => {
     const f = { ...emptyState(), robots: { a: robot('a', { agent: agent('idle'), relayed: { n: 200, held: 'h1' } }) } };
     expect(sessionsOf(f).get('a')?.agent).toEqual({ ...agent('idle'), status: 'blocked', prompt: '200 robot messages since your last prompt; let robots carry on?', promptId: 'h1' });
+    expect(sessionsOf(f).get('a')?.held).toBe(true);
     expect(shownAgent(robot('a', { agent: agent('idle'), relayed: { n: 3 } }))).toEqual(agent('idle'));
+    // the agent's own question comes first, and the held one takes no dialog of the agent's with it
+    expect(shownAgent(robot('a', { agent: agent('blocked', { promptId: 'q1' }), relayed: { n: 200, held: 'h1' } }))).toEqual(agent('blocked', { promptId: 'q1' }));
+    expect(shownAgent(robot('a', { agent: agent('idle', { askedTool: 'AskUserQuestion' }), relayed: { n: 200, held: 'h1' } }))?.askedTool).toBeUndefined();
+  });
+
+  it('counts the held question going as news only when the agent behind it asks', () => {
+    const held = { key: 'a', robotId: 'a', agent: agent('blocked', { promptId: 'h1' }), unread: true, held: true as const };
+    expect(isNews(held, { key: 'a', robotId: 'a', agent: agent('done'), unread: true })).toBe(false);
+    expect(isNews(held, { key: 'a', robotId: 'a', agent: agent('blocked', { promptId: 'q1' }), unread: false })).toBe(true);
   });
 
   it('takes the fuller of the two contexts', () => {

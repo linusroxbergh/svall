@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isRobotSaid, owedTo, reportBegan, robotMessage, robotNotice, robotSender, type Agent, type Robot } from '../src/index.js';
+import { isRobotSaid, owedTo, reportBegan, robotMessage, robotNotice, robotSender, says, type Agent, type Robot } from '../src/index.js';
 
 const from = { name: '#472 auth (review)]', id: 'c_abc123' };
 
@@ -67,12 +67,22 @@ describe('reports', () => {
     expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(false);
   });
 
-  it('is owed to a sender that runs or resumes an agent, once the request began', () => {
+  it("begins a tagged report on the sender's message it was asked on, not an earlier one", () => {
+    const sent = (text: string, id: string) => robot({ agent: { ...agent(), lastPrompt: { id, text: robotMessage({ name: 'lead', id: 'c_lead00' }, text), at: 0 } }, report: { to: 'c_lead00', after: 'p0', tagged: true, says: says('review\tPR 472\nthen merge') } });
+    expect(reportBegan(sent('fix the docs', 'm1'))).toBe(false);
+    expect(reportBegan(sent('review PR 472\nthen merge', 'm2'))).toBe(true);
+    // as Claude Code keeps a long paste: inside its wrapper, tabs as spaces
+    expect(reportBegan(robot({ ...sent('', 'm3'), agent: { ...agent(), lastPrompt: { id: 'm3', text: `<pasted_content id="e0b1">\n${robotMessage({ name: 'lead', id: 'c_lead00' }, 'review    PR 472\nthen merge')}`, at: 0 } } }))).toBe(true);
+  });
+
+  it('is owed to a sender with an agent, live or dormant, once the request began', () => {
     const kid = robot({ agent: agent('p1'), report: { to: 'c_lead00' } });
     expect(owedTo({ robots: { c_lead00: lead } }, kid)?.id).toBe('c_lead00');
     expect(owedTo({ robots: {} }, kid)).toBeUndefined();
     expect(owedTo({ robots: { c_lead00: { ...lead, agent: undefined } } }, kid)).toBeUndefined();
-    expect(owedTo({ robots: { c_lead00: { ...lead, agent: undefined, revive: { command: 'claude --resume x' } } } }, kid)?.id).toBe('c_lead00');
+    expect(owedTo({ robots: { c_lead00: { ...lead, tmux: undefined, revive: { command: 'claude --resume x' } } } }, kid)?.id).toBe('c_lead00');
+    // a dormant shell keeps a revive too, and no agent to take the line
+    expect(owedTo({ robots: { c_lead00: { ...lead, agent: undefined, revive: { command: 'zsh' } } } }, kid)).toBeUndefined();
     expect(owedTo({ robots: { c_lead00: lead } }, { ...kid, report: { to: 'c_lead00', after: 'p1' } })).toBeUndefined();
   });
 });

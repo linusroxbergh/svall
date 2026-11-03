@@ -28,22 +28,27 @@ export const isRobotSaid = (prompt: string): boolean => HEADER.test(prompt) || N
 /** The robot messages one robot takes with no prompt of the user's between them, past which the next waits on the user. */
 export const RELAY_LIMIT = 200;
 
+/** The head of a robot message's text, which a report on it knows the message by, whitespace aside. */
+export const says = (text: string): string => oneLine(text).slice(0, 80);
+
 /** Whether `c`'s newest prompt is the request a report is owed on. */
 export const reportBegan = (c: Robot): boolean => {
   const r = c.report;
   const p = c.agent?.lastPrompt;
   if (!r || !p) return false;
-  return r.prompt ? p.id === r.prompt : p.id !== r.after && (!r.tagged || robotSender(p.text) === r.to);
+  if (r.prompt) return p.id === r.prompt;
+  return p.id !== r.after && (!r.tagged || (robotSender(p.text) === r.to && (!r.says || oneLine(p.text).includes(r.says))));
 };
 
-/** The robot a report on `c`'s request goes to, while it is owed and that robot runs or resumes an agent to take it. */
+/** The robot a report on `c`'s request goes to, while it is owed and that robot has an agent, live or dormant, to take it. */
 export const owedTo = (f: Pick<FleetState, 'robots'>, c: Robot): Robot | undefined => {
   const to = c.report && reportBegan(c) && Object.hasOwn(f.robots, c.report.to) ? f.robots[c.report.to] : undefined;
-  return to && (to.agent || to.revive) ? to : undefined;
+  return to?.agent ? to : undefined;
 };
 
-/** The agent a robot's main terminal shows: one whose robot messages wait on the user asks the user. */
-export const shownAgent = (c: Robot): Agent | undefined =>
-  c.relayed?.held && c.agent
-    ? { ...c.agent, status: 'blocked', prompt: `${c.relayed.n} robot messages since your last prompt; let robots carry on?`, promptId: c.relayed.held }
-    : c.agent;
+/** The agent a robot's main terminal shows: one whose robot messages wait on the user asks the user, unless its agent asks first. */
+export const shownAgent = (c: Robot): Agent | undefined => {
+  if (!c.relayed?.held || !c.agent || c.agent.status === 'blocked') return c.agent;
+  const { askedTool: _, ...agent } = c.agent;
+  return { ...agent, status: 'blocked', prompt: `${c.relayed.n} robot messages since your last prompt; let robots carry on?`, promptId: c.relayed.held };
+};

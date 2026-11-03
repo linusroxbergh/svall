@@ -116,18 +116,18 @@ Handing work to a new robot:
           throw new Error('in a robot, --command only picks an agent\'s model ("claude --model opus") while robots run svall without asking; run it outside Svall, or turn that off in Settings');
         }
         const agent = agentFor(o, state.mainAgent ?? 'claude');
+        if (o.report && !Object.hasOwn(state.robots, by!)) throw new Error(`robot ${by} is no longer in the fleet, so --report has nobody to report to`);
         // the daemon would give a taken name a number, and the name would go on reaching the robot that has it
         const name = o.name?.toLowerCase();
         const taken = name !== undefined && Object.values(state.robots).find((ch) => ch.name.toLowerCase() === name);
         if (taken) throw new Error(`robot "${taken.name}" already exists (${taken.id}); pick another name`);
         const ch = await c.call('robot.create', {
           islandId: islandId(state, o.island), cwd: path.resolve(expandHome(o.cwd)), name: o.name, command: agent ?? o.command, cell, run: o.run, agentProfile: o.agentProfile,
-          // a robot no longer in the fleet, as in an old terminal, started nothing
           ...(by && Object.hasOwn(state.robots, by) && { startedBy: by }), ...(o.report && { report: true }),
         });
         printResult(ch, json(), () => ch.id);
         if (ch.runSent === false) {
-          process.stderr.write(`prompt not sent; svall robot run ${ch.id} "<prompt>" sends it\n`);
+          process.stderr.write(o.report ? `prompt not sent; svall robot send ${ch.id} "<prompt>" --report sends it\n` : `prompt not sent; svall robot run ${ch.id} "<prompt>" sends it\n`);
           process.exitCode = 2;
         }
       });

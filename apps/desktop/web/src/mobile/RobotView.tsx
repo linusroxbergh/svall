@@ -186,7 +186,7 @@ export function RobotView({ id, onBack }: { id: string; onBack(): void }): JSX.E
   const blocked = shown?.status === 'blocked';
   const promptId = shown?.promptId;
   // a question dialog's Enter picks the highlighted option, one question at a time
-  const question = robot?.agent?.askedTool === 'AskUserQuestion';
+  const question = shown?.askedTool === 'AskUserQuestion';
   const asking = useRef(promptId);
   useEffect(() => { asking.current = promptId; setAnswering(false); setAnswerError(undefined); }, [blocked, promptId]);
 

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, isRobotSaid, randomPortrait, robotMessage, robotSender, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type SendDelivery, type TerminalSlot } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, isRobotSaid, randomPortrait, robotMessage, robotSender, says, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type SendDelivery, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -81,8 +81,9 @@ type Deps = {
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string; startedBy?: string; report?: boolean };
 const STALE_SNAPSHOT_MS = 3_600_000;
 const TRANSCRIPT_TAIL = 4 * 1024 * 1024;
-// the robot messages one robot holds for the user, each up to a run's length, which state.json keeps
+// the robot messages one robot holds for the user, which state.json keeps
 const HELD_MAX = 20;
+const HELD_BYTES = 1024 * 1024;
 type LiveRobot = Robot & { tmux: NonNullable<Robot['tmux']> };
 // a revive onto a window still alive sends its prompt as any send goes, which a draft there can hold
 type Revived = Robot & { delivery?: Delivery };
@@ -577,6 +578,8 @@ export class Fleet extends EventEmitter<Events> {
     // Claude Code reports in only once its trust question for an unfamiliar directory is answered, so the wait can
     // lapse with the pane sitting on that question
     if (!runSent) this.deps.log.error(`robot ${id}: no agent reported in within ${timeoutMs}ms, prompt not sent`);
+    // a report waits on the run; the user's own first prompt is not it
+    if (!runSent && p.report) this.deps.store.update((d) => { if (d.robots[id]) delete d.robots[id].report; });
     return { ...this.robot(id), runSent };
   }
 
@@ -1038,9 +1041,10 @@ export class Fleet extends EventEmitter<Events> {
     updateTab(this.deps.store, this.robot(id), tab, patch);
   }
 
-  run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
+  // `sent` hears whether a held text went in, here; a worker's tells nobody
+  run(id: string, text: string, enter: boolean, term?: 2, sent?: (ok: boolean) => void): Promise<Delivery> {
     this.still(id);
-    return this.deps.remote?.forward(id, 'robot.run', { id, text, enter, term })?.then((r) => r.delivery) ?? this.prompts.run(id, text, enter, term);
+    return this.deps.remote?.forward(id, 'robot.run', { id, text, enter, term })?.then((r) => r.delivery) ?? this.prompts.run(id, text, enter, term, sent);
   }
 
   /** `text` as robot `from`'s message to robot `id`, for `run` to type; refused to itself. */
@@ -1054,23 +1058,31 @@ export class Fleet extends EventEmitter<Events> {
   async send(id: string, from: string, text: string, report?: boolean): Promise<SendDelivery> {
     const message = this.message(id, from, text);
     const c = this.robot(id);
-    // one report at a time: a second sender would never hear of the first's request
-    const owed = c.report && c.report.to !== from && Object.hasOwn(this.deps.store.state.robots, c.report.to) ? this.robot(c.report.to) : undefined;
-    if (report && owed) throw new Invalid(`${c.name} owes ${owed.name} a report; send without --report, or once it is done`);
-    if (c.relayed?.held && (c.inbox?.filter((m) => !m.end).length ?? 0) >= HELD_MAX) throw new Blocked(`${c.name} already holds ${HELD_MAX} robot messages for the user`);
+    // one report at a time: a second would leave the first request unheard of
+    const owed = c.report && (c.report.to !== from || c.report.prompt) && Object.hasOwn(this.deps.store.state.robots, c.report.to) ? this.robot(c.report.to) : undefined;
+    if (report && owed) throw new Invalid(`${c.name} owes ${owed.id === from ? 'you' : owed.name} a report; send without --report, or once it is done`);
+    const held = (c.inbox ?? []).filter((m) => robotSender(m.text));
+    if (c.relayed?.held && (held.length >= HELD_MAX || held.reduce((n, m) => n + m.text.length, message.length) > HELD_BYTES)) {
+      throw new Blocked(`${c.name} already holds ${held.length} robot messages for the user`);
+    }
     // the prompt before this one, read before it goes in, as its hook can land before the send returns
     const after = c.agent?.lastPrompt?.id;
-    const owe = (r: Robot) => { if (report) r.report = { to: from, tagged: true, ...(after && { after }) }; };
-    let held = false;
+    const owe = (r: Robot) => { if (report) r.report = { to: from, tagged: true, says: says(text), ...(after && { after }) }; };
+    // a message dropped before it went in leaves nothing to report on
+    const sent = (ok: boolean) => {
+      if (ok || !report) return;
+      this.deps.store.update((d) => { const r = d.robots[id]?.report; if (r?.to === from && !r.prompt) delete d.robots[id].report; });
+    };
+    let waits = false;
     this.deps.store.update((d) => {
       const r = d.robots[id];
       if (!holdRelayed(r)) return;
-      held = true;
+      waits = true;
       (r.inbox ??= []).push({ from, text: message });
       owe(r);
     });
-    if (held) return 'held';
-    const delivery = await this.run(id, message, true);
+    if (waits) return 'held';
+    const delivery = await this.run(id, message, true, undefined, sent);
     this.deps.store.update((d) => {
       const r = Object.hasOwn(d.robots, id) ? d.robots[id] : undefined;
       if (!r) return;
@@ -1095,16 +1107,18 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
-    // the question robot messages held for the user ask is svalld's own: carry on lets them in afresh; deny drops them and
-    // holds the next, with a report whose request went with them
-    const held = this.deps.remote?.onWorker ? undefined : this.robot(id).relayed?.held;
+    // the question robot messages held for the user ask is svalld's own: carry on lets them in afresh; deny drops them, tells
+    // their senders and holds the next, with a report whose request went with them
+    const held = this.robot(id).relayed?.held;
     if (held && (promptId === undefined || promptId === held)) {
+      // the home holds them
+      if (this.deps.remote?.onWorker) return Promise.reject(new ApiError('not_reachable', 'robot messages wait on the Mac; answer there'));
       this.deps.store.update((d) => {
         const c = d.robots[id];
         if (answer === 'approve') { delete c.relayed; return; }
         const r = c.report;
         if (r && !r.prompt && c.inbox?.some((m) => robotSender(m.text) === r.to)) delete c.report;
-        dropInbox(d, c, (x) => this.runsHere(x), this.deps.log);
+        dropInbox(d, c, (x) => this.runsHere(x), this.deps.log, true);
       });
       return Promise.resolve();
     }

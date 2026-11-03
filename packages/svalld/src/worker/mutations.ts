@@ -139,6 +139,7 @@ export class WorkerMutations {
     if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(NOT_HOME);
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
+    if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
     if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
     const q = { ...p, note: SLEPT_NOTE(this.name) };
     this.starting.add(q);

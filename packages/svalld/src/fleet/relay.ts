@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
-import { RELAY_LIMIT, isRobotSaid, reportBegan, robotNotice, type FleetState, type Robot } from '@svall/protocol';
+import { RELAY_LIMIT, isRobotSaid, reportBegan, robotNotice, robotSender, type FleetState, type Robot } from '@svall/protocol';
+import { RESUME_NOTE } from '../dormancy.js';
 import type { Logger } from '../log.js';
 import type { Store } from '../store.js';
 
@@ -15,14 +16,17 @@ function ending(c: Robot): string | undefined {
   return undefined;
 }
 
-const owe = (d: FleetState, to: string, c: Robot, rest: string, end?: true): void => {
+const tell = (d: FleetState, to: string, c: Robot, rest: string, end?: true): void => {
   (d.robots[to].inbox ??= []).push({ from: c.id, text: robotNotice(c, rest), ...(end && { end }) });
 };
+
+// a prompt neither a robot, svalld's line nor a resume's note typed
+const userSaid = (text: string): boolean => !isRobotSaid(text) && !text.startsWith(RESUME_NOTE);
 
 /** One more robot message typed into `c`, counted from the user's newest prompt. */
 export function countRelayed(c: Robot): void {
   const p = c.agent?.lastPrompt;
-  const user = p && !isRobotSaid(p.text) ? p.id : undefined;
+  const user = p && userSaid(p.text) ? p.id : undefined;
   const r = c.relayed && (!user || user === c.relayed.user) ? c.relayed : { n: 0, ...(user && { user }) };
   c.relayed = { ...r, n: r.n + 1 };
 }
@@ -34,8 +38,11 @@ export function holdRelayed(c: Robot): boolean {
   return true;
 }
 
-/** Drops the lines robot `c` was owed; a finish one of them told of goes to the user as an unread one, where that robot runs `here`. */
-export function dropInbox(d: FleetState, c: Robot, here: (c: Robot) => boolean, log: Logger): void {
+/** Drops the lines robot `c` was owed; a finish one of them told of goes to the user as an unread one, where that robot runs
+ *  `here`, and with `told`, each robot whose message goes is told. */
+export function dropInbox(d: FleetState, c: Robot, here: (c: Robot) => boolean, log: Logger, told?: true): void {
+  const senders = new Set((c.inbox ?? []).map((m) => robotSender(m.text)).filter((s): s is string => !!s && Object.hasOwn(d.robots, s)));
+  if (told) for (const s of senders) tell(d, s, c, 'did not take your message: the user dropped it');
   for (const m of c.inbox ?? []) {
     const from = Object.hasOwn(d.robots, m.from) ? d.robots[m.from] : undefined;
     if (!m.end || from?.agent?.status !== 'done' || from.unread) continue;
@@ -64,7 +71,7 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
   const step = (d: FleetState, c: Robot): void => {
     const p = c.agent?.lastPrompt;
     // a prompt of the user's lets robot messages in afresh
-    if (c.relayed && p && !isRobotSaid(p.text) && p.id !== c.relayed.user) delete c.relayed;
+    if (c.relayed && p && userSaid(p.text) && p.id !== c.relayed.user) delete c.relayed;
     const r = c.report;
     if (!r || c.moving) return;
     if (!Object.hasOwn(d.robots, r.to)) { delete c.report; return; }
@@ -74,26 +81,29 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     }
     // a quit mid-turn resumes the session with a note as its prompt, which carries the request on
     if (!c.tmux && c.revive?.interrupted) { r.resumed = true; return; }
-    if (r.resumed) {
-      if (!p || p.id === r.prompt) return;
+    if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt && p.text.startsWith(RESUME_NOTE)) {
       r.prompt = p.id;
       delete r.resumed;
     }
+    // a prompt after the request's own ends it, as an Esc the poll had yet to read does
+    const over = !!p && p.id !== r.prompt;
+    if (r.resumed && c.tmux && c.agent && !over) return;
     const a = c.agent;
-    if (a?.status !== 'blocked' || !c.tmux) delete r.asked;
+    if (a?.status !== 'blocked' || !c.tmux || over) delete r.asked;
     else if (!r.asked) {
       r.asked = true;
-      owe(d, r.to, c, `is blocked${a.prompt ? `: ${a.prompt}` : ''}`);
+      // the agent's own words, quoted: a line of svalld's carries no instruction
+      tell(d, r.to, c, `is blocked${a.prompt ? `, asking: "${a.prompt}"` : ''}`);
     }
-    const end = ending(c);
-    if (end) { owe(d, r.to, c, end, true); delete c.report; }
+    const end = ending(c) ?? (over ? 'stopped: its turn was interrupted' : undefined);
+    if (end) { tell(d, r.to, c, end, true); delete c.report; }
   };
 
   const drain = (id: string): void => {
     const to = o.store.state.robots[id];
     const m = to?.inbox?.[0];
     if (!m || sending.has(id)) return;
-    if (!to.agent && !to.revive) {
+    if (!to.agent) {
       o.log.info(`${to.inbox!.length} line(s) for ${to.name} dropped: it runs no agent`);
       o.store.update((d) => dropInbox(d, d.robots[id], o.here, o.log));
       return;
@@ -128,10 +138,11 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     if (stopped) return;
     const f = o.store.state;
     const gone = Object.values(before.robots).filter((c) => !Object.hasOwn(f.robots, c.id));
+    if (!gone.length && !Object.values(f.robots).some((c) => c.report || c.inbox || c.relayed)) { before = f; return; }
     try {
       o.store.update((d) => {
         for (const c of gone) {
-          if (c.report && Object.hasOwn(d.robots, c.report.to)) owe(d, c.report.to, c, 'was closed', true);
+          if (c.report && Object.hasOwn(d.robots, c.report.to)) tell(d, c.report.to, c, 'was closed', true);
           dropInbox(d, structuredClone(c), o.here, o.log);
         }
         for (const c of Object.values(d.robots)) step(d, c);

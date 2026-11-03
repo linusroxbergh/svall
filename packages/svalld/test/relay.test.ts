@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RELAY_LIMIT, robotMessage, type Agent, type Robot } from '@svall/protocol';
+import { RELAY_LIMIT, owedTo, robotMessage, type Agent, type Robot } from '@svall/protocol';
+import { RESUME_NOTE } from '../src/dormancy.js';
 import { Blocked, Dormant, Invalid } from '../src/errors.js';
 import { startRelay, type Notify } from '../src/fleet/relay.js';
 import { silentLogger } from '../src/log.js';
@@ -56,8 +57,8 @@ describe('relay', () => {
     kid((c) => { c.agent = agent('done', asked); });
     await waitFor(() => said.length === 3);
     expect(said).toEqual([
-      { to: LEAD, text: `[svall] kid (${KID}) is blocked: Bash: rm -rf build` },
-      { to: LEAD, text: `[svall] kid (${KID}) is blocked: Write: notes.md` },
+      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Bash: rm -rf build"` },
+      { to: LEAD, text: `[svall] kid (${KID}) is blocked, asking: "Write: notes.md"` },
       { to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` },
     ]);
     await waitFor(() => !store.state.robots[LEAD].inbox);
@@ -71,7 +72,7 @@ describe('relay', () => {
   });
 
   it('waits out a quit that cut the request short, and reports the turn its resume carries on in', async () => {
-    const { said, stop, kid } = setup();
+    const { store, said, stop, kid } = setup();
     kid((c) => { c.agent = agent('working', asked); });
     await tick();
     // the quit lays it dormant, to resume as the fleet starts
@@ -80,11 +81,41 @@ describe('relay', () => {
     kid((c) => { c.tmux = { windowId: '@kid', paneId: '%kid' }; delete c.revive; c.agent = agent('idle', asked); });
     await tick();
     expect(said).toEqual([]);
-    kid((c) => { c.agent = agent('working', prompt('n1', 'You were interrupted; carry on')); });
+    kid((c) => { c.agent = agent('working', prompt('n1', RESUME_NOTE)); });
     await tick();
-    kid((c) => { c.agent = agent('done', prompt('n1', 'You were interrupted; carry on')); });
+    // its finish is still the sender's
+    expect(owedTo(store.state, store.state.robots[KID])?.id).toBe(LEAD);
+    kid((c) => { c.agent = agent('done', prompt('n1', RESUME_NOTE)); });
     await waitFor(() => said.length === 1);
     expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` }]);
+    stop();
+  });
+
+  it.each([
+    ["the user's prompt after the resume", (c: Robot) => { c.agent = agent('working', prompt('u9', 'something else')); }, 'stopped: its turn was interrupted'],
+    ['its agent leaving after the resume', (c: Robot) => { delete c.agent; }, 'stopped: its agent exited'],
+  ])('ends a request a quit cut short on %s, never reporting what follows', async (_, then, line) => {
+    const { said, stop, kid } = setup();
+    kid((c) => { c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { delete c.tmux; c.revive = { command: 'claude --resume s', interrupted: true }; });
+    await tick();
+    kid((c) => { c.tmux = { windowId: '@kid', paneId: '%kid' }; delete c.revive; c.agent = agent('idle', asked); });
+    await tick();
+    kid(then);
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) ${line}` }]);
+    stop();
+  });
+
+  it("ends a request once another prompt follows it, as one after an Esc the poll had yet to read", async () => {
+    const { store, said, stop, kid } = setup();
+    kid((c) => { c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { c.agent = agent('working', prompt('u2', 'actually, stop')); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) stopped: its turn was interrupted` }]);
+    expect(store.state.robots[KID].report).toBeUndefined();
     stop();
   });
 
@@ -186,6 +217,10 @@ describe('relay', () => {
       d.robots[LEAD].inbox = [{ from: KID, text: 'x' }];
     });
     await waitFor(() => !!store.state.robots[LEAD].relayed?.held);
+    expect(said).toEqual([]);
+    // a resume's note is not the user's
+    store.update((d) => { d.robots[LEAD].agent = agent('idle', prompt('n2', RESUME_NOTE)); });
+    await tick();
     expect(said).toEqual([]);
     store.update((d) => { d.robots[LEAD].agent = agent('idle', prompt('u2', 'carry on')); });
     await waitFor(() => said.length === 1);

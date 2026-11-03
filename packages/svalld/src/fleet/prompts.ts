@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { isRobotSaid, type Agent, type AgentStatus, type Delivery } from '@svall/protocol';
+import { isRobotSaid, shownAgent, type Agent, type AgentStatus, type Delivery } from '@svall/protocol';
 import { agentInFront, readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
 import type { Config } from '../config.js';
@@ -193,9 +193,11 @@ export class Prompts {
       const c = this.deps.store.state.robots[id];
       const t = term === 2 ? c?.second : c;
       if (!t?.tmux) return 'gone';
+      // robot messages held for the user have the main terminal ask the user
+      const a = term === 2 ? t.agent : shownAgent(c);
       // the turn of a prompt still held has not begun, so the end of the turn before it does not count
-      const ended = t.agent?.status === 'done' || t.agent?.status === 'idle';
-      if (t.agent && until.includes(t.agent.status) && !(ended && this.held.has(laneOf(id, term)))) return t.agent.status;
+      const ended = a?.status === 'done' || a?.status === 'idle';
+      if (a && until.includes(a.status) && !(ended && this.held.has(laneOf(id, term)))) return a.status;
       return undefined;
     }, timeoutMs, 'timeout', signal);
   }

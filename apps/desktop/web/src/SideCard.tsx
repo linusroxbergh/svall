@@ -76,7 +76,8 @@ export function SideCard({ id }: { id: string }) {
   const failed = resumeErrorOf(c);
   const width = usePanelWidth('card');
   const hostRunning = useApp((s) => !!s.host?.running);
-  const by = useApp((s) => (c?.startedBy && Object.hasOwn(s.fleet.robots, c.startedBy) ? s.fleet.robots[c.startedBy] : undefined));
+  // its name alone, so the starter's other changes redraw nothing here
+  const by = useApp((s) => (c?.startedBy && Object.hasOwn(s.fleet.robots, c.startedBy) ? s.fleet.robots[c.startedBy].name : undefined));
   // the ids alone, so another robot's change redraws nothing here
   const started = useApp((s) => Object.values(s.fleet.robots).filter((k) => k.startedBy === id).map((k) => k.id).join(' '));
   if (!c) return null;
@@ -116,7 +117,7 @@ export function SideCard({ id }: { id: string }) {
           </div>
         )}
         {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
-        {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={by} /></div>}
+        {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={{ id: c.startedBy!, name: by }} /></div>}
         {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} />}
       </div>
       <div className="side-secs">
@@ -195,7 +196,7 @@ export function SideCard({ id }: { id: string }) {
   );
 }
 
-const RobotLink = ({ c }: { c: Robot }) => (
+const RobotLink = ({ c }: { c: Pick<Robot, 'id' | 'name'> }) => (
   <button className="copy side-link" data-tip={`Show ${c.name}`} onClick={() => app.store.getState().select(c.id)}>{c.name}</button>
 );
 

@@ -216,11 +216,11 @@ export const Robot = TerminalSlot.extend({
   star: z.number().int().optional(),
   // the robot that ran `svall robot new` for it
   startedBy: z.string().optional(),
-  // a report owed to robot `to` on the request that opens the turn after prompt `after`: robot `to`'s message when tagged,
-  // any prompt otherwise; prompt, the one that began it; asked, the robot's blocked spell is reported; resumed, a quit
-  // cut the request short and the resume's note carries it on
+  // a report owed to robot `to` on the request that opens the turn after prompt `after`: when tagged, robot `to`'s message
+  // whose text begins as `says`, else any prompt; prompt, the one that began it; asked, the robot's blocked spell is
+  // reported; resumed, a quit cut the request short and the resume's note carries it on
   report: z.object({
-    to: z.string(), after: z.string().optional(), tagged: z.literal(true).optional(), prompt: z.string().optional(),
+    to: z.string(), after: z.string().optional(), tagged: z.literal(true).optional(), says: z.string().optional(), prompt: z.string().optional(),
     asked: z.literal(true).optional(), resumed: z.literal(true).optional(),
   }).optional(),
   // lines owed to this robot, oldest first, which svalld types in as its prompt line frees; end, a line that closes a report
