@@ -153,10 +153,13 @@ const ROLLOUT = 'codex-rs/history/src/rollout_payload.rs';
 const PROTOCOL = 'codex-rs/protocol/src/protocol.rs';
 const ITEMS = 'codex-rs/protocol/src/items.rs';
 const MODELS = 'codex-rs/protocol/src/models.rs';
-// the rollout records Svall reads, for prompt history and turns, the working directory, context % and the usage panel
+// the rollout records Svall reads, for prompt history and turns, the working directory, context % and the usage panel, and
+// the error a turn ended on
 export const CODEX_LOG: [file: string, kind: 'enum' | 'struct', name: string, names: string[]][] = [
   [ROLLOUT, 'enum', 'RolloutItemWire', ['response_item', 'event_msg']],
-  [PROTOCOL, 'enum', 'EventMsg', ['token_count', 'user_message', 'agent_message', 'item_completed']],
+  [PROTOCOL, 'enum', 'EventMsg', ['token_count', 'user_message', 'agent_message', 'item_completed', 'task_started', 'task_complete']],
+  [PROTOCOL, 'struct', 'TurnCompleteEvent', ['turn_id', 'error']],
+  [PROTOCOL, 'struct', 'ErrorEvent', ['message']],
   [PROTOCOL, 'struct', 'TokenCountEvent', ['info', 'rate_limits']],
   [PROTOCOL, 'struct', 'TokenUsageInfo', ['last_token_usage', 'model_context_window']],
   [PROTOCOL, 'struct', 'TokenUsage', ['total_tokens']],

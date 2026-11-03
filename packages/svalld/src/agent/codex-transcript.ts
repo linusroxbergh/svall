@@ -12,6 +12,7 @@ type Payload = {
   item?: { type?: string; content?: { text?: string }[]; cwd?: unknown };
   info?: { last_token_usage?: { total_tokens?: number }; model_context_window?: number } | null;
   rate_limits?: RawRateLimits | null;
+  turn_id?: string; error?: { message?: unknown } | null;
 };
 type Line = { timestamp?: string; type?: string; payload?: Payload };
 
@@ -58,6 +59,17 @@ export function lastMessageCodex(text: string): string | undefined {
   const all = lines(text);
   const aborted = all.map((l) => l.type === 'event_msg' && l.payload?.type === 'turn_aborted').lastIndexOf(true);
   return lastSaid(eventsOf(all.slice(aborted + 1)));
+}
+
+/** The error that ended turn `turnId`, when it is the rollout's newest turn: an API error or a usage limit, which no hook reports. */
+export function turnErrorCodex(text: string, turnId: string): string | undefined {
+  for (const l of lines(text).reverse()) {
+    const p = l.payload;
+    if (l.type !== 'event_msg' || (p?.type !== 'task_started' && p?.type !== 'task_complete')) continue;
+    if (p.type === 'task_started' || p.turn_id !== turnId || !p.error) return undefined;
+    return typeof p.error.message === 'string' ? p.error.message.trim() : '';
+  }
+  return undefined;
 }
 
 export function condenseTurnsCodex(text: string, turns: number, opts: { toolLinks?: boolean } = {}): string {
