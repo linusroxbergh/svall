@@ -373,7 +373,7 @@ describe('home', () => {
     store.getState().setFleet(fleet());
     await startHomeAction({ api, store }, { label: 'organise', prompt: '/svall-organise' });
     expect(calls).toEqual([{ method: 'robot.create', params: { islandId: 'home', cwd: '/mc', name: 'organise', command: 'claude --model opus', run: '/svall-organise' } }]);
-    expect(store.getState().selectedId).toBe('c_new');
+    expect(store.getState()).toMatchObject({ selectedId: 'c_new', card: 'c_new' });
     expect(store.getState().toast).toEqual({ text: 'organise started', tone: 'ok' });
   });
 

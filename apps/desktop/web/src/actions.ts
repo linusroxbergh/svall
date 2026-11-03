@@ -291,7 +291,7 @@ export const skillPrompt = (command: string, prompt: string): string =>
   (/^codex(\s|$)/.test(command.trim()) ? prompt.replace(/^\/(?=[\w-]+(\s|$))/, '$') : prompt);
 
 export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promise<void> => {
-  await startHomeRobot(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label });
+  await startHomeRobot(d, { prompt: skillPrompt(d.store.getState().fleet.home.command, action.prompt), label: action.label, focus: true });
 };
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again
