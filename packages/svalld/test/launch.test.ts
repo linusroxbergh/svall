@@ -46,15 +46,24 @@ describe('withAddDirs for opencode', () => {
 
 describe('withStandalone', () => {
   it('runs opencode on a private server, past the folder access set ahead of it, and leaves other agents be', () => {
-    expect(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn')).toBe('opencode --standalone -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
+    expect(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn')).toBe('FORCE_HYPERLINK=1 opencode --standalone -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn');
     const access = withAddDirs('opencode', [item('folder', '/a')]);
-    expect(withStandalone(access)).toBe(`${access} --standalone`);
-    expect(withStandalone('opencode --standalone')).toBe('opencode --standalone');
-    expect(withStandalone('opencode --server http://localhost:4096')).toBe('opencode --server http://localhost:4096');
-    expect(withStandalone(withAddDirs('opencode', [item('folder', '/x --standalone')]))).toContain(' opencode --standalone');
-    expect(withStandalone("opencode '/w/a --server b'")).toBe("opencode --standalone '/w/a --server b'");
-    expect(withStandalone("opencode '/w/a -m b'")).toBe("opencode --standalone '/w/a -m b'");
+    expect(withStandalone(access)).toBe(access.replace(' opencode', ' FORCE_HYPERLINK=1 opencode --standalone'));
+    expect(withStandalone('opencode --standalone')).toBe('FORCE_HYPERLINK=1 opencode --standalone');
+    expect(withStandalone('opencode --server http://localhost:4096')).toBe('FORCE_HYPERLINK=1 opencode --server http://localhost:4096');
+    expect(withStandalone(withAddDirs('opencode', [item('folder', '/x --standalone')]))).toContain(' FORCE_HYPERLINK=1 opencode --standalone');
+    expect(withStandalone("opencode '/w/a --server b'")).toBe("FORCE_HYPERLINK=1 opencode --standalone '/w/a --server b'");
+    expect(withStandalone("opencode '/w/a -m b'")).toBe("FORCE_HYPERLINK=1 opencode --standalone '/w/a -m b'");
     expect(withStandalone('claude')).toBe('claude');
+  });
+
+  it('has OpenCode mark its links as OSC 8 inside tmux, once, and still reads as an agent that takes a prompt', () => {
+    const access = withAddDirs('opencode', [item('folder', '/a')]);
+    expect(withStandalone(withStandalone(access))).toBe(withStandalone(access));
+    expect(withStandalone(' opencode')).toBe('FORCE_HYPERLINK=1 opencode --standalone');
+    expect(agentKindOf(withStandalone(access))).toBe('opencode');
+    expect(withPromptFile(withStandalone('opencode'), 'go', '/h/p').text).toMatch(/; FORCE_HYPERLINK=1 opencode --standalone --prompt='go'\n$/);
+    expect(withPromptFile(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'), 'go', '/h/p').line).toBe(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'));
   });
 
   it('runs codex off the shared app-server daemon and its update check, after the subcommand that resumes or forks', () => {
@@ -70,7 +79,7 @@ describe('withStandalone', () => {
   it("launches mission control's crew on the model Settings picked", () => {
     expect(withStandalone(AGENTS.claude.crewCommand('sonnet'))).toBe('claude --model sonnet');
     expect(withStandalone(AGENTS.codex.crewCommand('gpt-6-astra'))).toBe('codex --no-daemon -c check_for_update_on_startup=false -m gpt-6-astra');
-    expect(withStandalone(AGENTS.opencode.crewCommand('opencode/big-pickle'))).toBe('opencode --standalone');
+    expect(withStandalone(AGENTS.opencode.crewCommand('opencode/big-pickle'))).toBe('FORCE_HYPERLINK=1 opencode --standalone');
   });
 });
 

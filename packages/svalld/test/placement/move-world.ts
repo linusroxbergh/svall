@@ -115,10 +115,12 @@ class Box {
     sendLine: async (paneId: string, text: string) => {
       this.lines.push({ paneId, text });
       const w = this.byPane(paneId);
+      // the shell runs the command past the variables set ahead of it
+      const job = text.replace(/^(\w+=\S*\s+)+/, '');
       // a fresh Claude reports a session of its own
-      const sid = (/^claude\b.*--resume (\S+)/.exec(text) ?? /^opencode\b.* -s (\S+)/.exec(text))?.[1] ?? (/^claude\b/.test(text) ? FRESH_SID : undefined);
+      const sid = (/^claude\b.*--resume (\S+)/.exec(job) ?? /^opencode\b.* -s (\S+)/.exec(job))?.[1] ?? (/^claude\b/.test(job) ? FRESH_SID : undefined);
       if (!w || !sid) return;
-      w.job = text;
+      w.job = job;
       setImmediate(() => this.started?.(w.name, sid));
     },
     sendBytes: async (paneId: string, bytes: Buffer) => { this.keys.push({ paneId, text: bytes.toString('latin1') }); },
