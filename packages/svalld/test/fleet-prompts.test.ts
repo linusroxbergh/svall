@@ -318,6 +318,14 @@ runIf('Fleet prompts', () => {
       expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, says: 'review it' });
     });
 
+    it('marks the prompt before a message to a working Codex, which opens a turn of its own for it', async () => {
+      const { fleet, store, c, hook } = await agentPane('codex');
+      const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+      await hook({ name: 'UserPromptSubmit', prompt: { id: 'u1', text: 'mine' } });
+      expect(await fleet.send(c.id, lead.id, 'review it', true)).toBe('delivered');
+      expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, says: 'review it', after: 'u1' });
+    });
+
     it('shows robot messages held for the user to a wait as blocked, and holds no more than 1 MiB of them', async () => {
       const { fleet, store, c } = await agentPane('claude');
       const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });

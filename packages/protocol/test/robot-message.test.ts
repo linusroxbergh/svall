@@ -84,6 +84,8 @@ describe('reports', () => {
 
   it("knows a request by its head as a hook hands it on, and holds through a robot's line taken into its turn", () => {
     expect(says(' go \u0001 now\t ')).toBe('go now');
+    // a lone CR is a line break, as robotMessage makes it
+    expect(says('fix it\rthen merge')).toBe('fix it then merge');
     const turn = (text: string) => robot({ agent: { ...agent(), lastPrompt: { id: 'p1', text, at: 0 } }, report: { to: 'c_lead00', says: says('review PR 472'), prompt: 'p1' } });
     expect(reportBegan(turn('[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last'))).toBe(true);
     expect(reportBegan(turn('what is 2+2?'))).toBe(false);

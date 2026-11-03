@@ -86,11 +86,12 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     if (!r.prompt) {
       if (!p || !reportBegan(c)) return;
       r.prompt = p.id;
+      delete r.queued;
     }
     // a quit mid-turn resumes the session with a note as its prompt, which carries the request on
     if (!c.tmux && c.revive?.interrupted) { r.resumed = true; return; }
-    // a line or a robot's message that woke it goes before the note
-    if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt && p.text.includes(RESUME_NOTE)) {
+    // the first prompt after an interrupted revive carries its note, before or after what woke it, clipped or not
+    if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt) {
       r.prompt = p.id;
       delete r.says;
       delete r.resumed;
@@ -112,24 +113,25 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
 
   const drain = (id: string): void => {
     const to = o.store.state.robots[id];
-    const m = to?.inbox?.[0];
-    if (!m || sending.has(id)) return;
+    if (!to?.inbox?.length || sending.has(id)) return;
     if (!to.agent) {
-      o.log.info(`${to.inbox!.length} line(s) for ${to.name} dropped: it runs no agent`);
+      o.log.info(`${to.inbox.length} line(s) for ${to.name} dropped: it runs no agent`);
       o.store.update((d) => dropInbox(d, d.robots[id], o.here, o.log));
       return;
     }
-    if (to.relayed?.held || (to.relayed?.n ?? 0) >= RELAY_LIMIT) {
-      if (!to.relayed?.held) o.store.update((d) => { holdRelayed(d.robots[id]); });
-      return;
-    }
+    // robot messages past the limit wait on the user; svalld's lines, which no loop makes, go on past them
+    const over = !!to.relayed?.held || (to.relayed?.n ?? 0) >= RELAY_LIMIT;
+    const m = over ? to.inbox.find((x) => !robotSender(x.text)) : to.inbox[0];
+    if (over && !to.relayed?.held && robotSender(to.inbox[0].text)) o.store.update((d) => { holdRelayed(d.robots[id]); });
+    if (!m) return;
     sending.add(id);
     Promise.resolve().then(() => o.notify(id, m.text)).then((r) => {
       if (r === 'retry') return true;
       o.store.update((d) => {
         const c = Object.hasOwn(d.robots, id) ? d.robots[id] : undefined;
-        if (c?.inbox?.[0]?.text !== m.text || c.inbox[0].from !== m.from) return;
-        c.inbox.shift();
+        const at = c?.inbox?.findIndex((x) => x.text === m.text && x.from === m.from) ?? -1;
+        if (!c?.inbox || at < 0) return;
+        c.inbox.splice(at, 1);
         if (!c.inbox.length) delete c.inbox;
         countRelayed(c);
       });
@@ -169,7 +171,7 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     setImmediate(pass);
   };
   // what a stop left held in memory went with it
-  o.store.update((d) => { for (const c of Object.values(d.robots)) if (c.report?.queued) delete c.report; });
+  o.store.update((d) => { for (const c of Object.values(d.robots)) if (c.report?.queued && !c.report.prompt) delete c.report; });
   const off = o.store.subscribe(look);
   look();
   return () => { stopped = true; off(); };

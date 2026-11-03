@@ -92,7 +92,7 @@ describe('relay', () => {
   });
 
   it.each([
-    ["the user's prompt after the resume", (c: Robot) => { c.agent = agent('working', prompt('u9', 'something else')); }, 'stopped: its turn was interrupted'],
+    ["the user's prompt after the resume's own", (c: Robot) => { c.agent = agent('working', prompt('u9', 'something else')); }, 'stopped: its turn was interrupted'],
     ['its agent leaving after the resume', (c: Robot) => { delete c.agent; }, 'stopped: its agent exited'],
   ])('ends a request a quit cut short on %s, never reporting what follows', async (_, then, line) => {
     const { said, stop, kid } = setup();
@@ -101,6 +101,8 @@ describe('relay', () => {
     kid((c) => { delete c.tmux; c.revive = { command: 'claude --resume s', interrupted: true }; });
     await tick();
     kid((c) => { c.tmux = { windowId: '@kid', paneId: '%kid' }; delete c.revive; c.agent = agent('idle', asked); });
+    await tick();
+    kid((c) => { c.agent = agent('working', prompt('n1', RESUME_NOTE)); });
     await tick();
     kid(then);
     await waitFor(() => said.length === 1);
@@ -168,6 +170,44 @@ describe('relay', () => {
     const kidNow = store.state.robots[KID];
     expect([kidNow.report, kidNow.relayed, kidNow.inbox]).toEqual([undefined, { n: RELAY_LIMIT }, [{ from: 'c_sub000', text: '[svall] sub (c_sub000) is blocked; its screen: svall robot read c_sub000' }]]);
     expect(store.state.robots[LEAD].inbox).toEqual([{ from: KID, text: `[svall] kid (${KID}) did not take your message: the user dropped it` }]);
+  });
+
+  it("takes a resume's first prompt as the request's, its note clipped off a long message that woke it", async () => {
+    const { said, stop, kid } = setup();
+    kid((c) => { c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { delete c.tmux; c.revive = { command: 'claude --resume s', interrupted: true }; });
+    await tick();
+    kid((c) => { c.tmux = { windowId: '@kid', paneId: '%kid' }; delete c.revive; c.agent = agent('working', prompt('n1', robotMessage({ name: 'sub', id: 'c_sub000' }, 'x'.repeat(3990)))); });
+    await tick();
+    kid((c) => { c.agent = agent('done', prompt('n1', robotMessage({ name: 'sub', id: 'c_sub000' }, 'x'.repeat(3990)))); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` }]);
+    stop();
+  });
+
+  it("types svalld's lines past robot messages held for the user, and holds the robot messages", async () => {
+    const { store, said, stop } = setup();
+    store.update((d) => {
+      d.robots[LEAD].relayed = { n: RELAY_LIMIT, user: 'u1' };
+      d.robots[LEAD].agent = agent('idle', prompt('u1', 'mine'));
+      d.robots[LEAD].inbox = [{ from: 'c_sub000', text: robotMessage({ name: 'sub', id: 'c_sub000' }, 'ping') }, { from: KID, text: `[svall] kid (${KID}) is done`, end: true }];
+    });
+    await waitFor(() => said.length === 1 && !!store.state.robots[LEAD].relayed?.held);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done` }]);
+    expect(store.state.robots[LEAD].inbox).toHaveLength(1);
+    stop();
+  });
+
+  it('keeps a report that began though its message was marked waiting at a stop', () => {
+    const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    store.update((d) => {
+      d.islands.i = { id: 'i', name: 'i', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 1 };
+      d.robots[KID] = { id: KID, islandId: 'i', cell: { x: 3, y: 1 }, name: 'kid', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('working'), report: { to: KID, says: 'x', queued: true, prompt: 'p1' } };
+    });
+    const stop = startRelay({ store, notify: () => Promise.resolve('sent'), log: silentLogger, here: () => true });
+    expect(store.state.robots[KID].report?.prompt).toBe('p1');
+    stop();
   });
 
   it("starts the count afresh after a prompt of the user's, though nothing else in the fleet changed", () => {
@@ -282,7 +322,7 @@ describe('relay', () => {
     store.update((d) => {
       d.robots[LEAD].agent = agent('idle', prompt('u1', 'mine'));
       d.robots[LEAD].relayed = { n: RELAY_LIMIT, user: 'u1' };
-      d.robots[LEAD].inbox = [{ from: KID, text: 'x' }];
+      d.robots[LEAD].inbox = [{ from: KID, text: robotMessage({ name: 'kid', id: KID }, 'x') }];
     });
     await waitFor(() => !!store.state.robots[LEAD].relayed?.held);
     expect(said).toEqual([]);

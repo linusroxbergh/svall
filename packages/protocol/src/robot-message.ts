@@ -29,7 +29,7 @@ export const isRobotSaid = (prompt: string): boolean => HEADER.test(prompt) || N
 export const RELAY_LIMIT = 200;
 
 // text as a hook hands a prompt on, control bytes and whitespace aside
-const plain = (s: string) => s.replace(CONTROL, '').replace(/\s+/g, ' ').trim();
+const plain = (s: string) => s.replace(/\r\n?/g, '\n').replace(CONTROL, '').replace(/\s+/g, ' ').trim();
 
 /** The head of a request's text, which a report on it knows the request by. */
 export const says = (text: string): string => plain(text).slice(0, 80);
