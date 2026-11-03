@@ -97,7 +97,7 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
       delete r.resumed;
     }
     // a prompt after the request's own ends it, as an Esc the poll had yet to read does
-    const over = !!p && (p.id !== r.prompt || (!saysIn(r, p.text) && userSaid(p.text)));
+    const over = !!p && userSaid(p.text) && (p.id !== r.prompt || !saysIn(r, p.text));
     if (r.resumed && c.tmux && c.agent && !over) return;
     const a = c.agent;
     if (a?.status !== 'blocked' || !c.tmux || over) delete r.asked;

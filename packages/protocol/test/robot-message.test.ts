@@ -62,9 +62,10 @@ describe('reports', () => {
     expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p1' } }))).toBe(false);
     expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p0', tagged: true } }))).toBe(false);
     expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', tagged: true } }))).toBe(true);
-    // once begun, only while that prompt is the newest: a later one is another request
+    // once begun, until a prompt of the user's follows: a robot's message joining the turn leaves it the request's
     expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(true);
-    expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(false);
+    expect(reportBegan(robot({ agent: agent('p1'), report: { to: 'c_lead00', after: 'p0', prompt: 'p0' } }))).toBe(false);
+    expect(reportBegan(robot({ agent: agent('p2'), report: { to: 'c_lead00', after: 'p0', prompt: 'p1' } }))).toBe(true);
   });
 
   it("begins a tagged report on the sender's message it was asked on, not an earlier one", () => {

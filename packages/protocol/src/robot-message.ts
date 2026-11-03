@@ -37,15 +37,15 @@ export const says = (text: string): string => plain(text).slice(0, 80);
 /** Whether `text` is the request a report knows by its head. */
 export const saysIn = (r: { says?: string }, text: string): boolean => !r.says || plain(text).includes(r.says);
 
-/** Whether `c`'s newest prompt is the request a report is owed on; Claude Code takes a prompt sent mid-turn into that turn,
- *  under the turn's id with the new prompt's text. */
+/** Whether `c`'s newest prompt is the request a report is owed on. An agent takes a prompt sent mid-turn into that turn,
+ *  Claude Code under the turn's id, OpenCode under one of its own; a robot's message or svalld's line so taken leaves it the
+ *  request's turn. */
 export const reportBegan = (c: Robot): boolean => {
   const r = c.report;
   const p = c.agent?.lastPrompt;
-  // a robot's message or svalld's line taken into the turn leaves it the request's
-  if (!r || !p || (!saysIn(r, p.text) && !(r.prompt && isRobotSaid(p.text)))) return false;
-  if (r.prompt) return p.id === r.prompt;
-  return p.id !== r.after && (!r.tagged || robotSender(p.text) === r.to);
+  if (!r || !p) return false;
+  if (r.prompt) return (p.id === r.prompt && saysIn(r, p.text)) || isRobotSaid(p.text);
+  return saysIn(r, p.text) && p.id !== r.after && (!r.tagged || robotSender(p.text) === r.to);
 };
 
 /** The robot a report on `c`'s request goes to, while it is owed and that robot has an agent, live or dormant, to take it. */

@@ -121,14 +121,14 @@ describe('relay', () => {
     stop();
   });
 
-  it("keeps a request that a robot's message or svalld's line joins, as a sub-robot's report does", async () => {
+  it.each(['p1', 'p2'])("keeps a request that a robot's message or svalld's line joins under id %s, as a sub-robot's report does", async (id) => {
     const { said, stop, kid } = setup();
     kid((c) => { c.report = { to: LEAD, after: 'p0', tagged: true, says: 'review PR 472' }; c.agent = agent('working', asked); });
     await tick();
-    kid((c) => { c.agent = agent('working', prompt('p1', '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
+    kid((c) => { c.agent = agent('working', prompt(id, '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
     await tick();
     expect(said).toEqual([]);
-    kid((c) => { c.agent = agent('done', prompt('p1', '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
+    kid((c) => { c.agent = agent('done', prompt(id, '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
     await waitFor(() => said.length === 1);
     expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` }]);
     stop();
