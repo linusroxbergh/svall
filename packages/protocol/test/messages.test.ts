@@ -179,8 +179,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 39', () => {
-    expect(PROTOCOL_VERSION).toBe(39);
+  it('is 40', () => {
+    expect(PROTOCOL_VERSION).toBe(40);
   });
 
   it('was 38 without drops: drop.part takes one part of at most a mebibyte of a 32-hex upload, and robot.drop names it', () => {
@@ -191,7 +191,7 @@ describe('protocol version', () => {
     expect(methods['robot.drop'].params.parse({ id: 'c_1', upload, name: 'shot.png' })).toEqual({ id: 'c_1', upload, name: 'shot.png' });
   });
 
-  it('is 39 with term.attach naming the machine a robot runs on, and a worker that dials its home', () => {
+  it('was 39 without term.attach naming the machine a robot runs on, or a worker that dials its home', () => {
     const attach = { socket: '/s', session: 'v-c_a', tmux: '/t' };
     expect(methods['term.attach'].result.safeParse(attach).success).toBe(false);
     expect(methods['term.attach'].result.parse({ ...attach, machine: UUID_A }).machine).toBe(UUID_A);
