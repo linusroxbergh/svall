@@ -164,9 +164,23 @@ describe('pusher', () => {
     await tick();
     expect(sent).toEqual([]);
     accepted.logins = ['me'];
-    store.update((d) => { d.robots.c.agent = agent('done'); });
+    store.update((d) => { d.robots.c.agent = agent('done'); d.robots.c.unread = true; });
     await tick();
     expect(sent.map((s) => s.endpoint)).toEqual(['https://push.example/b']);
+  });
+
+  it('tells nothing of a finish a robot was told of, until it goes to the user unread, and asks for robot messages held for the user', async () => {
+    const { store, sent } = setup();
+    store.update((d) => { d.robots.c.agent = agent('done'); });
+    await tick();
+    expect(sent).toEqual([]);
+    store.update((d) => { d.robots.c.unread = true; });
+    store.update((d) => { d.robots.c.agent = agent('idle'); d.robots.c.unread = false; d.robots.c.relayed = { n: 200, held: 'h1' }; });
+    await tick();
+    expect(sent).toEqual([
+      { endpoint: 'https://push.example/b', payload: { id: 'c', name: 'otter', status: 'done' } },
+      { endpoint: 'https://push.example/a', payload: { id: 'c', name: 'otter', status: 'blocked', prompt: '200 robot messages since your last prompt; let robots carry on?', promptId: 'h1' } },
+    ]);
   });
 
   it('says nothing while the phone link is off', async () => {
@@ -200,7 +214,7 @@ describe('pusher', () => {
     });
     store.update((d) => { d.robots.c.agent = agent('blocked', 'Bash?'); });
     store.update((d) => { d.robots.c.machine = W; });
-    store.update((d) => { d.robots.c.agent = agent('done'); });
+    store.update((d) => { d.robots.c.agent = agent('done'); d.robots.c.unread = true; });
     store.update((d) => { delete d.robots.c.machine; d.robots.c.agent = agent('blocked'); });
     await tick();
     stop();

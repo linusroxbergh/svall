@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { robotSender, type Agent, type AgentStatus, type Delivery } from '@svall/protocol';
+import { isRobotSaid, shownAgent, type Agent, type AgentStatus, type Delivery } from '@svall/protocol';
 import { agentInFront, readComposer } from '../agent/composer.js';
 import { settle } from '../agent/reducer.js';
 import type { Config } from '../config.js';
@@ -17,8 +17,8 @@ const STEP_MS = 1000;
 const HOLD_MS = 1000;
 
 type Deps = { fleet: Fleet; store: Store; tmux: Tmux; config: Config; log: Logger; reviving: ReadonlyMap<string, unknown> };
-// the pane and the agent session a prompt was sent to, which alone may take it
-type Held = { text: string; enter: boolean; paneId: string; sessionId?: string };
+// the pane and the agent session a prompt was sent to, which alone may take it; sent hears whether it went in or was dropped
+type Held = { text: string; enter: boolean; paneId: string; sessionId?: string; sent?: (ok: boolean) => void };
 
 const laneOf = (id: string, term?: 2) => (term === 2 ? `${id}/2` : id);
 
@@ -37,26 +37,29 @@ export class Prompts {
 
   // Text goes into an agent's prompt line only while it shows empty: a draft or a dialog the agent did not report holds it,
   // a question it reported refuses it. Each agent queues a prompt sent mid-turn itself. Keys typed into the terminal pass no gate
-  async run(id: string, text: string, enter: boolean, term?: 2): Promise<Delivery> {
+  async run(id: string, text: string, enter: boolean, term?: 2, sent?: (ok: boolean) => void): Promise<Delivery> {
     const { fleet } = this.deps;
     const c = fleet.robot(id);
     // a dormant agent wakes with the text as its launch prompt; typed while it boots, a prompt can lose its Enter.
     // A window still alive takes it as a send of its own
     if (!term && enter && !c.tmux && !this.deps.reviving.has(id) && isAgentCommand(c.revive?.command ?? '')) {
-      return (await fleet.reviveRobot(id, text)).delivery ?? 'delivered';
+      const delivery = (await fleet.reviveRobot(id, text)).delivery ?? 'delivered';
+      // a window still alive holds it as a send of its own, which tells nobody when it goes in
+      sent?.(true);
+      return delivery;
     }
     const lane = laneOf(id, term);
     return this.inLane(lane, async () => {
       const t = fleet.terminal(id, term);
       const free = await this.free(c.name, id, term, t.tmux.paneId);
       // a shell would run a robot's message as commands, its lines one by one
-      if (free === undefined && robotSender(text)) throw new Invalid(`${c.name} runs no agent; svall robot run types into its terminal`);
+      if (free === undefined && isRobotSaid(text)) throw new Invalid(`${c.name} runs no agent; svall robot run types into its terminal`);
       // a shell, or a program other than an agent, takes the text as it comes
       if (free === undefined || (free && !this.held.has(lane))) {
         await this.send(id, text, enter, term);
         return 'delivered';
       }
-      this.hold(lane, id, term, { text, enter, paneId: t.tmux.paneId, sessionId: t.agent?.sessionId });
+      this.hold(lane, id, term, { text, enter, paneId: t.tmux.paneId, sessionId: t.agent?.sessionId, ...(sent && { sent }) });
       return 'queued';
     });
   }
@@ -119,11 +122,12 @@ export class Prompts {
     if (free === undefined) return gone();
     if (!free) return;
     await this.send(id, queue[0].text, queue[0].enter, term);
-    queue.shift();
+    queue.shift()!.sent?.(true);
     if (!queue.length) this.drop(lane);
   }
 
   private drop(lane: string): void {
+    for (const p of this.held.get(lane) ?? []) p.sent?.(false);
     this.held.delete(lane);
     for (const look of this.waiters) look();
   }
@@ -189,9 +193,11 @@ export class Prompts {
       const c = this.deps.store.state.robots[id];
       const t = term === 2 ? c?.second : c;
       if (!t?.tmux) return 'gone';
+      // robot messages held for the user have the main terminal ask the user
+      const a = term === 2 ? t.agent : shownAgent(c);
       // the turn of a prompt still held has not begun, so the end of the turn before it does not count
-      const ended = t.agent?.status === 'done' || t.agent?.status === 'idle';
-      if (t.agent && until.includes(t.agent.status) && !(ended && this.held.has(laneOf(id, term)))) return t.agent.status;
+      const ended = a?.status === 'done' || a?.status === 'idle';
+      if (a && until.includes(a.status) && !(ended && this.held.has(laneOf(id, term)))) return a.status;
       return undefined;
     }, timeoutMs, 'timeout', signal);
   }
@@ -211,12 +217,12 @@ export class Prompts {
 
   forget(id: string): void {
     this.answering.delete(id);
-    this.held.delete(laneOf(id));
-    this.held.delete(laneOf(id, 2));
+    this.drop(laneOf(id));
+    this.drop(laneOf(id, 2));
   }
 
   stop(): void {
-    this.held.clear();
+    for (const lane of [...this.held.keys()]) this.drop(lane);
   }
 
   // Claude Code fires no hook when Esc ends the turn, though Esc on a question asked while background agents

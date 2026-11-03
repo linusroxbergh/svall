@@ -1,4 +1,4 @@
-import { robotOfKey, isNews, isPushStatus, sessionsOf, type FleetState, type PushStatus, type Session } from '@svall/protocol';
+import { robotOfKey, isNews, isPushStatus, sessionsOf, shownAgent, type FleetState, type PushStatus, type Session } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Bridge, NotifyPermission, ToShell } from './bridge.js';
 import type { NotifySettings } from './settings.js';
@@ -51,7 +51,7 @@ export function decide(prev: NoticeView, next: NoticeView, posted: Posted): { po
   for (const s of now.values()) {
     const status = s.agent?.status;
     // a new question while the agent stays blocked replaces the banner
-    if (!isPushStatus(status) || !isNews(before.get(s.key)?.agent, s.agent) || !next.settings.statuses.includes(status)) continue;
+    if (!isPushStatus(status) || !isNews(before.get(s.key), s) || !next.settings.statuses.includes(status)) continue;
     if (inView(s.robotId) || (status === 'done' && !s.unread)) continue;
     post.push(noticeFor(next, s, status));
     out.set(s.key, status);
@@ -104,7 +104,8 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       await api.call('robot.answer', { id: key, answer: action, promptId });
     } catch {
       // a newer question's banner is up under the same key, and stays
-      const now = o.store.getState().fleet.robots[key]?.agent;
+      const held = o.store.getState().fleet.robots[key];
+      const now = held && shownAgent(held);
       if (now?.status === 'blocked' && now.promptId !== promptId) return;
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }

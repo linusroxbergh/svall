@@ -59,6 +59,29 @@ beforeEach(() => {
   store.getState().select('c0', true);
 });
 
+test('a robot names the robot that started it and lists those it started, each selecting its robot', () => {
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0!, startedBy: 'c1' }, c2: { ...f.robots.c2!, startedBy: 'c0', report: { to: 'c0' }, agent: { kind: 'claude', sessionId: 's', status: 'working', lastActivityAt: 0 } } } });
+  render(<Side />);
+  expect(screen.getByTestId('side-started-by').textContent).toBe('started by c1');
+  expect(screen.getByTestId('side-started').textContent).toBe('c2working · reports back');
+  fireEvent.click(screen.getByRole('button', { name: 'c2' }));
+  expect(store.getState().selectedId).toBe('c2');
+  fireEvent.click(screen.getByRole('button', { name: 'c0' }));
+  expect(store.getState().selectedId).toBe('c0');
+});
+
+test('robot messages held for the user show as blocked, let in or dropped from the side card', async () => {
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0!, agent: { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 0 }, relayed: { n: 200, held: 'h1' } } } });
+  render(<Side />);
+  expect(screen.getByTestId('side-card').querySelector('.kicker')!.textContent).toBe('blocked');
+  expect(screen.getByTestId('side-held').textContent).toContain('200 robot messages since your last prompt; the next waits on you');
+  await act(async () => { fireEvent.click(screen.getByTestId('side-held-let')); });
+  await act(async () => { fireEvent.click(screen.getByTestId('side-held-drop')); });
+  expect(calls().filter(([m]) => m === 'robot.answer').map(([, p]) => p)).toEqual([{ id: 'c0', answer: 'approve', promptId: 'h1' }, { id: 'c0', answer: 'deny', promptId: 'h1' }]);
+});
+
 test('the note takes no more than the fleet does', () => {
   render(<Side />);
   expect(field('side-note').maxLength).toBe(ROBOT_NOTE_MAX);

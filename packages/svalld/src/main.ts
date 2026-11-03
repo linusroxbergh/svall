@@ -43,6 +43,7 @@ import { releaseVersion } from './release.js';
 import { Retro } from './retro/service.js';
 import { runtimeVersion, variant } from './runtime.js';
 import { startPusher, webPushSender, type Send } from './push/pusher.js';
+import { startRelay } from './fleet/relay.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
 import { repoSources, rootHere, workspaceRoot } from './resources/scan.js';
@@ -353,6 +354,8 @@ async function start(opts: Options): Promise<Daemon> {
   try {
     await fleet.start();
     retro?.start();
+    // the home holds every robot's report and the lines each is owed, wherever it runs
+    if (!worker) teardown.push(startRelay({ store, notify: (id, text) => fleet.notify(id, text), log, here: (c) => router.runsHere(c) }));
     // each daemon pushes for the robots that run on it; the home also for those on a worker that does not serve the phone
     if (!off.has('push')) {
       teardown.push(startPusher({

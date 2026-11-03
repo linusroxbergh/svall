@@ -174,7 +174,7 @@ describe('svall argument parsing', () => {
 
   it('reports its release, machine, protocol and state schema, and no transfer or authority schema', async () => {
     const v = JSON.parse((await run({}, 'version', '--json')).stdout);
-    expect(v.protocol).toBe(37);
+    expect(v.protocol).toBe(38);
     expect(v).not.toHaveProperty('transferSchema');
     expect(v).not.toHaveProperty('authoritySchema');
   });

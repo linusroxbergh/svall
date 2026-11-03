@@ -28,11 +28,14 @@ export function startPusher(o: {
     const f = o.store.state;
     const next = sessionsOf(f);
     const url = o.served();
-    for (const [key, { robotId, term, agent }] of next) {
+    for (const [key, s] of next) {
+      const { robotId, term, agent } = s;
       const status = agent?.status;
       const c = f.robots[robotId];
       const was = Object.hasOwn(before.robots, robotId) ? before.robots[robotId] : undefined;
-      if (url === undefined || !isPushStatus(status) || !isNews(last.get(key)?.agent, agent) || !owns(c) || (was && !owns(was))) continue;
+      if (url === undefined || !isPushStatus(status) || !isNews(last.get(key), s) || !owns(c) || (was && !owns(was))) continue;
+      // a finish a robot asked for reaches that robot alone, and comes in seen
+      if (status === 'done' && !s.unread) continue;
       const payload: PushPayload = {
         id: robotId, name: c.name, status, ...(term ? { term } : {}), ...(agent?.prompt ? { prompt: agent.prompt } : {}), ...(agent?.promptId ? { promptId: agent.promptId } : {}),
         ...(o.machine && { machine: o.machine }),

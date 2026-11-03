@@ -1,4 +1,4 @@
-import { byCell, byIslandOrder, columnOf, placingOn, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
+import { byCell, byIslandOrder, columnOf, placingOn, shownAgent, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
 import { unreachableOf, type Via } from './placement.js';
 import type { View } from './store/ui.js';
@@ -90,7 +90,7 @@ export const resumeErrorOf = (slot: { tmux?: unknown; resumeError?: string } | u
 // one terminal's status: 1 is the main terminal, 2 the second
 export const slotStatus = (c: Robot, term: 1 | 2): DisplayStatus => {
   const slot = term === 2 ? c.second : c;
-  const s = slot?.agent?.status ?? 'shell';
+  const s = (term === 2 ? c.second?.agent : shownAgent(c))?.status ?? 'shell';
   // with its window gone nothing runs and nothing waits on the user, whatever the agent last reported
   return slot && !slot.tmux && (s === 'working' || s === 'blocked') ? 'idle' : s;
 };

@@ -42,8 +42,11 @@ export class WorkerMutations {
       this.journal({ method: 'robot.run', params: p, delivery });
       return { delivery };
     },
-    // journaled as the run it types, which the home applies as any other
-    'robot.send': async (p) => this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true }),
+    // journaled as the run it types, which the home applies as any other; the home keeps reports
+    'robot.send': async (p) => {
+      if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
+      return this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true });
+    },
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
     'island.create': async (p) => this.createIsland(p),
@@ -136,6 +139,7 @@ export class WorkerMutations {
     if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(NOT_HOME);
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
+    if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
     if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
     const q = { ...p, note: SLEPT_NOTE(this.name) };
     this.starting.add(q);

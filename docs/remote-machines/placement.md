@@ -229,7 +229,8 @@ the worker:
   "started on linus-vault while this Mac slept", and the worker starts at most five robots until this Mac answers
   again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
-  `svall robot close` and `svall robot run` and `read` reach the robots on it.
+  `svall robot close` and `svall robot run`, `send` and `read` reach the robots on it. `--report` on `robot new` or
+  `robot send` gets the sentence below, as this Mac keeps the reports.
 - `svall island create` makes an island on the worker, and `svall island update` changes an island's name and
   description; folding or unfolding one is taken too. `svall island delete` deletes an island no robot stands on in the
   fleet as the worker holds it; its docs stay until this Mac takes the delete. Mission control, a new island with

@@ -165,3 +165,28 @@ describe('AgentEvents and the retro\'s record of sessions', () => {
     ]);
   });
 });
+
+describe('AgentEvents and reports', () => {
+  it("brings in seen a finish a robot asked for, and unread one the user's own turn made", async () => {
+    const { store, hook } = events([]);
+    const lead: Robot = { ...store.state.robots.c_a, id: 'c_lead00', name: 'lead', cell: { x: 3, y: 1 }, agent: { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 0 } };
+    store.update((d) => { d.robots.c_lead00 = lead; d.robots.c_a.report = { to: 'c_lead00' }; });
+    await hook('SessionStart', 0, { backend: 'claude' });
+    const shell = store.state.robots.c_a.shell.lastOutputAt;
+    await hook('UserPromptSubmit', 0, { backend: 'claude', prompt: { id: 'p1', text: 'review PR 472' } });
+    await hook('Stop', 0, { backend: 'claude' });
+    expect(store.state.robots.c_a.agent?.status).toBe('done');
+    expect(store.state.robots.c_a.unread).toBe(false);
+    // an agent's hooks are no shell activity
+    expect(store.state.robots.c_a.shell.lastOutputAt).toBe(shell);
+    store.update((d) => { delete d.robots.c_a.report; });
+    await hook('UserPromptSubmit', 0, { backend: 'claude', prompt: { id: 'p2', text: 'and again' } });
+    await hook('Stop', 0, { backend: 'claude' });
+    expect(store.state.robots.c_a.unread).toBe(true);
+    // a report on a robot message yet to come leaves the user's own turn theirs
+    store.update((d) => { d.robots.c_a.report = { to: 'c_lead00', after: 'p2', tagged: true }; });
+    await hook('UserPromptSubmit', 0, { backend: 'claude', prompt: { id: 'p3', text: 'mine' } });
+    await hook('Stop', 0, { backend: 'claude' });
+    expect(store.state.robots.c_a.unread).toBe(true);
+  });
+});

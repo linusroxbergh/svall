@@ -61,6 +61,16 @@ describe('decide', () => {
     expect(decide(look(working), look(patch(done, 'c1', { unread: false })), new Map()).post).toEqual([]);
   });
 
+  it("posts no done for a finish a robot was told of, until it goes to the user unread, and asks for robot messages held for the user", () => {
+    const told = patch(fleet(), 'c1', { agent: agent('done'), unread: false });
+    expect(decide(look(working), look(told), new Map()).post).toEqual([]);
+    expect(decide(look(told), look(patch(told, 'c1', { unread: true })), new Map()).post).toEqual([{ key: 'c1', title: 'c1 on beta is done', body: '', sound: true, actions: false }]);
+    const held = patch(fleet(), 'c1', { agent: agent('idle'), relayed: { n: 200, held: 'h1' } });
+    expect(decide(look(patch(fleet(), 'c1', { agent: agent('idle') })), look(held), new Map()).post).toEqual([
+      { key: 'c1', title: 'c1 on beta needs you', body: '200 robot messages since your last prompt; let robots carry on?', sound: true, actions: true, promptId: 'h1' },
+    ]);
+  });
+
   it('posts nothing while off, without permission, or for a status not chosen', () => {
     expect(decide(look(working), look(blocked, { settings: { ...ON, on: false } }), new Map()).post).toEqual([]);
     expect(decide(look(working), look(blocked, { permission: 'unknown' }), new Map()).post).toEqual([]);

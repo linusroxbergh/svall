@@ -1,10 +1,11 @@
-import { contextPctOf, type Robot, type TerminalSlot } from '@svall/protocol';
+import { contextPctOf, shownAgent, type Agent, type Robot, type TerminalSlot } from '@svall/protocol';
 
-const sessionState = (s: TerminalSlot): string =>
-  (!s.tmux ? 'dormant' : s.agent ? s.agent.status + (s.unread ? '*' : '') : 'shell');
+const sessionState = (s: TerminalSlot, agent: Agent | undefined = s.agent): string =>
+  (!s.tmux ? 'dormant' : agent ? agent.status + (s.unread ? '*' : '') : 'shell');
 
+// robot messages held for the user have the main terminal ask the user
 export function stateOf(c: Robot): string {
-  const main = sessionState(c);
+  const main = sessionState(c, shownAgent(c));
   return c.second ? `${main} +${sessionState(c.second)}` : main;
 }
 
