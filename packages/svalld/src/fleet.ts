@@ -1058,10 +1058,10 @@ export class Fleet extends EventEmitter<Events> {
   async send(id: string, from: string, text: string, report?: boolean): Promise<SendDelivery> {
     const message = this.message(id, from, text);
     const head = says(text);
-    // a working Claude Code takes a message into its turn under that turn's id, so the prompt before it marks nothing then;
-    // Codex and OpenCode open a turn of its own
+    // a working agent takes a message into its turn, Claude Code and Codex under that turn's id, so the prompt before it marks
+    // nothing then
     const before = this.robot(id).agent;
-    const after = before?.status === 'working' && before.kind === 'claude' ? undefined : before?.lastPrompt?.id;
+    const after = before?.status === 'working' ? undefined : before?.lastPrompt?.id;
     const ours = (r: Robot['report']) => r?.to === from && !r.prompt && r.says === head;
     // the report is taken before the message goes in, so a second sender meanwhile is refused; a message dropped before it
     // went in, or refused, leaves nothing to report on

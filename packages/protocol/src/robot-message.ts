@@ -38,8 +38,8 @@ export const says = (text: string): string => plain(text).slice(0, 80);
 export const saysIn = (r: { says?: string }, text: string): boolean => !r.says || plain(text).includes(r.says);
 
 /** Whether `c`'s newest prompt is the request a report is owed on. An agent takes a prompt sent mid-turn into that turn,
- *  Claude Code under the turn's id, OpenCode under one of its own; a robot's message or svalld's line so taken leaves it the
- *  request's turn. */
+ *  Claude Code and Codex under the turn's id, OpenCode under one of its own; a robot's message or svalld's line so taken
+ *  leaves it the request's turn. */
 export const reportBegan = (c: Robot): boolean => {
   const r = c.report;
   const p = c.agent?.lastPrompt;
