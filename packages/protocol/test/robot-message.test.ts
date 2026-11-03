@@ -82,6 +82,13 @@ describe('reports', () => {
     expect(reportBegan(robot({ ...run('what is 2+2?'), report: { to: 'c_lead00', says: says('review PR 472'), prompt: 'p1' } }))).toBe(false);
   });
 
+  it("knows a request by its head as a hook hands it on, and holds through a robot's line taken into its turn", () => {
+    expect(says(' go \u0001 now\t ')).toBe('go now');
+    const turn = (text: string) => robot({ agent: { ...agent(), lastPrompt: { id: 'p1', text, at: 0 } }, report: { to: 'c_lead00', says: says('review PR 472'), prompt: 'p1' } });
+    expect(reportBegan(turn('[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last'))).toBe(true);
+    expect(reportBegan(turn('what is 2+2?'))).toBe(false);
+  });
+
   it('is owed to a sender with an agent, live or dormant, once the request began', () => {
     const kid = robot({ agent: agent('p1'), report: { to: 'c_lead00' } });
     expect(owedTo({ robots: { c_lead00: lead } }, kid)?.id).toBe('c_lead00');

@@ -1,9 +1,9 @@
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RELAY_LIMIT, owedTo, robotMessage, type Agent, type Robot } from '@svall/protocol';
+import { RELAY_LIMIT, owedTo, robotMessage, says, type Agent, type Robot } from '@svall/protocol';
 import { RESUME_NOTE } from '../src/dormancy.js';
 import { Blocked, Dormant, Invalid } from '../src/errors.js';
-import { startRelay, type Notify } from '../src/fleet/relay.js';
+import { dropInbox, holdRelayed, startRelay, type Notify } from '../src/fleet/relay.js';
 import { silentLogger } from '../src/log.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome, waitFor } from './helpers.js';
@@ -117,6 +117,63 @@ describe('relay', () => {
     expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) stopped: another prompt joined its turn` }]);
     expect(store.state.robots[KID].report).toBeUndefined();
     stop();
+  });
+
+  it("keeps a request that a robot's message or svalld's line joins, as a sub-robot's report does", async () => {
+    const { said, stop, kid } = setup();
+    kid((c) => { c.report = { to: LEAD, after: 'p0', tagged: true, says: 'review PR 472' }; c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { c.agent = agent('working', prompt('p1', '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
+    await tick();
+    expect(said).toEqual([]);
+    kid((c) => { c.agent = agent('done', prompt('p1', '[svall] sub (c_sub000) is done; full answer: svall robot read c_sub000 --last')); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` }]);
+    stop();
+  });
+
+  it('carries a request on in a resume a line woke, its note after that line, and forgets reports whose message a stop held', async () => {
+    const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    store.update((d) => {
+      d.islands.i = { id: 'i', name: 'i', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 1 };
+      d.robots[KID] = { id: KID, islandId: 'i', cell: { x: 3, y: 1 }, name: 'kid', portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('idle'), report: { to: KID, tagged: true, says: 'x', queued: true } };
+    });
+    const stop = startRelay({ store, notify: () => Promise.resolve('sent'), log: silentLogger, here: () => true });
+    expect(store.state.robots[KID].report).toBeUndefined();
+    stop();
+    const { said, stop: stop2, kid } = setup();
+    kid((c) => { c.agent = agent('working', asked); });
+    await tick();
+    kid((c) => { delete c.tmux; c.revive = { command: 'claude --resume s', interrupted: true }; });
+    await tick();
+    kid((c) => { c.tmux = { windowId: '@kid', paneId: '%kid' }; delete c.revive; c.agent = agent('working', prompt('n1', `[svall] sub (c_sub000) was closed\n\n${RESUME_NOTE}`)); });
+    await tick();
+    kid((c) => { c.agent = agent('done', prompt('n1', `[svall] sub (c_sub000) was closed\n\n${RESUME_NOTE}`)); });
+    await waitFor(() => said.length === 1);
+    expect(said).toEqual([{ to: LEAD, text: `[svall] kid (${KID}) is done; full answer: svall robot read ${KID} --last` }]);
+    stop2();
+  });
+
+  it("drops what the user drops: robot messages, with the report on one of them, telling each sender, and keeps svalld's lines", () => {
+    const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    const msg = robotMessage({ name: 'lead', id: LEAD }, 'review PR 472');
+    store.update((d) => {
+      d.islands.i = { id: 'i', name: 'i', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 1 };
+      const r = (id: string, name: string, x: number): Robot => ({ id, islandId: 'i', cell: { x, y: 1 }, name, portrait: 'fox', note: '', instructions: '', cwd: '/tmp', context: [], shell: { lastOutputAt: 0 }, unread: false, agent: agent('idle') });
+      d.robots[LEAD] = r(LEAD, 'lead', 1);
+      d.robots[KID] = { ...r(KID, 'kid', 3), report: { to: LEAD, tagged: true, says: says('review PR 472') }, relayed: { n: RELAY_LIMIT, held: 'h1' },
+        inbox: [{ from: LEAD, text: msg }, { from: 'c_sub000', text: '[svall] sub (c_sub000) is blocked; its screen: svall robot read c_sub000' }] };
+      dropInbox(d, d.robots[KID], () => true, silentLogger, true);
+    });
+    const kidNow = store.state.robots[KID];
+    expect([kidNow.report, kidNow.relayed, kidNow.inbox]).toEqual([undefined, { n: RELAY_LIMIT }, [{ from: 'c_sub000', text: '[svall] sub (c_sub000) is blocked; its screen: svall robot read c_sub000' }]]);
+    expect(store.state.robots[LEAD].inbox).toEqual([{ from: KID, text: `[svall] kid (${KID}) did not take your message: the user dropped it` }]);
+  });
+
+  it("starts the count afresh after a prompt of the user's, though nothing else in the fleet changed", () => {
+    const c = { agent: agent('idle', prompt('u2', 'carry on')), relayed: { n: RELAY_LIMIT, user: 'u1' } } as unknown as Robot;
+    expect(holdRelayed(c)).toBe(false);
+    expect(c.relayed).toBeUndefined();
   });
 
   it("ends a request once another prompt follows it, as one after an Esc the poll had yet to read", async () => {

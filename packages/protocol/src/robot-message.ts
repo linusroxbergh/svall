@@ -28,18 +28,22 @@ export const isRobotSaid = (prompt: string): boolean => HEADER.test(prompt) || N
 /** The robot messages one robot takes with no prompt of the user's between them, past which the next waits on the user. */
 export const RELAY_LIMIT = 200;
 
-/** The head of a request's text, which a report on it knows the request by, whitespace aside. */
-export const says = (text: string): string => oneLine(text).slice(0, 80);
+// text as a hook hands a prompt on, control bytes and whitespace aside
+const plain = (s: string) => s.replace(CONTROL, '').replace(/\s+/g, ' ').trim();
+
+/** The head of a request's text, which a report on it knows the request by. */
+export const says = (text: string): string => plain(text).slice(0, 80);
 
 /** Whether `text` is the request a report knows by its head. */
-export const saysIn = (r: { says?: string }, text: string): boolean => !r.says || oneLine(text).includes(r.says);
+export const saysIn = (r: { says?: string }, text: string): boolean => !r.says || plain(text).includes(r.says);
 
 /** Whether `c`'s newest prompt is the request a report is owed on; Claude Code takes a prompt sent mid-turn into that turn,
  *  under the turn's id with the new prompt's text. */
 export const reportBegan = (c: Robot): boolean => {
   const r = c.report;
   const p = c.agent?.lastPrompt;
-  if (!r || !p || !saysIn(r, p.text)) return false;
+  // a robot's message or svalld's line taken into the turn leaves it the request's
+  if (!r || !p || (!saysIn(r, p.text) && !(r.prompt && isRobotSaid(p.text)))) return false;
   if (r.prompt) return p.id === r.prompt;
   return p.id !== r.after && (!r.tagged || robotSender(p.text) === r.to);
 };

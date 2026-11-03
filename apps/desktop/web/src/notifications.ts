@@ -1,4 +1,4 @@
-import { robotOfKey, isNews, isPushStatus, sessionsOf, type FleetState, type PushStatus, type Session } from '@svall/protocol';
+import { robotOfKey, isNews, isPushStatus, sessionsOf, shownAgent, type FleetState, type PushStatus, type Session } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Bridge, NotifyPermission, ToShell } from './bridge.js';
 import type { NotifySettings } from './settings.js';
@@ -104,7 +104,8 @@ export function followNotifications(o: { store: AppStore; bridge: Bridge; api():
       await api.call('robot.answer', { id: key, answer: action, promptId });
     } catch {
       // a newer question's banner is up under the same key, and stays
-      const now = o.store.getState().fleet.robots[key]?.agent;
+      const held = o.store.getState().fleet.robots[key];
+      const now = held && shownAgent(held);
       if (now?.status === 'blocked' && now.promptId !== promptId) return;
       o.bridge.send({ type: 'notify.post', ...answerFailed(c.name, key, o.store.getState().settings.notifications.sound) });
     }

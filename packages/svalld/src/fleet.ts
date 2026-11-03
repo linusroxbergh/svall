@@ -1057,37 +1057,46 @@ export class Fleet extends EventEmitter<Events> {
    *  `report`, `from` is owed a report on it. */
   async send(id: string, from: string, text: string, report?: boolean): Promise<SendDelivery> {
     const message = this.message(id, from, text);
-    const c = this.robot(id);
-    // one report at a time: a second would leave the first request unheard of
-    const owed = c.report && (c.report.to !== from || c.report.prompt) && Object.hasOwn(this.deps.store.state.robots, c.report.to) ? this.robot(c.report.to) : undefined;
-    if (report && owed) throw new Invalid(`${c.name} owes ${owed.id === from ? 'you' : owed.name} a report; send without --report, or once it is done`);
-    const held = (c.inbox ?? []).filter((m) => robotSender(m.text));
-    if (c.relayed?.held && (held.length >= HELD_MAX || held.reduce((n, m) => n + m.text.length, message.length) > HELD_BYTES)) {
-      throw new Blocked(`${c.name} already holds ${held.length} robot messages for the user`);
-    }
-    // the prompt before this one, read before it goes in, as its hook can land before the send returns
-    const after = c.agent?.lastPrompt?.id;
-    const owe = (r: Robot) => { if (report) r.report = { to: from, tagged: true, says: says(text), ...(after && { after }) }; };
-    // a message dropped before it went in leaves nothing to report on
-    const sent = (ok: boolean) => {
-      if (ok || !report) return;
-      this.deps.store.update((d) => { const r = d.robots[id]?.report; if (r?.to === from && !r.prompt) delete d.robots[id].report; });
-    };
+    const head = says(text);
+    // a working Claude Code takes a message into its turn under that turn's id, so the prompt before it marks nothing then
+    const before = this.robot(id).agent;
+    const after = before?.status === 'working' ? undefined : before?.lastPrompt?.id;
+    const ours = (r: Robot['report']) => r?.to === from && !r.prompt && r.says === head;
+    // the report is taken before the message goes in, so a second sender meanwhile is refused; a message dropped before it
+    // went in, or refused, leaves nothing to report on
+    const unowe = () => this.deps.store.update((d) => { if (ours(d.robots[id]?.report)) delete d.robots[id].report; });
     let waits = false;
     this.deps.store.update((d) => {
-      const r = d.robots[id];
-      if (!holdRelayed(r)) return;
+      const c = this.robot(id) && d.robots[id];
+      const owed = c.report && (c.report.to !== from || c.report.prompt) && Object.hasOwn(d.robots, c.report.to) ? d.robots[c.report.to] : undefined;
+      if (report && owed) throw new Invalid(`${c.name} owes ${owed.id === from ? 'you' : owed.name} a report; send without --report, or once it is done`);
+      if (report) c.report = { to: from, tagged: true, says: head, ...(after && { after }) };
+      if (!holdRelayed(c)) return;
+      const held = (c.inbox ?? []).filter((m) => robotSender(m.text));
+      if (held.length >= HELD_MAX || held.reduce((n, m) => n + Buffer.byteLength(m.text), Buffer.byteLength(message)) > HELD_BYTES) {
+        throw new Blocked(`${c.name} already holds ${held.length} robot messages for the user, the most it holds`);
+      }
       waits = true;
-      (r.inbox ??= []).push({ from, text: message });
-      owe(r);
+      (c.inbox ??= []).push({ from, text: message });
     });
     if (waits) return 'held';
-    const delivery = await this.run(id, message, true, undefined, sent);
+    const here = !this.deps.remote?.placedAt(id);
+    let delivery: Delivery;
+    try {
+      delivery = await this.run(id, message, true, undefined, (ok) => {
+        if (!ok) unowe();
+        else this.deps.store.update((d) => { const r = d.robots[id]?.report; if (r?.queued && r.says === head) delete r.queued; });
+      });
+    } catch (e) {
+      if (report) unowe();
+      throw e;
+    }
     this.deps.store.update((d) => {
-      const r = Object.hasOwn(d.robots, id) ? d.robots[id] : undefined;
-      if (!r) return;
-      countRelayed(r);
-      owe(r);
+      const c = Object.hasOwn(d.robots, id) ? d.robots[id] : undefined;
+      if (!c) return;
+      countRelayed(c);
+      // held here in memory, which a restart loses
+      if (report && delivery === 'queued' && here && ours(c.report)) c.report!.queued = true;
     });
     return delivery;
   }
@@ -1108,7 +1117,7 @@ export class Fleet extends EventEmitter<Events> {
 
   answerPrompt(id: string, answer: 'approve' | 'deny', promptId?: string): Promise<void> {
     // the question robot messages held for the user ask is svalld's own: carry on lets them in afresh; deny drops them, tells
-    // their senders and holds the next, with a report whose request went with them
+    // their senders and holds the next
     const held = this.robot(id).relayed?.held;
     if (held && (promptId === undefined || promptId === held)) {
       // the home holds them
@@ -1116,8 +1125,6 @@ export class Fleet extends EventEmitter<Events> {
       this.deps.store.update((d) => {
         const c = d.robots[id];
         if (answer === 'approve') { delete c.relayed; return; }
-        const r = c.report;
-        if (r && !r.prompt && c.inbox?.some((m) => robotSender(m.text) === r.to)) delete c.report;
         dropInbox(d, c, (x) => this.runsHere(x), this.deps.log, true);
       });
       return Promise.resolve();

@@ -26,6 +26,9 @@ describe('stateOf', () => {
     expect(stateOf({ ...base, second: { ...second, agent: agent('done'), unread: true } })).toBe('shell +done*');
     expect(stateOf({ ...base, second: { cwd: '/tmp', unread: false, revive: { command: '' } } })).toBe('shell +dormant');
   });
+  it('shows a robot whose robot messages wait on the user as blocked', () => {
+    expect(stateOf({ ...base, agent: agent('idle'), relayed: { n: 200, held: 'h1' } })).toBe('blocked');
+  });
 });
 
 describe('contextOf', () => {

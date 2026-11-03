@@ -296,10 +296,35 @@ runIf('Fleet prompts', () => {
       const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
       screen.mockResolvedValue(pane('claude-draft'));
       expect(await fleet.send(c.id, lead.id, 'review it', true)).toBe('queued');
-      expect(store.state.robots[c.id].report).toMatchObject({ to: lead.id, tagged: true });
+      // held in memory, which a restart loses
+      expect(store.state.robots[c.id].report).toMatchObject({ to: lead.id, tagged: true, queued: true });
       await hook({ name: 'SessionEnd' });
       await hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
       await waitFor(() => !store.state.robots[c.id].report);
+    });
+
+    it("takes a report before its message goes in, so a second sender meanwhile is refused, and marks no prompt before one a working agent takes into its turn", async () => {
+      const { fleet, store, c, hook, screen } = await agentPane('claude');
+      const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+      const other = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'other' });
+      await hook({ name: 'UserPromptSubmit', prompt: { id: 'u1', text: 'mine' } });
+      let shown!: () => void;
+      screen.mockImplementation(() => new Promise((r) => { shown = () => r(pane('claude-empty')); }));
+      const first = fleet.send(c.id, lead.id, 'review it', true);
+      await waitFor(() => !!shown);
+      await expect(fleet.send(c.id, other.id, 'mine too', true)).rejects.toThrow(`${c.name} owes lead a report`);
+      shown();
+      expect(await first).toBe('delivered');
+      expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, says: 'review it' });
+    });
+
+    it('shows robot messages held for the user to a wait as blocked, and holds no more than 1 MiB of them', async () => {
+      const { fleet, store, c } = await agentPane('claude');
+      const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+      store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, held: 'h1' }; });
+      expect(await fleet.waitFor(c.id, ['blocked'], 100)).toBe('blocked');
+      store.update((d) => { d.robots[c.id].inbox = [{ from: lead.id, text: robotMessage(lead, 'x'.repeat(1024 * 1024 - 200)) }]; });
+      await expect(fleet.send(c.id, lead.id, 'y'.repeat(500))).rejects.toMatchObject({ code: 'blocked' });
     });
 
     it("types svalld's line and says once it went in, held or not, and when the session it waited for went first", async () => {

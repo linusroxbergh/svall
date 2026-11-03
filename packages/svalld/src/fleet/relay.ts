@@ -33,23 +33,31 @@ export function countRelayed(c: Robot): void {
 
 /** Whether the next robot message to `c` waits on the user, holding it there once it does. */
 export function holdRelayed(c: Robot): boolean {
+  // the user's prompt since the count began starts it afresh
+  const p = c.agent?.lastPrompt;
+  if (c.relayed && p && userSaid(p.text) && p.id !== c.relayed.user) delete c.relayed;
   if (!c.relayed || (!c.relayed.held && c.relayed.n < RELAY_LIMIT)) return false;
   c.relayed.held ??= crypto.randomUUID();
   return true;
 }
 
-/** Drops the lines robot `c` was owed; a finish one of them told of goes to the user as an unread one, where that robot runs
- *  `here`, and with `told`, each robot whose message goes is told. */
+/** Drops the lines robot `c` was owed, with a report whose request was among them; a finish one of them told of goes to
+ *  the user as an unread one, where that robot runs `here`. With `told`, the user dropped them: only robot messages go, and
+ *  each robot whose message goes is told. */
 export function dropInbox(d: FleetState, c: Robot, here: (c: Robot) => boolean, log: Logger, told?: true): void {
-  const senders = new Set((c.inbox ?? []).map((m) => robotSender(m.text)).filter((s): s is string => !!s && Object.hasOwn(d.robots, s)));
+  const dropped = (c.inbox ?? []).filter((m) => !told || robotSender(m.text));
+  const senders = new Set(dropped.map((m) => robotSender(m.text)).filter((s): s is string => !!s && Object.hasOwn(d.robots, s)));
   if (told) for (const s of senders) tell(d, s, c, 'did not take your message: the user dropped it');
-  for (const m of c.inbox ?? []) {
+  const r = c.report;
+  if (r && !r.prompt && dropped.some((m) => robotSender(m.text) === r.to && saysIn(r, m.text))) delete c.report;
+  for (const m of dropped) {
     const from = Object.hasOwn(d.robots, m.from) ? d.robots[m.from] : undefined;
     if (!m.end || from?.agent?.status !== 'done' || from.unread) continue;
     if (here(from)) from.unread = true;
     else log.info(`${from.name}'s finish was told to ${c.name}, which can't take it, and its machine keeps it seen`);
   }
-  delete c.inbox;
+  const kept = (c.inbox ?? []).filter((m) => !dropped.includes(m));
+  if (kept.length) c.inbox = kept; else delete c.inbox;
   if (c.relayed) delete c.relayed.held;
 }
 
@@ -81,20 +89,21 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     }
     // a quit mid-turn resumes the session with a note as its prompt, which carries the request on
     if (!c.tmux && c.revive?.interrupted) { r.resumed = true; return; }
-    if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt && p.text.startsWith(RESUME_NOTE)) {
+    // a line or a robot's message that woke it goes before the note
+    if (r.resumed && c.tmux && c.agent && p && p.id !== r.prompt && p.text.includes(RESUME_NOTE)) {
       r.prompt = p.id;
       delete r.says;
       delete r.resumed;
     }
     // a prompt after the request's own ends it, as an Esc the poll had yet to read does
-    const over = !!p && (p.id !== r.prompt || !saysIn(r, p.text));
+    const over = !!p && (p.id !== r.prompt || (!saysIn(r, p.text) && userSaid(p.text)));
     if (r.resumed && c.tmux && c.agent && !over) return;
     const a = c.agent;
     if (a?.status !== 'blocked' || !c.tmux || over) delete r.asked;
     else if (!r.asked) {
       r.asked = true;
       // the agent's own words, quoted: a line of svalld's carries no instruction
-      const asking = [a.prompt && `asking: "${a.prompt}"`, a.askedTool && `on ${a.askedTool}`].filter(Boolean).join(' ');
+      const asking = [a.prompt && `asking: ${JSON.stringify(a.prompt)}`, a.askedTool && `on ${a.askedTool}`].filter(Boolean).join(' ');
       tell(d, r.to, c, `is blocked${asking ? `, ${asking}` : ''}; its screen: svall robot read ${c.id}`);
     }
     const end = ending(c) ?? (!over ? undefined : p!.id === r.prompt ? 'stopped: another prompt joined its turn' : 'stopped: its turn was interrupted');
@@ -140,7 +149,7 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     if (stopped) return;
     const f = o.store.state;
     const gone = Object.values(before.robots).filter((c) => !Object.hasOwn(f.robots, c.id));
-    if (!gone.length && !Object.values(f.robots).some((c) => c.report || c.inbox || c.relayed)) { before = f; return; }
+    if (!gone.length && !Object.values(f.robots).some((c) => c.report || c.inbox || c.relayed?.held)) { before = f; return; }
     try {
       o.store.update((d) => {
         for (const c of gone) {
@@ -159,6 +168,8 @@ export function startRelay(o: { store: Store; notify: Notify; log: Logger; here:
     queued = true;
     setImmediate(pass);
   };
+  // what a stop left held in memory went with it
+  o.store.update((d) => { for (const c of Object.values(d.robots)) if (c.report?.queued) delete c.report; });
   const off = o.store.subscribe(look);
   look();
   return () => { stopped = true; off(); };
