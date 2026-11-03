@@ -183,5 +183,10 @@ describe('AgentEvents and reports', () => {
     await hook('UserPromptSubmit', 0, { backend: 'claude', prompt: { id: 'p2', text: 'and again' } });
     await hook('Stop', 0, { backend: 'claude' });
     expect(store.state.robots.c_a.unread).toBe(true);
+    // a report on a robot message yet to come leaves the user's own turn theirs
+    store.update((d) => { d.robots.c_a.report = { to: 'c_lead00', after: 'p2', tagged: true }; });
+    await hook('UserPromptSubmit', 0, { backend: 'claude', prompt: { id: 'p3', text: 'mine' } });
+    await hook('Stop', 0, { backend: 'claude' });
+    expect(store.state.robots.c_a.unread).toBe(true);
   });
 });

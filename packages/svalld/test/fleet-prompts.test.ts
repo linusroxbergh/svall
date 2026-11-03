@@ -38,12 +38,14 @@ runIf('Fleet prompts', () => {
     expect(store.state.robots[c.id].agent?.status).toBe('done');
   });
 
-  it('records the robot that started a robot, and a report owed on its run, which needs both', async () => {
+  it('records the robot that started a robot, and a report owed on its run, which needs both and goes when the run does not', async () => {
     const { fleet, store } = await boot({ pollMs: 60_000, runTimeoutMs: 100 });
     const island = fleet.createIsland({ name: 'x' }).id;
     const lead = await fleet.createRobot({ islandId: island, cwd: '/tmp', name: 'lead' });
     const kid = await fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: lead.id, report: true, command: 'true', run: 'go' });
-    expect(store.state.robots[kid.id]).toMatchObject({ startedBy: lead.id, report: { to: lead.id } });
+    expect(store.state.robots[kid.id].startedBy).toBe(lead.id);
+    // its run never went in, so the report goes: the user's own first prompt is not the request
+    expect(store.state.robots[kid.id].report).toBeUndefined();
     await expect(fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: lead.id, report: true })).rejects.toThrow('a report needs the robot starting it and a run to report on');
     await expect(fleet.createRobot({ islandId: island, cwd: '/tmp', startedBy: 'c_nope00' })).rejects.toThrow('no robot c_nope00');
   });
@@ -260,7 +262,7 @@ runIf('Fleet prompts', () => {
       await hook({ name: 'Stop' });
       expect(await fleet.send(c.id, lead.id, 'review it', true)).toBe('delivered');
       expect(typed).toEqual([robotMessage(lead, 'review it')]);
-      expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, after: 'u1' });
+      expect(store.state.robots[c.id].report).toEqual({ to: lead.id, tagged: true, says: 'review it', after: 'u1' });
       expect(store.state.robots[c.id].relayed).toEqual({ n: 1, user: 'u1' });
       store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, user: 'u1' }; });
       expect(await fleet.send(c.id, lead.id, 'and again')).toBe('held');
@@ -276,13 +278,28 @@ runIf('Fleet prompts', () => {
       store.update((d) => { d.robots[c.id].relayed = { n: RELAY_LIMIT, held: 'h2' }; d.robots[c.id].report = { to: lead.id, tagged: true, after: 'u1' }; });
       await fleet.answerPrompt(c.id, 'deny', 'h2');
       expect([store.state.robots[c.id].relayed, store.state.robots[c.id].inbox, store.state.robots[c.id].report]).toEqual([{ n: RELAY_LIMIT }, undefined, undefined]);
+      // and tells their senders
+      expect(store.state.robots[lead.id].inbox).toEqual([{ from: c.id, text: `[svall] ${c.name} (${c.id}) did not take your message: the user dropped it` }]);
       expect(await fleet.send(c.id, lead.id, 'once more')).toBe('held');
-      // one report at a time, and no more held for the user than HELD_MAX
+      // one report at a time, the sender's own too while it runs, and no more held for the user than HELD_MAX
       store.update((d) => { d.robots[c.id].report = { to: lead.id }; });
       const other = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'other' });
       await expect(fleet.send(c.id, other.id, 'mine too', true)).rejects.toThrow(`${c.name} owes lead a report; send without --report, or once it is done`);
-      store.update((d) => { d.robots[c.id].inbox = Array.from({ length: 20 }, () => ({ from: other.id, text: 'x' })); });
+      store.update((d) => { d.robots[c.id].report = { to: lead.id, prompt: 'p9' }; });
+      await expect(fleet.send(c.id, lead.id, 'and this', true)).rejects.toThrow(`${c.name} owes you a report; send without --report, or once it is done`);
+      store.update((d) => { d.robots[c.id].inbox = Array.from({ length: 20 }, () => ({ from: other.id, text: robotMessage(other, 'x') })); });
       await expect(fleet.send(c.id, other.id, 'more')).rejects.toMatchObject({ code: 'blocked' });
+    });
+
+    it('drops a report whose message is dropped before it goes in', async () => {
+      const { fleet, store, c, hook, screen } = await agentPane('claude');
+      const lead = await fleet.createRobot({ islandId: c.islandId, cwd: '/tmp', name: 'lead' });
+      screen.mockResolvedValue(pane('claude-draft'));
+      expect(await fleet.send(c.id, lead.id, 'review it', true)).toBe('queued');
+      expect(store.state.robots[c.id].report).toMatchObject({ to: lead.id, tagged: true });
+      await hook({ name: 'SessionEnd' });
+      await hook({ name: 'SessionStart', sessionId: 'other', transcriptPath: '/nope' });
+      await waitFor(() => !store.state.robots[c.id].report);
     });
 
     it("types svalld's line and says once it went in, held or not, and when the session it waited for went first", async () => {

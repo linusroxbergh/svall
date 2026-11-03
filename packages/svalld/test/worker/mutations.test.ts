@@ -162,6 +162,20 @@ describe('a worker serving its robots while the home is away', () => {
     expect(mutations()).toMatchObject([{ method: 'robot.run', params: { id: 'c_1', text, enter: true }, delivery: 'delivered' }]);
   });
 
+  it('refuses a report while the home that keeps reports is away, and sends without one', async () => {
+    const { w, typed, call, create } = setup();
+    w.worker.store.update((d) => {
+      d.robots.c_lead = placed({ id: 'c_lead', name: 'lead' });
+      d.robots.c_1.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 };
+    });
+    w.worker.tmux.screen = async () => pane('claude-empty');
+    const away = { error: { code: 'not_reachable', message: 'w1 cannot reach this Mac right now; try again when it is awake, and it keeps the report' } };
+    expect(await call('robot.send', { id: 'c_1', from: 'c_lead', text: 'review it', report: true })).toMatchObject(away);
+    expect(await create({ startedBy: 'c_lead', report: true, command: 'claude', run: 'go' })).toMatchObject(away);
+    expect(typed).toEqual([]);
+    expect(await call('robot.send', { id: 'c_1', from: 'c_lead', text: 'review it' })).toMatchObject({ result: { delivery: 'delivered' } });
+  });
+
   it('an offline close is journaled before its robot is forgotten', async () => {
     const { w, call, mutations } = setup();
     const journaledAtKill: string[][] = [];
