@@ -53,13 +53,13 @@ final class DropFilesTests: XCTestCase {
         XCTAssertNil(DropFiles.pastedImage(board))
     }
 
-    func testTheImagePasteKeysAreCommandVAndControlVAlone() {
+    func testTheImagePasteKeyIsCommandVAlone() {
         func key(_ chars: String, _ mods: NSEvent.ModifierFlags, repeating: Bool = false) -> NSEvent {
             NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: mods, timestamp: 0, windowNumber: 0, context: nil,
                              characters: chars, charactersIgnoringModifiers: chars, isARepeat: repeating, keyCode: 9)!
         }
         XCTAssertTrue(SurfaceView.pastesImage(key("v", .command)))
-        XCTAssertTrue(SurfaceView.pastesImage(key("v", .control)))
+        XCTAssertFalse(SurfaceView.pastesImage(key("v", .control)))
         XCTAssertFalse(SurfaceView.pastesImage(key("v", [.command, .shift])))
         XCTAssertFalse(SurfaceView.pastesImage(key("v", [.control, .option])))
         XCTAssertFalse(SurfaceView.pastesImage(key("v", [])))

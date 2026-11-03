@@ -107,6 +107,8 @@ export class Drops {
     try {
       const { robots, machines } = this.o.store.state;
       if (!Object.hasOwn(robots, id)) throw new ApiError('not_found', `no robot ${id}`);
+      const m = robots[id].moving;
+      if (m) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? 'this Mac'}`);
       if (this.o.router.runsHere(robots[id])) return { path: landHere(staged.file, name, this.o.folder) };
       const at = this.o.router.placedAt(id) as MachineId;
       // a worker reaches no machine but its home, and keeps a drop to its own robots

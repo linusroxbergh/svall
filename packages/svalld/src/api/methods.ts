@@ -38,7 +38,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 

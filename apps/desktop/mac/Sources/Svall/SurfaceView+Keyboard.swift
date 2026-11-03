@@ -4,10 +4,10 @@ import GhosttyKit
 
 /// Ghostty's keyDown / performKeyEquivalent / flagsChanged logic, and the text input it needs.
 extension SurfaceView {
-    /// ⌘V, or the ⌃V an agent pastes an image with, pressed once with nothing else held.
+    /// ⌘V pressed once with nothing else held.
     static func pastesImage(_ event: NSEvent) -> Bool {
         let mods = event.modifierFlags.intersection([.command, .control, .option, .shift])
-        return !event.isARepeat && event.charactersIgnoringModifiers == "v" && (mods == .command || mods == .control)
+        return !event.isARepeat && event.charactersIgnoringModifiers == "v" && mods == .command
     }
 
     override func keyDown(with event: NSEvent) {

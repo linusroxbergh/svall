@@ -154,11 +154,8 @@ final class SurfaceManager {
         guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else { return onExited(id) }
         let program = switch route { case .remote: "ssh"; default: binary }
         guard let view = make(id: id, command: command, program: program, rect: rect, opacity: opacity) else { return }
-        // a drop here types this Mac's paths, as Ghostty does; one on another machine is sent there first
-        guard case .remote = route else {
-            view.onDropFiles = { [weak view] urls in view?.type(ShellEscape.paths(urls.map(\.path))) }
-            return
-        }
+        // what is dropped or pasted into a terminal on another machine is sent there first
+        guard case .remote = route else { return }
         view.onDropFiles = { [weak self] urls in self?.onDrop(id, DropFiles.shared.hold(urls)) }
         view.onImagePaste = { [weak self] in
             guard let self, let png = DropFiles.pastedImage(.general) else { return false }
@@ -167,7 +164,7 @@ final class SurfaceManager {
         }
     }
 
-    /// Types where a drop landed into terminal `id`, as a drop here is typed.
+    /// Types where a drop landed into terminal `id`, as Ghostty types a drop.
     func type(id: String, paths: [String]) {
         overlay[id]?.type(ShellEscape.paths(paths))
     }

@@ -7,7 +7,7 @@ import { dispatch, type Ctx } from '../src/api/methods.js';
 import { dropCalls, dropFolder, dropName, landHere } from '../src/drops.js';
 import { sha256Hex } from '../src/hash.js';
 import { makeHome } from './helpers.js';
-import { H, placed, robot, stopWorlds, world } from './placement/world.js';
+import { H, W, placed, robot, stopWorlds, world } from './placement/world.js';
 
 afterEach(stopWorlds);
 
@@ -136,6 +136,14 @@ describe('a drop through the API', () => {
     const w = world({ worker: { machines: { [H]: { name: 'mac', reachable: true, since: 1 } }, robots: { c_1: placed({ id: 'c_1' }), c_2: robot({ id: 'c_2' }) } } });
     expect(landed(await drop(w.worker.ctx, 'c_1', 'a.txt', Buffer.from('here'))).startsWith(w.tmp.worker)).toBe(true);
     expect(await drop(w.worker.ctx, 'c_2', 'a.txt', Buffer.from('there'))).toMatchObject({ error: { code: 'not_reachable', message: 'mac is not reachable' } });
+  });
+
+  it('refuses a robot that is moving, in the app\'s words, and a phone', async () => {
+    const w = world({ home: { machines: { [W]: { name: 'w1', reachable: true, since: 1 } }, robots: { c_1: robot({ id: 'c_1' }) } } });
+    w.home.store.update((d) => { d.robots.c_1.moving = { id: 'mv_0123456789', to: W, phase: 'prepare' } as never; });
+    expect(await drop(w.home.ctx, 'c_1', 'a.png', Buffer.from('x'))).toMatchObject({ error: { code: 'moving', message: 'moving to w1' } });
+    const phone = { ...w.home.ctx, viewer: { ...w.home.ctx.viewer, kind: 'phone' as const } };
+    expect(await drop(phone, 'c_1', 'a.png', Buffer.from('x'))).toMatchObject({ error: { code: 'forbidden' } });
   });
 
   it('refuses a part out of order, a part of a drop never begun, and what no part says is base64', async () => {

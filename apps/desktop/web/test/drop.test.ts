@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DROP_PART, secondKey, type FleetState } from '@svall/protocol';
+import { DROP_PART, MachineId, secondKey, type FleetState } from '@svall/protocol';
 import type { DropFile } from '../src/bridge.js';
-import { appendItems, dropOnTerminal, dropRefusal, parseDropTarget } from '../src/drop.js';
+import { appendItems, dropOnTerminal, dropRefusal, inParts, parseDropTarget } from '../src/drop.js';
 import { fleet } from './fixtures.js';
 
 describe('drop targets', () => {
@@ -37,12 +37,12 @@ describe('drop targets', () => {
   });
 });
 
-const W = '3f0c1a52-4b6e-4c4f-9a39-2b7d0d1e6a11';
+const W = MachineId.parse('3f0c1a52-4b6e-4c4f-9a39-2b7d0d1e6a11');
 // c0 on linus-vault, reachable or not
 function placed(reachable = true): FleetState {
   const f = fleet();
   f.machines = { [W]: { name: 'linus-vault', reachable, since: 1 } };
-  f.robots.c0.machine = W as never;
+  f.robots.c0.machine = W;
   return f;
 }
 const file = (name: string, bytes: number, folder = false): DropFile => ({ token: `t-${name}`, name, bytes, folder });
@@ -50,6 +50,9 @@ const file = (name: string, bytes: number, folder = false): DropFile => ({ token
 describe('a drop into a terminal on another machine', () => {
   it('refuses a robot on a machine out of reach, a folder and a file over 100 MB, in the app\'s words', () => {
     expect(dropRefusal(placed(false), 'c0', [file('a.png', 1)])).toBe('linus-vault is not reachable');
+    const moving = placed();
+    moving.robots.c0.moving = { id: 'mv_1', to: W } as never;
+    expect(dropRefusal(moving, 'c0', [file('a.png', 1)])).toBe('moving to linus-vault');
     expect(dropRefusal(placed(), 'c0', [file('a.png', 1), file('src', 0, true)])).toBe('src is a folder; drop the files in it');
     expect(dropRefusal(placed(), 'c0', [file('big.mov', 120 * 2 ** 20)])).toBe('big.mov is 120 MB, over the 100 MB a drop carries');
     expect(dropRefusal(placed(), 'c0', [file('a.png', 100 * 2 ** 20)])).toBeUndefined();
@@ -62,7 +65,7 @@ describe('a drop into a terminal on another machine', () => {
     const sizes: Record<string, number> = { 'shot.png': DROP_PART + 5, 'b c.txt': 3 };
     await dropOnTerminal({
       api: { call } as never, fleet: placed(), key: secondKey('c0'), files: [file('shot.png', sizes['shot.png']), file('b c.txt', 3)],
-      read: async (f) => new Uint8Array(sizes[f.name]).fill(7).buffer, type, onError,
+      read: async (f) => new Response(new Uint8Array(sizes[f.name]).fill(7)).body!, type, onError,
     });
     expect(onError).not.toHaveBeenCalled();
     const parts = call.mock.calls.filter(([m]) => m === 'drop.part').map(([, p]) => p as unknown as { upload: string; index: number; data: string });
@@ -84,8 +87,24 @@ describe('a drop into a terminal on another machine', () => {
     expect(call).not.toHaveBeenCalled();
     expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
     call.mockImplementation(async (method: string) => { if (method === 'robot.drop') throw new Error('linus-vault is not reachable'); return {}; });
-    await dropOnTerminal({ api: { call } as never, fleet: placed(), key: 'c0', files: [file('a.png', 1)], read: async () => new ArrayBuffer(1), type, onError });
+    await dropOnTerminal({ api: { call } as never, fleet: placed(), key: 'c0', files: [file('a.png', 1)], read: async () => new Response('x').body!, type, onError });
     expect(onError).toHaveBeenLastCalledWith('linus-vault is not reachable');
     expect(type).not.toHaveBeenCalled();
+  });
+});
+
+describe('a dropped file read in parts', () => {
+  const stream = (...chunks: number[]) => new ReadableStream<Uint8Array>({
+    start(c) { chunks.forEach((n, i) => c.enqueue(new Uint8Array(n).fill(i + 1))); c.close(); },
+  });
+  const sizes = async (s: ReadableStream<Uint8Array>) => { const out: number[] = []; for await (const p of inParts(s, 4)) out.push(p.length); return out; };
+
+  it('comes in parts of exactly the size but the last, however the stream arrives, and as one empty part when empty', async () => {
+    expect(await sizes(stream(3, 6, 1))).toEqual([4, 4, 2]);
+    expect(await sizes(stream(8))).toEqual([4, 4]);
+    expect(await sizes(stream())).toEqual([0]);
+    const bytes: number[] = [];
+    for await (const p of inParts(stream(3, 2), 4)) bytes.push(...p);
+    expect(bytes).toEqual([1, 1, 1, 2, 2]);
   });
 });
