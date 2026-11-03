@@ -62,6 +62,7 @@ describe('withStandalone', () => {
     expect(withStandalone(withStandalone(access))).toBe(withStandalone(access));
     expect(withStandalone(' opencode')).toBe('FORCE_HYPERLINK=1 opencode --standalone');
     expect(agentKindOf(withStandalone(access))).toBe('opencode');
+    expect(agentKindOf('FORCE_HYPERLINK=1 codex')).toBeUndefined();
     expect(withPromptFile(withStandalone('opencode'), 'go', '/h/p').text).toMatch(/; FORCE_HYPERLINK=1 opencode --standalone --prompt='go'\n$/);
     expect(withPromptFile(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'), 'go', '/h/p').line).toBe(withStandalone('opencode -s ses_0f3a5b7c9d1eAbCdEfGhIjKlMn'));
   });

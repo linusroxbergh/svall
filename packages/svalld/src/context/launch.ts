@@ -7,7 +7,7 @@ import { shq } from '../text.js';
 const ACCESS = /^\s*OPENCODE_CONFIG_CONTENT='(?:[^']|'\\'')*'\s+/;
 // OpenCode marks links as OSC 8 only for a terminal it trusts with them, which tmux is not; a click on a link Ghostty
 // can't see, a label or a wrapped URL's tail, then reaches OpenCode, which opens it itself instead of Svall asking
-const HYPERLINKS = /^\s*(?:FORCE_HYPERLINK=1\s+)?/;
+const HYPERLINKS = /^\s*(?:FORCE_HYPERLINK=1\s+(?=opencode(\s|$)))?/;
 
 // the agent a command starts, as fleet.json may write it with a stray leading space
 export const agentKindOf = (command: string): AgentKind | undefined =>

@@ -101,6 +101,43 @@ export function parseScreen(out: string): Screen {
   return { rows, cursor: Number(y), shown: shown === '1', command: command.join(' ') };
 }
 
+// capture-pane -e rows as -p prints them, but with the url after a link whose text is not that url, once per url: Codex
+// and OpenCode mark links with OSC 8, often over a label alone, which -p drops
+export function screenText(out: string): string {
+  const named = new Set<string>();
+  return out.split('\n').map((row) => {
+    let text = '';
+    let link: { url: string; label: string } | undefined;
+    const end = () => {
+      const label = link?.label.trim();
+      if (link && label && label !== link.url && !named.has(link.url)) text += ` (${link.url})`;
+      if (link) named.add(link.url);
+      link = undefined;
+    };
+    for (let i = 0; i < row.length; i++) {
+      if (row[i] !== '\x1b') {
+        text += row[i];
+        if (link) link.label += row[i];
+      } else if (row[i + 1] === '[') {
+        i += 2;
+        while (i < row.length && !/[@-~]/.test(row[i])) i++;
+      } else if (row[i + 1] === ']') {
+        // an OSC ends at BEL or at ESC \
+        const rest = row.slice(i + 2);
+        const stop = rest.search(/\x07|\x1b\\/);
+        const osc8 = /^8;[^;]*;(.*)$/s.exec(stop < 0 ? rest : rest.slice(0, stop));
+        if (osc8) {
+          end();
+          if (osc8[1]) link = { url: osc8[1], label: '' };
+        }
+        i = stop < 0 ? row.length : i + 2 + stop + (rest[stop] === '\x07' ? 0 : 1);
+      } else i++;
+    }
+    end();
+    return text.replace(/ +$/, '');
+  }).join('\n');
+}
+
 // what `viewerScreen` asks tmux for ahead of the rows; the mouse flags in the order of MOUSE_MODES
 const VIEWER_HEAD = '#{alternate_on} #{history_size} #{pane_height} #{cursor_x} #{cursor_y} #{cursor_flag} #{alternate_saved_x} #{alternate_saved_y} #{mouse_standard_flag} #{mouse_button_flag} #{mouse_all_flag} #{mouse_sgr_flag}';
 const MOUSE_MODES = [1000, 1002, 1003, 1006];
@@ -326,10 +363,10 @@ export class Tmux {
   }
 
   async capture(paneId: string, lines: number, signal?: AbortSignal): Promise<Buffer> {
-    const args = ['capture-pane', '-p', '-t', paneId, '-S', `-${lines}`];
+    const args = ['capture-pane', '-p', '-e', '-t', paneId, '-S', `-${lines}`];
     // the control client writes no pane's output until a reply is out, so a long history goes through a client of its own
     const out = await (lines > CONTROL_CAPTURE_LINES ? this.call(args, signal) : this.query([args], signal));
-    return Buffer.from(out.replace(/\n$/, '').replace(/\n/g, '\r\n'), 'utf8');
+    return Buffer.from(screenText(out.replace(/\n$/, '')).replace(/\n/g, '\r\n'), 'utf8');
   }
 
   async viewerScreen(paneId: string, lines: number): Promise<Buffer> {

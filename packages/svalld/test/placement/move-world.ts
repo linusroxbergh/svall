@@ -116,7 +116,7 @@ class Box {
       this.lines.push({ paneId, text });
       const w = this.byPane(paneId);
       // the shell runs the command past the variables set ahead of it
-      const job = text.replace(/^(\w+=\S*\s+)+/, '');
+      const job = text.replace(/^(\w+=(?:'[^']*'|\\.|[^\s'\\])*\s+)+/, '');
       // a fresh Claude reports a session of its own
       const sid = (/^claude\b.*--resume (\S+)/.exec(job) ?? /^opencode\b.* -s (\S+)/.exec(job))?.[1] ?? (/^claude\b/.test(job) ? FRESH_SID : undefined);
       if (!w || !sid) return;
