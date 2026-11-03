@@ -129,6 +129,32 @@ runIf('Fleet agents', () => {
     expect(store.state.robots[c.id].agent?.status).toBe('working');
   });
 
+  it('settles a Codex turn an API error or a usage limit ended, which no hook reports, as a StopFailure', async () => {
+    const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
+    const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });
+    await waitFor(async () => (await tmux.listWindows()).some((w) => w.name === c.id && w.command === 'sleep'));
+    const rollout = path.join(makeHome(), 'r.jsonl');
+    const event = (payload: unknown) => JSON.stringify({ timestamp: new Date().toISOString(), type: 'event_msg', payload }) + '\n';
+    const ended = (turn_id: string) => event({ type: 'task_complete', turn_id, last_agent_message: null, error: { message: 'You have hit your usage limit.', codex_error_info: 'usage_limit_exceeded' } });
+    const prompt = (id: string, background?: true) => store.update((d) => {
+      d.robots[c.id].agent = { kind: 'codex', sessionId: 's', transcriptPath: rollout, status: 'working', lastActivityAt: Date.now(), lastPrompt: { id, text: 'go', at: Date.now() }, ...(background && { background }) };
+      d.robots[c.id].unread = false;
+    });
+    fs.writeFileSync(rollout, event({ type: 'task_started', turn_id: 't1' }));
+    prompt('t1');
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent?.status).toBe('working');
+    fs.appendFileSync(rollout, ended('t1'));
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent).toMatchObject({ status: 'done', prompt: 'You have hit your usage limit.' });
+    expect(store.state.robots[c.id].unread).toBe(true);
+    // background work outlives the turn it was started in
+    fs.appendFileSync(rollout, event({ type: 'task_started', turn_id: 't2' }) + ended('t2'));
+    prompt('t2', true);
+    await fleet['poll']['tick']();
+    expect(store.state.robots[c.id].agent?.status).toBe('working');
+  });
+
   it("takes a Claude agent's question for answered once its empty prompt line is back, as while an approved command runs", async () => {
     const { fleet, store, tmux } = await boot({ pollMs: 60_000 });
     const c = await fleet.createRobot({ islandId: fleet.createIsland({ name: 'x' }).id, cwd: '/tmp', command: 'sleep 600' });

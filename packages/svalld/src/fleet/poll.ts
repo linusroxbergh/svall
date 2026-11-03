@@ -3,12 +3,14 @@ import fs from 'node:fs';
 import { promisify } from 'node:util';
 import type { Agent, AgentKind, Robot, TerminalSlot } from '@svall/protocol';
 import { interruptedAt } from '../agent/claude-transcript.js';
+import { turnErrorCodex } from '../agent/codex-transcript.js';
 import { readComposer } from '../agent/composer.js';
-import { applyHook, type Slot } from '../agent/reducer.js';
+import { applyHook } from '../agent/reducer.js';
 import { readTail } from '../agent/transcript.js';
 import { onSharedServer } from '../codex/server.js';
 import type { Config } from '../config.js';
 import type { Proc } from '../dormancy.js';
+import type { HookEvent } from '../hooks/receiver.js';
 import { refreshMany, slice, type Deps as LinkDeps } from '../links/refresh.js';
 import type { Logger } from '../log.js';
 import { secondName, snapshot, syncWindow } from '../reconcile.js';
@@ -46,8 +48,6 @@ const onWelcome = (screen: Screen | undefined): boolean => !!screen && screen.co
   screen.rows.some((r) => r.includes('OpenAI Codex')) &&
   /^\s*›/.test((screen.rows[screen.cursor] ?? '').replace(/\x1b\[[0-9;:]*m/g, '')) &&
   screen.rows.filter((r) => /^\s*›/.test(r.replace(/\x1b\[[0-9;:]*m/g, ''))).length === 1;
-
-const interrupt = <T extends Slot>(robotId: string, slot: T): T => applyHook(slot, { robotId, backend: 'claude', name: 'Interrupt' }, Date.now());
 
 type Deps = {
   store: Store; tmux: Tmux; config: Config; log: Logger; scribe: Scribe; pollMs?: number; staleSessionMs?: number; resumeMs?: number; linkDeps?: Partial<LinkDeps>;
@@ -120,19 +120,27 @@ export class Poll {
     return this.shellStreak.has(key) && !this.deps.resuming.has(key);
   }
 
-  // Claude Code fires no hook when an Esc or a "No" ends its turn, so a waiting or working agent's transcript is read
-  // for the mark it leaves, each time it grows; one older than the last hook was already answered
-  private interrupted(key: string, agent: Agent | undefined): boolean {
-    if (agent?.kind !== 'claude' || !agent.transcriptPath || (agent.status !== 'blocked' && agent.status !== 'working')) {
+  // Claude Code fires no hook when an Esc or a "No" ends its turn, nor Codex when an API error or a usage limit does, so a
+  // waiting or working agent's transcript is read for the mark it leaves, each time it grows; an Esc older than the last
+  // hook was already answered
+  private turnEnd(robotId: string, key: string, agent: Agent | undefined): HookEvent | undefined {
+    const claude = agent?.kind === 'claude' && (agent.status === 'blocked' || agent.status === 'working');
+    const turn = agent?.kind === 'codex' && agent.status === 'working' && !agent.background ? agent.lastPrompt?.id : undefined;
+    if (!agent?.transcriptPath || (!claude && !turn)) {
       this.transcriptSize.delete(key);
-      return false;
+      return undefined;
     }
     let size: number;
-    try { size = fs.statSync(agent.transcriptPath).size; } catch { return false; }
-    if (size === this.transcriptSize.get(key)) return false;
+    try { size = fs.statSync(agent.transcriptPath).size; } catch { return undefined; }
+    if (size === this.transcriptSize.get(key)) return undefined;
     this.transcriptSize.set(key, size);
-    const at = interruptedAt(readTail(agent.transcriptPath, 64 * 1024));
-    return at !== undefined && at > agent.lastActivityAt;
+    const tail = readTail(agent.transcriptPath, 64 * 1024);
+    if (turn) {
+      const error = turnErrorCodex(tail, turn);
+      return error === undefined ? undefined : { robotId, backend: 'codex', name: 'StopFailure', ...(error && { message: error.slice(0, 500) }) };
+    }
+    const at = interruptedAt(tail);
+    return at !== undefined && at > agent.lastActivityAt ? { robotId, backend: 'claude', name: 'Interrupt' } : undefined;
   }
 
   private async tick(): Promise<void> {
@@ -198,9 +206,11 @@ export class Poll {
           delete c.hint;
           delete c.codexDaemon;
         }
-        if (this.interrupted(c.id, c.agent)) d.robots[c.id] = interrupt(c.id, c);
+        const ended = this.turnEnd(c.id, c.id, c.agent);
+        if (ended) d.robots[c.id] = applyHook(c, ended, Date.now());
         const second = d.robots[c.id].second;
-        if (second && this.interrupted(secondName(c.id), second.agent)) d.robots[c.id].second = interrupt(c.id, second);
+        const secondEnded = second && this.turnEnd(c.id, secondName(c.id), second.agent);
+        if (second && secondEnded) d.robots[c.id].second = applyHook(second, secondEnded, Date.now());
       }
     });
     // what a poll saw in a window says nothing of the next window opened under its name

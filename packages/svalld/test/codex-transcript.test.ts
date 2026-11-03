@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { condenseTurnsCodex, lastMessageCodex, lastTokenCount, lastWorkdir, userPromptsCodex } from '../src/agent/codex-transcript.js';
+import { condenseTurnsCodex, lastMessageCodex, lastTokenCount, lastWorkdir, turnErrorCodex, userPromptsCodex } from '../src/agent/codex-transcript.js';
 import { condenseTurns, lastMessage, userPrompts } from '../src/agent/transcript.js';
 
 const fixture = (name: string) => fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', name), 'utf8');
@@ -38,6 +38,25 @@ describe('userPromptsCodex', () => {
     const spaced = `\n\n${long}`;
     const landedSpaced = text + line({ type: 'event_msg', payload: { type: 'user_message', message: spaced } });
     expect(userPromptsCodex(landedSpaced, 5, { id: 't3', text: spaced.slice(0, 4000).trim(), at })).toHaveLength(2);
+  });
+});
+
+describe('turnErrorCodex', () => {
+  const started = (turn_id: string) => line({ type: 'event_msg', payload: { type: 'task_started', turn_id } });
+  const completed = (turn_id: string, error?: unknown) => line({ type: 'event_msg', payload: { type: 'task_complete', turn_id, last_agent_message: null, ...(error !== undefined && { error }) } });
+  const model = { message: "The 'gpt-nope-9' model is not supported when using Codex with a ChatGPT account.", codex_error_info: 'model_not_found' };
+
+  it('reads the error a turn ended on, which no hook reports', () => {
+    expect(turnErrorCodex(started('t1') + completed('t1', model), 't1')).toBe(model.message);
+    expect(turnErrorCodex(started('t1') + completed('t1', { codex_error_info: 'other' }), 't1')).toBe('');
+  });
+
+  it('reads nothing of a turn that ended well or goes on, of another turn, or of one a newer turn followed', () => {
+    expect(turnErrorCodex(started('t1') + completed('t1'), 't1')).toBeUndefined();
+    expect(turnErrorCodex(started('t1') + completed('t1', null), 't1')).toBeUndefined();
+    expect(turnErrorCodex(started('t1') + said('Looking.'), 't1')).toBeUndefined();
+    expect(turnErrorCodex(started('t1') + completed('t1', model), 't2')).toBeUndefined();
+    expect(turnErrorCodex(completed('t1', model) + started('t2'), 't1')).toBeUndefined();
   });
 });
 
