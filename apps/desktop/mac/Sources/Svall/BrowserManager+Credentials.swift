@@ -3,7 +3,7 @@ import WebKit
 
 /// Cookies imported from Chrome and logins filled from 1Password.
 extension BrowserManager {
-    func importChromeCookies() {
+    func importChromeCookies(reload tab: String?) {
         let profiles = ChromeCookies.profiles()
         guard !profiles.isEmpty else { return NSAlert.tell("No Chrome profile found", "Chrome keeps its profiles in ~/Library/Application Support/Google/Chrome.") }
         let ask = NSAlert()
@@ -25,6 +25,8 @@ extension BrowserManager {
                 self.store.httpCookieStore.setCookie(cookie) { group.leave() }
             }
             group.notify(queue: .main) {
+                let page = haul.cookies.isEmpty ? nil : tab.flatMap { self.overlay[$0] }
+                page?.reload()
                 // all of them stuck means the key does not belong to this profile, which a bare zero would hide
                 let stuck = haul.stuck > 0 ? " \(haul.stuck) could not be decrypted." : ""
                 let cut = haul.cut.map { " Chrome’s cookie file could not be read to the end (\($0)); quit Chrome and import again for the rest." } ?? ""
@@ -32,7 +34,7 @@ extension BrowserManager {
                 let session = haul.cookies.filter(\.isSessionOnly).count
                 let lasting = session > 0 ? " \(session) of them are session cookies, which last until Svall quits." : ""
                 NSAlert.tell("Imported \(haul.cookies.count) cookies from \(profile.name)\(haul.cut == nil ? "" : ", not all of them")",
-                          "Reload an open tab for it to pick them up.\(stuck)\(cut)\(lasting)")
+                          "\(page == nil ? "Reload an" : "The tab reloaded with them; reload any other") open tab for it to pick them up.\(stuck)\(cut)\(lasting)")
             }
         }
     }

@@ -288,8 +288,8 @@ final class ShellRouter {
             browsers.load(tab: tab, url: url)
         case .browserGo(let tab, let action):
             browsers.go(tab: tab, action: action)
-        case .browserImportCookies:
-            browsers.importChromeCookies()
+        case .browserImportCookies(let tab):
+            browsers.importChromeCookies(reload: tab)
         case .browserFill(let tab):
             browsers.fillLogin(tab: tab)
         case .browserFocus(let tab):

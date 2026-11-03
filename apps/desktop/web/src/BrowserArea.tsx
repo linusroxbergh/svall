@@ -86,6 +86,8 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
           </span>
         ))}
         <button className="ib" data-testid="browser-new" data-tip="New tab" aria-label="New tab" onClick={() => { fresh.current = true; setDraft(''); input.current?.focus(); }}><Plus /></button>
+        <button className="btn ghost bcookies" data-testid="browser-cookies" data-tip="Copy sign-ins from a Chrome profile"
+          onClick={() => app.bridge.send({ type: 'browser.importCookies', tab: active })}>Import cookies</button>
       </div>
       <div className="baddr">
         <button className="ib bar" data-testid="browser-back" disabled={!view?.canGoBack} onClick={() => active && app.browser().go(active, 'back')}><Caret dir="left" /></button>

@@ -46,7 +46,7 @@ enum ToShell: Decodable {
     case browserClose(tab: String)
     case browserLoad(tab: String, url: String)
     case browserGo(tab: String, action: String)
-    case browserImportCookies
+    case browserImportCookies(tab: String?)
     case browserFill(tab: String)
     case browserFocus(tab: String)
     case shellCutout(rects: [WebRect], passive: [WebRect])
@@ -98,7 +98,7 @@ enum ToShell: Decodable {
         case "browser.close": self = .browserClose(tab: try c.decode(String.self, forKey: .tab))
         case "browser.load": self = .browserLoad(tab: try c.decode(String.self, forKey: .tab), url: try c.decode(String.self, forKey: .url))
         case "browser.go": self = .browserGo(tab: try c.decode(String.self, forKey: .tab), action: try c.decode(String.self, forKey: .action))
-        case "browser.importCookies": self = .browserImportCookies
+        case "browser.importCookies": self = .browserImportCookies(tab: try c.decodeIfPresent(String.self, forKey: .tab))
         case "browser.fill": self = .browserFill(tab: try c.decode(String.self, forKey: .tab))
         case "browser.focus": self = .browserFocus(tab: try c.decode(String.self, forKey: .tab))
         case "shell.cutout": self = .shellCutout(rects: try c.decode([WebRect].self, forKey: .rects), passive: try c.decode([WebRect].self, forKey: .passive))

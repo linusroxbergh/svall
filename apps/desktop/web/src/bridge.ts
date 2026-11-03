@@ -41,7 +41,8 @@ export type ToShell =
   | { type: 'browser.close'; tab: string }
   | { type: 'browser.load'; tab: string; url: string }
   | { type: 'browser.go'; tab: string; action: 'back' | 'forward' | 'reload' | 'stop' }
-  | { type: 'browser.importCookies' }
+  // the tab reloads once the cookies are in
+  | { type: 'browser.importCookies'; tab?: string }
   | { type: 'browser.fill'; tab: string }
   | { type: 'browser.focus'; tab: string }
   // the rects the page draws overlays into, which the surfaces above it give up; presses in a passive one stay with the surface
