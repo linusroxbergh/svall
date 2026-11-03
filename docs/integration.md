@@ -104,7 +104,7 @@ each machine's daemon and unit logs.
     the same place, with the worker's commit, changes and session, the Mac's main checkout still on `main`, and its
     worktree on remote locked.
 15. **A dial-out worker.** Local's ssh to remote is blocked first, so the link can only come from remote. Over remote's
-    own ssh to local, `svall home enroll-worker` there records remote as a worker that dials in and prints its token,
+    own ssh to local, `svall fleet enroll-worker` there records remote as a worker that dials in and prints its token,
     which goes on stdin to `svall worker enroll --home-ssh` on remote. The link comes up over the socket sshd makes in
     local's fleet home, `srw-------`, `faults` moves to remote and `svall status` on local shows it there, and a restart
     of remote's daemon and then of local's each relinks. With remote's dial cut and its tunnel killed, local marks remote

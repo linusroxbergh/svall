@@ -96,7 +96,7 @@ export function workerCommands(target: () => Target): Command {
     .requiredOption('--home-name <name>', 'the home\'s name')
     .requiredOption('--fleet-id <id>', 'the fleet\'s id')
     .option('--home-ssh <destination>', 'the home this machine dials itself, which then needs no ssh to it')
-    .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall home enroll-worker there names it')
+    .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall fleet enroll-worker there names it')
     .action((o: Enrol) => enrollHere(target(), o));
   cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
     .argument('<VAR>', 'the variable\'s name')

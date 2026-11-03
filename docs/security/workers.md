@@ -19,7 +19,7 @@ carries and under which licences, and which risks are accepted. Tests are named 
   `BatchMode=yes`, `ForwardAgent=no`, `ForwardX11=no` and `ClearAllForwardings=yes`, whose socket is in a folder of the
   user's own at 0700. The link runs `svall worker link` over it, and the app's terminals on the worker attach through it.
 - **A worker that dials its home.** A worker the home cannot reach over ssh, such as a Mac, opens the link itself.
-  `svall home enroll-worker` on the home records it with `dial: 'worker'` and no ssh destination, issues its token and
+  `svall fleet enroll-worker` on the home records it with `dial: 'worker'` and no ssh destination, issues its token and
   names its socket, `w/<12 hex of its machine id>.sock` in the fleet home; `svall worker enroll --home-ssh <destination>
   --home-socket <path>` on the worker keeps both in `worker.json`. The worker's daemon holds one ssh master to that
   destination, with the options above, removes its own socket there and asks the master for `-R <socket>:<link.sock>`,
@@ -207,7 +207,7 @@ reset and kill a move, a worker or an install makes, with what authorises it:
 | A robot closed on a worker (`worker/mutations.ts`) | Its window; its worktree is locked `closed robot <id>`, not removed | The close, made there or from the home | `svalld/test/worker/mutations.test.ts` "robot.close of a robot here kills its window, locks its worktree "closed robot <id>" and journals…" |
 | An island a worker deleted while this Mac slept (`placement/replay.ts`) | The island and its docs on this Mac; on the worker the island alone | The worker's delete, applied only while no robot stands on the island here | `svalld/test/placement/replay.test.ts` "a delete of an island empty here takes it and its docs after the robot closed before it; one with a robot here is refused and logged" |
 | `host add` and `host upgrade` enrol (`controller/host.ts`) | A `svall-gateway.service` unit an older release left: stopped, disabled and its file removed | Its name in the account's unit folder | `cli/test/host-add.test.ts` "add stops and removes a gateway unit it finds there, and enrols the fleet's unit as the worker"; `cli/test/host-upgrade.test.ts` "enrols nothing while the gateway unit there will not stop, and a run again makes the machine the worker" |
-| A worker's socket on the home (`link/dialout.ts`) | `rm -f` of the socket path, over the worker's master, before each forward | The path `worker.json` names, which `svall home enroll-worker` gave it from the worker's own machine id; the daemon lock keeps one daemon per fleet home | `svalld/test/link/dialout.test.ts` "opens one master to worker.json's homeSsh, clears its socket there before it asks the forward…" |
+| A worker's socket on the home (`link/dialout.ts`) | `rm -f` of the socket path, over the worker's master, before each forward | The path `worker.json` names, which `svall fleet enroll-worker` gave it from the worker's own machine id; the daemon lock keeps one daemon per fleet home | `svalld/test/link/dialout.test.ts` "opens one master to worker.json's homeSsh, clears its socket there before it asks the forward…" |
 | A socket on the home that refuses (`link/home.ts`) | The socket file | A connect it refused, and still the same socket by device and inode; anything at the path that is not a socket stays | `svalld/test/link/home.test.ts` "removes a socket that refuses…", "leaves anything at the path that is not a socket" |
 | Unreadable records set aside | `machines.json` is renamed to `machines.json.broken-<time>`, and a fresh one of this machine alone begins | The record failed to parse. Nothing is deleted, and every lookup that misses a machine names the copy. | `cli/test/controller/registry.test.ts` "moves a registry it cannot read aside and starts a fresh one", "says where a registry it could not read went…" |
 | Release install and rollback (`scripts/install-release.mjs`) | The staging folder; a same-named release it replaces; `current`; once `current` has moved, every release but the new one and the one to go back to (the one `current` named before, or after a same-named reinstall the newest other) | A version name matching `[A-Za-z0-9._+-]+` that stays under `releases/`; `current` moves by an atomic rename; folders whose names start with `.` are left alone | `svalld/test/release.test.ts`; `test/install-release.test.ts` |
@@ -274,10 +274,10 @@ reset and kill a move, a worker or an install makes, with what authorises it:
   (`ssh.test.ts` "refuses a socket directory another user could reach")
 - **Home length.** A Linux home over 89 bytes cannot hold the private fleet's hook socket under the 107 bytes a socket
   path takes, and `host add` stops at its `home` step with that cause. A worker's dial socket, `w/<12 hex>.sock`, is
-  longer than `hooks.sock`: `svall home enroll-worker` refuses a fleet home whose socket would pass the 107 bytes a
+  longer than `hooks.sock`: `svall fleet enroll-worker` refuses a fleet home whose socket would pass the 107 bytes a
   Linux socket path holds, or the 103 a Mac's does, naming how much shorter the home must be.
   (`host-add-checks.test.ts` "add refuses a machine whose home makes the fleet socket too long, naming the listen EINVAL
-  it would otherwise crash on"; `cli/test/worker.test.ts` "home enroll-worker refuses a fleet home whose socket would be
+  it would otherwise crash on"; `cli/test/worker.test.ts` "fleet enroll-worker refuses a fleet home whose socket would be
   past what a Unix socket path holds…")
 - **Tailscale.** A move, `host add` and `host upgrade` add no `tailscale serve` or `funnel` mapping.
 

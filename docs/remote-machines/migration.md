@@ -7,9 +7,7 @@ Dev; a Linux machine takes it with `svall host upgrade`.
 ## Upgrading from 0.27
 
 The app, `svall` and the daemons of this release speak protocol 39; an update installs all of them together, and
-`svall host upgrade <machine>` takes each Linux machine to it as before. Nothing in a fleet home changes. `home` is now
-a command, so a fleet in `~/.svall-home` is reached by neither `svall home` nor `-p home`: `svall setup` names it, and
-the `mv` to a name that reaches it.
+`svall host upgrade <machine>` takes each Linux machine to it as before. Nothing in a fleet home changes.
 
 ## Upgrading from 0.18 or 0.19
 

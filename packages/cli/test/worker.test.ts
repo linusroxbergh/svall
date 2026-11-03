@@ -118,13 +118,13 @@ describe('svall worker', () => {
     }
   });
 
-  it("home enroll-worker records a worker that dials in, issues it a token printed once in JSON, and a run again issues a newer one", async () => {
+  it("fleet enroll-worker records a worker that dials in, issues it a token printed once in JSON, and a run again issues a newer one", async () => {
     const home = makeHome();
     fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
     const env = { SVALL_HOME: home, SVALL_CONFIG_DIR: makeHome() };
     const id = crypto.randomUUID();
     const facts = ['--name', 'ada-mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/Users/ada/.svall'];
-    const enroll = () => svallIn(env, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    const enroll = () => svallIn(env, '--json', 'fleet', 'enroll-worker', id, ...facts).done;
     const first = await enroll();
     expect(first).toMatchObject({ code: 0, stderr: '' });
     const answer = JSON.parse(first.stdout);
@@ -137,26 +137,26 @@ describe('svall worker', () => {
     expect(again.token).not.toBe(answer.token);
     expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
     // a run that would show the token to a person issues none
-    const plain = await svallIn(env, 'home', 'enroll-worker', id, ...facts).done;
+    const plain = await svallIn(env, 'fleet', 'enroll-worker', id, ...facts).done;
     expect(plain).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('run it with --json') });
     expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
   });
 
-  it('home enroll-worker refuses a fleet home whose socket would be past what a Unix socket path holds, and a worker\'s fleet home, issuing no token', async () => {
+  it('fleet enroll-worker refuses a fleet home whose socket would be past what a Unix socket path holds, and a worker\'s fleet home, issuing no token', async () => {
     const long = path.join(makeHome(), 'x'.repeat(120 - makeHome().length));
     fs.mkdirSync(long, { recursive: true });
     const config = makeHome();
     const id = crypto.randomUUID();
     const facts = ['--name', 'ada-mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/Users/ada/.svall'];
     fs.writeFileSync(resolvePaths(long).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
-    const r = await svallIn({ SVALL_HOME: long, SVALL_CONFIG_DIR: config }, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    const r = await svallIn({ SVALL_HOME: long, SVALL_CONFIG_DIR: config }, '--json', 'fleet', 'enroll-worker', id, ...facts).done;
     expect(r).toMatchObject({ code: 1, stdout: '' });
     expect(r.stderr).toMatch(/past the 10[37] a Unix socket path holds, so its listen fails with EINVAL, so no worker can dial into .*; use an account whose home is \d+ bytes shorter/);
     expect(tokenFor(resolvePaths(long), id as never)).toBeUndefined();
     expect(readRegistry(config).some((m) => m.id === id)).toBe(false);
     const worker = makeHome();
     fs.writeFileSync(resolvePaths(worker).workerFile, '{}');
-    const w = await svallIn({ SVALL_HOME: worker, SVALL_CONFIG_DIR: config }, '--json', 'home', 'enroll-worker', id, ...facts).done;
+    const w = await svallIn({ SVALL_HOME: worker, SVALL_CONFIG_DIR: config }, '--json', 'fleet', 'enroll-worker', id, ...facts).done;
     expect(w).toMatchObject({ code: 1, stderr: expect.stringContaining("is a worker's fleet home; run this on the fleet's home") });
   });
 

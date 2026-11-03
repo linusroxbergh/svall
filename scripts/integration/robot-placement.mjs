@@ -664,16 +664,17 @@ function dialOut(ids) {
     sh(R, `ssh-keyscan -t ed25519 ${L} 2>/dev/null >> ~/.ssh/known_hosts && ssh -o BatchMode=yes svall@${L} true`);
     const record = JSON.parse(sh(L, 'cat ~/.config/svall/machines.json').stdout).machines[ids.remote];
     const since = linksOf()[ids.remote]?.since ?? 0;
-    // the home's half over remote's own ssh, its token on stdout into the worker's half on stdin, as a join does it
+    // the home's half over remote's own ssh, its token on stdout into the worker's half on stdin, as a join does it; the
+    // worker's half reads the agents' folders from $SHELL, which docker exec leaves unset and a terminal or ssh sets
     const enrol = sh(R, String.raw`set -eu
 umask 077
-ssh -o BatchMode=yes svall@${L} '~/.local/bin/svall' --json home enroll-worker ${ids.remote} --name remote --platform linux --arch ${record.arch} --home ${HOMES[R]} --svall-base ${record.svallBase} > ~/enrol.json
+ssh -o BatchMode=yes svall@${L} '~/.local/bin/svall' --json fleet enroll-worker ${ids.remote} --name remote --platform linux --arch ${record.arch} --home ${HOMES[R]} --svall-base ${record.svallBase} > ~/enrol.json
 /opt/it/node/bin/node -e '
 const fs = require("fs");
 const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 fs.rmSync(process.argv[1]);
 require("child_process").execFileSync("svall", ["worker", "enroll", "--home-machine", a.homeMachineId, "--home-name", a.homeName, "--fleet-id", a.fleetId,
-  "--home-ssh", process.argv[2], "--home-socket", a.socket], { input: a.token, stdio: ["pipe", "ignore", "inherit"] });
+  "--home-ssh", process.argv[2], "--home-socket", a.socket], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
 console.log(a.socket);
 ' ~/enrol.json svall@${L}`);
     const socket = enrol.stdout.trim().split('\n').at(-1);
@@ -713,7 +714,9 @@ console.log(a.socket);
     sh(R, MASTER, { ok: false });
     waitOn('the dead tunnel refuses', () => knock(socket) === 'ECONNREFUSED', 20);
     check('the dead socket stays', inode(socket) === was, () => `${inode(socket)} vs ${was}`);
-    waitOn('remote binds the path again', () => inode(socket) !== was && knock(socket) === 'open');
+    // sshd binds no path that is there and nothing on local removes it, so only remote's clear and dial reopen it; the new
+    // socket may get the old one's inode number
+    waitOn('remote binds the path again', () => knock(socket) === 'open');
     sh(L, `systemctl --user start ${UNIT}`);
     linked(ids, down);
 
