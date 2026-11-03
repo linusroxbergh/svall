@@ -17,4 +17,10 @@ final class SurfaceManagerTests: XCTestCase {
         XCTAssertEqual(ran, [])
         withExtendedLifetime((container, webView)) {}
     }
+
+    func testADropTypesThisMacsEscapedPathsIntoALocalTerminalAndSendsAFarOnesThere() {
+        let urls = [URL(fileURLWithPath: "/Users/ada/Desktop/Screen Shot (1).png"), URL(fileURLWithPath: "/tmp/notes.txt")]
+        XCTAssertEqual(SurfaceManager.drop(urls, over: .local), .type(#"/Users/ada/Desktop/Screen\ Shot\ \(1\).png /tmp/notes.txt"#))
+        XCTAssertEqual(SurfaceManager.drop(urls, over: .remote(RemoteRoute(destination: "box", controlSocket: "/tmp/s"))), .send(urls))
+    }
 }
