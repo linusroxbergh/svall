@@ -66,6 +66,9 @@ final class SurfaceView: NSView, NSTextInputClient, OverlayView {
         }
     }
 
+    /// A view with no terminal behind it, for a test of what is wired to one.
+    override init(frame frameRect: NSRect) { super.init(frame: frameRect) }
+
     required init?(coder: NSCoder) { fatalError("not supported") }
 
     deinit { destroy() }

@@ -8,51 +8,60 @@ struct DroppedFile: Equatable {
 }
 
 /// What the page reads at `svall://app/__drop/<token>?at=&size=`, one part per request, so no more than a part is held.
-/// Every hold shares one deadline, five minutes past the last hold or read, so the last file of a drop outlives the
-/// upload of those before it.
+/// A drop's files go together, 11 minutes past its own last read: longer than a client waits for robot.drop, so a file
+/// outlives the crossing of the one before it, and a drop no one reads goes whatever other drops do.
 final class DropFiles {
     static let shared = DropFiles()
     static let path = "/__drop/"
 
     private enum Source { case file(URL), data(Data) }
-    private var held: [String: Source] = [:]
-    private var until = Date.distantPast
+    private struct Drop { var files: [String: Source]; var until: Date }
+    private static let window: TimeInterval = 11 * 60
+    private var drops: [Drop] = []
 
     /// The files at `urls` for the page to read, a link read as what it names; a folder is named for the page to refuse,
     /// and nothing in it is held.
     func hold(_ urls: [URL], now: Date = Date()) -> [DroppedFile] {
-        urls.map { url in
+        var files: [String: Source] = [:]
+        let dropped = urls.map { url in
             let target = url.resolvingSymlinksInPath()
             let values = try? target.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
             if values?.isDirectory == true { return DroppedFile(token: "", name: url.lastPathComponent, bytes: 0, folder: true) }
-            return DroppedFile(token: hold(.file(target), now: now), name: url.lastPathComponent, bytes: values?.fileSize ?? 0, folder: false)
+            let token = UUID().uuidString
+            files[token] = .file(target)
+            return DroppedFile(token: token, name: url.lastPathComponent, bytes: values?.fileSize ?? 0, folder: false)
         }
+        keep(files, now: now)
+        return dropped
     }
 
     /// An image pasted as PNG, named for when it was pasted.
     func hold(png: Data, now: Date = Date()) -> DroppedFile {
-        DroppedFile(token: hold(.data(png), now: now), name: Self.pastedName(at: now), bytes: png.count, folder: false)
+        let token = UUID().uuidString
+        keep([token: .data(png)], now: now)
+        return DroppedFile(token: token, name: Self.pastedName(at: now), bytes: png.count, folder: false)
     }
 
     /// Up to `size` bytes of what `token` holds, from `at`; a read that comes up short is its last, and lets it go.
     func read(_ token: String, at: Int, size: Int, now: Date = Date()) -> Data? {
-        renew(now)
-        guard let source = held[token] else { return nil }
+        purge(now)
+        guard let i = drops.firstIndex(where: { $0.files[token] != nil }), let source = drops[i].files[token] else { return nil }
+        drops[i].until = now.addingTimeInterval(Self.window)
         let part = Self.part(of: source, at: at, size: size)
-        if (part?.count ?? 0) < size { held[token] = nil }
+        if (part?.count ?? 0) < size {
+            drops[i].files[token] = nil
+            if drops[i].files.isEmpty { drops.remove(at: i) }
+        }
         return part
     }
 
-    private func hold(_ source: Source, now: Date) -> String {
-        renew(now)
-        let token = UUID().uuidString
-        held[token] = source
-        return token
+    private func keep(_ files: [String: Source], now: Date) {
+        purge(now)
+        if !files.isEmpty { drops.append(Drop(files: files, until: now.addingTimeInterval(Self.window))) }
     }
 
-    private func renew(_ now: Date) {
-        if now >= until { held = [:] }
-        until = now.addingTimeInterval(300)
+    private func purge(_ now: Date) {
+        drops.removeAll { $0.until <= now }
     }
 
     private static func part(of source: Source, at: Int, size: Int) -> Data? {

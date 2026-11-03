@@ -68,15 +68,34 @@ final class DropFilesTests: XCTestCase {
         XCTAssertEqual(held[1], DroppedFile(token: "", name: "link-folder", bytes: 0, folder: true))
     }
 
-    func testEveryFileOfADropOutlivesTheUploadOfThoseBeforeIt() {
+    /// A file's first read may wait out robot.drop for the one before it: ten minutes, and the client's half minute.
+    func testEveryFileOfADropOutlivesTheUploadOfThoseBeforeIt() throws {
+        let dir = try folder()
+        let urls = try ["one", "two"].map { name in
+            let file = dir.appendingPathComponent(name)
+            try Data(name.utf8).write(to: file)
+            return file
+        }
         let drops = DropFiles()
         let now = Date()
-        let first = drops.hold(png: Data([1, 2, 3, 4]), now: now), second = drops.hold(png: Data([5]), now: now)
-        XCTAssertEqual(drops.read(first.token, at: 0, size: 2, now: now.addingTimeInterval(290)), Data([1, 2]))
-        XCTAssertEqual(drops.read(first.token, at: 2, size: 2, now: now.addingTimeInterval(580)), Data([3, 4]))
-        XCTAssertEqual(drops.read(second.token, at: 0, size: 2, now: now.addingTimeInterval(870)), Data([5]))
-        let late = drops.hold(png: Data([6]), now: now.addingTimeInterval(870))
-        XCTAssertNil(drops.read(late.token, at: 0, size: 2, now: now.addingTimeInterval(1170)))
+        let held = drops.hold(urls, now: now)
+        XCTAssertEqual(drops.read(held[0].token, at: 0, size: 4, now: now.addingTimeInterval(630)), Data("one".utf8))
+        XCTAssertEqual(drops.read(held[1].token, at: 0, size: 4, now: now.addingTimeInterval(1260)), Data("two".utf8))
+    }
+
+    func testADropNoOneReadsGoesWhateverOtherDropsDo() {
+        let drops = DropFiles()
+        let now = Date()
+        let refused = drops.hold(png: Data([1]), now: now), read = drops.hold(png: Data([2, 3]), now: now)
+        XCTAssertEqual(drops.read(read.token, at: 0, size: 1, now: now.addingTimeInterval(600)), Data([2]))
+        let later = drops.hold(png: Data([4]), now: now.addingTimeInterval(650))
+        XCTAssertNil(drops.read(refused.token, at: 0, size: 2, now: now.addingTimeInterval(660)))
+        XCTAssertEqual(drops.read(read.token, at: 1, size: 1, now: now.addingTimeInterval(660)), Data([3]))
+        XCTAssertEqual(drops.read(later.token, at: 0, size: 2, now: now.addingTimeInterval(660)), Data([4]))
+        // and one read last past the window is gone with the rest
+        let last = drops.hold(png: Data([5, 6]), now: now)
+        XCTAssertEqual(drops.read(last.token, at: 0, size: 1, now: now), Data([5]))
+        XCTAssertNil(drops.read(last.token, at: 1, size: 1, now: now.addingTimeInterval(660)))
     }
 
     func testAPastedImageIsAPngNamedForWhenItWasPasted() throws {
