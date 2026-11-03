@@ -48,6 +48,11 @@ test('reports a runner that failed', async () => {
     .toEqual(["tools-off probe couldn't run: claude -p failed: not logged in"]);
 });
 
+test("reports an account out of quota as couldn't check", async () => {
+  const limit = 'codex exec failed: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or try again at Nov 4th, 2026 9:00 AM.';
+  expect(await toolsOff('codex', { run: async () => { throw new Error(limit); } })).toEqual([`couldn't check: tools-off probe: ${limit}`]);
+});
+
 test('leaves OpenCode the folder it deletes its session from once the probe is done', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-fake-opencode-'));
   const said = path.join(dir, 'delete');

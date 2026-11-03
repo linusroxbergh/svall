@@ -15,6 +15,8 @@ import { claudeRunner, type Call, type Runner } from '../../packages/svalld/src/
 // a retro call's shape: low effort, and an answer that fits a schema, which Claude and Codex take as a flag
 const CALL: Call = { effort: 'low', schema: { type: 'object', properties: { answer: { type: 'string' } }, required: ['answer'], additionalProperties: false }, timeoutMs: 180_000 };
 
+const OUT_OF_QUOTA = /usage limit|rate.?limit|\b429\b/i;
+
 const retroRunner = (kind: AgentKind, cwd: string): Runner =>
   kind === 'claude' ? claudeRunner({ cwd, envFile: path.join(cwd, '.env'), retro: true })
     : kind === 'codex' ? codexRunner({ cwd, retro: true }) : opencodeRunner({ cwd, retro: true });
@@ -39,7 +41,9 @@ export async function toolsOff(kind: AgentKind, o: { run?: Runner } = {}): Promi
       const run = o.run ?? retroRunner(kind, path.join(os.tmpdir(), 'svall-tools-off'));
       ({ text } = await run('Do what the user asks.', prompt, { ...CALL, model: AGENTS[kind].scribeModel }));
     } catch (e) {
-      return [`tools-off probe couldn't run: ${(e as Error).message}`];
+      const m = (e as Error).message;
+      // an account out of quota says nothing about the release, so it reads as a vendor that couldn't be checked
+      return [OUT_OF_QUOTA.test(m) ? `couldn't check: tools-off probe: ${m}` : `tools-off probe couldn't run: ${m}`];
     }
     return [
       ...(text.includes(listed) ? ['ran a command with tools off'] : []),
