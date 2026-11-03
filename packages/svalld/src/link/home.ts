@@ -529,7 +529,7 @@ export class HomeLinks {
     try {
       for (const entry of this.o.machines()) {
         const held = this.links.get(entry.id);
-        // a worker that has come to dial in, or stopped, is linked anew the other way
+        // a worker whose record now says otherwise of who dials is linked anew the other way
         if (held && held.dialsIn !== (entry.record.dial === 'worker')) {
           held.stop();
           this.links.delete(entry.id);

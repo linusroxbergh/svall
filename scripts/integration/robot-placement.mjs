@@ -667,7 +667,7 @@ function dialOut(ids) {
     // the home's half over remote's own ssh, its token on stdout into the worker's half on stdin, as a join does it
     const enrol = sh(R, String.raw`set -eu
 umask 077
-ssh -o BatchMode=yes svall@${L} ~/.local/bin/svall --json home enroll-worker ${ids.remote} --name remote --platform linux --arch ${record.arch} --home ${HOMES[R]} --svall-base ${record.svallBase} > ~/enrol.json
+ssh -o BatchMode=yes svall@${L} '~/.local/bin/svall' --json home enroll-worker ${ids.remote} --name remote --platform linux --arch ${record.arch} --home ${HOMES[R]} --svall-base ${record.svallBase} > ~/enrol.json
 /opt/it/node/bin/node -e '
 const fs = require("fs");
 const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));

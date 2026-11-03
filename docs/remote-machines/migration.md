@@ -4,6 +4,13 @@ What changes on your Mac and your Linux machines when you install this release o
 On the Mac the upgrade happens by itself when Svall updates, or with `git pull && pnpm desktop:install` for Svall
 Dev; a Linux machine takes it with `svall host upgrade`.
 
+## Upgrading from 0.27
+
+The app, `svall` and the daemons of this release speak protocol 39; an update installs all of them together, and
+`svall host upgrade <machine>` takes each Linux machine to it as before. Nothing in a fleet home changes. `home` is now
+a command, so a fleet in `~/.svall-home` is reached by neither `svall home` nor `-p home`: `svall setup` names it, and
+the `mv` to a name that reaches it.
+
 ## Upgrading from 0.18 or 0.19
 
 From 0.18, each fleet's daemon on the Mac migrates `state.json` from version 11 to 12 on its first start, which drops
