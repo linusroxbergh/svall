@@ -161,10 +161,9 @@ async function start(opts: Options): Promise<Daemon> {
   const store = Store.load(paths.state, log.error);
   if (off.has('scribe')) store.update((d) => { d.scribeOff = true; });
   // a home holds its fleet as its own, so what said it was a worker's goes, and heldAsHome counts it again
-  if (!worker) {
-    fs.rmSync(paths.epoch, { force: true });
-    if (Object.values(store.state.machines ?? {}).some((m) => m.snapshot)) store.update((d) => { for (const m of Object.values(d.machines ?? {})) delete m.snapshot; });
-  }
+  const wasWorker = !worker && Object.values(store.state.machines ?? {}).some((m) => m.snapshot);
+  if (!worker) fs.rmSync(paths.epoch, { force: true });
+  if (wasWorker) store.update((d) => { for (const m of Object.values(d.machines ?? {})) delete m.snapshot; });
   liftRobotDocs(paths.docs, log);
   installHookScripts(paths);
   const token = readOrCreateToken(paths.token);
@@ -408,7 +407,9 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
-    fleet.resumeResting();
+    // a worker's copy holds its old home's robots as awake, which never ran here, so none of it resumes on its own
+    if (wasWorker) store.update((d) => { for (const c of Object.values(d.robots)) delete c.agent?.restingSince; });
+    else fleet.resumeResting();
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));

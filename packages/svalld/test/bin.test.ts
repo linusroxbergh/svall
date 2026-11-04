@@ -228,20 +228,31 @@ runIf('svalld bin', () => {
     expect(logOf(p)).not.toContain('makes this fleet home a worker');
   }, 90_000);
 
-  it('a former worker started as a home holds its fleet as its own again, so a worker.json on it is refused', async () => {
+  it("a former worker started as a home holds its fleet as its own again, resuming none of its old home's robots, so a worker.json on it is refused", async () => {
     const home = makeHome();
     homes.push(home);
     const p = resolvePaths(home);
     fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
     const was = crypto.randomUUID();
-    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described }, machines: { [was]: { name: 'studio', reachable: false, since: 1, snapshot: { version: 1, at: 1 } } } }));
+    const sessionId = crypto.randomUUID();
+    const transcriptPath = path.join(home, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcriptPath, '');
+    // awake on the old home, as a snapshot carried it: its window is that machine's
+    const c_old = {
+      id: 'c_old', islandId: 'i_a', cell: { x: 0, y: 0 }, name: 'old', portrait: 'fox', note: '', instructions: '', cwd: home, context: [], shell: { lastOutputAt: 0 }, unread: false,
+      tmux: { windowId: '@9', paneId: '%9' }, agent: { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: Date.now() },
+    };
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described }, robots: { c_old }, machines: { [was]: { name: 'studio', reachable: false, since: 1, snapshot: { version: 1, at: 1 } } } }));
     fs.mkdirSync(path.dirname(p.epoch), { recursive: true });
     fs.writeFileSync(p.epoch, 'old\n');
     await run(home, () => waitFor(() => fs.existsSync(p.port), 30_000));
-    expect(JSON.parse(fs.readFileSync(p.state, 'utf8')).machines[was].snapshot).toBeUndefined();
+    const after = JSON.parse(fs.readFileSync(p.state, 'utf8'));
+    expect(after.machines[was].snapshot).toBeUndefined();
+    expect(after.robots.c_old.tmux).toBeUndefined();
+    expect(after.robots.c_old.agent.restingSince).toBeUndefined();
     expect(fs.existsSync(p.epoch)).toBe(false);
     fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
-    await run(home, () => waitFor(() => logOf(p).includes('holds 1 island as a fleet'), 30_000));
+    await run(home, () => waitFor(() => logOf(p).includes('holds 1 robot and 1 island as a fleet'), 30_000));
   }, 90_000);
 
   it('a worker.json put back after a start as a home holds the daemon back, until enrolling again for its fleet boots it as a worker', async () => {

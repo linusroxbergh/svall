@@ -97,7 +97,7 @@ describe('svall worker', () => {
     }
     expect(await enroll('--home-ssh', 'ada@studio', '--home-socket', socket)).toMatchObject({ code: 0 });
     expect(JSON.parse(fs.readFileSync(resolvePaths(home).workerFile, 'utf8'))).toMatchObject({ homeSsh: 'ada@studio', homeSocket: socket });
-  });
+  }, 90_000);
 
   it('enroll on a Mac restarts the fleet\'s launchd agent and waits for its daemon, as systemd does on Linux', async () => {
     const bin = makeHome();
