@@ -312,6 +312,17 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     await refused(w.worker.connection.call('config.state', asks));
   });
 
+  it('a copy that ends past its grant leaves the grant armed after it', async () => {
+    const { w } = copyOf();
+    await w.link();
+    const now = Date.now();
+    await w.home.setupCopy!.from(W, async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(now + 16 * 60_000);
+      w.home.setupCopy!.arm(W);
+    });
+    await expect(w.worker.connection.call('config.state', asks)).resolves.toBeDefined();
+  });
+
   it('never takes the mirror\'s other calls, and a worker still sends on no machines call', async () => {
     const { w } = copyOf();
     await w.link();
