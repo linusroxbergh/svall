@@ -31,7 +31,7 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  name: string; id: string; ssh?: string; platform: string; dialedBy?: string;
+  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string;
   check?: { at: number; failed: number; warned: number; release?: string };
 };
 

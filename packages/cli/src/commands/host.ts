@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { ApiError, aside, asideLine, checksAgain, ellipsis, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
+import { resolvePaths } from '@svall/svalld/paths';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
@@ -222,11 +223,14 @@ export function forgetCheck(dir: string, id: string): void {
 }
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; check?: LastCheck };
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck };
 
-export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => string | undefined = () => undefined): MachineRow[] {
+const dialRow = (d: ReturnType<typeof dialingFleet>): Pick<MachineRow, 'dialedBy' | 'unreadWorker'> =>
+  (!d ? {} : d.unreadable ? { unreadWorker: resolvePaths(d.home).workerFile } : { dialedBy: d.home });
+
+export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => ReturnType<typeof dialingFleet> = () => undefined): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
-    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(dialedBy(id) && { dialedBy: dialedBy(id) }), ...(checks[id] && { check: checks[id] }),
+    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...dialRow(dialedBy(id)), ...(checks[id] && { check: checks[id] }),
   }));
 }
 

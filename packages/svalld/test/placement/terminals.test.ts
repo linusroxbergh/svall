@@ -12,7 +12,7 @@ import { REMOTE_SCREEN_BYTES } from '../../src/placement/far-viewers.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
-import { homeTails, ScreenTails, sendHomeTails } from '../../src/worker/screens.js';
+import { homeScreenCall, homeTails, ScreenTails, sendHomeTails } from '../../src/worker/screens.js';
 import { H, W, placed, stopWorlds, until, world } from './world.js';
 
 afterEach(async () => {
@@ -262,13 +262,63 @@ describe('the terminal of a robot on a worker', () => {
     const robots = { c_1: placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, machine: undefined }), c_2: placed({ id: 'c_2', tmux: { windowId: '@2', paneId: '%2' }, machine: W }) };
     const call = vi.fn((_m: MachineId, _method: string, _p: unknown) => Promise.resolve({}));
     const capture = vi.fn(async () => Buffer.from('screen'));
-    const o = { store: { state: { robots } } as unknown as Store, tmux: { capture }, runsHere: (c: { machine?: string }) => c.machine === undefined, links: { for: (m: MachineId) => ({ dialsIn: m === H }), call } as never };
+    const o = { store: { state: { robots } } as unknown as Store, tmux: { capture }, runsHere: (c: { machine?: string }) => c.machine === undefined, links: { pushSnapshot: () => Promise.resolve(1), for: (m: MachineId) => ({ dialsIn: m === H, took: () => Promise.resolve() }), call } as never };
     await sendHomeTails(o, W);
     expect(call).not.toHaveBeenCalled();
     await sendHomeTails(o, H);
     await sendHomeTails(o, H);
     expect(call).toHaveBeenCalledTimes(2);
     expect(call).toHaveBeenCalledWith(H, 'screen.home', { id: 'c_1', text: 'screen', at: expect.any(Number) });
+  });
+
+  describe('a worker that has just linked', () => {
+    const onHome = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, machine: undefined });
+    // a hub on a worker whose store holds `held`, and the home's links to it, whose snapshot brings the home's robots with it
+    const linkedWorker = (held: Record<string, unknown>) => {
+      const store = { state: { robots: { ...held } }, subscribe: () => () => {} } as unknown as Store;
+      const hub = new TerminalHub(new EventEmitter() as unknown as Fleet, {} as Tmux, store, silentLogger, undefined, W);
+      const answer = homeScreenCall(hub, H);
+      let take = () => {};
+      const links = {
+        for: () => ({ dialsIn: true, took: () => new Promise<void>((done) => { take = () => { (store.state.robots as Record<string, unknown>).c_1 = onHome; done(); }; }) }),
+        pushSnapshot: () => Promise.resolve(7),
+        call: (_m: MachineId, _method: string, p: unknown) => answer(p),
+      };
+      return { hub, links, take: () => take() };
+    };
+    const sendAs = (links: ReturnType<typeof linkedWorker>['links'], capture = vi.fn(async () => Buffer.from('the last screen'))) => ({
+      capture,
+      sending: sendHomeTails({ store: { state: { robots: { c_1: onHome } } } as unknown as Store, tmux: { capture }, runsHere: (c) => c.machine === undefined, links: links as never }, W),
+    });
+
+    it.each([
+      ['with an empty store, a fleet never opened', {}],
+      ['holding the fleet from before, with a robot started on the home while it was away', { c_0: placed({ id: 'c_0', machine: undefined }) }],
+    ])('%s, holds the last screen, as the tails wait for the snapshot that names the robot', async (_what, held) => {
+      const w = linkedWorker(held);
+      const { capture, sending } = sendAs(w.links);
+      await new Promise((r) => { setTimeout(r, 20); });
+      expect(capture).not.toHaveBeenCalled();
+      w.take();
+      await sending;
+      expect(w.hub.lastScreen('c_1')).toEqual({ text: 'the last screen', at: expect.any(Number) });
+    });
+
+    it('sends no tail for a snapshot the link cannot carry, and throws nothing', async () => {
+      const w = linkedWorker({});
+      const { capture, sending } = sendAs({ ...w.links, pushSnapshot: () => Promise.reject(new Error('too large')) });
+      await sending;
+      expect(capture).not.toHaveBeenCalled();
+    });
+
+    it('gives up on a link that never takes the snapshot, leaving what hooks send', async () => {
+      vi.useFakeTimers();
+      const w = linkedWorker({});
+      const { capture, sending } = sendAs(w.links);
+      await vi.advanceTimersByTimeAsync(30_000);
+      await sending;
+      expect(capture).not.toHaveBeenCalled();
+    });
   });
 
   it('a home sends its screens to the workers that dial in alone, and reads none while there is none', async () => {

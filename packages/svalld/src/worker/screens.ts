@@ -71,9 +71,22 @@ export function homeTails(o: { fleet: Pick<Fleet, 'on' | 'off'>; store: Store; t
   });
 }
 
-/** A tail of each robot here to a worker that has just linked, past the limit: its hub holds nothing of a robot with no hook since. */
-export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call'> }, machine: MachineId, lines = 40): Promise<void> {
-  if (!o.links.for(machine)?.dialsIn) return;
+// a link that never takes it leaves its worker with what hooks send
+const TAKE_MS = 30_000;
+
+/**
+ * A tail of each robot here to a worker that has just linked, past the limit: its hub holds nothing of a robot with no hook
+ * since, and keeps a screen only of a robot its store knows, so the tails wait until it has taken the fleet.
+ */
+export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot'> }, machine: MachineId, lines = 40): Promise<void> {
+  const link = o.links.for(machine);
+  if (!link?.dialsIn) return;
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), TAKE_MS); timer.unref(); });
+  // a snapshot too large for the link is logged where it is pushed
+  const taken = await Promise.race([o.links.pushSnapshot().then((v) => link.took(v)).then(() => true, () => false), late]);
+  clearTimeout(timer);
+  if (!taken) return;
   await Promise.all(Object.values(o.store.state.robots).filter((c) => c.tmux && o.runsHere(c)).map(async (c) => {
     const at = Date.now();
     const text = (await o.tmux.capture(c.tmux!.paneId, lines).catch(() => undefined))?.toString('utf8');

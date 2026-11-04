@@ -57,6 +57,20 @@ test('Remove is held back while a fleet on this account dials the machine as its
   expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toContain('/Users/ada/.svall-fartest');
 });
 
+test('Forget says why it is held back too, what clears it, and an unreadable worker.json reads apart', () => {
+  setup(undefined, 0);
+  act(() => store.getState().setMachines(store.getState().machines!.map((m) => ({ ...m, dialedBy: '/Users/ada/.svall-fartest' }))));
+  fireEvent.click(more());
+  const forget = () => screen.getByTestId('machine-forget') as HTMLButtonElement;
+  expect(forget().disabled).toBe(true);
+  expect(forget().getAttribute('data-tip')).toContain('Delete /Users/ada/.svall-fartest/worker.json or that fleet first, once you no longer serve it');
+  act(() => store.getState().setMachines(store.getState().machines!.map(({ dialedBy: _d, ...m }) => ({ ...m, unreadWorker: '/Users/ada/.svall-x/worker.json' }))));
+  expect(forget().disabled).toBe(true);
+  for (const b of [forget(), screen.getByTestId('machine-remove')]) {
+    expect(b.getAttribute('data-tip')).toBe('Cannot read /Users/ada/.svall-x/worker.json, which may name this machine; fix it');
+  }
+});
+
 test('Remove names how many robots hold it back; Forget is offered only for a machine that does not answer', () => {
   setup(undefined, 1);
   fireEvent.click(more());

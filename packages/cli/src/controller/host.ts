@@ -420,13 +420,22 @@ function servedHome(machine: string, d: HostDeps): WorkerFile | undefined {
   return served.homeMachineId === machine ? served : undefined;
 }
 
-/** The fleet home on this account whose worker.json names `machine` as its home, read as it lies; one that cannot be read may name it. */
-export function dialingFleet(machine: string, homedir: string): string | undefined {
-  return fleetHomes(homedir).find((home) => {
+/**
+ * The fleet home on this account whose worker.json names `machine` as its home, read as it lies, or failing that one that cannot
+ * be read, which may name it. Svall and Svall Dev share the registry, so the fleets of both count.
+ */
+export function dialingFleet(machine: string, homedir: string): { home: string; unreadable?: true } | undefined {
+  let names: string[];
+  try { names = fs.readdirSync(homedir); } catch { return undefined; }
+  let unreadable: string | undefined;
+  for (const home of names.filter((f) => f === '.svall' || f.startsWith('.svall-')).map((f) => path.join(homedir, f))) {
     let text: string;
-    try { text = fs.readFileSync(resolvePaths(home).workerFile, 'utf8'); } catch { return false; }
-    try { return (JSON.parse(text) as { homeMachineId?: unknown }).homeMachineId === machine; } catch { return true; }
-  });
+    try { text = fs.readFileSync(resolvePaths(home).workerFile, 'utf8'); } catch { continue; }
+    try {
+      if ((JSON.parse(text) as { homeMachineId?: unknown }).homeMachineId === machine) return { home };
+    } catch { unreadable ??= home; }
+  }
+  return unreadable === undefined ? undefined : { home: unreadable, unreadable: true };
 }
 
 // the folder of the fleet there, for the home this fleet dials: its profile there need not be the one it has here
@@ -714,9 +723,11 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 const removable = (name: string, d: HostDeps): Outcome<MachineEntry> => {
   const entry = d.registry.get(name);
   // without its record a fleet cannot upgrade or check the home it serves, and the far uninstall would stop that home and its robots
-  if (entry && servedHome(entry.id, d)) throw new StepError(`${name} is this fleet's home, so it stays listed here`);
+  const leaving = (home: string): string => `delete ${resolvePaths(home).workerFile} or that fleet first, once you no longer serve it`;
+  if (entry && servedHome(entry.id, d)) throw new StepError(`${name} is this fleet's home, so it stays listed here`, leaving(d.fleet.home));
   const dialing = entry && dialingFleet(entry.id, d.homedir);
-  if (dialing && dialing !== d.fleet.home) throw new StepError(`${name} is the home of the fleet in ${dialing}, so it stays listed here and keeps running`);
+  if (dialing?.unreadable) throw new StepError(`cannot read ${resolvePaths(dialing.home).workerFile}, which may name ${name}`, 'fix it');
+  if (dialing && dialing.home !== d.fleet.home) throw new StepError(`${name} is the home of the fleet in ${dialing.home}, so it stays listed here and keeps running`, leaving(dialing.home));
   return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(d.registry, name);
 };
 

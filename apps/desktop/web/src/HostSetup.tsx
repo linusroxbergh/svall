@@ -26,6 +26,10 @@ export function MachineActions({ name }: { name: string }) {
   const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
   const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
   const dialedBy = useApp((s) => s.machines?.find((m) => m.name === name)?.dialedBy);
+  const unread = useApp((s) => s.machines?.find((m) => m.name === name)?.unreadWorker);
+  // why neither Remove nor Forget goes, and what clears it
+  const stays = dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet. Delete ${dialedBy}/worker.json or that fleet first, once you no longer serve it`
+    : unread && `Cannot read ${unread}, which may name this machine; fix it`;
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
   const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
   const [open, setOpen] = useState(false);
@@ -75,12 +79,12 @@ export function MachineActions({ name }: { name: string }) {
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
-          <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!dialedBy}
-            data-tip={dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet` : placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
+          <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
+            data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
             onClick={item(() => ask(false))}>Remove</button>
           {!up && (
-            <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running || !!dialedBy}
-              data-tip="Drop the route for a machine that cannot be reached, leaving it untouched" onClick={item(() => ask(true))}>Forget</button>
+            <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running || !!stays}
+              data-tip={stays || 'Drop the route for a machine that cannot be reached, leaving it untouched'} onClick={item(() => ask(true))}>Forget</button>
           )}
         </div>
       )}

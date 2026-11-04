@@ -740,6 +740,20 @@ console.log(a.socket);
     let fresh;
     for (let i = 0; i < 60 && !fresh?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); fresh = call(R, 'term.lastScreen', { id: onHome }); }
     check('a worker just started holds the last screen', fresh?.text?.includes(`did: ${text}`), () => brief(fresh));
+
+    // a robot started on the home while the worker was away: only the snapshot tells the worker of it, and its screen has to come after
+    const beforeAway = linksOf()[ids.remote]?.since;
+    sh(R, `systemctl --user stop ${UNIT}`);
+    const whileAway = JSON.parse(sh(L, `svall --json robot new --island ${ctx.fx.island} --cwd ~/src/app --name whileaway --claude`).stdout).id;
+    sh(L, `svall robot wait ${whileAway} --until idle --timeout 60`);
+    const awayText = 'a turn while the worker was away';
+    turn(ids, { whileaway: whileAway }, 'whileaway', awayText);
+    sh(R, `systemctl --user start ${UNIT}`);
+    linked(ids, beforeAway);
+    let startedAway;
+    for (let i = 0; i < 60 && !startedAway?.text?.includes(`did: ${awayText}`); i++) { if (i) sh(L, 'sleep 0.5'); startedAway = call(R, 'term.lastScreen', { id: whileAway }); }
+    check('a worker holds the last screen of a robot started while it was away', startedAway?.text?.includes(`did: ${awayText}`), () => brief(startedAway));
+    sh(L, `svall robot close ${whileAway}`);
     check('the worker answers its own diagnostics', call(R, 'feedback.preview').text?.length > 0, 'no diagnostics on the worker');
 
     // the home killed with its port file left: ssh still takes the forward's connection, and only a greeting tells

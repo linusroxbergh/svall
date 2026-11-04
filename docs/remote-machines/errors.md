@@ -143,6 +143,8 @@ to fix with its name, what it lacks and the one thing to do.
 | `--home-ssh` and `--home-socket` go together, or one is not what `worker.json` holds | worker | Give both, the destination an ssh destination and the socket the path `fleet enroll-worker` printed. |
 | Not this machine's socket | worker | Run `fleet enroll-worker` again with this machine's id. |
 | `--home-svall-base`, `--home-platform`, `--home-arch` and `--home-path` missing beside `--home-ssh`, or given without it | worker | Give what `fleet enroll-worker` printed. |
+| `host remove` or `--forget` of a fleet's home, here or in another fleet on this account, Svall's or Svall Dev's | worker | It stays listed, as the far uninstall would stop that home. Once you no longer serve it, delete that fleet's `worker.json`, or the fleet. |
+| `host remove` or `--forget`: cannot read a fleet's `worker.json`, which may name this machine | worker | Fix that file, then remove the machine: an unreadable file holds back every machine, as it may name any of them. |
 | A machine of the home's name already in this machine's registry | worker | Give `worker enroll` another `--home-name`, or `svall host remove` the one in the way. |
 | Already serves another fleet's home, with a dial-out on either side | worker | `svall -p <empty fleet> worker enroll`: the new home would close every robot here it does not know. The same fleet enrols again, as after a new token. A worker its home dials follows that home's `host add` or `host upgrade`, as a fleet made anew needs. |
 | `worker.json` put back after a start as a home, so its daemon holds back | worker | A new token from `svall fleet enroll-worker` on the home, then `svall worker enroll` for the same fleet, after which the daemon starts as a worker. |
