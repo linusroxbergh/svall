@@ -35,7 +35,7 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
     docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
     secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
     bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }),
-    ...(next.backup && { backup: next.backup.dir === state.backup?.dir ? state.backup : { dir: next.backup.dir } }),
+    ...(next.backup && { backup: state.backup?.done ? state.backup : { dir: next.backup.dir } }),
   };
 }
 
@@ -232,17 +232,16 @@ function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { pla
 /**
  * Puts the mirror at `blobDir` into this machine's homes. A record of all it may write goes first, so an apply cut short still
  * knows each copy it left, the final one last; files go off the event loop, a few at once, so the link is answered meanwhile.
- * With `backups`, the first push here, or with `everyPush` each one, keeps a copy of each file it replaces or removes, in a
- * folder of its own that a push cut short hands on to the next, and answers that folder.
+ * With `backups`, the first push here keeps a copy of each file it replaces or removes, in a folder that a push cut short hands
+ * on to the next, and answers that folder.
  */
 export async function applyMirror(
-  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number; backups?: string; everyPush?: boolean },
+  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number; backups?: string },
 ): Promise<{ written: string[]; removed: string[]; backup?: string }> {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
   const state = readState(o.stateFile);
   const applied = o.seq ?? state.applied;
-  const handed = state.backup?.done ? undefined : state.backup?.dir;
-  const backup = o.backups === undefined || (state.backup?.done && !o.everyPush) ? undefined : handed ?? newBackup(o.backups);
+  const backup = o.backups === undefined || state.backup?.done ? undefined : state.backup?.dir ?? newBackup(o.backups);
   const keep = backup === undefined ? undefined : keeper(backup, o.homedir);
   const kept = backup === undefined ? state.backup : { dir: backup, done: true as const };
   const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(kept && { backup: kept }) };

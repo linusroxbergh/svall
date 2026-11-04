@@ -164,7 +164,7 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
  * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; everyPush?: boolean; platform?: NodeJS.Platform;
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; platform?: NodeJS.Platform;
 }): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {

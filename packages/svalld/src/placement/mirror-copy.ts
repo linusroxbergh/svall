@@ -14,7 +14,7 @@ const refused = (method: string): ApiError => new ApiError('unauthorized', `${me
 
 /**
  * The home's side of a copy of a worker's agent setup: it takes one push from the worker `machines.copySetupFrom` named, and
- * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. Each copy keeps what it replaces.
+ * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. The first copy keeps what it replaces.
  */
 export class SetupCopy {
   private grant?: { machine: MachineId; until: number; offered?: true; used?: true };
@@ -28,7 +28,7 @@ export class SetupCopy {
       const link = this.grant && this.o.links.for(this.grant.machine);
       return link ? link.receiveBlob(id, into) : Promise.reject(new ApiError('not_reachable', 'no worker is copying its agent setup here'));
     };
-    this.calls = mirrorCalls({ ...o, everyPush: true, connection: { receiveBlob } });
+    this.calls = mirrorCalls({ ...o, connection: { receiveBlob } });
   }
 
   takes(method: string): boolean {

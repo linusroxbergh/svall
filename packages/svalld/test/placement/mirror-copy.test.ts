@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, type SetupRow } from '@svall/protocol';
 import { answer, dispatch, type Ctx } from '../../src/api/methods.js';
 import { DurableBatch } from '../../src/durable.js';
+import { filesIn } from '../../src/placement/docs-sync.js';
 import { backupsHere } from '../../src/placement/mirror.js';
 import { readState } from '../../src/placement/mirror-state.js';
 import { realPath } from '../../src/paths.js';
@@ -16,6 +17,7 @@ afterEach(async () => {
 });
 
 const OTHER = MachineId.parse('dddddddd-0000-4000-8000-000000000000');
+const KEY = 'lin_api_1234567890';
 
 const call = async <T = unknown>(ctx: Ctx, method: string, params: object): Promise<T> => {
   const res = await dispatch({ id: 1, method, params } as never, ctx);
@@ -24,6 +26,8 @@ const call = async <T = unknown>(ctx: Ctx, method: string, params: object): Prom
 };
 const refused = (p: Promise<unknown>) => expect(p).rejects.toMatchObject({ code: 'unauthorized' });
 const folders = (dir: string): string[] => (fs.existsSync(dir) ? fs.readdirSync(dir).sort() : []);
+// the files under `dir` that hold `value`
+const holding = (dir: string, value: string): string[] => filesIn(dir).filter((f) => fs.readFileSync(path.join(dir, f), 'utf8').includes(value));
 
 // a home whose setup a Mac's, and a Mac with a person's own files where the mirror writes
 function onto() {
@@ -243,8 +247,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     expect(json(w.worker.paths.mirrorConsent)[H]).toEqual(['claude:mcp:two#env.A_KEY']);
   });
 
-  it('keeps a folder for each copy, as each may replace what was edited on the home since', async () => {
-    const { home, mac, ask, linked } = copyOf();
+  it('its first copy alone keeps what it replaces, as a later one may hold what an earlier one copied', async () => {
+    const { home, mac, w, ask, linked } = copyOf();
     await linked();
     put(path.join(mac.claudeDir, 'CLAUDE.md'), '# first\n');
     const first = await ask();
@@ -252,16 +256,34 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     put(path.join(mac.claudeDir, 'CLAUDE.md'), '# second\n');
     const second = await ask();
     expect(read(path.join(home.claudeDir, 'CLAUDE.md'))).toBe('# second\n');
-    expect(second.backup).not.toBe(first.backup);
-    expect(read(path.join(second.backup!, '.claude/CLAUDE.md'))).toBe('# edited on the server\n');
+    expect(second.backup).toBeUndefined();
+    expect(folders(w.home.paths.mirrorBackup)).toEqual([path.basename(first.backup!)]);
     expect(read(path.join(first.backup!, '.claude/CLAUDE.md'))).toBe('# the server\n');
   });
 
-  it('a copy that replaces nothing names no folder', async () => {
-    const { ask, linked } = copyOf();
+  it('a key ticked for one copy and unticked for the next lies in no backup', async () => {
+    const { home, w, ask, linked } = copyOf();
     await linked();
+    const tick = (on: boolean) => call(w.worker.ctx, 'home.setupConsent', { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on });
+    await tick(true);
     await ask();
-    expect((await ask()).backup).toBeUndefined();
+    expect(json(home.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe(KEY);
+    await tick(false);
+    await ask();
+    expect(json(home.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+    expect(holding(w.home.paths.mirrorBackup, KEY)).toEqual([]);
+    expect(folders(w.home.paths.mirrorBackup).length).toBeLessThanOrEqual(1);
+  });
+
+  it('a first copy onto a home with no setup replaces nothing, and names no folder', async () => {
+    const { home, w, ask, linked } = copyOf();
+    for (const dir of [home.claudeDir, home.opencodeDir]) fs.rmSync(dir, { recursive: true, force: true });
+    await linked();
+    const { sent, backup } = await ask();
+    expect(sent).toBeGreaterThan(0);
+    expect(read(path.join(home.claudeDir, 'CLAUDE.md'))).toBe('# how I work\n');
+    expect(backup).toBeUndefined();
+    expect(folders(w.home.paths.mirrorBackup)).toEqual([]);
   });
 
   it('takes the mirror\'s calls from no worker it was not told of, nor from any once told of another', async () => {
