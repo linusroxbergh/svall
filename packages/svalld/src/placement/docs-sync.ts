@@ -13,6 +13,7 @@ import { newMutationId } from '../ids.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import type { Store } from '../store.js';
 import { packTar, ustarFits } from './bundle.js';
 import { unpack } from './move-steps.js';
@@ -173,8 +174,8 @@ type Named = { file: string; bytes?: Buffer; sha256?: string; id: string; made?:
 function lineOf(c: Conflict, worker: string): string {
   if (!c.kept) return `${worker} deleted ${c.file}, which changed here since; it stays`;
   const kept = path.dirname(c.kept) === path.dirname(c.file) ? path.basename(c.kept) : c.kept;
-  if (!c.under) return `${c.file} changed on both ${worker} and this Mac; ${worker}'s version is kept as ${kept}`;
-  return `${worker} wrote ${c.file}, but ${c.under} is a ${c.under === c.file ? 'folder' : 'file'} on this Mac; ${worker}'s version is kept as ${kept}`;
+  if (!c.under) return `${c.file} changed on both ${worker} and ${homeWord()}; ${worker}'s version is kept as ${kept}`;
+  return `${worker} wrote ${c.file}, but ${c.under} is a ${c.under === c.file ? 'folder' : 'file'} on ${homeWord()}; ${worker}'s version is kept as ${kept}`;
 }
 
 /** The robots a doc at `rel` concerns: the one whose folder it is in, or `machine`'s on its island, in its repository by this Mac's main root, or anywhere for the fleet's. */

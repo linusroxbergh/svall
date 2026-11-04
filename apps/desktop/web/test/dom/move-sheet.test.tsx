@@ -88,6 +88,16 @@ test('while it checks, the sheet says what it checks', async () => {
   ]);
 });
 
+test.each([
+  ['another machine against the home\'s release', VAULT, "linus-vault is reachable and on studio's release"],
+  ['the home against this Mac\'s', HOME, "studio is reachable and on this Mac's release"],
+])('through a far home, the sheet checks %s', async (_, to, line) => {
+  act(() => store.getState().setVia({ machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, home: HOME, name: 'studio', online: true }));
+  call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : Promise.resolve({})));
+  await open(to);
+  expect(screen.getByTestId('move-checking').querySelector('li')!.textContent).toBe(line);
+});
+
 test("on the way back, the sheet checks that the machine it is on answers and this Mac's agent", async () => {
   act(() => store.getState().applyPatch([
     { op: 'add', path: '/robots/c0/machine', value: VAULT },

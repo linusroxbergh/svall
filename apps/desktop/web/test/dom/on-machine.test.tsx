@@ -120,3 +120,13 @@ test('a variable row on the card takes its value in a field and sends it, or cop
   expect(call).toHaveBeenCalledWith('machines.setVar', { machine: VAULT, name: 'X', fromMac: true });
   expect(store.getState().toast).toMatchObject({ text: 'this Mac has no X', tone: 'error' });
 });
+
+test('a variable row copies from the home: this Mac on the home, and by its name in a window on a worker', async () => {
+  rows = [{ key: 'var:X', status: 'warn', detail: 'd', action: 'set X on vault', run: 'svall worker env X', gap: { name: 'X', what: 'not set; ad reads it' }, here: true }];
+  await act(async () => { render(<OnMachine id="c1" machine={VAULT} name="vault" />); });
+  unfold();
+  const copy = screen.getByTestId('side-gap-var-var:X-copy');
+  expect([copy.textContent, copy.dataset.tip]).toEqual(['Copy from this Mac', 'This Mac has X; its value goes to vault without being shown']);
+  act(() => store.getState().setVia({ machine: VAULT, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, name: 'studio', online: true }));
+  expect([copy.textContent, copy.dataset.tip]).toEqual(['Copy from studio', 'studio has X; its value goes to vault without being shown']);
+});

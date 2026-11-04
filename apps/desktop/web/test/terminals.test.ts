@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ApiError, type Api } from '../src/api.js';
 import type { Bridge, FromShell, ToShell } from '../src/bridge.js';
 import { createAppStore } from '../src/store/index.js';
+import { SourceLeft } from '../src/sources.js';
 import { createTerminalManager, secondKey } from '../src/terminals.js';
 import { fleet } from './fixtures.js';
 
@@ -426,6 +427,16 @@ describe('a window whose fleet has its home on another machine', () => {
     expect(sent).toEqual([{ type: 'term.close', id: 'c0' }]);
     expect(store.getState().terminals.c1).toBeDefined();
     expect(store.getState().terminalErrors.c2).toBeUndefined();
+  });
+
+  it('asks again where a robot is when its attach was answered by a daemon the page left, and fails nothing', async () => {
+    const { manager, store, api, sent } = far();
+    let n = 0;
+    (api as unknown as { call: unknown }).call = () => (n++ ? Promise.resolve({ socket: '/s', session: 'v-c0', tmux: '/t', machine: 'home' }) : Promise.reject(new SourceLeft()));
+    await manager.show('c0', rect);
+    expect(n).toBe(2);
+    expect(store.getState().terminalErrors.c0).toBeUndefined();
+    expect(attachOf(sent)).toHaveLength(1);
   });
 
   it('with no far home, does not name a master and a reroute has nothing to do with a terminal here', async () => {

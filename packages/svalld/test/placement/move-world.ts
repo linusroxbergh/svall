@@ -338,7 +338,7 @@ export function moveWorld(o: {
       paths: workerPaths, worker: { homeMachineId: H, fleetId: config.id, token, homeName: 'mac' }, me: W, store, outbox: mortal(outbox, life),
       log: silentLogger, release: RELEASE, bootId: `boot-${++boots}`, handlers, onAcked: (dropped) => mutations.acked(dropped),
     });
-    const router = new Router({ store, me: W, log: silentLogger, home: { id: H, connection } });
+    const router = new Router({ store, me: W, log: silentLogger, home: { id: H, connection, word: () => 'ada-mac' } });
     const fleet = new Fleet({
       store, tmux, paths: workerPaths, config, log: silentLogger, remote: router, pollMs: o.pollMs,
       report: (r) => connection.report(r), created: (c, p) => mutations.created(c, p), readProcs: async () => [], processes: async () => [],
@@ -350,7 +350,7 @@ export function moveWorld(o: {
     vault.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const box = mortal(vault, life);
     const prepare = new PrepareService({
-      store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, homeName: 'mac', paths: workerPaths,
+      store: mortal(store, life), fleet: mortal(fleet, life), tmux, viewers, connection: mortal(connection, life), me: W, homeName: 'mac', homeWord: () => 'this Mac', paths: workerPaths,
       git: mortalGit(hooklessGit, life), cloneGit: mortalGit(hooklessGit, life), agents: async () => [{ ...macProbe, home: farHome }], homedir: far, processes: box.processes, kill: box.kill, clock,
       agentRunning: async () => !!o.agentRunsThere, log: silentLogger, moves: mortal(new MoveFiles(workerPaths.moves), life), watchMs: 5000, cli: opencode.far.run,
     });

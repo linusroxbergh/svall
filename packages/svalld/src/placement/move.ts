@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ApiError, MachineId, MoveId, MovePhase, ON_THIS_MAC, Robot, WORKER_OWNED, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
+import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { boundary, type Failpoint } from '../failpoints.js';
@@ -13,6 +13,7 @@ import type { CliRun } from '../sessions/types.js';
 import type { HomeLinks, WorkerHello } from '../link/home.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
@@ -126,7 +127,7 @@ export class Placement {
   async check(robotId: string, to: MachineId, o: StartOptions = {}): Promise<CheckResult> {
     const c = this.robot(robotId);
     if (to === this.d.me) return this.checkReturn(c, o);
-    if (c.machine && c.machine !== this.d.me) return { ok: false, refusal: { reason: 'a robot moves home first', action: `move ${c.name} to this Mac first`, details: [] } };
+    if (c.machine && c.machine !== this.d.me) return { ok: false, refusal: { reason: 'a robot moves home first', action: `move ${c.name} to ${homeWord()} first`, details: [] } };
     const checked = await moveChecks(this.checkDeps(), robotId, to, o);
     // the worktree the robot left there is the one it goes back into, as it left it
     if (!checked.ok || c.left?.machine !== to) return checked;
@@ -143,7 +144,7 @@ export class Placement {
       const back = to === this.d.me;
       const there = back ? c.machine : to;
       const link = there && this.d.links.for(there);
-      if (link && link.connected() && !link.outboxDrained()) throw new ApiError('busy', `${this.name(there)} is still catching up with this Mac; try again in a moment`);
+      if (link && link.connected() && !link.outboxDrained()) throw new ApiError('busy', `${this.name(there)} is still catching up with ${homeWord()}; try again in a moment`);
       const checked = await this.check(robotId, to, o);
       if (!checked.ok) throw refused(checked.refusal);
       id = newMoveId();
@@ -220,7 +221,7 @@ export class Placement {
   }
 
   private name(m: MachineId): string {
-    return m === this.d.me ? 'this Mac' : this.d.store.state.machines?.[m]?.name ?? m;
+    return m === this.d.me ? homeWord() : this.d.store.state.machines?.[m]?.name ?? m;
   }
 
   private save(j: MoveJournal): void {
@@ -300,7 +301,7 @@ export class Placement {
     if (!cv) return j;
     await this.clones.run(cv.main, async () => {
       const root = path.join(cv.main, WORKTREES, cv.slug);
-      if (fs.lstatSync(root, { throwIfNoEntry: false })) throw new Error(`${root} on this Mac is in the way; move it out of the way first`);
+      if (fs.lstatSync(root, { throwIfNoEntry: false })) throw new Error(`${root} on ${homeWord()} is in the way; move it out of the way first`);
       j = { ...j, made: { ...j.made, converted: true } };
       this.save(j);
       await convertMainCheckout(cv.main, { git: this.d.git, slug: cv.slug, head: cv.head });
@@ -437,7 +438,7 @@ export class Placement {
       await verifyBundle(dir, m);
     }
     await unpack(path.join(stage, 'session.tar'), sessions);
-    await checkSessions(j.sessions ?? [], sessions, paths, run, 'on this Mac');
+    await checkSessions(j.sessions ?? [], sessions, paths, run, `on ${homeWord()}`);
     if (m) {
       const made = (x: Made): void => { j = { ...j, made: { ...j.made, ...x } }; this.save(j); };
       const tip = async (): Promise<string | null> => (await git(['rev-parse', '--verify', '-q', `refs/heads/${m.branch}^{commit}`], clone)).stdout.trim() || null;
@@ -446,15 +447,15 @@ export class Placement {
         if (twin) throw refused(twin);
         if (back) {
           // looked at again right before the reset, so a save made since the checks is refused, not deleted
-          const changed = await changedSince(back, 'on this Mac', git);
+          const changed = await changedSince(back, `on ${homeWord()}`, git);
           if (changed) throw refused(changed);
           made({ unlocked: true, branch: await tip() });
           await takeBack(back.path, back.branchSha, git);
-          return applyBundle(back.path, dir, m, git, { machine: 'this Mac', ...(back.branch === m.branch && { keep: back.branchSha }) });
+          return applyBundle(back.path, dir, m, git, { machine: homeWord(), ...(back.branch === m.branch && { keep: back.branchSha }) });
         }
-        await newWorktree({ clone, root: paths.root, m, detach: false, where: 'this Mac', git, made });
+        await newWorktree({ clone, root: paths.root, m, detach: false, where: homeWord(), git, made });
         made({ branch: await tip() });
-        await applyBundle(paths.root, dir, m, git, { machine: 'this Mac', ...(left?.branch === m.branch && { keep: left.branchSha }) });
+        await applyBundle(paths.root, dir, m, git, { machine: homeWord(), ...(left?.branch === m.branch && { keep: left.branchSha }) });
       });
     }
     placeSessions(j.sessions ?? [], sessions);
@@ -485,7 +486,7 @@ export class Placement {
           this.d.store.update((d) => {
             const r = d.robots[j.robotId];
             if (fingerprint) r.left = { ...left, fingerprint };
-            else addLine(r, keptLine(left.path, 'this Mac'));
+            else addLine(r, keptLine(left.path, homeWord()));
           });
           still({});
         },
@@ -509,7 +510,7 @@ export class Placement {
   // the robot's record on the way back: its paths on this Mac, read back from the worker's by the homes of both
   private async checkReturn(c: Robot, o: StartOptions): Promise<CheckResult> {
     const from = c.machine;
-    if (!from || from === this.d.me) throw new Invalid(`${c.name} runs on this Mac`);
+    if (!from || from === this.d.me) throw new Invalid(`${c.name} runs on ${homeWord()}`);
     const fail = (f: Failure): CheckResult => ({ ok: false, refusal: { ...f, details: [] } });
     const reached = reach(this.d.links.for(from), this.name(from), this.d.release);
     if ('failure' in reached) return fail(reached.failure);
@@ -519,7 +520,7 @@ export class Placement {
     if ('failure' in planned) return fail(planned.failure);
     const { plan, back } = planned;
     if (back) {
-      const changed = await changedSince(back, 'on this Mac', this.d.git);
+      const changed = await changedSince(back, `on ${homeWord()}`, this.d.git);
       if (changed) return fail(changed);
     }
     // this Mac's branch of the robot's branch's name, which the way back would reset, but at the commit the robot left it at
@@ -548,8 +549,8 @@ export class Placement {
     const [info, local] = await Promise.all([this.d.links.call<SystemInfo>(from, 'system.info', {}).catch((e: Error) => e), this.d.agents(true)]);
     if (info instanceof Error) return { failure: unanswered(info, this.name(from)) };
     // the sheet's buttons act on the worker, so the action names what to run here
-    const agents = agentFailures(c, { name: this.name(from), agents: info.agentAdapters }, { name: 'this Mac', agents: local })
-      .map(({ run, ...f }) => ({ ...f, action: `${ON_THIS_MAC}${run}` }));
+    const agents = agentFailures(c, { name: this.name(from), agents: info.agentAdapters }, { name: homeWord(), agents: local })
+      .map(({ run, ...f }) => ({ ...f, action: `on ${homeWord()}, run ${run}` }));
     if (agents.length) return { failure: refusalOf(agents) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, local);
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
@@ -575,9 +576,9 @@ export class Placement {
       const here = await probeRepo({ path: main }, git);
       if (here.state === 'none') {
         const remote = far.remote && withoutToken(far.remote);
-        return { reason: `${repoName} is not cloned on this Mac`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
+        return { reason: `${repoName} is not cloned on ${homeWord()}`, action: remote ? `git clone ${shq(remote)} ${shq(main)}` : `clone it to ${main} first` };
       }
-      const notClone: Failure = { reason: `${main} on this Mac is not a clone of ${repoName}`, action: 'move it out of the way first' };
+      const notClone: Failure = { reason: `${main} on ${homeWord()} is not a clone of ${repoName}`, action: 'move it out of the way first' };
       if (here.state !== 'clone' || remoteKey(here.remote) !== remoteKey(far.remote)) return notClone;
       const shallow = await shallowFailure(main, git);
       if (shallow) return shallow;
@@ -585,17 +586,17 @@ export class Placement {
     }
     const twin = await this.clashing(branch, back?.path ?? main);
     if (twin || back) return twin;
-    if (fs.lstatSync(root, { throwIfNoEntry: false })) return { reason: `${root} on this Mac is in the way`, action: 'move it out of the way first' };
+    if (fs.lstatSync(root, { throwIfNoEntry: false })) return { reason: `${root} on ${homeWord()} is in the way`, action: 'move it out of the way first' };
     // a worktree git lists at that place or on that branch whose folder is gone, moved or deleted, which git cannot tell apart
     const entries = (await must(git, ['worktree', 'list', '--porcelain'], main)).split('\n\n').map((e) => e.split('\n'));
     const stale = entries.map((e) => ({ at: e[0].slice('worktree '.length), e })).find(({ at, e }) =>
       (clean(at) === clean(root) || e.includes(`branch refs/heads/${branch}`)) && !fs.existsSync(at));
     if (stale) {
       const unlock = stale.e.some((l) => l === 'locked' || l.startsWith('locked ')) ? `git worktree unlock ${shq(stale.at)} && ` : '';
-      return { reason: `git on this Mac still lists ${stale.at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${unlock}git worktree remove ${shq(stale.at)}` };
+      return { reason: `git on ${homeWord()} still lists ${stale.at}, whose folder is gone`, action: `git worktree repair <its new place> if you moved it, else ${unlock}git worktree remove ${shq(stale.at)}` };
     }
     const holder = await holding(main, branch, git);
-    if (holder) return { reason: `${branch} is checked out in ${holder} on this Mac`, action: 'check out another branch there first' };
+    if (holder) return { reason: `${branch} is checked out in ${holder} on ${homeWord()}`, action: 'check out another branch there first' };
     return undefined;
   }
 
@@ -603,7 +604,7 @@ export class Placement {
   private async clashing(branch: string, at: string): Promise<Failure | undefined> {
     const names = (await must(this.d.git, ['for-each-ref', '--format=%(refname:strip=2)', 'refs/heads'], at)).split('\n');
     const twin = names.find((b) => b && b !== branch && clash(b, branch));
-    return twin ? { reason: `this Mac has a branch ${twin}, which it cannot keep beside ${branch}`, action: 'rename one of them first' } : undefined;
+    return twin ? { reason: `${homeWord()} has a branch ${twin}, which it cannot keep beside ${branch}`, action: 'rename one of them first' } : undefined;
   }
 
   // ---- from the commit on, both ways
@@ -666,7 +667,7 @@ export class Placement {
     if (!link?.connected()) throw new ApiError('not_reachable', `${this.name(machine)} is not reachable`);
     let timer: NodeJS.Timeout | undefined;
     const late = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error(`${this.name(machine)} did not take this Mac's record of the move within ${SNAPSHOT_MS / 1000} s; retry`)), SNAPSHOT_MS);
+      timer = setTimeout(() => reject(new Error(`${this.name(machine)} did not take ${homeWord()}'s record of the move within ${SNAPSHOT_MS / 1000} s; retry`)), SNAPSHOT_MS);
     });
     try { await Promise.race([this.d.links.pushSnapshot().then((v) => link.took(v)), late]); } finally { clearTimeout(timer); }
   }

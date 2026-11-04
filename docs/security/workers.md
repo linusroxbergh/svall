@@ -26,6 +26,12 @@ carries and under which licences, and which risks are accepted. Tests are named 
   which sshd makes for the account alone. The home connects to that socket only for a record that says it dials in and
   whose token it holds, and greets it as over ssh: the hello holds the token first, which the worker compares. Nothing
   on the home can reach the worker, so no terminal of the home's attaches to the worker's robots.
+- **A window on a far home.** The Mac daemon's master to its home carries the app too: `ssh -L 127.0.0.1:<free>:127.0.0.1:<port>`
+  onto the home's loopback API. The port and the home's API token come from `svall connection-info --json`, run over that master at each ask and read
+  back on stdout, with the answer's fleet id and machine id compared to `worker.json`'s: another fleet or machine is shown, and no other home is
+  ever tried. The token stays in the daemon's memory while it answers `home.connection`, and in the page's memory and its socket hello; it is in
+  no file on the Mac, no argv, no log and no page storage. `home.connection` answers an app socket that came from loopback, never a phone. A
+  failed attempt takes its forward back. A login or host key refused stops the dial until someone asks again, so a refused key is not retried.
 - **Not trusted:**
   - other accounts on either machine;
   - a companion archive until it is authenticated;
@@ -33,7 +39,7 @@ carries and under which licences, and which risks are accepted. Tests are named 
   - any machine an ssh destination reaches until it answers with the registry's machine id.
 - **Nothing listens past loopback.**
   - The daemon API binds `node.json`'s `host`, `127.0.0.1` unless the user sets another.
-  - A host command reaches a far daemon through `ssh -L 127.0.0.1:<local>:127.0.0.1:<remote>` on its master.
+  - A host command, and a window on a far home, reaches a far daemon through `ssh -L 127.0.0.1:<local>:127.0.0.1:<remote>` on a master.
   - The worker's end of the link (`link.sock`) and the hook receiver (`hooks.sock`) are Unix sockets at 0600 in the
     0700 fleet home. The socket a worker that dials in forwards its link to is one sshd makes at 0600 in the home's
     `w/` folder, 0700, inside its 0700 fleet home.
@@ -47,6 +53,9 @@ carries and under which licences, and which risks are accepted. Tests are named 
 
 | Threat | What stops it | Tests |
 | --- | --- | --- |
+| The home's token handed to something other than the window | `home.connection` answers only a socket from loopback with this fleet's token, never a phone, and a page keeps the token out of its store. | `svalld/test/methods.test.ts` "fleet.home and home.connection answer the app alone"; `svalld/test/link/home-api.test.ts`; `desktop/web/test/sources.test.ts` "never keeps the home's token" |
+| A window sent to another fleet's home by an alias that now leads elsewhere | `home.connection` compares the far fleet id and machine id, shows the mismatch and answers no route; the page falls back only to the daemon that names this home. | `svalld/test/link/home-api.test.ts` "shows another fleet"; `desktop/web/test/sources.test.ts` "falls back to no daemon" |
+| A quit stopping the server | `quit.stop` goes to this machine's daemon alone. | `desktop/web/test/sources.test.ts` "asks this machine"; `QuitFlowTests.swift` |
 | An ssh destination read as an option, such as `-oProxyCommand=…` | The registry holds a destination to `[A-Za-z0-9][A-Za-z0-9._@:[\]-]*`, and every ssh argv puts `--` before it. | `protocol/test/machines.test.ts` "refuses an ssh destination a command would read as an option"; `cli/test/controller/ssh.test.ts` "carries a hostile destination as one argument after the option terminator, to the master alone" |
 | A user or host name that a `ProxyCommand`'s `%r` or `%h` hands a shell (CVE-2023-51385) | The same pattern allows no shell metacharacter. | `protocol/test/machines.test.ts` "refuses a user or host name a ProxyCommand's %r or %h would hand a shell to expand" |
 | A terminal the Machines panel opens on the machine running what the user did not choose, or carrying the Mac's keys there | It is an ssh of its own to the registry's destination, or the one an add not yet in the registry was given, held to the same pattern after `--`, with `BatchMode=yes`, `ForwardAgent=no` and `ControlPath=none`, so it neither joins nor leaves behind a master that would keep its forward. A step's command is pasted once the screen has shown more than login's banner and stopped changing, and only one line without control characters, so it runs only when the user presses Return. Its screen is read only to tell when the prompt is up and, for an ssh that ends before that, for its last line; neither is logged. A link opens only when the user clicks it. | `apps/desktop/mac/Tests/SvallTests/MachineCommandTests.swift`; `apps/desktop/web/e2e/host.spec.ts` "a fix the machine leaves to the user opens a terminal there with its command typed…" |

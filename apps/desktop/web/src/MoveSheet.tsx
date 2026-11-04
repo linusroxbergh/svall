@@ -100,6 +100,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [run, setRun] = useState<Run>();
   const [retried, setRetried] = useState<Retry>();
   const [setup, setSetup] = useState<string>();
+  // the release a machine must be on: the home's, or this Mac's when the home is that machine
+  const release = useApp((s) => (s.via && to !== s.via.home ? homeName(s.fleet, s.via) : 'this Mac'));
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? destinationName(s.fleet, m, s.via) : s.via ? homeName(s.fleet, s.via) : 'this Mac'; });
   const host = useApp((s) => s.host);
   const hostOpen = useApp((s) => s.hostOpen);
@@ -232,7 +234,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
           <div className="host-note" data-testid="move-checking">
             <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
             <ul className="move-checks">
-              <li>{far} is reachable{to && " and on this Mac's release"}</li>
+              <li>{far} is reachable{to && ` and on ${release}'s release`}</li>
               {kinds.length > 0 && <li>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')} {kinds.length === 1 ? 'is' : 'are'} installed, current and logged in on {where}</li>}
               <li>{c.repo ? 'its branch, changes and session can travel' : 'its session can travel'}</li>
             </ul>

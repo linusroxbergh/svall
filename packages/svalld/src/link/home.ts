@@ -7,7 +7,7 @@ import { z } from 'zod';
 import { ApiError, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, type LinkFrame, type MachineLink, type MethodName, type Result } from '@svall/protocol';
 import { boundary } from '../failpoints.js';
 import type { Logger } from '../log.js';
-import type { MachineEntry } from '../machine.js';
+import { homeWord, type MachineEntry } from '../machine.js';
 import { dialSocket, type Paths } from '../paths.js';
 import type { HomeDocs } from '../placement/docs-sync.js';
 import type { Mirror } from '../placement/mirror.js';
@@ -473,7 +473,7 @@ export class WorkerLink {
   private noteUnread(data: unknown, why: string): void {
     const id = (data as { robotId?: unknown } | null)?.robotId;
     if (typeof id !== 'string' || this.o.store.state.robots[id]?.machine !== this.machine) return;
-    this.o.store.update((d) => addLine(d.robots[id], `${this.name} sent a report on this robot that this Mac cannot read; it was skipped: ${why}`));
+    this.o.store.update((d) => addLine(d.robots[id], `${this.name} sent a report on this robot that ${homeWord()} cannot read; it was skipped: ${why}`));
   }
 
   private closed(err?: Error): void {

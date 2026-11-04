@@ -8,7 +8,7 @@ afterEach(stopWorlds);
 
 // the robot runs on w1; the home holds its record, tmux ids and all, as w1 last reported them
 const onW1 = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' } });
-const UNREACHABLE = 'w1 cannot reach this Mac right now; try again when it is awake';
+const UNREACHABLE = 'w1 cannot reach ada-mac right now; try again when it is awake';
 
 describe('routing calls for placed robots', () => {
   it('robot.run on the home for a robot placed on w1 goes over the link and returns its delivery', async () => {

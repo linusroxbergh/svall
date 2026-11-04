@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { MachineId } from '@svall/protocol';
+import type { Robot } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Store } from '../store.js';
@@ -9,8 +9,9 @@ import type { Tmux } from '../tmux/tmux.js';
 export const ScreenNotice = z.object({ id: z.string(), text: z.string(), at: z.number() });
 
 /**
- * On a worker: the last lines of each robot's pane here, sent home after a hook for the home to show while this worker is
- * out of its reach. At most one per robot each `everyMs`; a hook within that is read once it has passed.
+ * The last lines of each robot's pane on this machine, sent after a hook to the machine that shows them while this one is out
+ * of its reach: from a worker to its home, or from a home to the workers that dial it. At most one per robot each `everyMs`; a
+ * hook within that is read once it has passed.
  */
 export class ScreenTails {
   private sent = new Map<string, number>();
@@ -18,8 +19,8 @@ export class ScreenTails {
   private readonly onHook = (id: string) => this.hooked(id);
 
   constructor(private o: {
-    fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; connection: Pick<HomeConnection, 'notify'>; me: MachineId;
-    lines?: number; everyMs?: number;
+    fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; connection: Pick<HomeConnection, 'notify'>; runsHere: (c: Robot) => boolean;
+    lines?: number; everyMs?: number; wanted?: () => boolean;
   }) {}
 
   private get every(): number {
@@ -45,7 +46,7 @@ export class ScreenTails {
 
   private async send(id: string): Promise<void> {
     const c = this.o.store.state.robots[id];
-    if (!c?.tmux || c.machine !== this.o.me) return;
+    if (!c?.tmux || !this.o.runsHere(c) || this.o.wanted?.() === false) return;
     const at = Date.now();
     // a send longer ago than the window holds nothing back
     for (const [k, t] of this.sent) if (at - t >= this.every) this.sent.delete(k);

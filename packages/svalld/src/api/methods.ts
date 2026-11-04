@@ -6,6 +6,7 @@ import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
 import type { HomeApi } from '../link/home-api.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
+import { homeWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
@@ -180,7 +181,7 @@ const handlers: Handlers = {
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
     const unread = mirror.unreadFile(p.item);
-    if (unread) throw new ApiError('not_mirrored', `${unread} on this Mac cannot be read; the copy stays on ${name} until it can`);
+    if (unread) throw new ApiError('not_mirrored', `${unread} on ${homeWord()} cannot be read; the copy stays on ${name} until it can`);
     return setupOf(ctx, p.machine, 0);
   },
   'machines.updateAgents': async (p, { store, links }) => {
@@ -196,7 +197,7 @@ const handlers: Handlers = {
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
     if (!ctx.links) throw new ApiError('not_on_worker', 'not on a worker');
     const value = p.fromMac ? mirrorOf(ctx).hereValue(p.name) : p.value;
-    if (!value) throw new ApiError('invalid_params', p.fromMac ? `this Mac has no ${p.name}` : 'no value given');
+    if (!value) throw new ApiError('invalid_params', p.fromMac ? `${homeWord()} has no ${p.name}` : 'no value given');
     const fault = envValueFault(value);
     if (fault) throw new ApiError('invalid_params', fault);
     await ctx.links.call(p.machine, 'env.set', { name: p.name, value }, { timeoutMs: serverWait('machines.setVar', p) }).catch((e: Error) => {

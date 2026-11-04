@@ -34,6 +34,7 @@ import { arrangeIslands, createIsland, deleteIsland, reorderIsland, updateIsland
 import { blockedCells, defaultPosition, freePosition, occupiedCells, placeOnIsland, settleHome, unfold, uniqueName } from './layout.js';
 import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
+import { homeWord } from './machine.js';
 import { randomName } from './names.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import { claudePaths, expandHome, userPaths, type Paths } from './paths.js';
@@ -289,7 +290,7 @@ export class Fleet extends EventEmitter<Events> {
   private still(id: string, move?: string): void {
     const { robots, machines } = this.deps.store.state;
     const m = Object.hasOwn(robots, id) ? robots[id].moving : undefined;
-    if (m && m.id !== move) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? 'this Mac'}`);
+    if (m && m.id !== move) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? homeWord()}`);
   }
 
   // the robot, when it runs here; one placed elsewhere is refused, whatever ids its machine reported for its windows

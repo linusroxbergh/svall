@@ -1,6 +1,7 @@
 # Moving a robot
 
-Each robot runs on one machine: this Mac, or a Linux machine [added as a worker](setup.md) of the fleet. A robot you
+Each robot runs on one machine: this Mac, or a Linux machine [added as a worker](setup.md) of the fleet. This page reads for a fleet
+whose home is this Mac; for [a home on a server](home.md), the sentences name the server wherever this page says "this Mac" of the home. A robot you
 move to a worker keeps its conversation, its branch, its commits and its uncommitted changes, and keeps working while
 this Mac sleeps. The fleet stays on this Mac: its islands, map, notes, phone and mission control. A worker runs robots
 and nothing else, and keeps its own clone of each repository its robots work in.
@@ -234,10 +235,10 @@ A robot on a worker keeps working while this Mac sleeps or is out of reach, and 
 the worker:
 
 - `svall robot new` starts the robot on the same worker, awake Mac or not; mission control is refused: "mission
-  control stays on this Mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
+  control stays on ada-mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
   worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
-  "started on linus-vault while this Mac slept", and the worker starts at most five robots until this Mac answers
-  again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
+  "started on linus-vault while ada-mac was away", and the worker starts at most five robots until this Mac answers
+  again; the sixth: "linus-vault has started 5 robots since ada-mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run`, `send` and `read` reach the robots on it. `--report` on `robot new` or
   `robot send` gets the sentence below, as this Mac keeps the reports.

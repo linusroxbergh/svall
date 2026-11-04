@@ -112,6 +112,8 @@ each machine's daemon and unit logs.
     listener still takes local's next stream, which no hello answers; within seconds of remote's next dial, local gives
     that stream up and links. With local's daemon stopped, a socket removed under remote's live master is bound again at
     its next beat, the socket a killed tunnel leaves refuses, and remote's next dial replaces it. `faults` then moves back.
+    A window's daemon side runs here too: remote's daemon names local as its home and how to reach it, local's API answers as the home over the
+    forward it makes, with each machine's role, and no log there holds local's token.
 
 Steps 1, 2, 5, 6 and 14 also check that the bare repository on remote is untouched: a move never pushes.
 

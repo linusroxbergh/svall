@@ -182,7 +182,7 @@ export function world(o: {
   const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
-  const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
+  const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection, word: () => 'ada-mac' } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
   const workerFleet = new Fleet({
@@ -194,7 +194,7 @@ export function world(o: {
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
   const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget, homeName: () => 'ada-mac' });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
-  const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, me: W });
+  const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, runsHere: (c) => c.machine === W });
   screens.start();
   const workerUsage = usageOf(workerStore, workerRouter);
   const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };

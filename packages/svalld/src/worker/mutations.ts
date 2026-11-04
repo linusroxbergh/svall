@@ -44,7 +44,7 @@ export class WorkerMutations {
     },
     // journaled as the run it types, which the home applies as any other; the home keeps reports
     'robot.send': async (p) => {
-      if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
+      if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name, this.o.homeName())}, and it keeps the report`);
       return this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true });
     },
     // `unread` is this machine's, which its report carries
@@ -139,7 +139,7 @@ export class WorkerMutations {
     if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(notHome(this.o.homeName()));
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
-    if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
+    if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name, this.o.homeName())}, and it keeps the report`);
     if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA, this.o.homeName()));
     const q = { ...p, note: SLEPT_NOTE(this.name, this.o.homeName()) };
     this.starting.add(q);
@@ -153,7 +153,7 @@ export class WorkerMutations {
 
   private async update(p: ParsedParams<'robot.update'>): Promise<Result<'robot.update'>> {
     const named = Object.keys(p).filter((k) => k !== 'id' && p[k as keyof typeof p] !== undefined);
-    if (named.some((k) => !(UPDATE_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name));
+    if (named.some((k) => !(UPDATE_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name, this.o.homeName()));
     const held = this.o.fleet.robot(p.id);
     const base = Object.fromEntries(named.map((k) => [k, held[k as keyof Robot]]));
     const mutation = this.stamp({ method: 'robot.update', params: p, base });
@@ -166,7 +166,7 @@ export class WorkerMutations {
 
   // context names paths as this machine has them
   private createIsland(p: ParsedParams<'island.create'>): Island {
-    if (p.context?.length) throw new ApiError('not_reachable', unreachableLine(this.name));
+    if (p.context?.length) throw new ApiError('not_reachable', unreachableLine(this.name, this.o.homeName()));
     let mutation!: Mutation;
     // refused before the island is made here, as the home could never take it
     this.o.store.update((d) => {
@@ -179,7 +179,7 @@ export class WorkerMutations {
 
   private updateIsland(p: ParsedParams<'island.update'>): Island {
     const named = Object.keys(p).filter((k) => k !== 'id' && p[k as keyof typeof p] !== undefined);
-    if (named.some((k) => !(ISLAND_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name));
+    if (named.some((k) => !(ISLAND_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name, this.o.homeName()));
     const held = this.o.store.state.islands[p.id];
     const base = Object.fromEntries(named.map((k) => [k, k === 'collapsed' ? Boolean(held.collapsed) : held[k as keyof Island]]));
     const mutation = this.stamp({ method: 'island.update', params: p, base });

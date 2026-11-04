@@ -11,6 +11,11 @@ const ROBOT_HERE = new Set<string>(['term.attach', 'fs.list', 'fs.read', 'fs.wri
 // spaced so a far daemon that stays down costs a far `svall connection-info` now and then
 const ASK_MS = [500, 1000, 2000, 5000, 15_000];
 
+/** An answer the page no longer waits for, as it left the source that was to give it. */
+export class SourceLeft extends Error {
+  constructor() { super('svalld connection closed'); }
+}
+
 type Opts = { makeApi?: (url: string, token: string) => Api; onSwitch?: () => void };
 
 const endpoint = (port: number) => `ws://127.0.0.1:${port}`;
@@ -51,7 +56,7 @@ export class FollowApi extends Api {
     if (source === this.local && MACHINE_METHODS.has(method)) return source.call(method, params);
     const generation = this.generation;
     return source.call(method, params).then((r) => {
-      if (generation !== this.generation) throw new Error('svalld connection closed');
+      if (generation !== this.generation) throw new SourceLeft();
       return r;
     });
   }
@@ -91,8 +96,10 @@ export class FollowApi extends Api {
       this.me = h.me;
       this.far = !h.mine;
       if (!h.mine) {
-        this.store.getState().setHome({ name: h.name, state: 'connecting' });
-        this.store.getState().setVia({ machine: h.me, home: h.machine, name: h.name });
+        // a daemon enrolled meanwhile under another home leaves nothing to follow of the old one
+        if (this.store.getState().via?.home !== h.machine) this.dropHome();
+        this.store.getState().setHome({ ...this.store.getState().home, name: h.name, state: this.homeOnline ? 'connected' : 'connecting' });
+        this.store.getState().setVia({ machine: h.me, home: h.machine, name: h.name, ...(this.homeOnline && { online: true as const }) });
       } else {
         this.home?.stop();
         this.home = undefined;
@@ -123,7 +130,6 @@ export class FollowApi extends Api {
     const master = ssh && controlSocket ? { ssh, controlSocket } : undefined;
     this.store.getState().setHome({ name, state: state === 'connected' && !this.homeOnline ? 'connecting' : state, ...(detail && { detail }), ...(release && { release }), ...(newer && { newer }), ...(master && { master }) });
     if (state === 'connected' && port && token) {
-      this.tries = 0;
       this.follow(endpoint(port), token);
       return;
     }
@@ -148,7 +154,7 @@ export class FollowApi extends Api {
     const home = this.opts.makeApi?.(url, token) ?? new Api({ url, token });
     this.home = home;
     home.onEvent = (e) => this.heardFrom(home, e);
-    home.onOpen = () => { this.homeOnline = true; this.pick(); };
+    home.onOpen = () => { if (this.home === home) { this.tries = 0; this.homeOnline = true; this.pick(); } };
     home.onStatus = (s) => { if (this.home === home) this.homeStatus(s); };
     home.start();
   }

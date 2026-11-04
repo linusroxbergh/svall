@@ -37,9 +37,8 @@ export function HomeBanner() {
         {failed && <small data-testid="home-upgrade-failed"> {plainStep(failed.detail ?? failed.step, machineNames(machines))}</small>}
         {copied !== undefined && <small data-testid="home-age"> · showing the fleet as of {new Date(copied).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</small>}
       </span>
-      {upgrades
-        ? <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>
-        : !newer && <button className="btn sm" data-testid="home-retry" onClick={() => app.api().retryHome()}>Try again</button>}
+      {upgrades && <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>}
+      <button className="btn sm" data-testid="home-retry" disabled={running} onClick={() => app.api().retryHome()}>Try again</button>
     </div>
   );
 }

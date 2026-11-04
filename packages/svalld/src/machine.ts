@@ -102,13 +102,13 @@ function machine(dir: string, hardware: HardwareReader): Machine {
 }
 
 const REMINT = 'delete the file to mint a new machine id, or restore it from backup';
-const RESTORE = 'restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again';
+const restore = () => `restore it from backup: each worker knows ${homeWord()} by the id in it, and with a new id every worker needs svall host add <name> again`;
 
 /** Why `machineId()` threw, with the fix; while `workers` know this Mac by its id, a file that does not parse is restored. */
 export function machineIdFailure(err: unknown, o: { workers?: boolean } = {}): string {
   const dir = configDir();
   const code = (err as NodeJS.ErrnoException).code;
-  const fix = err instanceof InvalidMachineFile ? `; ${o.workers ? RESTORE : REMINT}`
+  const fix = err instanceof InvalidMachineFile ? `; ${o.workers ? restore() : REMINT}`
     : code === 'EACCES' ? `; fix it with: sudo chown -R $USER ${path.dirname(dir)}`
     : code === 'ENOTDIR' ? `; a file is in the way of the folder ${dir}: move it aside`
     : '';
@@ -118,6 +118,19 @@ export function machineIdFailure(err: unknown, o: { workers?: boolean } = {}): s
 /** This installation's id, made on the first call and read back on every later one. */
 export function machineId(dir: string = configDir(), hardware: HardwareReader = hardwareId): MachineId {
   return machine(dir, hardware).id;
+}
+
+/** What a daemon on the fleet's home calls its own machine in a sentence a person reads: "this Mac" on a Mac, else its name.
+ *  SVALL_HOME_WORD overrides it. */
+export function homeWord(platform: NodeJS.Platform = process.platform): string {
+  if (process.env.SVALL_HOME_WORD) return process.env.SVALL_HOME_WORD;
+  if (platform === 'darwin') return 'this Mac';
+  try {
+    const me = machineId();
+    const name = readRegistry().find((m) => m.id === me)?.record.name;
+    if (name) return name;
+  } catch { /* the hostname */ }
+  return os.hostname().split('.')[0];
 }
 
 /** This installation's id, and when the file was made on other hardware, as a copy of another machine's is, both hardware ids. */

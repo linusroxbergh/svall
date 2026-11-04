@@ -84,12 +84,11 @@ describe('the banner of a home this window cannot follow', () => {
     expect((screen.getByTestId('home-upgrade') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('sends a person to update this Mac when the home is ahead of it, with nothing to press', () => {
+  it('sends a person to update this Mac when the home is ahead of it, with no upgrade to press', () => {
     standingIn({ state: 'version', newer: true, detail: 'studio runs 0.22, this Mac 0.21' });
     render(<HomeBanner />);
     expect(screen.getByTestId('home-banner').textContent).toContain('update Svall on this Mac');
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
-    expect(screen.queryByTestId('home-retry')).toBeNull();
   });
 });
 

@@ -4,6 +4,7 @@ import { writeDurable } from '../durable.js';
 import { readJsonOrQuarantine } from '../jsonfile.js';
 import type { WorkerLink } from '../link/home.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { Vapid } from '../push/vapid.js';
@@ -98,12 +99,13 @@ export class PhoneFallbacks {
   /** The setup row of `machine`'s phone link, with the consent it toggles. */
   row(machine: MachineId): SetupRow {
     const name = this.name(machine);
+    const home = homeWord();
     const tick = { item: PHONE_ITEM, fields: [PHONE_FIELD], on: this.consented(machine), preview: [] };
     const held = this.held.workers[machine];
     const why = this.failed.get(machine);
-    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: `off: the phone reaches ${name}'s robots only through this Mac; ticked, ${name} serves them while this Mac is off, with this Mac's push keys`, tick };
-    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `the phone reaches ${name}'s robots at ${held.url} while this Mac is off`, tick };
-    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `ticked; ${name} serves the phone once this Mac's phone link is on and ${name} is linked`, tick };
+    if (!tick.on) return { key: PHONE_ITEM, status: 'skip', detail: `off: the phone reaches ${name}'s robots only through ${home}; ticked, ${name} serves them while ${home} is off, with ${home}'s push keys`, tick };
+    if (held) return { key: PHONE_ITEM, status: 'ok', detail: `the phone reaches ${name}'s robots at ${held.url} while ${home} is off`, tick };
+    if (why === undefined) return { key: PHONE_ITEM, status: 'skip', detail: `ticked; ${name} serves the phone once ${home}'s phone link is on and ${name} is linked`, tick };
     // no gap: the phone is no part of the agent setup that will not work there
     return {
       key: PHONE_ITEM, status: 'warn', detail: `${name} does not serve the phone: ${why}`, tick,

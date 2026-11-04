@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, sent, shell, store } from './harness.js';
 
@@ -23,6 +24,15 @@ test('the Tailscale link in the phone tip opens in the default browser', () => {
   const link = screen.getByRole('link', { name: 'Tailscale' });
   expect(fireEvent.click(link)).toBe(false);
   expect(sent).toContainEqual({ type: 'openUrl', url: 'https://tailscale.com/download' });
+});
+
+test('the phone tip asks for Tailscale on the home: this Mac on the home, and by its name in a window on a worker', () => {
+  render(<SettingsCard />);
+  show('phone');
+  const tip = screen.getByRole('link', { name: 'Tailscale' }).parentElement!;
+  expect(tip.textContent).toContain('Needs Tailscale on this Mac and the phone.');
+  act(() => store.getState().setVia({ machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, name: 'studio', online: true }));
+  expect(tip.textContent).toContain('Needs Tailscale on studio and the phone.');
 });
 
 test('the fleet name saves on Enter and retitles the window, and a name that will not do says why and is not sent', async () => {

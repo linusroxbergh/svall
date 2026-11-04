@@ -7,17 +7,18 @@ import { isIslandId, isRobotId } from '../ids.js';
 import { addIsland, dropIsland, updateIsland, type IslandPatch } from '../islands.js';
 import { blockedCells, occupiedCells, placeOnIsland, unfold, uniqueName } from '../layout.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import type { Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { homeRootOf } from './repo-key.js';
 
 const RECOVERED = (worker: string) => `recovered from ${worker}`;
-const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while this Mac slept; it had changed here since`;
-const takenLine = (worker: string, name: string, other: 'robot' | 'island') => `${worker} set name to ${JSON.stringify(name)} while this Mac slept; another ${other} has that name here`;
-const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while this Mac slept; it could not be applied here: ${why}`;
+const lostLine = (worker: string, field: string, value: unknown) => `${worker} set ${field} to ${JSON.stringify(value)} while ${homeWord()} slept; it had changed here since`;
+const takenLine = (worker: string, name: string, other: 'robot' | 'island') => `${worker} set name to ${JSON.stringify(name)} while ${homeWord()} slept; another ${other} has that name here`;
+const notApplied = (worker: string, what: string, why: string) => `${worker} ${what} while ${homeWord()} slept; it could not be applied here: ${why}`;
 const sharesBranch = (branch: string, other: string) => `shares branch ${branch} with ${other}`;
-const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while this Mac slept; it is not on this Mac`;
-const HOME_HERE = 'mission control changes only on this Mac';
+const notHere = (worker: string, ref: string) => `${worker} added ${ref} to the context while ${homeWord()} slept; it is not on ${homeWord()}`;
+const homeHere = () => `mission control changes only on ${homeWord()}`;
 
 /** A note with `line` added, once. */
 export const withLine = (note: string, line: string): string => (note.includes(line) ? note : note ? `${note}\n${line}` : line);
@@ -173,7 +174,7 @@ export class Replay {
   private update(m: Mutation, p: ParsedParams<'robot.update'>, settled: Settled | undefined, machine: MachineId, worker: string, log: Logger): void {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, p.id)) {
-      log.info(`${worker}: ${p.id} is closed here; what ${worker} changed of it while this Mac slept is dropped`);
+      log.info(`${worker}: ${p.id} is closed here; what ${worker} changed of it while ${homeWord()} slept is dropped`);
       return;
     }
     const c = robots[p.id];
@@ -208,7 +209,7 @@ export class Replay {
     const i = m.island;
     if (!i) throw new Error('it carries no island');
     if (!isIslandId(i.id)) throw new Error(`${JSON.stringify(i.id)} is not an island id`);
-    if (i.kind === 'home') throw new Error(HOME_HERE);
+    if (i.kind === 'home') throw new Error(homeHere());
     if (Object.hasOwn(this.o.store.state.islands, i.id)) return;
     const p = IslandCreate.parse(i);
     if (p.context?.length) throw new Error('it carries a context');
@@ -222,11 +223,11 @@ export class Replay {
     const p = IslandUpdate.parse(m.params);
     const { islands } = this.o.store.state;
     if (!Object.hasOwn(islands, p.id)) {
-      log.info(`${worker}: island ${p.id} is deleted here; what ${worker} changed of it while this Mac slept is dropped`);
+      log.info(`${worker}: island ${p.id} is deleted here; what ${worker} changed of it while ${homeWord()} slept is dropped`);
       return;
     }
     const i = islands[p.id];
-    if (i.kind === 'home') throw new Error(HOME_HERE);
+    if (i.kind === 'home') throw new Error(homeHere());
     const renamed = this.renamed.get(p.id);
     const next: IslandPatch = {};
     const lost: string[] = [];

@@ -2,15 +2,18 @@ import { useState } from 'react';
 import type { MachineId, SetupRow } from '@svall/protocol';
 import { app } from './boot.js';
 import { AS_TYPED } from './Field.js';
+import { useApp } from './hooks.js';
+import { homeName } from './placement.js';
 
 /**
- * A variable row's way on: its value typed here and sent to the machine's .env, or copied from this Mac when it has one.
+ * A variable row's way on: its value typed here and sent to the machine's .env, or copied from the home when it has one.
  * The value lives in this field alone, shown to no one, and is gone once sent; `take`, asked at the send, says where the
  * rows that come back go.
  */
 export function VarField({ machine, name, varName, here, take, failed, testid }: {
   machine: MachineId; name: string; varName: string; here?: boolean; take(): (rows: SetupRow[]) => void; failed(message: string): void; testid: string;
 }) {
+  const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const send = (what: { value: string } | { fromMac: true }) => {
@@ -29,8 +32,8 @@ export function VarField({ machine, name, varName, here, take, failed, testid }:
         Set on {name}
       </button>
       {here && (
-        <button type="button" className="btn sm" data-testid={`${testid}-copy`} disabled={busy} data-tip={`This Mac has ${varName}; its value goes to ${name} without being shown`}
-          onClick={() => send({ fromMac: true })}>Copy from this Mac</button>
+        <button type="button" className="btn sm" data-testid={`${testid}-copy`} disabled={busy} data-tip={`${home ?? 'This Mac'} has ${varName}; its value goes to ${name} without being shown`}
+          onClick={() => send({ fromMac: true })}>Copy from {home ?? 'this Mac'}</button>
       )}
     </form>
   );

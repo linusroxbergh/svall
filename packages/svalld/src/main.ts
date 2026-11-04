@@ -25,7 +25,7 @@ import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, homeWord, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -123,7 +123,7 @@ function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
     try { listed = listsWorker(); } catch { listed = true; }
     if (listed) throw new Error(machineIdFailure(e, { workers: true }), { cause: e });
     const id = MachineId.parse(crypto.randomUUID());
-    log.error(`${machineIdFailure(e)}; no worker knows this Mac, so it runs as ${id}`);
+    log.error(`${machineIdFailure(e)}; no worker knows ${homeWord()}, so it runs as ${id}`);
     return id;
   }
   const { id, hardware: seen } = identity;
@@ -283,8 +283,10 @@ async function start(opts: Options): Promise<Daemon> {
     stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
+  // what this worker's sentences call its home: by name once it dials it, as a home that dials its workers is a Mac
+  const workerHomeWord = () => (worker?.worker.homeSsh ? store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName : 'this Mac');
   const router = new Router({
-    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
+    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });
   const remoteWatches = links && new RemoteWatches({ links, router });
   // a worker names a clone as the home does once a snapshot has said where the home's user folder is
@@ -297,16 +299,23 @@ async function start(opts: Options): Promise<Daemon> {
   // what the CLI in a worker's panes starts there, and changes there while its home is away
   const mutations = connection && outbox && new WorkerMutations({
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
-    homeName: () => store.state.machines?.[worker!.worker.homeMachineId]?.name ?? worker!.worker.homeName,
+    homeName: workerHomeWord,
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links }, worker && me);
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
-  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
+  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, runsHere: (c) => router.runsHere(c) });
+  // and of each robot on this home, which a worker that dials in shows while this home is out of its reach
+  const dialIns = () => links?.connectedWorkers().filter((m) => links.for(m)?.dialsIn) ?? [];
+  const homeScreens = links && new ScreenTails({
+    fleet, store, tmux, runsHere: (c) => router.runsHere(c), wanted: () => dialIns().length > 0,
+    connection: { notify: (_kind, data) => { for (const m of dialIns()) links.call(m, 'screen.home', data).catch(() => {}); } },
+  });
   // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
+  if (worker) calls['screen.home'] = (p) => { const s = ScreenNotice.parse(p); terminals.sawHomeScreen(s.id, s.text, s.at, worker.worker.homeMachineId); return Promise.resolve({}); };
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
+      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
   }
@@ -436,9 +445,10 @@ async function start(opts: Options): Promise<Daemon> {
       teardown.push(() => dial.stop());
     }
     if (homeApi) teardown.push(() => homeApi.stop());
-    if (screens) {
-      screens.start();
-      teardown.push(() => screens.stop());
+    for (const tails of [screens, homeScreens]) {
+      if (!tails) continue;
+      tails.start();
+      teardown.push(() => tails.stop());
     }
     if (workerDocs) {
       workerDocs.start();

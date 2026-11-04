@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { ApiError, DROP_MAX } from '@svall/protocol';
 import type { HomeLinks } from './link/home.js';
 import type { HomeConnection } from './link/worker.js';
+import { homeWord } from './machine.js';
 import { parse, type Router } from './placement/router.js';
 import type { Store } from './store.js';
 
@@ -129,7 +130,7 @@ export class Drops {
       const { robots, machines } = this.o.store.state;
       if (!Object.hasOwn(robots, id)) throw new ApiError('not_found', `no robot ${id}`);
       const m = robots[id].moving;
-      if (m) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? 'this Mac'}`);
+      if (m) throw new ApiError('moving', `moving to ${machines?.[m.to]?.name ?? homeWord()}`);
       if (this.o.router.runsHere(robots[id])) return { path: await landHere(staged.file, name, this.o) };
       const at = this.o.router.placedAt(id);
       // a worker reaches no machine but its home, and keeps a drop to its own robots

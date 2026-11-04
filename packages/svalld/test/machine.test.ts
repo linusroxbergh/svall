@@ -1,9 +1,10 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, homeWord, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -68,6 +69,26 @@ describe('machine id', () => {
     try { machineId(dir, none); } catch (err) { e = err; }
     expect(machineIdFailure(e)).toMatch(/; delete the file to mint a new machine id, or restore it from backup$/);
     expect(machineIdFailure(e, { workers: true })).toMatch(/; restore it from backup: each worker knows this Mac by the id in it, and with a new id every worker needs svall host add <name> again$/);
+  });
+});
+
+describe('what a home calls its own machine', () => {
+  it('reads the pin first, this Mac on a Mac, and elsewhere its name in the registry, else the hostname, past a registry it cannot read', () => {
+    expect(homeWord('linux')).toBe('this Mac');
+    vi.stubEnv('SVALL_HOME_WORD', 'trift');
+    expect(homeWord('darwin')).toBe('trift');
+    vi.stubEnv('SVALL_HOME_WORD', '');
+    expect(homeWord('darwin')).toBe('this Mac');
+
+    const dir = makeHome();
+    process.env.SVALL_CONFIG_DIR = dir;
+    const hostname = os.hostname().split('.')[0];
+    const id = mintMachineId(dir, none);
+    expect(homeWord('linux')).toBe(hostname);
+    fs.writeFileSync(path.join(dir, 'machines.json'), JSON.stringify({ machines: { [id]: { name: 'studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } } }));
+    expect(homeWord('linux')).toBe('studio');
+    fs.writeFileSync(path.join(dir, 'machines.json'), '{ machines');
+    expect(homeWord('linux')).toBe(hostname);
   });
 });
 

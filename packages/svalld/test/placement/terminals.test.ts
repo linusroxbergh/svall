@@ -6,6 +6,7 @@ import { dispatch } from '../../src/api/methods.js';
 import type { Fleet } from '../../src/fleet.js';
 import { HEARTBEAT_MS } from '../../src/link/home.js';
 import { silentLogger, type Logger } from '../../src/log.js';
+import { TerminalHub } from '../../src/terminals.js';
 import { REMOTE_SCREEN_BYTES } from '../../src/placement/far-viewers.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
@@ -258,7 +259,7 @@ describe('a worker\'s screen tails', () => {
     let text = 'one';
     const sent: unknown[] = [];
     const tails = new ScreenTails({
-      fleet: fleet as unknown as Fleet, store: { state: { robots } } as unknown as Store, me: W,
+      fleet: fleet as unknown as Fleet, store: { state: { robots } } as unknown as Store, runsHere: (c) => c.machine === W,
       tmux: { capture: async (paneId, lines) => Buffer.from(`${text} ${paneId} ${lines}`) }, connection: { notify: (kind, data) => { sent.push([kind, data]); } },
     });
     tails.start();
@@ -277,5 +278,36 @@ describe('a worker\'s screen tails', () => {
     fleet.emit('hook', 'c_1', 'Stop');
     await vi.advanceTimersByTimeAsync(10_000);
     expect(sent).toHaveLength(2);
+  });
+
+  it('on a home, sends the screens of its own robots only while a worker that dials in would take them', async () => {
+    const fleet = new EventEmitter();
+    const robots = { c_1: placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, machine: undefined }), c_2: placed({ id: 'c_2', tmux: { windowId: '@2', paneId: '%2' }, machine: W }) };
+    const sent: unknown[] = [];
+    let wanted = false;
+    const capture = vi.fn(async () => Buffer.from('screen'));
+    const tails = new ScreenTails({
+      fleet: fleet as unknown as Fleet, store: { state: { robots } } as unknown as Store, runsHere: (c) => c.machine === undefined, wanted: () => wanted,
+      everyMs: 0, tmux: { capture }, connection: { notify: (_kind, data) => { sent.push(data); } },
+    });
+    tails.start();
+    fleet.emit('hook', 'c_1', 'Stop');
+    await vi.waitFor(() => expect(tails).toBeDefined());
+    expect(capture).not.toHaveBeenCalled();
+    wanted = true;
+    fleet.emit('hook', 'c_1', 'Stop');
+    fleet.emit('hook', 'c_2', 'Stop');
+    await vi.waitFor(() => expect(sent).toEqual([{ id: 'c_1', text: 'screen', at: expect.any(Number) }]));
+    tails.stop();
+  });
+
+  it('a worker keeps what its home last sent of a robot there, for the window that stands in for it', () => {
+    const fleet = new EventEmitter();
+    const store = { state: { robots: { c_1: placed({ id: 'c_1' }) } } } as unknown as Store;
+    const hub = new TerminalHub(fleet as unknown as Fleet, {} as Tmux, store, silentLogger, undefined, W);
+    hub.sawHomeScreen('c_1', 'the home screen', 7, H);
+    hub.sawHomeScreen('gone', 'no such robot', 8, H);
+    expect(hub.lastScreen('c_1')).toEqual({ text: 'the home screen', at: 7 });
+    expect(hub.lastScreen('gone')).toBeUndefined();
   });
 });

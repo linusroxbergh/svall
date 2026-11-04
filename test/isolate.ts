@@ -21,5 +21,7 @@ process.env.SVALL_TEST_BIN = bin;
 for (const k of ['SVALL_HOME', 'SVALL_RELEASE_ROOT', 'SVALL_ROBOT_ID', 'SVALL_CHAR_ID', 'SVALL_TERM', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'TMUX', 'TMUX_PANE']) delete process.env[k];
 // a checkout runs as Svall Dev; the tests read the release's names unless a test asks for the other variant
 process.env.SVALL_VARIANT = 'release';
+// the tests read a Mac home's words, on Linux too
+process.env.SVALL_HOME_WORD = 'this Mac';
 
 afterAll(() => fs.rmSync(home, { recursive: true, force: true }));

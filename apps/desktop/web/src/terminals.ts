@@ -3,6 +3,7 @@ import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
 import { isPlaced } from './placement.js';
 import { panesOf } from './selectors.js';
+import { SourceLeft } from './sources.js';
 import type { AppStore } from './store/index.js';
 
 export type TerminalManager = {
@@ -65,6 +66,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     try {
       attach = await p;
     } catch (e) {
+      // asked of a daemon the page has left: the pane, if it still shows the robot, asks where it is now
+      if (e instanceof SourceLeft) { if (wanted.has(id)) return show(id, rect, opacity, wanted.get(id)); return; }
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
       // refused, or unanswered while online: the user retries; svalld or the robot's machine away: retried

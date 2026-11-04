@@ -204,6 +204,11 @@ export class TerminalHub {
     if (this.remote?.router.placedAt(id) === machine) this.screens.set(id, { text, at, machine, generation: this.store.state.robots[id].placement?.generation });
   }
 
+  /** The last lines of a robot's pane on the home, as the home sends them to a worker that dials it. */
+  sawHomeScreen(id: string, text: string, at: number, machine: MachineId): void {
+    if (Object.hasOwn(this.store.state.robots, id)) this.screens.set(id, { text, at, machine });
+  }
+
   lastScreen(id: string): { text: string; at: number } | undefined {
     const s = this.screens.get(id);
     return s && { text: s.text, at: s.at };

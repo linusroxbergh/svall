@@ -265,9 +265,11 @@ two halves:
 
 1. On the home, `svall --json fleet enroll-worker <machine id> --name <name> --platform darwin --arch <arch> --home
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
-   forwards its link to. A run again issues a new token, which replaces the one before.
+   forwards its link to and where svall, its architecture and its user folder are on the home. A run again issues a new
+   token, which replaces the one before.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
-   --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker,
+   --home-socket <socket> --home-svall-base <path> --home-arch <arch> --home-path <path>`, with the token on its stdin, makes it
+   dial, keeps the home's record in this machine's registry for `svall host upgrade` and `host doctor`, and restarts its daemon as the home's worker,
    loading a named fleet's launchd job if it has none. The home's first snapshot replaces what a fleet holds, so it
    refuses a fleet that has robots, workers or anything on an island of its own, which a fleet opened once does until its
    first robot closes, and a worker of another fleet, whose robots the new home would close. Name a fleet never opened
@@ -284,7 +286,10 @@ at once and another fleet's when its stream next drops. The worker stays as it i
 `svall uninstall` there leaves that file, and removing it by hand is no supported way back to a home; put back after a
 start as a home, it holds the daemon back until `svall worker enroll` runs again for the same fleet. The worker's ssh
 login to the home stays until its key is removed there, which a lost Mac needs. `svall host doctor` and `svall host
-upgrade` of the home cannot run from the worker, whose registry has no record of it.
+upgrade` of the home run from the worker, which keeps the home a home; `svall host remove` of it there is refused, and
+nothing on the worker links to it as a worker.
+
+The app on such a Mac opens on the home: see [A fleet whose home is a server](home.md).
 
 The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and

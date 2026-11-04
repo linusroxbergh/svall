@@ -13,6 +13,7 @@ import { Keybindings } from './Keybindings.js';
 import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
+import { homeName } from './placement.js';
 import { directoryName, NO_AGENTS } from './selectors.js';
 import { canFill, OPACITY, zoomBy, type KeepAwake, type NotifySettings, type Settings } from './settings.js';
 
@@ -33,13 +34,14 @@ function Opacity({ label, name, value, info }: { label: string; name: 'cardOpaci
 
 function Phone() {
   const status = useApp((s) => s.mobile);
+  const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const blocked = status?.error;
   useEffect(() => loadMobileStatus(deps()), []);
   return (
     <>
       <div className="rows">
         <div className="row">
-          <span>serve this fleet<Info id="phone">Reachable only on your tailnet. Needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on this Mac and the phone.</Info></span>
+          <span>serve this fleet<Info id="phone">Reachable only on your tailnet. Needs <a href="https://tailscale.com/download" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openUrl(app.bridge, e.currentTarget.href); }}>Tailscale</a> on {home ?? 'this Mac'} and the phone.</Info></span>
           <b>{blocked ? <span data-testid="set-mobile-blocked">unavailable</span> : <MobileSwitch testId="set-mobile" />}</b>
         </div>
         {status?.serving && (

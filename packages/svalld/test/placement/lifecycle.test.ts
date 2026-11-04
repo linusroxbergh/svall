@@ -30,7 +30,7 @@ async function side(me: MachineId, robots: Record<string, Robot>, home?: Machine
   store.update((d) => { Object.assign(d, { ...emptyState(), islands: { i_1: island }, robots: structuredClone(robots) }); });
   const tmux = new Tmux(paths.tmuxSock, paths.tmuxConf);
   const router = home
-    ? new Router({ store, me, log: silentLogger, home: { id: home, connection: { call: (method) => down(method), connected: () => false } } })
+    ? new Router({ store, me, log: silentLogger, home: { id: home, connection: { call: (method) => down(method), connected: () => false }, word: () => 'this Mac' } })
     : new Router({ store, me, log: silentLogger, links: { call: (_machine, method) => down(method) } });
   const fleet = new Fleet({
     store, tmux, paths, config, log: silentLogger, pollMs: 100, processes: async () => [], readProcs: async () => [], remote: router,
