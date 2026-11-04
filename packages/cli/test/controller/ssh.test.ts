@@ -183,7 +183,8 @@ describe('SshMaster', () => {
     const spawns = () => ssh.calls().filter((c) => c.includes('-M')).length;
     const before = spawns();
     const second = await open('trift');
-    expect(spawns()).toBe(before + 1);
+    // its check answers from the marker above, which can be before the new master has logged its argv
+    await vi.waitFor(() => expect(spawns()).toBe(before + 1), { timeout: 8000, interval: 25 });
     await second.close();
     stranger.kill();
   });
