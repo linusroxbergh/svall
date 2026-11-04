@@ -196,8 +196,12 @@ the keys in your agent setup, agent logins and ssh keys.
   like a credential in any case, or like any ssh key, stays behind, and a worktree a move takes back keeps it where
   git matches ignore patterns by case"; `checks.test.ts` "check 6: …")
 - **Keys a machine keeps.** What the mirror copied with a ticked key stays on the machine until it is unticked or
-  `svall uninstall` runs there, which takes back each copy still as the mirror wrote it. `svall host remove --forget`
-  leaves them there. (`mirror-apply.test.ts` "takeBackCopies empties each value the record holds as copied while it is
+  `svall uninstall` runs there, which takes back each copy still as the mirror wrote it. Both also remove Svall's own
+  rollback copies of a config file, a regular file named `<file>.bak-<13 digits>` beside it, that hold a value the mirror
+  copied and the file no longer holds. `svall host remove --forget` leaves them there. Two copies stay. Claude Code's own
+  `backups/.claude.json.backup.<ts>`, which it writes, is out of an untick's reach, and Files never opens it. `mirror-backup/`
+  is never changed: it is taken before the first push, so it holds no key the mirror copied, and a key found there is your
+  own, on your own machine, as it stood. (`mirror-apply.test.ts` "takeBackCopies empties each value the record holds as copied while it is
   still the copy, as an untick leaves it, and leaves a value the worker set itself")
 - **Keys inside a carried transcript.** The conversation travels whole: anything the agent pasted or printed in it, a
   key included, is in the transcript on both machines.

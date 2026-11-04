@@ -6,7 +6,9 @@ import { answer, dispatch, type Ctx } from '../../src/api/methods.js';
 import { DurableBatch } from '../../src/durable.js';
 import { filesIn } from '../../src/placement/docs-sync.js';
 import { backupsHere } from '../../src/placement/mirror.js';
+import { takeBackCopies } from '../../src/placement/mirror-apply.js';
 import { readState } from '../../src/placement/mirror-state.js';
+import { seedTrust } from '../../src/placement/trust.js';
 import { realPath } from '../../src/paths.js';
 import { editJson, farHome, json, macHome, put, read } from './mirror-homes.js';
 import { H, stopWorlds, W, world } from './world.js';
@@ -177,6 +179,160 @@ describe('the backup of the first push onto a Mac', () => {
     expect(read(path.join(worker.claudeDir, 'skills/review/SKILL.md'))).toBe('review it\n');
     expect(readState(w.worker.paths.mirrorState).backup).toBeUndefined();
     expect(fs.existsSync(path.join(worker.homedir, '.svall/mirror-backup'))).toBe(false);
+  });
+});
+
+describe('an untick reaches Svall\'s rollback copies', () => {
+  const STAMP = '.bak-1700000000000';
+  const LINEAR = { item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'] };
+  function ticking(o: { platform?: NodeJS.Platform; backups?: boolean } = {}) {
+    const worker = farHome();
+    const home = macHome();
+    const w = world({ mirror: { home, worker: { ...worker, ...(o.platform && { platform: o.platform }), ...(o.backups && { backups: path.join(worker.homedir, '.svall/mirror-backup') }) } } });
+    const consent = (item: { item: string; fields: string[] }, on: boolean) => call(w.home.ctx, 'machines.consent', { machine: W, ...item, on });
+    const seed = (kind: 'claude' | 'codex') => {
+      const clone = fs.mkdtempSync(path.join(worker.homedir, 'clone-'));
+      return seedTrust(kind, clone, { agentHome: kind === 'claude' ? worker.claudeDir : worker.codexDir, homedir: worker.homedir, agentRunning: async () => false, waitMs: 5000 });
+    };
+    const linked = async () => { await w.link(); await w.home.links.mirrorSettled(W); };
+    return { home, worker, w, consent, seed, linked, push: () => w.home.links.pushMirror(W) };
+  }
+
+  it.each([['a Linux worker', {}], ['a Mac worker', { platform: 'darwin', backups: true }]] as const)('the trust a first move seeds with a key ticked leaves none behind on %s', async (_name, o) => {
+    const { worker, consent, seed, linked } = ticking(o);
+    await linked();
+    await consent(LINEAR, true);
+    expect(await seed('claude')).toBe('seeded');
+    const dir = path.dirname(worker.claudeJson);
+    expect(holding(dir, KEY)).toHaveLength(2);
+    expect(holding(dir, KEY).some((f) => /\.claude\.json\.bak-\d{13}$/.test(f))).toBe(true);
+    await consent(LINEAR, false);
+    expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+    expect(holding(worker.homedir, KEY)).toEqual([]);
+  });
+
+  it('config.toml\'s route: the trust Codex seeds with a key ticked leaves none behind', async () => {
+    const { worker, consent, seed, linked } = ticking();
+    await linked();
+    const item = { item: 'codex:mcp:github', fields: ['env.GITHUB_TOKEN'] };
+    const token = 'ghp_1234567890abcdef';
+    await consent(item, true);
+    expect(await seed('codex')).toBe('seeded');
+    expect(holding(worker.codexDir, token).some((f) => /config\.toml\.bak-\d{13}$/.test(f))).toBe(true);
+    await consent(item, false);
+    expect(holding(worker.homedir, token)).toEqual([]);
+  });
+
+  it('a copy left by an earlier release goes at the next push, whether or not anything changed', async () => {
+    const { worker, consent, linked, push } = ticking();
+    await linked();
+    await consent(LINEAR, true);
+    const left = read(worker.claudeJson);
+    await consent(LINEAR, false);
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, left);
+    await push();
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(false);
+  });
+
+  it('leaves a copy while the key is ticked, and one holding no copied value', async () => {
+    const { worker, consent, linked, push } = ticking();
+    await linked();
+    await consent(LINEAR, true);
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, read(worker.claudeJson));
+    await push();
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(true);
+    await consent(LINEAR, false);
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(false);
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, JSON.stringify({ mcpServers: { own: { env: { K: 'my_own_value_1234' } } } }));
+    await push();
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(true);
+  });
+
+  it('takes nothing but a regular file of the exact name that parses', async () => {
+    const { worker, consent, linked, push } = ticking();
+    await linked();
+    await consent(LINEAR, true);
+    const left = read(worker.claudeJson);
+    await consent(LINEAR, false);
+    const outside = path.join(worker.homedir, 'elsewhere.json');
+    fs.writeFileSync(outside, left);
+    const kept = ['.bak-123', '.backup', `${STAMP}.old`, '.bak-17000000000000'].map((tail) => `${worker.claudeJson}${tail}`);
+    for (const f of kept) fs.writeFileSync(f, left);
+    const other = path.join(path.dirname(worker.claudeJson), `other.json${STAMP}`);
+    fs.writeFileSync(other, left);
+    const cut = `${worker.claudeJson}.bak-1700000000001`;
+    fs.writeFileSync(cut, left.slice(0, -2));
+    const link = `${worker.claudeJson}${STAMP}`;
+    fs.symlinkSync(outside, link);
+    await push();
+    for (const f of [...kept, other, cut, outside]) expect(fs.existsSync(f), f).toBe(true);
+    expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+  });
+
+  it('finds a copy beside the file as named and beside where a link leads', async () => {
+    const { worker, consent, linked, seed, push } = ticking();
+    const dotfiles = path.join(worker.homedir, 'dotfiles');
+    fs.mkdirSync(dotfiles);
+    const real = path.join(dotfiles, 'claude.json');
+    put(real, '{}');
+    fs.rmSync(worker.claudeJson, { force: true });
+    fs.symlinkSync(real, worker.claudeJson);
+    await linked();
+    await consent(LINEAR, true);
+    await seed('claude');
+    expect(holding(dotfiles, KEY).some((f) => f.includes('.bak-'))).toBe(true);
+    const left = read(real);
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, left);
+    await consent(LINEAR, false);
+    await push();
+    expect(holding(dotfiles, KEY)).toEqual([]);
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(false);
+  });
+
+  it('takes a copy holding a server copied whole once it is unticked', async () => {
+    const { home, worker, consent, linked } = ticking();
+    editJson(home.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } }; });
+    await linked();
+    const odd = { item: 'claude:mcp:odd', fields: ['command', 'sandbox'] };
+    await consent(odd, true);
+    expect(json(worker.claudeJson).mcpServers.odd.sandbox.token).toBe('odd_token_1234567890');
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, read(worker.claudeJson));
+    await consent(odd, false);
+    expect(json(worker.claudeJson).mcpServers).not.toHaveProperty('odd');
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(false);
+  });
+
+  it('svall uninstall takes a copy holding a key still ticked', async () => {
+    const { worker, w, consent, linked } = ticking();
+    await linked();
+    await consent(LINEAR, true);
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, read(worker.claudeJson));
+    const said = takeBackCopies({ ...worker, stateFile: w.worker.paths.mirrorState });
+    expect(said).toContain(`removed ${worker.claudeJson}${STAMP}, a rollback copy that held keys the mirror copied`);
+    expect(holding(worker.homedir, KEY)).toEqual([]);
+  });
+
+  it('never touches mirror-backup: a Mac\'s own key, which the home mirrors too, stays in its first push\'s backup through an untick', async () => {
+    const worker = farHome();
+    const backups = path.join(worker.homedir, '.svall/mirror-backup');
+    put(worker.claudeJson, JSON.stringify({ mcpServers: { linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: KEY } } } }));
+    const own = read(worker.claudeJson);
+    const w = world({ mirror: { home: macHome(), worker: { ...worker, backups } } });
+    await w.link();
+    await w.home.links.mirrorSettled(W);
+    const dir = path.join(backups, folders(backups)[0]);
+    const kept = path.relative(worker.homedir, worker.claudeJson);
+    expect(read(path.join(dir, kept))).toBe(own);
+    const tree = () => filesIn(dir).map((f) => [f, read(path.join(dir, f))]);
+    const before = tree();
+    await call(w.home.ctx, 'machines.consent', { machine: W, ...LINEAR, on: true });
+    fs.writeFileSync(`${worker.claudeJson}${STAMP}`, read(worker.claudeJson));
+    await call(w.home.ctx, 'machines.consent', { machine: W, ...LINEAR, on: false });
+    expect(fs.existsSync(`${worker.claudeJson}${STAMP}`)).toBe(false);
+    expect(tree()).toEqual(before);
+    expect(read(path.join(dir, kept))).toBe(own);
+    takeBackCopies({ ...worker, stateFile: w.worker.paths.mirrorState });
+    expect(tree()).toEqual(before);
   });
 });
 

@@ -121,6 +121,15 @@ function keeper(dir: string, homedir: string): Keep {
 }
 
 const asJson = (doc: Doc): string => `${JSON.stringify(doc, null, 2)}\n`;
+
+// Svall's own rollback copies of `file`, regular files alone: setup stamps them beside the file as named, the trust seed beside where a link leads
+function rollbacksOf(file: string): string[] {
+  return [...new Set([file, realPath(file)])].flatMap((f) => {
+    const prefix = `${path.basename(f)}.bak-`;
+    const entries = fs.existsSync(path.dirname(f)) ? fs.readdirSync(path.dirname(f), { withFileTypes: true }) : [];
+    return entries.filter((e) => e.isFile() && e.name.startsWith(prefix) && /^\d{13}$/.test(e.name.slice(prefix.length))).map((e) => path.join(path.dirname(f), e.name));
+  });
+}
 type DocSpec = {
   name: DocName; at: (h: Homes) => string; parse: (text: string) => unknown; format: (doc: Doc) => string;
   /** Keys its merge never writes, and the consent item of its key fields. */
@@ -343,6 +352,7 @@ export async function applyMirror(
 
   await place(batch, o.varsFile, Buffer.from(`${JSON.stringify(m.vars, null, 2)}\n`), 0o644);
   await batch.settle();
+  removed.push(...dropRollbacks([state, next], o));
   await place(batch, o.stateFile, Buffer.from(asJson(next)), 0o600);
   await batch.settle();
   return { written, removed, ...(backup !== undefined && fs.existsSync(backup) && { backup }) };
@@ -461,6 +471,40 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   return JSON.stringify(doc) === before ? { keyed } : { doc, keyed };
 }
 
+// a Claude project lies under this machine's own path of it, which the record does not keep
+const placesIn = (d: DocSpec, doc: Doc, k: string): Place[] => {
+  const place = (JSON.parse(k) as Place).slice(1);
+  return d.name === '.claude.json' && place[0] === 'projects' ? Object.keys(isDoc(doc.projects) ? doc.projects : {}).map((p) => ['projects', p, ...place.slice(2)]) : [place];
+};
+
+/**
+ * Removes each rollback copy of a config file that holds a value the records say the mirror copied and the file itself no longer
+ * holds, so an untick reaches it, and answers them. One that cannot be parsed is left, as nothing says what it holds.
+ */
+function dropRollbacks(records: WorkerState[], o: Homes): string[] {
+  const copied = new Set(records.flatMap((r) => [...Object.values(r.secrets), ...Object.values(r.whole ?? {})].flat()));
+  const gone: string[] = [];
+  for (const d of DOCS) {
+    const files = copied.size ? rollbacksOf(d.at(o)) : [];
+    if (!files.length) continue;
+    const whole = [...new Set(records.flatMap((r) => Object.keys(r.whole ?? {})))].filter((k) => JSON.parse(k)[0] === d.name);
+    const held = (doc: Doc | undefined): string[] => (doc ? [
+      ...stringPlaces(doc).map((p) => sha256Hex(getAt(doc, p) as string)),
+      ...whole.flatMap((k) => placesIn(d, doc, k).flatMap((at) => serverSha(getAt(doc, at)) ?? [])),
+    ] : []);
+    let live: Set<string>;
+    try { live = new Set(held(readDocFile(d.at(o), d.parse))); } catch { continue; }
+    for (const file of files) {
+      let doc: Doc | undefined;
+      try { doc = readDocFile(file, d.parse); } catch { continue; }
+      if (!held(doc).some((h) => copied.has(h) && !live.has(h))) continue;
+      fs.rmSync(file, { force: true });
+      gone.push(file);
+    }
+  }
+  return gone;
+}
+
 // removes the blobs a daemon left under `stage`, which may hold ticked keys, answering how many
 export function dropBlobs(stage: string): number {
   const left = (fs.existsSync(stage) ? fs.readdirSync(stage, { withFileTypes: true }) : []).filter((f) => f.isDirectory() && f.name.startsWith('mirror-'));
@@ -497,12 +541,7 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
       continue;
     }
     if (!doc) continue;
-    const projects = Object.keys(isDoc(doc.projects) ? doc.projects : {});
-    // a Claude project lies under this machine's own path of it, which the record does not keep
-    const places = (k: string): Place[] => {
-      const place = (JSON.parse(k) as Place).slice(1);
-      return d.name === '.claude.json' && place[0] === 'projects' ? projects.map((p) => ['projects', p, ...place.slice(2)]) : [place];
-    };
+    const places = (k: string): Place[] => placesIn(d, doc!, k);
     // one a record may name in several projects is not told apart from a server of the worker's own
     let [n, changed] = [0, 0];
     for (const k of keys) {
@@ -583,6 +622,11 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     } catch (e) {
       done.push(`could not remove ${file}, which holds keys the mirror copied: ${(e as Error).message}`);
     }
+  }
+  try {
+    for (const f of dropRollbacks([state], o)) done.push(`removed ${f}, a rollback copy that held keys the mirror copied`);
+  } catch (e) {
+    done.push(`could not remove a rollback copy that holds keys the mirror copied: ${(e as Error).message}`);
   }
   const blobs = dropBlobs(path.dirname(o.stateFile));
   if (blobs) done.push(`removed ${blobs} mirror ${blobs === 1 ? 'blob' : 'blobs'} left in ${path.dirname(o.stateFile)}`);
