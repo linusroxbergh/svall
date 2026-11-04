@@ -95,10 +95,10 @@ final class BindingsRecordTests: XCTestCase {
 
     func testTheShellInfoCarriesARecordThatCanCrossAndOmitsOneThatIsNot() throws {
         BindingsRecord.write(["quit": nil], to: file)
-        let info = FromShell.shellInfo(home: "/h", log: [], op: false, ghosttyKeys: [:], bindings: BindingsRecord.read(from: file))
+        let info = FromShell.shellInfo(home: "/h", log: [], op: false, ghosttyKeys: [:], bindings: BindingsRecord.read(from: file), machine: nil)
         XCTAssertTrue(JSONSerialization.isValidJSONObject(info.json))
         XCTAssertTrue((info.json["bindings"] as? [String: Any])?["quit"] is NSNull)
-        let none = FromShell.shellInfo(home: "/h", log: [], op: false, ghosttyKeys: [:], bindings: nil)
+        let none = FromShell.shellInfo(home: "/h", log: [], op: false, ghosttyKeys: [:], bindings: nil, machine: nil)
         XCTAssertNil(none.json["bindings"])
     }
 }

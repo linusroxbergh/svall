@@ -68,7 +68,7 @@ function Screen() {
           {log && (
             <>
               {shell.log.length === 0 && status !== 'outdated' && <><small>run <code>{shim()} setup</code></small><br /></>}
-              <small>log: <code>{log}</code> <button className="btn" data-testid="connect-log-reveal" onClick={() => revealFile(app.bridge, log)}>Reveal</button></small>
+              <small>log: <code>{log}</code> <button className="btn" data-testid="connect-log-reveal" onClick={() => revealFile(app.bridge, log, shell.machine)}>Reveal</button></small>
               {shell.log.length > 0 && <pre className="connect-log" data-testid="connect-log">{shell.log.join('\n')}</pre>}
             </>
           )}

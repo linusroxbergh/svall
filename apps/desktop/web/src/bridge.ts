@@ -18,7 +18,8 @@ export type MenuState = { view: 'map' | 'board'; sides: boolean; sideCard: boole
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
 // bindings: this Mac's one record of the keys as its file reads, absent until there is one
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; bindings?: Record<string, unknown> };
+// `machine`: this machine's id, once a daemon or the CLI has made it
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; bindings?: Record<string, unknown>; machine?: string };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
@@ -62,10 +63,11 @@ export type ToShell =
   | { type: 'keys.quit'; chord?: string }
   | { type: 'keys.save'; bindings: Record<string, string | null> }
   | { type: 'openUrl'; url: string }
-  | { type: 'openFolder'; path: string }
-  | { type: 'reveal'; path: string }
+  // what acts on this machine's own disk names the machine the path is on, and the shell answers local.unavailable for any other
+  | { type: 'openFolder'; path: string; machine?: string }
+  | { type: 'reveal'; path: string; machine?: string }
   // a file the editor cannot show: a picture, PDF or film in its own app, text in the text editor, anything else in Finder
-  | { type: 'openFile'; path: string }
+  | { type: 'openFile'; path: string; machine?: string }
   | { type: 'copy'; text: string }
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }
@@ -95,7 +97,7 @@ export type ToShell =
   | { type: 'setup.login'; agent: AgentKind }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string; mainAgent: AgentKind; firstProject?: string; scribe: boolean; svallPermissions: boolean; newRobotStart: 'agent' | 'shell' }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
-  | { type: 'folder.pick'; start: string }
+  | { type: 'folder.pick'; start: string; machine?: string }
   // keeps the Mac from idle-sleeping under this reason; none lets go
   | { type: 'awake'; reason?: string }
   // the menu bar: the chord each action is on by its name in keys.ts, and the state its titles follow
@@ -139,6 +141,8 @@ export type FromShell =
   | { type: 'notify.action'; key: string; action: 'approve' | 'deny'; promptId: string }
   | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
   | { type: 'folder.picked'; path: string }
+  // a local action named another machine than this one, or none where this one has an id
+  | { type: 'local.unavailable'; action: string; machine: string }
   // the app is about to quit and waits for a quit.answer
   | { type: 'quit.ask' }
   // the quit goes ahead: the fleet stops, and the shell waits for quit.stopped
@@ -199,15 +203,15 @@ export function openUrl(bridge: Bridge, input: string): void {
 }
 
 // a folder is shown in Finder; only the shell can do this
-export function openFolder(bridge: Bridge, path: string): void {
+export function openFolder(bridge: Bridge, path: string, machine: string | undefined): void {
   if (!path.startsWith('/') || !bridge.present) return;
-  bridge.send({ type: 'openFolder', path });
+  bridge.send({ type: 'openFolder', path, ...(machine && { machine }) });
 }
 
 // a file is shown selected in Finder; only the shell can do this
-export function revealFile(bridge: Bridge, path: string): void {
+export function revealFile(bridge: Bridge, path: string, machine: string | undefined): void {
   if (!path.startsWith('/') || !bridge.present) return;
-  bridge.send({ type: 'reveal', path });
+  bridge.send({ type: 'reveal', path, ...(machine && { machine }) });
 }
 
 export function copyText(bridge: Bridge, text: string): void {
@@ -215,9 +219,9 @@ export function copyText(bridge: Bridge, text: string): void {
   else void navigator.clipboard?.writeText(text);
 }
 
-export function openItem(bridge: Bridge, item: ContextItem): void {
-  if (item.kind === 'folder') openFolder(bridge, item.ref);
-  else if (item.kind === 'file') revealFile(bridge, item.ref);
+export function openItem(bridge: Bridge, item: ContextItem, machine: string | undefined): void {
+  if (item.kind === 'folder') openFolder(bridge, item.ref, machine);
+  else if (item.kind === 'file') revealFile(bridge, item.ref, machine);
   else openUrl(bridge, item.ref);
 }
 

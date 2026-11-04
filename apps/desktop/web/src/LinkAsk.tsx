@@ -1,15 +1,31 @@
 import { useEffect, useRef } from 'react';
-import type { ContextItem } from '@svall/protocol';
+import type { ContextItem, Robot } from '@svall/protocol';
 import { app } from './boot.js';
 import { openItem, openUrl } from './bridge.js';
 import { openBeside, opensInside } from './browser.js';
 import { CloseX } from './CloseX.js';
 import { holdCutout } from './cutout.js';
 import { useApp } from './hooks.js';
+import { terminalOn } from './MoveSheet.js';
+import { cdLine } from './OnMachine.js';
+import { homeName, machineName, myMachine, robotMachine } from './placement.js';
 import { theme } from './theme.js';
 
+// a path is on the machine of the robot that names it, or of the home for an island's; Finder cannot reach one elsewhere
+function followPath(item: ContextItem, robotId: string | undefined): void {
+  const s = app.store.getState();
+  const c: Pick<Robot, 'machine'> = robotId !== undefined && Object.hasOwn(s.fleet.robots, robotId) ? s.fleet.robots[robotId] : {};
+  const machine = robotMachine(c, s);
+  if (machine === myMachine(s)) { openItem(app.bridge, item, machine); return; }
+  const name = c.machine !== undefined && c.machine !== s.via?.home ? machineName(s.fleet, c.machine) : homeName(s.fleet, s.via!);
+  const dir = item.kind === 'file' ? item.ref.slice(0, item.ref.lastIndexOf('/')) || '/' : item.ref;
+  if (s.machines && !s.machines.find((m) => m.name === name)?.ssh) s.showToast(`${item.ref} is on ${name}; open it there`);
+  else terminalOn(name, dir.startsWith('/') ? cdLine(dir) : undefined);
+}
+
 export function followLink(item: ContextItem, robotId: string | undefined, at: { x: number; y: number }): void {
-  if (!robotId || !opensInside(item)) { openItem(app.bridge, item); return; }
+  if (item.kind === 'file' || item.kind === 'folder') { followPath(item, robotId); return; }
+  if (!robotId || !opensInside(item)) { openItem(app.bridge, item, undefined); return; }
   app.store.getState().askLink({ url: item.ref, robotId, x: at.x, y: at.y });
 }
 

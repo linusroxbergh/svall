@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { farRootId, type MachineId } from '@svall/protocol';
 import { getBuffer } from '../../src/ide/buffers.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
@@ -269,4 +269,80 @@ test('a file the list opens on its own under a chip leaves nothing behind that a
   await act(async () => { fireEvent.click(tidy); });
   expect(screen.getByTestId('editor').dataset.path).toBe('skills/tidy/SKILL.md');
   expect(document.activeElement?.closest('.editor')).not.toBeNull();
+});
+
+describe('a file of the shelf by the machine it is on', () => {
+  const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+  const far = { machine: MAC, home: STUDIO, name: 'studio', online: true as const };
+  const ROOT = 'r:/home/linus/.claude';
+  const here = farRootId(MAC, '/Users/ada/app');
+  const row = (rootId: string, name: string, path?: string) => ({ id: `skills:${name}`, name, reveal: `/x/${name}`, target: 'file' as const, ...(path && { open: { rootId, path } }) });
+  const source = (rootId: string, root: string) => ({ rootId, root, name: 'app', tier: 'repo' as const, islandIds: [], robotIds: [], groups: [{ kind: 'skills' as const, items: [row(rootId, 'one', 'a.md'), row(rootId, 'bare')] }] });
+  const shelf = async (rootId: string, root: string) => {
+    const src = source(rootId, root);
+    call.mockImplementation(((m: string) => Promise.resolve(m === 'resources.get' ? { sources: [src] } : m === 'fs.read' ? { text: 'x', mtimeMs: 1, root } : {})) as never);
+    store.getState().setResources([src]);
+    store.getState().toggleResources(true, { where: rootId, what: 'all' });
+    render(<OnMap />);
+    await act(async () => {});
+  };
+  const open = async () => { await act(async () => { fireEvent.click(screen.getByTestId('resources-item-skills-one')); }); };
+  const finder = () => screen.queryByRole('button', { name: /Show in Finder/ });
+  const pressBare = async () => {
+    bridge.present = true;
+    try { await act(async () => { fireEvent.click(screen.getByTestId('resources-item-skills-bare')); }); } finally { bridge.present = false; }
+  };
+  const revealed = () => sent.filter((m) => m.type === 'reveal' || m.type === 'openFolder');
+
+  test('the home\'s, on a far home, says where it is and offers a terminal there, not Finder', async () => {
+    act(() => store.getState().setVia(far));
+    await shelf(ROOT, '/home/linus/.claude');
+    await open();
+    expect(finder()).toBeNull();
+    expect(screen.getByTestId('resources-on').textContent).toBe('on studioTerminal there');
+    fireEvent.click(screen.getByTestId('resources-terminal-there'));
+    expect(store.getState().hostMachine).toBe('studio');
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/.claude'" });
+  });
+
+  test('the home\'s row with no file of its own does nothing there, and says where it is', async () => {
+    act(() => store.getState().setVia(far));
+    await shelf(ROOT, '/home/linus/.claude');
+    expect(screen.getByTestId('resources-item-skills-bare').getAttribute('data-tip')).toBe('/x/bare (on studio)');
+    expect(screen.getByTestId('resources-item-skills-bare').textContent).not.toContain('Finder');
+    await pressBare();
+    expect(revealed()).toEqual([]);
+  });
+
+  test('a clone on this Mac, on a far home, is shown in Finder, naming this machine', async () => {
+    act(() => store.getState().setVia(far));
+    await shelf(here, '/Users/ada/app');
+    await open();
+    expect(screen.queryByTestId('resources-on')).toBeNull();
+    bridge.present = true;
+    try { fireEvent.click(finder()!); } finally { bridge.present = false; }
+    expect(revealed()).toEqual([{ type: 'reveal', path: '/Users/ada/app/a.md', machine: MAC }]);
+    await pressBare();
+    expect(revealed()).toContainEqual({ type: 'reveal', path: '/x/bare', machine: MAC });
+  });
+
+  test('on a Mac home a root of its own is shown in Finder as ever', async () => {
+    act(() => store.getState().setShell({ home: '/h', log: [], op: false, machine: MAC }));
+    await shelf('r:/Users/ada/.claude', '/Users/ada/.claude');
+    await open();
+    expect(screen.queryByTestId('resources-on')).toBeNull();
+    expect(screen.getByTestId('resources-item-skills-bare').textContent).toContain('Finder');
+    bridge.present = true;
+    try { fireEvent.click(finder()!); } finally { bridge.present = false; }
+    expect(revealed()).toEqual([{ type: 'reveal', path: '/Users/ada/.claude/a.md', machine: MAC }]);
+  });
+
+  test('in fallback the root is this Mac\'s, whatever the home is', async () => {
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' }));
+    await shelf('r:/Users/ada/.claude', '/Users/ada/.claude');
+    await open();
+    expect(screen.queryByTestId('resources-on')).toBeNull();
+    expect(finder()).toBeTruthy();
+  });
 });

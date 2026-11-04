@@ -17,7 +17,7 @@ import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile
 import { setContext, settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
 import { agentProc, endAll, endIdleAgents, exited, freshCommand, keepResting, loseSecond, markDormant, processes, rememberFlags, restFrom, resumeHere, resumeNote, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
-import { Blocked, Dormant, Invalid, NotFound } from './errors.js';
+import { Blocked, Dormant, Invalid, NotAFolder, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
 import { readProcs, type LiveProc } from './load/procs.js';
@@ -36,6 +36,7 @@ import { refreshLinks, type Deps as LinkDeps } from './links/refresh.js';
 import type { Logger } from './log.js';
 import { homeWord } from './machine.js';
 import { randomName } from './names.js';
+import { isFolder } from './workspace/clones.js';
 import { linkOpencodeConfig, opencodePaths } from './opencode/install.js';
 import { claudePaths, expandHome, userPaths, type Paths } from './paths.js';
 import { seedTrust, trustRecordFile } from './placement/trust.js';
@@ -562,8 +563,8 @@ export class Fleet extends EventEmitter<Events> {
     }
     const cwd = expandHome(p.cwd);
     // tmux would start the window in the daemon's own directory, or in $HOME
-    if (!path.isAbsolute(cwd)) throw new Invalid(`cwd ${p.cwd} is not an absolute path`);
-    if (!fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) throw new Invalid(`cwd ${p.cwd} is not a directory`);
+    if (!path.isAbsolute(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not an absolute path`);
+    if (!isFolder(cwd)) throw new NotAFolder(`cwd ${p.cwd} is not a directory`);
     const id = newId('c');
     // the path tmux reports for a pane started here, as for /tmp, so a poll moves the robot only once the pane moves
     const panePath = fs.realpathSync(cwd);

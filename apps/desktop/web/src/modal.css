@@ -25,3 +25,8 @@
 .modal-more > summary:hover { color: var(--ink); }
 .modal-more-body { display: flex; flex-direction: column; gap: var(--sp-xs); margin-top: var(--sp-xs); color: var(--ink-2); }
 .modal-more-body > span { display: block; }
+/* New Robot on a home elsewhere: that machine's folders under a field that takes any path there */
+.new-folder { display: flex; flex-direction: column; gap: var(--sp-xs); min-width: 0; }
+.new-folder-list { display: flex; flex-direction: column; max-height: 148px; overflow: hidden auto; }
+.new-folder-list .list-row { flex: none; display: block; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; }
+.new-folder-refused { color: var(--danger); font-size: var(--text-sm); }

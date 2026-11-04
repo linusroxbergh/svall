@@ -9,8 +9,10 @@ and nothing else, and keeps its own clone of each repository its robots work in.
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker names
 its machine on its board card, token, sidebar row, side card and terminal card, and keeps its board column; `svall robot run`, `read`, `wait` and
 `revive` reach it there, and its terminal attaches over the home's own ssh connection to the worker. Its Files,
-Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
-opens a terminal on the worker with a `cd` to its folder typed at the prompt: press Return to go there. The Usage
+Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**, on
+its card, each pane's machine line and the shelf's foot, opens a terminal on the worker with a `cd` to its folder typed at
+the prompt: press Return to go there. Finder is not offered: a path there can name another file here, so the app's shell
+opens one only for this machine. A file or folder in the robot's context opens the same terminal. The Usage
 panel counts the robots on each worker too, read on the worker where their
 transcripts are; a worker that does not answer within 5 seconds is left out, and the home's own limits still show. The
 scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: the home asks, the
@@ -346,7 +348,7 @@ Once the home answers, what the worker did lands here once each, in the order it
 - While the home is off, the phone reaches only the robots of a worker with **Phone while this Mac is off** ticked, one
   worker at a time.
 - Robots move one at a time; an island does not move as a whole.
-- A dev server a robot runs on a worker is not forwarded to this Mac.
+- A dev server a robot runs on a worker is not forwarded to this Mac; its card says so. Forward the port by hand to open it in the app's browser.
 - A worker that disappears for good: its robots stay unknown until you close them.
 - The scribe passes a robot on a worker only while the home is awake to ask for it.
 - A restart of the home's daemon forgets the last screen a worker sent until the worker is back.

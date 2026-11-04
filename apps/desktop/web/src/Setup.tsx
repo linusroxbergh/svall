@@ -38,6 +38,8 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [installAgent, setInstallAgent] = useState<AgentKind>('claude');
   const [running, setRunning] = useState(false);
   const pending = useRef<'plan' | 'run' | undefined>(undefined);
+  // this machine's, once the shell can name it
+  const machine = useRef<string | undefined>(undefined);
   const previousPlan = useRef<SetupPlan | undefined>(undefined);
   const check = useCallback(() => {
     if (pending.current) return;
@@ -48,6 +50,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   }, [bridge]);
 
   useEffect(() => bridge.onMessage((m) => {
+    if (m.type === 'shell.info') { machine.current = m.machine || undefined; return; }
     if (m.type === 'folder.picked') { if (pending.current !== 'run') { if (picking.current === 'project') setFirstProject(m.path); else setProjects(m.path); } return; }
     if (m.type !== 'setup.result') return;
     pending.current = undefined;
@@ -122,7 +125,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       : w.agent === 'codex' ? 'Codex: hooks' : w.agent === 'opencode' ? 'OpenCode: plugin' : w.what }));
   if (permissions && on.some((a) => a.kind === 'codex') && plan.codexRules) writes.push({ what: 'Codex: svall permissions', path: plan.codexRules });
   if (plan.trustPaths?.[agent]) writes.splice(1, 0, { what: `${AGENT_LABEL[agent]}: folder trust for mission control${firstProject ? ` and ${firstProject.split('/').filter(Boolean).at(-1) ?? '/'}` : ''}`, path: plan.trustPaths[agent]! });
-  const pick = (which: 'projects' | 'project') => { picking.current = which; bridge.send({ type: 'folder.pick', start: projects.trim() || '~' }); };
+  const pick = (which: 'projects' | 'project') => { picking.current = which; bridge.send({ type: 'folder.pick', start: projects.trim() || '~', ...(machine.current && { machine: machine.current }) }); };
   const line = `export PATH="$HOME/.local/bin:$PATH"`;
   const installer = plan.install?.find((i) => i.kind === installAgent) ?? plan.install?.[0];
   const run = () => {

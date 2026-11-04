@@ -4,6 +4,7 @@ export class NotFound extends Error { code = 'not_found'; }
 export class Dormant extends Error { code = 'dormant'; }
 export class Invalid extends Error { code = 'invalid'; }
 export class Blocked extends Error { code = 'blocked'; }
+export class NotAFolder extends Invalid { code = 'not_a_folder'; }
 
 /** An error as a client reads it: its own code when that is a protocol code, else `internal`, and its data when it has any. */
 export function errorFrame(e: unknown): ErrorFrame {

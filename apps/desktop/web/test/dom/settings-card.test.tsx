@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, sent, shell, store } from './harness.js';
@@ -645,7 +645,7 @@ test('a refused copy says why, and the pane names the folder the first push kept
     show('setup');
     expect((await screen.findByTestId('setup-backup')).textContent).toContain('/Users/ada/.svall/mirror-backup/2026-11-04');
     fireEvent.click(screen.getByTestId('setup-backup-show'));
-    expect(sent).toContainEqual({ type: 'openFolder', path: '/Users/ada/.svall/mirror-backup/2026-11-04' });
+    expect(sent).toContainEqual({ type: 'openFolder', path: '/Users/ada/.svall/mirror-backup/2026-11-04', machine: FAR_ME });
     fireEvent.click(screen.getByTestId('setup-copy'));
     expect((await screen.findByTestId('setup-copy-failed')).textContent).toBe('studio is not reachable');
   } finally {
@@ -723,4 +723,50 @@ test('a Mac home shows no Agent setup pane and asks nothing of it', () => {
   render(<SettingsCard />);
   expect(screen.queryByTestId('settings-tab-setup')).toBeNull();
   expect(call).not.toHaveBeenCalledWith('home.setup', expect.anything());
+});
+
+describe('Fleet config', () => {
+  const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+  const button = () => screen.getByTestId('settings-fleet');
+  const open = () => { render(<SettingsCard />); show('machine'); };
+
+  test('on a Mac home opens in the text editor, by way of the shell', () => {
+    call.mockClear();
+    open();
+    fireEvent.click(button());
+    expect(sent).toContainEqual({ type: 'openConfig', which: 'fleet' });
+    expect(call.mock.calls.filter(([m]) => m === 'fleet.config')).toEqual([]);
+  });
+
+  test('on a far home opens the home\'s fleet.json in the shelf\'s editor, and the Mac\'s stays shut', async () => {
+    const rootId = 'r:/home/linus/.svall';
+    call.mockImplementation(((m: string) => Promise.resolve(m === 'fleet.config' ? { rootId, path: 'fleet.json' } : m === 'fs.read' ? { text: '{}', mtimeMs: 1, root: '/home/linus/.svall' } : { serving: false, logins: [], phones: [] })) as never);
+    act(() => { store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }); store.getState().toggleSettings(true); });
+    open();
+    await act(async () => { fireEvent.click(button()); });
+    expect(call).toHaveBeenCalledWith('fs.read', { id: rootId, path: 'fleet.json' });
+    expect(store.getState().resourcesShown).toEqual({ rootId, path: 'fleet.json' });
+    expect(store.getState().resourcesOpen).toBe(true);
+    expect(store.getState().settingsOpen).toBe(false);
+    expect(sent.filter((m) => m.type === 'openConfig')).toEqual([]);
+  });
+
+  test('a refusal is said where the button was', async () => {
+    call.mockImplementation(((m: string) => (m === 'fleet.config' ? Promise.reject(new Error('the fleet\'s config is on its home')) : Promise.resolve({ serving: false, logins: [], phones: [] }))) as never);
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }));
+    open();
+    await act(async () => { fireEvent.click(button()); });
+    expect(store.getState().toast?.text).toBe('the fleet\'s config is on its home');
+    expect(store.getState().resourcesShown).toBeUndefined();
+  });
+
+  test('while the home is out of reach it opens nothing, and this Mac\'s own file above all', () => {
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' }));
+    open();
+    expect(button().hasAttribute('disabled')).toBe(true);
+    expect(button().getAttribute('data-tip')).toBe('studio is not reachable, and its fleet.json is there');
+    fireEvent.click(button());
+    expect(sent.filter((m) => m.type === 'openConfig')).toEqual([]);
+  });
 });

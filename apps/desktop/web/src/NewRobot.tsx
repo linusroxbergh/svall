@@ -1,43 +1,77 @@
 import { useEffect, useRef, useState } from 'react';
-import { ROBOT_NOTE_MAX } from '@svall/protocol';
-import { newNamedRobot, showCreated } from './actions.js';
+import { ROBOT_NOTE_MAX, type Result } from '@svall/protocol';
+import { newNamedRobot, newRobotFolder, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
+import { shortPath } from './paths.js';
+import { homeName, startsOn } from './placement.js';
 
-// name is enough: Enter creates. A note and links are there when the name alone is not.
+// name is enough: Enter creates. A note and links are there when the name alone is not. A window on a home elsewhere has
+// no folder of its own to go by, so there the dialog asks for one of that machine's.
 export function NewRobot() {
   const open = useApp((s) => s.namingRobot);
+  const via = useApp((s) => s.via);
+  const machines = useApp((s) => s.fleet.machines);
   const [name, setName] = useState('');
   const [note, setNote] = useState('');
   const [links, setLinks] = useState('');
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [cwd, setCwd] = useState('');
+  const [listed, setListed] = useState<Result<'workspace.clones'>>();
+  const [refused, setRefused] = useState<string>();
+  // a folder the user chose stands through the list being read again
+  const chosen = useRef(false);
   const field = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!open) { setName(''); setNote(''); setLinks(''); setMore(false); setBusy(false); return; }
+    if (!open) { setName(''); setNote(''); setLinks(''); setMore(false); setBusy(false); setCwd(''); setListed(undefined); setRefused(undefined); chosen.current = false; return; }
     field.current?.focus();
   }, [open]);
 
+  // answered by whichever machine a robot would start on now, so a window that changes source reads the list again
+  const online = via?.online;
+  useEffect(() => {
+    if (!open || !via) return;
+    let left = false;
+    setListed(undefined);
+    app.api().call('workspace.clones', {}).then((r) => {
+      if (left) return;
+      setListed(r);
+      const offered = r.folders.filter((f) => via.online || f.clone).map((f) => f.path);
+      const start = newRobotFolder(app.store.getState());
+      if (!chosen.current) setCwd(offered.includes(start) ? start : offered[0] ?? '');
+    }, () => {});
+    return () => { left = true; };
+  }, [open, !via, online]);
+
   if (!open) return null;
   const close = () => app.store.getState().setNamingRobot(false);
+  const on = via && (listed?.machine ?? startsOn(via));
+  const where = via && (on === via.machine ? 'this Mac' : homeName({ machines }, via));
+  // away from its home a worker starts a robot only inside a clone
+  const folders = via && listed ? listed.folders.filter((f) => via.online || f.clone) : [];
+  const folder = cwd.trim();
 
   const create = async () => {
-    if (busy) return;
+    if (busy || (via && !folder)) return;
     setBusy(true);
+    setRefused(undefined);
     const d = deps();
     const refs = links.split('\n').map((u) => u.trim()).filter(Boolean);
     try {
-      const id = await newNamedRobot(d, { name: name.trim(), note: note.trim(), refs });
+      const id = await newNamedRobot(d, { name: name.trim(), note: note.trim(), refs, ...(via && { cwd: folder }) });
       close();
       showCreated(d, id);
     } catch (e) {
-      d.store.getState().showToast((e as Error).message);
+      if ((e as { code?: string }).code === 'not_a_folder') setRefused(`${folder} is not a folder on ${where}`);
+      else d.store.getState().showToast((e as Error).message);
       setBusy(false);
     }
   };
+  const choose = (path: string) => { chosen.current = true; setCwd(path); setRefused(undefined); };
 
   return (
     <div className="modal-back" data-testid="new-robot" onPointerDown={close}>
@@ -47,6 +81,23 @@ export function NewRobot() {
         <input ref={field} className="h2" placeholder="name" aria-label="Name" value={name} data-testid="new-robot-name"
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
+        {via && (
+          <div className="new-folder">
+            <span className="modal-sub" data-testid="new-robot-where">Folder on {where}{on === via.machine && !via.online && `, while ${homeName({ machines }, via)} is not reachable`}</span>
+            <input className="fld mono" placeholder={via.online ? `a path on ${where}` : 'a path inside a clone here'} aria-label="Folder" value={cwd} data-testid="new-robot-folder" {...AS_TYPED}
+              onChange={(e) => choose(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
+            {refused && <span className="new-folder-refused" role="alert" data-testid="new-robot-refused">{refused}</span>}
+            {folders.length > 0 && (
+              <div className="new-folder-list" data-testid="new-robot-folders">
+                {folders.map((f) => (
+                  <button key={f.path} className="list-row sm mono" data-testid={`new-robot-pick-${f.path}`} data-active={f.path === folder} data-tip={f.path} onClick={() => choose(f.path)}><bdi>{shortPath(f.path)}</bdi></button>
+                ))}
+              </div>
+            )}
+            {listed && !folders.length && <span className="modal-sub" data-testid="new-robot-none">{via.online ? `No clone or robot folder on ${where} yet; type a path there.` : 'No clone listed here; type a path inside one.'}</span>}
+          </div>
+        )}
         {!more && (
           <button className="btn ghost" data-testid="new-robot-more" onClick={() => setMore(true)}>Add a note and links</button>
         )}
@@ -59,7 +110,7 @@ export function NewRobot() {
           </>
         )}
         <div className="acts">
-          <button className="btn pri" data-testid="new-robot-create" disabled={busy} onClick={() => void create()}>Create</button>
+          <button className="btn pri" data-testid="new-robot-create" disabled={busy || (!!via && !folder)} onClick={() => void create()}>Create</button>
           <button className="btn" onClick={close}>Cancel</button>
         </div>
       </div>

@@ -185,6 +185,24 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(JSON.stringify(store.getState().via)).not.toContain(TOKEN);
   });
 
+  it('asks where a robot would start for its folders, and the home alone for its config', async () => {
+    await following();
+    const answers = (d: Daemon) => { d.answer('workspace.clones', () => ({ machine: d === home ? HOME : ME, folders: [] })); d.answer('fleet.config', () => ({ rootId: 'r:/h', path: 'fleet.json' })); };
+    answers(home);
+    answers(local);
+    expect((await api.call('workspace.clones', {})).machine).toBe(HOME);
+    await api.call('fleet.config', {});
+    await api.call('fs.read', { id: 'r:/h', path: 'fleet.json' });
+    expect(home.said('fleet.config')).toHaveLength(1);
+    expect(home.said('fs.read')).toEqual([{ id: 'r:/h', path: 'fleet.json' }]);
+    expect(local.said('workspace.clones')).toEqual([]);
+    expect(local.said('fs.read')).toEqual([]);
+    home.drop();
+    await settle();
+    expect(store.getState().via?.online).toBeUndefined();
+    expect((await api.call('workspace.clones', {})).machine).toBe(ME);
+  });
+
   it('asks this machine for what is this machine\'s, and for a robot here, wherever it follows', async () => {
     await following();
     for (const method of ['term.attach', 'fs.write', 'fs.read', 'repo.status', 'repo.watch'] as const) {

@@ -121,6 +121,8 @@ runIf('svalld --worker', () => {
       expect(d.store.state.scribeOff).toBe(true);
       expect(Store.load(paths.state, () => {}).state.scribeOff).toBe(true);
       expect(await api.call('state.get')).toMatchObject({ result: { version: 12 } });
+      expect(await api.call('fleet.config')).toMatchObject({ error: { code: 'not_on_worker' } });
+      expect(await api.call('workspace.clones')).toMatchObject({ result: { machine: machineId(), folders: expect.any(Array) } });
       expect(await api.call('mobile.get')).toMatchObject({ error: { code: 'not_on_worker', message: 'not on a worker' } });
       expect(await api.call('usage.get')).toMatchObject({ result: { available: true, idle: true, windows: [] } });
       // a Mac worker's File menu lists the fleets beside this one; Linux has no app to ask

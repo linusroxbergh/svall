@@ -3,9 +3,10 @@ import { ApiError, type Api } from './api.js';
 import { shim, type Bridge } from './bridge.js';
 import type { DropTarget } from './drop.js';
 import { withoutSecond } from './panes.js';
+import { startsBeside } from './placement.js';
 import type { FieldRef } from './resources/model.js';
 import { robotsOf, islandCwd, islandsSorted, mapIslandsSorted, panesOf, selectedOf, startCwd, startOf } from './selectors.js';
-import type { AppStore } from './store/index.js';
+import type { AppState, AppStore } from './store/index.js';
 
 export type Deps = { api: Api; store: AppStore; bridge: Bridge };
 // the fleet calls need the socket and the mirror; only the keyboard also needs the shell
@@ -205,29 +206,43 @@ export function newIsland(d: ActionDeps, cell?: Cell): void {
 
 const islandName = (cwd: string): string => (cwd === '~' ? 'island' : cwd.split('/').filter(Boolean).pop() ?? 'island');
 
+// the folder of the robot a new one stands beside, and the island it asks for, if any yet
+function besideOf(s: AppState): { islandId?: string; start: string } {
+  const current = s.selectedId ?? s.card ?? selectedOf(s);
+  const islandSel = s.selectedIslandId;
+  const base = islandSel ? robotsOf(s.fleet, islandSel)[0] : current ? s.fleet.robots[current] : undefined;
+  if (!base) return { islandId: islandSel, start: s.fleet.defaultCwd };
+  const start = !s.via || startsBeside(base, s.via) ? startCwd(base) : islandCwd(s.fleet, base.islandId, s.via);
+  return { islandId: islandSel || base.islandId, start };
+}
+
+/** The folder New Robot's field starts on: where the new robot would stand, mission control's own there. */
+export function newRobotFolder(s: AppState): string {
+  const { islandId, start } = besideOf(s);
+  return islandId && s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
+}
+
 // the selected island, else the current robot's island, else the first shown one, else the first hidden one,
 // which comes back with the robot, else a fresh island
 export async function newRobotTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
   const s = d.store.getState();
-  const current = s.selectedId ?? s.card ?? selectedOf(s);
-  const islandSel = s.selectedIslandId;
-  const base = islandSel ? robotsOf(s.fleet, islandSel)[0] : current ? s.fleet.robots[current] : undefined;
-  const start = base ? startCwd(base) : s.fleet.defaultCwd;
-  const islandId = islandSel || base?.islandId || mapIslandsSorted(s.fleet)[0]?.id
+  const { islandId: asked, start } = besideOf(s);
+  const islandId = asked || mapIslandsSorted(s.fleet)[0]?.id
     || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
     || (await d.api.call('island.create', { name: islandName(start) })).id;
   const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
   return { islandId, cwd };
 }
 
-// the caller reports a refusal, so the dialog can stay open on one
-export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[] }): Promise<string> {
+// the caller reports a refusal, so the dialog can stay open on one; a folder it names is the one meant, with nothing to give way to
+export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[]; cwd?: string }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd } = await newRobotTarget(d);
   const f = d.store.getState().fleet;
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
-  const c = await createRobot(d.api, { islandId, cwd, ...(p.name ? { name: p.name } : {}), ...start }, f.defaultCwd);
+  const params = { islandId, cwd: p.cwd ?? cwd, ...(p.name ? { name: p.name } : {}), ...start };
+  const c = await (p.cwd !== undefined ? d.api.call('robot.create', params) : createRobot(d.api, params, f.defaultCwd));
   if (p.note || p.refs.length) {
     // the robot already exists, so a refused path is reported rather than retried
     await d.api.call('robot.update', {

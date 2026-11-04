@@ -409,6 +409,19 @@ describe('openPath', () => {
     expect(s().ide.c1).toMatchObject({ open: ['pkg/src/a.ts'], top: '' });
   });
 
+  it('hands a picture to the Mac only for a robot here, naming this machine; one elsewhere says where it is', async () => {
+    const MAC = '11111111-1111-4111-8111-111111111111' as never;
+    const STUDIO = '22222222-2222-4222-8222-222222222222' as never;
+    const { d, s, sent } = setup();
+    s().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true });
+    await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
+    expect(sent).toEqual([]);
+    expect(s().toast?.text).toBe('~/Desktop/shot.png is on studio, and the editor cannot show it');
+    s().setFleet({ ...s().fleet, robots: { ...s().fleet.robots, c1: { ...s().fleet.robots.c1, machine: MAC } } });
+    await openPath(d, 'c1', '/Users/ada/Desktop/shot.png', 'terminal');
+    expect(sent).toEqual([{ type: 'openFile', path: '/Users/ada/Desktop/shot.png', machine: MAC }]);
+  });
+
   it('leaves out the stop that ends a sentence and the spaces that end a line', async () => {
     const { d, s } = setup();
     await openPath(d, 'c1', 'src/a.ts:2.  ', 'terminal');

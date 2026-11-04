@@ -38,9 +38,9 @@ enum ToShell: Decodable {
     case keysQuit(chord: String?)
     case keysSave(bindings: [String: String?])
     case openUrl(url: String)
-    case openFolder(path: String)
-    case reveal(path: String)
-    case openFile(path: String)
+    case openFolder(path: String, machine: String?)
+    case reveal(path: String, machine: String?)
+    case openFile(path: String, machine: String?)
     case copy(text: String)
     case openConfig(which: String)
     case zoom(factor: Double, fontDelta: Double)
@@ -70,7 +70,7 @@ enum ToShell: Decodable {
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String, mainAgent: String, firstProject: String?, scribe: Bool, svallPermissions: Bool, newRobotStart: String)
     case setupLogin(agent: String)
-    case folderPick(start: String)
+    case folderPick(start: String, machine: String?)
     case awake(reason: String?)
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
@@ -92,9 +92,9 @@ enum ToShell: Decodable {
         case "keys.quit": self = .keysQuit(chord: try c.decodeIfPresent(String.self, forKey: .chord))
         case "keys.save": self = .keysSave(bindings: try c.decode([String: String?].self, forKey: .bindings))
         case "openUrl": self = .openUrl(url: try c.decode(String.self, forKey: .url))
-        case "openFolder": self = .openFolder(path: try c.decode(String.self, forKey: .path))
-        case "reveal": self = .reveal(path: try c.decode(String.self, forKey: .path))
-        case "openFile": self = .openFile(path: try c.decode(String.self, forKey: .path))
+        case "openFolder": self = .openFolder(path: try c.decode(String.self, forKey: .path), machine: try c.decodeIfPresent(String.self, forKey: .machine))
+        case "reveal": self = .reveal(path: try c.decode(String.self, forKey: .path), machine: try c.decodeIfPresent(String.self, forKey: .machine))
+        case "openFile": self = .openFile(path: try c.decode(String.self, forKey: .path), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "copy": self = .copy(text: try c.decode(String.self, forKey: .text))
         case "openConfig": self = .openConfig(which: try c.decode(String.self, forKey: .which))
         case "zoom": self = .zoom(factor: try c.decode(Double.self, forKey: .factor), fontDelta: try c.decode(Double.self, forKey: .fontDelta))
@@ -126,7 +126,7 @@ enum ToShell: Decodable {
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects), mainAgent: try c.decode(String.self, forKey: .mainAgent), firstProject: try c.decodeIfPresent(String.self, forKey: .firstProject), scribe: try c.decode(Bool.self, forKey: .scribe), svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions), newRobotStart: try c.decode(String.self, forKey: .newRobotStart))
         case "setup.login": self = .setupLogin(agent: try c.decode(String.self, forKey: .agent))
-        case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start))
+        case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
         case "menu.state": self = .menuState(chords: try c.decode([String: String].self, forKey: .chords), state: try c.decode(MenuState.self, forKey: .state))
         case "menu.fleets": self = .menuFleets(fleets: try c.decode([MenuFleet].self, forKey: .fleets), note: try c.decodeIfPresent(String.self, forKey: .note))
@@ -141,7 +141,7 @@ enum FromShell {
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
     case hostMachines(machines: [[String: Any]], error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], bindings: [String: Any]?)
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], bindings: [String: Any]?, machine: String?)
     case keysRecord(bindings: [String: Any])
     case key(chord: String)
     case termExited(id: String)
@@ -170,6 +170,7 @@ enum FromShell {
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
     case folderPicked(path: String)
+    case localUnavailable(action: String, machine: String?)
     case memoryHigh
 
     var json: [String: Any] {
@@ -190,8 +191,8 @@ enum FromShell {
             var json: [String: Any] = ["type": "host.machines", "machines": machines]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys, let bindings):
-            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let bindings, let machine):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys, "machine": machine ?? ""]
             if let bindings { json["bindings"] = bindings }
             return json
         case .keysRecord(let bindings): return ["type": "keys.record", "bindings": bindings]
@@ -224,6 +225,7 @@ enum FromShell {
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]
         case .folderPicked(let path): return ["type": "folder.picked", "path": path]
+        case .localUnavailable(let action, let machine): return ["type": "local.unavailable", "action": action, "machine": machine ?? ""]
         case .memoryHigh: return ["type": "memory.high"]
         }
     }

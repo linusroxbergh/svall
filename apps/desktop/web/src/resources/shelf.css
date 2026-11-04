@@ -89,3 +89,4 @@ em.res-bdg[data-kind="lookup"] { border: 1px solid var(--line); color: var(--ink
 /* the arrows walk the columns, so a row must say where the keyboard stands */
 .res-shelf:focus { outline: none; }
 .res-shelf :is(.res-node, .res-chip, .res-item, .res-field, .res-link):focus-visible { outline: 2px solid var(--sand); outline-offset: -2px; }
+.res-away { flex: none; display: inline-flex; align-items: center; gap: var(--sp-md); color: var(--ink-3); font-size: var(--text-xs); }

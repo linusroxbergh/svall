@@ -15,6 +15,7 @@ import { chordLabel, chordsOf, keyLabel, keyTip } from './keys.js';
 import { MobileSwitch } from './PhonePanel.js';
 import { NO_PAGE, phonesHere } from './phoneText.js';
 import { homeName } from './placement.js';
+import { openFleetConfig } from './resources/docs.js';
 import { directoryName, NO_AGENTS } from './selectors.js';
 import { canFill, OPACITY, zoomBy, type KeepAwake, type NotifySettings, type Settings } from './settings.js';
 
@@ -355,6 +356,10 @@ function Machine() {
   // on its shipped chord zoom in also answers ⌘+, the name macOS gives the key
   const zoomIn = chordsOf('zoomIn', bindings).includes('cmd++') ? chordLabel('cmd++') : keyLabel('zoomIn', bindings);
   const shell = app.bridge.present;
+  const via = useApp((s) => s.via);
+  const machines = useApp((s) => s.fleet.machines);
+  // a worker holds no fleet's config, so while the home is out of reach there is none to open
+  const apart = !!via && !via.online;
   return (
     <>
       <div className="rows">
@@ -408,8 +413,8 @@ function Machine() {
       <div className="opens">
         <button className="btn sm" data-testid="settings-ghostty" disabled={!shell} data-tip="Terminal font, colours and cursor"
           onClick={() => openConfig(app.bridge, 'ghostty')}>Ghostty config</button>
-        <button className="btn sm" data-testid="settings-fleet" disabled={!shell} data-tip="Mission control, fleet defaults, scribe and phone logins"
-          onClick={() => openConfig(app.bridge, 'fleet')}>Fleet config</button>
+        <button className="btn sm" data-testid="settings-fleet" disabled={!shell || apart} data-tip={apart ? `${homeName({ machines }, via!)} is not reachable, and its fleet.json is there` : 'Mission control, fleet defaults, scribe and phone logins'}
+          onClick={() => (via ? void openFleetConfig(deps()) : openConfig(app.bridge, 'fleet'))}>Fleet config</button>
       </div>
     </>
   );

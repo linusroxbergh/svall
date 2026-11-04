@@ -30,6 +30,12 @@ enum SvallHome {
         return dirs.map { $0 + "/tmux" }.first { FileManager.default.isExecutableFile(atPath: $0) } ?? "tmux"
     }
 
+    /// This machine's id, shared by its fleets and both builds; nil until a daemon or the CLI has made it.
+    static func machineId() -> String? {
+        let dir = ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
+        return readJSON(dir + "/machine.json")?["id"] as? String
+    }
+
     /// The fleet's portable settings, if the daemon has written them; an empty one it would refuse.
     static func configPath() -> String? {
         let file = path + "/fleet.json"

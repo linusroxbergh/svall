@@ -302,6 +302,26 @@ describe('a crew member whose directory is gone', () => {
     expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_a', cwd: '/tmp', name: 'scribe' }, { islandId: 'i_a', cwd: DEFAULT_CWD, name: 'scribe' }]);
   });
 
+  it('on a far home, starts beside the robots there, never in the folder of a robot on this Mac', async () => {
+    const calls: Call[] = [];
+    const s = store();
+    const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+    const f = fleet();
+    Object.assign(f.robots.c0, { machine: MAC, cwd: '/Users/ada/code' });
+    Object.assign(f.robots.c1, { cwd: '/home/linus/app' });
+    s.getState().setFleet(f);
+    s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true });
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params } as Call); return Promise.resolve({ id: 'c_new' }); } } as never;
+    await newRobotOn({ api, store: s }, 'i_b');
+    expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_b', cwd: '/home/linus/app' }]);
+    s.getState().select('c0');
+    expect(await newRobotTarget({ api, store: s })).toEqual({ islandId: 'i_b', cwd: '/home/linus/app' });
+    // standing in, it is this Mac's folder that counts
+    s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' });
+    expect(await newRobotTarget({ api, store: s })).toEqual({ islandId: 'i_b', cwd: '/Users/ada/code' });
+  });
+
   it('reports a mission control folder that is gone rather than start the agent somewhere else', async () => {
     const calls: Call[] = [];
     const s = store();

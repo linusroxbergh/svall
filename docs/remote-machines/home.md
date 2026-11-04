@@ -14,8 +14,28 @@ to studio, and a new robot starts there; **Move to this Mac** brings it here. Ro
 stays in this Mac's tmux, its Files edit in place as ever, and its card reads as here. **Move to studio** sends it back.
 Mission control runs on the home and has no move button.
 
+**New robot** asks for a folder, since the window's own mean nothing on studio. It lists the folders on studio where its robots work, the
+clones in its default folder, and the fleet's default and mission control folders, and takes any path there; `~` is studio's. studio checks
+a typed path before the robot starts: "/home/linus/x is not a folder on studio". A link to a folder counts, as it does for
+`svall robot new --cwd`. A Mac home has no such field: a new robot starts beside the robot or island you selected.
+
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
 too, as "dials in". What a machine does for you from there, and adding another, is for a home on this Mac.
+
+## What opens on this Mac
+
+A robot on this Mac keeps everything: Finder, a file in its own app, a folder in its context. For a robot on any other machine, and for a
+file of studio's on the Resources shelf, Finder cannot reach the path, and a path of the same name on this Mac would be another file. So:
+
+- **Finder**, **Show in Finder**, and opening a picture or PDF from a terminal are not offered. The card, the pane and the shelf say
+  "on studio", and **Terminal there** opens a terminal on that machine with a `cd` to the folder typed at the prompt. A file or folder in the
+  robot's context does the same when you click it. A machine this Mac has no ssh to, such as another Mac, offers no terminal and says so.
+- **A dev server** the robot runs stays on its machine, as its card says. Forward the port by hand to open it in the app's browser.
+- **Fleet config** in Settings opens studio's `fleet.json` in the shelf's editor, written on studio. A file its daemon could not start on is
+  refused, saying what in it is wrong. What it changes takes effect as it does on a Mac, most of it when studio's daemon next starts. While
+  studio does not answer the button is off, as this Mac's own `fleet.json` is not the fleet's.
+
+The app's shell holds to this too: it opens such a path only for this machine, whatever the page asks.
 
 ## Terminals
 
@@ -41,7 +61,7 @@ shows; the cause is in svalld's log.
 - A change to a robot on this Mac, or a new island, is kept here and reaches studio once it answers, as in
   [While the home is away](placement.md#while-the-home-is-away). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
-  until studio answers again.
+  until studio answers again. **New robot** lists this Mac's clones and says they are this Mac's.
 - Moves, phone settings and what a machine's setup offers are hidden: only the home answers them.
 
 When studio answers, the window goes back to it and reopens its terminals without a reload, and what you did here lands there once.
@@ -104,3 +124,5 @@ and that "studio's 7 robots keep running". Nothing on studio is touched.
 - Svall Dev carries no companion, so **Upgrade** there needs one named by hand: `svall-dev host upgrade studio --release <archive> --allow-unsigned`.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.
+- A Mac whose home dials it over Remote Login, set up with the CLI, has no route to the home's API. Its window lists this Mac's folders, and
+  **New robot** starts on this Mac.

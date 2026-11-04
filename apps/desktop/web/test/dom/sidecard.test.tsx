@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ROBOT_NOTE_MAX, farRootId, type MachineId, type ResourceSource, type Robot } from '@svall/protocol';
 import type { FromShell } from '../../src/bridge.js';
 import { useApp } from '../../src/hooks.js';
@@ -583,4 +583,90 @@ test('the summary counts far robots as unknown in a window standing in for its h
   render(<FleetSummary />);
   const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('unknown'));
   expect(Number(row?.querySelector('b')?.textContent)).toBe(Object.keys(store.getState().fleet.robots).length);
+});
+
+describe('what a robot offers by where it runs', () => {
+  const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+  const LAPTOP = '33333333-3333-4333-8333-333333333333' as MachineId;
+  const onFar = (c0: Partial<Robot>, machines: Record<string, { name: string; reachable: boolean; since: number }> = {}) => {
+    const f = fleet();
+    f.machines = machines as typeof f.machines;
+    Object.assign(f.robots.c0, c0);
+    act(() => { store.getState().setFleet(f); store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }); });
+  };
+  const finder = async () => {
+    bridge.present = true;
+    try { await act(async () => { fireEvent.click(screen.getByTestId('side-finder')); }); } finally { bridge.present = false; }
+  };
+  const shownInFinder = () => sent.filter((m) => m.type === 'openFolder' || m.type === 'reveal' || m.type === 'openFile');
+
+  test('on a Mac home a robot here opens in Finder, naming this machine, with no line about a dev server', async () => {
+    withVault(true);
+    act(() => store.getState().setShell({ home: '/h', log: [], op: false, machine: MAC }));
+    await act(async () => { render(<Side />); });
+    expect(screen.getByTestId('side-finder').textContent).toBe('Finder');
+    await finder();
+    expect(shownInFinder()).toEqual([{ type: 'openFolder', path: '/tmp', machine: MAC }]);
+    expect(screen.queryByTestId('side-dev-server')).toBeNull();
+    expect(screen.queryByTestId('side-machine')).toBeNull();
+  });
+
+  test('on a far home a robot on the home says where it runs and offers a terminal there, not Finder', async () => {
+    onFar({ cwd: '/home/linus/app' });
+    await act(async () => { render(<Side />); });
+    expect(screen.getByTestId('side-machine').textContent).toBe('Runs on studio');
+    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    expect(screen.getByTestId('side-dev-server').textContent).toBe('dev serverstays on studio; forward its port by hand to open it here');
+    await finder();
+    expect(shownInFinder()).toEqual([]);
+    expect(store.getState().hostMachine).toBe('studio');
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/app'" });
+  });
+
+  test('on a far home a robot on this Mac keeps Finder, whatever machine id it names', async () => {
+    onFar({ machine: MAC, cwd: '/Users/ada/app' });
+    await act(async () => { render(<Side />); });
+    expect(screen.getByTestId('side-finder').textContent).toBe('Finder');
+    await finder();
+    expect(shownInFinder()).toEqual([{ type: 'openFolder', path: '/Users/ada/app', machine: MAC }]);
+    expect(screen.queryByTestId('side-dev-server')).toBeNull();
+  });
+
+  test('another Mac, which this one has no ssh to, offers no terminal once the registry says so', async () => {
+    onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
+    await act(async () => { render(<Side />); });
+    expect(sent).toContainEqual({ type: 'host.list' });
+    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'linus@studio', platform: 'linux' }, { name: 'ada-laptop', id: LAPTOP, platform: 'darwin' }]));
+    expect(screen.queryByTestId('side-finder')).toBeNull();
+    expect(screen.getByTestId('side-machine').textContent).toBe('Runs on ada-laptop');
+  });
+
+  test('a path in the context of a robot elsewhere opens a terminal there, and one here is shown in Finder', async () => {
+    const pill = (ref: string, kind: 'file' | 'folder') => ({ kind, ref, label: '', source: 'manual' as const });
+    onFar({ context: [pill('/home/linus/app/a.md', 'file')] });
+    const { unmount } = await act(async () => render(<Side />));
+    bridge.present = true;
+    try { await act(async () => { fireEvent.click(screen.getByText('a.md')); }); } finally { bridge.present = false; }
+    expect(shownInFinder()).toEqual([]);
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/app'" });
+    act(() => store.getState().closeHostTerminal());
+    unmount();
+
+    onFar({ machine: MAC, context: [pill('/Users/ada/app', 'folder')] });
+    await act(async () => { render(<Side />); });
+    bridge.present = true;
+    try { await act(async () => { fireEvent.click(screen.getByText('app')); }); } finally { bridge.present = false; }
+    expect(shownInFinder()).toEqual([{ type: 'openFolder', path: '/Users/ada/app', machine: MAC }]);
+  });
+
+  test('a path on a machine this Mac has no ssh to is said on a toast', async () => {
+    onFar({ machine: LAPTOP, context: [{ kind: 'folder', ref: '/Users/bo/app', label: '', source: 'manual' }] }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
+    act(() => store.getState().setMachines([{ name: 'ada-laptop', id: LAPTOP, platform: 'darwin' }]));
+    await act(async () => { render(<Side />); });
+    await act(async () => { fireEvent.click(screen.getByText('app')); });
+    expect(store.getState().toast?.text).toBe('/Users/bo/app is on ada-laptop; open it there');
+    expect(store.getState().hostTerminal).toBeUndefined();
+  });
 });

@@ -181,8 +181,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 42', () => {
-    expect(PROTOCOL_VERSION).toBe(42);
+  it('is 43', () => {
+    expect(PROTOCOL_VERSION).toBe(43);
   });
 
   it('was 41 without a worker\'s copy of its agent setup, its rows and ticks, and each field\'s tick in a row', () => {
@@ -191,6 +191,13 @@ describe('protocol version', () => {
     expect(methods['home.setupConsent'].params.parse({ item: 'claude:mcp:a', fields: ['env.A'], on: false }).on).toBe(false);
     const row = { key: 'claude:mcp:a', status: 'warn', detail: 'x', tick: { item: 'claude:mcp:a', fields: ['env.A', 'env.B'], on: false, preview: [], ticked: ['env.A'] } };
     expect(methods['home.setup'].result.parse({ rows: [row], backup: '/b' }).rows[0].tick?.ticked).toEqual(['env.A']);
+  });
+
+  it('was 42 without the folders a new robot can start in, and the root of fleet.json', () => {
+    const folders = [{ path: '/home/ada/app', clone: true }];
+    expect(methods['workspace.clones'].result.parse({ machine: UUID_A, folders }).folders).toEqual(folders);
+    expect(methods['workspace.clones'].result.safeParse({ folders }).success).toBe(false);
+    expect(methods['fleet.config'].result.parse({ rootId: 'r:/home/ada/.svall', path: 'fleet.json' }).path).toBe('fleet.json');
   });
 
   it('was 41 with the fleet\'s home, how a window reaches it, and each machine\'s role', () => {

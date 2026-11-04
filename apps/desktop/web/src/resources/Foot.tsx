@@ -1,9 +1,11 @@
 import { useState } from 'react';
-import { farRootOf, type ResourceSource } from '@svall/protocol';
+import type { ResourceSource } from '@svall/protocol';
 import { app } from '../boot.js';
 import { revealFile } from '../bridge.js';
 import { useApp } from '../hooks.js';
 import { Caret, Reload } from '../icons.js';
+import { TerminalThere } from '../OnMachine.js';
+import { rootAway, rootMachine } from '../placement.js';
 import { chainOf, entityOf, isDoc, shelfSource, tierOf, type Chip } from './model.js';
 
 const NONE: string[] = [];
@@ -34,6 +36,8 @@ export function Foot({ onRefresh, children }: { onRefresh(): void; children?: Re
   const fleet = useApp((s) => s.fleet);
   const resourcesWhere = useApp((s) => s.resourcesWhere);
   const shown = useApp((s) => s.resourcesShown);
+  const via = useApp((s) => s.via);
+  const shell = useApp((s) => s.shell);
   const field = useApp((s) => (s.resourcesField && entityOf(s, s.resourcesField) ? s.resourcesField : undefined));
   const dirty = useApp((s) => (shown ? s.ide[shown.rootId]?.dirty ?? NONE : NONE));
   const conflict = useApp((s) => (shown ? s.ide[shown.rootId]?.conflict ?? NONE : NONE));
@@ -42,8 +46,8 @@ export function Foot({ onRefresh, children }: { onRefresh(): void; children?: Re
   const selected = shelfSource({ resources: sources, resourcesWhere, fleet });
   const chain = selected && chainOf(sources, fleet, selected);
   const file = shown && !field ? `${root}/${shown.path}` : undefined;
-  // a worker's file is on its disk, where Finder cannot reach
-  const here = shown !== undefined && !farRootOf(shown.rootId);
+  // a file on another machine's disk is where Finder cannot reach
+  const away = shown && rootAway(fleet, shown.rootId, { via, shell });
   const doc = shown !== undefined && !field && isDoc(sources, shown.rootId, shown.path);
   const unsaved = shown !== undefined && dirty.includes(shown.path);
   // a conflict waits for Reload or Overwrite, and a failed write for the next edit or ⌘S, so neither doc is being saved
@@ -60,7 +64,8 @@ export function Foot({ onRefresh, children }: { onRefresh(): void; children?: Re
       )}
       {file && doc && <span className="res-save-word" data-testid="resources-save-state">{!unsaved ? 'saved' : stuck ? 'not saved' : 'saving…'}</span>}
       {file && !doc && unsaved && <span className="res-unsaved-word">unsaved · ⌘S saves</span>}
-      {file && here && <button className="res-link" onClick={() => revealFile(app.bridge, file)}>Show in Finder <Caret dir="right" /></button>}
+      {file && !away && <button className="res-link" onClick={() => revealFile(app.bridge, file, rootMachine(shown!.rootId, { via, shell }))}>Show in Finder <Caret dir="right" /></button>}
+      {file && away && <span className="res-away" data-testid="resources-on">on {away}<TerminalThere name={away} dir={root!} className="res-link" testid="resources-terminal-there" /></span>}
       <button className="res-link" data-testid="resources-refresh" data-tip="Reload from disk" onClick={onRefresh}><Reload size="xs" />Refresh</button>
       {children}
     </footer>

@@ -17,6 +17,18 @@ const refuse = (d: ResourcesDeps, text: string): false => { d.store.getState().s
 const fresh = new Set<string>();
 export const isFresh = (rootId: string, path: string): boolean => fresh.has(key(rootId, path));
 
+/** The home's fleet.json in the shelf's editor: the Mac's text editor cannot reach it. */
+export async function openFleetConfig(d: ResourcesDeps): Promise<void> {
+  try {
+    const { rootId, path } = await d.api.call('fleet.config', {});
+    if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false);
+    d.store.getState().toggleResources(true);
+    await openFile(d, rootId, path);
+  } catch (e) {
+    d.store.getState().showToast((e as Error).message);
+  }
+}
+
 /** Writes <slug>.md under the root and opens it. A taken or empty name is said, and nothing is written. */
 export async function createDoc(d: ResourcesDeps, rootId: string, typed: string): Promise<boolean> {
   const slug = docSlug(typed);

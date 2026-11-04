@@ -17,6 +17,7 @@ import { applyShow } from './show.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
+import { destinationName, type Via } from './placement.js';
 import { FollowApi } from './sources.js';
 import { createTerminalManager, type TerminalManager } from './terminals.js';
 
@@ -104,7 +105,12 @@ function createApp(): AppContext {
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
       if (m.type === 'shell.info') {
-        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, bindings: m.bindings });
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, bindings: m.bindings, ...(m.machine && { machine: m.machine }) });
+        return;
+      }
+      if (m.type === 'local.unavailable') {
+        const s = store.getState();
+        s.showToast(m.machine ? `This Mac cannot open that: it is on ${destinationName(s.fleet, m.machine as Via['machine'], s.via)}` : 'This Mac cannot open that yet; try again');
         return;
       }
       if (m.type === 'keys.record') { store.getState().adoptBindings(m.bindings); return; }
