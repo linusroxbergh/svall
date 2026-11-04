@@ -322,10 +322,7 @@ const handlers: Handlers = {
     if (p.id !== undefined && !Object.hasOwn(store.state.robots, p.id)) throw new ApiError('not_found', `no robot ${p.id}`);
     return { apps: apps?.show(p) ?? 0 };
   },
-  'feedback.preview': async (_p, { diagnostics }) => {
-    if (!diagnostics) throw new ApiError('not_found', 'this daemon has no diagnostics');
-    return { text: await diagnostics() };
-  },
+  'feedback.preview': async (_p, { diagnostics }) => ({ text: await diagnostics!() }),
 };
 
 /** What this machine is and runs, as system.info answers here and a worker answers its home. */

@@ -3,7 +3,7 @@
 Each robot runs on one machine: the fleet's home, or a Linux machine [added as a worker](setup.md) of the fleet. The home is this Mac unless the fleet has
 [a home on a server](home.md); sentences quoted here are as a Mac home shows them. A robot you
 move to a worker keeps its conversation, its branch, its commits and its uncommitted changes, and keeps working while
-the home sleeps. The fleet stays on the home: its islands, map, notes, phone and mission control. A worker runs robots
+the home is away. The fleet stays on the home: its islands, map, notes, phone and mission control. A worker runs robots
 and nothing else, and keeps its own clone of each repository its robots work in.
 
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker names
@@ -28,7 +28,7 @@ for in `/tmp`. A drop folder there is removed a week after it came, when the nex
 
 ## Moving one
 
-On the robot's card, choose **Move to linus-vault** (one for each worker that answers), or **Move to this Mac** on a
+On the robot's card, choose **Move to linus-vault** (one for each worker that answers), or **Move to** the home's name, **Move to this Mac** where this Mac is the home, on a
 robot that runs elsewhere. The sheet says in one line what travels, such as
 
 > session 564 KB · branch kanban: 2 commits not on origin, 3 changed files · storefront on linus-vault: will clone (first time)
@@ -40,7 +40,7 @@ was refused, or **Retry** after. A move that went through ends with **Done**. Fr
 
 ```sh
 svall robot move <id> --machine linus-vault    # to the worker
-svall robot move <id> --machine local          # back to this Mac
+svall robot move <id> --machine local          # to this machine
 ```
 
 It prints the sheet's line, then the move's id once the robot is the destination's. A refused move exits 2 with the
@@ -231,7 +231,7 @@ moves, the way back refuses:
 
 ## While the home is away
 
-A robot on a worker keeps working while the home sleeps or is out of reach, and `svall` in its terminal answers from
+A robot on a worker keeps working while the home is out of reach, and `svall` in its terminal answers from
 the worker:
 
 - `svall robot new` starts the robot on the same worker, the home awake or not; mission control is refused: "mission

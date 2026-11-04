@@ -12,7 +12,7 @@ import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
 import { shq } from '@svall/svalld/text';
-import { readWorkerFile } from '@svall/svalld/worker/mode';
+import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import type { Check } from '../checks-view.js';
 import { connectForwarded, identify, MachineMismatch } from './connection.js';
@@ -411,12 +411,22 @@ async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: strin
 
 const farFlags = (fleet: HostDeps['fleet']): string[] => (fleet.profile ? ['-p', shq(fleet.profile)] : []);
 
-/** This fleet's worker.json, while it names `machine` as the fleet's home. */
+/** This fleet's worker.json, while it names `machine` as the fleet's home; one that cannot be read leaves that unknown, so nothing is done on a guess. */
 function servedHome(machine: string, d: HostDeps): WorkerFile | undefined {
-  try {
-    const served = readWorkerFile(resolvePaths(d.fleet.home));
-    return served.homeMachineId === machine ? served : undefined;
-  } catch { return undefined; }
+  const paths = resolvePaths(d.fleet.home);
+  if (!isWorker(paths)) return undefined;
+  let served: WorkerFile;
+  try { served = readWorkerFile(paths); } catch (e) { throw new StepError(`this fleet may serve ${machine} as its home: ${(e as Error).message}`, `fix ${paths.workerFile}`); }
+  return served.homeMachineId === machine ? served : undefined;
+}
+
+/** The fleet home on this account whose worker.json names `machine` as its home, read as it lies; one that cannot be read may name it. */
+export function dialingFleet(machine: string, homedir: string): string | undefined {
+  return fleetHomes(homedir).find((home) => {
+    let text: string;
+    try { text = fs.readFileSync(resolvePaths(home).workerFile, 'utf8'); } catch { return false; }
+    try { return (JSON.parse(text) as { homeMachineId?: unknown }).homeMachineId === machine; } catch { return true; }
+  });
 }
 
 // the folder of the fleet there, for the home this fleet dials: its profile there need not be the one it has here
@@ -703,8 +713,10 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 // a worker that dials in is removed here alone, so it needs no ssh destination
 const removable = (name: string, d: HostDeps): Outcome<MachineEntry> => {
   const entry = d.registry.get(name);
-  // without its record this fleet cannot upgrade or check the home it serves
+  // without its record a fleet cannot upgrade or check the home it serves, and the far uninstall would stop that home and its robots
   if (entry && servedHome(entry.id, d)) throw new StepError(`${name} is this fleet's home, so it stays listed here`);
+  const dialing = entry && dialingFleet(entry.id, d.homedir);
+  if (dialing && dialing !== d.fleet.home) throw new StepError(`${name} is the home of the fleet in ${dialing}, so it stays listed here and keeps running`);
   return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(d.registry, name);
 };
 
@@ -828,7 +840,7 @@ const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f 
  */
 export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, asked)));
+    const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, asked); servedHome(out.value.id, d); return Promise.resolve(out); });
     const name = entry.record.name;
     const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
@@ -914,7 +926,8 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
  */
 export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => Promise.resolve(machineOutcome(d.registry, name)));
+    const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, name); servedHome(out.value.id, d); return Promise.resolve(out); });
+    const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
     const base = entry.record.svallBase;
     const runs = (now: string): string => `ssh ${entry.record.ssh} and read the daemon log; ${name} runs release ${now}; ${rollbackTo(name)}`;
@@ -934,9 +947,9 @@ export function rollbackHost(name: string, o: { to?: string }, d: HostDeps): Pro
       d.runs?.(now);
       await run.step('probe', async () => {
         try {
-          serviceOutcome(await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json'), entry.record.ssh);
+          serviceOutcome(await remoteJson<RemoteDoctor>(master, base, ['doctor', '--json'], 'svall doctor --json', farFleet(entry.id, d).env), entry.record.ssh);
           // the release gone back to may speak an older protocol than this controller, and its system.info still names it
-          await endToEnd(master, entry, { release: now, anyProtocol: true });
+          await endToEnd(master, entry, { release: now, anyProtocol: true, ...(fleetHome && { fleetHome }) });
         } catch (err) {
           throw new StepError((err as Error).message, runs(now));
         }

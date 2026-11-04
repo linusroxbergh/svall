@@ -71,6 +71,16 @@ export function homeTails(o: { fleet: Pick<Fleet, 'on' | 'off'>; store: Store; t
   });
 }
 
+/** A tail of each robot here to a worker that has just linked, past the limit: its hub holds nothing of a robot with no hook since. */
+export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call'> }, machine: MachineId, lines = 40): Promise<void> {
+  if (!o.links.for(machine)?.dialsIn) return;
+  await Promise.all(Object.values(o.store.state.robots).filter((c) => c.tmux && o.runsHere(c)).map(async (c) => {
+    const at = Date.now();
+    const text = (await o.tmux.capture(c.tmux!.paneId, lines).catch(() => undefined))?.toString('utf8');
+    if (text !== undefined) await o.links.call(machine, 'screen.home', { id: c.id, text, at }).catch(() => {});
+  }));
+}
+
 /** What a worker does with a screen from its home: the hub holds it for a window that loses that home. */
 export const homeScreenCall = (terminals: Pick<TerminalHub, 'sawHomeScreen'>, home: MachineId) => (p: unknown): Promise<unknown> => {
   const s = ScreenNotice.parse(p);

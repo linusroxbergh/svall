@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { PROTOCOL_VERSION, type FleetId } from '@svall/protocol';
 import { peekConfig, readFleetConfig } from '@svall/svalld/config';
 import { FleetMismatch, MachineMismatch, remoteConnectionInfo, type ConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -37,6 +38,14 @@ export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineE
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
 
+const daemonPid = (home: string): number => {
+  try { return Number(fs.readFileSync(path.join(home, 'version'), 'utf8').split('\n')[1]); } catch { return 0; }
+};
+
+const alive = (pid: number): boolean => {
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
+};
+
 /** What this machine's own daemon answers about the fleet it runs. */
 export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform = process.platform): ConnectionInfo {
   const paths = resolvePaths(fleetHome);
@@ -47,6 +56,9 @@ export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform
       : 'Start it with `svall setup` or `pnpm svalld`';
     throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). ${how}.`);
   }
+  // a daemon killed leaves its port file, and whoever holds that port by now must not be offered the token
+  const pid = daemonPid(paths.home);
+  if (pid > 0 && !alive(pid)) throw new SshError('daemon_down', `svalld is not running: process ${pid} in ${paths.home}/version is gone`);
   const config = peekConfig(paths);
   return {
     fleetId: config.id,

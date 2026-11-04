@@ -11,6 +11,22 @@ import { BASE, FLEET, HOME, MAC, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, 
 useHostWorld();
 
 describe('host remove', () => {
+  it.each([[{}], [{ forget: true }]])('leaves the home of a sibling fleet, %j: no far uninstall, its record kept, the fleet named', async (o) => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: HOME, svallBase: BASE });
+    registry.save();
+    const sibling = resolvePaths(path.join(work, '.svall-fartest'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    fs.writeFileSync(sibling.workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: OTHER_FLEET, token: 't'.repeat(48), homeName: 'studio' }));
+    const out = await removeHost('studio', o, deps({ registry }));
+    expect(out.result).not.toBe('ready');
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home) });
+    expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
+    expect(ssh.calls()).toEqual([]);
+    expect(MachineRegistry.load(path.join(work, 'config')).get('studio')).toBeDefined();
+  });
+
   it('drops a worker that dials in and its token here, with nothing there to reach, and has its link looked at again', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });

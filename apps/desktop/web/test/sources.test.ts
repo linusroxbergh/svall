@@ -543,6 +543,64 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(store.getState().home).toBeUndefined();
   });
 
+  it('a socket that keeps failing though the daemon says connected turns into a banner', async () => {
+    worker();
+    net.daemons.delete(url(50_000));
+    await open();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(store.getState().home).toMatchObject({ state: 'unreachable', detail: expect.stringContaining('studio') });
+    net.daemons.set(url(50_000), home);
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(store.getState().via?.online).toBe(true);
+    expect(store.getState().home?.state).toBe('connected');
+  });
+
+  it('a socket that closes knocks on its port again only from an answer that says so', async () => {
+    await following();
+    local.answer('home.connection', () => new Promise(() => {}));
+    net.daemons.delete(url(50_000));
+    const knocks = net.knocks.length;
+    home.drop();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(net.knocks).toHaveLength(knocks);
+  });
+
+  it('a daemon that names its home only on a later try tells the daemon the window stands in, and asks with retry', async () => {
+    worker();
+    let first = true;
+    local.answer('fleet.home', () => {
+      if (first) { first = false; return new Promise(() => {}); }
+      return { machine: HOME, name: 'studio', mine: false, me: ME };
+    });
+    local.answer('home.connection', () => ({ machine: HOME, name: 'studio', state: 'auth' }));
+    await open();
+    await vi.advanceTimersByTimeAsync(36_000);
+    expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio' });
+    expect(local.said('home.fallback').at(-1)).toEqual({ on: true });
+    expect(local.said('home.connection')[0]).toEqual({ retry: true });
+  });
+
+  it('a daemon that refuses to say gives a banner rather than asking in silence', async () => {
+    worker();
+    local.answer('home.connection', () => { throw new ApiError('invalid_config', 'worker.json is gone'); });
+    await open();
+    expect(store.getState().home).toMatchObject({ state: 'unreachable', detail: 'worker.json is gone' });
+  });
+
+  it('an answer that lands after the daemon said it is the home is dropped', async () => {
+    worker();
+    let answer!: (v: unknown) => void;
+    local.answer('home.connection', () => new Promise((r) => { answer = r; }));
+    await open();
+    local.answer('fleet.home', () => ({ machine: ME, name: 'mac', mine: true, me: ME }));
+    local.drop();
+    await vi.advanceTimersByTimeAsync(600);
+    answer(CONNECTED);
+    await settle();
+    expect(store.getState().home).toBeUndefined();
+    expect(net.knocks).not.toContain(url(50_000));
+  });
+
   describe('a home that dials this machine, which gives no route', () => {
     const dialed = (state: string) => () => ({ machine: HOME, name: 'studio', state });
 
@@ -555,6 +613,16 @@ describe('the page follows the home while it answers, and this machine otherwise
       expect(local.said('home.fallback').at(-1)).toEqual({ on: false });
       await api.call('robot.update', { id: 'there', note: 'x' });
       expect(local.said('robot.update')).toHaveLength(1);
+    });
+
+    it('stays online through a reopen of its own socket', async () => {
+      worker();
+      local.answer('home.connection', dialed('connected'));
+      await open();
+      local.answer('home.connection', () => new Promise(() => {}));
+      local.drop();
+      await vi.advanceTimersByTimeAsync(600);
+      expect(store.getState().via?.online).toBe(true);
     });
 
     it('falls back when that link goes, and is back when it returns', async () => {

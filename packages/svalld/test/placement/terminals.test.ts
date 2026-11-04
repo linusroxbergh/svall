@@ -12,7 +12,7 @@ import { REMOTE_SCREEN_BYTES } from '../../src/placement/far-viewers.js';
 import type { Store } from '../../src/store.js';
 import type { Viewer } from '../../src/terminals.js';
 import type { Tmux } from '../../src/tmux/tmux.js';
-import { homeTails, ScreenTails } from '../../src/worker/screens.js';
+import { homeTails, ScreenTails, sendHomeTails } from '../../src/worker/screens.js';
 import { H, W, placed, stopWorlds, until, world } from './world.js';
 
 afterEach(async () => {
@@ -256,6 +256,19 @@ describe('the terminal of a robot on a worker', () => {
     expect(terminals.lastScreen('c_8')).toBeUndefined();
     screen('c_7');
     expect(terminals.lastScreen('c_7')).toBeUndefined();
+  });
+
+  it('a home sends a worker that dials in a tail of each robot on it as that worker links, hook or no hook, and none to any other', async () => {
+    const robots = { c_1: placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' }, machine: undefined }), c_2: placed({ id: 'c_2', tmux: { windowId: '@2', paneId: '%2' }, machine: W }) };
+    const call = vi.fn((_m: MachineId, _method: string, _p: unknown) => Promise.resolve({}));
+    const capture = vi.fn(async () => Buffer.from('screen'));
+    const o = { store: { state: { robots } } as unknown as Store, tmux: { capture }, runsHere: (c: { machine?: string }) => c.machine === undefined, links: { for: (m: MachineId) => ({ dialsIn: m === H }), call } as never };
+    await sendHomeTails(o, W);
+    expect(call).not.toHaveBeenCalled();
+    await sendHomeTails(o, H);
+    await sendHomeTails(o, H);
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(call).toHaveBeenCalledWith(H, 'screen.home', { id: 'c_1', text: 'screen', at: expect.any(Number) });
   });
 
   it('a home sends its screens to the workers that dial in alone, and reads none while there is none', async () => {

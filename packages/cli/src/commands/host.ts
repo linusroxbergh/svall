@@ -12,7 +12,7 @@ import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, consentHost, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, dialingFleet, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
@@ -222,11 +222,11 @@ export function forgetCheck(dir: string, id: string): void {
 }
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; check?: LastCheck };
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; check?: LastCheck };
 
-export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>): MachineRow[] {
+export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>, dialedBy: (id: string) => string | undefined = () => undefined): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
-    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(checks[id] && { check: checks[id] }),
+    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(dialedBy(id) && { dialedBy: dialedBy(id) }), ...(checks[id] && { check: checks[id] }),
   }));
 }
 
@@ -290,7 +290,7 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .description('every machine in the registry and its last check')
     .action(() => {
       const registry = MachineRegistry.load(dir());
-      const rows = machineRows(registry, lastChecks(dir()));
+      const rows = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir()));
       printResult(rows, json(), () => table(rows.map((r) => ({
         name: r.name, ssh: r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,
         release: r.check?.release ?? '', checked: r.check ? checkedLine(r.check) : '', id: r.id,

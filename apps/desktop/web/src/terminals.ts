@@ -145,8 +145,11 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     },
     reroute() {
       attaching.clear();
-      retry.clear();
       const { via, fleet } = state();
+      for (const key of retry.keys()) {
+        const c = fleet.robots[target(key).id];
+        if (!c || isPlaced(c, via)) retry.delete(key);
+      }
       for (const key of new Set([...Object.keys(state().terminals), ...Object.keys(state().terminalErrors)])) {
         const c = fleet.robots[target(key).id];
         if (!c || isPlaced(c, via)) close(key);

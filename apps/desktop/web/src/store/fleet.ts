@@ -8,7 +8,7 @@ import { pruneIde } from './ide.js';
 import type { App, AppStore } from './index.js';
 
 /** How a window on a worker stands with the fleet's home, which it reaches over `master`. Never its token. */
-export type HomeLink = { name: string; state: HomeState; detail?: string; release?: string; newer?: true; master?: { ssh: string; controlSocket: string } };
+export type HomeLink = { name: string; state: HomeState; detail?: string; newer?: true; master?: { ssh: string; controlSocket: string } };
 
 // the fleet as the daemon last showed it, the listing that hangs off it, and the state of the link itself; `via` is the
 // worker a page stands on while the home is elsewhere, and `home` how a window stands with that home

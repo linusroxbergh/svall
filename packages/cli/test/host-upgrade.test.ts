@@ -48,10 +48,10 @@ fleet='${home}/.svall'
 [ -n "$SVALL_HOME" ] && fleet=$SVALL_HOME
 [ "$1" = -p ] && { fleet='${home}/.svall-'$2; shift 2; }
 case "$1" in
-  connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
+  connection-info) [ -f '${home}/.svall/by-folder' ] && [ -z "$SVALL_HOME" ] && exit 1; printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
   version) x=; for k in worker role fleetId; do [ -f "$fleet/$k" ] && x="$x,\\"$k\\":$(cat "$fleet/$k")"; done
     printf '%s%s\\n}\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2).slice(0, -2)}' "$x" ;;
-  doctor) printf '%s\\n' '${DOCTOR}' ;;
+  doctor) [ -f '${home}/.svall/by-folder' ] && [ -z "$SVALL_HOME" ] && exit 1; printf '%s\\n' '${DOCTOR}' ;;
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
   setup)
     if [ "$2" = --rollback ]; then
@@ -533,6 +533,7 @@ esac
       fs.writeFileSync(path.join(work, 'far', '.svall', 'role'), '"home"');
       fs.writeFileSync(path.join(work, 'far', '.svall', 'fleetId'), JSON.stringify(FLEET));
       fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify(dialing()));
+      fs.writeFileSync(path.join(work, 'far', '.svall', 'by-folder'), '');
     };
 
     it('upgrades the home by the folder worker.json names, and leaves it the home with no fleet enrolled', async () => {
@@ -547,6 +548,24 @@ esac
       expect(ssh.remoteCalls().some((w) => w.includes('fartest'))).toBe(false);
       expect(ssh.remoteCalls().some((w) => w.some((a) => a.includes(`SVALL_HOME=${work}/far/.svall`)))).toBe(true);
       expect(fs.existsSync(path.join(work, 'far', '.svall', 'worker-args'))).toBe(false);
+    });
+
+    it('enrols nothing and says why when worker.json cannot be read', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      fs.writeFileSync(resolvePaths(fleet).workerFile, '{ broken');
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(out.result).not.toBe('ready');
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    });
+
+    it('rolls a far home back and probes it by its folder', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
+      asHome();
+      await rollbackHost('trift', {}, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(step('probe').at(-1)).toMatchObject({ status: 'ok' });
+      expect(ssh.remoteCalls().filter((w) => w.includes('connection-info')).every((w) => w.some((a) => a.includes('SVALL_HOME=')))).toBe(true);
     });
 
     it('finds the machine by the id worker.json holds, whichever name the registry gives it', async () => {

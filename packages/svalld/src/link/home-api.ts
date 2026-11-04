@@ -61,7 +61,7 @@ export class HomeApi {
     const failure = dial.failure();
     if (failure) {
       await this.drop();
-      return { ...base, state: failure.kind === 'auth' || failure.kind === 'host_key' ? 'auth' : 'unreachable', detail: failure.message };
+      return { ...base, state: failure.kind === 'auth' || failure.kind === 'host_key' ? 'auth' : 'unreachable', detail: failure.message.trim().split('\n').at(-1) };
     }
     const master = dial.master();
     if (!master) {

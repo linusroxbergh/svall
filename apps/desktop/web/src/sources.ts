@@ -12,6 +12,8 @@ const ROBOT_HERE = new Set<string>(['term.attach', 'fs.list', 'fs.read', 'fs.wri
 const ASK_MS = [500, 1000, 2000, 5000, 15_000];
 // a daemon that did not say which machine is the home, asked again
 const KNOW_MS = 5000;
+// failed opens with none online since, past which a banner says so: what refuses a page, an origin say, no probe sees
+const OPENS = 3;
 
 /** An answer the page no longer waits for, as it left the source that was to give it. */
 export class SourceLeft extends Error {
@@ -42,6 +44,7 @@ export class FollowApi extends Api {
   private askAgain?: ReturnType<typeof setTimeout>;
   private knowAgain?: ReturnType<typeof setTimeout>;
   private tries = 0;
+  private failedOpens = 0;
   // a home the page knows it is not on: until its daemon says otherwise, the page stands in for it
   private far = false;
 
@@ -70,6 +73,7 @@ export class FollowApi extends Api {
   /** Asks again what nothing asks by itself: a refused login, a version or a mismatch that a person has dealt with. */
   retryHome(): void {
     this.tries = 0;
+    this.failedOpens = 0;
     void this.ask(true);
   }
 
@@ -102,7 +106,9 @@ export class FollowApi extends Api {
 
   private localOpened(): void {
     clearTimeout(this.knowAgain);
+    let turned = false;
     this.local.call('fleet.home', {}).then((h) => {
+      turned = !this.far && !h.mine;
       this.me = h.me;
       this.far = !h.mine;
       if (!h.mine) {
@@ -124,10 +130,14 @@ export class FollowApi extends Api {
     }).then(() => {
       if (this.localStatus !== 'online') return;
       this.localOnline = true;
+      const was = this.active;
       this.pick();
+      // a daemon that named its home only on a later try stands in with no move to say so
+      if (turned && this.active === was) this.announce();
       // the socket's close took this machine's watches with it, and no move sends them again while the home stays
       if (this.home && this.active === this.home) this.opts.onLocalBack?.();
-      if (this.far) void this.ask(!this.asked);
+      if (!this.far) return;
+      void this.ask(!this.asked);
       this.asked = true;
     });
   }
@@ -138,15 +148,19 @@ export class FollowApi extends Api {
     let a: Result<'home.connection'>;
     try {
       a = await this.local.call('home.connection', retry ? { retry } : {});
-    } catch {
+    } catch (e) {
+      // the daemon answered, and asking again waits on whatever it could not read
+      const { home } = this.store.getState();
+      if (e instanceof ApiError && this.far && home) this.store.getState().setHome({ ...home, state: 'unreachable', detail: e.message });
       if (this.far && this.localOnline) this.askSoon();
       return;
     }
     if (!this.far) return;
-    const { token, port, ssh, controlSocket, state, name, detail, release, newer } = a;
+    const { token, port, ssh, controlSocket, state, name, detail, newer } = a;
     const master = ssh && controlSocket ? { ssh, controlSocket } : undefined;
     const route = state === 'connected' && port && token ? endpoint(port) : undefined;
-    this.store.getState().setHome({ name, state: route && !this.homeOnline ? 'connecting' : state, ...(detail && { detail }), ...(release && { release }), ...(newer && { newer }), ...(master && { master }) });
+    const stuck = !!route && !this.homeOnline && this.failedOpens >= OPENS;
+    this.store.getState().setHome({ name, state: stuck ? 'unreachable' : route && !this.homeOnline ? 'connecting' : state, ...(stuck ? { detail: this.stuckDetail(name) } : detail && { detail }), ...(newer && { newer }), ...(master && { master }) });
     if (route) {
       this.follow(route, token!);
       return;
@@ -158,6 +172,8 @@ export class FollowApi extends Api {
     // the daemon answers a mismatch or its link from memory, so asking again runs nothing there
     if (state === 'connecting' || state === 'unreachable' || state === 'connected') this.askSoon();
   }
+
+  private stuckDetail(name: string): string { return `the API on ${name} answers, and closes this window's socket`; }
 
   // at most one ask waits, whatever else reports the home gone meanwhile, as each failed open of its socket does
   private askSoon(): void {
@@ -189,7 +205,7 @@ export class FollowApi extends Api {
     const home = this.opts.makeApi?.(url, token) ?? new Api({ url, token });
     this.home = home;
     home.onEvent = (e) => this.heardFrom(home, e);
-    home.onOpen = () => { if (this.home === home) { this.tries = 0; this.homeOnline = true; this.pick(); } };
+    home.onOpen = () => { if (this.home === home) { this.tries = 0; this.failedOpens = 0; this.homeOnline = true; this.pick(); } };
     home.onStatus = (s) => { if (this.home === home) this.homeStatus(s); };
     home.start();
   }
@@ -200,11 +216,16 @@ export class FollowApi extends Api {
       return;
     }
     if (s === 'connecting') return;
+    const was = this.homeOnline;
     this.homeOnline = false;
+    if (!was && s !== 'outdated') this.failedOpens++;
+    const stuck = this.failedOpens >= OPENS;
+    const home = this.store.getState().home!;
     // another protocol: no retry changes it; a wrong token closes as any other socket, and the next ask brings the right one
-    this.store.getState().setHome({ ...this.store.getState().home!, state: s === 'outdated' ? 'version' : 'connecting' });
-    if (s === 'outdated' || this.localStatus !== 'online') this.dropHome();
-    else this.askSoon();
+    this.store.getState().setHome({ ...home, state: s === 'outdated' ? 'version' : stuck ? 'unreachable' : 'connecting', ...(stuck && { detail: this.stuckDetail(home.name) }) });
+    // this socket's retry would offer the token to whatever holds the port once the forward has gone, so only an answer opens another
+    this.dropHome();
+    if (s !== 'outdated' && this.localStatus === 'online') this.askSoon();
     this.pick();
   }
 

@@ -144,28 +144,45 @@ describe('svall worker', () => {
       expect(readRegistry(config).find((m) => m.id === homeMachine)?.record.ssh).toBe('ada@studio.new');
     }, 90_000);
 
-    it("leaves a fleet that has the machine as its worker its link and route: it stays that fleet's worker, removable there", async () => {
+    it("leaves a fleet that has the machine as its worker its link and route, and a host remove there refuses while a fleet here dials it", async () => {
       const config = makeHome();
       const named = makeHome();
-      // the account's private fleet reaches the machine over ssh, under the name it gave it, and holds its token
-      const privateHome = path.join(process.env.HOME!, `.svall-private-${crypto.randomUUID().slice(0, 8)}`);
+      const sibling = path.join(process.env.HOME!, `.svall-named${crypto.randomUUID().slice(0, 8)}`);
+      const privateHome = path.join(process.env.HOME!, `.svall-owner${crypto.randomUUID().slice(0, 8)}`);
       fs.mkdirSync(privateHome, { recursive: true });
+      fs.writeFileSync(resolvePaths(privateHome).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
       const registry = MachineRegistry.load(config);
       registry.put(homeMachine as never, { ...record, name: 'vault', ssh: 'ada@vault' });
       registry.save();
       issueToken(resolvePaths(privateHome), homeMachine as never);
-      expect(await enrolled({ SVALL_HOME: named, SVALL_CONFIG_DIR: config }, config, { ssh: 'ada@other' })).toMatchObject({ code: 0 });
+      const env = { SVALL_HOME: named, SVALL_CONFIG_DIR: config };
+      expect(await enrolled(env, config, { ssh: 'ada@other' })).toMatchObject({ code: 0 });
+      // its own enrol again changes no route another fleet reaches the machine by
+      expect(await enrolled(env, config, { ssh: 'ada@third' })).toMatchObject({ code: 0 });
       const kept = readRegistry(config).find((m) => m.id === homeMachine)?.record;
       expect(kept).toEqual({ ...record, name: 'vault', ssh: 'ada@vault' });
       expect(kept).not.toHaveProperty('role');
       expect(listsWorker(config)).toBe(true);
-      // the fleet that dials it refuses; the fleet whose worker it is goes on to the machine, which this test cannot reach
-      const dialing = await svallIn({ SVALL_HOME: named, SVALL_CONFIG_DIR: config }, 'host', 'remove', 'vault', '--forget').done;
+      const dialing = await svallIn(env, 'host', 'remove', 'vault', '--forget').done;
       expect(dialing.stdout + dialing.stderr).toContain("is this fleet's home");
+      // that fleet as the account's home holds it, as a sibling of the fleet whose worker the machine is
+      fs.mkdirSync(sibling, { recursive: true });
+      fs.writeFileSync(resolvePaths(sibling).fleetConfig, JSON.stringify({ id: crypto.randomUUID() }));
+      fs.copyFileSync(resolvePaths(named).workerFile, resolvePaths(sibling).workerFile);
       const owning = await svallIn({ SVALL_HOME: privateHome, SVALL_CONFIG_DIR: config }, 'host', 'remove', 'vault', '--forget').done;
-      expect(owning.code).toBe(0);
-      expect(readRegistry(config).some((m) => m.id === homeMachine)).toBe(false);
-      fs.rmSync(privateHome, { recursive: true, force: true });
+      expect(owning.code).not.toBe(0);
+      expect(owning.stdout + owning.stderr).toContain(`the home of the fleet in ${sibling}`);
+      expect(readRegistry(config).some((m) => m.id === homeMachine)).toBe(true);
+      for (const h of [sibling, privateHome]) fs.rmSync(h, { recursive: true, force: true });
+    }, 90_000);
+
+    it('records the platform the home names', async () => {
+      const config = makeHome();
+      const socket = dialSocket({ dialSockets: '/home/ada/.svall/w' }, machineId(config));
+      const run = svallIn({ SVALL_HOME: makeHome(), SVALL_CONFIG_DIR: config }, 'worker', 'enroll', '--home-machine', homeMachine, '--home-name', 'studio', '--fleet-id', fleetId, '--home-ssh', 'ada@studio', '--home-socket', socket, ...FAR.map((a) => (a === 'linux' ? 'darwin' : a)));
+      run.child.stdin.end('a'.repeat(48));
+      expect(await run.done).toMatchObject({ code: 0 });
+      expect(readRegistry(config).find((m) => m.id === homeMachine)?.record.platform).toBe('darwin');
     }, 90_000);
   });
 

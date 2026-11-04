@@ -733,6 +733,15 @@ console.log(a.socket);
     for (let i = 0; i < 60 && !screen?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); screen = call(R, 'term.lastScreen', { id: onHome }); }
     check("remote holds the home's last screen", screen?.text?.includes(`did: ${text}`) && screen.at > 0, () => brief(screen));
 
+    // a first start holds no screen until the home sends one as the link comes up, with no hook since
+    const restarted = linksOf()[ids.remote]?.since;
+    sh(R, `systemctl --user restart ${UNIT}`);
+    linked(ids, restarted);
+    let fresh;
+    for (let i = 0; i < 60 && !fresh?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); fresh = call(R, 'term.lastScreen', { id: onHome }); }
+    check('a worker just started holds the last screen', fresh?.text?.includes(`did: ${text}`), () => brief(fresh));
+    check('the worker answers its own diagnostics', call(R, 'feedback.preview').text?.length > 0, 'no diagnostics on the worker');
+
     // the home killed with its port file left: ssh still takes the forward's connection, and only a greeting tells
     const asked = `${opens}
       const a = (await here.call('home.connection', { retry: true })).result;

@@ -45,6 +45,14 @@ final class HostProcessTests: XCTestCase {
         return (steps, code)
     }
 
+    func testAMachineIdNamesAMachineAsItsNameDoes() {
+        let id = "4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a"
+        XCTAssertEqual(HostCommand.arguments(op: .upgrade, args: HostArgs(name: id))?.prefix(3), ["host", "upgrade", id])
+        for bad in ["--release", "4b7a3c1e-2d5f-4e6a-9b8c", "\(id) x"] {
+            XCTAssertNil(HostCommand.arguments(op: .upgrade, args: HostArgs(name: bad)), bad)
+        }
+    }
+
     func testEachOperationBuildsTheArgvItsFlagsAllow() {
         XCTAssertEqual(argv(.add, HostArgs(name: "studio", ssh: "linus@studio")),
                        ["host", "add", "studio", "--ssh", "linus@studio", "--json"])

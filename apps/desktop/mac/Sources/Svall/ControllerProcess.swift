@@ -65,6 +65,9 @@ extension String {
 /// A machine's registry name: the only name `svall host` takes for one.
 let machineNamePattern = "^[a-z][a-z0-9-]{0,31}$"
 
+/// A machine's id, as the protocol holds one: `svall host` resolves it as it does a name, which a registry may hold differently.
+let machineIdPattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+
 /// An ssh destination the app hands to ssh: never one that reads as a flag.
 let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
 
@@ -72,7 +75,7 @@ let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {
     static func arguments(op: HostOp, args: HostArgs) -> [String]? {
-        guard args.name.allowed(by: machineNamePattern) else { return nil }
+        guard args.name.allowed(by: machineNamePattern) || args.name.allowed(by: machineIdPattern) else { return nil }
         // a rollback is the upgrade command's
         var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
         switch op {

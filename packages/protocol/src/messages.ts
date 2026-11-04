@@ -119,11 +119,15 @@ export const AGENT_UPDATE_MS = 5 * 60_000;
 // a drop crosses the link to the robot's machine in 1 MiB parts
 const DROP_TIMEOUT_MS = 10 * 60_000;
 
+const HOME_CONNECTION_MS = 60_000;
+
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
+  // a far command, its forward and a greeting through it, each with a timeout of its own
+  if (method === 'home.connection') return HOME_CONNECTION_MS;
   if (method === 'retro.plan') return RETRO_PLAN_TIMEOUT_MS;
   // each fix may start a robot, which waits for its agent as robot.create with a run does
   if (method === 'retro.mark') return ((params as { marks?: { action?: string }[] }).marks ?? []).filter((m) => m.action === 'fix').length * RUN_TIMEOUT_MS;
