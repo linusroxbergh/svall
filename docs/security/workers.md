@@ -31,7 +31,7 @@ carries and under which licences, and which risks are accepted. Tests are named 
   back on stdout, with the answer's fleet id and machine id compared to `worker.json`'s: another fleet or machine is shown, and no other home is
   ever tried. The token stays in the daemon's memory while it answers `home.connection`, and in the page's memory and its socket hello; it is in
   no file on the Mac, no argv, no log and no page storage. `home.connection` answers an app socket that came from loopback, never a phone. A
-  failed attempt takes its forward back. A login or host key refused stops the dial until someone asks again, so a refused key is not retried.
+  failed attempt takes its forward back, and `connected` is answered only once the API greets through the forward, token and all. A login or host key refused stops the dial until someone asks again, a wake included, so a refused key is not retried. While the page's own daemon is down, no home socket that is not up opens again, as the port its forward held is free for anyone to bind.
 - **Not trusted:**
   - other accounts on either machine;
   - a companion archive until it is authenticated;
@@ -53,8 +53,8 @@ carries and under which licences, and which risks are accepted. Tests are named 
 
 | Threat | What stops it | Tests |
 | --- | --- | --- |
-| The home's token handed to something other than the window | `home.connection` answers only a socket from loopback with this fleet's token, never a phone, and a page keeps the token out of its store. | `svalld/test/methods.test.ts` "fleet.home and home.connection answer the app alone"; `svalld/test/link/home-api.test.ts`; `desktop/web/test/sources.test.ts` "never keeps the home's token" |
-| A window sent to another fleet's home by an alias that now leads elsewhere | `home.connection` compares the far fleet id and machine id, shows the mismatch and answers no route; the page falls back only to the daemon that names this home. | `svalld/test/link/home-api.test.ts` "shows another fleet"; `desktop/web/test/sources.test.ts` "falls back to no daemon" |
+| The home's token handed to something other than the window | `home.connection` answers only a socket from loopback with this fleet's token, never a phone, and a page keeps the token out of its store. A process of this account holding that token can ask too, as it could run `ssh studio svall connection-info --json`. | `svalld/test/methods.test.ts` "fleet.home and home.connection answer the app alone"; `svalld/test/link/home-api.test.ts`; `desktop/web/test/sources.test.ts` "never keeps the home's token" |
+| A window sent to another fleet's home by an alias that now leads elsewhere | `home.connection` compares the far fleet id and machine id, shows the mismatch and answers no route; the page follows only the home its own daemon names, and a daemon that says it is the home ends the following. | `svalld/test/link/home-api.test.ts` "shows another fleet"; `desktop/web/test/sources.test.ts` "follows only the home its own daemon names" |
 | A quit stopping the server | `quit.stop` goes to this machine's daemon alone. | `desktop/web/test/sources.test.ts` "asks this machine"; `QuitFlowTests.swift` |
 | An ssh destination read as an option, such as `-oProxyCommand=…` | The registry holds a destination to `[A-Za-z0-9][A-Za-z0-9._@:[\]-]*`, and every ssh argv puts `--` before it. | `protocol/test/machines.test.ts` "refuses an ssh destination a command would read as an option"; `cli/test/controller/ssh.test.ts` "carries a hostile destination as one argument after the option terminator, to the master alone" |
 | A user or host name that a `ProxyCommand`'s `%r` or `%h` hands a shell (CVE-2023-51385) | The same pattern allows no shell metacharacter. | `protocol/test/machines.test.ts` "refuses a user or host name a ProxyCommand's %r or %h would hand a shell to expand" |

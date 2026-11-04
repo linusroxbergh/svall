@@ -674,7 +674,7 @@ const fs = require("fs");
 const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 fs.rmSync(process.argv[1]);
 require("child_process").execFileSync("svall", ["worker", "enroll", "--home-machine", a.homeMachineId, "--home-name", a.homeName, "--fleet-id", a.fleetId,
-  "--home-ssh", process.argv[2], "--home-socket", a.socket, "--home-svall-base", a.homeSvallBase, "--home-arch", a.homeArch, "--home-path", a.homePath], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
+  "--home-ssh", process.argv[2], "--home-socket", a.socket, "--home-svall-base", a.homeSvallBase, "--home-platform", a.homePlatform, "--home-arch", a.homeArch, "--home-path", a.homePath], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
 console.log(a.socket);
 ' ~/enrol.json svall@${L}`);
     const socket = enrol.stdout.trim().split('\n').at(-1);
@@ -693,7 +693,7 @@ console.log(a.socket);
     // a window on remote: what its daemon says of the home, then the home's own API over the forward it makes
     const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
     const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
-    const ask = `
+    const opens = `
       import fs from 'node:fs';
       const home = process.env.HOME + '/.svall';
       const open = (port, token) => new Promise((resolve, reject) => {
@@ -709,7 +709,8 @@ console.log(a.socket);
           if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
         };
       });
-      const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());
+      const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());`;
+    const ask = `${opens}
       const first = await here.call('fleet.home');
       const a = (await here.call('home.connection', { retry: true })).result;
       const far = a.port ? await open(a.port, a.token) : undefined;
@@ -722,6 +723,33 @@ console.log(a.socket);
     check("the home's API answers over the forward", seen.seen?.mine === true && seen.seen?.machine === ids.local, () => brief(seen));
     check('the home lists each role', seen.roles?.[0]?.[0] === ids.local && seen.roles[0][1] === 'home' && seen.roles.some(([id, role]) => id === ids.remote && role === 'worker'), () => brief(seen));
     check('no token in a log', !sh(R, `grep -c ${shq(JSON.parse(sh(L, 'svall connection-info --json').stdout).token)} ~/.svall/svalld.log`, { ok: false }).stdout.trim().match(/^[1-9]/), () => "the home's token is in the worker's log");
+
+    // the home's screens reach the worker's own daemon, which answers them for a window that loses the home
+    const onHome = JSON.parse(sh(L, `svall --json robot new --island ${ctx.fx.island} --cwd ~/src/app --name onhome --claude`).stdout).id;
+    sh(L, `svall robot wait ${onHome} --until idle --timeout 60`);
+    const text = 'a turn on the home';
+    turn(ids, { onhome: onHome }, 'onhome', text);
+    let screen;
+    for (let i = 0; i < 60 && !screen?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); screen = call(R, 'term.lastScreen', { id: onHome }); }
+    check("remote holds the home's last screen", screen?.text?.includes(`did: ${text}`) && screen.at > 0, () => brief(screen));
+
+    // the home killed with its port file left: ssh still takes the forward's connection, and only a greeting tells
+    const asked = `${opens}
+      const a = (await here.call('home.connection', { retry: true })).result;
+      console.log(JSON.stringify({ state: a.state, detail: a.detail, hasToken: !!a.token }));
+      process.exit(0);`;
+    const up = linksOf()[ids.remote]?.since;
+    sh(L, `systemctl --user kill -s KILL --kill-whom=main ${UNIT}; systemctl --user stop ${UNIT}`, { ok: false });
+    check('the port file stays behind', sh(L, 'test -f ~/.svall/port', { ok: false }).code === 0, 'the port file went with the daemon');
+    const dead = window(R, asked);
+    check('a home that does not greet reads unreachable', dead.state === 'unreachable' && !dead.hasToken, () => brief(dead));
+    const lastly = call(R, 'term.lastScreen', { id: onHome });
+    check('the last screen stands while it is away', lastly?.text?.includes(`did: ${text}`), () => brief(lastly));
+    sh(L, `systemctl --user start ${UNIT}`);
+    linked(ids, up);
+    const back = window(R, asked);
+    check('a home back reads connected', back.state === 'connected' && back.hasToken, () => brief(back));
+    sh(L, `svall robot close ${onHome}`);
 
     const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
     for (const m of [R, L]) {

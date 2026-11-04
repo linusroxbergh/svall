@@ -525,7 +525,7 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(store.getState().home?.name).toBe('other');
   });
 
-  it('falls back to no daemon that does not say it serves this home: one that calls itself the home ends the following', async () => {
+  it('follows only the home its own daemon names: one that calls itself the home ends the following', async () => {
     await following();
     const stale = home.sockets[0];
     const closed = vi.spyOn(stale, 'close');

@@ -39,13 +39,13 @@ copy it shows.
 - Robots on this Mac are live, with their terminals.
 - A robot on studio shows unknown, with the last screen studio sent. A robot on any other machine shows unknown.
 - A change to a robot on this Mac, or a new island, is kept here and reaches studio once it answers, as in
-  [While this Mac sleeps](placement.md#while-this-mac-sleeps). A change to a robot elsewhere is refused in words.
+  [While the home is away](placement.md#while-the-home-is-away). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
   until studio answers again.
 - Moves, phone settings and what a machine's setup offers are hidden: only the home answers them.
 
 When studio answers, the window goes back to it and reopens its terminals without a reload, and what you did here lands there once.
-Each change is applied by the rules in [Moving a robot](placement.md#while-this-mac-sleeps). A server whose daemon restarts or dies does
+Each change is applied by the rules in [Moving a robot](placement.md#while-the-home-is-away). A server whose daemon restarts or dies does
 the same within 15 seconds of answering, on the new port if it moved. Its robots never notice: they run in its tmux.
 
 ## What a person has to fix
@@ -64,7 +64,7 @@ starting its daemon. A wake does not.
 The app and the server speak one protocol, with no window between releases.
 
 - **studio runs 0.21, this Mac 0.22**, with **Upgrade studio**. It installs this Mac's release there and restarts the fleet's daemon as the
-  home; robots on studio keep running through it, and the window reconnects by itself. The app never upgrades the server without
+  home, whichever name the fleet has here, and enrols nothing; robots on studio keep running through it, and the window reconnects by itself. The app never upgrades the server without
   you asking. While the two differ, the window works on this Mac's copy, and this Mac's link to studio holds off as any worker's does.
 - **studio runs 0.23, this Mac 0.22; update Svall on this Mac**: nothing passes until then.
 

@@ -1,29 +1,29 @@
 # Moving a robot
 
-Each robot runs on one machine: this Mac, or a Linux machine [added as a worker](setup.md) of the fleet. This page reads for a fleet
-whose home is this Mac; for [a home on a server](home.md), the sentences name the server wherever this page says "this Mac" of the home. A robot you
+Each robot runs on one machine: the fleet's home, or a Linux machine [added as a worker](setup.md) of the fleet. The home is this Mac unless the fleet has
+[a home on a server](home.md); sentences quoted here are as a Mac home shows them. A robot you
 move to a worker keeps its conversation, its branch, its commits and its uncommitted changes, and keeps working while
-this Mac sleeps. The fleet stays on this Mac: its islands, map, notes, phone and mission control. A worker runs robots
+the home sleeps. The fleet stays on the home: its islands, map, notes, phone and mission control. A worker runs robots
 and nothing else, and keeps its own clone of each repository its robots work in.
 
 Robots on different machines share islands, cards, the map, the board and the keyboard flow. A robot on a worker names
 its machine on its board card, token, sidebar row, side card and terminal card, and keeps its board column; `svall robot run`, `read`, `wait` and
-`revive` reach it there, and its terminal attaches over this Mac's own ssh connection to the worker. Its Files,
+`revive` reach it there, and its terminal attaches over the home's own ssh connection to the worker. Its Files,
 Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**
 opens a terminal on the worker with a `cd` to its folder typed at the prompt: press Return to go there. The Usage
 panel counts the robots on each worker too, read on the worker where their
-transcripts are; a worker that does not answer within 5 seconds is left out, and this Mac's own limits still show. The
-scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: this Mac asks, the
-worker reads the transcript, and this Mac writes the answer.
+transcripts are; a worker that does not answer within 5 seconds is left out, and the home's own limits still show. The
+scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: the home asks, the
+worker reads the transcript, and the home writes the answer.
 
 A file dropped on a robot's terminal has its path typed at the prompt, as Ghostty types a drop, several files' paths on
 one line; an agent that reads image paths, as Claude Code does, attaches the image. For a robot on a worker the file
-goes there first, through this Mac's daemon and its link to the worker, and lands in a folder of its own in
+goes there first, through the home's daemon and its link to the worker, and lands in a folder of its own in
 `/tmp/svall-drop-<uid>` there, readable by you alone; its path there is what is typed. **⌃V** in that terminal, while
 what you copied is an image and no text, does the same with the image as `pasted-image-<date>-<time>.png`, where the
 agent would look for it in the worker's clipboard, which a server has none of. ⌘V, and a paste of text, are never sent
 anywhere. Each file may be at most 100 MB, and a folder is not sent; a drop to a robot that is moving, or on a worker
-this Mac cannot reach, says so ("linus-vault is not reachable") and types nothing, as does one the worker has no room
+the home cannot reach, says so ("linus-vault is not reachable") and types nothing, as does one the worker has no room
 for in `/tmp`. A drop folder there is removed a week after it came, when the next drop lands.
 
 ## Moving one
@@ -79,9 +79,9 @@ and its own button or action, the first with its details behind it; `svall robot
 1. **The worker is reachable and runs this release.** "linus-vault is not reachable; try again when it is awake".
    One that does not answer in time: "linus-vault did not answer; try again; if it keeps happening, Check it under Machines".
    "linus-vault runs X, this Mac Y; upgrade it under Machines", whose button **Upgrade linus-vault** upgrades it from
-   the sheet and checks again, or "update svall on this Mac" when the worker's is the newer. A worker whose state schema or link protocol is not this Mac's stays linked, with its ssh connection
+   the sheet and checks again, or "update svall on this Mac" when the worker's is the newer. A worker whose state schema or link protocol is not the home's stays linked, with its ssh connection
    and the terminals on it, but nothing else passes until it is upgraded, and its robots show unknown; two builds of
-   one release that differ so say "linus-vault runs a different build; upgrade it under Machines". This Mac greets
+   one release that differ so say "linus-vault runs a different build; upgrade it under Machines". The home greets
    it again every 5 minutes and after `svall host upgrade`.
 2. **The robot's agent is installed and logged in there, at the same version or newer.** "claude is not installed on
    linus-vault", "linus-vault runs claude 2.1.299, this Mac 2.1.300; update claude on linus-vault", "claude is not
@@ -109,7 +109,7 @@ and its own button or action, the first with its details behind it; `svall robot
 4. **The repository is known to the worker.** At the main checkout's place there (`/Users/ada/code/app` on the Mac is
    `/home/ada/code/app` on the worker) it has a clone of the same repository, or nothing and a remote it can fetch
    from with its own credentials. "svall has no remote; push svall to a remote first". "linus-vault cannot read
-   github.com/ada/svall; log gh in there", with the terminal button. A shallow clone on this Mac refuses, as its
+   github.com/ada/svall; log gh in there", with the terminal button. A shallow clone on the home refuses, as its
    oldest commit is not the root commit a full clone there holds: "svall is a shallow clone; git -C
    '/Users/ada/code/svall' fetch --unshallow". A path in the way is refused with its path, and nothing there is ever
    reset or deleted to make room.
@@ -131,7 +131,7 @@ and its own button or action, the first with its details behind it; `svall robot
    working** or **Move anyway and end it: a command is running**, and **Move** takes it; unticked, the move refuses as
    above. A robot waiting on a question moves too: it resumes idle, and asks again when prompted.
 
-Mission control's robots stay on this Mac and have no move button.
+Mission control's robots stay on the home and have no move button.
 
 ## What travels
 
@@ -141,13 +141,13 @@ Mission control's robots stay on this Mac and have no move button.
 - **The branch.** The commits the worker's clone lacks, as a Git bundle; the staged and the unstaged changes, each
   applied as they were; and the untracked files Git does not ignore, with their modes and links. The first move into a
   repository clones it on the worker from its remote, and carries only the commits the clone does not hold.
-- **The agent's setup.** Before every move, and each time it links to the worker, this Mac copies its agent setup
+- **The agent's setup.** Before every move, and each time it links to the worker, the home copies its agent setup
   there, one way and only what changed since the last copy. That is Claude's `settings.json`, `CLAUDE.md`, `skills/`,
   `rules/`, `agents/`, `commands/`, `keybindings.json`, plugins and the MCP servers in `~/.claude.json`; Codex's
   `config.toml`, `AGENTS.md` and `~/.agents/skills`; OpenCode's config, commands, skills, agents, plugins and
   `AGENTS.md`; and the fleet's agent profiles. A key in them, such as an MCP server's `env` value, travels only once
   you tick it for that worker; until then the rest travels without it. A file whose keys Svall cannot leave out, such
-  as a plugin's LSP config with a key in its `env` or a subagent defining an MCP server with one, stays on this Mac
+  as a plugin's LSP config with a key in its `env` or a subagent defining an MCP server with one, stays on the home
   until you tick it, and then travels as it is. Logins never travel. Nor do Claude Code's `hooks` and `statusLine` settings, which
   stay as the machine has them, its `env` values until you tick them (a ticked one never replaces a value the machine
   set itself), the settings that run a program for a key (`apiKeyHelper`, `awsCredentialExport`,
@@ -177,18 +177,18 @@ A move never pushes: commits travel in the bundle, and the remote's branches are
 
 ## Moving back
 
-Moving back is the same move the other way. The worktree the robot left on this Mac is compared with what the move
+Moving back is the same move the other way. The worktree the robot left on the home is compared with what the move
 recorded:
 
 - A branch that moved refuses: "kanban moved on this Mac since the move; merge or rename it".
-- Another branch of the robot's branch's name on this Mac, holding commits the worker's lacks, refuses: "this Mac has
+- Another branch of the robot's branch's name on the home, holding commits the worker's lacks, refuses: "this Mac has
   a branch fix-login with commits this one lacks; merge or rename it there first".
-- A branch on this Mac that git cannot keep beside the robot's, one spelled the same but for case, which macOS's file
+- A branch on the home that git cannot keep beside the robot's, one spelled the same but for case, which macOS's file
   system takes for one, or one whose name is a folder of the other's, refuses: "this Mac has a branch Fix-login, which
   it cannot keep beside fix-login; rename one of them first".
 - A worktree that changed refuses: "changes on this Mac in /Users/ada/code/app/.claude/worktrees/kanban since the
   move; stash or commit them". It is looked at again right before it is reset.
-- An OpenCode session this Mac's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
+- An OpenCode session the home's OpenCode went on with refuses: "OpenCode went on with session ses_… on this Mac
   since the move; save it with opencode session export, then delete it". A move out refuses the same way for the
   worker's copy.
 - A git operation under way in the worktree there, or a file marked assume-unchanged, refuses as check 3 does on the
@@ -196,7 +196,7 @@ recorded:
 - An agent working there, or a command running in its shell there, refuses as check 7 does on the way out: "kanban is
   working; interrupt it now", "a command is running; move anyway and it ends". Choosing it (`--interrupt-after`)
   interrupts what still runs there after that long, then rests it.
-- The robot's agent on this Mac refuses as check 2 does the worker's: "claude is not installed on this Mac; on this
+- The robot's agent on the home refuses as check 2 does the worker's: "claude is not installed on this Mac; on this
   Mac, run curl -fsSL https://claude.ai/install.sh | bash", "this Mac runs claude 2.1.299, linus-vault 2.1.300; on
   this Mac, run claude update", "claude is not logged in on this Mac; on this Mac, run claude auth login". Run it in a
   terminal here, then **Check again**.
@@ -207,9 +207,9 @@ Otherwise the worktree is reset to the commit it was left at, unlocked, and the 
 applied to it: its commits, its staged and unstaged changes and its untracked files. The worktree it leaves on the
 worker is then locked the same way, and the next move there takes it back by the same rules.
 
-A robot started on the worker, one that went on in another worktree there, or one whose worktree on this Mac is gone
-and no longer listed by git comes back into a new worktree of this Mac's clone, at the place the worker's has in its
-clone, and its work is applied to it the same way. A worktree it left elsewhere on this Mac is unlocked and kept as it
+A robot started on the worker, one that went on in another worktree there, or one whose worktree on the home is gone
+and no longer listed by git comes back into a new worktree of the home's clone, at the place the worker's has in its
+clone, and its work is applied to it the same way. A worktree it left elsewhere on the home is unlocked and kept as it
 is; one whose folder is gone stays locked, so no prune drops git's record of a copy moved elsewhere. Before anything
 moves, the way back refuses:
 
@@ -225,32 +225,32 @@ moves, the way back refuses:
   worktree repair <its new place> if you moved it, else git worktree unlock '/Users/ada/code/app/.claude/worktrees/kanban'
   && git worktree remove '/Users/ada/code/app/.claude/worktrees/kanban'", the unlock only for a locked one. Git cannot
   tell a folder moved from one deleted, so the way back leaves its record alone.
-- The robot's branch checked out on this Mac, its main checkout included, or being rebased or bisected there: "scout
+- The robot's branch checked out on the home, its main checkout included, or being rebased or bisected there: "scout
   is checked out in /Users/ada/code/app on this Mac; check out another branch there first". The way back never changes
   a checkout's branch here.
 
-## While this Mac sleeps
+## While the home is away
 
-A robot on a worker keeps working while this Mac sleeps or is out of reach, and `svall` in its terminal answers from
+A robot on a worker keeps working while the home sleeps or is out of reach, and `svall` in its terminal answers from
 the worker:
 
-- `svall robot new` starts the robot on the same worker, awake Mac or not; mission control is refused: "mission
-  control stays on this Mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
+- `svall robot new` starts the robot on the same worker, the home awake or not; mission control is refused: "mission
+  control stays on this Mac; start it on another island". While the home is away, `--cwd` must be inside a clone the
   worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
-  "started on linus-vault while this Mac was away", and the worker starts at most five robots until this Mac answers
+  "started on linus-vault while this Mac was away", and the worker starts at most five robots until the home answers
   again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run`, `send` and `read` reach the robots on it. `--report` on `robot new` or
-  `robot send` gets the sentence below, as this Mac keeps the reports.
+  `robot send` gets the sentence below, as the home keeps the reports.
 - `svall island create` makes an island on the worker, and `svall island update` changes an island's name and
   description; folding or unfolding one is taken too. `svall island delete` deletes an island no robot stands on in the
-  fleet as the worker holds it; its docs stay until this Mac takes the delete. Mission control, a new island with
+  fleet as the worker holds it; its docs stay until the home takes the delete. Mission control, a new island with
   `--context`, and any other change to an island get the sentence below.
-- `svall status`, `robot show` and the other reads answer from the fleet as this Mac last sent it, with the worker's
-  changes this Mac has yet to take over it.
+- `svall status`, `robot show` and the other reads answer from the fleet as the home last sent it, with the worker's
+  changes the home has yet to take over it.
 
-With **Phone while this Mac is off** ticked for a worker ([how](setup.md#the-phone-while-this-mac-is-off)), the phone
-keeps working too. Its Home Screen app keeps a copy of its page; when this Mac does not answer within 2.5 seconds, it
+With **Phone while this Mac is off** ticked for a worker ([how](setup.md#the-phone-while-the-home-is-off)), the phone
+keeps working too. Its Home Screen app keeps a copy of its page; when the home does not answer within 2.5 seconds, it
 opens that copy and connects to the worker's own phone link, in the same app and without pairing again. Through the
 worker:
 
@@ -260,31 +260,31 @@ worker:
   reachable", and the header reads "on linus-vault · ada-mac asleep";
 - islands can be made there, and renamed, folded and deleted, as `svall island` does on the worker; mission control
   shows open, neither folded nor edited;
-- what only this Mac answers is hidden: mission control, notification settings, and closing, notes and docs of robots
+- what only the home answers is hidden: mission control, notification settings, and closing, notes and docs of robots
   elsewhere;
 - the worker sends the notifications for its own robots, as it does whenever it serves the phone.
 
-Once this Mac answers again, the phone is this Mac's again.
+Once the home answers again, the phone is the home's again.
 
 Everything else is refused with "linus-vault cannot reach this Mac right now; try again when it is awake": moves,
-browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes this Mac as away
+browser tabs, a robot's figure or island, and calls about robots on other machines. A worker takes the home as away
 once 45 seconds pass with nothing from it.
 
-The worker journals each change in order until this Mac takes it; `journal/applied.ndjson` in its Svall home lists
-the last 500 this Mac has acknowledged, with what each changed. A note set with `svall robot update` or in the app holds
+The worker journals each change in order until the home takes it; `journal/applied.ndjson` in its Svall home lists
+the last 500 the home has acknowledged, with what each changed. A note set with `svall robot update` or in the app holds
 at most 16,384 characters and a text typed into a robot at most 262,144, on either machine, so that each change fits
 the 2 MiB a link carries at once. One still over it, such as a context with very long labels, is refused on the worker:
 "this change is 2400000 bytes, over the 2097152 the link to ada-mac carries". Once the fleet it last sent is an hour old, a robot's
 brief there says so under its heading: "context as of 2026-10-26T06:12:00.000Z; ada-mac is not reachable".
 
-Once this Mac answers, what the worker did lands here once each, in the order it was done:
+Once the home answers, what the worker did lands here once each, in the order it was done:
 
 - A robot started there keeps its cell, or stands elsewhere on its island when another robot took that cell meanwhile.
   One whose island was deleted here, or is full, stands on the island "recovered from linus-vault", its worktree and
   transcript left as they are.
 - An island made there keeps its id, so a robot started on it there stands on it here. Where another island took its
   place meanwhile it goes to the nearest free one, and a name another island has here gets a number: "docs 2".
-- A field changed here since keeps this Mac's value, and the note names the worker's: "linus-vault set note to
+- A field changed here since keeps the home's value, and the note names the worker's: "linus-vault set note to
   "reviewing" while this Mac slept; it had changed here since". So does a name another robot has taken meanwhile:
   "linus-vault set name to "kb2" while this Mac slept; another robot has that name here".
 - An island's name, description and fold follow the same rule. An island has no note, so svalld's log names the
@@ -292,25 +292,25 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   here since". A change to an island deleted here is dropped, the log saying so.
 - An island deleted there goes here with its docs, after the closes the worker made before it. One a robot stands on
   here stays, and the log says why: "linus-vault: island.delete mu_3k9x0q2m7a not applied: island docs is not empty".
-- A file or folder added to a robot's context there that this Mac does not have is left out, and the note names it:
+- A file or folder added to a robot's context there that the home does not have is left out, and the note names it:
   "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
-- A doc changed both there and here, such as a robot's `notes.md`, keeps this Mac's text. The worker's lands beside
+- A doc changed both there and here, such as a robot's `notes.md`, keeps the home's text. The worker's lands beside
   it as `<name>.<machine>.<id>.conflict.md`, and the note of each robot on the worker it concerns names it:
   "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as
-  notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has this
-  Mac's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
+  notes.linus-vault.mu_3k9x0q2m7a.conflict.md". Its next changes there go into that copy until the worker has the
+  home's text. A doc deleted there and changed here stays: "linus-vault deleted robots/c_4f2k9a/notes.md, which changed
   here since; it stays". A copy's name keeps to the 100 bytes a tar carries: a longer one is cut and ends in a short
   hash of the doc's path, and a copy in a folder too deep for a tar goes a folder up, the note naming where. A doc over
   1 MB, or with a name a tar cannot carry (over 100 bytes), stays on the machine it is on, the log saying so; on a
-  worker it also keeps from that worker any doc of this Mac's in its place: at its path, under it, or at a folder above
+  worker it also keeps from that worker any doc of the home's in its place: at its path, under it, or at a folder above
   it.
 - A file made a folder, or a folder made a file, on one machine is taken by the other where that path has not changed
-  there since. Where it has, this Mac keeps its own, and the worker's doc lands beside the file or folder in its way,
+  there since. Where it has, the home keeps its own, and the worker's doc lands beside the file or folder in its way,
   named for its path from there, and the robot's note names it: "linus-vault wrote robots/c_4f2k9a/plan/a.md, but
   robots/c_4f2k9a/plan is a file on this Mac; linus-vault's version is kept as
   robots/c_4f2k9a/plan-a.4be0c1.linus-vault.mu_3k9x0q2m7a.conflict.md". A file made a folder, or a folder a file, on a
   worker before it ran this release drains too, but leaves such a copy and a note behind.
-- A change this Mac cannot apply is skipped, and the robot's note says why. So is a report on a robot that this Mac
+- A change the home cannot apply is skipped, and the robot's note says why. So is a report on a robot that the home
   cannot read: "linus-vault sent a report on this robot that this Mac cannot read; it was skipped: …".
 - A robot started on a branch another robot of the same repository works on, on either machine, says so in its note:
   "shares branch kb with board".
@@ -325,12 +325,12 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - **After it is**, a crash on either machine resumes the move from its journal; the robot never reopens on the machine
   it left. An agent that does not start there shows its error on the card with **Retry**, or
   `svall robot move <id> --retry`, which starts it without moving it again.
-- **A worker this Mac cannot reach**: its robots show the status unreachable, their cards "linus-vault is not reachable"
+- **A worker the home cannot reach**: its robots show the status unreachable, their cards "linus-vault is not reachable"
   (or "runs a different build; upgrade it under Machines") under the machine line with **Check linus-vault**, which opens
   the Machines panel on a check of it, and their terminals "linus-vault is not
   reachable" with the screen the worker last sent after the robot's turn under it; a worker on another build shows
-  that screen under its own sentence. The phone reaches a robot on a worker through this Mac, its terminal and
-  questions included; while this Mac has lost the worker, the phone shows that screen under the same sentence:
+  that screen under its own sentence. The phone reaches a robot on a worker through the home, its terminal and
+  questions included; while the home has lost the worker, the phone shows that screen under the same sentence:
   "linus-vault is not reachable", or "linus-vault runs a different build; upgrade it under Machines". The robots keep
   running there, and are never marked dormant for being out of reach. Once the worker answers again, what they did
   meanwhile comes home in order and the terminals attach again.
@@ -343,13 +343,13 @@ Once this Mac answers, what the worker did lands here once each, in the order it
 - Context items of kind file or folder outside the worktree do not exist on the other machine.
 - No platform or filter checks: a robot whose work needs Xcode moves and finds out.
 - A second terminal moves as a shell in the same worktree; a command running in it ends.
-- While this Mac is off, the phone reaches only the robots of a worker with **Phone while this Mac is off** ticked, one
+- While the home is off, the phone reaches only the robots of a worker with **Phone while this Mac is off** ticked, one
   worker at a time.
 - Robots move one at a time; an island does not move as a whole.
 - A dev server a robot runs on a worker is not forwarded to this Mac.
 - A worker that disappears for good: its robots stay unknown until you close them.
-- The scribe passes a robot on a worker only while this Mac is awake to ask for it.
-- A restart of this Mac's daemon forgets the last screen a worker sent until the worker is back.
+- The scribe passes a robot on a worker only while the home is awake to ask for it.
+- A restart of the home's daemon forgets the last screen a worker sent until the worker is back.
 - A question an agent had open does not survive a move: the agent resumes idle and asks again.
 - The conversation travels whole: anything the agent pasted or printed in it, a key included, is in the transcript
   on both machines.

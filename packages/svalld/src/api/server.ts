@@ -84,9 +84,9 @@ export function cookieOf(req: IncomingMessage, name: string): string | undefined
   return undefined;
 }
 
-/** Only svalld's own page: on loopback, or on the tailnet name when proxied. Any other name could be a page made to resolve to this Mac. */
 const isLoopback = (address: string | undefined): boolean => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 
+/** Only svalld's own page: on loopback, or on the tailnet name when proxied. Any other name could be a page made to resolve to this Mac. */
 export function originAllowed(req: IncomingMessage, extra: string[] = [], proxied = false): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
