@@ -691,6 +691,7 @@ console.log(a.socket);
     check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
 
     // a window on remote: what its daemon says of the home, then the home's own API over the forward it makes
+    const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
     const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
     const ask = `
       import fs from 'node:fs';
