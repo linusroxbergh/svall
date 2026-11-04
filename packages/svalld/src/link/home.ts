@@ -61,7 +61,7 @@ type Options = {
   onEvent(kind: string, data: unknown, machine: MachineId): Promise<Staged | void>;
   onInventory(inv: Inventory, machine: MachineId): Promise<void>;
   /** A call the worker sends on to the home, as a CLI in one of its panes makes it. */
-  onCall?(method: string, params: unknown): Promise<unknown>;
+  onCall?(method: string, params: unknown, machine: MachineId): Promise<unknown>;
   /** A notification from a linked worker, never journaled nor acked. */
   onNotify?(kind: string, data: unknown, machine: MachineId): void;
   /** A worker's inventory and the outbox past it are taken, and snapshots go to it. */
@@ -259,14 +259,9 @@ export class WorkerLink {
     return new Promise((done) => this.waiting.push({ version, done }));
   }
 
-  /** Whether it takes the home's agent configuration: a Mac keeps its own, as the mirror keeps no copy of what it replaces. */
-  get mirrored(): boolean {
-    return this.entry.record.platform !== 'darwin';
-  }
-
   /** Sends the home's agent configuration; a failure is logged, the mirror being a convenience. */
   pushMirror(): Promise<void> {
-    if (!this.o.mirror || !this.mirrored || !this.connected()) return Promise.resolve();
+    if (!this.o.mirror || !this.connected()) return Promise.resolve();
     return this.o.mirror.push(this).then(() => {}, (e: Error) => this.o.log.error(`${this.name}: the agent configuration was not mirrored: ${e.message}`));
   }
 
@@ -372,7 +367,7 @@ export class WorkerLink {
         this.answered = true;
         return;
       case 'call':
-        void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params)));
+        void answerCall(stream, f, this.o.onCall && ((params) => this.o.onCall!(f.method, params, this.machine)));
         return;
       case 'notify':
         this.hook(`a ${f.kind} notification not taken`, () => this.o.onNotify?.(f.kind, f.data, this.machine));

@@ -30,6 +30,15 @@ const Offer = z.object({ id: z.string(), sha256: Sha256 });
 const EnvSet = z.object({ name: z.string().regex(VAR_NAME), value: z.string().min(1).max(4096) });
 const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 
+/** What a push needs of the link to the machine it writes: a home's to a worker, or a worker's to its home. */
+export type MirrorLink = { machine: MachineId; call: WorkerLink['call']; sendBlob(id: string, file: string): Promise<void> };
+export type Pushed = { sent: number; backup?: string };
+
+/** Where a first push onto this machine keeps what it replaces: a Mac, or a machine that dials its home, holds a person's own
+ *  setup. It is asked of the machine itself, as the record a home keeps of it says what was typed at its enrolment. */
+export const backupsHere = (folder: string, worker?: { homeSsh?: string }, platform: NodeJS.Platform = process.platform): string | undefined =>
+  (platform === 'darwin' || worker?.homeSsh ? folder : undefined);
+
 /** The home's side: its agent configuration packed and sent to a worker, by what the consent file ticks for it. */
 export class Mirror {
   // each worker's last push, which its next one waits for
@@ -42,10 +51,15 @@ export class Mirror {
   constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string; envFile?: string }) {}
 
   /** Resolves once the worker has applied what `link` carried; pushes to one worker go one at a time, in order. */
-  push(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
-    const run = (this.chains.get(link.machine) ?? Promise.resolve()).then(() => this.pushNow(link));
-    this.chains.set(link.machine, run.catch(() => {}));
-    return run;
+  push(link: MirrorLink): Promise<Pushed> {
+    return this.inTurn(link.machine, () => this.pushNow(link));
+  }
+
+  /** Runs `run` in turn with the pushes to `machine`: after those begun so far, and before any begun later. */
+  inTurn<T>(machine: MachineId, run: () => Promise<T>): Promise<T> {
+    const turn = (this.chains.get(machine) ?? Promise.resolve()).then(run);
+    this.chains.set(machine, turn.catch(() => {}));
+    return turn;
   }
 
   /** Resolves once every push to `machine` begun so far has ended, applied or not. */
@@ -117,7 +131,7 @@ export class Mirror {
     return [...new Set(readServers(this.o, []).servers.flatMap((s) => (typeof s.scope === 'object' && 'project' in s.scope ? [s.scope.project] : [])))];
   }
 
-  private async pushNow(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
+  private async pushNow(link: MirrorLink): Promise<Pushed> {
     const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on ${homeWord()}`);
@@ -131,8 +145,8 @@ export class Mirror {
       // above any push this home gave up on, which the worker may still be applying
       const seq = Math.max(this.sent.get(link.machine) ?? 0, facts.state.applied ?? 0) + 1;
       this.sent.set(link.machine, seq);
-      await link.call('config.apply', { id, seq }, { timeoutMs: APPLY_MS });
-      return { sent };
+      const { backup } = await link.call<{ backup?: string }>('config.apply', { id, seq }, { timeoutMs: APPLY_MS });
+      return { sent, ...(backup && { backup }) };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -150,7 +164,7 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
  * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger;
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; everyPush?: boolean;
 }): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {
@@ -191,7 +205,7 @@ export function mirrorCalls(o: MirrorHomes & {
         if ((await b.got).sha256 !== b.sha256) throw new Error('the agent configuration did not arrive as it left');
         await unpack(path.join(b.dir, 'mirror.tar'), path.join(b.dir, 'blob'));
         const unlock = await lockAgentFiles(o.homedir, b.abandon.signal);
-        let done: { written: string[]; removed: string[] };
+        let done: Awaited<ReturnType<typeof applyMirror>>;
         try {
           // an older push would put back what a later one took away
           const last = readState(o.stateFile).applied;

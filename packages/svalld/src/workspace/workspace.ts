@@ -58,7 +58,7 @@ export class Workspace {
   /** `refused` names the files no root reaches: Claude Code's and Codex's logins, every fleet's keys.
    *  `trees` are the folders whose files may be created, renamed and deleted: the docs and the agent profiles.
    *  `trash` holds what setAside took until putBack; what a past run left there cannot be put back, so it goes. */
-  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = [], private trash?: string) {
+  constructor(private rootOf: (id: string) => string, private log: Logger, private refused: () => string[] = () => [], private trees: string[] = [], private trash?: string, private sealed: () => string[] = () => []) {
     if (trash) fs.rmSync(trash, { recursive: true, force: true });
   }
 
@@ -81,7 +81,9 @@ export class Workspace {
   private refusal(): { refused: string[]; is: (abs: string) => boolean } {
     const refused = this.refused();
     const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
+    const sealed = this.sealed().map((s) => realOf(s) ?? s);
     const is = (abs: string): boolean => {
+      if (sealed.some((s) => within(realOf(abs) ?? abs, s))) return true;
       if ([abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p), refused))) return true;
       const own = idOf(abs);
       if (own !== undefined) return ids.has(own);
@@ -111,7 +113,7 @@ export class Workspace {
     try { dirents = fs.readdirSync(abs, { withFileTypes: true }); }
     catch { throw new WorkspaceError('not_found', `${rel || '.'} is not a folder`); }
     // only a folder that holds a refused file pays for the identity test, and only over its own entries
-    const holder = refusal.refused.some((r) => this.sameFile(abs, path.dirname(r)));
+    const holder = refusal.refused.some((r) => this.sameFile(abs, path.dirname(r))) || this.sealed().some((s) => this.sameFile(abs, path.dirname(s)));
     const named = dirents.filter((d) => d.name !== '.git' && !this.isCopy(d.name, refusal.refused) && !(holder && refusal.is(path.join(abs, d.name))));
     const ignored = await ignoredNames(abs, named.map((d) => d.name));
     // a name git ignores is still the user's to open, so the listing marks it rather than dropping it

@@ -17,6 +17,7 @@ import { HomeDocs, WorkerDocs, noteConflict } from '../../src/placement/docs-syn
 import { FarViewers, RemoteWatches, ViewerNotice } from '../../src/placement/far-viewers.js';
 import type { MirrorHomes } from '../../src/placement/mirror-state.js';
 import { Mirror, mirrorCalls } from '../../src/placement/mirror.js';
+import { SetupCopy, workerSetup } from '../../src/placement/mirror-copy.js';
 import { homeRootOf } from '../../src/placement/repo-key.js';
 import { Replay } from '../../src/placement/replay.js';
 import { Router, fileCalls, forgetRobot, workerCalls } from '../../src/placement/router.js';
@@ -88,7 +89,7 @@ export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
   /** w1 dials in: its record says so, and the home reaches its link.sock with no ssh route for terminals. */
   dialIn?: true;
-  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string } }; homeLog?: Logger;
+  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string; backups?: string } }; homeLog?: Logger;
   usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
   const config = Config.parse({});
@@ -124,7 +125,7 @@ export function world(o: {
       return conflict && { change: () => noteConflict(homeStore, machine, conflict, '/Users/ada'), docs: true as const };
     },
     onInventory: (inv, machine) => homeRouter.reconcileWorker(inv, machine),
-    onCall: (method, params) => answer(method, params, homeCtx),
+    onCall: (method, params, machine) => answer(method, params, homeCtx, machine),
     onNotify: (kind, data, machine) => {
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
@@ -136,10 +137,13 @@ export function world(o: {
       else homeTerminals.farEvent(key, ev, machine);
     },
     onSynced: (machine) => { void remoteWatches.reopen(machine); void homeTerminals.reopen(machine); },
-    onLost: (machine) => homeTerminals.lostMachine(machine),
+    onLost: (machine) => { homeTerminals.lostMachine(machine); setupCopy?.lost(machine); },
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),
     ...(homeDocs && { docs: homeDocs }),
     ...(homeMirror && { mirror: homeMirror }),
+  });
+  const setupCopy = o.mirror && new SetupCopy({
+    ...o.mirror.home, overrides: homePaths.mirrorOverrides, stage: homePaths.cache, stateFile: homePaths.mirrorState, varsFile: homePaths.mirrorVars, envFile: homePaths.env, backups: homePaths.mirrorBackup, log: homeLog, links,
   });
   const replay = new Replay({ store: homeStore, paths: homePaths, log: homeLog, synced: (m) => links.for(m)?.synced === true, homedir: '/Users/ada' });
   const homeRouter = new Router({ store: homeStore, me: H, log: homeLog, links, replay, homedir: '/Users/ada' });
@@ -162,7 +166,7 @@ export function world(o: {
   const homeDrops = new Drops({ dir: path.join(homePaths.cache, 'drops'), store: homeStore, router: homeRouter, links, machine: () => 'mac', folder: { tmp: tmp.home } });
   const homeCtx = ctxOf(homeStore, homeFleet, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
-    mirror: homeMirror, drops: homeDrops, fleetFlag: '',
+    mirror: homeMirror, drops: homeDrops, fleetFlag: '', setupCopy,
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});
@@ -182,6 +186,9 @@ export function world(o: {
   const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
+  const ownSetup = o.mirror && workerSetup({
+    mirror: new Mirror({ ...o.mirror.worker, consent: workerPaths.mirrorConsent, log: silentLogger, envFile: workerPaths.env }), connection, home: H, homeName: () => 'studio', stateFile: workerPaths.mirrorState,
+  });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection, word: () => 'ada-mac' } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
@@ -213,16 +220,16 @@ export function world(o: {
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
       ...workerDropCalls.calls, 'screen.home': homeScreenCall(terminals, H),
     }, workerDocs?.handlers,
-    workerMirror?.calls,
+    workerMirror?.calls, ownSetup && { 'config.copyToHome': () => ownSetup.push() },
   );
   const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
-  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops, fleetHome: () => ({ machine: H, name: workerStore.state.machines?.[H]?.name ?? 'mac', mine: false, me: W }) });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops, workerSetup: ownSetup, fleetHome: () => ({ machine: H, name: workerStore.state.machines?.[H]?.name ?? 'mac', mine: false, me: W }) });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());
   const w = {
     home: {
-      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage, terminals: homeTerminals, mirror: homeMirror,
+      paths: homePaths, store: homeStore, fleet: homeFleet, router: homeRouter, links, ctx: homeCtx, docs: homeDocs, replay, usage: homeUsage, terminals: homeTerminals, mirror: homeMirror, setupCopy,
       /** Holds the mutations the home takes from here on, until the function it returns is called. */
       hold(): () => void {
         let release!: () => void;

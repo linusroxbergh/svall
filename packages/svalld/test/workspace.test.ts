@@ -371,6 +371,23 @@ describe('Workspace files', () => {
     expect(fs.readdirSync(fleet)).toEqual([]);
   });
 
+  it('keeps a sealed folder and all under it out of every call, through a link too, and off the listing of what holds it', async () => {
+    const dir = fs.realpathSync(makeHome());
+    const sealed = path.join(dir, 'mirror-backup');
+    fs.mkdirSync(path.join(sealed, '2026-11-04'), { recursive: true });
+    fs.writeFileSync(path.join(sealed, '2026-11-04/.claude.json'), '{"key":"x"}');
+    fs.writeFileSync(path.join(dir, 'plain.md'), 'plain');
+    fs.symlinkSync(sealed, path.join(dir, 'through'));
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [sealed]);
+    expect((await ws.list('c', '')).map((e) => e.name)).toEqual(['plain.md']);
+    expect(() => ws.read('c', 'mirror-backup/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
+    expect(() => ws.read('c', path.join(sealed, '2026-11-04/.claude.json'))).toThrow('not the fleet\'s to open');
+    expect(() => ws.read('c', 'through/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
+    await expect(ws.list('c', 'mirror-backup')).rejects.toThrow('not the fleet\'s to open');
+    expect(() => ws.write('c', 'mirror-backup/2026-11-04/new.md', 'x', 0)).toThrow('not the fleet\'s to open');
+    expect(ws.read('c', 'plain.md').text).toBe('plain');
+  });
+
   it('asks for the refused paths on every call, so one refused after the start is kept out too', async () => {
     const dir = makeHome();
     fs.writeFileSync(path.join(dir, 'token'), 'secret');

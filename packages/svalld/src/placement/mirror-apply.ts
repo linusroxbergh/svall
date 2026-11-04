@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
 import { AgentKind } from '@svall/protocol';
-import { BATCH_WIDTH, DurableBatch, writeDurable } from '../durable.js';
+import { BATCH_WIDTH, DurableBatch, realStages, writeDurable } from '../durable.js';
 import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
 import { pool } from '../pool.js';
@@ -35,6 +35,7 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
     docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
     secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
     bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }),
+    ...(next.backup && { backup: next.backup.dir === state.backup?.dir ? state.backup : { dir: next.backup.dir } }),
   };
 }
 
@@ -79,13 +80,41 @@ function put(file: string, data: Buffer, mode: number): boolean {
   return true;
 }
 
-// as `put`, written in `batch`
-async function place(batch: DurableBatch, file: string, data: Buffer, mode: number): Promise<boolean> {
+type Keep = (file: string, was: Buffer) => Promise<void>;
+
+// as `put`, written in `batch`, what it replaces handed to `keep` first
+async function place(batch: DurableBatch, file: string, data: Buffer, mode: number, keep?: Keep): Promise<boolean> {
   const at = realPath(file);
   const was = await fsp.readFile(at).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
   if (was?.equals(data)) return false;
+  if (was) await keep?.(file, was);
   await batch.write(at, data, mode);
   return true;
+}
+
+// a folder under `backups` no earlier push named, by the day
+function newBackup(backups: string): string {
+  const day = new Date().toISOString().slice(0, 10);
+  for (let n = 1; ; n++) {
+    const dir = path.join(backups, n === 1 ? day : `${day}-${n}`);
+    if (!fs.existsSync(dir)) return dir;
+  }
+}
+
+// keeps what `file` holds under `dir`, by its place under the user's home, on disk before the file is touched; a copy there is
+// what a push cut short found, which comes before anything the mirror wrote. A copy may hold keys, so it is the owner's alone
+function keeper(dir: string, homedir: string): Keep {
+  const top = path.dirname(path.dirname(dir));
+  return async (file, was) => {
+    const rel = path.relative(homedir, file);
+    const to = path.join(dir, rel.startsWith('..') ? path.join('outside-home', file) : rel);
+    if (fs.existsSync(to)) return;
+    await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
+    const batch = new DurableBatch();
+    await batch.write(to, was, 0o600);
+    await batch.settle();
+    for (let d = path.dirname(to); d !== top && d !== path.dirname(d); d = path.dirname(d)) realStages.fsyncDir(d);
+  };
 }
 
 const asJson = (doc: Doc): string => `${JSON.stringify(doc, null, 2)}\n`;
@@ -200,14 +229,20 @@ function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { pla
 /**
  * Puts the mirror at `blobDir` into this machine's homes. A record of all it may write goes first, so an apply cut short still
  * knows each copy it left, the final one last; files go off the event loop, a few at once, so the link is answered meanwhile.
+ * With `backups`, the first push here, or with `everyPush` each one, keeps a copy of each file it replaces or removes, in a
+ * folder of its own that a push cut short hands on to the next, and answers that folder.
  */
 export async function applyMirror(
-  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number },
-): Promise<{ written: string[]; removed: string[] }> {
+  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number; backups?: string; everyPush?: boolean },
+): Promise<{ written: string[]; removed: string[]; backup?: string }> {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
   const state = readState(o.stateFile);
   const applied = o.seq ?? state.applied;
-  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }) };
+  const handed = state.backup?.done ? undefined : state.backup?.dir;
+  const backup = o.backups === undefined || (state.backup?.done && !o.everyPush) ? undefined : handed ?? newBackup(o.backups);
+  const keep = backup === undefined ? undefined : keeper(backup, o.homedir);
+  const kept = backup === undefined ? state.backup : { dir: backup, done: true as const };
+  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(kept && { backup: kept }) };
   const written: string[] = [];
   const removed: string[] = [];
   const move = mover(m.homes, o);
@@ -245,7 +280,7 @@ export async function applyMirror(
   // a config file holding a ticked key is its owner's alone, whether or not this apply changed it
   for (const [i, d] of DOCS.entries()) {
     const { doc, keyed } = docs[i];
-    if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
+    if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777, keep)) written.push(d.at(o));
     if (keyed) ownerOnly(d.at(o));
   }
   const changed = carried.filter((f) => state.files[f.to] !== next.files[f.to]);
@@ -255,10 +290,10 @@ export async function applyMirror(
     const list = root === 'claude' && PLUGIN_LISTS.some((n) => rel === path.join('plugins', n));
     const bytes = fs.existsSync(override) ? await fsp.readFile(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
     const file = path.join(home, rel);
-    return await place(batch, file, bytes, fs.statSync(from).mode & 0o777) ? file : undefined;
+    return await place(batch, file, bytes, fs.statSync(from).mode & 0o777, keep) ? file : undefined;
   });
   written.push(...wrote.filter((f) => f !== undefined));
-  const keep = new Set(m.keep);
+  const staying = new Set(m.keep);
   const pluginList = path.join(m.homes.claudeDir, 'plugins/installed_plugins.json');
   // a plugin file stays as the mirror last wrote it while the Mac cannot read it or a manifest or list that may name it
   const unread = (to: string): boolean => {
@@ -269,7 +304,7 @@ export async function applyMirror(
   };
   for (const [to, h] of Object.entries(state.files)) {
     if (Object.hasOwn(next.files, to)) continue;
-    if (keep.has(to) || unread(to)) {
+    if (staying.has(to) || unread(to)) {
       next.files[to] = h;
       if (unread(to) && state.keyed?.[to]) (next.keyed ??= {})[to] = state.keyed[to];
       for (const k of Object.keys(state.secrets).filter((x) => unread(to) && JSON.parse(x)[0] === to)) {
@@ -280,6 +315,8 @@ export async function applyMirror(
     }
     const file = fileOf(to);
     if (file && fs.lstatSync(file, { throwIfNoEntry: false })) {
+      const was = keep && await fsp.readFile(realPath(file)).catch(() => undefined);
+      if (was) await keep!(file, was);
       await fsp.rm(file, { force: true });
       removed.push(file);
     }
@@ -298,7 +335,7 @@ export async function applyMirror(
       if (docOverrides.has(path.posix.join(root, rel))) continue;
       const from = path.join(o.overrides, root, rel);
       const file = path.join(home, rel);
-      if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777)) written.push(file);
+      if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777, keep)) written.push(file);
     }
   }
 
@@ -306,7 +343,7 @@ export async function applyMirror(
   await batch.settle();
   await place(batch, o.stateFile, Buffer.from(asJson(next)), 0o600);
   await batch.settle();
-  return { written, removed };
+  return { written, removed, ...(backup !== undefined && fs.existsSync(backup) && { backup }) };
 }
 
 type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string };

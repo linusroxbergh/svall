@@ -393,7 +393,7 @@ export function moveWorld(o: {
         if (o.syncAfterMs) await new Promise((resolve) => setTimeout(resolve, o.syncAfterMs));
         return router.reconcileWorker(inv, machine);
       },
-      onCall: (method, params) => answer(method, params, ctx!),
+      onCall: (method, params, machine) => answer(method, params, ctx!, machine),
       snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: macClaude, codex: path.join(mac, '.codex'), opencode: path.join(mac, '.config/opencode') }, home: mac }),
       ...(mirror && { mirror }),
     });

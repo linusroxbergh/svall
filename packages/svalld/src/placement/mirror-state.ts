@@ -27,10 +27,11 @@ const Bare = z.record(z.string(), z.object({ value: z.string().optional(), envVa
 /**
  * What the mirror last wrote on a worker, by sha256 under a file's `to` or the JSON of a doc and the keys into it; a copy an
  * apply cut short holds either of two shas. `bare` is what an untick leaves, `envVar` where a Codex server's env_vars names it.
+ * `backup` the folder the first push here keeps what it replaces in, `done` once that push has ended.
  */
 export const WorkerState = z.object({
   files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),
-  applied: z.number().int().nonnegative().optional(),
+  applied: z.number().int().nonnegative().optional(), backup: z.object({ dir: z.string(), done: z.literal(true).optional() }).optional(),
 });
 export type WorkerState = z.infer<typeof WorkerState>;
 export type Copied = WorkerState['secrets'][string];

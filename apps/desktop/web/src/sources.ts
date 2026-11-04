@@ -4,7 +4,7 @@ import type { Via } from './placement.js';
 import type { AppStore } from './store/index.js';
 
 // the Mac's own, wherever the fleet's home is
-const MACHINE_METHODS = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.stop', 'fleet.home', 'home.connection', 'home.fallback', 'feedback.preview'] satisfies MethodName[]);
+const MACHINE_METHODS = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.stop', 'fleet.home', 'home.connection', 'home.fallback', 'home.setup', 'home.setupConsent', 'feedback.preview'] satisfies MethodName[]);
 // a robot on this machine is answered here: its terminal attaches to this tmux, and its files are edited in place
 const ROBOT_HERE = new Set<string>(['term.attach', 'fs.list', 'fs.read', 'fs.write', 'repo.status', 'repo.file', 'repo.watch', 'repo.unwatch'] satisfies MethodName[]);
 

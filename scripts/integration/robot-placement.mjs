@@ -654,6 +654,52 @@ const waitOn = (what, fn, seconds = 90) => {
 // the ssh master remote's daemon holds to local
 const MASTER = `pkill -9 -f '^ssh -M -S .* svall@${L}$'`;
 
+// a call on a daemon's own API from its machine, as a window makes it
+const windowCall = (m, method, params) => {
+  const source = `
+    import fs from 'node:fs';
+    const home = process.env.HOME + '/.svall';
+    const ws = new WebSocket('ws://127.0.0.1:' + fs.readFileSync(home + '/port', 'utf8').trim());
+    ws.onopen = () => ws.send(JSON.stringify({ token: fs.readFileSync(home + '/token', 'utf8').trim() }));
+    ws.onmessage = (e) => {
+      const m = JSON.parse(e.data);
+      if (m.id === 0) ws.send(JSON.stringify({ id: 1, method: process.argv[1], params: JSON.parse(process.argv[2]) }));
+      if (m.id === 1) { console.log(JSON.stringify(m)); process.exit(0); }
+    };
+  `;
+  const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
+  return JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)} ${shq(method)} ${shq(JSON.stringify(params))}`).stdout);
+};
+const RULE = '~/.claude/rules/it-dial.md';
+const readRule = (m) => sh(m, `cat ${RULE}`, { ok: false }).stdout;
+const putRule = (m, text) => sh(m, `mkdir -p ~/.claude/rules && printf '%s\n' ${JSON.stringify(text)} > ${RULE}`);
+
+// the mirror's guards on a worker that dials, whose first push since it began to dial is the one a Mac takes: what it replaces is kept
+function dialedSetup(ids) {
+  waitOn("remote takes the home's rule", () => readRule(R) === 'from the home\n');
+  const folders = () => sh(R, 'ls ~/.svall/mirror-backup', { ok: false }).stdout.trim().split('\n').filter(Boolean);
+  const [day] = folders();
+  const kept = `~/.svall/mirror-backup/${day}/.claude/rules/it-dial.md`;
+  check('the first push kept what it replaced', sh(R, `cat ${kept}`, { ok: false }).stdout === 'my own\n', () => `folders ${brief(folders())}`);
+  check("the backup is its owner's alone", /^drwx------/.test(sh(R, `ls -ld ~/.svall/mirror-backup/${day}`).stdout) && /^-rw-------/.test(sh(R, `ls -l ${kept}`).stdout), () => sh(R, `ls -l ${kept}`).stdout);
+  check('a file only the worker has stays', sh(R, 'cat ~/.claude/rules/it-only-here.md', { ok: false }).stdout === 'only here\n', () => 'it went');
+
+  // a tick answers once its push is applied
+  putRule(L, 'changed on the home');
+  const pushed = windowCall(L, 'machines.consent', { machine: ids.remote, item: 'it:none', fields: [], on: false });
+  check('a second push lands', !pushed.error && readRule(R) === 'changed on the home\n', () => `${brief(pushed.error)} ${readRule(R)}`);
+  check('and keeps no copy', folders().length === 1 && sh(R, `cat ${kept}`, { ok: false }).stdout === 'my own\n', () => `folders ${brief(folders())}`);
+
+  const stranger = windowCall(L, 'machines.copySetupFrom', { machine: 'dddddddd-0000-4000-8000-000000000000' });
+  check('a copy names a machine of the fleet', stranger.error?.code === 'not_found', () => brief(stranger));
+  putRule(R, 'copied from the worker');
+  const copied = windowCall(L, 'machines.copySetupFrom', { machine: ids.remote });
+  check('the copy answers', copied.result?.sent > 0, () => brief(copied));
+  check('the copy lands on the home', readRule(L) === 'copied from the worker\n', () => readRule(L));
+  check('the home keeps what it replaced', !!copied.result?.backup && sh(L, `cat ${copied.result.backup}/.claude/rules/it-dial.md`, { ok: false }).stdout === 'changed on the home\n', () => brief(copied.result));
+  for (const m of [L, R]) sh(m, `rm -f ${RULE} ~/.claude/rules/it-only-here.md`);
+}
+
 function dialOut(ids) {
   const ip = (m) => sh(m, `getent hosts ${m} | cut -d' ' -f1`).stdout.trim();
   const blockLocal = `-p tcp -d ${ip(R)} --dport 22 -j DROP`;
@@ -664,6 +710,9 @@ function dialOut(ids) {
     sh(R, `ssh-keyscan -t ed25519 ${L} 2>/dev/null >> ~/.ssh/known_hosts && ssh -o BatchMode=yes svall@${L} true`);
     const record = JSON.parse(sh(L, 'cat ~/.config/svall/machines.json').stdout).machines[ids.remote];
     const since = linksOf()[ids.remote]?.since ?? 0;
+    putRule(L, 'from the home');
+    putRule(R, 'my own');
+    sh(R, "printf 'only here\\n' > ~/.claude/rules/it-only-here.md");
     // the home's half over remote's own ssh, its token on stdout into the worker's half on stdin, as a join does it; the
     // worker's half reads the agents' folders from $SHELL, which docker exec leaves unset and a terminal or ssh sets
     const enrol = sh(R, String.raw`set -eu
@@ -684,6 +733,8 @@ console.log(a.socket);
     check('worker.json dials local', worker.homeSsh === `svall@${L}` && worker.homeSocket === socket && worker.homeMachineId === ids.local, () => brief({ ...worker, token: undefined }));
     linked(ids, since);
     check('the socket', /^srw-------/.test(sh(L, `ls -l ${socket}`).stdout) && socket.startsWith(`${HOMES[L]}/.svall/w/`), () => sh(L, `ls -la ${socket}`, { ok: false }).stdout);
+
+    dialedSetup(ids);
 
     if (ctx.at === 'remote') reposition(ids, 'local');
     reposition(ids, 'remote');

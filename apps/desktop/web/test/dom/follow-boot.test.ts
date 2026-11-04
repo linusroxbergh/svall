@@ -55,6 +55,22 @@ test('a window that reaches its far home reads the listing from it, whose root i
   expect(on(FAR).said('state.get')).not.toEqual([]);
 });
 
+test('a window that follows its far home has its agent setup rows from this machine\'s daemon, and asks the home for the copy', async () => {
+  const { initApp, deps } = await import('../../src/boot.js');
+  initApp();
+  await vi.advanceTimersByTimeAsync(50);
+  void deps().api.call('home.setup', {}).catch(() => {});
+  void deps().api.call('home.setupConsent', { item: 'claude:mcp:a', fields: ['env.K'], on: true }).catch(() => {});
+  void deps().api.call('machines.copySetupFrom', { machine: ME as never }).catch(() => {});
+  await vi.advanceTimersByTimeAsync(0);
+  expect(on(LOCAL).said('home.setup')).toHaveLength(1);
+  expect(on(LOCAL).said('home.setupConsent')).toHaveLength(1);
+  expect(on(FAR).said('home.setup')).toEqual([]);
+  expect(on(FAR).said('home.setupConsent')).toEqual([]);
+  expect(on(FAR).said('machines.copySetupFrom')).toHaveLength(1);
+  expect(on(LOCAL).said('machines.copySetupFrom')).toEqual([]);
+});
+
 test('a reconnect of this machine\'s socket while the page follows its home sends this machine\'s watches again', async () => {
   const { initApp, app } = await import('../../src/boot.js');
   const { store } = initApp();

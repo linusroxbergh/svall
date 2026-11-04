@@ -76,6 +76,8 @@ export function resolvePaths(home: string = svallHome()) {
     mirrorOverrides: path.join(home, 'mirror-overrides'),
     // the home's: which keys each worker's mirror may copy, field by field
     mirrorConsent: path.join(home, 'mirror-consent.json'),
+    // what a push replaced: the first one a worker took, and each copy its home took
+    mirrorBackup: path.join(home, 'mirror-backup'),
     trash: path.join(home, 'trash'),
     opencodeConfig: path.join(home, 'opencode-config'),
     opencodeReplaced: path.join(home, 'opencode-config-replaced'),

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type PushStatus, type Result } from '@svall/protocol';
+import { AgentSetup } from './AgentSetup.js';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setPlacing, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
@@ -440,7 +441,7 @@ function Browser() {
 
 const PANES = [
   ['machine', 'This machine', Machine], ['browser', 'Browser', Browser], ['keyboard', 'Keyboard', Keybindings],
-  ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['machines', 'Machines', Machines],
+  ['notifications', 'Notifications', Notifications], ['phone', 'Phone', Phone], ['fleet', 'The fleet', Scribe], ['machines', 'Machines', Machines], ['setup', 'Agent setup', AgentSetup],
   ['updates', 'Updates', Update],
 ] as const;
 
@@ -458,8 +459,10 @@ export function SettingsCard() {
   useEffect(() => { if (ask) pick(ask.pane); }, [ask]);
   // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
   const fallback = useApp((st) => !!st.via && !st.via.online);
+  // a window on the home holds its agent setup in the Mac's own folders
+  const far = useApp((st) => !!st.via);
   // a worker's daemon holds no phone link, which is its home's to serve
-  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update) && (p !== 'phone' || !fallback));
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update) && (p !== 'phone' || !fallback) && (p !== 'setup' || far));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   return (
     <div className="set-win dialog" ref={box} data-testid="settings" role="dialog" aria-label="Settings">

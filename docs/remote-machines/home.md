@@ -68,6 +68,22 @@ The app and the server speak one protocol, with no window between releases.
   you asking. While the two differ, the window works on this Mac's copy, and this Mac's link to studio holds off as any worker's does.
 - **studio runs a newer Svall than this Mac (0.23, here 0.22); update Svall on this Mac**: nothing passes until then.
 
+## Your agent setup
+
+Your agent setup lives where the fleet lives. studio is the source, and every worker takes it from there, this Mac included: each time
+studio links to this Mac and before every move here, only what changed on studio since the last time.
+
+- **Your own files.** The first push onto this Mac keeps a copy of each file it replaces under `~/.svall/mirror-backup/<date>/` (`~/.svall-<fleet>/` for a named fleet), laid out as under your home, for you alone. Settings → Agent setup names the folder. A later push keeps no copy.
+- **What it leaves.** A push never removes a file it did not write, nor a setting only this Mac has. `mirror-overrides/` in the fleet's home here stands over what comes, as on [any worker](setup.md#your-agent-setup-on-the-machine).
+- **Editing it.** Settings → Agent setup opens studio's `CLAUDE.md`, `settings.json`, skills and rules in the app's editor, and saves them on studio. It offers this while the window reaches studio. A Mac that is its fleet's home has no such pane.
+- **Copy my agent setup from this Mac to studio.** The same pane sends what is on this Mac now, once. Keys stay on this Mac unless you tick them there, field by field; the ticks are this Mac's, and studio has no say in them. studio keeps what the copy replaces in its own `mirror-backup/<date>/`, a folder for each copy, and the pane names it.
+
+A copy carries what changed on this Mac since the last one, so a file you edited on studio since stays unless this Mac's changed too. It
+sends this Mac's files as they are now: what the first push replaced lies in the backup folder, so put back what you want from there first.
+
+studio has no source setting, and nothing syncs by two hops. A Linux worker of studio takes studio's files as they stand, a copy from
+this Mac included, overrides merged, at its next link or move.
+
 ## This Mac asleep
 
 After 45 seconds studio marks this Mac unreachable, and its robots show unknown on the phone with their last screens. Robots on studio go on.
