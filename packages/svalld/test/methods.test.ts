@@ -612,6 +612,18 @@ describe('a window and the fleet\'s home', () => {
     expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), false);
   });
 
+  it('a file of a robot on this worker is written here, not refused at the home', async () => {
+    const write = vi.fn(() => ({ mtimeMs: 1 }));
+    const toHome = vi.fn(() => Promise.reject(new Error('sent home')));
+    const robots = { here: { id: 'here', machine: W }, far: { id: 'far' } };
+    const router = { onWorker: true, runsHere: (r: { machine?: string }) => r.machine === W, placedAt: () => undefined, rootPlacedAt: () => undefined, toHome };
+    const ctx = local({}, { store: { state: { robots } }, router, workspace: { write } });
+    expect(await dispatch({ id: 1, method: 'fs.write', params: { id: 'here', path: 'a', text: 'x', mtimeMs: 0 } }, ctx)).toEqual({ id: 1, result: { mtimeMs: 1 } });
+    expect(toHome).not.toHaveBeenCalled();
+    await dispatch({ id: 2, method: 'fs.write', params: { id: 'far', path: 'a', text: 'x', mtimeMs: 0 } }, ctx);
+    expect(toHome).toHaveBeenCalledTimes(1);
+  });
+
   it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
     const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
     const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };

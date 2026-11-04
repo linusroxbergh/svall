@@ -338,7 +338,7 @@ export async function systemInfo(o: { machineId: MachineId; agents: AgentProber;
 }
 
 // what a worker answers for a robot that runs on it, its home linked or not, so a phone there never waits on the link
-const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive']);
+const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive', 'fs.write']);
 // a drop's parts are staged on the daemon they were sent to, which lands them
 const STAGED = new Set<MethodName>(['drop.part', 'robot.drop']);
 

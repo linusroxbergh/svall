@@ -690,6 +690,38 @@ console.log(a.socket);
     const status = JSON.parse(sh(L, 'svall --json status').stdout);
     check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
 
+    // a window on remote: what its daemon says of the home, then the home's own API over the forward it makes
+    const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
+    const ask = `
+      import fs from 'node:fs';
+      const home = process.env.HOME + '/.svall';
+      const open = (port, token) => new Promise((resolve, reject) => {
+        const ws = new WebSocket('ws://127.0.0.1:' + port);
+        const waiting = new Map();
+        let n = 1;
+        const call = (method, params = {}) => new Promise((ok) => { const id = n++; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); });
+        ws.onopen = () => ws.send(JSON.stringify({ token }));
+        ws.onerror = () => reject(new Error('no socket on ' + port));
+        ws.onmessage = (ev) => {
+          const m = JSON.parse(ev.data);
+          if (m.id === 0) return resolve({ call, ws, protocol: m.result.protocol });
+          if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+        };
+      });
+      const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());
+      const first = await here.call('fleet.home');
+      const a = (await here.call('home.connection', { retry: true })).result;
+      const far = a.port ? await open(a.port, a.token) : undefined;
+      const seen = far && await far.call('fleet.home');
+      const list = far && await far.call('machines.list');
+      console.log(JSON.stringify({ first: first.result, state: a.state, ssh: a.ssh, controlSocket: a.controlSocket, hasToken: !!a.token, protocol: far?.protocol, seen: seen?.result, roles: list?.result.machines.map((r) => [r.id, r.role]) }));
+      process.exit(0);`;
+    const seen = window(R, ask);
+    check('the daemon names its home and how to reach it', seen.first.mine === false && seen.first.machine === ids.local && seen.first.me === ids.remote && seen.state === 'connected' && seen.ssh === `svall@${L}` && seen.hasToken, () => brief(seen));
+    check("the home's API answers over the forward", seen.seen?.mine === true && seen.seen?.machine === ids.local, () => brief(seen));
+    check('the home lists each role', seen.roles?.[0]?.[0] === ids.local && seen.roles[0][1] === 'home' && seen.roles.some(([id, role]) => id === ids.remote && role === 'worker'), () => brief(seen));
+    check('no token in a log', !sh(R, `grep -c ${shq(JSON.parse(sh(L, 'svall connection-info --json').stdout).token)} ~/.svall/svalld.log`, { ok: false }).stdout.trim().match(/^[1-9]/), () => "the home's token is in the worker's log");
+
     const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
     for (const m of [R, L]) {
       const before = linksOf()[ids.remote]?.since;
