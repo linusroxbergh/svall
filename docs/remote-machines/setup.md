@@ -267,17 +267,25 @@ two halves:
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
    forwards its link to. A run again issues a new token, which replaces the one before.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
-   --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker.
-   The home's first snapshot replaces what a fleet holds, so it refuses a fleet that has robots, workers or anything on an island of its own:
-   enrol an empty one with `svall -p <empty fleet> worker enroll`, opened once with `svall <empty fleet>` so launchd has
-   its job.
+   --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker,
+   loading a named fleet's launchd job if it has none. The home's first snapshot replaces what a fleet holds, so it
+   refuses a fleet that has robots, workers or anything on an island of its own, which a fleet opened once does until its
+   first robot closes, and a worker of another fleet, whose robots the new home would close. Name a fleet never opened
+   instead: `svall -p <empty fleet> worker enroll`.
 
-The worker then keeps the link up through sleep, a new network and either daemon's restart. Its robots' terminals open
-on the worker itself; the home shows their screens, files and changes, but no terminal: "kanban runs on ada-mac; open
-it there". A Mac keeps its own agent setup: the home's mirror writes nothing there. A Linux worker keeps the home dialing
-it. `svall host remove <name>` on the home drops the record and the token and ends the link; the worker stays as it is
-until `svall uninstall` runs there. `svall host doctor` and `svall host upgrade` of the home cannot run from the worker,
-whose registry has no record of it. The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
+The worker then dials again after sleep, a new network or either daemon's restart; after a reboot or a quit it stays out
+of reach until its app opens, as launchd starts its daemon only then. Its robots' terminals open on the worker itself; the
+home shows their screens, files and changes, but no terminal: "kanban runs on ada-mac; open it there". A Mac keeps its own
+agent setup: the home's mirror writes nothing there. Fleet, repository and robot notes the fleet held before it enrolled
+stay on disk, unread by a worker. A Linux worker keeps the home dialing it.
+
+`svall host remove <name>` on the home drops the record and its token in every fleet there, which ends this fleet's link
+at once and another fleet's when its stream next drops. The worker stays as it is. `worker.json` is what makes it a worker,
+`svall uninstall` there leaves that file, and removing it by hand is no supported way back to a home. The worker's ssh
+login to the home stays until its key is removed there, which a lost Mac needs. `svall host doctor` and `svall host
+upgrade` of the home cannot run from the worker, whose registry has no record of it.
+
+The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
 

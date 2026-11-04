@@ -1,8 +1,9 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { NewerStateVersion, OlderStateVersion } from '@svall/protocol';
 import { InvalidConfig } from './config.js';
 import { createLogger } from './log.js';
-import { machineId } from './machine.js';
+import { configDir, machineId, machineIdFailure } from './machine.js';
 import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
 import { heldAsHome, isWorker } from './worker/mode.js';
@@ -15,7 +16,12 @@ const log = createLogger(paths.log);
 const asWorker = (): true | undefined => {
   if (process.argv.includes('--worker')) return true;
   if (!isWorker(paths)) return undefined;
-  const held = heldAsHome(paths, machineId());
+  // only a worker's outbox writes it, so what this holds is a worker's, even with no link yet
+  if (fs.existsSync(paths.epoch)) return true;
+  let me: string;
+  try { me = machineId(); } catch (e) { throw new InvalidConfig(machineIdFailure(e), { cause: e }); }
+  let held: string | undefined;
+  try { held = heldAsHome(paths, me); } catch (e) { throw new InvalidConfig((e as Error).message, { cause: e }); }
   if (held) throw new InvalidConfig(`${paths.workerFile} makes this fleet home a worker, but it holds ${held} as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
   return true;
 };
@@ -30,7 +36,7 @@ const report = (line: string, detail = line) => {
 };
 
 // changes whenever a config file or state.json is written, the files a start can be refused for
-const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile].map((file) => {
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, path.join(configDir(), 'machine.json')].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 

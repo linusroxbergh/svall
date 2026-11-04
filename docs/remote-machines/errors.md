@@ -136,8 +136,13 @@ to fix with its name, what it lacks and the one thing to do.
 | Not a machine id, or not enrolled for a field it names | home | Give the worker's id from `svall version --json` there, and a field as the sentence says. |
 | The socket is past what a Unix socket path holds | home | Use an account whose home is as many bytes shorter as it says; a Mac on either end holds 103 bytes, Linux 107. |
 | The socket holds a colon | home | Use a fleet home with none in its path. |
-| Another fleet reaches the machine over ssh | home | `svall -p <that fleet> host remove <name>` first: the machine's record is the account's, so that fleet would lose its route. |
+| Another fleet reaches the machine over ssh | home | `svall host remove <name> --forget` first: it drops that route for every fleet here, as the machine's record is the account's, and leaves the machine as it is. |
+| A run without `--json` | home | Run it with `--json`: each run issues a new token, which only `worker enroll` should read. |
+| The machine is the home itself | home | Give the worker's id: the home is no worker of its own fleet. |
+| The name is another machine's | home | Give another `--name`, or `svall host remove` the machine holding it. |
 | `--home-ssh` and `--home-socket` go together, or one is not what `worker.json` holds | worker | Give both, the destination an ssh destination and the socket the path `fleet enroll-worker` printed. |
 | Not this machine's socket | worker | Run `fleet enroll-worker` again with this machine's id. |
-| A fleet's home holding robots, workers, or an island with a description, instructions, context or notes | worker | `svall -p <empty fleet> worker enroll`: the home's first snapshot would erase them. A `worker.json` written by hand on such a fleet stops its daemon with the same words, until the file goes. |
-| launchd has not loaded the fleet's job | worker | Open the fleet once with `svall <fleet>`, or `svall setup` for the private one. |
+| Already serves another fleet's home | worker | `svall -p <empty fleet> worker enroll`: the new home would close every robot here it does not know. The same fleet enrols again, as after a new token. |
+| A fleet's home holding robots, workers whose machine is in the registry, or an island, mission control included, with a description, instructions, context or notes | worker | `svall -p <empty fleet> worker enroll`: the home's first snapshot would erase them. A fleet opened once holds its first robot until that closes. A `worker.json` written by hand on such a fleet holds its daemon back for the same reason, until the file goes; one that has already started as a worker here boots whatever it holds. |
+| `link.sock` holds a colon | worker | Use a fleet home with none in its path. |
+| No private fleet yet | worker | `svall setup`, which owns the hooks and shims. A named fleet's launchd job is set up and loaded by the enrolment itself. |

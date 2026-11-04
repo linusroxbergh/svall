@@ -123,6 +123,10 @@ export function socketTooLong(socket: string, platform: NodeJS.Platform = proces
 export const dialSocket = (p: Pick<Paths, 'dialSockets'>, machine: string): string =>
   path.join(p.dialSockets, `${sha256Hex(machine).slice(0, 12)}.sock`);
 
+/** Why no worker on `worker` can dial `socket` on a home on `home`: both ssh and the home read the path, and a Mac's holds the fewer bytes. */
+export const dialSocketTooLong = (socket: string, worker: NodeJS.Platform, home: NodeJS.Platform = process.platform): ReturnType<typeof socketTooLong> =>
+  socketTooLong(socket, worker === 'darwin' ? 'darwin' : home);
+
 /** Whether `socket`, a path on the home, is the one `machine` forwards its link to, wherever that fleet home is. */
 export const isDialSocket = (socket: string, machine: string): boolean => socket === dialSocket({ dialSockets: path.dirname(socket) }, machine);
 

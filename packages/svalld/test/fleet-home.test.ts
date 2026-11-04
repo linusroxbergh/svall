@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,7 @@ import { defaultHome, emptyState } from '@svall/protocol';
 import { placementOk } from '../src/layout.js';
 import { silentLogger } from '../src/log.js';
 import { expandHome, resolvePaths } from '../src/paths.js';
+import { heldAsHome } from '../src/worker/mode.js';
 import { boot, cleanup, stopFleets } from './fleet-boot.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from './helpers.js';
 
@@ -86,6 +88,26 @@ runIf('Fleet home', () => {
     const { store, home } = await boot({ fleetHome: { actions } });
     expect(store.state.home.actions).toEqual(actions);
     expect(JSON.parse(fs.readFileSync(resolvePaths(home).fleetConfig, 'utf8')).home).toEqual({ actions, offered: ['retro'] });
+  });
+
+  it("a real first start on a Mac holds its first robot, which a worker's first snapshot would erase, and nothing once that robot closes", async () => {
+    const { fleet, store, home } = await boot({ opening: true, platform: 'darwin' });
+    const paths = resolvePaths(home);
+    await store.flush();
+    expect(heldAsHome(paths, crypto.randomUUID())).toBe('1 robot');
+    await fleet.closeRobot(Object.values(store.state.robots)[0].id);
+    await store.flush();
+    expect(heldAsHome(paths, crypto.randomUUID())).toBeUndefined();
+  });
+
+  it('a real first start as a worker seeds no robot and no island of its own, so it holds nothing to refuse and nothing to replay', async () => {
+    const me = crypto.randomUUID();
+    const { store, home } = await boot({ opening: true, platform: 'darwin', remote: { onWorker: true, me, homeConnected: false, runsHere: () => true } as never });
+    const paths = resolvePaths(home);
+    await store.flush();
+    expect(Object.values(store.state.robots)).toEqual([]);
+    expect(Object.keys(store.state.islands)).toEqual(['home']);
+    expect(heldAsHome(paths, me)).toBeUndefined();
   });
 
   it('opens a new fleet on a Mac with one island holding a shell, and does not make them again once deleted', async () => {

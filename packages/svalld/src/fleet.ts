@@ -400,9 +400,9 @@ export class Fleet extends EventEmitter<Events> {
       // a start is the one moment mission control comes back up to the fleet; from here it only follows it down
       settleHome(d);
     });
-    // A new fleet opens with one island for its first robot; a later start leaves a deleted island gone.
+    // A new fleet opens with one island for its first robot; a later start leaves a deleted island gone. A worker's come from its home.
     const project = this.deps.config.onboarding?.firstProject;
-    return first ? this.createIsland({ name: project ? path.basename(expandHome(project)) || '/' : 'Island 1' }).id : undefined;
+    return first && !this.deps.remote?.onWorker ? this.createIsland({ name: project ? path.basename(expandHome(project)) || '/' : 'Island 1' }).id : undefined;
   }
 
   // the fleet.json patch offering the retro button and its rules once, recorded there so a button the user deletes

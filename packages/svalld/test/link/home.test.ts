@@ -151,6 +151,23 @@ describe('a worker that dials in', () => {
     await until(() => expect(w.links.for(W)?.synced).toBe(true), 1500);
   });
 
+  it('gives up on a stream only an old listener took after a link the worker answered', async () => {
+    const w = await world();
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true));
+    fs.rmSync(w.sock);
+    const open = new Set<net.Socket>();
+    const deaf = net.createServer((s) => { open.add(s); s.on('error', () => {}); });
+    await new Promise<void>((r) => deaf.listen(w.sock, r));
+    stops.push(() => new Promise<void>((r) => { deaf.close(() => r()); for (const s of open) s.destroy(); }));
+    w.links.for(W)!.close();
+    await until(() => expect(open.size).toBeGreaterThan(0));
+    fs.rmSync(w.sock);
+    await w.tunnel();
+    await until(() => expect(w.links.for(W)?.synced).toBe(true), 1500);
+  });
+
   it('keeps its backoff when the worker binds its socket again after a link it answered closed', async () => {
     const w = await world({
       onEvent: () => Promise.reject(new Error('no room left')),

@@ -3,7 +3,7 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { MachineId, MachineRecord, type FleetState } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
-import { dialSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
+import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { isWorker } from '@svall/svalld/worker/mode';
@@ -37,15 +37,14 @@ async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMach
   const machine = parsedId.data;
   const record = parsed.data;
   const socket = dialSocket(paths, machine);
-  // the home binds nothing, but its ssh and the worker's both read the path, and a Mac's holds the fewer bytes
-  const long = socketTooLong(socket, record.platform === 'darwin' ? 'darwin' : process.platform);
+  const long = dialSocketTooLong(socket, record.platform);
   if (long) throw new Error(`${long.message}, so no worker can dial into ${t.home}; use an account whose home is ${long.over} bytes shorter`);
   if (socket.includes(':')) throw new Error(`${socket} holds a colon, which ssh reads as a forward's separator, so no worker can dial into ${t.home}`);
   const registry = MachineRegistry.load();
   // the record is the account's, so a machine another fleet here reaches over ssh would lose that route
   const route = registry.get(machine)?.record.ssh;
   const sharing = route ? fleetHomes(os.homedir()).find((h) => h !== t.home && tokenFor(resolvePaths(h), machine)) : undefined;
-  if (sharing) throw new Error(`the fleet in ${sharing} reaches ${record.name} over ssh at ${route}, which this would end; remove it from that fleet first`);
+  if (sharing) throw new Error(`the fleet in ${sharing} reaches ${record.name} over ssh at ${route}, which this would end; svall host remove ${record.name} --forget drops that route for every fleet here and leaves the machine as it is`);
   registry.put(machine, record);
   registry.save();
   const token = issueToken(paths, machine);

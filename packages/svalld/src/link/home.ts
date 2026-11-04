@@ -195,11 +195,8 @@ export class WorkerLink {
     void this.attempt();
   }
 
-  /**
-   * The worker's socket appeared, as when it woke: a link whose last try reached no worker tries at once, giving up on a
-   * stream only an old listener of sshd's took. One a worker answered keeps its backoff, as a worker binds its socket
-   * again whenever a link it held closes.
-   */
+  /** The worker's socket appeared: a try that reached no worker, as on a stream only sshd's old listener took, goes again at
+   *  once, and one a worker answered keeps its backoff. */
   socketAppeared(): void {
     if (this.heard) return;
     this.stream?.close();

@@ -19,6 +19,7 @@ let ssh: FakeSsh;
 const stops: (() => unknown)[] = [];
 beforeEach(() => { ssh = installFakeSsh(); ssh.execute({}); });
 afterEach(async () => {
+  delete process.env.SVALL_FAKE_SSH_HANG;
   for (const stop of stops.splice(0).reverse()) await stop();
   vi.useRealTimers();
   ssh.clean();
@@ -33,11 +34,11 @@ async function world(o: { homeSsh?: string; linked?: () => boolean } = {}) {
   const file = { homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio', homeSsh: o.homeSsh ?? 'ada@studio', homeSocket: socket };
   fs.writeFileSync(worker.workerFile, JSON.stringify(file), { mode: 0o600 });
   let reached = 0;
-  const server = net.createServer((s) => { reached++; s.end('link\n'); });
+  const server = net.createServer((s) => { reached++; s.on('error', () => {}); s.end('link\n'); });
   await new Promise<void>((r) => server.listen(worker.linkSock, r));
   stops.push(() => new Promise<void>((r) => server.close(() => r())));
   const said: string[] = [];
-  const dial = new HomeDial({ paths: worker, log: { ...silentLogger, info: (l: string) => { said.push(l); } }, me: W, linked: o.linked ?? (() => false) });
+  const dial = new HomeDial({ paths: worker, log: { ...silentLogger, info: (l: string) => { said.push(l); }, error: (l: string) => { said.push(l); } }, me: W, linked: o.linked ?? (() => false) });
   stops.push(() => dial.stop());
   return { worker, home, socket, dial, reached: () => reached, said };
 }
@@ -53,6 +54,8 @@ async function through(socket: string): Promise<string> {
 
 // the forward answered, so its listener is up and the tunnel held, where a socket file alone may still refuse
 const dialed = (w: { said: string[] }) => until(() => expect(w.said.at(-1)).toMatch(/^dialed/));
+// the dial said it gave up, which comes before any ssh it would have spawned next
+const gaveUp = (w: { said: string[] }) => until(() => expect(w.said.at(-1)).toMatch(/^the dial to the home failed/));
 const rewrite = (w: { worker: { workerFile: string } }, change: object) =>
   fs.writeFileSync(w.worker.workerFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(w.worker.workerFile, 'utf8')), homeSsh: undefined, ...change }));
 
@@ -149,12 +152,16 @@ describe('HomeDial', () => {
   it('asks for no socket while the link is up, and forwards nothing again while its socket is there', async () => {
     vi.useFakeTimers({ toFake: ['setInterval'] });
     let linked = true;
-    const w = await world({ linked: () => linked });
+    let asked = 0;
+    const w = await world({ linked: () => { asked++; return linked; } });
     w.dial.start();
     await dialed(w);
     const probes = () => ssh.remoteCalls().filter((c) => c[0] === 'test' && c[1] === '-S');
-    vi.advanceTimersByTime(HEARTBEAT_MS);
-    await new Promise((r) => setTimeout(r, 300));
+    // two beats, each past the master's check, so a probe the first spawned has been logged by the second
+    for (const n of [1, 2]) {
+      vi.advanceTimersByTime(HEARTBEAT_MS);
+      await until(() => expect(asked).toBeGreaterThanOrEqual(n));
+    }
     expect(probes()).toEqual([]);
     linked = false;
     vi.advanceTimersByTime(HEARTBEAT_MS);
@@ -239,9 +246,38 @@ describe('HomeDial', () => {
     const w = await world();
     rewrite(w, { homeSsh: 'ada@studio', homeSocket: dialSocket(w.home, crypto.randomUUID()) });
     w.dial.start();
-    await new Promise((r) => setTimeout(r, 300));
+    await gaveUp(w);
     expect(ssh.calls()).toEqual([]);
   });
+
+  it('binds nothing new when told to look at a tunnel that is whole, as after a link lost over it, and opens a master again once its own is gone', async () => {
+    const w = await world();
+    w.dial.start();
+    await dialed(w);
+    w.dial.check();
+    const probe = () => ssh.remoteCalls().some((c) => c[0] === 'test' && c[1] === '-S');
+    await until(() => expect(probe()).toBe(true));
+    w.dial.check();
+    await new Promise((r) => setTimeout(r, 1500));
+    expect(forwards().filter((a) => a.includes('forward'))).toHaveLength(1);
+    expect(masters()).toHaveLength(1);
+    ssh.dropMaster(w.dial.master()!.socket);
+    w.dial.check();
+    await until(() => expect(masters()).toHaveLength(2));
+  });
+
+  for (const [step, hang] of [['master check', () => { process.env.SVALL_FAKE_SSH_HANG = 'check'; }], ['forward', () => { process.env.SVALL_FAKE_SSH_HANG = 'forward'; }], ['far command', () => { ssh.reply(['svall-dial'], { delayMs: 20_000 }); }]] as const) {
+    it(`stops at once in a ${step} that hangs, well before that step would time out`, async () => {
+      const w = await world();
+      hang();
+      w.dial.start();
+      const spawned = step === 'master check' ? () => masters().length === 1 : step === 'forward' ? () => forwards().length === 1 : () => ssh.calls().some(isClear(w.socket));
+      await until(() => expect(spawned()).toBe(true));
+      const at = Date.now();
+      await w.dial.stop();
+      expect(Date.now() - at).toBeLessThan(8000);
+    });
+  }
 
   it('gives up a dial under way at once when it stops, ending the master it was opening', async () => {
     const w = await world({ homeSsh: 'check.test' });
@@ -268,7 +304,7 @@ describe('HomeDial', () => {
     const file = JSON.parse(fs.readFileSync(w.worker.workerFile, 'utf8'));
     fs.writeFileSync(w.worker.workerFile, JSON.stringify({ ...file, homeSsh: '-oProxyCommand=touch /tmp/pwned' }));
     w.dial.start();
-    await new Promise((r) => setTimeout(r, 300));
+    await gaveUp(w);
     expect(ssh.calls()).toEqual([]);
   });
 });

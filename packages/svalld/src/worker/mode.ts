@@ -1,7 +1,8 @@
 import fs from 'node:fs';
-import { ApiError, HOME_ISLAND, WorkerFile } from '@svall/protocol';
+import { ApiError, migrateState, WorkerFile, type FleetState } from '@svall/protocol';
 import { InvalidConfig, parseConfig } from '../config.js';
 import { docsDir, listDocs } from '../docs.js';
+import { readRegistry } from '../machine.js';
 import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
 import type { Paths } from '../paths.js';
@@ -27,26 +28,22 @@ export function readWorkerFile(paths: Paths): WorkerFile {
 export const workerOptions = (paths: Paths, platform: NodeJS.Platform = process.platform): { worker: WorkerFile; off: readonly Off[] } =>
   ({ worker: readWorkerFile(paths), off: offOn(platform) });
 
-/**
- * What a fleet's home holds of its own here, by name, which a worker's first snapshot would erase: the robots not running
- * on `me`, the islands beyond mission control with anything on them, as a new fleet opens with an empty one, and its
- * workers. Nothing once it has taken a snapshot, as what it holds is then a worker's copy.
- */
+/** What a fleet's home would lose to a worker's first snapshot, by name; nothing once it has taken one, as it then holds a
+ *  worker's copy. An island counts for what is on it, as a new fleet opens on an empty one. */
 export function heldAsHome(paths: Paths, me: string): string | undefined {
-  let state: {
-    robots?: Record<string, { machine?: string }>; machines?: Record<string, { snapshot?: unknown }>;
-    islands?: Record<string, { description?: string; instructions?: string; context?: unknown[] }>;
-  } = {};
+  let state: FleetState | undefined;
   // one that cannot be read is set aside whatever happens to it, so nothing is erased
-  try { state = JSON.parse(fs.readFileSync(paths.state, 'utf8')); } catch { /* none to lose */ }
-  if (Object.values(state.machines ?? {}).some((m) => m.snapshot)) return undefined;
-  const islands = Object.entries(state.islands ?? {}).filter(([id, i]) =>
-    id !== HOME_ISLAND && (i.description || i.instructions || i.context?.length || listDocs(docsDir(paths.docs, 'island', id)).length));
+  try { state = migrateState(JSON.parse(fs.readFileSync(paths.state, 'utf8'))).state; } catch { /* none to lose */ }
+  if (Object.values(state?.machines ?? {}).some((m) => m.snapshot)) return undefined;
+  const islands = Object.values(state?.islands ?? {}).filter((i) => i.description || i.instructions || i.context.length || listDocs(docsDir(paths.docs, 'island', i.id)).length);
+  let listed: Set<string> | undefined;
+  // a registry that cannot be read may list them all
+  try { listed = new Set(readRegistry().map((m) => m.id)); } catch { /* every token counts */ }
   const count = (n: number, what: string): string[] => (n ? [`${n} ${what}${n === 1 ? '' : 's'}`] : []);
   const held = [
-    ...count(Object.values(state.robots ?? {}).filter((r) => r.machine !== me).length, 'robot'),
+    ...count(Object.values(state?.robots ?? {}).filter((r) => r.machine !== me).length, 'robot'),
     ...count(islands.length, 'island'),
-    ...count(workerIds(paths).length, 'worker'),
+    ...count(workerIds(paths).filter((id) => !listed || listed.has(id)).length, 'worker'),
   ];
   return held.length ? new Intl.ListFormat('en').format(held) : undefined;
 }

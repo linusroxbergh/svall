@@ -1055,7 +1055,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) {
         clearConsent(resolvePaths(home).mirrorConsent, entry.id);
         // nothing there ends the link of a worker that dials in, so its token goes, and with it the link
-        if (!ssh) dropToken(resolvePaths(home), entry.id);
+        if (!ssh) try { dropToken(resolvePaths(home), entry.id); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ }
       }
       d.registry.remove(entry.id);
       d.registry.save();

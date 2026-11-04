@@ -7,9 +7,14 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { machineId, readRegistry } from '@svall/svalld/machine';
-import { dialSocket, resolvePaths } from '@svall/svalld/paths';
+import { emptyState } from '@svall/protocol';
+import { loadFleetAgent } from '@svall/svalld/fleets';
+import { plistFile } from '@svall/svalld/launchd';
+import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
-import { LAUNCHD_LABEL } from '@svall/svalld/profile';
+import { LAUNCHD_LABEL, profileLabel } from '@svall/svalld/profile';
+import { ownRuntime } from '@svall/svalld/runtime';
+import { setupHome } from '@svall/svalld/setup';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { enrollHere } from '../src/commands/worker.js';
 import { MachineRegistry } from '../src/controller/registry.js';
@@ -85,7 +90,7 @@ describe('svall worker', () => {
     const enroll = async (...extra: string[]) => { const run = svall(home, ...base, ...extra); run.child.stdin.end('a'.repeat(48)); return run.done; };
     const socket = dialSocket({ dialSockets: '/home/ada/.svall/w' }, machineId());
     const others = dialSocket({ dialSockets: '/home/ada/.svall/w' }, crypto.randomUUID());
-    for (const extra of [['--home-ssh', '-oProxyCommand=touch /tmp/x', '--home-socket', socket], ['--home-ssh', 'ada@studio'], ['--home-ssh', 'ada@studio', '--home-socket', '/home/a:b/x.sock'],
+    for (const extra of [['--home-ssh', '-oProxyCommand=touch /tmp/x', '--home-socket', socket], ['--home-ssh', 'ada@studio'], ['--home-ssh', 'ada@studio', '--home-socket', dialSocket({ dialSockets: '/home/a:b/.svall/w' }, machineId())],
       ['--home-ssh', 'ada@studio', '--home-socket', '/home/ada/.ssh/authorized_keys'], ['--home-ssh', 'ada@studio', '--home-socket', others]]) {
       expect(await enroll(...extra)).toMatchObject({ code: 1, stderr: expect.stringContaining('worker.json not written') });
       expect(fs.existsSync(resolvePaths(home).workerFile)).toBe(false);
@@ -106,9 +111,9 @@ describe('svall worker', () => {
       const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID(), homeSsh: 'ada@studio', homeSocket: dialSocket({ dialSockets: '/home/ada/.svall/w' }, me) };
       const out: string[] = [];
       const waited: string[] = [];
-      const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async (x: { home: string }) => { waited.push(x.home); return true; }, out: (l: string) => out.push(l), me: () => me, loaded: async () => true };
-      // a job launchd has not loaded could not be restarted, so nothing is written
-      await expect(enrollHere(t, o, { ...d, loaded: async () => false })).rejects.toThrow(`worker.json not written: launchd has not loaded ${LAUNCHD_LABEL}, so nothing would start this fleet as a worker; open it once with svall setup, then enrol it`);
+      const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async (x: { home: string }) => { waited.push(x.home); return true; }, out: (l: string) => out.push(l), me: () => me, load: async () => {} };
+      // launchd refusing the job leaves nothing written and nothing restarted
+      await expect(enrollHere(t, o, { ...d, load: () => Promise.reject(new Error('launchd did not load it')) })).rejects.toThrow('launchd did not load it');
       expect(fs.existsSync(resolvePaths(t.home).workerFile)).toBe(false);
       expect(fs.existsSync(calls)).toBe(false);
       await enrollHere(t, o, d);
@@ -126,52 +131,120 @@ describe('svall worker', () => {
     }
   });
 
+  // a state.json as a daemon writes it, which is read through its migrations
+  const robot = (id: string, machine?: string) => ({
+    id, islandId: 'i_a', cell: { x: 0, y: 0 }, name: id, portrait: 'fox', note: '', instructions: '', cwd: '/home/ada/app', context: [], shell: { lastOutputAt: 0 }, unread: false,
+    ...(machine && { machine, placement: { generation: 1 } }),
+  });
+  const island = (id: string, o: object = {}) => ({ id, name: id, description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 1, ...o });
+  const macDeps = (me: string = crypto.randomUUID()) => ({ platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => me, load: async () => {} });
+  const enrolment = () => ({ homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID() });
+  const refusal = (t: { home: string }, held: string) => `worker.json not written: ${t.home} is a fleet's home and holds ${held}, which the first snapshot from studio would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`;
+
   it("enroll refuses a fleet's home that holds robots or workers of its own, which the first snapshot would erase, and takes one that holds neither", async () => {
     const me = crypto.randomUUID();
     const t = { name: 'work', home: makeHome(), managed: false };
     const paths = resolvePaths(t.home);
-    const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID() };
-    const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => me, loaded: async () => true };
-    const state = (s: object) => fs.writeFileSync(paths.state, JSON.stringify(s));
-    state({ robots: { c_a: { name: 'a' }, c_b: { machine: crypto.randomUUID() } } });
-    await expect(enrollHere(t, o, d)).rejects.toThrow(`worker.json not written: ${t.home} is a fleet's home and holds 2 robots, which the first snapshot from studio would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+    const o = enrolment();
+    const d = macDeps(me);
+    const state = (s: object) => fs.writeFileSync(paths.state, JSON.stringify({ ...emptyState(), ...s }));
+    state({ robots: { c_a: robot('c_a'), c_b: robot('c_b', crypto.randomUUID()) } });
+    await expect(enrollHere(t, o, d)).rejects.toThrow(refusal(t, '2 robots'));
     state({ robots: {} });
-    issueToken(paths, crypto.randomUUID() as never);
-    await expect(enrollHere(t, o, d)).rejects.toThrow('holds 1 worker, which');
+    const worker = crypto.randomUUID();
+    issueToken(paths, worker as never);
+    const registry = MachineRegistry.load();
+    registry.put(worker as never, { name: 'vault', ssh: 'vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' });
+    registry.save();
+    await expect(enrollHere(t, o, d)).rejects.toThrow(refusal(t, '1 worker'));
     expect(fs.existsSync(paths.workerFile)).toBe(false);
-    fs.rmSync(paths.workersFile);
-    // robots placed on this machine stay through a snapshot, and one that has taken a snapshot holds a worker's copy
-    state({ robots: { c_a: { machine: me } } });
+    // a token whose machine has left the registry links nothing, and no command would clear it
+    registry.remove(worker);
+    registry.save();
+    state({ robots: { c_a: robot('c_a', me) } });
     await enrollHere(t, o, d);
+    // a worker's own fleet home enrols again for its fleet, whatever it holds
+    state({ robots: { c_a: robot('c_a') } });
+    await enrollHere(t, o, d);
+    expect(fs.existsSync(paths.workerFile)).toBe(true);
     fs.rmSync(paths.workerFile);
-    state({ robots: { c_a: { name: 'a' } }, machines: { [o.homeMachine]: { snapshot: { version: 1, at: 1 } } } });
+    // and a fleet that has taken a snapshot holds a worker's copy
+    state({ robots: { c_a: robot('c_a') }, machines: { [o.homeMachine]: { name: 'studio', reachable: false, since: 1, snapshot: { version: 1, at: 1 } } } });
     await enrollHere(t, o, d);
-    // and a worker's fleet home enrols again, whatever it holds
-    state({ robots: { c_a: { name: 'a' } } });
-    await enrollHere(t, o, d);
+  });
+
+  it("enroll reads a state.json of an older schema through its migrations, and takes one with nothing in it", async () => {
+    const t = { name: 'work', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    fs.writeFileSync(paths.state, JSON.stringify({ version: 9, islands: { i_a: island('i_a') }, characters: { c_a: robot('c_a'), c_b: robot('c_b') } }));
+    await expect(enrollHere(t, enrolment(), macDeps())).rejects.toThrow(refusal(t, '2 robots'));
+    fs.writeFileSync(paths.state, 'null');
+    await enrollHere(t, enrolment(), macDeps());
     expect(fs.existsSync(paths.workerFile)).toBe(true);
   });
 
-  it('enroll refuses a fleet with anything on an island beyond mission control, robots or none, and takes the empty island a new fleet opens with', async () => {
+  it('enroll refuses a fleet with anything on an island, mission control included, robots or none, and takes the empty one a new fleet opens with', async () => {
     const t = { name: 'work', home: makeHome(), managed: false };
     const paths = resolvePaths(t.home);
-    const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID() };
-    const d = { platform: 'darwin' as const, token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => crypto.randomUUID(), loaded: async () => true };
-    const empty = { name: 'Island 1', description: '', instructions: '', context: [] };
-    const islands = (i_a: object) => fs.writeFileSync(paths.state, JSON.stringify({ robots: {}, islands: { home: { ...empty, instructions: 'the crew' }, i_a } }));
-    for (const holding of [{ description: 'the plan' }, { instructions: 'be brief' }, { context: [{ kind: 'url' }] }]) {
-      islands({ ...empty, ...holding });
-      await expect(enrollHere(t, o, d)).rejects.toThrow(`worker.json not written: ${t.home} is a fleet's home and holds 1 island, which the first snapshot from studio would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+    const o = enrolment();
+    const d = macDeps();
+    const islands = (i_a: object, home: object = {}) => fs.writeFileSync(paths.state, JSON.stringify({ ...emptyState(), islands: { home: island('home', { kind: 'home', ...home }), i_a: island('i_a', i_a) } }));
+    const item = { kind: 'file', ref: '/home/ada/plan.md', label: 'plan', source: 'manual' };
+    for (const holding of [{ description: 'the plan' }, { instructions: 'be brief' }, { context: [item] }]) {
+      islands(holding);
+      await expect(enrollHere(t, o, d)).rejects.toThrow(refusal(t, '1 island'));
+      islands({}, holding);
+      await expect(enrollHere(t, o, d)).rejects.toThrow(refusal(t, '1 island'));
     }
-    islands(empty);
+    islands({});
     const docs = path.join(paths.docs, 'islands', 'i_a');
     fs.mkdirSync(docs, { recursive: true });
     fs.writeFileSync(path.join(docs, 'plan.md'), '---\ndescription: the plan\n---\n');
-    await expect(enrollHere(t, o, d)).rejects.toThrow('holds 1 island, which');
+    await expect(enrollHere(t, o, d)).rejects.toThrow(refusal(t, '1 island'));
     expect(fs.existsSync(paths.workerFile)).toBe(false);
     fs.rmSync(docs, { recursive: true });
     await enrollHere(t, o, d);
     expect(fs.existsSync(paths.workerFile)).toBe(true);
+  });
+
+  it('enroll refuses a worker of another fleet, whose robots its new home would close, and leaves its file; its own fleet enrols again', async () => {
+    const t = { name: 'work', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const a = enrolment();
+    await enrollHere(t, a, macDeps());
+    const held = fs.readFileSync(paths.workerFile, 'utf8');
+    await expect(enrollHere(t, { ...enrolment(), homeName: 'other' }, macDeps())).rejects.toThrow(`worker.json not written: ${t.home} already serves studio as a worker, whose robots here other would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+    expect(fs.readFileSync(paths.workerFile, 'utf8')).toBe(held);
+    await enrollHere(t, { ...a, homeMachine: crypto.randomUUID(), homeName: 'moved' }, macDeps());
+    expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8'))).toMatchObject({ fleetId: a.fleetId, homeName: 'moved' });
+  });
+
+  it("enroll on a Mac sets a fleet never opened up and loads its job with no daemon started, then restarts it as a worker; the private fleet's is setup's", async () => {
+    const bin = makeHome();
+    const calls = path.join(bin, 'calls');
+    fs.writeFileSync(path.join(bin, 'launchctl'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\n`, { mode: 0o755 });
+    const PATH = process.env.PATH;
+    process.env.PATH = `${bin}:${PATH}`;
+    try {
+      const t = { name: 'work', home: path.join(makeHome(), '.svall-work'), managed: true };
+      const label = profileLabel('work');
+      const launchAgentsDir = makeHome();
+      const asked: string[][] = [];
+      const fleet = { uid: 501, launchAgentsDir, runtime: ownRuntime(), exists: fs.existsSync, setupHome, exec: async (_c: string, args: string[]) => {
+        asked.push(args);
+        expect(fs.existsSync(resolvePaths(t.home).workerFile)).toBe(false);
+        if (args[0] === 'print') throw new Error('not loaded');
+      } };
+      await enrollHere(t, enrolment(), { ...macDeps(), load: (x) => loadFleetAgent(x, fleet) });
+      expect(asked).toEqual([['print', `gui/501/${label}`], ['bootstrap', 'gui/501', plistFile(launchAgentsDir, label)]]);
+      expect(fs.existsSync(plistFile(launchAgentsDir, label))).toBe(true);
+      expect(fs.existsSync(resolvePaths(t.home).fleetConfig)).toBe(true);
+      expect(fs.readFileSync(calls, 'utf8')).toBe(`kickstart -k gui/${os.userInfo().uid}/${label}\n`);
+      const gone = { name: 'private', home: path.join(makeHome(), 'none'), managed: true };
+      await expect(enrollHere(gone, enrolment(), macDeps())).rejects.toThrow('worker.json not written: no private fleet yet; run svall setup first');
+    } finally {
+      process.env.PATH = PATH;
+    }
   });
 
   it("version --json names a home with its fleet's id, and a worker with the home it serves", async () => {
@@ -224,7 +297,7 @@ describe('svall worker', () => {
     const id = crypto.randomUUID();
     const badName = await svallIn(env, '--json', 'fleet', 'enroll-worker', id, ...facts('Not A Name')).done;
     expect(badName).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining(`${id} is not enrolled:`) });
-    for (const r of [badId, badName]) expect(r.stderr).not.toContain('[{');
+    for (const r of [badId, badName]) expect(r.stderr).not.toMatch(/"code"|^\s*\[/m);
     expect(fs.existsSync(resolvePaths(home).workersFile)).toBe(false);
   });
 
@@ -245,13 +318,26 @@ describe('svall worker', () => {
     const facts = ['--name', 'ada-mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/Users/ada/.svall'];
     issueToken(resolvePaths(other), id as never);
     const r = await svallIn(env, '--json', 'fleet', 'enroll-worker', id, ...facts).done;
-    expect(r).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining(`the fleet in ${other} reaches ada-mac over ssh at ada@mac, which this would end; remove it from that fleet first`) });
+    expect(r).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining(`the fleet in ${other} reaches ada-mac over ssh at ada@mac, which this would end; svall host remove ada-mac --forget drops that route for every fleet here and leaves the machine as it is`) });
     expect(tokenFor(resolvePaths(here), id as never)).toBeUndefined();
     expect(readRegistry(config).find((m) => m.id === id)?.record.ssh).toBe('ada@mac');
     // with no other fleet on that route, this one's record is its own to change
     fs.rmSync(resolvePaths(other).workersFile);
+    issueToken(resolvePaths(here), id as never);
     expect(await svallIn(env, '--json', 'fleet', 'enroll-worker', id, ...facts).done).toMatchObject({ code: 0 });
     expect(readRegistry(config).find((m) => m.id === id)?.record).toMatchObject({ dial: 'worker' });
+    // and another fleet's token is no route once the record has none
+    issueToken(resolvePaths(other), id as never);
+    expect(await svallIn(env, '--json', 'fleet', 'enroll-worker', id, ...facts).done).toMatchObject({ code: 0 });
+  });
+
+  it('holds a dial socket to 103 bytes with a Mac on either end, and 107 with Linux on both', () => {
+    const socket = (bytes: number) => `/${'x'.repeat(bytes - 1)}`;
+    expect(dialSocketTooLong(socket(103), 'darwin', 'linux')).toBeUndefined();
+    expect(dialSocketTooLong(socket(104), 'darwin', 'linux')).toMatchObject({ over: 1 });
+    expect(dialSocketTooLong(socket(104), 'linux', 'darwin')).toMatchObject({ over: 1 });
+    expect(dialSocketTooLong(socket(107), 'linux', 'linux')).toBeUndefined();
+    expect(dialSocketTooLong(socket(108), 'linux', 'linux')).toMatchObject({ over: 1 });
   });
 
   it("fleet enroll-worker holds the socket to what a Mac worker's ssh takes, shorter than Linux allows", async () => {

@@ -202,7 +202,7 @@ describe('protocol version', () => {
     const worker = { homeMachineId: UUID_A, fleetId: UUID_A, token: 't'.repeat(32), homeName: 'studio' };
     expect(WorkerFile.parse({ ...worker, homeSsh: 'ada@studio', homeSocket: '/home/ada/.svall/w/0123456789ab.sock' }).homeSsh).toBe('ada@studio');
     expect(WorkerFile.safeParse({ ...worker, homeSsh: '-oProxyCommand=sh' }).success).toBe(false);
-    expect(WorkerFile.safeParse({ ...worker, homeSocket: '/home/a:b/.svall/w/x.sock' }).success).toBe(false);
+    expect(WorkerFile.safeParse({ ...worker, homeSocket: '/home/a:b/.svall/w/0123456789ab.sock' }).success).toBe(false);
     expect(WorkerFile.safeParse({ ...worker, homeSocket: 'w/x.sock' }).success).toBe(false);
     for (const homeSocket of ['/home/ada/.ssh/authorized_keys', '/home/ada/.svall/state.json', '/home/ada/.svall/w/short.sock', '/home/ada/.svall/../w/0123456789ab.sock']) {
       expect(WorkerFile.safeParse({ ...worker, homeSocket }).success).toBe(false);

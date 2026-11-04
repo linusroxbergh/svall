@@ -124,6 +124,8 @@ function wait(opts) {
 
 function control(opts) {
   const file = marker(opts, 'master');
+  // a master that takes this command and never answers, until the caller kills the client
+  if (process.env.SVALL_FAKE_SSH_HANG === opts.O) { setInterval(() => {}, 1 << 30); return; }
   if (opts.O === 'check') {
     if (!fs.existsSync(file)) die(`Control socket connect(${opts.S}): No such file or directory`);
     process.stderr.write(`Master running (pid=${fs.readFileSync(file, 'utf8')})\n`);

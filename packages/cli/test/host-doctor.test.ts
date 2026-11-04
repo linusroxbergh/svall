@@ -134,6 +134,10 @@ describe('host doctor', () => {
       answer(o);
       expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail' });
     }
+    // nor is a copy of this fleet on another machine than the one its worker.json names
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: OTHER_MAC, fleetId: FLEET, token: 't'.repeat(48), homeName: 'elsewhere' }));
+    answer({ role: 'home', fleetId: FLEET });
+    expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail' });
     // nor is any home to a fleet that serves none: most fleets, which have no worker.json here
     fs.rmSync(resolvePaths(fleet).workerFile);
     answer({ role: 'home', fleetId: FLEET });

@@ -55,6 +55,13 @@ export class HomeDial {
     this.dial(fresh);
   }
 
+  /** Looks at the tunnel now, as each beat does: a link lost over a healthy one needs no new bind. */
+  check(): void {
+    const { held } = this;
+    if (!held?.tunnel || this.retry || this.queued) return;
+    this.verify(held, held.tunnel).catch((e: Error) => this.o.log.error(`the tunnel to the home was not checked: ${e.message}`));
+  }
+
   /** Cancels the forward and closes the master. */
   async stop(): Promise<void> {
     this.halt();
@@ -93,9 +100,7 @@ export class HomeDial {
       return;
     }
     if (slept) return this.restore(true);
-    const { held } = this;
-    if (!held?.tunnel || this.retry || this.queued) return;
-    this.verify(held, held.tunnel).catch((e: Error) => this.o.log.error(`the tunnel to the home was not checked: ${e.message}`));
+    this.check();
   }
 
   // only a link that was live says it closed, so a socket gone before one came up is seen here or never

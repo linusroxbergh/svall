@@ -17,6 +17,10 @@ describe('host remove', () => {
     registry.save();
     const paths = resolvePaths(fleet);
     issueToken(paths, REMOTE);
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    issueToken(sibling, REMOTE);
     const refreshLinks = vi.fn(() => Promise.resolve());
     expect(await removeHost('ada-mac', {}, deps({ registry, refreshLinks }))).toMatchObject({ result: 'ready' });
     expect(step('uninstall').at(-1)).toMatchObject({ status: 'skip', detail: 'ada-mac dials in, so nothing here reaches it: it keeps Svall until svall uninstall runs there' });
@@ -24,7 +28,17 @@ describe('host remove', () => {
     expect(registry.get('ada-mac')).toBeUndefined();
     expect(MachineRegistry.load(path.join(work, 'config')).get('ada-mac')).toBeUndefined();
     expect(tokenFor(paths, REMOTE)).toBeUndefined();
+    expect(tokenFor(sibling, REMOTE)).toBeUndefined();
     expect(refreshLinks).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a worker that dials in while a robot here runs on it', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
+    const ada = { id: 'c_ada', islandId: 'i_1', cell: { x: 0, y: 0 }, name: 'ada', portrait: 'fox', note: '', instructions: '', cwd: '/x', context: [], shell: { lastOutputAt: 0 }, unread: false, machine: REMOTE, placement: { generation: 1 } };
+    fs.writeFileSync(path.join(fleet, 'state.json'), JSON.stringify({ ...emptyState(), robots: { c_ada: ada } }));
+    expect(await removeHost('ada-mac', {}, deps({ registry }))).toMatchObject({ result: 'actions', stopped: 'machine' });
+    expect(registry.get('ada-mac')).toBeDefined();
   });
 
   const registered = (destination: string): MachineRegistry => {

@@ -35,7 +35,12 @@ export function runProcess(exe: string, argv: string[], o: RunOptions): Promise<
     child.stderr.on('data', take('stderr'));
 
     let killer: NodeJS.Timeout | undefined;
+    let stopped = false;
+    // what the child left running, as a far command under a killed ssh, can hold these open long after it
+    const letGo = () => { child.stdout.destroy(); child.stderr.destroy(); };
     const stop = () => {
+      stopped = true;
+      if (child.exitCode !== null || child.signalCode !== null) return letGo();
       child.kill('SIGTERM');
       killer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE);
       killer.unref();
@@ -49,6 +54,7 @@ export function runProcess(exe: string, argv: string[], o: RunOptions): Promise<
       o.signal?.removeEventListener('abort', stop);
     };
 
+    child.once('exit', () => { if (stopped) letGo(); });
     child.on('error', (err) => { done(); reject(err); });
     child.stdin.on('error', () => { /* a command that exits without reading its input */ });
     child.on('close', (code, signal) => { done(); resolve({ code, signal, ...held }); });

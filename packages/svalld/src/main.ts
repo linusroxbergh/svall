@@ -160,6 +160,11 @@ async function start(opts: Options): Promise<Daemon> {
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   if (off.has('scribe')) store.update((d) => { d.scribeOff = true; });
+  // a home holds its fleet as its own, so what said it was a worker's goes, and heldAsHome counts it again
+  if (!worker) {
+    fs.rmSync(paths.epoch, { force: true });
+    if (Object.values(store.state.machines ?? {}).some((m) => m.snapshot)) store.update((d) => { for (const m of Object.values(d.machines ?? {})) delete m.snapshot; });
+  }
   liftRobotDocs(paths.docs, log);
   installHookScripts(paths);
   const token = readOrCreateToken(paths.token);
@@ -261,7 +266,7 @@ async function start(opts: Options): Promise<Daemon> {
     // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
     onLink: (live) => {
       if (live) return;
-      dial?.restore();
+      dial?.check();
       for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
       workerDrops?.linkLost();

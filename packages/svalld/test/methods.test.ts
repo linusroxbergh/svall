@@ -248,10 +248,22 @@ describe('machines.setup and machines.consent', () => {
 
   it('machines.consent saves a tick for a Mac, and writes nothing there', async () => {
     await linked();
-    vi.spyOn(w.home.links.for(W)!, 'mirrored', 'get').mockReturnValue(false);
+    const mac = vi.spyOn(w.home.links.for(W)!, 'mirrored', 'get').mockReturnValue(false);
     const before = fs.readFileSync(worker.claudeJson, 'utf8');
     await call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
     expect(fs.readFileSync(worker.claudeJson, 'utf8')).toBe(before);
+    mac.mockRestore();
+    expect((await call(w.home.ctx, 'machines.setup', { machine: W })).rows.find(byKey('claude:mcp:linear'))).toMatchObject({ tick: { on: true } });
+  });
+
+  it('machines.setup offers a Mac no mirror rows, as nothing would send them, and keeps its phone row', async () => {
+    await linked();
+    expect((await call(w.home.ctx, 'machines.setup', { machine: W })).rows.some((r) => r.key.startsWith('claude:'))).toBe(true);
+    vi.spyOn(w.home.links.for(W)!, 'mirrored', 'get').mockReturnValue(false);
+    expect((await call(w.home.ctx, 'machines.setup', { machine: W })).rows).toEqual([]);
+    const phone = { key: 'phone', status: 'skip', detail: 'off' } as const;
+    const ctx = { ...w.home.ctx, phone: { row: () => phone, recheck: async () => {} } } as unknown as Ctx;
+    expect((await call(ctx, 'machines.setup', { machine: W })).rows).toEqual([phone]);
   });
 
   it('machines.consent off empties the copied keys there on the same call', async () => {

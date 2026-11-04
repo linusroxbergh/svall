@@ -706,7 +706,7 @@ console.log(a.socket);
     sh(R, `iptables -D OUTPUT ${blockRemote}`, { root: true });
     linked(ids, cut);
 
-    // a wake: a master frozen as on a Mac asleep keeps sshd's old listener, which takes the home's next stream, and no hello
+    // a master frozen, which ssh alone feels, keeps sshd's old listener, which takes the home's next stream, and no hello
     // answers it; the socket remote binds as it wakes ends that wait, which would otherwise last until the stream's ping fails
     const newDials = `-p tcp --syn -d ${ip(L)} --dport 22 -j DROP`;
     const asleep = linksOf()[ids.remote]?.since;
@@ -730,6 +730,9 @@ console.log(a.socket);
     const down = linksOf()[ids.remote]?.since;
     sh(L, `systemctl --user stop ${UNIT}`);
     waitOn('the tunnel answers', () => knock(socket) === 'open');
+    // a socket lost with the link down and the master up: only remote's beat, over that master, can tell
+    sh(L, `rm -f ${socket}`);
+    waitOn('remote binds its lost socket again', () => knock(socket) === 'open', 45);
     const was = inode(socket);
     sh(R, MASTER, { ok: false });
     waitOn('the dead tunnel refuses', () => knock(socket) === 'ECONNREFUSED', 20);
