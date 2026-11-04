@@ -11,7 +11,7 @@ import { readState } from '../../src/placement/mirror-state.js';
 import { seedTrust } from '../../src/placement/trust.js';
 import { realPath } from '../../src/paths.js';
 import { editJson, farHome, json, macHome, put, read } from './mirror-homes.js';
-import { H, stopWorlds, W, world } from './world.js';
+import { H, stopWorlds, until, W, world } from './world.js';
 
 afterEach(async () => {
   vi.restoreAllMocks();
@@ -349,7 +349,12 @@ function copyOf() {
   return {
     home, mac, w,
     ask: () => call<{ sent: number; backup?: string }>(w.home.ctx, 'machines.copySetupFrom', { machine: W }),
-    linked: async () => { await w.link(); await w.home.links.mirrorSettled(W); },
+    // the home is synced a moment before the worker has read its first ack, until when the worker's calls answer not_reachable
+    linked: async () => {
+      await w.link();
+      await until(() => expect(w.worker.connection.connected()).toBe(true));
+      await w.home.links.mirrorSettled(W);
+    },
   };
 }
 const asks = { homedir: '/Users/ada', projects: [] };
@@ -396,8 +401,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('a tick the Mac holds for its home is the Mac\'s: nothing of it reaches the home unless copied', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     await call(w.worker.ctx, 'home.setupConsent', { item: 'claude:mcp:two', fields: ['env.A_KEY'], on: true });
     expect(fs.existsSync(w.home.paths.mirrorConsent)).toBe(false);
     expect(json(w.worker.paths.mirrorConsent)[H]).toEqual(['claude:mcp:two#env.A_KEY']);
@@ -443,8 +448,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('takes the mirror\'s calls from no worker it was not told of, nor from any once told of another', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     const send = () => w.worker.connection.call('config.state', asks);
     await refused(send());
     w.home.setupCopy!.arm(OTHER);
@@ -452,8 +457,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('refuses a named worker past its grant\'s expiry', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     w.home.setupCopy!.arm(W, -1);
     await refused(w.worker.connection.call('config.state', asks));
     w.home.setupCopy!.arm(W);
@@ -491,8 +496,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('a copy that ends past its grant leaves the grant armed after it', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     const now = Date.now();
     await w.home.setupCopy!.from(W, async () => {
       vi.spyOn(Date, 'now').mockReturnValue(now + 16 * 60_000);
@@ -502,8 +507,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('never takes the mirror\'s other calls, and a worker still sends on no machines call', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     w.home.setupCopy!.arm(W);
     await refused(answer('config.report', {}, w.home.ctx, W));
     await refused(answer('env.set', { name: 'A', value: 'b' }, w.home.ctx, W));
@@ -511,8 +516,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('is asked of the home by a window alone: a worker\'s daemon sends it on and is refused, and a phone is refused', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     await refused(call(w.worker.ctx, 'machines.copySetupFrom', { machine: W }));
     await expect(call({ ...w.home.ctx, viewer: { kind: 'phone' } } as Ctx, 'machines.copySetupFrom', { machine: W })).rejects.toMatchObject({ code: 'forbidden' });
     await expect(call(w.home.ctx, 'machines.copySetupFrom', { machine: OTHER })).rejects.toMatchObject({ code: 'not_found' });
@@ -520,8 +525,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('names a worker\'s rows and backup with its home away, and a home has no such rows', async () => {
-    const { w } = copyOf();
-    await w.link();
+    const { w, linked } = copyOf();
+    await linked();
     await w.worker.connection.stop();
     const { rows } = await call<{ rows: SetupRow[] }>(w.worker.ctx, 'home.setup', {});
     expect(rows.some((r) => r.key === 'claude:mcp:two')).toBe(true);
