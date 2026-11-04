@@ -16,6 +16,12 @@ const robot = (over: Partial<Robot> = {}): Robot => ({
 });
 
 describe('drowsy', () => {
+  it('counts a resumed agent from the rest it was resumed in, or a later look', () => {
+    const c = robot({ agent: agent({ lastActivityAt: 11 * HOUR, restingSince: 0 }) });
+    expect(drowsy(c, 12 * HOUR, 12 * HOUR)).toBe(true);
+    expect(drowsy(c, 12 * HOUR, 12 * HOUR, HOUR)).toBe(false);
+  });
+
   it('takes an idle or done agent once it has rested the whole limit', () => {
     expect(drowsy(robot(), 12 * HOUR, 12 * HOUR)).toBe(true);
     expect(drowsy(robot({ agent: agent({ status: 'done' }) }), 12 * HOUR, 12 * HOUR)).toBe(true);
@@ -171,6 +177,12 @@ describe('reviveCommand', () => {
 });
 
 describe('markDormant', () => {
+  it('leaves no rest for a later start to resume it from', () => {
+    const c = robot({ agent: agent({ restingSince: 5 }) });
+    markDormant(c);
+    expect(c.agent?.restingSince).toBeUndefined();
+  });
+
   it('marks an agent ended mid-turn or on a question interrupted, and one at rest not', () => {
     for (const status of ['working', 'blocked'] as const) {
       const c = robot({ agent: agent({ status }) });

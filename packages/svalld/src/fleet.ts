@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, isRobotSaid, randomPortrait, robotMessage, robotSender, says, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type SendDelivery, type TerminalSlot } from '@svall/protocol';
+import { ApiError, DORMANT_AFTER_HOURS, HOME_ISLAND, HOME_SEED, RUN_TIMEOUT_MS, cellKey, defaultHome, fleetNameProblem, homeSizeFor, isRobotSaid, randomPortrait, robotMessage, robotSender, says, type Agent, type AgentKind, type AgentStatus, type BrowserTab, type Cell, type Column, type Robot, type ContextItem, type Delivery, type FleetConfig, type Island, type ParsedParams, type SendDelivery, type TerminalSlot } from '@svall/protocol';
 import { AGENTS, mainAgent } from './agents.js';
 import { listAgentProfiles, readAgentProfile, seedAgentProfiles } from './agent-profiles.js';
 import { markSeen as markSeenPure, settle } from './agent/reducer.js';
@@ -16,7 +16,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { setContext, settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, freshCommand, loseSecond, markDormant, processes, rememberFlags, resumeHere, resumeNote, runsAgent, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
+import { endAll, endIdleAgents, exited, freshCommand, keepResting, loseSecond, markDormant, processes, rememberFlags, restFrom, resumeHere, resumeNote, runsAgent, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
 import { Blocked, Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -65,7 +65,7 @@ export function setNote(c: Robot, note: string): void {
 
 export type RefreshLinks = (store: Store, config: Config, robotId: string) => Promise<void>;
 type Deps = {
-  store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number;
+  store: Store; tmux: Tmux; paths: Paths; config: Config; log: Logger; pollMs?: number; staleSessionMs?: number; runTimeoutMs?: number; resumeMs?: number; resumeGapMs?: number;
   runScribe?: RunScribe; linkDeps?: Partial<LinkDeps>; refreshLinks?: RefreshLinks; processes?: () => Promise<Proc[]>; readProcs?: () => Promise<LiveProc[]>;
   endOpts?: Parameters<typeof endProcs>[2]; agentsFound?: AgentKind[]; platform?: NodeJS.Platform;
   // the machines robots placed elsewhere run on; on a worker, what it tells its home of each change to a robot placed here
@@ -80,6 +80,7 @@ type Deps = {
 // a note given at the start is the user's; report, robot `startedBy` is owed a report on `run`
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string; startedBy?: string; report?: boolean };
 const STALE_SNAPSHOT_MS = 3_600_000;
+const RESUME_GAP_MS = 2000;
 const TRANSCRIPT_TAIL = 4 * 1024 * 1024;
 // the robot messages one robot holds for the user, which state.json keeps
 const HELD_MAX = 20;
@@ -152,7 +153,10 @@ export class Fleet extends EventEmitter<Events> {
 
   private async begin(): Promise<void> {
     await this.deps.tmux.ensureServer();
+    // the agents a reboot or crash ended are the ones on record as awake that the listing no longer shows
+    const awake = Object.values(this.deps.store.state.robots).flatMap((c) => (c.tmux && c.agent && this.runsHere(c) ? [[c.id, restFrom(c.agent)] as const] : []));
     await this.reconcileNow();
+    this.deps.store.update((d) => { for (const [id, since] of awake) if (d.robots[id] && !d.robots[id].tmux) keepResting(d.robots[id], since); });
     // when the user last looked is not kept across a restart, so every agent awake now gets a whole rest from here
     const now = Date.now();
     for (const c of Object.values(this.deps.store.state.robots)) if (c.tmux) this.seen.set(c.id, now);
@@ -414,11 +418,11 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
-   * tmux server goes, and nothing runs again until a robot is opened. */
+   * tmux server goes, and nothing runs again until the next start resumes what it may, or a robot is opened. */
   async stopAll(): Promise<void> {
     // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
     await this.stop();
-    await endAll(this.sleep, this.reviving);
+    await endAll(this.sleep, this.reviving, this.seen);
     setImmediate(() => this.emit('stopped'));
   }
 
@@ -819,6 +823,29 @@ export class Fleet extends EventEmitter<Events> {
     await Promise.all(ids.map((id) => this.reviveRobot(id).catch((e) => this.deps.log.error(`resume ${id}: ${String(e)}`))));
   }
 
+  /** Revives, the latest rest first and a little apart so their starts don't pile up, every robot a quit, reboot or crash
+   *  ended at rest with its idle limit still to run; any other stays dormant. */
+  resumeResting(): void {
+    this.track(this.reviveResting(), 'resume');
+  }
+
+  private async reviveResting(): Promise<void> {
+    const { store, log } = this.deps;
+    const hours = store.state.dormantAfterHours ?? DORMANT_AFTER_HOURS;
+    const since = (id: string) => store.state.robots[id]?.agent?.restingSince;
+    const forget = (id: string) => store.update((d) => { delete d.robots[id]?.agent?.restingSince; });
+    const ids = Object.values(store.state.robots).filter((c) => !c.tmux && !c.moving && this.runsHere(c) && since(c.id) !== undefined).map((c) => c.id);
+    for (const id of ids.sort((a, b) => since(b)! - since(a)!)) {
+      if (this.stopped) return;
+      // opened, closed or put to sleep while the ones before came up
+      const from = since(id);
+      if (from === undefined || store.state.robots[id].tmux) continue;
+      if (hours && Date.now() - from >= hours * 3_600_000) { forget(id); continue; }
+      try { await this.reviveRobot(id); } catch (e) { log.error(`resume ${id}: ${String(e)}`); forget(id); }
+      await new Promise((r) => setTimeout(r, this.deps.resumeGapMs ?? RESUME_GAP_MS));
+    }
+  }
+
   // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place
   // of the resume; `move` is the move a moving robot is revived by
   reviveRobot(id: string, prompt?: string, fresh?: string, move?: string): Promise<Revived> {
@@ -874,8 +901,13 @@ export class Fleet extends EventEmitter<Events> {
         // a new session reports itself as it starts
         if (fresh !== undefined) delete cur.agent;
         // a resumed session keeps its old agent record; its stale status must not answer the next wait,
-        // nor its old activity have it ended again as idle before it is up
-        if (cur.agent) { settle(cur.agent, 'idle'); cur.agent.lastActivityAt = Date.now(); cur.unread = false; }
+        // nor its old activity have it ended again as idle before it is up. One resumed at a start, with nobody looking, is as it was left
+        if (cur.agent) {
+          const resting = cur.agent.restingSince !== undefined;
+          settle(cur.agent, resting ? cur.agent.status : 'idle');
+          cur.agent.lastActivityAt = Date.now();
+          if (!resting) cur.unread = false;
+        }
       });
       if (resuming && command) this.resuming.set(id, resuming); else this.resuming.delete(id);
       if (command) await this.deps.tmux.sendLine(w.paneId, command, true);

@@ -16,8 +16,9 @@ waiting on you or done.
   Each card shows its agent's status, context use, model and links such as its
   PR and ticket.
 - Each terminal is a tmux window. Quitting a fleet's window stops its
-  terminals; opening a robot again resumes its session with
-  `claude --resume`, `codex resume` or `opencode -s`.
+  terminals; its next start resumes the agents not idle past their limit, and
+  opening a robot resumes any other, with `claude --resume`, `codex resume` or
+  `opencode -s`.
 - Give an island or robot instructions, links, files or folders, and
   agents leave notes for the next agent. Each session starts with a short brief
   of all of it, plus its repository, PR and ticket, and gets

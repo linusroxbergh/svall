@@ -45,7 +45,7 @@ final class QuitFlow {
     }
 
     /// Asks the page to save its docs and name the files a quit would drop, then the user when `confirm` or a file would be lost,
-    /// then stops the fleet: every robot sleeps until it is opened again.
+    /// then stops the fleet: every robot sleeps until the next start resumes it or it is opened.
     func ask(confirm: Bool, answer: @escaping (Bool) -> Void) -> NSApplication.TerminateReply {
         guard quitAnswer == nil else { return .terminateNow }
         // a page that is not up has nothing to save and no daemon to ask

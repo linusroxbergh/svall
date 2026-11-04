@@ -373,16 +373,18 @@ function workerRestart(ids, fx) {
   // a restart leaves the fleet's tmux, so each robot keeps its agent
   const kept = snap(R);
   for (const id of placed) check(`${id} kept`, same(agentsOf(kept, id).map((p) => p.pid), agentsOf(before, id).map((p) => p.pid)) && agentsOf(kept, id).length === 1, () => brief(agentsOf(kept, id)));
-  // a reboot ends tmux and every agent in it: the robots come back dormant, and the home revives them there
+  // a reboot ends tmux and every agent in it: the robots, inside the idle limit, resume there on their own
   const since2 = linksOf()[ids.remote]?.since;
   sh(R, `systemctl --user stop ${UNIT} && ~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock kill-server; sleep 1; systemctl --user start ${UNIT}`);
   linked(ids, since2);
-  const l = until(L, (s) => placed.every((id) => !robotIn(s, id)?.tmux && robotIn(s, id)?.revive?.command?.includes('--resume')), 60);
-  for (const id of placed) check(`${id} dormant`, !robotIn(l, id)?.tmux && robotIn(l, id)?.revive?.command?.includes(`--resume ${robotIn(before, id)?.agent?.sessionId}`), () => brief(robotIn(l, id)));
-  check('no agents', placed.every((id) => agentsOf(snap(R), id).length === 0), 'an agent survived the reboot');
-  for (const id of placed) sh(L, `svall robot revive ${id} && svall robot wait ${id} --until idle,done --timeout 60`);
+  until(L, (s) => placed.every((id) => robotIn(s, id)?.tmux), 60);
+  for (const id of placed) sh(L, `svall robot wait ${id} --until idle,done --timeout 60`);
+  until(R, (s) => placed.every((id) => agentsOf(s, id).length === 1), 60);
   const [l2, w2] = [snap(L), snap(R)];
-  for (const id of placed) runsOn(`${id} revived`, ids, l2, w2, id, 'remote', robotIn(before, id)?.agent?.sessionId);
+  for (const id of placed) {
+    check(`${id} agent restarted`, !same(agentsOf(w2, id).map((p) => p.pid), agentsOf(before, id).map((p) => p.pid)), 'an agent survived the reboot');
+    runsOn(`${id} resumed`, ids, l2, w2, id, 'remote', robotIn(before, id)?.agent?.sessionId);
+  }
   turn(ids, fx, 'agent', 'a turn after the reboot');
 }
 

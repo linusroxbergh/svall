@@ -73,6 +73,7 @@ export const dropBrief = (t: TerminalSlot): void => { if (t.agent) delete t.agen
 export function markDormant(c: Robot, flags?: string[]): void {
   delete c.hint;
   delete c.codexDaemon;
+  delete c.agent?.restingSince;
   // its monitors and subagents die with it, which a finished turn says nothing of
   const interrupted = !!c.agent?.monitors || !!c.agent?.subagents || c.agent?.status === 'blocked' || c.agent?.status === 'working';
   markSlotDormant(c, flags);
@@ -87,12 +88,20 @@ export function loseSecond(c: Robot, flags?: string[], atShell = false): void {
   else delete c.second;
 }
 
+/** When an agent's rest began: its last turn, or the rest it was resumed in, or the user's last look, whichever is latest. */
+export const restFrom = (a: Agent, seenAt = 0): number => Math.max(a.restingSince ?? a.lastActivityAt, seenAt);
+
+/** Leaves `c`, just ended by a quit, reboot or crash, to resume at the next start if its agent was at rest since `since`. */
+export function keepResting(c: Robot, since: number): void {
+  if (c.agent && c.revive?.command && !c.revive.interrupted) c.agent.restingSince = since;
+}
+
 // an agent resting this long since its last turn or the user's last look, with nothing running or unseen; a failed or
 // usage-limited turn stays up. A second terminal open is the user's own shell, which only a sleep closes
 export function drowsy(c: Robot, now: number, afterMs: number, seenAt = 0): boolean {
   const a = c.agent;
   if (!c.tmux || c.second?.tmux || !a || c.unread || a.background || a.monitors || a.prompt || !isSessionId(a.sessionId)) return false;
-  return (a.status === 'idle' || a.status === 'done') && now - Math.max(a.lastActivityAt, seenAt) >= afterMs;
+  return (a.status === 'idle' || a.status === 'done') && now - restFrom(a, seenAt) >= afterMs;
 }
 
 // the launch flags a resume repeats, and those it reads past: Claude restores its model, agent and permission mode bar a
@@ -262,7 +271,7 @@ export async function endIdleAgents(o: Sleep, seen: ReadonlyMap<string, number>,
 }
 
 // the quit's own work: every robot dormant with the revive that resumes it, then the tmux server gone
-export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unknown>>): Promise<void> {
+export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unknown>>, seen: ReadonlyMap<string, number>): Promise<void> {
   // an agent ended for idleness or a sleep can take a minute to exit, and the server's end reaches it anyway
   const settled = Promise.all([...o.ending.values(), ...reviving.values()].map((p) => p.catch(() => {})));
   await Promise.race([settled, new Promise((r) => setTimeout(r, 2000))]);
@@ -281,7 +290,9 @@ export async function endAll(o: Sleep, reviving: ReadonlyMap<string, Promise<unk
       if (!c.tmux) continue;
       const proc = agentProc(c.agent);
       if (proc) pids.push(proc.pid);
+      const since = c.agent && restFrom(c.agent, seen.get(c.id));
       markDormant(c, proc ? startFlags(proc.args, c.agent!.kind) : undefined);
+      if (since !== undefined) keepResting(c, since);
     }
   });
   // written now: what the quit has left to do can take seconds, and the daemon may not outlive them

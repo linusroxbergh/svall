@@ -94,6 +94,9 @@ export const Agent = z.object({
   pid: z.number().int().optional(),
   // the launch flags a resume repeats, as ps showed the process at its start; what a dormancy without ps resumes with
   flags: z.array(z.string()).optional(),
+  // when the rest began of an agent a quit, reboot or crash ended at rest: inside the idle limit it resumes at the next
+  // start, and until its next prompt the limit runs from here
+  restingSince: z.number().optional(),
 });
 export type Agent = z.infer<typeof Agent>;
 
