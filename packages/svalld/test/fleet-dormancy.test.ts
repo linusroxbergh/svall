@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Agent } from '@svall/protocol';
+import type { Agent, AgentKind, Robot } from '@svall/protocol';
 import type { Proc } from '../src/dormancy.js';
 import { Dormant } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
@@ -44,13 +44,13 @@ runIf('Fleet dormancy', () => {
 
   describe('after a quit, reboot or crash', () => {
     const HOUR = 3_600_000;
-    // a robot left dormant `ago` before now by what ended the fleet, with a resume that stays up
-    const ended = async (b: Awaited<ReturnType<typeof boot>>, ago: number, agent: Partial<Agent> = {}, unread = false) => {
-      const { c } = await withAgent(b);
+    // a robot left dormant `ago` before now by what ended the fleet, with a resume that stays up unless `command` says otherwise
+    const ended = async (b: Awaited<ReturnType<typeof boot>>, ago: number, agent: Partial<Agent> = {}, unread = false, command = 'sleep 600', backend: AgentKind = 'claude') => {
+      const { c } = await withAgent(b, backend, 'sleep 600', backend);
       await b.tmux.killWindow(c.tmux!.windowId);
       await waitFor(() => b.store.state.robots[c.id].tmux === undefined);
       b.store.update((d) => {
-        d.robots[c.id].revive = { command: 'sleep 600' };
+        d.robots[c.id].revive = { command };
         d.robots[c.id].unread = unread;
         Object.assign(d.robots[c.id].agent!, { restingSince: Date.now() - ago, ...agent });
       });
@@ -101,7 +101,7 @@ runIf('Fleet dormancy', () => {
     it('resumes a robot inside the limit as it was left, and leaves one past it or never marked dormant', async () => {
       const b = await boot({ resumeGapMs: 0 });
       b.fleet.setDormancy(20);
-      const inside = await ended(b, 19 * HOUR, { status: 'done' }, true);
+      const inside = await ended(b, 19 * HOUR, { status: 'done', prompt: 'API Error' }, true);
       const past = await ended(b, 21 * HOUR);
       const unmarked = await ended(b, HOUR, { restingSince: undefined });
       const since = b.store.state.robots[inside].agent!.restingSince;
@@ -110,7 +110,8 @@ runIf('Fleet dormancy', () => {
       const after = b.store.state.robots;
       expect(after[inside].tmux).toBeDefined();
       expect(after[inside].unread).toBe(true);
-      expect(after[inside].agent).toMatchObject({ status: 'done', restingSince: since });
+      expect(after[inside].agent).toMatchObject({ status: 'done', prompt: 'API Error', restingSince: since });
+      expect(b.fleet.readLast(inside)).toBe('[its last turn ended on an error: API Error]');
       expect(after[past].tmux).toBeUndefined();
       expect(after[past].agent?.restingSince).toBeUndefined();
       expect(after[unmarked].tmux).toBeUndefined();
@@ -173,6 +174,196 @@ runIf('Fleet dormancy', () => {
       expect(errors).toEqual(expect.arrayContaining([`resume ${rejects}: Error: no window`, `resume ${throws}: Error: moving`]));
       for (const id of [rejects, throws]) expect(b.store.state.robots[id].agent?.restingSince).toBeUndefined();
       expect(b.store.state.robots[next].tmux).toBeDefined();
+    });
+
+    it('takes a robot whose resume exits to its shell back to dormant, with its session, and logs it', async () => {
+      const errors: string[] = [];
+      const b = await boot({ resumeGapMs: 0, resumeMs: 300, log: { info() {}, error: (m) => { errors.push(m); } } });
+      const id = await ended(b, HOUR, { status: 'done' }, true, `false ${SID}`);
+      b.fleet.resumeResting();
+      await waitFor(() => b.store.state.robots[id].resumeError !== undefined);
+      const after = b.store.state.robots[id];
+      expect(after.tmux).toBeUndefined();
+      expect(after.revive?.command).toBe(`false ${SID}`);
+      expect(after.agent).toMatchObject({ sessionId: SID, status: 'done' });
+      expect(after.agent?.restingSince).toBeUndefined();
+      expect(after.unread).toBe(true);
+      expect(errors).toContain(after.resumeError);
+    });
+
+    it('waits out a shell slow to start, and the robot comes back as it was left', async () => {
+      const b = await boot({ resumeGapMs: 0 });
+      // dash's builtins keep sh in front, as a slow rc file does
+      const id = await ended(b, HOUR, { status: 'done' }, true, `: ${SID}; i=0; while [ $i -lt 400000 ]; do i=$((i+1)); done; sleep 600`);
+      const since = b.store.state.robots[id].agent!.restingSince;
+      b.fleet.resumeResting();
+      await waitFor(async () => (await b.tmux.listWindows()).find((w) => w.name === id)?.command === 'sleep');
+      await b.fleet.onSocketEvent({ hook: { robotId: id, backend: 'claude', name: 'SessionStart', sessionId: SID, pid: 4242 } });
+      expect(b.store.state.robots[id].agent).toMatchObject({ status: 'done', restingSince: since });
+      expect(b.store.state.robots[id].unread).toBe(true);
+    });
+
+    it('stops watching a resume at a start once it has stayed up', async () => {
+      const b = await boot({ resumeGapMs: 0, resumeMs: 200 });
+      const id = await ended(b, HOUR, {}, false, `: ${SID}; sleep 600`);
+      b.fleet.resumeResting();
+      await waitFor(() => !!b.store.state.robots[id].tmux);
+      await waitFor(() => !b.fleet['resuming'].has(id));
+      expect(b.store.state.robots[id].tmux).toBeDefined();
+      expect(b.store.state.robots[id].resumeError).toBeUndefined();
+    });
+
+    it('ends at the limit, or puts to sleep, a resumed Codex that has named no process', async () => {
+      let list: Proc[] = [];
+      const b = await boot({
+        resumeGapMs: 0,
+        readProcs: async () => list.map((p) => ({ pid: p.pid, ppid: p.ppid, start: 0, cpuNs: 0, mem: 0, path: p.args.split(' ')[0], args: p.args })),
+        endOpts: { kill: () => {}, wait: async () => {} },
+      });
+      list = b.procs;
+      const resumed = async () => {
+        const id = await ended(b, HOUR, {}, false, 'sleep 600', 'codex');
+        await b.fleet.reviveRobot(id, undefined, undefined, undefined, true);
+        const pid = Number((await b.tmux.run('display', '-p', '-t', b.store.state.robots[id].tmux!.paneId, '#{pane_pid}')).trim());
+        expect(b.store.state.robots[id].agent?.pid).not.toBe(pid);
+        b.procs.splice(0, b.procs.length, { pid, ppid: 1, pgid: pid, args: `codex resume -c tui.resume_cwd=session ${SID}` });
+        return id;
+      };
+      const put = await resumed();
+      await b.fleet.sleepRobot(put);
+      expect(b.store.state.robots[put].tmux).toBeUndefined();
+      const due = await resumed();
+      b.store.update((d) => { d.robots[due].agent!.restingSince = Date.now() - 13 * HOUR; });
+      await b.fleet['endIdleAgents']();
+      expect(b.store.state.robots[due].tmux).toBeUndefined();
+    });
+
+    it('takes a prompt or a hand to a robot still at rest as any revive', async () => {
+      const b = await boot({ resumeGapMs: 0 });
+      const prompted = await ended(b, HOUR, { status: 'done' }, true, `claude --resume ${SID}`);
+      await b.fleet.run(prompted, 'go on', true);
+      expect(await b.fleet.waitFor(prompted, ['done'], 100)).toBe('timeout');
+      expect(b.store.state.robots[prompted].agent?.restingSince).toBeUndefined();
+      expect(b.store.state.robots[prompted].unread).toBe(false);
+      const opened = await ended(b, 13 * HOUR, { status: 'done' });
+      await b.fleet.reviveRobot(opened);
+      expect(b.store.state.robots[opened].agent).toMatchObject({ status: 'idle' });
+      expect(b.store.state.robots[opened].agent?.restingSince).toBeUndefined();
+      await b.fleet['endIdleAgents']();
+      expect(b.store.state.robots[opened].tmux).toBeDefined();
+    });
+
+    it('leaves a robot whose folder is gone dormant where it was, and logs it', async () => {
+      const errors: string[] = [];
+      const b = await boot({ resumeGapMs: 0, log: { info() {}, error: (m) => { errors.push(m); } } });
+      const id = await ended(b, HOUR);
+      b.store.update((d) => { d.robots[id].cwd = '/nonexistent/folder'; });
+      b.fleet.resumeResting();
+      await b.fleet.settle();
+      const after = b.store.state.robots[id];
+      expect(after.tmux).toBeUndefined();
+      expect(after.cwd).toBe('/nonexistent/folder');
+      expect(after.agent?.restingSince).toBeUndefined();
+      expect(errors).toContain(`resume ${id}: its folder /nonexistent/folder is gone`);
+    });
+
+    it('leaves a robot never prompted dormant, with no conversation to bring back', async () => {
+      const b = await boot({ resumeGapMs: 0 });
+      const id = await ended(b, HOUR, { transcriptPath: '/nonexistent/none.jsonl' }, false, `claude --resume ${SID}`);
+      b.fleet.resumeResting();
+      await b.fleet.settle();
+      const after = b.store.state.robots[id];
+      expect(after.tmux).toBeUndefined();
+      expect(after.agent).toMatchObject({ sessionId: SID });
+      expect(after.agent?.restingSince).toBeUndefined();
+      expect(after.revive?.command).toBe(`claude --resume ${SID}`);
+    });
+
+    it('keeps the rest of a robot whose resume the fleet\'s stop cuts short', async () => {
+      const b = await boot({ resumeGapMs: 0 });
+      const id = await ended(b, HOUR);
+      let fail!: (e: Error) => void;
+      vi.spyOn(b.fleet, 'reviveRobot').mockReturnValueOnce(new Promise((_, reject) => { fail = reject; }));
+      b.fleet.resumeResting();
+      await b.fleet.stop();
+      fail(new Error('server gone'));
+      await b.fleet.settle();
+      expect(b.store.state.robots[id].agent?.restingSince).toBeDefined();
+    });
+
+    it('keeps counting from the first rest through another quit or crash', async () => {
+      const b = await boot();
+      const { c } = await withAgent(b);
+      b.store.update((d) => { d.robots[c.id].agent!.restingSince = 1000; });
+      const state = structuredClone(b.store.state);
+      await b.fleet.stopAll();
+      expect(b.store.state.robots[c.id].agent?.restingSince).toBe(1000);
+      await stopFleets();
+      const again = await boot({ opening: true, state });
+      expect(again.store.state.robots[c.id].agent?.restingSince).toBe(1000);
+    });
+
+    it('leaves no daemon start\'s grace in the rest a quit keeps', async () => {
+      const b = await boot();
+      const { c } = await withAgent(b);
+      b.store.update((d) => { d.robots[c.id].agent!.lastActivityAt = 1000; });
+      await b.fleet.stop();
+      const again = new Fleet({ ...b.fleet['deps'], pollMs: 60_000 });
+      cleanup.push(() => again.stop());
+      await again.start();
+      await again.stopAll();
+      expect(b.store.state.robots[c.id].agent?.restingSince).toBe(1000);
+    });
+
+    it('leaves a robot already dormant as it is at a restart', async () => {
+      const b = await boot({ resumeGapMs: 0 });
+      const id = await ended(b, HOUR, { restingSince: undefined });
+      const state = structuredClone(b.store.state);
+      await stopFleets();
+      const again = await boot({ opening: true, state, resumeGapMs: 0 });
+      again.fleet.resumeResting();
+      await again.fleet.settle();
+      expect(again.store.state.robots[id].tmux).toBeUndefined();
+      expect(again.store.state.robots[id].agent?.restingSince).toBeUndefined();
+    });
+
+    it('keeps 2 s between resumes', async () => {
+      const b = await boot();
+      await ended(b, 3 * HOUR);
+      await ended(b, HOUR);
+      const real = b.fleet.reviveRobot.bind(b.fleet);
+      const at: number[] = [];
+      vi.spyOn(b.fleet, 'reviveRobot').mockImplementation((...args) => { at.push(Date.now()); return real(...args); });
+      b.fleet.resumeResting();
+      await waitFor(() => at.length === 2);
+      expect(at[1]! - at[0]!).toBeGreaterThanOrEqual(1990);
+    });
+
+    it('leaves one whose rest went while those before it came up', async () => {
+      const b = await boot({ resumeGapMs: 200 });
+      const older = await ended(b, 3 * HOUR);
+      const newer = await ended(b, HOUR);
+      b.fleet.resumeResting();
+      await waitFor(() => !!b.store.state.robots[newer].tmux);
+      b.store.update((d) => { delete d.robots[older].agent!.restingSince; });
+      await b.fleet.settle();
+      expect(b.store.state.robots[older].tmux).toBeUndefined();
+    });
+
+    it('leaves a moving robot, and one placed elsewhere, to their move and machine', async () => {
+      const errors: string[] = [];
+      const b = await boot({ resumeGapMs: 0, log: { info() {}, error: (m) => { errors.push(m); } } });
+      const moving = await ended(b, HOUR);
+      const placed = await ended(b, HOUR);
+      b.store.update((d) => { d.robots[moving].moving = { id: 'mv_0123456789', to: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a', phase: 'activate' } as never; });
+      vi.spyOn(b.fleet as unknown as { runsHere(c: Robot): boolean }, 'runsHere').mockImplementation((c) => c.id !== placed);
+      b.fleet.resumeResting();
+      await b.fleet.settle();
+      for (const id of [moving, placed]) {
+        expect(b.store.state.robots[id].tmux).toBeUndefined();
+        expect(b.store.state.robots[id].agent?.restingSince).toBeDefined();
+      }
+      expect(errors).toEqual([]);
     });
   });
 

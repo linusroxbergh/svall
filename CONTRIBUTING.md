@@ -122,4 +122,5 @@ the release pipeline.
   nothing without the `SVALL_ROBOT_ID` a robot sets, so `claude` run
   elsewhere is unaffected.
 - On start, the daemon matches `state.json` against the live tmux windows.
-  Robots whose window is gone turn dormant, ready to revive.
+  Robots whose window is gone turn dormant, ready to revive, and those at rest
+  inside the idle limit resume.

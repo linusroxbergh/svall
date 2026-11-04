@@ -16,7 +16,7 @@ import { renderBrief } from './context/brief.js';
 import { isAgentCommand, promptText, withAddDirs, withoutV1Flags, withPromptFile, withStandalone } from './context/launch.js';
 import { setContext, settleItems } from './context/items.js';
 import { docFolders, removeDocs } from './docs.js';
-import { endAll, endIdleAgents, exited, freshCommand, keepResting, loseSecond, markDormant, processes, rememberFlags, restFrom, resumeHere, resumeNote, runsAgent, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
+import { agentProc, endAll, endIdleAgents, exited, freshCommand, keepResting, loseSecond, markDormant, processes, rememberFlags, restFrom, resumeHere, resumeNote, sleepFlags, startFlags, unsaved, type Proc, type Sleep } from './dormancy.js';
 import { Blocked, Dormant, Invalid, NotFound } from './errors.js';
 import { attribute, type Scope } from './load/attribute.js';
 import { endProcs } from './load/end.js';
@@ -81,6 +81,7 @@ type Deps = {
 type NewRobot = { islandId: string; cwd: string; name?: string; command?: string; cell?: Cell; run?: string; agentProfile?: string; note?: string; startedBy?: string; report?: boolean };
 const STALE_SNAPSHOT_MS = 3_600_000;
 const RESUME_GAP_MS = 2000;
+const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
 const TRANSCRIPT_TAIL = 4 * 1024 * 1024;
 // the robot messages one robot holds for the user, which state.json keeps
 const HELD_MAX = 20;
@@ -96,8 +97,10 @@ export class Fleet extends EventEmitter<Events> {
   private ending = new Map<string, Promise<void>>();
   // the window names of robots being closed, which a listing meanwhile must not adopt
   private closing = new Set<string>();
-  // when the user last looked at each robot's main terminal
+  // when the user last looked at each robot's main terminal, or a daemon start gave it a whole rest
   private seen = new Map<string, number>();
+  // the looks alone: a quit leaves the rest counted from these, and a start's grace ends with that daemon
+  private looked = new Map<string, number>();
   private openingSecond = new Map<string, Promise<Robot>>();
   // new robots between opening their window and typing their start command
   private creating = new Set<Promise<unknown>>();
@@ -422,7 +425,7 @@ export class Fleet extends EventEmitter<Events> {
   async stopAll(): Promise<void> {
     // the control client's exit would otherwise start a server again, and a poll under way write back what this ends
     await this.stop();
-    await endAll(this.sleep, this.reviving, this.seen);
+    await endAll(this.sleep, this.reviving, this.looked);
     setImmediate(() => this.emit('stopped'));
   }
 
@@ -768,6 +771,7 @@ export class Fleet extends EventEmitter<Events> {
   // nothing the fleet keeps outside the state outlives the robot
   private forgetRobot(id: string): void {
     this.seen.delete(id);
+    this.looked.delete(id);
     for (const m of [this.link, this.poll, this.agentEvents, this.prompts, this.scribe]) m.forget(id);
     removeDocs(this.deps.paths.docs, 'robot', id, this.deps.log);
   }
@@ -783,11 +787,10 @@ export class Fleet extends EventEmitter<Events> {
     const flags = sleepFlags(c, procs);
     if (!c.tmux || !flags) throw new Invalid(`${c.name} can't be put to sleep`);
     const victims = await this.owned(c, procs);
-    // only a pid still running its agent is waited on, and killed if it outstays the wait; a dormant second's is stale
-    const agentProc = (a?: Agent) => (a?.pid ? procs.find((p) => p.pid === a.pid && runsAgent(p.args, a.kind)) : undefined);
-    const second = c.second?.tmux ? agentProc(c.second.agent) : undefined;
+    // only a process still running its agent is waited on, and killed if it outstays the wait; a dormant second's is stale
+    const second = c.second?.tmux ? agentProc(c.second.agent, procs) : undefined;
     const secondFlags = second && c.second?.agent && startFlags(second.args, c.second.agent.kind);
-    const pids = [agentProc(c.agent), second].flatMap((p) => (p ? [p.pid] : []));
+    const pids = [agentProc(c.agent, procs), second].flatMap((p) => (p ? [p.pid] : []));
     const windows = [c.tmux.windowId];
     const keys = [id];
     // dormant before the kill: the SessionEnd the kill sends then finds no live robot to clear. A close, another
@@ -839,16 +842,26 @@ export class Fleet extends EventEmitter<Events> {
       if (this.stopped) return;
       // opened, closed or put to sleep while the ones before came up
       const from = since(id);
-      if (from === undefined || store.state.robots[id].tmux) continue;
-      if (hours && Date.now() - from >= hours * 3_600_000) { forget(id); continue; }
-      try { await this.reviveRobot(id); } catch (e) { log.error(`resume ${id}: ${String(e)}`); forget(id); }
+      const c = store.state.robots[id];
+      if (from === undefined || c.tmux) continue;
+      // past its limit, or with no conversation to bring back, it waits to be opened
+      if ((hours && Date.now() - from >= hours * 3_600_000) || unsaved(c) !== undefined) { forget(id); continue; }
+      // a folder gone, as a volume not yet mounted: only someone opening it can judge another folder in its place
+      if (!isDir(c.cwd)) { log.error(`resume ${id}: its folder ${c.cwd} is gone`); forget(id); continue; }
+      try {
+        await this.reviveRobot(id, undefined, undefined, undefined, true);
+      } catch (e) {
+        log.error(`resume ${id}: ${String(e)}`);
+        // a resume the fleet's own stop cut short is for the next start
+        if (!this.stopped) forget(id);
+      }
       await new Promise((r) => setTimeout(r, this.deps.resumeGapMs ?? RESUME_GAP_MS));
     }
   }
 
   // concurrent revives would each spawn a window and orphan all but the last. `fresh` starts a new session with it in place
-  // of the resume; `move` is the move a moving robot is revived by
-  reviveRobot(id: string, prompt?: string, fresh?: string, move?: string): Promise<Revived> {
+  // of the resume; `move` is the move a moving robot is revived by; `asLeft`, a resume at a start, with nobody looking
+  reviveRobot(id: string, prompt?: string, fresh?: string, move?: string, asLeft = false): Promise<Revived> {
     this.still(id, move);
     // the protocol's revive carries neither, so a robot placed elsewhere is refused one
     if ((prompt !== undefined || fresh !== undefined) && this.deps.remote?.placedAt(id)) this.local(id);
@@ -858,12 +871,12 @@ export class Fleet extends EventEmitter<Events> {
     if (this.stopped) return Promise.reject(new Invalid('the fleet is stopping'));
     const inFlight = this.reviving.get(id);
     if (inFlight) return inFlight;
-    const p = this.doRevive(id, prompt, fresh, move !== undefined).finally(() => this.reviving.delete(id));
+    const p = this.doRevive(id, prompt, fresh, move !== undefined, asLeft).finally(() => this.reviving.delete(id));
     this.reviving.set(id, p);
     return p;
   }
 
-  private async doRevive(id: string, prompt: string | undefined, fresh: string | undefined, byMove: boolean): Promise<Revived> {
+  private async doRevive(id: string, prompt: string | undefined, fresh: string | undefined, byMove: boolean, asLeft: boolean): Promise<Revived> {
     // a window still closing for idleness or a sleep is not one to go back to
     await this.ending.get(id);
     const c = this.robot(id);
@@ -890,7 +903,7 @@ export class Fleet extends EventEmitter<Events> {
     const moved = gone ? { from: gone, to: cwd } : undefined;
     // a robot's message or svalld's line keeps its header first
     if (c.revive?.interrupted && fresh === undefined) prompt = !prompt ? resumeNote(moved) : isRobotSaid(prompt) ? `${prompt}\n\n${resumeNote(moved)}` : `${resumeNote(moved)}\n\n${prompt}`;
-    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], byMove, id) : undefined;
+    const resuming = fresh === undefined ? resumeOf(this.deps.store.state.robots[id], byMove || asLeft, id) : undefined;
     try {
       const command = this.launchLine(id, withAddDirs(withoutV1Flags(fresh ?? resumeHere(c.revive?.command ?? '', !!gone)), [...(island?.context ?? []), ...c.context], this.deps.config.svallPermissions), prompt);
       this.deps.store.update((d) => {
@@ -903,13 +916,15 @@ export class Fleet extends EventEmitter<Events> {
         // a resumed session keeps its old agent record; its stale status must not answer the next wait,
         // nor its old activity have it ended again as idle before it is up. One resumed at a start, with nobody looking, is as it was left
         if (cur.agent) {
-          const resting = cur.agent.restingSince !== undefined;
-          settle(cur.agent, resting ? cur.agent.status : 'idle');
+          if (!asLeft) {
+            settle(cur.agent, 'idle');
+            delete cur.agent.restingSince;
+            cur.unread = false;
+          }
           cur.agent.lastActivityAt = Date.now();
-          if (!resting) cur.unread = false;
         }
       });
-      if (resuming && command) this.resuming.set(id, resuming); else this.resuming.delete(id);
+      if (resuming && command) this.resuming.set(id, { ...resuming, atStart: asLeft }); else this.resuming.delete(id);
       if (command) await this.deps.tmux.sendLine(w.paneId, command, true);
     } catch (e) {
       // the prompt file could not be written, or the resume never reached the pane: the window goes, or a poll would
@@ -958,7 +973,6 @@ export class Fleet extends EventEmitter<Events> {
   private reviveCwd(c: Robot, term?: 2): string {
     const t = term === 2 ? c.second : c;
     const cwd = t?.cwd ?? c.cwd;
-    const isDir = (p: string) => !!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory();
     if (isDir(cwd)) return cwd;
     const kind = t?.revive?.command && t.agent?.kind;
     if (kind === 'codex' || kind === 'opencode') {
@@ -1045,7 +1059,11 @@ export class Fleet extends EventEmitter<Events> {
   // only the terminal the viewer is looking at: a surface that cannot show the second one must not clear it
   markSeen(id: string, term?: 2): Robot {
     this.local(id);
-    if (term !== 2) this.seen.set(id, Date.now());
+    if (term !== 2) {
+      const now = Date.now();
+      this.seen.set(id, now);
+      this.looked.set(id, now);
+    }
     this.deps.store.update((d) => {
       if (term === 2) {
         const second = d.robots[id].second;

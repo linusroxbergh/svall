@@ -24,13 +24,13 @@ const DORMANCY_EVERY = 20;
 const RESUME_MS = 60_000;
 
 /** A resume typed into a revived terminal: the session it resumes and the command that resumes it again. */
-export type Resume = { robotId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean };
+export type Resume = { robotId: string; term?: 2; sessionId: string; kind: AgentKind; revive: { command: string }; at: number; ran: boolean; atStart?: boolean };
 
-// the resume a revive types, when it brings back the session of a terminal a move carries or that could not resume it;
-// any other resume that fails leaves its terminal at the shell
-export function resumeOf(slot: TerminalSlot | undefined, moved: boolean, robotId: string, term?: 2): Resume | undefined {
+// the resume a revive types, when it brings back the session of a terminal a move carries, a start resumes or that could
+// not resume it; any other resume that fails leaves its terminal at the shell
+export function resumeOf(slot: TerminalSlot | undefined, watched: boolean, robotId: string, term?: 2): Resume | undefined {
   const { agent, revive } = slot ?? {};
-  if (!agent || !revive?.command.includes(agent.sessionId) || (!moved && slot?.resumeError === undefined)) return undefined;
+  if (!agent || !revive?.command.includes(agent.sessionId) || (!watched && slot?.resumeError === undefined)) return undefined;
   return { robotId, ...(term && { term }), sessionId: agent.sessionId, kind: agent.kind, revive: { ...revive }, at: Date.now(), ran: false };
 }
 
@@ -168,7 +168,11 @@ export class Poll {
     const settleAgent = (key: string, slot: TerminalSlot, command: string, dormant: (s: TerminalSlot) => void) => {
       const resume = resuming.get(key);
       const shell = isShellCommand(command, this.deps.config.shell);
-      if (resume && !shell) resume.ran = true;
+      if (resume && !shell) {
+        resume.ran = true;
+        // Codex names no session start until its first prompt, so a resume at a start that stays up this long has come up
+        if (resume.atStart && Date.now() - resume.at >= resumeMs) resuming.delete(key);
+      }
       // an agent that reported in while tmux answered is not the one the listing shows at a shell
       if (slot.agent && slot.agent.lastActivityAt !== activeAt.get(key)) { this.shellStreak.delete(key); return; }
       if (slot.agent && shell && !suspended.has(slot.agent.pid ?? 0)) {

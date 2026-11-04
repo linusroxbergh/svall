@@ -100,6 +100,9 @@ export const Agent = z.object({
 });
 export type Agent = z.infer<typeof Agent>;
 
+/** When an agent last did anything: a resume that keeps its rest is not something it did. */
+export const lastActive = (a: Agent): number => a.restingSince ?? a.lastActivityAt;
+
 export const Repo = z.object({
   root: z.string(),
   mainRoot: z.string(),

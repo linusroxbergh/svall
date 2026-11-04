@@ -1,4 +1,4 @@
-import { ROBOT_NOTE_MAX, type Robot, type ContextItem, type FleetState, type MachineId, type Params } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, lastActive, type Robot, type ContextItem, type FleetState, type MachineId, type Params } from '@svall/protocol';
 import { AgentProfilePick } from './AgentProfilePick.js';
 import { app, deps } from './boot.js';
 import { saveRobot, saveRobotContext, setStar } from './actions.js';
@@ -165,7 +165,7 @@ export function SideCard({ id }: { id: string }) {
                 </div>
               </div>
             )}
-            <LastActivity at={c.agent?.lastActivityAt ?? c.shell.lastOutputAt} />
+            <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
             {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
           </div>
         </Section>

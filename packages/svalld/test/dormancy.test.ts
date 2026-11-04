@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Agent, Robot, FleetState } from '@svall/protocol';
-import { drowsy, freshCommand, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, unsaved, RESUME_NOTE } from '../src/dormancy.js';
+import { agentProc, drowsy, freshCommand, keepResting, markDormant, rememberFlags, resumeHere, resumeNote, reviveCommand, runsInBackground, sleepFlags, startFlags, unsaved, RESUME_NOTE } from '../src/dormancy.js';
 import { snapshot, syncWindow } from '../src/reconcile.js';
 
 const SID = '3f2b8c1e-6a4d-4e7b-9c21-5d8f0a1b2c3d';
@@ -176,11 +176,45 @@ describe('reviveCommand', () => {
   });
 });
 
+describe('agentProc', () => {
+  const procs = [{ pid: 2, args: `codex resume -c tui.resume_cwd=session ${SID}` }, { pid: 3, args: `claude --resume ${SID}` }, { pid: 4, args: 'sleep 30' }];
+  it('takes the pid on record while it runs the agent', () => {
+    expect(agentProc(agent({ pid: 3 }), procs)?.pid).toBe(3);
+    expect(agentProc(agent({ pid: 4 }), procs)).toBeUndefined();
+    expect(agentProc(undefined, procs)).toBeUndefined();
+  });
+
+  it('knows a resumed Codex by the session its command line names, and nothing else so', () => {
+    expect(agentProc(agent({ kind: 'codex', pid: 1 }), procs)?.pid).toBe(2);
+    expect(agentProc(agent({ kind: 'codex', pid: 1, sessionId: OSID }), procs)).toBeUndefined();
+    expect(agentProc(agent({ pid: 1 }), procs)).toBeUndefined();
+  });
+});
+
+describe('keepResting', () => {
+  const marked = (over: Partial<Robot>) => {
+    const c = robot(over);
+    keepResting(c, 5);
+    return c.agent?.restingSince;
+  };
+  const resume = `claude --resume ${SID}`;
+  it('marks an agent with a resume to bring back and no turn cut short', () => {
+    expect(marked({ revive: { command: resume } })).toBe(5);
+  });
+
+  it('leaves one with no resumable session, none on record or one cut short', () => {
+    expect(marked({ revive: { command: '' } })).toBeUndefined();
+    expect(marked({})).toBeUndefined();
+    expect(marked({ revive: { command: resume, interrupted: true } })).toBeUndefined();
+  });
+});
+
 describe('markDormant', () => {
-  it('leaves no rest for a later start to resume it from', () => {
-    const c = robot({ agent: agent({ restingSince: 5 }) });
+  it('leaves no rest for a later start to resume it from, and dates its last activity from that rest', () => {
+    const c = robot({ agent: agent({ restingSince: 5, lastActivityAt: 9 }) });
     markDormant(c);
     expect(c.agent?.restingSince).toBeUndefined();
+    expect(c.agent?.lastActivityAt).toBe(5);
   });
 
   it('marks an agent ended mid-turn or on a question interrupted, and one at rest not', () => {

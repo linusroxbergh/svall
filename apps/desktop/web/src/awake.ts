@@ -1,4 +1,4 @@
-import type { FleetState, PhoneSession } from '@svall/protocol';
+import { lastActive, type FleetState, type PhoneSession } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
 import { isPlaced } from './placement.js';
 import { slotStatus, wantsUser } from './selectors.js';
@@ -18,7 +18,7 @@ export function needOf(f: FleetState, phones: PhoneSession[]): Need {
     for (const term of [1, 2] as const) {
       const a = term === 1 ? c.agent : c.second?.agent;
       if (!a) continue;
-      need.since = Math.max(need.since, a.lastActivityAt);
+      need.since = Math.max(need.since, lastActive(a));
       if (slotStatus(c, term) !== 'working') continue;
       if (a.shellsOnly) need.shells++; else need.working++;
     }

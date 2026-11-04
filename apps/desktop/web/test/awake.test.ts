@@ -48,6 +48,11 @@ describe('needOf', () => {
     expect(needOf(f, [phone('me', 250)]).since).toBe(300);
     expect(needOf(f, [phone('me', 250), phone('you', 400)]).since).toBe(400);
   });
+
+  it('dates the need of an agent resumed at rest from that rest, not its resume', () => {
+    const f = patch(fleet(), 'c0', { agent: agent('done', { lastActivityAt: 500, restingSince: 100 }), unread: true });
+    expect(needOf(f, []).since).toBe(100);
+  });
 });
 
 describe('awakeHold', () => {

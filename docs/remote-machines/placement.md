@@ -333,8 +333,8 @@ Once this Mac answers, what the worker did lands here once each, in the order it
   "linus-vault is not reachable", or "linus-vault runs a different build; upgrade it under Machines". The robots keep
   running there, and are never marked dormant for being out of reach. Once the worker answers again, what they did
   meanwhile comes home in order and the terminals attach again.
-- **A worker that reboots**: its robots come back dormant, as on a Mac, and revive from their cards. Restarting its
-  Svall service alone leaves them running.
+- **A worker that reboots**: as on a Mac, its robots that were at rest inside the idle limit resume there on their own,
+  and the rest stay dormant and revive from their cards. Restarting its Svall service alone leaves them running.
 
 ## Limitations
 
