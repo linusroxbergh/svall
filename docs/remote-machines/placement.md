@@ -235,10 +235,10 @@ A robot on a worker keeps working while this Mac sleeps or is out of reach, and 
 the worker:
 
 - `svall robot new` starts the robot on the same worker, awake Mac or not; mission control is refused: "mission
-  control stays on ada-mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
+  control stays on this Mac; start it on another island". While this Mac is away, `--cwd` must be inside a clone the
   worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
-  "started on linus-vault while ada-mac was away", and the worker starts at most five robots until this Mac answers
-  again; the sixth: "linus-vault has started 5 robots since ada-mac last answered; wait for it".
+  "started on linus-vault while this Mac was away", and the worker starts at most five robots until this Mac answers
+  again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,
   `svall robot close` and `svall robot run`, `send` and `read` reach the robots on it. `--report` on `robot new` or
   `robot send` gets the sentence below, as this Mac keeps the reports.
