@@ -2,7 +2,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
-import { emptyState } from '@svall/protocol';
 import { startApi } from '../src/api/server.js';
 import { silentLogger } from '../src/log.js';
 import { resolvePaths } from '../src/paths.js';
@@ -37,7 +36,7 @@ describe('home.connection over a real socket', () => {
   async function api(host: string) {
     const home = makeHome();
     const paths = resolvePaths(home);
-    const store = new Store(path.join(home, 'state.json'), emptyState(), silentLogger);
+    const store = Store.load(path.join(home, 'state.json'), () => {});
     const a = await startApi({
       host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') }, docs: paths.docs,
