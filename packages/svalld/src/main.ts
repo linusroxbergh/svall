@@ -352,8 +352,8 @@ async function start(opts: Options): Promise<Daemon> {
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   // a home's name is its registry's, which no one has written on a machine that has never run a host command
   const fleetHome = () => (worker
-    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false }
-    : { machine: me, name: registered().find((m) => m.id === me)?.record.name ?? os.hostname().split('.')[0], mine: true });
+    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me }
+    : { machine: me, name: registered().find((m) => m.id === me)?.record.name ?? os.hostname().split('.')[0], mine: true, me });
 
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),

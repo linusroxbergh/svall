@@ -14,7 +14,7 @@ import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
-import { answers, awayLine, isPlaced, machineOf } from './placement.js';
+import { answers, awayLine, homeName, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -70,6 +70,7 @@ function LastActivity({ at }: { at: number }) {
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const machines = useApp((s) => s.fleet.machines);
+  const via = useApp((s) => s.via);
   const islands = useApp((s) => s.fleet.islands);
   const fleet = { machines, islands };
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
@@ -82,13 +83,15 @@ export function SideCard({ id }: { id: string }) {
   const started = useApp((s) => Object.values(s.fleet.robots).filter((k) => k.startedBy === id).map((k) => k.id).join(' '));
   if (!c) return null;
 
-  const status = statusOf(c, fleet);
+  const status = statusOf(c, fleet, via);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
-  const placed = machineOf(fleet, c);
-  const away = awayLine(fleet, c);
+  const placed = machineOf(fleet, c, via);
+  const away = awayLine(fleet, c, via);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
-  const movable = (placed !== undefined || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving;
+  const onHome = c.machine === undefined || c.machine === via?.home;
+  // and nothing moves while the page stands in for a home it cannot reach
+  const movable = (!onHome || fleet.islands[c.islandId]?.kind !== 'home') && !c.moving && (!via || via.online === true);
   const workers = Object.entries(fleet.machines ?? {}).filter(([, m]) => answers(m));
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
@@ -121,7 +124,7 @@ export function SideCard({ id }: { id: string }) {
         {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} />}
       </div>
       <div className="side-secs">
-        {placed && isPlaced(c) && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
+        {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
           <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
@@ -171,12 +174,12 @@ export function SideCard({ id }: { id: string }) {
         </Section>
       </div>
       <div className="acts">
-        {movable && (placed || workers.length > 0) && (
+        {movable && (!onHome || workers.length > 0) && (
           <div className="moves">
-            {placed
-              ? <button className="btn sm move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id })}><Mac /><span>Move to this Mac</span><Caret dir="right" /></button>
+            {!onHome
+              ? <button className="btn sm move" data-testid="side-move-home" onClick={() => app.store.getState().setMoveSheet({ id, ...(via && { to: via.home }) })}>{via ? <Machine /> : <Mac />}<span>Move to {via ? homeName(fleet, via) : 'this Mac'}</span><Caret dir="right" /></button>
               : workers.map(([m, w]) => (
-                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}><Machine /><span>Move to {w.name}</span><Caret dir="right" /></button>
+                <button key={m} className="btn sm move" data-testid={`side-move-${m}`} onClick={() => app.store.getState().setMoveSheet({ id, to: m as MachineId })}>{m === via?.machine ? <Mac /> : <Machine />}<span>Move to {m === via?.machine ? 'this Mac' : w.name}</span><Caret dir="right" /></button>
               ))}
           </div>
         )}
@@ -202,8 +205,9 @@ const RobotLink = ({ c }: { c: Pick<Robot, 'id' | 'name'> }) => (
 
 function StartedRow({ id, machines }: { id: string; machines: FleetState['machines'] }) {
   const c = useApp((s) => s.fleet.robots[id]);
+  const via = useApp((s) => s.via);
   if (!c) return null;
-  const status = statusOf(c, { machines });
+  const status = statusOf(c, { machines }, via);
   return (
     <div className="row"><b><RobotLink c={c} /></b>
       <span className="side-started-status"><i className="sdot" data-status={status} />{status}{c.report ? ' · reports back' : ''}</span>

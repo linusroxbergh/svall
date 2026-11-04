@@ -13,7 +13,12 @@ class Socket {
     // a daemon that went away: nothing listens on the port
     if (Socket.dead) setTimeout(() => this.onclose?.({ code: 1006 }), 0);
   }
-  send(json: string): void { this.sent.push(JSON.parse(json)); }
+  send(json: string): void {
+    const m = JSON.parse(json) as { id: number; method: string };
+    this.sent.push(m);
+    // a daemon that is the fleet's home, as every window on one asks first
+    if (m.method === 'fleet.home') queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: m.id, result: { machine: '11111111-1111-4111-8111-111111111111', name: 'mac', mine: true, me: '11111111-1111-4111-8111-111111111111' } }) }));
+  }
   close(): void { this.onclose?.({ code: 1000 }); }
 }
 
@@ -89,6 +94,7 @@ test('a patch the mirror cannot apply asks for a fresh snapshot, which replaces 
   const deliver = (msg: unknown) => ws.onmessage?.({ data: JSON.stringify(msg) });
   const snapshots = () => ws.sent.filter((m) => m.method === 'state.get');
   deliver({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } });
+  await vi.advanceTimersByTimeAsync(0);
   deliver({ id: snapshots()[0].id, result: fleet() });
   await vi.advanceTimersByTimeAsync(0);
   expect(Object.keys(store.getState().fleet.robots)).toHaveLength(3);

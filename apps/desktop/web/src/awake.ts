@@ -1,6 +1,6 @@
 import { lastActive, type FleetState, type PhoneSession } from '@svall/protocol';
 import type { Bridge } from './bridge.js';
-import { isPlaced } from './placement.js';
+import { isPlaced, type Via } from './placement.js';
 import { slotStatus, wantsUser } from './selectors.js';
 import type { KeepAwake } from './settings.js';
 import type { AppStore } from './store/index.js';
@@ -11,10 +11,10 @@ export const AWAKE_WINDOW_MS = 30 * 60_000;
 // shells: agents whose turn ended with only shells running on. since: when an agent last did something or a phone came on
 export type Need = { working: number; shells: number; waiting: number; phones: number; since: number };
 
-export function needOf(f: FleetState, phones: PhoneSession[]): Need {
+export function needOf(f: FleetState, phones: PhoneSession[], via?: Via): Need {
   const need = { working: 0, shells: 0, waiting: 0, phones: phones.length, since: 0 };
   // a robot on a worker works on while this Mac sleeps
-  for (const c of Object.values(f.robots).filter((r) => !isPlaced(r))) {
+  for (const c of Object.values(f.robots).filter((r) => !isPlaced(r, via))) {
     for (const term of [1, 2] as const) {
       const a = term === 1 ? c.agent : c.second?.agent;
       if (!a) continue;
@@ -22,7 +22,7 @@ export function needOf(f: FleetState, phones: PhoneSession[]): Need {
       if (slotStatus(c, term) !== 'working') continue;
       if (a.shellsOnly) need.shells++; else need.working++;
     }
-    need.waiting += Number(wantsUser(c, f));
+    need.waiting += Number(wantsUser(c, f, via));
   }
   for (const p of phones) need.since = Math.max(need.since, p.since);
   return need;
@@ -56,7 +56,7 @@ export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<B
   const update = () => {
     const s = store.getState();
     const now = Date.now();
-    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? []), { mode: s.settings.keepAwake, now }) : undefined;
+    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? [], s.via), { mode: s.settings.keepAwake, now }) : undefined;
     clearTimeout(timer);
     // looked at again at least each minute, as the window runs by the clock and a timer can stall while the Mac sleeps
     if (hold?.until) timer = setTimeout(update, Math.min(hold.until - now, 60_000));

@@ -257,6 +257,37 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(checked('set-robot-motion')).toBe('false');
 });
 
+test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and a far home takes no Add machine', async () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const DIAL = 'cccccccc-0000-4000-8000-000000000000';
+  call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
+    { id: HOME, name: 'studio', role: 'home', platform: 'linux', reachable: true, robots: 7 },
+    { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
+    { id: DIAL, name: 'laptop', role: 'worker', platform: 'darwin', reachable: false, robots: 1 },
+  ] } : {}));
+  try {
+    act(() => {
+      store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'studio', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    await screen.findByTestId('machine-studio');
+    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64', role: 'home' }] as never));
+    const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
+    expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker']);
+    expect(screen.getByTestId('machine-studio').textContent).toContain('home · ada@studio · 7 robots');
+    expect(screen.getByTestId('machine-mac').textContent).toContain('this Mac');
+    expect(screen.getByTestId('machine-mac').textContent).toContain('worker · 3 robots');
+    expect(screen.getByTestId('machine-laptop').textContent).toContain('dials in');
+    expect(screen.queryByTestId('machine-add')).toBeNull();
+    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('Machines lists every machine with its ssh, its release and last check, each with its own actions, and Add machine last', () => {
   store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false });
   render(<SettingsCard />);

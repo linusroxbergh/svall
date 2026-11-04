@@ -7,7 +7,12 @@ class Socket {
   sent: { id?: number; method?: string }[] = [];
   onopen?: () => void; onmessage?: (ev: { data: string }) => void; onerror?: () => void; onclose?: (ev: { code: number }) => void;
   constructor(public url: string) { Socket.all.push(this); }
-  send(json: string): void { this.sent.push(JSON.parse(json) as { id?: number; method?: string }); }
+  send(json: string): void {
+    const m = JSON.parse(json) as { id?: number; method?: string };
+    this.sent.push(m);
+    // a daemon that is the fleet's home, as every window on one asks first
+    if (m.method === 'fleet.home') queueMicrotask(() => this.onmessage?.({ data: JSON.stringify({ id: m.id, result: { machine: '11111111-1111-4111-8111-111111111111', name: 'mac', mine: true, me: '11111111-1111-4111-8111-111111111111' } }) }));
+  }
   close(): void { this.onclose?.({ code: 1000 }); }
   reply(msg: object): void { this.onmessage?.({ data: JSON.stringify(msg) }); }
   hello(): void { this.reply({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }); }
@@ -39,12 +44,14 @@ test('a bare launch offers the fleets once there are two, and asks again after a
   const { store } = initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].hello();
+  await vi.advanceTimersByTimeAsync(0);
   Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), error: { code: 'internal', message: 'busy' } });
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].close();
   await vi.advanceTimersByTimeAsync(1000);
   const second = Socket.all.at(-1)!;
   second.hello();
+  await vi.advanceTimersByTimeAsync(0);
   expect(second.sent.some((m) => m.method === 'fleets.list')).toBe(true);
   second.close();
   await vi.advanceTimersByTimeAsync(1);
@@ -53,6 +60,7 @@ test('a bare launch offers the fleets once there are two, and asks again after a
   await vi.advanceTimersByTimeAsync(1000);
   const next = Socket.all.at(-1)!;
   next.hello();
+  await vi.advanceTimersByTimeAsync(0);
   next.reply({ id: next.asked('fleets.list'), result: { fleets: [FLEET, { ...FLEET, home: '/u/.svall-work', name: 'work', current: false }] } });
   await vi.advanceTimersByTimeAsync(1);
   expect(store.getState().fleetPicker).toBe('bare');
@@ -62,6 +70,7 @@ test('a bare launch offers the fleets once there are two, and asks again after a
   next.close();
   await vi.advanceTimersByTimeAsync(1000);
   Socket.all.at(-1)!.hello();
+  await vi.advanceTimersByTimeAsync(0);
   expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
 });
 
@@ -72,11 +81,13 @@ test('a bare launch refused the list, as off the Mac, never asks again, so the f
   const { store } = initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].hello();
+  await vi.advanceTimersByTimeAsync(0);
   Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), error: { code: 'forbidden', message: 'fleets.list answers only on a Mac' } });
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].close();
   await vi.advanceTimersByTimeAsync(1000);
   Socket.all.at(-1)!.hello();
+  await vi.advanceTimersByTimeAsync(0);
   expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
   expect(store.getState().fleetPicker).toBeUndefined();
 });
@@ -88,6 +99,7 @@ test('a bare launch with one fleet offers nothing, and a launch that named one n
   const { store } = bare.initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all[0].hello();
+  await vi.advanceTimersByTimeAsync(0);
   Socket.all[0].reply({ id: Socket.all[0].asked('fleets.list'), result: { fleets: [FLEET] } });
   await vi.advanceTimersByTimeAsync(1);
   expect(store.getState().fleetPicker).toBeUndefined();
@@ -98,6 +110,7 @@ test('a bare launch with one fleet offers nothing, and a launch that named one n
   named.initApp();
   await vi.advanceTimersByTimeAsync(1);
   Socket.all.at(-1)!.hello();
+  await vi.advanceTimersByTimeAsync(0);
   expect(Socket.all.at(-1)!.sent.some((m) => m.method === 'fleets.list')).toBe(false);
 });
 

@@ -8,7 +8,7 @@ type Answer = Result<'home.connection'>;
 type Dial = { master(): SshMaster | undefined; failure(): SshError | undefined; restore(): void };
 type Forward = { master: SshMaster; remote: number; local: number; cancel: () => Promise<void> };
 // held until a person asks again: the far side will not change by itself
-type Settled = Pick<Answer, 'state' | 'release' | 'detail'>;
+type Settled = Pick<Answer, 'state' | 'release' | 'detail' | 'newer'>;
 
 /**
  * How a window reaches a far home's API: the home's port forwarded over the daemon's own master, the port read anew at
@@ -55,7 +55,7 @@ export class HomeApi {
       const info = await remoteConnectionInfo(master, { id: worker.homeMachineId, record: { name: worker.homeName, svallBase: worker.homeSvallBase } }, {
         fleetId: worker.fleetId, anyProtocol: true, fleetHome: path.posix.dirname(path.posix.dirname(worker.homeSocket)),
       });
-      if (info.protocol !== PROTOCOL_VERSION) return await this.settle(base, { state: 'version', release: info.release, detail: `${worker.homeName} runs ${info.release}, this Mac ${releaseVersion()}` });
+      if (info.protocol !== PROTOCOL_VERSION) return await this.settle(base, { state: 'version', release: info.release, detail: `${worker.homeName} runs ${info.release}, this Mac ${releaseVersion()}`, ...(info.protocol > PROTOCOL_VERSION && { newer: true as const }) });
       const { local } = await this.forwardTo(master, info.port);
       return { ...base, state: 'connected', ssh: master.destination, controlSocket: master.socket, port: local, token: info.token, release: info.release };
     } catch (e) {

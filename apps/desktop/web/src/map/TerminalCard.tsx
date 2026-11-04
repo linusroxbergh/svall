@@ -14,6 +14,7 @@ type Props = { id: string; host: { w: number; h: number } };
 export function TerminalCard({ id, host }: Props) {
   const c = useApp((s) => s.fleet.robots[id]);
   const machines = useApp((s) => s.fleet.machines);
+  const via = useApp((s) => s.via);
   const size = useApp((s) => s.cardSize);
   const half = useApp((s) => s.halfCard);
   const opacity = useApp((s) => (size === 'full' ? s.settings.fullOpacity : s.settings.cardOpacity));
@@ -45,7 +46,7 @@ export function TerminalCard({ id, host }: Props) {
   }, [id, rect.x, rect.y, rect.width, rect.height]);
 
   if (!c) return null;
-  const status = statusOf(c, { machines });
+  const status = statusOf(c, { machines }, via);
   return (
     // a wheel and a double click inside the card are the card's: the map under it pans on one and makes an island on the other
     <div ref={ref} className="terminal-card panel" data-testid="terminal-card" data-robot={id} data-size={size} data-settled={settled} data-resizing={resizing}

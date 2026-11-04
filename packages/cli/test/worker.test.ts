@@ -250,7 +250,7 @@ describe('svall worker', () => {
       await expect(enrollHere(t, { ...a, homeMachine, homeName: 'other', fleetId: crypto.randomUUID() }, macDeps(me))).rejects.toThrow(refused);
       expect(fs.readFileSync(paths.workerFile, 'utf8')).toBe(held);
     }
-    const { homeSsh: _ssh, homeSocket: _socket, ...undialed } = a;
+    const { homeSsh: _ssh, homeSocket: _socket, homeSvallBase: _base, homeArch: _arch, homePath: _path, ...undialed } = a;
     await expect(enrollHere(t, { ...undialed, homeName: 'other', fleetId: crypto.randomUUID() }, macDeps(me))).rejects.toThrow(refused);
     await enrollHere(t, { ...a, homeMachine: crypto.randomUUID(), homeName: 'moved' }, macDeps(me));
     expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8'))).toMatchObject({ fleetId: a.fleetId, homeName: 'moved' });

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type PushStatus } from '@svall/protocol';
+import { AGENT_LABEL, AgentKind, DORMANT_AFTER_HOURS, MODELS, fleetNameProblem, placingOn, type PushStatus, type Result } from '@svall/protocol';
 import { loadMobileStatus, renameFleet, setDormancy, setMainAgent, setModel, setPlacing, setScribe, setWorktrees } from './actions.js';
 import { app, deps } from './boot.js';
 import { openConfig, openUrl, shim, type MachineRow } from './bridge.js';
@@ -161,26 +161,48 @@ const checked = (c: NonNullable<MachineRow['check']>): string => {
   return `checked ${when}: ${found}`;
 };
 
+type FleetMachine = Result<'machines.list'>['machines'][number];
+
 function Machines() {
   const machines = useApp((s) => s.machines);
   const error = useApp((s) => s.machinesError);
+  const via = useApp((s) => s.via);
+  const links = useApp((s) => s.fleet.machines);
+  const online = useApp((s) => s.status === 'online');
+  const [fleetRows, setFleetRows] = useState<FleetMachine[]>();
   const list = () => { app.bridge.send({ type: 'host.list' }); };
   useEffect(list, []);
+  // the fleet's machines as its home knows them; what this machine's registry adds is how it reaches one
+  useEffect(() => {
+    if (!online) return;
+    let left = false;
+    deps().api.call('machines.list', {}).then((r) => { if (!left) setFleetRows(r.machines); }, () => {});
+    return () => { left = true; };
+  }, [links, online]);
+  const registered = new Map(machines?.map((m) => [m.id, m]));
+  const known = new Set<string>(fleetRows?.map((m) => m.id));
+  const rows = [
+    ...fleetRows?.map((f) => ({ id: f.id, name: f.name, role: f.role as string | undefined, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
+    // on a registry here and not yet a machine of this fleet
+    ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
+  ];
+  // a home on this Mac with no worker is what it always was
+  const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
   return (
     <div className="rows" data-testid="machines">
-      {machines && !machines.some((m) => m.ssh) && (
+      {machines && !shown.length && (
         <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.</span></div>
       )}
-      {machines?.filter((m) => m.ssh).map((m) => (
-        <div key={m.id} className="machine" data-testid={`machine-${m.name}`}>
+      {shown.map((m) => (
+        <div key={m.id} className="machine" data-testid={`machine-${m.name}`} data-role={m.role}>
           <div className="row">
-            <span><b>{m.name}</b> {m.ssh}</span>
+            <span><b>{m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name}</b> {[m.role, m.ssh].filter(Boolean).join(' · ')}{m.robots ? ` · ${m.robots} ${m.robots === 1 ? 'robot' : 'robots'}` : ''}</span>
             <b className="machine-said">
-              {[m.check?.release ? `release ${m.check.release}` : '', m.check ? checked(m.check) : 'not checked yet']
+              {[m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : 'dials in']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
-          <MachineActions name={m.name} />
+          {m.ssh && !via && m.role !== 'home' && <MachineActions name={m.name} />}
         </div>
       ))}
       {error && (
@@ -189,10 +211,12 @@ function Machines() {
           <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
         </div>
       )}
-      <div className="row">
-        <span>another machine<Info id="hosts">Svall installs itself on a Linux machine over ssh and reports what is left to do. From a terminal: <code>svall host</code></Info></span>
-        <b><button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
-      </div>
+      {!via && (
+        <div className="row">
+          <span>another machine<Info id="hosts">Svall installs itself on a Linux machine over ssh and reports what is left to do. From a terminal: <code>svall host</code></Info></span>
+          <b><button className="btn sm" data-testid="machine-add" onClick={() => app.store.getState().toggleHost(true)}>Add machine</button></b>
+        </div>
+      )}
     </div>
   );
 }
@@ -429,7 +453,9 @@ export function SettingsCard() {
   const [picked, pick] = useState<string>(ask?.pane ?? 'machine');
   useEffect(() => { if (ask) pick(ask.pane); }, [ask]);
   // banners need the shell, and Updates stands only while one waits; a pane that goes leaves the first in its place
-  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update));
+  const fallback = useApp((st) => !!st.via && !st.via.online);
+  // a worker's daemon holds no phone link, which is its home's to serve
+  const tabs = PANES.filter(([p]) => (p !== 'notifications' || shell) && (p !== 'updates' || update) && (p !== 'phone' || !fallback));
   const [pane, , Shown] = tabs.find(([p]) => p === picked) ?? tabs[0];
   return (
     <div className="set-win dialog" ref={box} data-testid="settings" role="dialog" aria-label="Settings">

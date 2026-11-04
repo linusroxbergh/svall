@@ -99,7 +99,7 @@ describe('routing calls for placed robots', () => {
     await w.link();
     await until(() => { if (!w.worker.store.state.machines?.[H]) throw new Error('no snapshot yet'); });
     const listed = await dispatch({ id: 1, method: 'machines.list', params: {} }, w.worker.ctx) as { result: { machines: { id: string }[] } };
-    expect(listed.result.machines.find((m) => m.id === H)).toEqual({ id: H, name: 'mac', reachable: true, robots: 0 });
+    expect(listed.result.machines.find((m) => m.id === H)).toMatchObject({ id: H, name: 'mac', role: 'home', reachable: true, robots: 0 });
     expect(listed.result.machines.find((m) => m.id === W)).toMatchObject({ name: 'w1', robots: 1 });
     w.worker.store.update((d) => { markDormant(d.robots.c_1); });
     await until(() => { if (w.home.store.state.robots.c_1.tmux) throw new Error('not reported yet'); });

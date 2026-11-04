@@ -388,7 +388,7 @@ export const methods = {
   // the app quitting: every terminal ends, each robot resumes at the next start or when opened, and the daemon exits once it has answered
   'fleet.stop': { params: z.object({}), result: z.object({}) },
   // the fleet's home, and whether the daemon that answers is that home
-  'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean() }) },
+  'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean(), me: MachineId }) },
   // how a window reaches the fleet's home over this daemon's ssh master: a home answers `connected` and no route. `retry`: a
   // person asks again after `auth`, `version` or a mismatch, which nothing retries by itself. Loopback only, as it hands over the home's token
   'home.connection': {
@@ -396,7 +396,7 @@ export const methods = {
     result: z.object({
       machine: MachineId, name: z.string(), state: HomeState,
       ssh: z.string().optional(), controlSocket: z.string().optional(), port: z.number().int().positive().optional(), token: z.string().optional(),
-      release: z.string().optional(), detail: z.string().optional(),
+      release: z.string().optional(), detail: z.string().optional(), newer: z.literal(true).optional(),
     }),
   },
   // this window is standing in for a home it cannot reach, so its changes to robots here wait on no link

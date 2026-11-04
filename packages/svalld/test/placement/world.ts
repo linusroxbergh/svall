@@ -216,7 +216,7 @@ export function world(o: {
     workerMirror?.calls,
   );
   const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
-  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops, fleetHome: () => ({ machine: H, name: workerStore.state.machines?.[H]?.name ?? 'mac', mine: false, me: W }) });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());

@@ -2,7 +2,7 @@ import { DROP_MAX, DROP_PART, robotOfKey, type ContextItem, type FleetState } fr
 import type { Api } from './api.js';
 import { DROP_URL, type Bridge, type DropFile } from './bridge.js';
 import { encode } from './mobile/term.js';
-import { awayLine, destinationName } from './placement.js';
+import { awayLine, destinationName, type Via } from './placement.js';
 import type { AppStore } from './store/index.js';
 
 export type DropTarget = { kind: 'island' | 'robot'; id: string; after?: boolean };
@@ -28,10 +28,10 @@ export function appendItems(api: Api, fleet: FleetState, target: DropTarget, pat
 const MB = 2 ** 20;
 
 /** Why files dropped or pasted into robot `id`'s terminal do not go, in the words the app uses; undefined when they all may. */
-export function dropRefusal(fleet: FleetState, id: string, files: DropFile[]): string | undefined {
+export function dropRefusal(fleet: FleetState, id: string, files: DropFile[], via?: Via): string | undefined {
   const c = fleet.robots[id];
-  if (c?.moving) return `moving to ${destinationName(fleet, c.moving.to)}`;
-  const away = c && awayLine(fleet, c);
+  if (c?.moving) return `moving to ${destinationName(fleet, c.moving.to, via)}`;
+  const away = c && awayLine(fleet, c, via);
   if (away) return away;
   const folder = files.find((f) => f.folder);
   if (folder) return `${folder.name} is a folder; drop the files in it`;
@@ -46,10 +46,10 @@ const uploadId = (): string => [...crypto.getRandomValues(new Uint8Array(16))].m
  * refusal says why and types nothing.
  */
 export async function dropOnTerminal(o: {
-  api: Pick<Api, 'call'>; fleet: FleetState; key: string; files: DropFile[]; read(f: DropFile, at: number): Promise<Uint8Array>; type(paths: string[]): void; onError(message: string): void;
+  api: Pick<Api, 'call'>; fleet: FleetState; via?: Via; key: string; files: DropFile[]; read(f: DropFile, at: number): Promise<Uint8Array>; type(paths: string[]): void; onError(message: string): void;
 }): Promise<void> {
   const id = robotOfKey(o.key);
-  const refused = dropRefusal(o.fleet, id, o.files);
+  const refused = dropRefusal(o.fleet, id, o.files, o.via);
   if (refused) return o.onError(refused);
   const paths: string[] = [];
   try {
@@ -89,7 +89,7 @@ export function installDropHandlers(o: { bridge: Bridge; store: AppStore; api():
       const api = o.api();
       if (!api) return;
       void dropOnTerminal({
-        api, fleet: o.store.getState().fleet, key: m.id, files: m.files, read: readPart,
+        api, fleet: o.store.getState().fleet, via: o.store.getState().via, key: m.id, files: m.files, read: readPart,
         type: (paths) => o.bridge.send({ type: 'term.type', id: m.id, paths }), onError: (msg) => o.store.getState().showToast(msg),
       });
     }

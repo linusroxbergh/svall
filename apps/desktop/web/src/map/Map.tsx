@@ -30,6 +30,7 @@ import { Token } from './Token.js';
 export function Map() {
   const host = useRef<HTMLDivElement>(null);
   const fleet = useApp((s) => s.fleet);
+  const via = useApp((s) => s.via);
   const links = useApp((s) => s.settings.cardLinks);
   const selectedId = useApp((s) => s.selectedId);
   const selectedIslandId = useApp((s) => s.selectedIslandId);
@@ -123,9 +124,9 @@ export function Map() {
           const base = preview?.kind === 'island' && preview === pendingIsland ? pendingIsland.from : i.position;
           const world = dragging ? drag.cell : worldCell(base, c.cell);
           return (
-            <Token key={c.id} c={c} status={statusOf(c, fleet)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
+            <Token key={c.id} c={c} status={statusOf(c, fleet, via)} world={world} links={links} selected={c.id === selectedId} dragging={dragging}
               offset={islandOffset(i, preview)} settling={Boolean(pendingIsland) && preview === pendingIsland} failed={resumeErrorOf(c)}
-              machine={machineOf(fleet, c)}
+              machine={machineOf(fleet, c, via)}
               hover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               pointer={domPointer({ kind: 'figure', id: c.id })}
               onHoverStart={() => startHover(c.id)} onHoverEnd={endHover}
@@ -134,7 +135,7 @@ export function Map() {
           );
         }))}
         {drag?.kind === 'figure' && !overHome && fleet.robots[drag.id]?.islandId === HOME_ISLAND && (
-          <Token key={drag.id} c={fleet.robots[drag.id]} status={statusOf(fleet.robots[drag.id], fleet)} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
+          <Token key={drag.id} c={fleet.robots[drag.id]} status={statusOf(fleet.robots[drag.id], fleet, via)} world={drag.cell} links={links} selected={drag.id === selectedId} dragging
             failed={resumeErrorOf(fleet.robots[drag.id])}
             pointer={domPointer({ kind: 'figure', id: drag.id })} hover={false} onHoverStart={() => {}} onHoverEnd={endHover}
             onOpen={() => app.store.getState().focus(drag.id)} onLink={followLink} onMenu={(e) => robotMenu(e, drag.id)} />
@@ -144,7 +145,7 @@ export function Map() {
         <div className="map-view"><ViewSwitch /></div>
         {hi && (
           <Home island={hi} crew={crew} config={fleet.home} collapsed={Boolean(hi.collapsed)}
-            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={(c) => statusOf(c, fleet)} links={links}
+            selected={selectedIslandId === HOME_ISLAND} selectedId={selectedId} drag={drag} status={(c) => statusOf(c, fleet, via)} links={links}
             failed={resumeErrorOf}
             shift={place.homeShift} rowShift={placeIslet(hostSize.w, hi.size.w * theme.cell, Boolean(hi.collapsed), theme.home.max).homeShift} mapW={hostSize.w}
             scale={place.homeScale} cards={k} extra={place.mode === 'pill' ? <ResourcesPill /> : undefined}

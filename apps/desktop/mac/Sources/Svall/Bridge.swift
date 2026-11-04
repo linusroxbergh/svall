@@ -5,8 +5,10 @@ struct WebAttach: Decodable {
     let socket: String, session: String
     /// The tmux that serves the socket, which a terminal on another machine runs there.
     var tmux: String? = nil
-    /// For a robot placed on another machine, the route that reaches it instead of the window's.
+    /// For a robot placed on another machine, the route that reaches it from the fleet's home.
     var via: WebVia? = nil
+    /// For a robot not on this machine while the fleet's home is elsewhere, this machine's master to that home.
+    var master: WebVia? = nil
 }
 
 /// The worker's ssh destination and the master the home daemon's link to it runs on.
@@ -60,7 +62,7 @@ enum ToShell: Decodable {
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
     case hostList
-    case quitAnswer(unsaved: [String], working: Int, placed: Int)
+    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
@@ -116,7 +118,7 @@ enum ToShell: Decodable {
         case "host.list": self = .hostList
         case "quit.answer":
             self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working),
-                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0)
+                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle

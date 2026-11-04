@@ -9,7 +9,7 @@ const accent = (status: string): string => `var(--${status})`;
 type Props = { c: Robot; x: number; y: number; flip: boolean };
 
 export function HoverCard({ c, x, y, flip }: Props) {
-  const status = useApp((s) => statusOf(c, s.fleet));
+  const status = useApp((s) => statusOf(c, s.fleet, s.via));
   const pct = contextPctOf(c);
   const at = c.agent ? lastActive(c.agent) : c.shell.lastOutputAt;
   return (

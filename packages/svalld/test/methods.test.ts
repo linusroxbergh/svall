@@ -578,7 +578,7 @@ describe('system.info', () => {
 describe('a window and the fleet\'s home', () => {
   const HOME = crypto.randomUUID() as MachineId;
   const W = crypto.randomUUID() as MachineId;
-  const home = { machine: HOME, name: 'studio', mine: true };
+  const home = { machine: HOME, name: 'studio', mine: true, me: HOME };
   const local = (viewer: object, o: object = {}) => ({ viewer: { kind: 'app', loopback: true, ...viewer }, fleetHome: () => home, ...o }) as unknown as Ctx;
 
   it('fleet.home and home.connection answer the app alone, and home.connection only over loopback', async () => {

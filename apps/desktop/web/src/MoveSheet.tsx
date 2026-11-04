@@ -10,7 +10,7 @@ import { Caret, Mark } from './icons.js';
 import { startHost } from './hostRun.js';
 import { dialogKeys, useApp } from './hooks.js';
 import { setupNote } from './landings.js';
-import { machineName } from './placement.js';
+import { destinationName, homeName } from './placement.js';
 
 const store = () => app.store.getState();
 
@@ -84,7 +84,7 @@ export function MoveSheet() {
 
 function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const c = useApp((s) => s.fleet.robots[id]);
-  const where = useApp((s) => (to ? machineName(s.fleet, to) : 'this Mac'));
+  const where = useApp((s) => (to ? destinationName(s.fleet, to, s.via) : 'this Mac'));
   // the way back names this Mac by the id its daemon gives itself
   const [machine, setMachine] = useState(to);
   const [carry, setCarry] = useState<string[]>([]);
@@ -100,7 +100,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [run, setRun] = useState<Run>();
   const [retried, setRetried] = useState<Retry>();
   const [setup, setSetup] = useState<string>();
-  const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? machineName(s.fleet, m) : 'this Mac'; });
+  const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? destinationName(s.fleet, m, s.via) : s.via ? homeName(s.fleet, s.via) : 'this Mac'; });
   const host = useApp((s) => s.host);
   const hostOpen = useApp((s) => s.hostOpen);
   // a terminal opened from a blocker stands over the sheet

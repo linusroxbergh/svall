@@ -38,11 +38,11 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
     void Promise.race([flushDocs().catch(() => {}), waited]).then(() => {
       clearTimeout(timer);
       const s = store.getState();
-      // a robot on a worker keeps running there, which the question says apart
+      // a robot elsewhere keeps running there, which the question says apart, as a far home keeps running whole
       const robots = Object.values(s.fleet.robots);
-      const working = robots.filter((c) => !isPlaced(c) && statusOf(c) === 'working').length;
-      const placed = robots.filter(isPlaced).length;
-      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }) });
+      const working = robots.filter((c) => !isPlaced(c, s.via) && statusOf(c) === 'working').length;
+      const placed = robots.filter((c) => isPlaced(c, s.via)).length;
+      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }) });
     });
   });
   return () => { unwatch(); off(); };

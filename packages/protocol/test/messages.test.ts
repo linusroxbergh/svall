@@ -179,8 +179,20 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 40', () => {
-    expect(PROTOCOL_VERSION).toBe(40);
+  it('is 41', () => {
+    expect(PROTOCOL_VERSION).toBe(41);
+  });
+
+  it('was 41 with the fleet\'s home, how a window reaches it, and each machine\'s role', () => {
+    expect(methods['fleet.home'].result.parse({ machine: UUID_A, name: 'studio', mine: false, me: UUID_A }).mine).toBe(false);
+    const far = { machine: UUID_A, name: 'studio', state: 'connected', ssh: 'ada@studio', controlSocket: '/tmp/m', port: 50000, token: 't', release: '0.21' };
+    expect(methods['home.connection'].result.parse(far).state).toBe('connected');
+    expect(methods['home.connection'].result.parse({ machine: UUID_A, name: 'studio', state: 'version', release: '0.22', detail: 'x', newer: true }).newer).toBe(true);
+    for (const state of ['connected', 'connecting', 'unreachable', 'auth', 'version']) expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state }).success).toBe(true);
+    expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state: 'mismatch' }).success).toBe(false);
+    expect(methods['machines.list'].result.safeParse({ machines: [{ id: UUID_A, name: 's', reachable: true, robots: 1 }] }).success).toBe(false);
+    expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 's', role: 'home', platform: 'linux', reachable: true, robots: 1 }] }).machines[0].platform).toBe('linux');
+    expect(WorkerFile.parse({ homeMachineId: UUID_A, fleetId: UUID_A, token: 't'.repeat(32), homeName: 's', homeSvallBase: '/home/ada/.local/share/svall' }).homeSvallBase).toContain('svall');
   });
 
   it('was 38 without drops: drop.part takes one part of at most a mebibyte of a 32-hex upload, and robot.drop names it', () => {
@@ -232,7 +244,7 @@ describe('protocol version', () => {
     expect(methods['robot.moveTo'].params.safeParse({ id: 'c_a', machine: 'linus-vault' }).success).toBe(false);
     expect(methods['robot.moveTo'].result.safeParse({ moveId: 'mv_0123456789' }).success).toBe(true);
     expect(methods['robot.moveRetry'].params.safeParse({ moveId: 'nope' }).success).toBe(false);
-    expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
+    expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 'linus-vault', role: 'worker', reachable: true, robots: 1 }] }).machines[0].robots).toBe(1);
     expect(methods['machines.refresh'].result.parse({})).toEqual({});
     const via = { ssh: 'linus-vault', controlSocket: '/tmp/svall-501/1-abc' };
     expect(methods['term.attach'].result.parse({ socket: '/s', session: 'v-c_a', tmux: '/t', machine: UUID_A, via }).via).toEqual(via);
