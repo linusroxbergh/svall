@@ -654,7 +654,7 @@ runIf('svall CLI', () => {
     expect((await svall('robot', 'show', c.id)).stdout).toContain('Agent profile: reviewer — follow this role.\nYou are an independent code reviewer.');
     const unknown = await svall('robot', 'update', c.id, '--agent-profile', 'nobody');
     expect(unknown.code).toBe(1);
-    expect(unknown.stderr).toMatch(/no agent profile nobody; there are: architect, debugger, explorer, planner, reviewer, verifier/);
+    expect(unknown.stderr).toMatch(/no agent profile nobody; there are: architect, debugger, explorer, island-leader, planner, reviewer, verifier/);
     expect(JSON.parse((await svall('robot', 'update', c.id, '--agent-profile', '', '--json')).stdout).agentProfile).toBeUndefined();
 
     const status = (await svall('status')).stdout;
