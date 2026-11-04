@@ -59,7 +59,7 @@ describe('seedAgentProfiles', () => {
   it('copies the bundled profiles into a fleet that has no folder yet, and leaves one it has alone', () => {
     const dir = path.join(tmp(), 'agent-profiles');
     expect(seedAgentProfiles(dir)).toBe(true);
-    expect(listAgentProfiles(dir).map((p) => p.name)).toEqual(['architect', 'debugger', 'explorer', 'planner', 'reviewer', 'verifier']);
+    expect(listAgentProfiles(dir).map((p) => p.name)).toEqual(['architect', 'debugger', 'explorer', 'island-leader', 'planner', 'reviewer', 'verifier']);
     expect(listAgentProfiles(dir).filter((p) => 'error' in p)).toEqual([]);
     fs.rmSync(path.join(dir, 'reviewer.md'));
     expect(seedAgentProfiles(dir)).toBe(false);
