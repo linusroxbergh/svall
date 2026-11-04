@@ -81,9 +81,10 @@ export class Workspace {
   private refusal(): { refused: string[]; is: (abs: string) => boolean } {
     const refused = this.refused();
     const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
-    const sealed = this.sealed().map((s) => realOf(s) ?? s);
+    // one not on disk yet is matched as it is spelled, as `realOf` would answer the folder it is to lie in
+    const sealed = this.sealed().flatMap((s) => [s, ...(fs.existsSync(s) ? [realOf(s) ?? s] : [])]);
     const is = (abs: string): boolean => {
-      if (sealed.some((s) => within(realOf(abs) ?? abs, s))) return true;
+      if (sealed.some((s) => within(abs, s) || within(realOf(abs) ?? abs, s))) return true;
       if ([abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p), refused))) return true;
       const own = idOf(abs);
       if (own !== undefined) return ids.has(own);

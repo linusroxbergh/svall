@@ -388,6 +388,14 @@ describe('Workspace files', () => {
     expect(ws.read('c', 'plain.md').text).toBe('plain');
   });
 
+  it('a sealed folder not on disk yet keeps out what would lie in it, and leaves the folder it is to lie in open', () => {
+    const dir = fs.realpathSync(makeHome());
+    fs.writeFileSync(path.join(dir, 'fleet.json'), '{}');
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [path.join(dir, 'mirror-backup')]);
+    expect(ws.read('c', 'fleet.json').text).toBe('{}');
+    expect(() => ws.write('c', 'mirror-backup/early.md', 'x', 0)).toThrow('not the fleet\'s to open');
+  });
+
   it('asks for the refused paths on every call, so one refused after the start is kept out too', async () => {
     const dir = makeHome();
     fs.writeFileSync(path.join(dir, 'token'), 'secret');

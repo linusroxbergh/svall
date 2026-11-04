@@ -181,8 +181,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 41', () => {
-    expect(PROTOCOL_VERSION).toBe(41);
+  it('is 42', () => {
+    expect(PROTOCOL_VERSION).toBe(42);
   });
 
   it('was 41 with the fleet\'s home, how a window reaches it, and each machine\'s role', () => {
