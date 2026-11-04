@@ -207,16 +207,54 @@ describe('svall worker', () => {
     expect(fs.existsSync(paths.workerFile)).toBe(true);
   });
 
-  it('enroll refuses a worker of another fleet, whose robots its new home would close, and leaves its file; its own fleet enrols again', async () => {
+  it('enroll refuses a change of fleet where a dial-out is involved, on the same home machine or another, and leaves the file; its own fleet enrols again', async () => {
+    const t = { name: 'work', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const me = crypto.randomUUID();
+    const dialing = { homeSsh: 'ada@studio', homeSocket: dialSocket({ dialSockets: '/home/ada/.svall/w' }, me) };
+    const a = { ...enrolment(), ...dialing };
+    await enrollHere(t, a, macDeps(me));
+    const held = fs.readFileSync(paths.workerFile, 'utf8');
+    const refused = `worker.json not written: ${t.home} already serves studio as a worker, whose robots here other would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`;
+    for (const homeMachine of [a.homeMachine, crypto.randomUUID()]) {
+      await expect(enrollHere(t, { ...a, homeMachine, homeName: 'other', fleetId: crypto.randomUUID() }, macDeps(me))).rejects.toThrow(refused);
+      expect(fs.readFileSync(paths.workerFile, 'utf8')).toBe(held);
+    }
+    const { homeSsh: _ssh, homeSocket: _socket, ...undialed } = a;
+    await expect(enrollHere(t, { ...undialed, homeName: 'other', fleetId: crypto.randomUUID() }, macDeps(me))).rejects.toThrow(refused);
+    await enrollHere(t, { ...a, homeMachine: crypto.randomUUID(), homeName: 'moved' }, macDeps(me));
+    expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8'))).toMatchObject({ fleetId: a.fleetId, homeName: 'moved' });
+  });
+
+  it('enroll lets a home-dialed worker follow its home to a fleet made anew, as host add and host upgrade do, but not start dialing another fleet', async () => {
+    const t = { name: 'work', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const me = crypto.randomUUID();
+    const a = enrolment();
+    await enrollHere(t, a, macDeps(me));
+    const remade = { ...a, fleetId: crypto.randomUUID() };
+    await enrollHere(t, remade, macDeps(me));
+    const held = fs.readFileSync(paths.workerFile, 'utf8');
+    expect(JSON.parse(held).fleetId).toBe(remade.fleetId);
+    const dialing = { homeSsh: 'ada@studio', homeSocket: dialSocket({ dialSockets: '/home/ada/.svall/w' }, me) };
+    await expect(enrollHere(t, { ...enrolment(), ...dialing }, macDeps(me))).rejects.toThrow('already serves studio as a worker');
+    expect(fs.readFileSync(paths.workerFile, 'utf8')).toBe(held);
+  });
+
+  it("enroll for a worker's own fleet writes an empty epoch only where there is none, so a worker.json put back can boot and one that runs keeps its journal", async () => {
     const t = { name: 'work', home: makeHome(), managed: false };
     const paths = resolvePaths(t.home);
     const a = enrolment();
     await enrollHere(t, a, macDeps());
-    const held = fs.readFileSync(paths.workerFile, 'utf8');
-    await expect(enrollHere(t, { ...enrolment(), homeName: 'other' }, macDeps())).rejects.toThrow(`worker.json not written: ${t.home} already serves studio as a worker, whose robots here other would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
-    expect(fs.readFileSync(paths.workerFile, 'utf8')).toBe(held);
-    await enrollHere(t, { ...a, homeMachine: crypto.randomUUID(), homeName: 'moved' }, macDeps());
-    expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8'))).toMatchObject({ fleetId: a.fleetId, homeName: 'moved' });
+    expect(fs.existsSync(paths.epoch)).toBe(false);
+    await enrollHere(t, a, macDeps());
+    expect(fs.readFileSync(paths.epoch, 'utf8')).toBe('');
+    fs.writeFileSync(paths.epoch, 'running\n');
+    await enrollHere(t, a, macDeps());
+    expect(fs.readFileSync(paths.epoch, 'utf8')).toBe('running\n');
+    fs.rmSync(paths.epoch);
+    await enrollHere(t, { ...a, fleetId: crypto.randomUUID() }, macDeps());
+    expect(fs.existsSync(paths.epoch)).toBe(false);
   });
 
   it("enroll on a Mac sets a fleet never opened up and loads its job with no daemon started, then restarts it as a worker; the private fleet's is setup's", async () => {

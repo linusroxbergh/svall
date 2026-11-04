@@ -281,7 +281,8 @@ stay on disk, unread by a worker. A Linux worker keeps the home dialing it.
 
 `svall host remove <name>` on the home drops the record and its token in every fleet there, which ends this fleet's link
 at once and another fleet's when its stream next drops. The worker stays as it is. `worker.json` is what makes it a worker,
-`svall uninstall` there leaves that file, and removing it by hand is no supported way back to a home. The worker's ssh
+`svall uninstall` there leaves that file, and removing it by hand is no supported way back to a home; put back after a
+start as a home, it holds the daemon back until `svall worker enroll` runs again for the same fleet. The worker's ssh
 login to the home stays until its key is removed there, which a lost Mac needs. `svall host doctor` and `svall host
 upgrade` of the home cannot run from the worker, whose registry has no record of it.
 

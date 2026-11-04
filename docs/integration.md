@@ -107,7 +107,7 @@ each machine's daemon and unit logs.
     own ssh to local, `svall fleet enroll-worker` there records remote as a worker that dials in and prints its token,
     which goes on stdin to `svall worker enroll --home-ssh` on remote. The link comes up over the socket sshd makes in
     local's fleet home, `srw-------`, `faults` moves to remote and `svall status` on local shows it there, and a restart
-    of remote's daemon and then of local's each relinks. With remote's dial cut and its tunnel killed, local marks remote
+    of remote's daemon and then of local's each relinks, local's with no new dial. With remote's dial cut and its tunnel killed, local marks remote
     unreachable, and links again once remote can dial. With remote's master frozen, which ssh alone feels, sshd's old
     listener still takes local's next stream, which no hello answers; within seconds of remote's next dial, local gives
     that stream up and links. With local's daemon stopped, a socket removed under remote's live master is bound again at

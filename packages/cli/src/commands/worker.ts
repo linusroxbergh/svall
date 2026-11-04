@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
+import path from 'node:path';
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
 import { Command } from 'commander';
@@ -85,8 +86,8 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
   const me = d.me();
   if (o.homeSocket !== undefined && !isDialSocket(o.homeSocket, me)) throw new Error(`worker.json not written: ${o.homeSocket} is not this machine's socket; give the one svall fleet enroll-worker names for machine ${me}`);
   const enrolled = isWorker(paths) ? servedFleet(paths) : undefined;
-  // the new home would close every robot here it does not know
-  if (enrolled && enrolled.fleetId !== file.data.fleetId) throw new Error(`worker.json not written: ${t.home} already serves ${enrolled.homeName} as a worker, whose robots here ${o.homeName} would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+  // the new home would close every robot here it does not know; a worker its home dials is that home's to enrol again, as host add does
+  if (enrolled && enrolled.fleetId !== file.data.fleetId && (enrolled.homeSsh || file.data.homeSsh)) throw new Error(`worker.json not written: ${t.home} already serves ${enrolled.homeName} as a worker, whose robots here ${o.homeName} would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
   const held = isWorker(paths) ? undefined : heldAsHome(paths, me);
   if (held) throw new Error(`worker.json not written: ${t.home} is a fleet's home and holds ${held}, which the first snapshot from ${o.homeName} would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
   if (d.platform === 'darwin' && t.managed) {
@@ -97,6 +98,11 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
   // a companion's systemd runs each fleet it serves, which may not have a home there yet
   const linux = d.platform === 'linux' && t.managed;
   if (linux) setupFleetHome({ home: t.home, port: t.name === PRIVATE ? undefined : 0 });
+  // a file put back after a start as a home finds its epoch gone; an empty one says this is a worker, and its outbox mints a new one
+  if (enrolled?.fleetId === file.data.fleetId && !fs.existsSync(paths.epoch)) {
+    fs.mkdirSync(path.dirname(paths.epoch), { recursive: true });
+    writeDurable(paths.epoch, Buffer.alloc(0));
+  }
   writeDurable(paths.workerFile, file.data, { mode: 0o600 });
   if (!t.managed || (d.platform !== 'linux' && d.platform !== 'darwin')) return;
   const done = linux

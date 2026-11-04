@@ -690,11 +690,18 @@ console.log(a.socket);
     const status = JSON.parse(sh(L, 'svall --json status').stdout);
     check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
 
+    const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
     for (const m of [R, L]) {
       const before = linksOf()[ids.remote]?.since;
+      const dialed = dials();
       sh(m, `systemctl --user restart ${UNIT}`);
       linked(ids, before);
       say(`   relinked after ${m}'s daemon restarted`);
+      // the link is lost over a tunnel that stays whole, which needs no new bind
+      if (m === L) {
+        sh(L, 'sleep 2');
+        check("local's restart takes no new dial", dials() === dialed, () => `${dials()} dials, ${dialed} before`);
+      }
     }
 
     // the dial cut and its tunnel killed: the home loses remote, and links again once remote can dial
@@ -716,7 +723,6 @@ console.log(a.socket);
     waitOn('local marks remote unreachable', () => linksOf()[ids.remote]?.reachable === false);
     sh(L, 'sleep 3');
     check('the old listener still takes a stream', knock(socket) === 'open', () => knock(socket));
-    const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
     const dialedBefore = dials();
     sh(R, `iptables -D OUTPUT ${newDials}`, { root: true });
     waitOn('remote dials again', () => dials() > dialedBefore);

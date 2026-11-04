@@ -244,6 +244,31 @@ runIf('svalld bin', () => {
     await run(home, () => waitFor(() => logOf(p).includes('holds 1 island as a fleet'), 30_000));
   }, 90_000);
 
+  it('a worker.json put back after a start as a home holds the daemon back, until enrolling again for its fleet boots it as a worker', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described } }));
+    fs.mkdirSync(path.dirname(p.epoch), { recursive: true });
+    fs.writeFileSync(p.epoch, 'old\n');
+    await run(home, () => waitFor(() => fs.existsSync(p.port), 30_000));
+    expect(fs.existsSync(p.epoch)).toBe(false);
+    fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
+    const { homeMachineId, fleetId, homeName, token } = JSON.parse(enrolled);
+    await run(home, async () => {
+      await waitFor(() => logOf(p).includes('holds 1 island as a fleet'), 30_000);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+      const enrol = spawn(tsx, [path.join(root, 'packages/cli/src/main.ts'), 'worker', 'enroll', '--home-machine', homeMachineId, '--home-name', homeName, '--fleet-id', fleetId],
+        { env: { ...process.env, SVALL_HOME: home }, stdio: ['pipe', 'ignore', 'inherit'] });
+      enrol.stdin.end(token);
+      const [code] = await once(enrol, 'exit');
+      expect(code).toBe(0);
+      await waitFor(() => fs.existsSync(p.linkSock), 30_000);
+    });
+    expect(fs.readFileSync(p.epoch, 'utf8').trim()).not.toBe('');
+  }, 120_000);
+
   it("waits, naming the fix, when this machine's id cannot be read to tell what a worker.json would flip, and starts once it can", async () => {
     const home = makeHome();
     homes.push(home);
