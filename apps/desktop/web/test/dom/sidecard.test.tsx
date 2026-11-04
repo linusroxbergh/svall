@@ -578,3 +578,9 @@ test('a window standing in for its home offers no move, as only the home runs on
   expect(moves()).toEqual([]);
 });
 
+test('the summary counts far robots as unknown in a window standing in for its home', () => {
+  act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId, home: 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId, name: 'studio' }));
+  render(<FleetSummary />);
+  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('unknown'));
+  expect(Number(row?.querySelector('b')?.textContent)).toBe(Object.keys(store.getState().fleet.robots).length);
+});

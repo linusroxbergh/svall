@@ -62,7 +62,7 @@ describe('the banner of a home this window cannot follow', () => {
   });
 
   it('offers to upgrade a home behind this Mac, runs host upgrade, and asks again once it ends', async () => {
-    standingIn({ state: 'version', release: '0.20', detail: 'studio runs 0.20, this Mac 0.21' });
+    standingIn({ state: 'version', detail: 'studio runs 0.20, this Mac 0.21' });
     render(<HomeBanner />);
     expect(screen.getByTestId('home-banner').textContent).toContain('studio runs 0.20, this Mac 0.21');
     fireEvent.click(screen.getByTestId('home-upgrade'));
