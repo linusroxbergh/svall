@@ -305,8 +305,8 @@ and `input` are ignored.
   `--context "<url or ~/path>[ label]"`, which sets the links, files or folders
   it gets; `--pin <ref>` marks one to read first.
 - `--agent-profile <name>` gives a robot's agent a role from the fleet's
-  `agent-profiles` folder. Six ship with a new fleet (architect, debugger,
-  explorer, planner, reviewer, verifier); edit them or add your own in
+  `agent-profiles` folder. Seven ship with a new fleet (architect, debugger,
+  explorer, island-leader, planner, reviewer, verifier); edit them or add your own in
   Resources.
 - `svall <command> --help` lists the rest.
 
