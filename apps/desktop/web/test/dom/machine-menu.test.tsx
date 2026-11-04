@@ -49,6 +49,14 @@ test('opening the menu focuses its first item; arrows step; Escape and an outsid
   expect(screen.queryByTestId('machine-upgrade')).toBeNull();
 });
 
+test('Remove is held back while a fleet on this account dials the machine as its home, and says which', () => {
+  setup(undefined, 0);
+  act(() => store.getState().setMachines(store.getState().machines!.map((m) => ({ ...m, dialedBy: '/Users/ada/.svall-fartest' }))));
+  fireEvent.click(more());
+  expect((screen.getByTestId('machine-remove') as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByTestId('machine-remove').getAttribute('data-tip')).toContain('/Users/ada/.svall-fartest');
+});
+
 test('Remove names how many robots hold it back; Forget is offered only for a machine that does not answer', () => {
   setup(undefined, 1);
   fireEvent.click(more());

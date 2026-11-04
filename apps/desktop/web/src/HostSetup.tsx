@@ -76,7 +76,7 @@ export function MachineActions({ name }: { name: string }) {
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
           <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!dialedBy}
-            data-tip={placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
+            data-tip={dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet` : placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route'}
             onClick={item(() => ask(false))}>Remove</button>
           {!up && (
             <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running || !!dialedBy}
