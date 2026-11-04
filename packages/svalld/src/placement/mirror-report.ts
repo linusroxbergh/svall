@@ -183,7 +183,7 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
  * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
  * says `o.unchecked`, and a key row that its change is saved for when the machine links.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean; apt?: boolean }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
   const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
@@ -278,7 +278,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const need = `${users} ${one ? 'needs' : 'need'} it; tick if ${m} does not`;
     if (path.posix.isAbsolute(bin)) {
       rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under ${homeWord()}'s home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
-    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
+    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(o.apt !== false && Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;

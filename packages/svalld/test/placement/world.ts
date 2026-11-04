@@ -89,7 +89,9 @@ export function world(o: {
   home?: Partial<FleetState>; worker?: Partial<FleetState>; far?: Handlers; connect?: Transport; tmux?: Partial<Tmux>; docs?: true;
   /** w1 dials in: its record says so, and the home reaches its link.sock with no ssh route for terminals. */
   dialIn?: true;
-  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string; backups?: string } }; homeLog?: Logger;
+  /** What the home's registry says of w1, as typed at its enrolment. */
+  record?: Partial<MachineEntry['record']>;
+  mirror?: { home: MirrorHomes; worker: MirrorHomes & { overrides: string; backups?: string; platform?: NodeJS.Platform } }; homeLog?: Logger;
   usage?: { claude?: FetchUsage; tails?: Record<string, string> }; scribe?: { home?: RunScribe; worker?: RunScribe };
 }) {
   const config = Config.parse({});
@@ -112,7 +114,7 @@ export function world(o: {
   let held: Promise<void> | undefined;
   const links: HomeLinks = new HomeLinks({
     paths: homePaths, store: homeStore, log: silentLogger, release: '1.2.3', connect: o.connect ?? socketTo(workerPaths.linkSock),
-    machines: () => [o.dialIn ? { ...entry, record: { ...entry.record, dial: 'worker' } } : entry],
+    machines: () => [{ ...entry, record: { ...entry.record, ...(o.dialIn && { dial: 'worker' as const }), ...o.record } }],
     dialIn: async () => ({ stream: (await socketTo(workerPaths.linkSock)(entry)).stream }),
     onReport: (r, machine) => { if (applyReport(homeStore, r, machine) === 'applied') replay.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
@@ -185,7 +187,7 @@ export function world(o: {
   });
   const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
-  const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
+  const workerMirror = o.mirror && mirrorCalls({ platform: 'linux', ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
   const ownSetup = o.mirror && workerSetup({
     mirror: new Mirror({ ...o.mirror.worker, consent: workerPaths.mirrorConsent, log: silentLogger, envFile: workerPaths.env }), connection, home: H, homeName: () => 'studio', stateFile: workerPaths.mirrorState,
   });

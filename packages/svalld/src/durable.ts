@@ -112,8 +112,9 @@ export class DurableBatch {
     this.dirs.add(path.dirname(file));
   }
 
-  async settle(): Promise<void> {
-    const dirs = [...this.dirs];
+  /** `also`: folders made for these writes, whose entries in their parents must survive too. */
+  async settle(also: string[] = []): Promise<void> {
+    const dirs = [...new Set([...this.dirs, ...also])];
     this.dirs.clear();
     await pool(dirs, BATCH_WIDTH, async (dir) => {
       try {

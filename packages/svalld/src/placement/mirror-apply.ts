@@ -4,7 +4,7 @@ import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
 import { AgentKind } from '@svall/protocol';
-import { BATCH_WIDTH, DurableBatch, realStages, writeDurable } from '../durable.js';
+import { BATCH_WIDTH, DurableBatch, writeDurable } from '../durable.js';
 import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
 import { pool } from '../pool.js';
@@ -82,10 +82,12 @@ function put(file: string, data: Buffer, mode: number): boolean {
 
 type Keep = (file: string, was: Buffer) => Promise<void>;
 
+const held = (at: string): Promise<Buffer | void> => fsp.readFile(at).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
+
 // as `put`, written in `batch`, what it replaces handed to `keep` first
 async function place(batch: DurableBatch, file: string, data: Buffer, mode: number, keep?: Keep): Promise<boolean> {
   const at = realPath(file);
-  const was = await fsp.readFile(at).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
+  const was = await held(at);
   if (was?.equals(data)) return false;
   if (was) await keep?.(file, was);
   await batch.write(at, data, mode);
@@ -104,7 +106,7 @@ function newBackup(backups: string): string {
 // keeps what `file` holds under `dir`, by its place under the user's home, on disk before the file is touched; a copy there is
 // what a push cut short found, which comes before anything the mirror wrote. A copy may hold keys, so it is the owner's alone
 function keeper(dir: string, homedir: string): Keep {
-  const top = path.dirname(path.dirname(dir));
+  const fleetHome = path.dirname(path.dirname(dir));
   return async (file, was) => {
     const rel = path.relative(homedir, file);
     const to = path.join(dir, rel.startsWith('..') ? path.join('outside-home', file) : rel);
@@ -112,8 +114,9 @@ function keeper(dir: string, homedir: string): Keep {
     await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
     const batch = new DurableBatch();
     await batch.write(to, was, 0o600);
-    await batch.settle();
-    for (let d = path.dirname(to); d !== top && d !== path.dirname(d); d = path.dirname(d)) realStages.fsyncDir(d);
+    const parents = [fleetHome];
+    for (let d = path.dirname(to); d !== fleetHome && d !== path.dirname(d); d = path.dirname(d)) parents.push(d);
+    await batch.settle(parents);
   };
 }
 
@@ -315,8 +318,8 @@ export async function applyMirror(
     }
     const file = fileOf(to);
     if (file && fs.lstatSync(file, { throwIfNoEntry: false })) {
-      const was = keep && await fsp.readFile(realPath(file)).catch(() => undefined);
-      if (was) await keep!(file, was);
+      const was = keep && await held(realPath(file));
+      if (was) await keep?.(file, was);
       await fsp.rm(file, { force: true });
       removed.push(file);
     }

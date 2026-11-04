@@ -112,7 +112,7 @@ export class Mirror {
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas() });
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux' });
   }
 
   /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */
@@ -164,7 +164,7 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
  * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; everyPush?: boolean;
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; everyPush?: boolean; platform?: NodeJS.Platform;
 }): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {

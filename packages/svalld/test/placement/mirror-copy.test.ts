@@ -41,6 +41,31 @@ function onto() {
   return { home, mac, backups, w, day };
 }
 
+describe('the rows of a Mac', () => {
+  it('name no Linux installer for a program a Mac lacks, and do on a Linux worker', async () => {
+    for (const [platform, run] of [['darwin', undefined], ['linux', 'sudo apt install nodejs npm']] as const) {
+      const worker = farHome();
+      const w = world({ mirror: { home: macHome(), worker: { ...worker, platform } } });
+      await w.link();
+      vi.stubEnv('PATH', '/nonexistent');
+      const { rows } = await call<{ rows: SetupRow[] }>(w.home.ctx, 'machines.setup', { machine: W });
+      vi.unstubAllEnvs();
+      const row = rows.find((r) => r.key === 'runtime:npx');
+      expect([row?.action, row?.run]).toEqual(['install npx on w1', run]);
+    }
+  });
+
+  it('are offered for a machine whose record says darwin, and a tick there is saved and pushed', async () => {
+    const worker = farHome();
+    const w = world({ mirror: { home: macHome(), worker }, record: { platform: 'darwin' }, dialIn: true });
+    await w.link();
+    await w.home.links.mirrorSettled(W);
+    const { rows } = await call<{ rows: SetupRow[] }>(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on: true });
+    expect(rows.find((r) => r.key === 'claude:mcp:linear')).toMatchObject({ status: 'ok', tick: { on: true } });
+    expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('lin_api_1234567890');
+  });
+});
+
 describe('the backup of the first push onto a Mac', () => {
   it('keeps each file it replaces and no other, its owner\'s alone, and takes nothing only the Mac has', async () => {
     const { mac, backups, w, day } = onto();

@@ -36,18 +36,19 @@ export class SetupCopy {
   }
 
   /** Lets `machine` make one push for `ms`; one copy at a time. */
-  arm(machine: MachineId, ms = GRANT_MS): void {
+  arm(machine: MachineId, ms = GRANT_MS): object {
     if (this.grant && Date.now() <= this.grant.until) throw new ApiError('busy', 'another copy of an agent setup is landing here');
     this.grant = { machine, until: Date.now() + ms };
+    return this.grant;
   }
 
   /** Arms `machine` for what `run` asks of it; the grant ends with `run`, and whatever it left unapplied goes. */
   async from<T>(machine: MachineId, run: () => Promise<T>): Promise<T> {
-    this.arm(machine);
+    const mine = this.arm(machine);
     try {
       return await run();
     } finally {
-      this.end();
+      if (this.grant === mine) this.end();
     }
   }
 
