@@ -134,7 +134,7 @@ export function healthy(o: { linger?: string; tools?: string[]; osRelease?: stri
   ssh.reply(['doctor', '--json'], { stdout: o.doctor ?? DOCTOR });
   ssh.reply(['svall-units'], { stdout: 'plain\n' });
   ssh.reply(['worker', 'enroll'], { stdout: `systemd unit -> ${home}/.config/systemd/user/svall-svalld@private.service\nsystemctl --user restart svall-svalld@private.service\n` });
-  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, worker: SERVES }, null, 2) });
+  ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'worker', worker: SERVES }, null, 2) });
   ssh.reply(['svall-tmux'], {});
   if (o.agents === false) return;
   const PATH = UNIT_PATH.replaceAll(HOME, home);

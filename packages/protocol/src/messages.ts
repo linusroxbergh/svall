@@ -435,11 +435,15 @@ export const methods = {
   'term.close': { params: Id, result: z.object({}) },
   // the last lines a placed robot's worker sent of its pane, and when; empty for one the home has none of
   'term.lastScreen': { params: Id, result: z.object({ text: z.string(), at: z.number().optional() }) },
-  // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there; `via`, for a robot
-  // placed on another machine, the ssh destination and master socket that reach it
+  // `tmux`: the binary that serves the socket, which a terminal attaching from another machine runs there; `machine`, where
+  // the robot runs, `home` for the fleet's home; `via`, for a robot placed on another machine, the ssh destination and
+  // master socket that reach it
   'term.attach': {
     params: Id.extend({ term: Term }),
-    result: z.object({ socket: z.string(), session: z.string(), tmux: z.string(), via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional() }),
+    result: z.object({
+      socket: z.string(), session: z.string(), tmux: z.string(), machine: z.union([MachineId, z.literal('home')]),
+      via: z.object({ ssh: z.string(), controlSocket: z.string() }).optional(),
+    }),
   },
   // `upload`: the client's id for one drop's parts, sent in order; robot.drop lands them on the robot's machine and says where
   'drop.part': {
@@ -504,4 +508,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 39;
+export const PROTOCOL_VERSION = 40;

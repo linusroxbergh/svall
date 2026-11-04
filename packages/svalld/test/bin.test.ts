@@ -1,4 +1,5 @@
 import { execFile, spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import { once } from 'node:events';
 import fs from 'node:fs';
 import net from 'node:net';
@@ -47,6 +48,8 @@ describe('svalld bin on the other build\'s home', () => {
   }, 40_000);
 });
 
+const described = { id: 'i_a', name: 'a', description: 'the plan', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 1 };
+
 runIf('svalld bin', () => {
   const homes: string[] = [];
   afterEach(async () => {
@@ -75,6 +78,23 @@ runIf('svalld bin', () => {
       await expect(new Tmux(p.tmuxSock, p.tmuxConf).run('list-sessions')).rejects.toThrow();
     } finally {
       if (daemon.exitCode === null) { daemon.kill('SIGTERM'); await once(daemon, 'exit'); }
+    }
+  }, 60_000);
+
+  it("runs as a worker with no --worker when the fleet home holds worker.json, as a Mac's launchd agent starts every fleet", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.workerFile, JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' }), { mode: 0o600 });
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => fs.existsSync(p.port), 30_000);
+      // the worker's end of the link, which only a worker listens on
+      expect(fs.lstatSync(p.linkSock).isSocket()).toBe(true);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
     }
   }, 60_000);
 
@@ -137,6 +157,149 @@ runIf('svalld bin', () => {
       if (pty.exitCode === null) await once(pty, 'exit');
     }
   }, 70_000);
+
+  it("waits on a fleet's home a worker.json would flip, saying what the first snapshot would erase, and starts as the home once the file goes", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const log = () => (fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    const state = JSON.stringify({ ...emptyState(), robots: { c_a: { id: 'c_a', islandId: 'i_a', cell: { x: 0, y: 0 }, name: 'a', portrait: 'fox', note: '', instructions: '', cwd: '/x', context: [], shell: { lastOutputAt: 0 }, unread: false } } });
+    fs.writeFileSync(p.state, state);
+    fs.writeFileSync(p.workerFile, JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' }), { mode: 0o600 });
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes('svalld starts once it is fixed'), 30_000);
+      expect(log()).toContain(`${p.workerFile} makes this fleet home a worker, but it holds 1 robot as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
+      expect(fs.readFileSync(p.state, 'utf8')).toBe(state);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+      fs.rmSync(p.workerFile);
+      await waitFor(() => fs.existsSync(p.port), 30_000);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 70_000);
+
+  it("waits on a fleet's home a worker.json would flip when all it holds is an island with something on it", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const log = () => (fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described } }));
+    fs.writeFileSync(p.workerFile, JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' }), { mode: 0o600 });
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes('svalld starts once it is fixed'), 30_000);
+      expect(log()).toContain(`${p.workerFile} makes this fleet home a worker, but it holds 1 island as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 60_000);
+
+  const run = async <T>(home: string, f: () => Promise<T>): Promise<T> => {
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      return await f();
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  };
+  const logOf = (p: ReturnType<typeof resolvePaths>) => (fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+  const enrolled = JSON.stringify({ homeMachineId: crypto.randomUUID(), fleetId: crypto.randomUUID(), token: 't'.repeat(48), homeName: 'studio' });
+
+  it('boots a worker with no link yet that holds what it made while its home was away, as its outbox says it has started here', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
+    await run(home, () => waitFor(() => fs.existsSync(p.linkSock), 30_000));
+    expect(fs.existsSync(p.epoch)).toBe(true);
+    const state = JSON.parse(fs.readFileSync(p.state, 'utf8'));
+    fs.writeFileSync(p.state, JSON.stringify({ ...state, islands: { ...state.islands, i_a: described } }));
+    fs.rmSync(p.linkSock, { force: true });
+    await run(home, () => waitFor(() => fs.existsSync(p.linkSock), 30_000));
+    expect(logOf(p)).not.toContain('makes this fleet home a worker');
+  }, 90_000);
+
+  it("a former worker started as a home holds its fleet as its own again, resuming none of its old home's robots, so a worker.json on it is refused", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    const was = crypto.randomUUID();
+    const sessionId = crypto.randomUUID();
+    const transcriptPath = path.join(home, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcriptPath, '');
+    // awake on the old home, as a snapshot carried it: its window is that machine's
+    const c_old = {
+      id: 'c_old', islandId: 'i_a', cell: { x: 0, y: 0 }, name: 'old', portrait: 'fox', note: '', instructions: '', cwd: home, context: [], shell: { lastOutputAt: 0 }, unread: false,
+      tmux: { windowId: '@9', paneId: '%9' }, agent: { kind: 'claude', sessionId, transcriptPath, status: 'idle', lastActivityAt: Date.now() },
+    };
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described }, robots: { c_old }, machines: { [was]: { name: 'studio', reachable: false, since: 1, snapshot: { version: 1, at: 1 } } } }));
+    fs.mkdirSync(path.dirname(p.epoch), { recursive: true });
+    fs.writeFileSync(p.epoch, 'old\n');
+    await run(home, () => waitFor(() => fs.existsSync(p.port), 30_000));
+    const after = JSON.parse(fs.readFileSync(p.state, 'utf8'));
+    expect(after.machines[was].snapshot).toBeUndefined();
+    expect(after.robots.c_old.tmux).toBeUndefined();
+    expect(after.robots.c_old.agent.restingSince).toBeUndefined();
+    expect(fs.existsSync(p.epoch)).toBe(false);
+    fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
+    await run(home, () => waitFor(() => logOf(p).includes('holds 1 robot and 1 island as a fleet'), 30_000));
+  }, 90_000);
+
+  it('a worker.json put back after a start as a home holds the daemon back, until enrolling again for its fleet boots it as a worker', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.state, JSON.stringify({ ...emptyState(), islands: { i_a: described } }));
+    fs.mkdirSync(path.dirname(p.epoch), { recursive: true });
+    fs.writeFileSync(p.epoch, 'old\n');
+    await run(home, () => waitFor(() => fs.existsSync(p.port), 30_000));
+    expect(fs.existsSync(p.epoch)).toBe(false);
+    fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
+    const { homeMachineId, fleetId, homeName, token } = JSON.parse(enrolled);
+    await run(home, async () => {
+      await waitFor(() => logOf(p).includes('holds 1 island as a fleet'), 30_000);
+      expect(fs.existsSync(p.linkSock)).toBe(false);
+      const enrol = spawn(tsx, [path.join(root, 'packages/cli/src/main.ts'), 'worker', 'enroll', '--home-machine', homeMachineId, '--home-name', homeName, '--fleet-id', fleetId],
+        { env: { ...process.env, SVALL_HOME: home }, stdio: ['pipe', 'ignore', 'inherit'] });
+      enrol.stdin.end(token);
+      const [code] = await once(enrol, 'exit');
+      expect(code).toBe(0);
+      await waitFor(() => fs.existsSync(p.linkSock), 30_000);
+    });
+    expect(fs.readFileSync(p.epoch, 'utf8').trim()).not.toBe('');
+  }, 120_000);
+
+  it("waits, naming the fix, when this machine's id cannot be read to tell what a worker.json would flip, and starts once it can", async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const config = makeHome();
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    fs.writeFileSync(p.workerFile, enrolled, { mode: 0o600 });
+    const machine = path.join(config, 'machine.json');
+    fs.writeFileSync(machine, '{');
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home, SVALL_CONFIG_DIR: config }, stdio: 'ignore' });
+    try {
+      await waitFor(() => logOf(p).includes('svalld starts once it is fixed'), 30_000);
+      expect(logOf(p)).toMatch(/invalid machine file .*machine\.json/);
+      fs.rmSync(machine);
+      await waitFor(() => fs.existsSync(p.linkSock), 30_000);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 90_000);
 
   it('waits for a config.json that does not parse to be fixed, rather than exiting for launchd to restart', async () => {
     const home = makeHome();

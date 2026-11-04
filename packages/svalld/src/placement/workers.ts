@@ -33,3 +33,12 @@ export function issueToken(paths: Paths, machine: MachineId): string {
 export function tokenFor(paths: Paths, machine: MachineId): string | undefined {
   return read(paths)[machine]?.token;
 }
+
+/** The machines this home holds a token for. */
+export const workerIds = (paths: Paths): string[] => Object.keys(read(paths));
+
+/** Takes back the token of a machine that is no longer a worker; a home that holds none is left as it is. */
+export function dropToken(paths: Paths, machine: MachineId): void {
+  const { [machine]: gone, ...rest } = read(paths);
+  if (gone) writeDurable(paths.workersFile, rest, { mode: 0o600 });
+}

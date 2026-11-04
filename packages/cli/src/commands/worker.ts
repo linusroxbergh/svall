@@ -1,5 +1,7 @@
+import fs from 'node:fs';
 import net from 'node:net';
 import os from 'node:os';
+import path from 'node:path';
 import readline from 'node:readline';
 import { Writable } from 'node:stream';
 import { Command } from 'commander';
@@ -8,13 +10,17 @@ import { WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
 import { writeDurable } from '@svall/svalld/durable';
 import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
+import { loadFleetAgent, realFleetDeps } from '@svall/svalld/fleets';
+import { kickstart } from '@svall/svalld/launchd';
 import { realRun } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
-import { resolvePaths } from '@svall/svalld/paths';
-import { PRIVATE } from '@svall/svalld/profile';
+import { machineId } from '@svall/svalld/machine';
+import { isDialSocket, resolvePaths } from '@svall/svalld/paths';
+import { PRIVATE, profileLabel } from '@svall/svalld/profile';
 import { releaseVersion } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { setupFleetHome } from '@svall/svalld/setup';
+import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
 import type { Target } from '../target.js';
@@ -52,30 +58,74 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
+type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string };
+type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
+
+const realEnrol: EnrolDeps = {
+  platform: process.platform,
+  token: async () => (await readAll(process.stdin)).trim(),
+  daemonUp: (t) => daemonRuns(releaseVersion(), () => Client.connect(t.home)),
+  out: (line) => { process.stdout.write(`${line}\n`); },
+  me: () => machineId(),
+  load: (t) => loadFleetAgent(t, realFleetDeps()),
+};
+
+const servedFleet = (paths: ReturnType<typeof resolvePaths>): WorkerFile | undefined => {
+  try { return readWorkerFile(paths); } catch { return undefined; }
+};
+
+/** worker.json written for the home named, then the fleet's daemon restarted as its worker: by systemd on Linux, by launchd on a Mac. */
+export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol): Promise<void> {
+  if ((o.homeSsh === undefined) !== (o.homeSocket === undefined)) throw new Error('worker.json not written: --home-ssh and --home-socket go together');
+  const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket };
+  const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial });
+  if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
+  const paths = resolvePaths(t.home);
+  // ssh reads a colon in a forward's socket as its separator
+  if (o.homeSsh !== undefined && paths.linkSock.includes(':')) throw new Error(`worker.json not written: ${paths.linkSock} holds a colon, which ssh cannot forward to`);
+  const me = d.me();
+  if (o.homeSocket !== undefined && !isDialSocket(o.homeSocket, me)) throw new Error(`worker.json not written: ${o.homeSocket} is not this machine's socket; give the one svall fleet enroll-worker names for machine ${me}`);
+  const enrolled = isWorker(paths) ? servedFleet(paths) : undefined;
+  // the new home would close every robot here it does not know; a worker its home dials is that home's to enrol again, as host add does
+  if (enrolled && enrolled.fleetId !== file.data.fleetId && (enrolled.homeSsh || file.data.homeSsh)) throw new Error(`worker.json not written: ${t.home} already serves ${enrolled.homeName} as a worker, whose robots here ${o.homeName} would close; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+  const held = isWorker(paths) ? undefined : heldAsHome(paths, me);
+  if (held) throw new Error(`worker.json not written: ${t.home} is a fleet's home and holds ${held}, which the first snapshot from ${o.homeName} would erase; enrol an empty fleet with svall -p <empty fleet> worker enroll`);
+  if (d.platform === 'darwin' && t.managed) {
+    // the per-user half, the hooks and the shims, is setup's alone
+    if (t.name === PRIVATE && !fs.existsSync(t.home)) throw new Error('worker.json not written: no private fleet yet; run svall setup first');
+    await d.load(t);
+  }
+  // a companion's systemd runs each fleet it serves, which may not have a home there yet
+  const linux = d.platform === 'linux' && t.managed;
+  if (linux) setupFleetHome({ home: t.home, port: t.name === PRIVATE ? undefined : 0 });
+  // a file put back after a start as a home finds its epoch gone; an empty one says this is a worker, and its outbox mints a new one
+  if (enrolled?.fleetId === file.data.fleetId && !fs.existsSync(paths.epoch)) {
+    fs.mkdirSync(path.dirname(paths.epoch), { recursive: true });
+    writeDurable(paths.epoch, Buffer.alloc(0));
+  }
+  writeDurable(paths.workerFile, file.data, { mode: 0o600 });
+  if (!t.managed || (d.platform !== 'linux' && d.platform !== 'darwin')) return;
+  const done = linux
+    ? await serveAsWorker({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, unitDir: unitDirOf(os.homedir()), fleet: t.name, home: t.home, run: realRun })
+    : await kickstart([profileLabel(t.name)]);
+  for (const line of done) d.out(line);
+  if (!await d.daemonUp(t)) {
+    throw new Error(`${linux ? svalldUnitName(t.name) : profileLabel(t.name)} did not answer after its restart; svall doctor says why`);
+  }
+}
+
 /** What the home runs on a worker it links to: the link itself, and the enrolment that names the home. */
 export function workerCommands(target: () => Target): Command {
   const cmd = new Command('worker').description('this machine as a worker of a home\'s fleet');
   cmd.command('link').description('carry the home\'s link to this machine\'s svalld on stdin and stdout; the home runs it over ssh')
     .action(() => proxy(resolvePaths(target().home).linkSock));
-  cmd.command('enroll').description('serve the fleet of the home named, with the token read from stdin; on Linux its daemon restarts as a worker')
+  cmd.command('enroll').description('serve the fleet of the home named, with the token read from stdin; its daemon restarts as a worker')
     .requiredOption('--home-machine <id>', 'the home\'s machine id')
     .requiredOption('--home-name <name>', 'the home\'s name')
     .requiredOption('--fleet-id <id>', 'the fleet\'s id')
-    .action(async (o: { homeMachine: string; homeName: string; fleetId: string }) => {
-      const t = target();
-      const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: (await readAll(process.stdin)).trim(), homeName: o.homeName });
-      if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
-      // a companion's systemd runs each fleet it serves, which may not have a home there yet
-      const linux = process.platform === 'linux' && t.managed;
-      if (linux) setupFleetHome({ home: t.home, port: t.name === PRIVATE ? undefined : 0 });
-      writeDurable(resolvePaths(t.home).workerFile, file.data, { mode: 0o600 });
-      if (!linux) return;
-      const done = await serveAsWorker({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, unitDir: unitDirOf(os.homedir()), fleet: t.name, home: t.home, run: realRun });
-      for (const line of done) process.stdout.write(`${line}\n`);
-      if (!await daemonRuns(releaseVersion(), () => Client.connect(t.home))) {
-        throw new Error(`${svalldUnitName(t.name)} did not answer after its restart; svall doctor says why`);
-      }
-    });
+    .option('--home-ssh <destination>', 'the home this machine dials itself, which then needs no ssh to it')
+    .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall fleet enroll-worker there names it')
+    .action((o: Enrol) => enrollHere(target(), o));
   cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
     .argument('<VAR>', 'the variable\'s name')
     .action(async (name: string) => {

@@ -47,7 +47,7 @@ now() { basename "$(readlink "$base/current")"; }
 [ "$1" = -p ] && shift 2
 case "$1" in
   connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
-  version) x=; for k in worker; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
+  version) x=; for k in worker role fleetId; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
     printf '%s%s\\n}\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2).slice(0, -2)}' "$x" ;;
   doctor) printf '%s\\n' '${DOCTOR}' ;;
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
@@ -504,6 +504,24 @@ esac
     expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'skip', detail: 'trift serves this fleet as a worker' });
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
     expect(fs.existsSync(systemctl)).toBe(false);
+  });
+
+  it("upgrades the fleet's home, which this machine serves as a worker, and leaves it the home: no enrol and no agent setup there", async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    serves();
+    fs.writeFileSync(path.join(work, 'far', '.svall', 'role'), '"home"');
+    fs.writeFileSync(path.join(work, 'far', '.svall', 'fleetId'), JSON.stringify(FLEET));
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
+    const setupRows = vi.fn(() => Promise.resolve([unticked('claude:mcp:linear')]));
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, setupRows }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(far.now()).toBe('1.2.3');
+    expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'skip', detail: "trift is this fleet's home, and its daemon runs the new release as the home" });
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    expect(fs.existsSync(path.join(work, 'far', '.svall', 'worker-args'))).toBe(false);
+    expect(setupRows).not.toHaveBeenCalled();
+    expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']);
   });
 
   it('uploads, installs and enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {

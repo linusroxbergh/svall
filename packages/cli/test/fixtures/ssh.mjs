@@ -14,7 +14,7 @@ const remoteLog = process.env.SVALL_FAKE_SSH_REMOTE_LOG;
 const replies = process.env.SVALL_FAKE_SSH_REPLIES;
 const exec = process.env.SVALL_FAKE_SSH_EXEC;
 
-const TAKES_VALUE = new Set(['-S', '-F', '-o', '-O', '-L', '-l', '-p', '-i', '-b', '-c', '-e', '-m', '-w']);
+const TAKES_VALUE = new Set(['-S', '-F', '-o', '-O', '-L', '-R', '-l', '-p', '-i', '-b', '-c', '-e', '-m', '-w']);
 const FLAGS = new Set(['-M', '-N', '-T', '-t', '-tt', '-q', '-v', '-n', '-f', '-g', '-x', '-A', '-4', '-6']);
 
 const FAIL = {
@@ -76,6 +76,37 @@ function proxy(localPort, remotePort) {
   setTimeout(() => process.exit(0), 30_000);
 }
 
+// a far unix socket onto one here, as sshd binds a -R forward: it leaves the file when it goes, and goes with the master
+function reverse(remote, local, masterFile) {
+  const server = net.createServer((from) => {
+    const to = net.connect(local);
+    from.pipe(to); to.pipe(from);
+    from.on('error', () => to.destroy());
+    to.on('error', () => from.destroy());
+  });
+  process.stdout.on('error', () => { /* the ssh that started it has exited */ });
+  const gone = () => process.exit(0);
+  process.on('SIGTERM', gone);
+  setInterval(() => { if (!fs.existsSync(masterFile)) gone(); }, 50);
+  server.on('error', (e) => { process.stdout.write(`failed ${e.code}\n`); process.exit(1); });
+  server.listen(remote, () => process.stdout.write('ready\n'));
+}
+
+const reverses = (opts) => {
+  const file = marker(opts, 'reverse');
+  return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : {};
+};
+
+function stopReverses(opts, only) {
+  const held = reverses(opts);
+  for (const [spec, pid] of Object.entries(held)) {
+    if (only !== undefined && spec !== only) continue;
+    try { process.kill(pid, 'SIGTERM'); } catch { /* already gone */ }
+    delete held[spec];
+  }
+  fs.writeFileSync(marker(opts, 'reverse'), JSON.stringify(held));
+}
+
 function master(opts) {
   const file = marker(opts, 'master');
   fs.writeFileSync(file, String(process.pid));
@@ -93,6 +124,8 @@ function wait(opts) {
 
 function control(opts) {
   const file = marker(opts, 'master');
+  // a master that takes this command and never answers, until the caller kills the client
+  if (process.env.SVALL_FAKE_SSH_HANG === opts.O) { setInterval(() => {}, 1 << 30); return; }
   if (opts.O === 'check') {
     if (!fs.existsSync(file)) die(`Control socket connect(${opts.S}): No such file or directory`);
     process.stderr.write(`Master running (pid=${fs.readFileSync(file, 'utf8')})\n`);
@@ -100,6 +133,7 @@ function control(opts) {
   }
   if (opts.O === 'exit') {
     stopProxy(opts);
+    stopReverses(opts);
     // a master that will not answer, and a socket no master listens on any more
     const held = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     if (held === 'stuck') die('mux_client_request_session: read from master failed: Broken pipe');
@@ -108,6 +142,22 @@ function control(opts) {
     fs.rmSync(file, { force: true });
     return;
   }
+  if (opts.O === 'forward' && opts.R) {
+    if (!fs.existsSync(file)) die(`Control socket connect(${opts.S}): No such file or directory`);
+    // the master answers a forward it holds already without asking sshd again
+    if (Object.hasOwn(reverses(opts), opts.R)) return;
+    const [remote, local] = opts.R.split(':');
+    if (fs.existsSync(remote)) die(`mux_client_forward: forwarding request failed: remote port forwarding failed for listen path ${remote}`);
+    const child = spawn(process.execPath, [fileURLToPath(import.meta.url), '--reverse', remote, local, file], { detached: true, stdio: ['ignore', 'pipe', 'ignore'] });
+    child.unref();
+    child.stdout.once('data', (d) => {
+      if (!String(d).startsWith('ready')) die(`mux_client_forward: forwarding request failed: remote port forwarding failed for listen path ${remote}`);
+      fs.writeFileSync(marker(opts, 'reverse'), JSON.stringify({ ...reverses(opts), [opts.R]: child.pid }));
+      process.exit(0);
+    });
+    return;
+  }
+  if (opts.O === 'cancel' && opts.R) { stopReverses(opts, opts.R); return; }
   if (opts.O === 'forward') {
     if (!fs.existsSync(file)) die(`Control socket connect(${opts.S}): No such file or directory`);
     const [, local, , remote] = opts.L.split(':');
@@ -221,6 +271,8 @@ function die(message, code = 255) {
 const argv = process.argv.slice(2);
 if (argv[0] === '--proxy') {
   proxy(Number(argv[1]), Number(argv[2]));
+} else if (argv[0] === '--reverse') {
+  reverse(argv[1], argv[2], argv[3]);
 } else {
   if (log) fs.appendFileSync(log, `${JSON.stringify(argv)}\n`);
   const opts = parse(argv);

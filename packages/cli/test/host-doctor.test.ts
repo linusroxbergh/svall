@@ -3,10 +3,11 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { MachineId, PROTOCOL_VERSION, type SetupRow } from '@svall/protocol';
 import { machineId } from '@svall/svalld/machine';
+import { resolvePaths } from '@svall/svalld/paths';
 import { consentHost, doctorHost, rowStep, type HostReport, type StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
-  BASE, DF, DOCTOR, ELSEWHERE, HOME, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, THERE, UNIT_PATH, deps, doctorJson, events, fleet, okRow, ssh, ticked, unticked,
+  BASE, DF, DOCTOR, ELSEWHERE, FLEET, HOME, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, THERE, UNIT_PATH, deps, doctorJson, events, fleet, okRow, ssh, ticked, unticked,
   useHostWorld, work,
 } from './controller/host-world.js';
 
@@ -111,6 +112,38 @@ describe('host doctor', () => {
     const named = await doctorHost('trift', deps({ registry: registered(), fleet: { home: fleet, profile: 'work' } }));
     expect(named.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: "runs this fleet's robots" });
     expect(ssh.remoteCalls().filter((w) => w.includes('version')).at(-1)).toEqual([SVALL, '-p', 'work', 'version', '--json']);
+  });
+
+  it("says the fleet's home, which this machine serves as a worker, is home of this fleet, and asks no agent setup rows of it", async () => {
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
+    const setupRows = vi.fn(() => Promise.resolve([unticked('claude:mcp:linear')]));
+    const answer = (o: object) => {
+      ssh.clearReplies();
+      ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
+      ssh.reply(['svall-space'], { stdout: DF });
+      ssh.reply(['svall-linger'], { stdout: 'Linger=yes\n' });
+      ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, ...o }) });
+    };
+    answer({ role: 'home', fleetId: FLEET });
+    const report = await doctorHost('trift', deps({ registry: registered(), setupRows }));
+    expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'home of this fleet' });
+    expect(report.checks.some((c) => c.name.startsWith('mirror:'))).toBe(false);
+    expect(setupRows).not.toHaveBeenCalled();
+    // the home of another fleet, or one an older release runs that names no role, is no home of this one
+    for (const o of [{ role: 'home', fleetId: OTHER_FLEET }, {}]) {
+      answer(o);
+      expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail' });
+    }
+    // nor is a copy of this fleet on another machine than the one its worker.json names
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: OTHER_MAC, fleetId: FLEET, token: 't'.repeat(48), homeName: 'elsewhere' }));
+    answer({ role: 'home', fleetId: FLEET });
+    expect((await doctorHost('trift', deps({ registry: registered() }))).checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail' });
+    // nor is any home to a fleet that serves none: most fleets, which have no worker.json here
+    fs.rmSync(resolvePaths(fleet).workerFile);
+    answer({ role: 'home', fleetId: FLEET });
+    const plain = await doctorHost('trift', deps({ registry: registered() }));
+    expect(plain.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade trift sets it up" });
+    expect(plain.checks.find((c) => c.name === 'release')).toMatchObject({ status: 'ok' });
   });
 
   it("fails a machine whose fleet home serves another Mac as a worker, with that row's action", async () => {

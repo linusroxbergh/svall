@@ -8,7 +8,7 @@ import { fleet } from './fixtures.js';
 
 const rect = { x: 0, y: 20, width: 800, height: 580 };
 
-function fakes(opts: { offline?: boolean; unanswered?: boolean; refuse?: boolean; refuseCode?: string; via?: { ssh: string; controlSocket: string } } = {}) {
+function fakes(opts: { offline?: boolean; unanswered?: boolean; refuse?: boolean; refuseCode?: string; refuseMessage?: string; via?: { ssh: string; controlSocket: string } } = {}) {
   const sent: ToShell[] = [];
   const handlers = new Set<(m: FromShell) => void>();
   const bridge: Bridge & { emit(m: FromShell): void } = {
@@ -23,7 +23,7 @@ function fakes(opts: { offline?: boolean; unanswered?: boolean; refuse?: boolean
       calls.push({ method, params });
       if (opts.offline) return Promise.reject(new Error('svalld offline'));
       if (opts.unanswered && method === 'term.attach') return Promise.reject(new Error('svalld did not answer term.attach within 30000ms'));
-      if (opts.refuse && method === 'term.attach') return Promise.reject(new ApiError(opts.refuseCode ?? 'not_found', 'no such robot'));
+      if (opts.refuse && method === 'term.attach') return Promise.reject(new ApiError(opts.refuseCode ?? 'not_found', opts.refuseMessage ?? 'no such robot'));
       if (method === 'term.attach') { const p = params as { id: string; term?: 2 }; return Promise.resolve({ socket: '/tmp/s', session: `v-${p.id}${p.term === 2 ? '-2' : ''}`, ...(opts.via && { via: opts.via }) }); }
       return Promise.resolve({});
     },
@@ -326,6 +326,19 @@ describe('terminal manager', () => {
     const { bridge, store } = fakes();
     bridge.emit({ type: 'term.focused', id: 'c1-2' });
     expect(store.getState().focusedId).toBe('c1');
+  });
+
+  it('shows a robot whose machine no route from here reaches as its sentence, attaches nothing, and asks no more as that machine comes and goes', async () => {
+    const { calls, sent, store, manager } = fakes({ refuse: true, refuseCode: 'elsewhere', refuseMessage: 'c0 runs on box; open it there' });
+    store.getState().setFleet(placed(true));
+    store.getState().focus('c0');
+    await expect(manager.show('c0', rect)).rejects.toThrow('c0 runs on box; open it there');
+    expect(store.getState().terminalErrors.c0).toBe('c0 runs on box; open it there');
+    store.getState().applyPatch(link(false));
+    store.getState().applyPatch(link(true));
+    await flush();
+    expect(calls.filter((c) => c.method === 'term.attach')).toHaveLength(1);
+    expect(sent.some((m) => m.type === 'term.show')).toBe(false);
   });
 
   it('an attach refused with not_reachable is retried once the machine is reachable again', async () => {

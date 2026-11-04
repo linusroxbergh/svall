@@ -17,13 +17,14 @@ import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { sha256Hex } from './hash.js';
 import { startHookReceiver } from './hooks/receiver.js';
-import { HomeLinks, sshTransport, UnknownEvent } from './link/home.js';
+import { HomeDial } from './link/dialout.js';
+import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
 import { tryLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -110,7 +111,7 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
 // every fleet home in this account's home, set up or not
 const fleetHomes = (home: string): string[] => [home, ...fs.readdirSync(os.homedir()).filter((f) => f.startsWith('.svall')).map((f) => path.join(os.homedir(), f))];
 
-// each worker, a machine reached over ssh, knows a home by its id, so one that cannot be read stops svalld while any
+// each worker, reached over ssh or dialing in, knows a home by its id, so one that cannot be read stops svalld while any
 // worker is listed, and with none it runs as a fresh id. A machine.json made on other hardware becomes this machine's
 function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
   let identity: ReturnType<typeof machineIdentity>;
@@ -118,7 +119,7 @@ function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
     identity = machineIdentity(configDir(), hardware);
   } catch (e) {
     let listed: boolean;
-    try { listed = readRegistry().some((m) => m.record.ssh !== undefined); } catch { listed = true; }
+    try { listed = listsWorker(); } catch { listed = true; }
     if (listed) throw new Error(machineIdFailure(e, { workers: true }), { cause: e });
     const id = MachineId.parse(crypto.randomUUID());
     log.error(`${machineIdFailure(e)}; no worker knows this Mac, so it runs as ${id}`);
@@ -159,6 +160,10 @@ async function start(opts: Options): Promise<Daemon> {
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
   if (off.has('scribe')) store.update((d) => { d.scribeOff = true; });
+  // a home holds its fleet as its own, so what said it was a worker's goes, and heldAsHome counts it again
+  const wasWorker = !worker && Object.values(store.state.machines ?? {}).some((m) => m.snapshot);
+  if (!worker) fs.rmSync(paths.epoch, { force: true });
+  if (wasWorker) store.update((d) => { for (const m of Object.values(d.machines ?? {})) delete m.snapshot; });
   liftRobotDocs(paths.docs, log);
   installHookScripts(paths);
   const token = readOrCreateToken(paths.token);
@@ -220,7 +225,7 @@ async function start(opts: Options): Promise<Daemon> {
     overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
   });
   const links = worker ? undefined : new HomeLinks({
-    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }),
+    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (replay && kind === 'mutation') return replay.prepare(data, machine);
@@ -252,12 +257,15 @@ async function start(opts: Options): Promise<Daemon> {
   });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const outbox = worker && Outbox.open(paths, log);
+  // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
+  const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
     // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
     onLink: (live) => {
       if (live) return;
+      dial?.check();
       for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
       workerDrops?.linkLost();
@@ -288,7 +296,7 @@ async function start(opts: Options): Promise<Daemon> {
   const mutations = connection && outbox && new WorkerMutations({
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
   });
-  const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links });
+  const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links }, worker && me);
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
   const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
   // what this machine's agent CLIs are: a move and system.info read them
@@ -399,7 +407,9 @@ async function start(opts: Options): Promise<Daemon> {
     const hooks = await startHookReceiver(paths.hooksSock, (e) => fleet.onSocketEvent(e), log);
     teardown.push(() => hooks.close());
     await fleet.resumeInterrupted();
-    fleet.resumeResting();
+    // a worker's copy holds its old home's robots as awake, which never ran here, so none of it resumes on its own
+    if (wasWorker) store.update((d) => { for (const c of Object.values(d.robots)) delete c.agent?.restingSince; });
+    else fleet.resumeResting();
     fs.writeFileSync(paths.port, String(api.port));
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
@@ -410,6 +420,10 @@ async function start(opts: Options): Promise<Daemon> {
     if (connection) {
       await connection.start();
       teardown.push(() => connection.stop());
+    }
+    if (dial) {
+      dial.start();
+      teardown.push(() => dial.stop());
     }
     if (screens) {
       screens.start();

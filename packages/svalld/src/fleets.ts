@@ -40,21 +40,23 @@ export const homeSetup = (t: FleetTarget, d: Pick<StartDeps, 'runtime' | 'launch
   port: t.name === PRIVATE ? undefined : 0,
 });
 
-/** Loads a profile's launchd agent when launchd has not and starts its daemon, then waits for it to answer. */
-export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
+/** Loads a profile's launchd agent when launchd has not, setting up its home if it has no plist; it starts no daemon. */
+export async function loadFleetAgent(t: FleetTarget, d: Pick<StartDeps, 'exec' | 'exists' | 'setupHome' | 'uid' | 'launchAgentsDir' | 'runtime'>): Promise<void> {
   const label = profileLabel(t.name);
   const domain = `gui/${d.uid}`;
   const plist = plistFile(d.launchAgentsDir, label);
+  if (await d.exec('launchctl', ['print', `${domain}/${label}`]).then(() => true, () => false)) return;
+  if (!d.exists(plist)) await d.setupHome(homeSetup(t, d));
+  await d.exec('launchctl', ['bootstrap', domain, plist]);
+}
 
+/** Loads a profile's launchd agent when launchd has not and starts its daemon, then waits for it to answer. */
+export async function startFleet(t: FleetTarget, d: StartDeps): Promise<void> {
   // an ad-hoc $SVALL_HOME is opened as it stands; only a profile's own home gets an agent
   if (t.managed) {
-    const loaded = await d.exec('launchctl', ['print', `${domain}/${label}`]).then(() => true, () => false);
-    if (!loaded) {
-      if (!d.exists(plist)) await d.setupHome(homeSetup(t, d));
-      await d.exec('launchctl', ['bootstrap', domain, plist]);
-    }
+    await loadFleetAgent(t, d);
     // launchd starts no daemon at login; the window opening on the fleet does
-    await d.exec('launchctl', ['kickstart', `${domain}/${label}`]);
+    await d.exec('launchctl', ['kickstart', `gui/${d.uid}/${profileLabel(t.name)}`]);
   }
 
   const end = Date.now() + d.timeoutMs;

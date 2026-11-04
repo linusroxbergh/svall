@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { sha256Hex } from './hash.js';
 import { PRIVATE, profileHome } from './profile.js';
 import { shq } from './text.js';
 
@@ -94,6 +95,8 @@ export function resolvePaths(home: string = svallHome()) {
     epoch: path.join(home, 'journal', 'epoch'),
     applied: path.join(home, 'journal', 'applied.ndjson'),
     linkSock: path.join(home, 'link.sock'),
+    // the home's: the sockets each worker that dials in forwards its link.sock to, made by sshd
+    dialSockets: path.join(home, 'w'),
     // each robot move's journal, on either side of it
     moves: path.join(home, 'journal', 'moves'),
     // the retro's runs, its ledger, and the record of which robot, island and repo each session ran in
@@ -115,6 +118,17 @@ export function socketTooLong(socket: string, platform: NodeJS.Platform = proces
   if (max === undefined || bytes <= max) return undefined;
   return { message: `the socket ${socket} is ${bytes} bytes, past the ${max} a Unix socket path holds, so its listen fails with EINVAL`, over: bytes - max };
 }
+
+/** Where a worker that dials in forwards its link on the home: named by a hash of its id, as a socket path holds 107 bytes at most. */
+export const dialSocket = (p: Pick<Paths, 'dialSockets'>, machine: string): string =>
+  path.join(p.dialSockets, `${sha256Hex(machine).slice(0, 12)}.sock`);
+
+/** Why no worker on `worker` can dial `socket` on a home on `home`: both ssh and the home read the path, and a Mac's holds the fewer bytes. */
+export const dialSocketTooLong = (socket: string, worker: NodeJS.Platform, home: NodeJS.Platform = process.platform): ReturnType<typeof socketTooLong> =>
+  socketTooLong(socket, worker === 'darwin' ? 'darwin' : home);
+
+/** Whether `socket`, a path on the home, is the one `machine` forwards its link to, wherever that fleet home is. */
+export const isDialSocket = (socket: string, machine: string): boolean => socket === dialSocket({ dialSockets: path.dirname(socket) }, machine);
 
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile];

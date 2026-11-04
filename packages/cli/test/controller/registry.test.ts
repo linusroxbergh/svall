@@ -175,6 +175,14 @@ describe('machine registry', () => {
     expect(MachineRegistry.load(path.join(tmp(), 'fresh'), { hostname: 'kolvik' }).setAside()).toBe('');
   });
 
+  it('put refuses the local machine, and a name another machine holds', () => {
+    const registry = MachineRegistry.load(path.join(tmp(), 'c'), { hostname: 'kolvik' });
+    registry.add(trift);
+    const dials = { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.svall', dial: 'worker' } as const;
+    expect(() => registry.put(registry.localId, dials)).toThrow(/local machine/);
+    expect(() => registry.put('11111111-1111-4111-8111-111111111111' as never, { ...dials, name: 'trift' })).toThrow(/trift/);
+  });
+
   it('recovers the same way from a registry where two machines share a name', () => {
     const dir = path.join(tmp(), 'svall');
     fs.mkdirSync(dir, { recursive: true });

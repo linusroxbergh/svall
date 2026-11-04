@@ -1,9 +1,10 @@
 import { Command } from 'commander';
 import { PROTOCOL_VERSION, STATE_SCHEMA_VERSION } from '@svall/protocol';
+import { readFleetConfig } from '@svall/svalld/config';
 import { machineId, machineIdFailure } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { releaseSigned, releaseVersion } from '@svall/svalld/release';
-import { readWorkerFile } from '@svall/svalld/worker/mode';
+import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { printResult } from '../format.js';
 
 // a controller registers a far machine by the id its --json names, so only the human view goes on without one
@@ -20,10 +21,15 @@ const attempt = <T>(read: () => T): T | undefined => {
   try { return read(); } catch { return undefined; }
 };
 
-// the home whose fleet `home` serves as a worker
-function served(home: string): { worker?: { homeMachineId: string; homeName: string; fleetId: string } } {
-  const worker = attempt(() => readWorkerFile(resolvePaths(home)));
-  return worker ? { worker: { homeMachineId: worker.homeMachineId, homeName: worker.homeName, fleetId: worker.fleetId } } : {};
+// what `home` is to its fleet: the worker of the home it names, or the fleet's home, with the fleet's id once it has one
+function served(home: string): { role: 'home'; fleetId?: string } | { role: 'worker'; worker?: { homeMachineId: string; homeName: string; fleetId: string } } {
+  const paths = resolvePaths(home);
+  if (isWorker(paths)) {
+    const worker = attempt(() => readWorkerFile(paths));
+    return { role: 'worker', ...(worker && { worker: { homeMachineId: worker.homeMachineId, homeName: worker.homeName, fleetId: worker.fleetId } }) };
+  }
+  const fleetId = attempt(() => readFleetConfig(paths).id);
+  return { role: 'home', ...(fleetId && { fleetId }) };
 }
 
 export function versionCommand(json: () => boolean, home: () => string): Command {

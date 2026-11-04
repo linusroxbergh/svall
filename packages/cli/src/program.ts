@@ -9,6 +9,7 @@ import { retroCommands } from './commands/retro.js';
 import { robotCommands } from './commands/robot.js';
 import { connectionInfoCommand } from './commands/connection.js';
 import { doctorCommand } from './commands/doctor.js';
+import { fleetCommands } from './commands/fleet.js';
 import { hostCommands, thereOf } from './commands/host.js';
 import { islandCommands } from './commands/island.js';
 import { mobileCommand } from './commands/mobile.js';
@@ -25,10 +26,9 @@ import { farProfile, resolveTarget, targetFor } from './target.js';
 import { checkoutVersion } from './version.js';
 
 /** What `svall <word>` answers for a command that is gone. */
-const RETIRED: Record<'handover' | 'gateway' | 'fleet' | 'connect', string> = {
+const RETIRED: Record<'handover' | 'gateway' | 'connect', string> = {
   handover: 'svall handover is gone: svall robot move <id> --machine <name> moves one robot to another machine',
   gateway: 'svall gateway is gone with the fleet handover',
-  fleet: 'svall fleet is gone with the fleet handover',
   connect: 'svall connect is gone with the fleet handover',
 };
 
@@ -89,6 +89,7 @@ export function buildProgram(): Command {
   program.addCommand(doctorCommand(target, json));
   program.addCommand(hostCommands(json, target));
   program.addCommand(workerCommands(target));
+  program.addCommand(fleetCommands(target, json));
   program.addCommand(uninstallCommand(json));
   program.addCommand(connectionInfoCommand(home, json));
   program.addCommand(versionCommand(json, home));

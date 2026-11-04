@@ -289,9 +289,10 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
   host.command('list')
     .description('every machine in the registry and its last check')
     .action(() => {
-      const rows = machineRows(MachineRegistry.load(dir()), lastChecks(dir()));
+      const registry = MachineRegistry.load(dir());
+      const rows = machineRows(registry, lastChecks(dir()));
       printResult(rows, json(), () => table(rows.map((r) => ({
-        name: r.name, ssh: r.ssh ?? '(this machine)', platform: r.platform,
+        name: r.name, ssh: r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,
         release: r.check?.release ?? '', checked: r.check ? checkedLine(r.check) : '', id: r.id,
       }))));
     });

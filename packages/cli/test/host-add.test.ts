@@ -408,6 +408,14 @@ esac
     expect(ssh.calls()).toEqual([]);
   });
 
+  it('refuses the name of a worker that dials in, which has no ssh destination either, before any ssh', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
+    await addHost({ name: 'ada-mac', ssh: 'ada.test', release: archive() }, deps({ registry }));
+    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: 'ada-mac is a worker that dials in; remove it first or add this one under another name' });
+    expect(ssh.calls()).toEqual([]);
+  });
+
   it("refuses this Mac's own name, which has no ssh destination, before any ssh", async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.add({ name: 'studio', platform: 'darwin', arch: 'arm64', home: '/Users/linus', svallBase: '/Users/linus/.svall' }, MAC);
