@@ -39,7 +39,7 @@ describe('home.connection over a real socket', () => {
     const paths = resolvePaths(home);
     const store = new Store(path.join(home, 'state.json'), emptyState(), silentLogger);
     const a = await startApi({
-      host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: {} as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
+      host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') }, docs: paths.docs,
       systemInfo: stubSystemInfo, key: () => KEY, logins: () => ['me@example.com'], homeApi: { answer: () => Promise.resolve(ANSWER as never) },
     });

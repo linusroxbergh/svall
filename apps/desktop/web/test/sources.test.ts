@@ -434,11 +434,17 @@ describe('the page follows the home while it answers, and this machine otherwise
     await following();
     net.daemons.delete('ws://local');
     local.drop();
+    await vi.advanceTimersByTimeAsync(30_000);
+    // just past a failed open of this machine's socket, whose next report is seconds off
+    const opened = net.knocks.filter((k) => k === 'ws://local').length;
+    while (net.knocks.filter((k) => k === 'ws://local').length === opened) await vi.advanceTimersByTimeAsync(50);
     await settle();
     net.daemons.delete(url(50_000));
     home.drop();
     await settle();
     const knocks = net.knocks.filter((k) => k === url(50_000)).length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(net.knocks.filter((k) => k === url(50_000))).toHaveLength(knocks);
     await vi.advanceTimersByTimeAsync(300_000);
     expect(net.knocks.filter((k) => k === url(50_000))).toHaveLength(knocks);
     expect(store.getState().via?.online).toBeUndefined();
@@ -481,10 +487,10 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(local.said('fleet.home').length).toBe(before + 1);
     expect(store.getState().via?.online).toBe(true);
     expect(store.getState().home?.state).toBe('connected');
-    await api.call('robot.update', { id: 'there', note: 'x' });
-    expect(home.said('robot.update')).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(30_000);
     expect(store.getState().via?.online).toBe(true);
+    await api.call('robot.update', { id: 'there', note: 'x' });
+    expect(home.said('robot.update')).toHaveLength(1);
     worker();
     await vi.advanceTimersByTimeAsync(6000);
     expect(local.said('fleet.home').length).toBeGreaterThan(before + 1);
@@ -517,7 +523,7 @@ describe('the page follows the home while it answers, and this machine otherwise
     const stale = home.sockets[0];
     const closed = vi.spyOn(stale, 'close');
     local.answer('fleet.home', () => ({ machine: OTHER, name: 'other', mine: false, me: ME }));
-    local.answer('home.connection', () => ({ machine: OTHER, name: 'other', state: 'unreachable' }));
+    local.answer('home.connection', () => new Promise(() => {}));
     local.drop();
     await vi.advanceTimersByTimeAsync(600);
     expect(closed).toHaveBeenCalled();

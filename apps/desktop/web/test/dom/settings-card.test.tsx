@@ -328,7 +328,7 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     render(<SettingsCard />);
     show('machines');
     await screen.findByTestId('machine-studio');
-    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64', role: 'home' }] as never));
+    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
     const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
     expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker', 'worker']);
     expect(screen.getByTestId('machine-studio').textContent).toContain('home · ada@studio · 7 robots');

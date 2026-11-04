@@ -235,6 +235,11 @@ describe('the terminal of a robot on a worker', () => {
     expect(await dispatch({ id: 2, method: 'term.lastScreen', params: { id: 'c_none' } }, w.worker.ctx)).toEqual({ id: 2, result: { text: '' } });
   });
 
+  it('a worker sends a person to its home, by name, for a question of robot messages', async () => {
+    const w = world({ worker: { robots: { c_1: { ...placed({ id: 'c_1' }), relayed: { n: 1, held: 'p1' } } as never } } });
+    await expect(w.worker.fleet.answerPrompt('c_1', 'approve')).rejects.toThrow('robot messages wait on ada-mac; answer there');
+  });
+
   it('a worker lets go of a far robot\'s last screen once it no longer runs on the home, or is closed', () => {
     const w = world({ worker: { robots: { c_9: { ...placed({ id: 'c_9' }), machine: undefined }, c_8: { ...placed({ id: 'c_8' }), machine: undefined }, c_7: { ...placed({ id: 'c_7' }), machine: W } } } });
     const { terminals, store } = w.worker;
