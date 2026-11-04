@@ -6,7 +6,7 @@ import readline from 'node:readline';
 import { Writable } from 'node:stream';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { WorkerFile } from '@svall/protocol';
+import { MachineRecord, WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
 import { writeDurable } from '@svall/svalld/durable';
 import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
@@ -23,6 +23,7 @@ import { setupFleetHome } from '@svall/svalld/setup';
 import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
+import { MachineRegistry } from '../controller/registry.js';
 import type { Target } from '../target.js';
 import { daemonRuns } from './setup.js';
 
@@ -58,7 +59,7 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
-type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string };
+type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homeArch?: string; homePath?: string };
 type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
 const realEnrol: EnrolDeps = {
@@ -77,9 +78,13 @@ const servedFleet = (paths: ReturnType<typeof resolvePaths>): WorkerFile | undef
 /** worker.json written for the home named, then the fleet's daemon restarted as its worker: by systemd on Linux, by launchd on a Mac. */
 export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol): Promise<void> {
   if ((o.homeSsh === undefined) !== (o.homeSocket === undefined)) throw new Error('worker.json not written: --home-ssh and --home-socket go together');
-  const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket };
+  if (o.homeSsh === undefined && (o.homeSvallBase !== undefined || o.homeArch !== undefined || o.homePath !== undefined)) throw new Error('worker.json not written: --home-svall-base, --home-arch and --home-path are for a worker that dials its home');
+  if (o.homeSsh !== undefined && (o.homeSvallBase === undefined || o.homeArch === undefined || o.homePath === undefined)) throw new Error('worker.json not written: a worker that dials its home takes --home-svall-base, --home-arch and --home-path, as svall fleet enroll-worker there names them');
+  const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket, homeSvallBase: o.homeSvallBase };
   const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial });
   if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
+  const homeRecord = o.homeSsh === undefined ? undefined : MachineRecord.safeParse({ name: o.homeName, ssh: o.homeSsh, platform: 'linux', arch: o.homeArch, home: o.homePath, svallBase: o.homeSvallBase, role: 'home' });
+  if (homeRecord && !homeRecord.success) throw new Error(`worker.json not written: ${z.prettifyError(homeRecord.error)}`);
   const paths = resolvePaths(t.home);
   // ssh reads a colon in a forward's socket as its separator
   if (o.homeSsh !== undefined && paths.linkSock.includes(':')) throw new Error(`worker.json not written: ${paths.linkSock} holds a colon, which ssh cannot forward to`);
@@ -103,6 +108,15 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
     fs.mkdirSync(path.dirname(paths.epoch), { recursive: true });
     writeDurable(paths.epoch, Buffer.alloc(0));
   }
+  // what `svall host upgrade` and `host doctor` of the home read; a record another fleet here holds of it keeps its name and route
+  if (homeRecord?.data) {
+    const registry = MachineRegistry.load();
+    const held = registry.get(file.data.homeMachineId);
+    try {
+      registry.put(file.data.homeMachineId, held ? { ...held.record, role: 'home' } : homeRecord.data);
+      registry.save();
+    } catch (e) { throw new Error(`worker.json not written: ${(e as Error).message}`, { cause: e }); }
+  }
   writeDurable(paths.workerFile, file.data, { mode: 0o600 });
   if (!t.managed || (d.platform !== 'linux' && d.platform !== 'darwin')) return;
   const done = linux
@@ -125,6 +139,9 @@ export function workerCommands(target: () => Target): Command {
     .requiredOption('--fleet-id <id>', 'the fleet\'s id')
     .option('--home-ssh <destination>', 'the home this machine dials itself, which then needs no ssh to it')
     .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall fleet enroll-worker there names it')
+    .option('--home-svall-base <path>', 'where svall is installed on the home, as svall fleet enroll-worker there names it')
+    .option('--home-arch <arch>', "the home's architecture, as svall fleet enroll-worker there names it")
+    .option('--home-path <path>', "the home's user folder, as svall fleet enroll-worker there names it")
     .action((o: Enrol) => enrollHere(target(), o));
   cmd.command('env').description('set a variable for this fleet\'s robots on this machine, its value read from stdin')
     .argument('<VAR>', 'the variable\'s name')

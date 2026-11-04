@@ -17,6 +17,7 @@ import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { sha256Hex } from './hash.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { HomeApi } from './link/home-api.js';
 import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
 import { tryLock } from './kernel-lock.js';
@@ -59,7 +60,7 @@ import { resolveTmux, servingTmux, Tmux } from './tmux/tmux.js';
 import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
-import { workerOptions, workerStubs, type Off } from './worker/mode.js';
+import { readWorkerFile, workerOptions, workerStubs, type Off } from './worker/mode.js';
 import { WorkerMutations } from './worker/mutations.js';
 import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
@@ -259,6 +260,7 @@ async function start(opts: Options): Promise<Daemon> {
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
   const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
+  const homeApi = worker && new HomeApi({ worker: () => readWorkerFile(paths), dial, linked: (): boolean => connection?.connected() ?? false });
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
@@ -295,6 +297,7 @@ async function start(opts: Options): Promise<Daemon> {
   // what the CLI in a worker's panes starts there, and changes there while its home is away
   const mutations = connection && outbox && new WorkerMutations({
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
+    homeName: () => store.state.machines?.[worker!.worker.homeMachineId]?.name ?? worker!.worker.homeName,
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links }, worker && me);
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
@@ -346,6 +349,12 @@ async function start(opts: Options): Promise<Daemon> {
   // the home's usage panel counts a worker's robots as the worker reads them
   if (connection) calls['usage.get'] = () => usage();
 
+  const registered = () => { try { return readRegistry(); } catch { return []; } };
+  // a home's name is its registry's, which no one has written on a machine that has never run a host command
+  const fleetHome = () => (worker
+    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false }
+    : { machine: me, name: registered().find((m) => m.id === me)?.record.name ?? os.hostname().split('.')[0], mine: true });
+
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
     scope: (p) => fleet.loadScope(p),
@@ -394,7 +403,8 @@ async function start(opts: Options): Promise<Daemon> {
       ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), fleetHome,
+      platforms: () => new Map(registered().map((m) => [m.id, m.record.platform])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
@@ -425,6 +435,7 @@ async function start(opts: Options): Promise<Daemon> {
       dial.start();
       teardown.push(() => dial.stop());
     }
+    if (homeApi) teardown.push(() => homeApi.stop());
     if (screens) {
       screens.start();
       teardown.push(() => screens.stop());

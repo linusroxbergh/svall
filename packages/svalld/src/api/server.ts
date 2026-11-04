@@ -31,7 +31,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; diagnostics?: Ctx['diagnostics']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations; retro?: Ctx['retro'];
-  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: string; phone?: Ctx['phone'];
+  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: string; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; platforms?: Ctx['platforms']; homeApi?: Ctx['homeApi'];
   // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -85,6 +85,8 @@ export function cookieOf(req: IncomingMessage, name: string): string | undefined
 }
 
 /** Only svalld's own page: on loopback, or on the tailnet name when proxied. Any other name could be a page made to resolve to this Mac. */
+const isLoopback = (address: string | undefined): boolean => address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
+
 export function originAllowed(req: IncomingMessage, extra: string[] = [], proxied = false): boolean {
   const origin = req.headers.origin;
   if (!origin) return true;
@@ -136,7 +138,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     },
   };
   const apps: AppWindows = { show: (p) => { for (const v of pages) v.send({ event: 'app.show', data: p }); return pages.size; } };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone, fleetHome: opts.fleetHome, platforms: opts.platforms, homeApi: opts.homeApi };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
   ];
@@ -241,10 +243,10 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       wss.handleUpgrade(req, socket, head, (ws: WebSocket) => { ws.on('error', () => {}); ws.close(UNPAIRED, 'phone not paired'); });
       return;
     }
-    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login, req.headers.origin !== undefined));
+    wss.handleUpgrade(req, socket, head, (ws: WebSocket) => connect(ws, login, req.headers.origin !== undefined, !proxied && isLoopback(req.socket.remoteAddress)));
   });
 
-  function connect(ws: WebSocket, login: string | undefined, page: boolean): void {
+  function connect(ws: WebSocket, login: string | undefined, page: boolean, loopback: boolean): void {
     answered.add(ws);
     ws.on('pong', () => answered.add(ws));
     let unsub: (() => void) | undefined;
@@ -257,7 +259,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       return true;
     };
     const viewer: Viewer = {
-      kind: login ? 'phone' : 'app', login,
+      kind: login ? 'phone' : 'app', login, loopback,
       send: (ev: Event) => { if (!revoked() && ws.readyState === ws.OPEN) ws.send(JSON.stringify(ev)); },
       backlog: () => ws.bufferedAmount,
     };

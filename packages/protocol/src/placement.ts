@@ -79,17 +79,23 @@ export const MachineLink = z.object({
 });
 export type MachineLink = z.infer<typeof MachineLink>;
 
+/** How a window stands with the fleet's home: `auth` and `version` wait for a person, as does a mismatch, which `detail` names. */
+export const HomeState = z.enum(['connected', 'connecting', 'unreachable', 'auth', 'version']);
+export type HomeState = z.infer<typeof HomeState>;
+
 /** The robot fields only the machine running the robot writes. */
 export const WORKER_OWNED = ['tmux', 'agent', 'unread', 'revive', 'resumeError', 'panePath', 'cwd', 'repo', 'second', 'shell', 'hint', 'codexDaemon'] as const;
 
 /**
  * A worker's fleet home: the home it serves, and the token that home proves itself with. A worker that dials its home
- * names the ssh destination it opens and the socket in the home's fleet home its link is forwarded to.
+ * names the ssh destination it opens, the socket in the home's fleet home its link is forwarded to, and where svall is
+ * installed there, which answers how its window reaches the home's API.
  */
 export const WorkerFile = z.object({
   homeMachineId: MachineId, fleetId: FleetId, token: z.string().min(32), homeName: z.string(),
   homeSsh: SshDestination.optional(),
   homeSocket: MachinePath.regex(/^[^:]*\/w\/[0-9a-f]{12}\.sock$/, 'a socket w/<12 hex>.sock in the home\'s fleet home, with no colon, which ssh reads as a forward\'s separator').optional(),
+  homeSvallBase: MachinePath.optional(),
 });
 export type WorkerFile = z.infer<typeof WorkerFile>;
 

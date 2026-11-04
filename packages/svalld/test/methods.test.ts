@@ -201,7 +201,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     const moved = await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx) as { result: { moveId: string } };
     expect(moved.result.moveId).toMatch(/^mv_[0-9a-z]{10}$/);
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', reachable: true, release: '1.2.3', robots: 1 }] } });
+    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, release: '1.2.3', robots: 1 }] } });
     // a move that is done has nothing left to run on
     expect(await dispatch({ id: 3, method: 'robot.moveRetry', params: { moveId: moved.result.moveId } }, ctx)).toMatchObject({ id: 3, error: { code: 'invalid' } });
   });
@@ -572,5 +572,56 @@ describe('system.info', () => {
     expect((await info(async () => ({ user: 'linus', on: false }))).linger).toEqual({ user: 'linus', on: false });
     expect((await info(async () => { throw new Error('loginctl is not installed'); })).linger).toBeUndefined();
     expect((await info()).linger).toBeUndefined();
+  });
+});
+
+describe('a window and the fleet\'s home', () => {
+  const HOME = crypto.randomUUID() as MachineId;
+  const W = crypto.randomUUID() as MachineId;
+  const home = { machine: HOME, name: 'studio', mine: true };
+  const local = (viewer: object, o: object = {}) => ({ viewer: { kind: 'app', loopback: true, ...viewer }, fleetHome: () => home, ...o }) as unknown as Ctx;
+
+  it('fleet.home and home.connection answer the app alone, and home.connection only over loopback', async () => {
+    for (const method of ['fleet.home', 'home.connection', 'home.fallback']) {
+      const params = method === 'home.fallback' ? { on: true } : {};
+      expect(await dispatch({ id: 1, method, params }, local({ kind: 'phone' }))).toMatchObject({ error: { code: 'forbidden' } });
+    }
+    const answer = vi.fn(() => Promise.resolve({ machine: HOME, name: 'studio', state: 'connected', token: 'held' }));
+    expect(await dispatch({ id: 1, method: 'home.connection', params: {} }, local({ loopback: false }, { homeApi: { answer } }))).toMatchObject({ error: { code: 'forbidden' } });
+    expect(answer).not.toHaveBeenCalled();
+    expect(await dispatch({ id: 1, method: 'home.connection', params: { retry: true } }, local({}, { homeApi: { answer } }))).toMatchObject({ result: { token: 'held' } });
+    expect(answer).toHaveBeenCalledWith(true);
+  });
+
+  it('a home answers that it is the home, with no route and no token', async () => {
+    expect(await dispatch({ id: 1, method: 'fleet.home', params: {} }, local({}))).toEqual({ id: 1, result: home });
+    expect(await dispatch({ id: 1, method: 'home.connection', params: {} }, local({}))).toEqual({ id: 1, result: { machine: HOME, name: 'studio', state: 'connected' } });
+  });
+
+  it('a window in fallback gets the treatment of a phone: its changes wait on no link', async () => {
+    const serves = vi.fn(() => false);
+    const viewer = { kind: 'app', loopback: true };
+    const ctx = { viewer, mutations: { serves }, fleet: { updateRobot: () => ({}) } } as unknown as Ctx;
+    await dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), false);
+    expect(await dispatch({ id: 2, method: 'home.fallback', params: { on: true } }, ctx)).toEqual({ id: 2, result: {} });
+    await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), true);
+    await dispatch({ id: 4, method: 'home.fallback', params: { on: false } }, ctx);
+    await dispatch({ id: 5, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), false);
+  });
+
+  it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
+    const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
+    const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };
+    const platforms = () => new Map([[W, 'darwin' as const]]);
+    const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, platforms }));
+    expect(onHome).toMatchObject({ result: { machines: [
+      { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 1 },
+    ] } });
+    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, platforms, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
+    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
   });
 });

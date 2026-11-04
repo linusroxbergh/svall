@@ -222,11 +222,11 @@ export function forgetCheck(dir: string, id: string): void {
 }
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; check?: LastCheck };
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; role?: 'home'; check?: LastCheck };
 
 export function machineRows(registry: MachineRegistry, checks: Record<string, LastCheck>): MachineRow[] {
   return registry.list().map(({ id, record }) => ({
-    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(checks[id] && { check: checks[id] }),
+    name: record.name, id, ...(record.ssh && { ssh: record.ssh }), platform: `${record.platform}-${record.arch}`, ...(record.role && { role: record.role }), ...(checks[id] && { check: checks[id] }),
   }));
 }
 

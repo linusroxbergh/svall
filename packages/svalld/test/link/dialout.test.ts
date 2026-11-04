@@ -207,6 +207,35 @@ describe('HomeDial', () => {
     expect(masters().at(-1)?.slice(-2)).toEqual(['--', 'ada@studio']);
   });
 
+  it('waits for a person after a login refused, with one log line and no master spawned, and a restore tries again', async () => {
+    const w = await world({ homeSsh: 'denied.test' });
+    w.dial.start();
+    await gaveUp(w);
+    expect(w.dial.failure()?.kind).toBe('auth');
+    expect(w.said.at(-1)).not.toContain('trying again');
+    const opens = () => ssh.calls().filter((c) => c.includes('-M')).length;
+    const before = opens();
+    await new Promise((r) => { setTimeout(r, 1300); });
+    expect(opens()).toBe(before);
+    expect(w.said.filter((l) => l.startsWith('the dial to the home failed'))).toHaveLength(1);
+    rewrite(w, { homeSsh: 'ada@studio' });
+    w.dial.restore();
+    expect(w.dial.failure()).toBeUndefined();
+    await dialed(w);
+    expect(w.dial.failure()).toBeUndefined();
+  });
+
+  it('never reads a dial that may come back as a refused login: it says unreachable and tries again', async () => {
+    const w = await world({ homeSsh: 'refused.test' });
+    w.dial.start();
+    await gaveUp(w);
+    expect(w.dial.failure()?.kind).toBe('unreachable');
+    expect(w.said.at(-1)).toContain('trying again');
+    rewrite(w, { homeSsh: 'ada@studio' });
+    await dialed(w);
+    expect(w.dial.failure()).toBeUndefined();
+  });
+
   it('leaves the master to the old home for a homeSsh that names another', async () => {
     const w = await world();
     w.dial.start();

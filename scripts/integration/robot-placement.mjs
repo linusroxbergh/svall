@@ -464,7 +464,7 @@ printf 'worker untracked
 
 // ---------------------------------------------------------------------------------------------- apart
 
-const SLEPT = 'started on remote while this Mac slept';
+const SLEPT = `started on remote while ${L} was away`;
 const listOn = (machine) => JSON.parse(sh(machine, 'svall --json robot list').stdout);
 
 function reviewerAsleep(ids, fx) {
@@ -480,7 +480,7 @@ function reviewerAsleep(ids, fx) {
   const made = [JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ${HOMES[R]}/src/app/.claude/worktrees/review --name reviewer --claude --run 'review it'`).stdout).id];
   for (let i = 0; i < 4; i++) made.push(JSON.parse(sh(R, `svall --json robot new --island ${fx.island} --cwd ~/src/app --claude`).stdout).id);
   const sixth = sh(R, `svall robot new --island ${fx.island} --cwd ~/src/app --claude`, { ok: false });
-  check('sixth refused', sixth.code !== 0 && sixth.stderr.includes('remote has started 5 robots since this Mac last answered; wait for it'), () => `exit ${sixth.code}: ${JSON.stringify(sixth.stderr)}`);
+  check('sixth refused', sixth.code !== 0 && sixth.stderr.includes(`remote has started 5 robots since ${L} last answered; wait for it`), () => `exit ${sixth.code}: ${JSON.stringify(sixth.stderr)}`);
   turnOn(id, texts[1]);
   const read = sh(R, `svall robot read ${id} --transcript --lines 1`).stdout;
   check('transcript read', read.includes(texts[1]), () => read.slice(-300));
@@ -674,7 +674,7 @@ const fs = require("fs");
 const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 fs.rmSync(process.argv[1]);
 require("child_process").execFileSync("svall", ["worker", "enroll", "--home-machine", a.homeMachineId, "--home-name", a.homeName, "--fleet-id", a.fleetId,
-  "--home-ssh", process.argv[2], "--home-socket", a.socket], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
+  "--home-ssh", process.argv[2], "--home-socket", a.socket, "--home-svall-base", a.homeSvallBase, "--home-arch", a.homeArch, "--home-path", a.homePath], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
 console.log(a.socket);
 ' ~/enrol.json svall@${L}`);
     const socket = enrol.stdout.trim().split('\n').at(-1);

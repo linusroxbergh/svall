@@ -60,7 +60,7 @@ describe('a worker serving its robots while the home is away', () => {
       for (const c of Object.values(w.worker.store.state.robots)) if (c.id !== 'c_1' && !first.some((f) => f.id === c.id)) first.push(c);
     });
     const r = await create({ name: 'reviewer' });
-    expect(r).toMatchObject({ result: { name: 'reviewer', machine: W, placement: { generation: 0 }, note: 'started on w1 while this Mac slept', noteSource: 'manual' } });
+    expect(r).toMatchObject({ result: { name: 'reviewer', machine: W, placement: { generation: 0 }, note: 'started on w1 while ada-mac was away', noteSource: 'manual' } });
     const { id } = madeIn(r);
     expect(first.map((c) => [c.id, c.machine, c.placement])).toEqual([[id, W, { generation: 0 }]]);
     expect(opened).toEqual([id]);
@@ -85,9 +85,9 @@ describe('a worker serving its robots while the home is away', () => {
   it('a cwd outside the clones is refused with its path; mission control is refused; the sixth create since the last ack is refused with the quota sentence', async () => {
     const { create, opened } = setup();
     await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not inside a clone on w1; start it in one` } });
-    await expect(create({ islandId: HOME_ISLAND })).resolves.toMatchObject({ error: { message: 'mission control stays on this Mac; start it on another island' } });
+    await expect(create({ islandId: HOME_ISLAND })).resolves.toMatchObject({ error: { message: 'mission control stays on ada-mac; start it on another island' } });
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
-    await expect(create()).resolves.toMatchObject({ error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } });
+    await expect(create()).resolves.toMatchObject({ error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } });
     expect(opened).toHaveLength(5);
   });
 
@@ -96,14 +96,14 @@ describe('a worker serving its robots while the home is away', () => {
     for (let i = 0; i < 4; i++) await create();
     const both = await Promise.all([create(), create()]);
     expect(both.filter((r) => 'result' in r)).toHaveLength(1);
-    expect(both.filter((r) => 'error' in r)).toMatchObject([{ error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } }]);
+    expect(both.filter((r) => 'error' in r)).toMatchObject([{ error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } }]);
     expect(opened).toHaveLength(5);
     expect(mutations()).toHaveLength(5);
   });
 
   it('the quota opens again once the home has acked', async () => {
     const { w, create } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
-    const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } };
+    const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } };
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
     expect(await create()).toMatchObject(quota);
     // the Mac wakes and acks the five over the link, then sleeps again
@@ -112,7 +112,7 @@ describe('a worker serving its robots while the home is away', () => {
     expect(Object.keys(w.home.store.state.robots).filter((id) => id !== 'c_1')).toHaveLength(5);
     w.home.links.stop();
     await until(() => { if (w.worker.connection.connected()) throw new Error('still linked'); });
-    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while this Mac slept' } });
+    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while ada-mac was away' } });
     expect(await create()).toMatchObject(quota);
   });
 

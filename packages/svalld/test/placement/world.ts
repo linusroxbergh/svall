@@ -192,7 +192,7 @@ export function world(o: {
     runScribe: o.scribe?.worker,
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
-  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
+  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget, homeName: () => 'ada-mac' });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
   const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, me: W });
   screens.start();

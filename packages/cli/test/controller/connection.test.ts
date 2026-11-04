@@ -177,6 +177,8 @@ describe('remote connections', () => {
     expect((err as SshError).message).not.toContain(TOKEN);
     const forwarded = ssh.calls().filter((c) => c.includes('-O') && (c.includes('forward') || c.includes('cancel')));
     expect(forwarded.map((c) => c[c.indexOf('-O') + 1])).toEqual(['forward', 'cancel']);
+    // the attempt's master goes with it, so a retry leaves none behind
+    expect(control('exit')).toHaveLength(1);
     await new Promise((r) => wss.close(r));
   });
 

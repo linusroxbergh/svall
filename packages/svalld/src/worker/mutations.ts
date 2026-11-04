@@ -16,10 +16,10 @@ import type { Entry, Outbox } from './outbox.js';
 
 /** How many robots a worker starts between two of its home's acks. */
 const OFFLINE_QUOTA = 5;
-const quotaLine = (worker: string, n: number) => `${worker} has started ${n} robots since this Mac last answered; wait for it`;
+const quotaLine = (worker: string, n: number, home: string) => `${worker} has started ${n} robots since ${home} last answered; wait for it`;
 const outsideClones = (worker: string, cwd: string) => `${cwd} is not inside a clone on ${worker}; start it in one`;
-export const SLEPT_NOTE = (worker: string) => `started on ${worker} while this Mac slept`;
-const NOT_HOME = 'mission control stays on this Mac; start it on another island';
+export const SLEPT_NOTE = (worker: string, home: string) => `started on ${worker} while ${home} was away`;
+const notHome = (home: string) => `mission control stays on ${home}; start it on another island`;
 
 // the acknowledged mutations applied.ndjson keeps
 const APPLIED_KEPT = 500;
@@ -63,7 +63,7 @@ export class WorkerMutations {
 
   constructor(private o: {
     store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'fits' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
-    me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>;
+    me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>; homeName: () => string;
   }) {}
 
   /** Whether the home has acknowledged every mutation this worker has journaled; its reports change nothing it could lack. */
@@ -78,9 +78,9 @@ export class WorkerMutations {
 
   /**
    * Whether this worker answers the call itself: a new robot always, and while the home is away or has yet to take a mutation,
-   * a change to one of its robots, a new island, or a change to an island other than mission control. A phone's change of
-   * those never waits on a link that may be half open, but for one the journal cannot carry. A close of a robot moving away
-   * is the home's, which holds the move.
+   * a change to one of its robots, a new island, or a change to an island other than mission control. A change of those from
+   * a phone, or a window standing in for its home, never waits on a link that may be half open, but for one the journal cannot
+   * carry. A close of a robot moving away is the home's, which holds the move.
    */
   serves(method: MethodName, params: unknown, phone = false): boolean {
     if (method === 'robot.create') return true;
@@ -136,12 +136,12 @@ export class WorkerMutations {
   }
 
   private async create(p: ParsedParams<'robot.create'>): Promise<Result<'robot.create'>> {
-    if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(NOT_HOME);
+    if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(notHome(this.o.homeName()));
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
     if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name)}, and it keeps the report`);
-    if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA));
-    const q = { ...p, note: SLEPT_NOTE(this.name) };
+    if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA, this.o.homeName()));
+    const q = { ...p, note: SLEPT_NOTE(this.name, this.o.homeName()) };
     this.starting.add(q);
     try {
       if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));

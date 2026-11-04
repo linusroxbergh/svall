@@ -684,6 +684,8 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 // a worker that dials in is removed here alone, so it needs no ssh destination
 const removable = (registry: MachineRegistry, name: string): Outcome<MachineEntry> => {
   const entry = registry.get(name);
+  // without its record this machine cannot upgrade or check the home it serves, whose robots it would lose nothing by keeping
+  if (entry?.record.role === 'home') throw new StepError(`${name} is the home of the fleet this machine works for, so it stays listed here`);
   return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(registry, name);
 };
 

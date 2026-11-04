@@ -8,8 +8,9 @@ import type { Store } from './store.js';
 import type { Tmux } from './tmux/tmux.js';
 
 // a phone drives the tmux window's size; an app viewer yields to an attached desktop terminal. `login` is the tailnet
-// identity the proxy vouched for, none on an app or CLI socket; `lines` and `screenBytes` cap the screens it is sent
-export type Viewer = { kind: 'app' | 'phone'; login?: string; lines?: number; screenBytes?: number; send(ev: Event): void; backlog(): number };
+// identity the proxy vouched for, none on an app or CLI socket; `lines` and `screenBytes` cap the screens it is sent; `loopback`,
+// that its socket came from this machine; `fallback`, an app window standing in for a home it cannot reach
+export type Viewer = { kind: 'app' | 'phone'; login?: string; lines?: number; screenBytes?: number; loopback?: boolean; fallback?: boolean; send(ev: Event): void; backlog(): number };
 
 // the viewer stopped watching before the screen was ready
 class Gone extends Error {

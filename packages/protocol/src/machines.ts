@@ -9,7 +9,8 @@ export { FleetId, MachineId, ObjectName, Sha256 } from './ids.js';
 /**
  * One machine in the controller's registry; the local one and a worker that dials in have no `ssh`. Paths may hold
  * anything, and are quoted where a remote command is built. `dial`: who opens the link to a worker, the home over ssh (the
- * default) or the worker itself, into a socket in the home's fleet home.
+ * default) or the worker itself, into a socket in the home's fleet home. `role`: the home of a fleet this machine serves as
+ * a worker, which is kept to upgrade and check and never linked to.
  */
 export const MachineRecord = z.object({
   name: z.string().regex(/^[a-z][a-z0-9-]{0,31}$/, 'lowercase letters, digits and dashes, starting with a letter'),
@@ -19,6 +20,7 @@ export const MachineRecord = z.object({
   home: MachinePath,
   svallBase: MachinePath,
   dial: z.enum(['home', 'worker']).optional(),
+  role: z.literal('home').optional(),
 });
 export type MachineRecord = z.infer<typeof MachineRecord>;
 
