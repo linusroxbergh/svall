@@ -20,6 +20,8 @@ import { PRIVATE, profileLabel } from '@svall/svalld/profile';
 import { releaseVersion } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { setupFleetHome } from '@svall/svalld/setup';
+import { tokenFor } from '@svall/svalld/placement/workers';
+import { fleetHomes } from '@svall/svalld/uninstall';
 import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
@@ -59,7 +61,7 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
-type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homeArch?: string; homePath?: string };
+type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string };
 type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
 const realEnrol: EnrolDeps = {
@@ -78,12 +80,12 @@ const servedFleet = (paths: ReturnType<typeof resolvePaths>): WorkerFile | undef
 /** worker.json written for the home named, then the fleet's daemon restarted as its worker: by systemd on Linux, by launchd on a Mac. */
 export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol): Promise<void> {
   if ((o.homeSsh === undefined) !== (o.homeSocket === undefined)) throw new Error('worker.json not written: --home-ssh and --home-socket go together');
-  if (o.homeSsh === undefined && (o.homeSvallBase !== undefined || o.homeArch !== undefined || o.homePath !== undefined)) throw new Error('worker.json not written: --home-svall-base, --home-arch and --home-path are for a worker that dials its home');
-  if (o.homeSsh !== undefined && (o.homeSvallBase === undefined || o.homeArch === undefined || o.homePath === undefined)) throw new Error('worker.json not written: a worker that dials its home takes --home-svall-base, --home-arch and --home-path, as svall fleet enroll-worker there names them');
+  if (o.homeSsh === undefined && (o.homeSvallBase !== undefined || o.homePlatform !== undefined || o.homeArch !== undefined || o.homePath !== undefined)) throw new Error('worker.json not written: --home-svall-base, --home-platform, --home-arch and --home-path are for a worker that dials its home');
+  if (o.homeSsh !== undefined && (o.homeSvallBase === undefined || o.homePlatform === undefined || o.homeArch === undefined || o.homePath === undefined)) throw new Error('worker.json not written: a worker that dials its home takes --home-svall-base, --home-platform, --home-arch and --home-path, as svall fleet enroll-worker there names them');
   const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket, homeSvallBase: o.homeSvallBase };
   const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial });
   if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
-  const homeRecord = o.homeSsh === undefined ? undefined : MachineRecord.safeParse({ name: o.homeName, ssh: o.homeSsh, platform: 'linux', arch: o.homeArch, home: o.homePath, svallBase: o.homeSvallBase, role: 'home' });
+  const homeRecord = o.homeSsh === undefined ? undefined : MachineRecord.safeParse({ name: o.homeName, ssh: o.homeSsh, platform: o.homePlatform, arch: o.homeArch, home: o.homePath, svallBase: o.homeSvallBase });
   if (homeRecord && !homeRecord.success) throw new Error(`worker.json not written: ${z.prettifyError(homeRecord.error)}`);
   const paths = resolvePaths(t.home);
   // ssh reads a colon in a forward's socket as its separator
@@ -108,13 +110,17 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
     fs.mkdirSync(path.dirname(paths.epoch), { recursive: true });
     writeDurable(paths.epoch, Buffer.alloc(0));
   }
-  // what `svall host upgrade` and `host doctor` of the home read; a record another fleet here holds of it keeps its name and route
+  // what `svall host upgrade` and `host doctor` of the home read: this fleet's own earlier record gives way to the new
+  // route, while one another fleet here reaches the machine by, or wrote before this fleet came, keeps its name and route
   if (homeRecord?.data) {
-    const registry = MachineRegistry.load();
-    const held = registry.get(file.data.homeMachineId);
+    const machine = file.data.homeMachineId;
     try {
-      registry.put(file.data.homeMachineId, held ? { ...held.record, role: 'home' } : homeRecord.data);
-      registry.save();
+      const registry = MachineRegistry.load();
+      const ours = enrolled?.homeMachineId === machine && !fleetHomes(os.homedir()).some((h) => h !== t.home && tokenFor(resolvePaths(h), machine));
+      if (!registry.get(machine) || ours) {
+        registry.put(machine, homeRecord.data);
+        registry.save();
+      }
     } catch (e) { throw new Error(`worker.json not written: ${(e as Error).message}`, { cause: e }); }
   }
   writeDurable(paths.workerFile, file.data, { mode: 0o600 });
@@ -140,6 +146,7 @@ export function workerCommands(target: () => Target): Command {
     .option('--home-ssh <destination>', 'the home this machine dials itself, which then needs no ssh to it')
     .option('--home-socket <path>', 'the socket on the home its link is forwarded to, as svall fleet enroll-worker there names it')
     .option('--home-svall-base <path>', 'where svall is installed on the home, as svall fleet enroll-worker there names it')
+    .option('--home-platform <platform>', "the home's platform, as svall fleet enroll-worker there names it")
     .option('--home-arch <arch>', "the home's architecture, as svall fleet enroll-worker there names it")
     .option('--home-path <path>', "the home's user folder, as svall fleet enroll-worker there names it")
     .action((o: Enrol) => enrollHere(target(), o));

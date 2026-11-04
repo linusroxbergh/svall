@@ -15,7 +15,7 @@ afterEach(async () => {
   await stopWorlds();
 });
 
-const UNREACHABLE = 'w1 cannot reach ada-mac right now; try again when it is awake';
+const UNREACHABLE = 'ada-mac is not reachable';
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
 
 /** w1, its link to the home not started, running c_1 in a worktree of `clone`, with mission control and a tmux that records the windows it opens, the text it types and the windows it kills. */
@@ -169,7 +169,7 @@ describe('a worker serving its robots while the home is away', () => {
       d.robots.c_1.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 };
     });
     w.worker.tmux.screen = async () => pane('claude-empty');
-    const away = { error: { code: 'not_reachable', message: 'w1 cannot reach ada-mac right now; try again when it is awake, and it keeps the report' } };
+    const away = { error: { code: 'not_reachable', message: 'ada-mac is not reachable, and it keeps the report' } };
     expect(await call('robot.send', { id: 'c_1', from: 'c_lead', text: 'review it', report: true })).toMatchObject(away);
     expect(await create({ startedBy: 'c_lead', report: true, command: 'claude', run: 'go' })).toMatchObject(away);
     expect(typed).toEqual([]);

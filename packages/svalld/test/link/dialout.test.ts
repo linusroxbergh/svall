@@ -225,6 +225,35 @@ describe('HomeDial', () => {
     expect(w.dial.failure()).toBeUndefined();
   });
 
+  it('waits for a person after a changed host key as after a refused login', async () => {
+    const w = await world({ homeSsh: 'hostkey.test' });
+    w.dial.start();
+    await gaveUp(w);
+    expect(w.dial.failure()?.kind).toBe('host_key');
+    expect(w.said.at(-1)).not.toContain('trying again');
+    const opens = () => ssh.calls().filter((c) => c.includes('-M')).length;
+    const before = opens();
+    await new Promise((r) => { setTimeout(r, 1300); });
+    expect(opens()).toBe(before);
+  });
+
+  it('a wake tries no login that was refused, until a person asks', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'Date'] });
+    const w = await world({ homeSsh: 'denied.test' });
+    w.dial.start();
+    await gaveUp(w);
+    const opens = () => ssh.calls().filter((c) => c.includes('-M')).length;
+    const before = opens();
+    vi.setSystemTime(Date.now() + 10 * HEARTBEAT_MS);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await new Promise((r) => { setImmediate(r); });
+    await new Promise((r) => { setImmediate(r); });
+    expect(opens()).toBe(before);
+    expect(w.dial.failure()?.kind).toBe('auth');
+    w.dial.restore(true);
+    await until(() => expect(opens()).toBe(before + 1));
+  });
+
   it('never reads a dial that may come back as a refused login: it says unreachable and tries again', async () => {
     const w = await world({ homeSsh: 'refused.test' });
     w.dial.start();

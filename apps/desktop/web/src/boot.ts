@@ -12,7 +12,7 @@ import { followLandings } from './landings.js';
 import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
-import { followResources } from './resources/load.js';
+import { followResources, reloadResources } from './resources/load.js';
 import { applyShow } from './show.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
@@ -44,7 +44,11 @@ function createApp(): AppContext {
   let portlessSince: number | undefined;
 
   function start(conn: Connection): void {
-    const a = new FollowApi(new Api(endpointOf(conn)), store, { onSwitch: () => manager?.reroute() });
+    const a = new FollowApi(new Api(endpointOf(conn)), store, {
+      // the listing's root ids are the source's, and its key does not change with the source
+      onSwitch: () => { manager?.reroute(); void reloadResources({ api: a, store }); },
+      onLocalBack: () => repoWatch?.resend(),
+    });
     api = a;
     manager = createTerminalManager(a, bridge, store);
     repoWatch = createRepoWatch(a);

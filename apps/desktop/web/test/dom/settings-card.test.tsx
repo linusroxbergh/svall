@@ -267,14 +267,58 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   expect(checked('set-robot-motion')).toBe('false');
 });
 
+test('Machines asks the fleet again after a list that failed', async () => {
+  vi.useFakeTimers();
+  try {
+    let fails = true;
+    call.mockImplementation((method: string) => {
+      if (method !== 'machines.list') return Promise.resolve({});
+      return fails ? Promise.reject(new Error('svalld connection closed')) : Promise.resolve({ machines: [
+        { id: 'bbbbbbbb-0000-4000-8000-000000000000', name: 'studio', role: 'home', reachable: true, robots: 7 },
+      ] });
+    });
+    act(() => {
+      store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByTestId('machine-studio')).toBeNull();
+    fails = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.queryByTestId('machine-studio')).not.toBeNull();
+  } finally {
+    vi.useRealTimers();
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
+  try {
+    act(() => {
+      store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio' });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    expect(screen.queryByTestId('set-tab-phone')).toBeNull();
+    show('machines');
+    expect(screen.queryByTestId('machine-add')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and a far home takes no Add machine', async () => {
   const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
   const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
   const DIAL = 'cccccccc-0000-4000-8000-000000000000';
+  const LINUX = 'dddddddd-0000-4000-8000-000000000000';
   call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
     { id: HOME, name: 'studio', role: 'home', platform: 'linux', reachable: true, robots: 7 },
     { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
-    { id: DIAL, name: 'laptop', role: 'worker', platform: 'darwin', reachable: false, robots: 1 },
+    { id: DIAL, name: 'laptop', role: 'worker', platform: 'darwin', dialsIn: true, reachable: false, robots: 1 },
+    { id: LINUX, name: 'vault', role: 'worker', platform: 'linux', reachable: true, robots: 0 },
   ] } : {}));
   try {
     act(() => {
@@ -286,11 +330,13 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     await screen.findByTestId('machine-studio');
     act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64', role: 'home' }] as never));
     const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
-    expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker']);
+    expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker', 'worker']);
     expect(screen.getByTestId('machine-studio').textContent).toContain('home · ada@studio · 7 robots');
     expect(screen.getByTestId('machine-mac').textContent).toContain('this Mac');
     expect(screen.getByTestId('machine-mac').textContent).toContain('worker · 3 robots');
     expect(screen.getByTestId('machine-laptop').textContent).toContain('dials in');
+    // no route in this Mac's registry says nothing of who opens the link
+    expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
     expect(screen.queryByTestId('machine-add')).toBeNull();
     expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).toBeNull();
   } finally {

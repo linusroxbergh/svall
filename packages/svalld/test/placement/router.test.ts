@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { dispatch } from '../../src/api/methods.js';
 import { markDormant } from '../../src/dormancy.js';
-import { updateAgents } from '../../src/placement/router.js';
+import { updateAgents, unreachableLine } from '../../src/placement/router.js';
 import { H, W, placed, robot, stopWorlds, until, world } from './world.js';
 
 afterEach(stopWorlds);
 
 // the robot runs on w1; the home holds its record, tmux ids and all, as w1 last reported them
 const onW1 = placed({ id: 'c_1', tmux: { windowId: '@1', paneId: '%1' } });
-const UNREACHABLE = 'w1 cannot reach ada-mac right now; try again when it is awake';
+const UNREACHABLE = 'ada-mac is not reachable';
 
 describe('routing calls for placed robots', () => {
   it('robot.run on the home for a robot placed on w1 goes over the link and returns its delivery', async () => {
@@ -137,5 +137,12 @@ describe('updateAgents', () => {
     done();
     await both;
     expect(runs).toBe(1);
+  });
+});
+
+describe('what a worker says of a home it cannot reach', () => {
+  it('a Mac that dials it sleeps, and comes back; a server it dials is simply out of reach', () => {
+    expect(unreachableLine('w1', 'this Mac')).toBe('w1 cannot reach this Mac right now; try again when it is awake');
+    expect(unreachableLine('ada-mac', 'studio')).toBe('studio is not reachable');
   });
 });

@@ -110,3 +110,8 @@ describe('a second terminal\'s key outside the protocol', () => {
     expect(tagOf({ id: 'c_1' })).toBe('c_1');
   });
 });
+
+it('the shell hands a far home on to the quit question', () => {
+  const router = fs.readFileSync(new URL('../../mac/Sources/Svall/ShellRouter.swift', import.meta.url), 'utf8');
+  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home\)/);
+});

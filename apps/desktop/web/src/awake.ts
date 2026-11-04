@@ -56,7 +56,7 @@ export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<B
   const update = () => {
     const s = store.getState();
     const now = Date.now();
-    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.mobile?.phones ?? [], s.via), { mode: s.settings.keepAwake, now }) : undefined;
+    const hold = s.status === 'online' ? awakeHold(needOf(s.fleet, s.via ? [] : s.mobile?.phones ?? [], s.via), { mode: s.settings.keepAwake, now }) : undefined;
     clearTimeout(timer);
     // looked at again at least each minute, as the window runs by the clock and a timer can stall while the Mac sleeps
     if (hold?.until) timer = setTimeout(update, Math.min(hold.until - now, 60_000));
@@ -64,7 +64,7 @@ export function followAwake({ store, bridge }: { store: AppStore; bridge: Pick<B
     if (reason !== held) { held = reason; bridge.send({ type: 'awake', reason }); }
   };
   const unwatch = store.subscribe((s, prev) => {
-    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status
+    if (s.fleet !== prev.fleet || s.mobile !== prev.mobile || s.status !== prev.status || s.via !== prev.via
       || s.settings.keepAwake !== prev.settings.keepAwake) update();
   });
   update();

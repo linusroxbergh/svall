@@ -1,6 +1,7 @@
 import { describe, expect, it, test } from 'vitest';
+import { farRootId } from '@svall/protocol';
 import type { MachineId } from '@svall/protocol';
-import { awayLine, destinationName, elsewhere, homeName, isPlaced, machineOf, unreachableOf, type Via } from '../src/placement.js';
+import { awayLine, destinationName, elsewhere, homeName, isPlaced, machineOf, unreachableOf, type Via, readsOn } from '../src/placement.js';
 import { statusOf } from '../src/selectors.js';
 import { chr } from './fixtures.js';
 
@@ -77,6 +78,37 @@ describe('a window on a worker', () => {
     expect(awayLine(f, { machine: undefined }, fallback)).toBe('studio is not reachable');
     expect(awayLine(f, { machine: W }, fallback)).toBe('w1 is not reachable');
     expect(awayLine(f, { machine: ME }, fallback)).toBeUndefined();
+  });
+
+  it('reads files where they are: a robot here in place, and any other on its machine', () => {
+    const robots = { here: { machine: ME }, home: { machine: undefined }, w: { machine: W } } as never;
+    const fleet = { ...f, robots };
+    expect(readsOn(fleet, 'here', online)).toBeUndefined();
+    expect(readsOn(fleet, 'home', online)).toBe('studio');
+    expect(readsOn(fleet, 'w', online)).toBe('w1');
+    expect(readsOn(fleet, 'here', fallback)).toBeUndefined();
+    expect(readsOn(fleet, 'home', fallback)).toBe('studio');
+    expect(readsOn(fleet, 'nobody', online)).toBeUndefined();
+    const clone = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
+    expect(readsOn({ ...fleet, machines: { [clone]: { name: 'w2', reachable: true, since: 0 } } }, farRootId(clone, '/srv/x'), online)).toBe('w2');
+    // a window on the home
+    expect(readsOn(fleet, 'home')).toBeUndefined();
+    expect(readsOn(fleet, 'w')).toBe('w1');
+  });
+
+  it('names a home by the fleet, then by what the window was told, and a destination the same', () => {
+    expect(homeName({ machines: { [HOME]: { name: 'renamed', reachable: true, since: 0 } } }, online)).toBe('renamed');
+    expect(homeName({}, online)).toBe('studio');
+    expect(destinationName({}, HOME, online)).toBe('studio');
+    expect(machineOf({}, { machine: HOME }, online)).toBe('studio');
+    expect(machineOf({ machines: { [HOME]: { name: 'renamed', reachable: true, since: 0 } } }, { machine: undefined }, online)).toBe('renamed');
+  });
+
+  it('following the home, a robot on the home by its id is never out of reach, and a worker in mismatch names the upgrade', () => {
+    expect(unreachableOf({ machines: { [HOME]: { name: 'studio', reachable: false, since: 0 } } }, { machine: HOME }, online)).toBeUndefined();
+    const odd = { machines: { [W]: { name: 'w1', reachable: false, since: 0, mismatch: true as const } } };
+    expect(awayLine(odd, { machine: W }, online)).toBe('w1 runs a different build; upgrade it under Machines');
+    expect(awayLine({ machines: { [W]: { name: 'w1', reachable: false, since: 0 } } }, { machine: W }, online)).toBe('w1 is not reachable');
   });
 
   it('leaves a phone as it was: its home a Mac that sleeps', () => {

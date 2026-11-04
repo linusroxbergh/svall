@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
 import { MANIFEST, SIG } from '../../../scripts/release-manifest.mjs';
 
 // the one place the layout is named: a published release exports SVALL_RELEASE_ROOT from its bin/
@@ -36,6 +37,12 @@ const asset = (release: string, checkout: string): string =>
 
 /** The systemd user unit templates a Linux setup renders. */
 export const systemdDir = (): string => asset('systemd', 'packages/svalld/systemd');
+
+/** The folder this release was installed under, whichever `--prefix` it took; a checkout or the app's copy names the usual one. */
+export function installPrefix(): string {
+  const releases = path.dirname(releaseRoot());
+  return isRelease() && path.basename(releases) === 'releases' ? path.dirname(releases) : DEFAULT_PREFIX;
+}
 
 /** The svall a companion installed under `svallBase` runs: the one in the release `current` points at. */
 export const svallExe = (svallBase: string): string => path.posix.join(svallBase, 'current', 'bin', 'svall');

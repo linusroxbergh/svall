@@ -24,10 +24,11 @@ export const machineOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): st
 /** A worker that answers: linked, or on a build this Mac cannot read, whose move check says which side to upgrade. */
 export const answers = (m: MachineLink | undefined): boolean => !!m && (m.reachable || m.mismatch === true);
 
-/** The worker a workspace id's files are on, by name: a placed robot's, or a worker clone's on the shelf. */
-export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string): string | undefined => {
-  const at = farRootOf(id)?.machine ?? (Object.hasOwn(f.robots, id) ? f.robots[id].machine : undefined);
-  return at && machineName(f, at);
+/** The machine a workspace id's files are on, by name, when they are not here: a robot's, or a worker clone's on the shelf. */
+export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string, via?: Via): string | undefined => {
+  const far = farRootOf(id);
+  if (far) return machineName(f, far.machine);
+  return Object.hasOwn(f.robots, id) ? machineOf(f, f.robots[id], via) : undefined;
 };
 
 /**
@@ -42,7 +43,7 @@ export const homeName = (f: Machines, via: Via): string => f.machines?.[via.home
 
 /** The machine a robot runs on, while the home has lost its link to it; through a worker, any machine but that worker. */
 export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined => {
-  if (c.machine === via?.machine && via) return undefined;
+  if (via && c.machine === via.machine) return undefined;
   if (via && !via.online) return machineOf(f, c, via);
   if (c.machine === undefined || c.machine === via?.home) return undefined;
   return f.machines?.[c.machine]?.reachable === false ? machineName(f, c.machine) : undefined;

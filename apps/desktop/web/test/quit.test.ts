@@ -59,11 +59,13 @@ describe('followQuit', () => {
     q.store.getState().setFleet({ ...here, robots: {
       a: chr('a', 'i1', { x: 0, y: 0 }, { machine: ME, agent: { kind: 'claude', status: 'working', sessionId: 's', lastActivityAt: 0 } } as never),
       b: chr('b', 'i1', { x: 1, y: 0 }, { agent: { kind: 'claude', status: 'working', sessionId: 's', lastActivityAt: 0 } } as never),
+      c: chr('c', 'i1', { x: 2, y: 0 }, { agent: { kind: 'claude', status: 'working', sessionId: 's', lastActivityAt: 0 } } as never),
+      d: chr('d', 'i1', { x: 3, y: 0 }),
     } });
     q.store.getState().setVia({ machine: ME, home: 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId, name: 'studio', online: true });
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
-    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 1, placed: 1, home: 'studio' }]);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 1, placed: 3, home: 'studio' }]);
     q.stop();
   });
 

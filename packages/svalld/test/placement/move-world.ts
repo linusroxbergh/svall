@@ -345,7 +345,7 @@ export function moveWorld(o: {
     });
     const mutations = new WorkerMutations({
       store: mortal(store, life), fleet: mortal(fleet, life), connection: mortal(connection, life), outbox: mortal(outbox, life), me: W, paths: workerPaths, log: silentLogger,
-      forget: (id) => forgetRobot({ fleet: mortal(fleet, life), store: mortal(store, life), me: W, log: silentLogger }, id), homeName: () => 'ada-mac',
+      forget: (id) => forgetRobot({ fleet: mortal(fleet, life), store: mortal(store, life), me: W, log: silentLogger }, id), homeWord: () => 'ada-mac',
     });
     vault.started = (id, sid) => fleet.emit('session-start', id, undefined, sid);
     const box = mortal(vault, life);

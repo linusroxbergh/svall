@@ -172,21 +172,23 @@ function Machines() {
   const links = useApp((s) => s.fleet.machines);
   const online = useApp((s) => s.status === 'online');
   const [fleetRows, setFleetRows] = useState<FleetMachine[]>();
+  const [asks, setAsks] = useState(0);
   const list = () => { app.bridge.send({ type: 'host.list' }); };
   useEffect(list, []);
   // the fleet's machines as its home knows them; what this machine's registry adds is how it reaches one
   useEffect(() => {
     if (!online) return;
     let left = false;
-    deps().api.call('machines.list', {}).then((r) => { if (!left) setFleetRows(r.machines); }, () => {});
-    return () => { left = true; };
-  }, [links, online]);
+    let again: ReturnType<typeof setTimeout> | undefined;
+    deps().api.call('machines.list', {}).then((r) => { if (!left) setFleetRows(r.machines); }, () => { if (!left) again = setTimeout(() => setAsks((n) => n + 1), 5000); });
+    return () => { left = true; clearTimeout(again); };
+  }, [links, online, asks]);
   const registered = new Map(machines?.map((m) => [m.id, m]));
   const known = new Set<string>(fleetRows?.map((m) => m.id));
   const rows = [
-    ...fleetRows?.map((f) => ({ id: f.id, name: f.name, role: f.role as string | undefined, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
+    ...fleetRows?.map((f) => ({ id: f.id, name: f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
     // on a registry here and not yet a machine of this fleet
-    ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
+    ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
   ];
   // a home on this Mac with no worker is what it always was
   const shown = !via && !rows.some((r) => r.role !== 'home') ? [] : rows;
@@ -200,7 +202,7 @@ function Machines() {
           <div className="row">
             <span><b>{m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name}</b> {[m.role, m.ssh].filter(Boolean).join(' · ')}{m.robots ? ` · ${m.robots} ${m.robots === 1 ? 'robot' : 'robots'}` : ''}</span>
             <b className="machine-said">
-              {[m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : 'dials in']
+              {[m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : m.dialsIn ? 'dials in' : '']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>

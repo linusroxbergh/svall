@@ -106,7 +106,10 @@ export class HomeDial {
       void this.stop();
       return;
     }
-    if (slept) return this.restore(true);
+    if (slept) {
+      if (!this.waits()) this.restore(true);
+      return;
+    }
     this.check();
   }
 
@@ -174,10 +177,14 @@ export class HomeDial {
     this.o.log.info(`dialed ${worker.homeName} at ${homeSsh}`);
   }
 
+  // a key or a host key waits for a person, and a login refused every minute can get the account banned
+  private waits(): boolean {
+    return this.failed?.kind === 'auth' || this.failed?.kind === 'host_key';
+  }
+
   private lost(why: string): void {
     if (this.stopped) return;
-    // a key or a host key waits for a person, and a login refused every minute can get the account banned
-    const waits = this.failed?.kind === 'auth' || this.failed?.kind === 'host_key';
+    const waits = this.waits();
     if (why !== this.lastWhy) this.o.log.error(`the dial to the home failed: ${why}${waits ? '' : '; trying again'}`);
     this.lastWhy = why;
     if (waits) return;

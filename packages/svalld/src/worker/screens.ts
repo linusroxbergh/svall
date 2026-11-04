@@ -1,8 +1,10 @@
 import { z } from 'zod';
-import type { Robot } from '@svall/protocol';
+import type { MachineId, Robot } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
+import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Store } from '../store.js';
+import type { TerminalHub } from '../terminals.js';
 import type { Tmux } from '../tmux/tmux.js';
 
 /** What a worker sends its home of a robot's pane after a hook: its last lines, and when they were read. */
@@ -59,3 +61,19 @@ export class ScreenTails {
     }
   }
 }
+
+/** A home's tails, for the workers that dial it, as no other worker opens a window that shows them; none is read without one. */
+export function homeTails(o: { fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'connectedWorkers' | 'for' | 'call'> }): ScreenTails {
+  const dialIns = () => o.links.connectedWorkers().filter((m) => o.links.for(m)?.dialsIn);
+  return new ScreenTails({
+    ...o, wanted: () => dialIns().length > 0,
+    connection: { notify: (_kind, data) => { for (const m of dialIns()) o.links.call(m, 'screen.home', data).catch(() => {}); } },
+  });
+}
+
+/** What a worker does with a screen from its home: the hub holds it for a window that loses that home. */
+export const homeScreenCall = (terminals: Pick<TerminalHub, 'sawHomeScreen'>, home: MachineId) => (p: unknown): Promise<unknown> => {
+  const s = ScreenNotice.parse(p);
+  terminals.sawHomeScreen(s.id, s.text, s.at, home);
+  return Promise.resolve({});
+};

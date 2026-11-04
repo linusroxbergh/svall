@@ -26,7 +26,7 @@ Each terminal is an ssh of its own, except a robot's on this Mac, which is this 
 | this Mac | this Mac's tmux |
 | studio | an ssh over this Mac's daemon's ssh connection to studio |
 | a Linux worker of studio | an ssh to studio, then an ssh from there over studio's connection to the worker |
-| another Mac | none: "kanban runs on ada-laptop; open it there". Its status, notes and files show, and it moves here or to studio in a click |
+| another Mac | none: "kanban runs on ada-laptop; open it there". Its status, notes and files show, and **Move to studio** sends it to the home, from where a second move brings it here |
 
 sshd allows ten sessions per connection by default. A terminal past that opens a login of its own, without a prompt, on each hop.
 No terminal starts while the first connection is down; it opens once the connection is back.
@@ -37,7 +37,7 @@ The window goes on, on this Mac's own copy of the fleet, with a banner: **studio
 copy it shows.
 
 - Robots on this Mac are live, with their terminals.
-- Every other robot shows unknown, with the last screen its machine sent.
+- A robot on studio shows unknown, with the last screen studio sent. A robot on any other machine shows unknown.
 - A change to a robot on this Mac, or a new island, is kept here and reaches studio once it answers, as in
   [While this Mac sleeps](placement.md#while-this-mac-sleeps). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
@@ -45,16 +45,17 @@ copy it shows.
 - Moves, phone settings and what a machine's setup offers are hidden: only the home answers them.
 
 When studio answers, the window goes back to it and reopens its terminals without a reload, and what you did here lands there once.
-Each change is applied by the rules in [Moving a robot](placement.md#while-this-mac-sleeps). A server whose daemon restarts does
-the same within seconds, on the new port if it moved. Its robots never notice: they run in its tmux.
+Each change is applied by the rules in [Moving a robot](placement.md#while-this-mac-sleeps). A server whose daemon restarts or dies does
+the same within 15 seconds of answering, on the new port if it moved. Its robots never notice: they run in its tmux.
 
 ## What a person has to fix
 
 These wait for you, since nothing changes by asking again. **Try again** in the banner asks once more; so does opening the app, and
-starting its daemon.
+starting its daemon. A wake does not.
 
-- **studio refused this Mac's login**, a key or a host key: run `ssh <destination>` once in a terminal. The dial stops trying meanwhile, as
-  a login refused every minute can get an account banned, and says so once in the log. A network that comes and goes is never read as this.
+- **this Mac cannot log in to studio**, a key or a host key: run `ssh <destination>` once in a terminal. The dial stops trying meanwhile, as
+  a login refused every minute can get an account banned, and says so once in the log. Only ssh's own refusal reads as this: a network that
+  comes and goes is tried again.
 - **The server answers as another fleet or another machine**, such as an ssh alias that now leads elsewhere. The banner names both, and
   the window goes to no other home.
 

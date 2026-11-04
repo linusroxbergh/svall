@@ -593,6 +593,20 @@ describe('a window and the fleet\'s home', () => {
     expect(answer).toHaveBeenCalledWith(true);
   });
 
+  it('a worker answers what is its window\'s itself, and sends no window\'s call home', async () => {
+    const toHome = vi.fn(() => Promise.reject(new Error('sent home')));
+    const answer = vi.fn(() => Promise.resolve({ machine: HOME, name: 'studio', state: 'connected', token: 'held' }));
+    const router = { onWorker: true, homeConnected: true, toHome, runsHere: () => false, placedAt: () => HOME };
+    const ctx = local({}, { router, store: { state: { robots: {} } }, homeApi: { answer }, fleetHome: () => ({ ...home, mine: false }), diagnostics: () => Promise.resolve('this machine') });
+    expect(await dispatch({ id: 1, method: 'fleet.home', params: {} }, ctx)).toMatchObject({ result: { mine: false } });
+    expect(await dispatch({ id: 2, method: 'home.connection', params: {} }, ctx)).toMatchObject({ result: { token: 'held' } });
+    expect(await dispatch({ id: 3, method: 'home.fallback', params: { on: true } }, ctx)).toEqual({ id: 3, result: {} });
+    expect(await dispatch({ id: 4, method: 'feedback.preview', params: {} }, ctx)).toEqual({ id: 4, result: { text: 'this machine' } });
+    expect(toHome).not.toHaveBeenCalled();
+    expect(await dispatch({ id: 5, method: 'robot.read', params: { id: 'c_1' } }, ctx)).toMatchObject({ error: { message: 'sent home' } });
+    expect(toHome).toHaveBeenCalledTimes(1);
+  });
+
   it('a home answers that it is the home, with no route and no token', async () => {
     expect(await dispatch({ id: 1, method: 'fleet.home', params: {} }, local({}))).toEqual({ id: 1, result: home });
     expect(await dispatch({ id: 1, method: 'home.connection', params: {} }, local({}))).toEqual({ id: 1, result: { machine: HOME, name: 'studio', state: 'connected' } });
@@ -627,13 +641,13 @@ describe('a window and the fleet\'s home', () => {
   it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
     const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
     const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };
-    const platforms = () => new Map([[W, 'darwin' as const]]);
-    const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, platforms }));
+    const registered = () => new Map([[W, { platform: 'darwin', dial: 'worker' }]]);
+    const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, registered }));
     expect(onHome).toMatchObject({ result: { machines: [
       { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
-      { id: W, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 1 },
+      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, robots: 1 },
     ] } });
-    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, platforms, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
+    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
     expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
   });
 });

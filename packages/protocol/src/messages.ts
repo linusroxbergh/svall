@@ -309,7 +309,7 @@ export const methods = {
   'robot.moveRetry': { params: z.object({ moveId: MoveId }), result: z.object({}) },
   'machines.list': {
     params: z.object({}),
-    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), role: z.enum(['home', 'worker']), platform: z.enum(['darwin', 'linux']).optional(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
+    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), role: z.enum(['home', 'worker']), platform: z.enum(['darwin', 'linux']).optional(), dialsIn: z.literal(true).optional(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran, and tries each link that is down again now
   'machines.refresh': { params: z.object({}), result: z.object({}) },

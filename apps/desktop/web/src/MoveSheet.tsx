@@ -30,7 +30,7 @@ const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice
 // every check a move failed, the first and the rest alike
 const blockersOf = (r: Refusal): Blocker[] => [r, ...(r.more ?? [])];
 // whether a blocker's row has a button of its own; one without leaves checking again to the sheet's foot
-const hasButton = (b: Blocker): boolean => b.action === UPGRADE_ACTION || b.action === WORKTREE_ACTION || !!b.run || interruptOf(b.action) !== undefined;
+const hasButton = (b: Blocker, atMe: boolean): boolean => (!atMe && (b.action === UPGRADE_ACTION || !!b.run)) || b.action === WORKTREE_ACTION || interruptOf(b.action) !== undefined;
 // the interrupt: Escape at once
 const INTERRUPT_AFTER_MS = 0;
 
@@ -101,20 +101,25 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const [retried, setRetried] = useState<Retry>();
   const [setup, setSetup] = useState<string>();
   // the release a machine must be on: the home's, or this Mac's when the home is that machine
-  const release = useApp((s) => (s.via && to !== s.via.home ? homeName(s.fleet, s.via) : 'this Mac'));
+  const release = useApp((s) => (s.via ? homeName(s.fleet, s.via) : 'this Mac'));
   const here = useApp((s) => { const m = s.fleet.robots[id]?.machine; return m ? destinationName(s.fleet, m, s.via) : s.via ? homeName(s.fleet, s.via) : 'this Mac'; });
   const host = useApp((s) => s.host);
   const hostOpen = useApp((s) => s.hostOpen);
   // a terminal opened from a blocker stands over the sheet
   const [away, setAway] = useState(false);
+  const via = useApp((s) => s.via);
+  // going to the home, by its id or on a window there by none
+  const back = !to || to === via?.home;
   // the machine a refusal is about: the one the robot goes to, or the one it comes back from
-  const far = to ? where : here;
+  const far = back ? here : where;
+  // which the app upgrades and opens terminals on for every machine but this one, whose remedies are its own
+  const atMe = !!via && (back ? c?.machine : to) === via.machine;
   // a move that fails once the sheet is closed says so in a toast
   const shown = useRef(true);
   const reached = useRef<Step>(undefined);
   const shut = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
-  const steps = to ? OUT : BACK;
+  const steps = back ? BACK : OUT;
   const params = machine && { id, machine, ...(carry.length > 0 && { carry }), ...(interrupt && { interruptAfterMs: INTERRUPT_AFTER_MS }), ...(own && { ownWorktree: true }) };
   const close = () => store().setMoveSheet(undefined);
 
@@ -168,9 +173,10 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     else recheck();
   }, [host]);
   // through, as answered or, with the answer lost, as the robot's arrival says
-  const through = run?.at === 'moved' || (run?.at === 'lost' && c?.machine === to);
+  const landed = (c?.machine ?? via?.home) === to;
+  const through = run?.at === 'moved' || (run?.at === 'lost' && landed);
   useEffect(() => {
-    if (!through || !to) return;
+    if (!through || !to || back) return;
     let live = true;
     app.api().call('machines.setup', { machine: to, robot: id }).then(({ rows }) => { if (live) setSetup(setupNote(rows)); }, () => {});
     return () => { live = false; };
@@ -203,7 +209,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
     setRetried({ at: 'running' });
     app.api().call('robot.moveRetry', { moveId }).then(() => { setRetried(undefined); setRun({ at: 'moved' }); }, (e: Error) => setRetried({ at: 'failed', error: e.message, over }));
   };
-  const farId = to ?? c.machine;
+  const farId = back ? c.machine : to;
   const blockers = refusal ? blockersOf(refusal) : [];
   const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far }); };
   const update = (kinds: AgentKind[], machine: MachineId) => {
@@ -221,7 +227,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
       <div className="modal dialog" ref={panel} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(close)}>
         <div className="kicker"><span data-testid="move-title">Move {c.name} to {where}</span><CloseX ref={shut} onClose={close} testid="move-close" /></div>
         {run && (
-          <Progress stand={stand(run, c.moving, retried, reached.current, steps, c.machine === to)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
+          <Progress stand={stand(run, c.moving, retried, reached.current, steps, landed)} words={said(c.name, where, c.repo ? 'branch and session' : 'session')}
             robot={c.name} where={where} here={here} setup={setup} close={close}
             again={(s) => {
               if (s.failed?.landed && s.failed.moveId) return retry(s.failed.moveId);
@@ -234,7 +240,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
           <div className="host-note" data-testid="move-checking">
             <span className="move-state"><span className="move-mark"><span className="move-spin" /></span>Checking that {c.name} can move…</span>
             <ul className="move-checks">
-              <li>{far} is reachable{to && ` and on ${release}'s release`}</li>
+              <li>{far} is reachable{!back && ` and on ${release}'s release`}</li>
               {kinds.length > 0 && <li>{kinds.map((k) => AGENT_LABEL[k]).join(' and ')} {kinds.length === 1 ? 'is' : 'are'} installed, current and logged in on {where}</li>}
               <li>{c.repo ? 'its branch, changes and session can travel' : 'its session can travel'}</li>
             </ul>
@@ -266,7 +272,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
               const answerable = interruptOf(b.action);
               const updates = b.run ? updatesIn(b.run) : undefined;
               const at = (id: string) => (i ? `${id}-${i}` : id);
-              const button = b.action === UPGRADE_ACTION ? (
+              const button = atMe && (b.action === UPGRADE_ACTION || b.run) ? undefined : b.action === UPGRADE_ACTION ? (
                 <button className="btn pri" data-testid={at('move-action')} disabled={host?.running} data-tip={`Installs this Mac's release on ${far}, then checks again`}
                   onClick={upgrade}>Upgrade {far}</button>
               ) : updates && farId ? (
@@ -284,7 +290,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
                 <div key={b.reason} className="move-blocker">
                   <div className="host-note" data-testid={at('move-refusal')}>
                     {/* a blocker whose button says what to do needs no line saying it */}
-                    <span><span data-testid={at('move-reason')}>{b.reason}</span>{!button && <span className="modal-sub">{b.action}</span>}</span>
+                    <span><span data-testid={at('move-reason')}>{b.reason}</span>{!button && <span className="modal-sub">{atMe && b.action === UPGRADE_ACTION ? 'update Svall on this Mac' : b.action}</span>}</span>
                     {i === 0 && fix && 'failed' in fix && <span className="host-failed" role="status" data-testid="move-fix-failed">{fix.failed}</span>}
                     {i === 0 && refusal.details.length > 0 && (
                       <details className="modal-more" data-testid="move-details">
@@ -297,7 +303,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
                 </div>
               );
             })}
-            {blockers.some((b) => !hasButton(b)) && (
+            {blockers.some((b) => !hasButton(b, atMe)) && (
               <div className="acts"><button className="btn pri" data-testid="move-again" onClick={again}>Check again</button></div>
             )}
           </>

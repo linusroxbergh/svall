@@ -1173,7 +1173,7 @@ export class Fleet extends EventEmitter<Events> {
     const held = this.robot(id).relayed?.held;
     if (held && (promptId === undefined || promptId === held)) {
       // the home holds them
-      if (this.deps.remote?.onWorker) return Promise.reject(new ApiError('not_reachable', 'robot messages wait on the Mac; answer there'));
+      if (this.deps.remote?.onWorker) return Promise.reject(new ApiError('not_reachable', `robot messages wait on ${this.deps.remote.homeWord}; answer there`));
       this.deps.store.update((d) => {
         const c = d.robots[id];
         if (answer === 'approve') { delete c.relayed; return; }

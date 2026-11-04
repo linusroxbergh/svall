@@ -377,6 +377,7 @@ describe('robot move to a machine', () => {
       call: async (method: string, params: unknown) => {
         if (method === 'state.get') return { ...state, robots: o.robots ?? state.robots };
         if (method === 'system.info') return { machineId: o.answers ?? HOME };
+        if (method === 'fleet.home') return { name: 'ada-mac' };
         if (method === 'machines.setup') {
           setup.push(params);
           if (o.setup instanceof Error) throw o.setup;
@@ -503,7 +504,7 @@ describe('robot move to a machine', () => {
 
     // a terminal on a worker reaches that worker's daemon, whose own id local would name
     const far = daemon({ answers: VAULT });
-    expect(await run(far, ['c_1', '--machine', 'local'])).toEqual({ out: '', err: 'refused: this terminal is on linus-vault\n  → run this on the Mac\n' });
+    expect(await run(far, ['c_1', '--machine', 'local'])).toEqual({ out: '', err: 'refused: this terminal is on linus-vault\n  → run this on ada-mac\n' });
     expect(far.calls).toEqual([]);
     expect(process.exitCode).toBe(2);
   });

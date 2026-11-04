@@ -6,7 +6,7 @@ import { machineNames, plainStep } from './host.js';
 
 // the window's words for a home it does not follow, each with what a person can do about it
 function said(name: string, state: string, detail?: string): string {
-  if (state === 'auth') return `${name} refused this Mac's login`;
+  if (state === 'auth') return `this Mac cannot log in to ${name}`;
   if (state === 'version') return detail ?? `${name} runs another release than this Mac`;
   return `${name} is not reachable`;
 }
@@ -16,7 +16,8 @@ export function HomeBanner() {
   const home = useApp((s) => s.home);
   const fallback = useApp((s) => !!s.via && !s.via.online);
   const copied = useApp((s) => (s.via && !s.via.online ? s.fleet.machines?.[s.via.home]?.snapshot?.at : undefined));
-  const run = useApp((s) => (s.host?.op === 'upgrade' && s.host.args.name === s.home?.name ? s.host : undefined));
+  const machine = useApp((s) => s.via?.home);
+  const run = useApp((s) => (s.host?.op === 'upgrade' && s.host.args.name === s.via?.home ? s.host : undefined));
   const machines = useApp((s) => s.machines);
   const running = run?.running === true;
   const was = useRef(running);
@@ -37,7 +38,7 @@ export function HomeBanner() {
         {failed && <small data-testid="home-upgrade-failed"> {plainStep(failed.detail ?? failed.step, machineNames(machines))}</small>}
         {copied !== undefined && <small data-testid="home-age"> · showing the fleet as of {new Date(copied).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</small>}
       </span>
-      {upgrades && <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>}
+      {upgrades && <button className="btn sm" data-testid="home-upgrade" disabled={running} onClick={() => startHost('upgrade', { name: machine! })}>{running ? `Upgrading ${name}…` : `Upgrade ${name}`}</button>}
       <button className="btn sm" data-testid="home-retry" disabled={running} onClick={() => app.api().retryHome()}>Try again</button>
     </div>
   );

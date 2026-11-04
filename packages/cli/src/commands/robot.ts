@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Command, Option } from 'commander';
+import { homeWord } from '@svall/svalld/machine';
 import { expandHome } from '@svall/svalld/paths';
 import { AgentKind, ApiError, RELAY_LIMIT, Refusal, WORKTREE_ACTION, convertLine, keptSession, moveSummary, type AgentStatus, type Blocker, type MoveSheet, type SendDelivery } from '@svall/protocol';
 import type { Client } from '../client.js';
@@ -135,7 +136,7 @@ Handing work to a new robot:
 
   cmd.command('move <id>').description('move a robot to another island or cell, or to run on another machine; a refused move exits 2')
     .option('--island <id>').option('--cell <x,y>', 'omit it and the daemon picks a free cell')
-    .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this Mac; prints what travels, then moves it').conflicts(['island', 'cell']))
+    .addOption(new Option('--machine <name>', 'a machine under Machines, or local for this machine; prints what travels, then moves it').conflicts(['island', 'cell']))
     .addOption(new Option('--interrupt-after <duration>', 'interrupt what still runs after this long, e.g. 30s or 0').conflicts('island'))
     .addOption(new Option('--carry <file>', 'take a credential file such as .env along; repeatable').argParser((v: string, acc: string[] = []) => [...acc, v]).conflicts('island'))
     .addOption(new Option('--own-worktree', 'on a main checkout, move into a new worktree of its own at HEAD; the checkout keeps its changes').conflicts(['island', 'carry']))
@@ -162,14 +163,14 @@ Handing work to a new robot:
       const interruptAfterMs = interruptAfter === undefined ? undefined : parseDuration(interruptAfter);
       await withFleet(connect, async (c, state) => {
         const robot = state.robots[robotId(state, id)];
-        // this Mac is the home, whose id its own system.info answers; a worker's daemon answers its own, which the fleet lists
+        // this machine is the home, whose id its own system.info answers; a worker's daemon answers its own, which the fleet lists
         const machine = to === LOCAL ? (await c.call('system.info', {})).machineId : machineId(state, to!);
         const worker = to === LOCAL && state.machines?.[machine];
-        if (worker) { refuseMove({ reason: `this terminal is on ${worker.name}`, action: 'run this on the Mac', details: [] }, json()); return; }
+        if (worker) { refuseMove({ reason: `this terminal is on ${worker.name}`, action: `run this on ${(await c.call('fleet.home', {})).name}`, details: [] }, json()); return; }
         const params = { id: robot.id, machine, ...(carry && { carry }), ...(interruptAfterMs !== undefined && { interruptAfterMs }), ...(ownWorktree && { ownWorktree }) };
         const checked = await c.call('robot.moveCheck', params);
         if (!checked.ok) { refuseMove(checked.refusal, json()); return; }
-        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), to === LOCAL ? 'this Mac' : state.machines![machine].name)}\n`);
+        if (!json()) process.stdout.write(`${sheetLine(checked.sheet, robot.repo && path.basename(robot.repo.mainRoot), to === LOCAL ? homeWord() : state.machines![machine].name)}\n`);
         let moveId: string;
         try {
           ({ moveId } = await c.call('robot.moveTo', params));

@@ -128,6 +128,9 @@ export const dialSocketTooLong = (socket: string, worker: NodeJS.Platform, home:
   socketTooLong(socket, worker === 'darwin' ? 'darwin' : home);
 
 /** Whether `socket`, a path on the home, is the one `machine` forwards its link to, wherever that fleet home is. */
+/** The fleet home a worker's socket on its home lies in. */
+export const fleetHomeOfSocket = (socket: string): string => path.posix.dirname(path.posix.dirname(socket));
+
 export const isDialSocket = (socket: string, machine: string): boolean => socket === dialSocket({ dialSockets: path.dirname(socket) }, machine);
 
 /** The files that hold a fleet's keys, which Files never opens. */

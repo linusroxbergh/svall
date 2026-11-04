@@ -549,7 +549,7 @@ export class HomeLinks {
           held.stop();
           this.links.delete(entry.id);
         }
-        if (this.links.has(entry.id) || entry.record.role === 'home' || !tokenFor(this.o.paths, entry.id)) continue;
+        if (this.links.has(entry.id) || !tokenFor(this.o.paths, entry.id)) continue;
         const link = new WorkerLink(entry, this.o, pushSoon);
         this.links.set(entry.id, link);
         link.start();

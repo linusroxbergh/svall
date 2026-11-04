@@ -439,6 +439,55 @@ describe('a window whose fleet has its home on another machine', () => {
     expect(attachOf(sent)).toHaveLength(1);
   });
 
+  it('a reroute forgets an attach under way, so the next show asks the source the page is on now', async () => {
+    const { manager, api } = far();
+    let n = 0;
+    (api as unknown as { call: unknown }).call = (method: string) => {
+      if (method !== 'term.attach') return Promise.resolve({});
+      n++;
+      return n === 1 ? new Promise(() => {}) : Promise.resolve({ socket: '/s', session: 'v-c0', tmux: '/t', machine: 'home' });
+    };
+    void manager.show('c0', rect);
+    await Promise.resolve();
+    manager.reroute();
+    await manager.show('c0', rect);
+    expect(n).toBe(2);
+  });
+
+  it('a reroute forgets an attach waiting to retry, whose route the page has left', async () => {
+    const { manager, api, store } = far();
+    store.getState().setActive(true);
+    store.getState().focus('c0');
+    store.getState().setStatus('offline');
+    let n = 0;
+    (api as unknown as { call: unknown }).call = (method: string) => {
+      if (method !== 'term.attach') return Promise.resolve({});
+      n++;
+      return Promise.reject(new Error('svalld offline'));
+    };
+    await manager.show('c0', rect).catch(() => {});
+    expect(n).toBe(1);
+    manager.reroute();
+    store.getState().setStatus('online');
+    await flush();
+    expect(n).toBe(1);
+  });
+
+  it('asks no route for a pane hidden while its attach was answered by a daemon the page left', async () => {
+    const { manager, api, store, sent } = far();
+    let n = 0;
+    let leave!: (e: Error) => void;
+    (api as unknown as { call: unknown }).call = () => { n++; return new Promise((_, reject) => { leave = reject; }); };
+    const shown = manager.show('c0', rect);
+    await Promise.resolve();
+    manager.hide('c0');
+    leave(new SourceLeft());
+    await shown;
+    expect(n).toBe(1);
+    expect(store.getState().terminalErrors.c0).toBeUndefined();
+    expect(attachOf(sent)).toEqual([]);
+  });
+
   it('with no far home, does not name a master and a reroute has nothing to do with a terminal here', async () => {
     const { sent, manager } = fakes();
     await manager.show('c0', rect);

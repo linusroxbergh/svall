@@ -9,7 +9,8 @@ import { sha256Hex } from '../hash.js';
 import { runProcess, type RunResult } from './process.js';
 
 // what ssh in batch mode says where it would have asked for a password or a passphrase, or about a host key
-const SSH_AUTH = /permission denied|too many authentication failures|no supported authentication/i;
+// a "Permission denied" of a socket or a key file beside it is no refusal: ssh's own says which methods it tried, or asks again
+const SSH_AUTH = /permission denied \(|please try again|too many authentication failures|no supported authentication/i;
 const SSH_HOST_KEY = /host key verification failed|remote host identification has changed/i;
 // what Tailscale SSH in check mode prints while it waits for a check in the browser, until the timeout kills ssh
 const SSH_APPROVAL = /tailscale ssh requires an additional check|login\.tailscale\.com\/a\//i;

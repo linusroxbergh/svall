@@ -43,6 +43,16 @@ final class QuitFlowTests: XCTestCase {
         ])
     }
 
+    func testThePageNamesAFarHomeInItsAnswer() throws {
+        let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
+        guard case .quitAnswer(_, let working, let placed, let home) = try decode(#"{"type":"quit.answer","unsaved":[],"working":1,"placed":7,"home":"studio"}"#) else { return XCTFail("not a quit answer") }
+        XCTAssertEqual(working, 1)
+        XCTAssertEqual(placed, 7)
+        XCTAssertEqual(home, "studio")
+        guard case .quitAnswer(_, _, _, let none) = try decode(#"{"type":"quit.answer","unsaved":[],"working":0}"#) else { return XCTFail("not a quit answer") }
+        XCTAssertNil(none)
+    }
+
     func testAFarHomeIsSaidToKeepRunningAndTheFleetIsStoppedByThePageAlone() {
         quit(flow(), working: 1, placed: 7, home: "studio")
         quit(flow(), placed: 1, home: "studio")

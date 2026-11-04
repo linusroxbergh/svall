@@ -68,6 +68,10 @@ describe('shq, which every far command line quotes with', () => {
 describe('classifySsh', () => {
   it('names what ssh stumbled on', () => {
     expect(classifySsh('linus@h: Permission denied (publickey).')).toBe('auth');
+    expect(classifySsh('Permission denied, please try again.')).toBe('auth');
+    expect(classifySsh('ssh: connect to host h port 22: Permission denied')).toBe('other');
+    expect(classifySsh('Load key "/k": Permission denied\nssh: connect to host h port 22: Network is unreachable')).toBe('unreachable');
+    expect(classifySsh('hostkeys_foreach failed for /k: Permission denied\nssh: connect to host h port 22: Operation timed out')).toBe('unreachable');
     expect(classifySsh('Host key verification failed.')).toBe('host_key');
     expect(classifySsh('ssh: connect to host h port 22: Connection refused')).toBe('unreachable');
     expect(classifySsh('ssh: Could not resolve hostname h')).toBe('unreachable');

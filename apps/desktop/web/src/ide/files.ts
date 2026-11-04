@@ -26,8 +26,8 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
 async function load(d: FilesDeps, id: string, path: string): Promise<void> {
   if (getBuffer(id, path)) return;
   const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
-  // a file on a worker opens read-only, as it is edited in the robot's terminal there
-  const on = readsOn(d.store.getState().fleet, id);
+  // a file on another machine opens read-only, as it is edited in the robot's terminal there
+  const on = readsOn(d.store.getState().fleet, id, d.store.getState().via);
   const shown = on ? [readOnlyExtensions(), EditorView.lineWrapping] : editorExtensions(() => { void saveFile(d, id, path); });
   Object.assign(loadBuffer(id, path, text, mtimeMs, [shown, lang ?? []]), { root, on });
 }

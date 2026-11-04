@@ -1,6 +1,6 @@
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
@@ -37,7 +37,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
   // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
-  fleetHome?: () => Result<'fleet.home'>; platforms?: () => Map<string, 'darwin' | 'linux'>; homeApi?: Pick<HomeApi, 'answer'> };
+  fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -148,18 +148,18 @@ const handlers: Handlers = {
   'robot.moveTo': async (p, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, p) }),
   'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
   // the home first, whichever machine answers; a home holds no record of itself, and a worker's copy holds the home's
-  'machines.list': (_p, { store, fleetHome, platforms, router }) => {
+  'machines.list': (_p, { store, fleetHome, registered, router }) => {
     const robots = Object.values(store.state.robots);
     const home = fleetHome?.();
-    const known = platforms?.();
+    const known = registered?.();
     const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id), reachable: m.reachable, release: m.release,
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release,
       robots: robots.filter((r) => r.machine === id).length,
     }));
     if (!home) return { machines: workers };
     const held = store.state.machines?.[home.machine];
     return { machines: [{
-      id: home.machine, name: home.name, role: 'home' as const, platform: known?.get(home.machine) ?? (home.mine ? platform() : undefined),
+      id: home.machine, name: home.name, role: 'home' as const, platform: known?.get(home.machine)?.platform ?? (home.mine ? platform() : undefined),
       reachable: home.mine || (router?.homeConnected ?? false), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
     }, ...workers] };
   },
@@ -323,7 +323,7 @@ const handlers: Handlers = {
     return { apps: apps?.show(p) ?? 0 };
   },
   'feedback.preview': async (_p, { diagnostics }) => {
-    if (!diagnostics) throw new ApiError('not_on_worker', 'diagnostics are the Mac\'s');
+    if (!diagnostics) throw new ApiError('not_found', 'this daemon has no diagnostics');
     return { text: await diagnostics() };
   },
 };
@@ -351,6 +351,8 @@ function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
   if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
   // a terminal attaches only to this machine's tmux: no route from here reaches another's, whatever the home would answer
   if (method === 'term.attach') return false;
+  // the screens the home sent are held here, and the home takes no terminal call from a worker
+  if (method === 'term.lastScreen') return false;
   return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
 }
 

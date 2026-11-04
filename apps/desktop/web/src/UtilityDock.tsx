@@ -14,7 +14,9 @@ import { UsagePanel } from './Usage.js';
 /** The fleet utilities share the fixed foot of the island sidebar. */
 export function UtilityDock() {
   const usageOpen = useApp((s) => s.usageOpen);
-  const mobileOpen = useApp((s) => s.mobileOpen);
+  // a worker's daemon holds no phone link, which is its home's to serve
+  const fallback = useApp((s) => !!s.via && !s.via.online);
+  const mobileOpen = useApp((s) => s.mobileOpen) && !fallback;
   const loadOpen = useApp((s) => s.loadOpen);
   const feedbackOpen = useApp((s) => s.feedbackOpen);
   const settingsOpen = useApp((s) => s.settingsOpen);
@@ -23,7 +25,7 @@ export function UtilityDock() {
   const usageTab = useApp((s) => s.settings.usageTab);
   const bindings = useApp((s) => s.settings.bindings);
   // the control stands whether or not the fleet is served, so it can be switched on from here
-  const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error);
+  const phoneTab = useApp((s) => !!s.mobile && !s.mobile.error) && !fallback;
   const serving = useApp((s) => !!s.mobile?.serving);
   const phoneLabel = serving ? 'Phone link on' : 'Phone link off';
   // an open sidebar names a waiting update itself

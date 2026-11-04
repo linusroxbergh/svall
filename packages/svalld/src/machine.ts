@@ -31,7 +31,7 @@ export const registryFile = (dir: string = configDir()): string => path.join(dir
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
 /** Whether the registry lists a worker: a machine reached over ssh, or one that dials in. */
-export const listsWorker = (dir?: string): boolean => readRegistry(dir).some((m) => m.record.role !== 'home' && (m.record.ssh !== undefined || m.record.dial === 'worker'));
+export const listsWorker = (dir?: string): boolean => readRegistry(dir).some((m) => m.record.ssh !== undefined || m.record.dial === 'worker');
 
 /** Every machine in the registry; none while it has no file, as when a file stands where its folder would be. */
 export function readRegistry(dir: string = configDir()): MachineEntry[] {
@@ -120,17 +120,21 @@ export function machineId(dir: string = configDir(), hardware: HardwareReader = 
   return machine(dir, hardware).id;
 }
 
-/** What a daemon on the fleet's home calls its own machine in a sentence a person reads: "this Mac" on a Mac, else its name.
- *  SVALL_HOME_WORD overrides it. */
-export function homeWord(platform: NodeJS.Platform = process.platform): string {
-  if (process.env.SVALL_HOME_WORD) return process.env.SVALL_HOME_WORD;
-  if (platform === 'darwin') return 'this Mac';
+/** This machine's name: its registry's, which no one has written on a machine that has never run a host command, else its hostname. */
+export function ownName(): string {
   try {
     const me = machineId();
     const name = readRegistry().find((m) => m.id === me)?.record.name;
     if (name) return name;
   } catch { /* the hostname */ }
   return os.hostname().split('.')[0];
+}
+
+/** What a daemon on the fleet's home calls its own machine in a sentence a person reads: "this Mac" on a Mac, else its name.
+ *  SVALL_HOME_WORD overrides it. */
+export function homeWord(platform: NodeJS.Platform = process.platform): string {
+  if (process.env.SVALL_HOME_WORD) return process.env.SVALL_HOME_WORD;
+  return platform === 'darwin' ? 'this Mac' : ownName();
 }
 
 /** This installation's id, and when the file was made on other hardware, as a copy of another machine's is, both hardware ids. */

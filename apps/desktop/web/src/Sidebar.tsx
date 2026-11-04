@@ -77,7 +77,7 @@ function StarButton({ c, testid }: { c: Robot; testid: string }) {
 const IslandRow = memoByValue(function IslandRow({ i, robots, editing, setEditing, dragging, setDragging }: {
   i: Island; robots: Robot[]; editing: boolean; setEditing(id?: string): void; dragging: boolean; setDragging(id?: string): void;
 }) {
-  const status = useApp((s) => islandStatus(s.fleet, i.id));
+  const status = useApp((s) => islandStatus(s.fleet, i.id, s.via));
   const selected = useApp((s) => s.selectedIslandId === i.id);
   const hover = useApp((s) => s.dropHover?.kind === 'island' && s.dropHover.id === i.id);
   const open = !i.collapsed;

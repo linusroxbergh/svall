@@ -30,7 +30,7 @@ import { fleetUsage, type FetchUsage } from '../../src/usage/usage.js';
 import { WorkerMutations } from '../../src/worker/mutations.js';
 import { Workspace } from '../../src/workspace/workspace.js';
 import { Outbox } from '../../src/worker/outbox.js';
-import { ScreenNotice, ScreenTails } from '../../src/worker/screens.js';
+import { homeScreenCall, ScreenNotice, ScreenTails } from '../../src/worker/screens.js';
 import { applyReport } from '../../src/worker/snapshot.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -192,7 +192,7 @@ export function world(o: {
     runScribe: o.scribe?.worker,
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
-  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget, homeName: () => 'ada-mac' });
+  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget, homeWord: () => 'ada-mac' });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
   const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, runsHere: (c) => c.machine === W });
   screens.start();
@@ -211,7 +211,7 @@ export function world(o: {
     handlers, o.far ?? {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
-      ...workerDropCalls.calls,
+      ...workerDropCalls.calls, 'screen.home': homeScreenCall(terminals, H),
     }, workerDocs?.handlers,
     workerMirror?.calls,
   );

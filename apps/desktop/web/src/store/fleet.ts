@@ -1,8 +1,7 @@
 import jsonpatch, { type Operation } from 'fast-json-patch';
-import { emptyState, type FleetState, type ResourceSource } from '@svall/protocol';
+import { emptyState, type FleetState, type HomeState, type ResourceSource } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { Api, Status } from '../api.js';
-import type { HomeState } from '@svall/protocol';
 import type { Via } from '../placement.js';
 import { whereTier } from '../resources/model.js';
 import { pruneIde } from './ide.js';

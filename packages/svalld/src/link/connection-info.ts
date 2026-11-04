@@ -7,7 +7,7 @@ import { classifyExit, SshError, type SshMaster } from './ssh.js';
 
 /** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host upgrade`. */
 export class FleetMismatch extends SshError {
-  constructor(message: string) { super('other', message); }
+  constructor(message: string, readonly found: FleetId) { super('other', message); }
 }
 
 /** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
@@ -61,7 +61,7 @@ export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machi
     throw new SshError('other', `${name}: svall connection-info did not answer a connection description`);
   }
   if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
-    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`);
+    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`, info.fleetId);
   }
   if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
   if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);

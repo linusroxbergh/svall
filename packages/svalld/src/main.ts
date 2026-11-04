@@ -25,7 +25,7 @@ import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, homeWord, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, homeWord, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -64,7 +64,7 @@ import { readWorkerFile, workerOptions, workerStubs, type Off } from './worker/m
 import { WorkerMutations } from './worker/mutations.js';
 import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
-import { ScreenNotice, ScreenTails } from './worker/screens.js';
+import { homeScreenCall, homeTails, ScreenNotice, ScreenTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
@@ -299,20 +299,16 @@ async function start(opts: Options): Promise<Daemon> {
   // what the CLI in a worker's panes starts there, and changes there while its home is away
   const mutations = connection && outbox && new WorkerMutations({
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
-    homeName: workerHomeWord,
+    homeWord: workerHomeWord,
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links }, worker && me);
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
   const screens = connection && new ScreenTails({ fleet, store, tmux, connection, runsHere: (c) => router.runsHere(c) });
   // and of each robot on this home, which a worker that dials in shows while this home is out of its reach
-  const dialIns = () => links?.connectedWorkers().filter((m) => links.for(m)?.dialsIn) ?? [];
-  const homeScreens = links && new ScreenTails({
-    fleet, store, tmux, runsHere: (c) => router.runsHere(c), wanted: () => dialIns().length > 0,
-    connection: { notify: (_kind, data) => { for (const m of dialIns()) links.call(m, 'screen.home', data).catch(() => {}); } },
-  });
+  const homeScreens = links && homeTails({ fleet, store, tmux, links, runsHere: (c) => router.runsHere(c) });
   // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
-  if (worker) calls['screen.home'] = (p) => { const s = ScreenNotice.parse(p); terminals.sawHomeScreen(s.id, s.text, s.at, worker.worker.homeMachineId); return Promise.resolve({}); };
+  if (worker) calls['screen.home'] = homeScreenCall(terminals, worker.worker.homeMachineId);
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
@@ -359,10 +355,9 @@ async function start(opts: Options): Promise<Daemon> {
   if (connection) calls['usage.get'] = () => usage();
 
   const registered = () => { try { return readRegistry(); } catch { return []; } };
-  // a home's name is its registry's, which no one has written on a machine that has never run a host command
   const fleetHome = () => (worker
     ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me }
-    : { machine: me, name: registered().find((m) => m.id === me)?.record.name ?? os.hostname().split('.')[0], mine: true, me });
+    : { machine: me, name: ownName(), mine: true, me });
 
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
@@ -409,11 +404,11 @@ async function start(opts: Options): Promise<Daemon> {
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => [...config.mobile.origins, ...workerPhone?.origins() ?? []], logins: workerPhone ? () => workerPhone.logins() : mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
       // diagnostics read the last minute's agent probe; a worker gives none
-      ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
+      diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), fleetHome,
-      platforms: () => new Map(registered().map((m) => [m.id, m.record.platform])),
+      registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {

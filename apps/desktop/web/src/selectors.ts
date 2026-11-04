@@ -134,14 +134,14 @@ export const isMonitoring = (c: Robot): boolean => Boolean(c.agent?.monitors?.le
 export const subagentCount = (c: Robot): number => (c.agent?.subagents?.length ?? 0) + (c.second?.agent?.subagents?.length ?? 0);
 
 // the island wears the status of its most pressing robot
-export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {
-  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top, f) <= priorityOf(c, f) ? top : c), undefined);
-  return first ? statusOf(first, f) : undefined;
+export function islandStatus(f: FleetState, islandId: string, via?: Via): DisplayStatus | undefined {
+  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top, f, via) <= priorityOf(c, f, via) ? top : c), undefined);
+  return first ? statusOf(first, f, via) : undefined;
 }
 
-export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
+export function countsByStatus(f: FleetState, via?: Via): Record<DisplayStatus, number> {
   const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0, moving: 0, unknown: 0 };
-  for (const c of Object.values(f.robots)) out[statusOf(c, f)] += 1;
+  for (const c of Object.values(f.robots)) out[statusOf(c, f, via)] += 1;
   return out;
 }
 

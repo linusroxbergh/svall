@@ -54,6 +54,11 @@ export class Router {
     return this.o.home?.id;
   }
 
+  /** On a worker, what its sentences call its home. */
+  get homeWord(): string | undefined {
+    return this.o.home?.word();
+  }
+
   /** On a worker, whether its home is linked; the home is its own. */
   get homeConnected(): boolean {
     return this.o.home?.connection.connected() ?? true;
@@ -163,7 +168,8 @@ export class Router {
   }
 }
 
-export const unreachableLine = (worker: string, home: string) => `${worker} cannot reach ${home} right now; try again when it is awake`;
+// a Mac that dials its workers sleeps; a home a worker dials by name is a server, which does not
+export const unreachableLine = (worker: string, home: string) => (home === 'this Mac' ? `${worker} cannot reach ${home} right now; try again when it is awake` : `${home} is not reachable`);
 
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 

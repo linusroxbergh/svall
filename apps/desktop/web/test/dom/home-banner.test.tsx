@@ -56,7 +56,7 @@ describe('the banner of a home this window cannot follow', () => {
   it('names a refused login with what to do, with no upgrade to press', () => {
     standingIn({ state: 'auth', detail: 'Permission denied (publickey); run ssh ada@studio once in a terminal, then try again' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toContain("studio refused this Mac's login");
+    expect(screen.getByTestId('home-banner').textContent).toContain("this Mac cannot log in to studio");
     expect(screen.getByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
@@ -66,7 +66,7 @@ describe('the banner of a home this window cannot follow', () => {
     render(<HomeBanner />);
     expect(screen.getByTestId('home-banner').textContent).toContain('studio runs 0.20, this Mac 0.21');
     fireEvent.click(screen.getByTestId('home-upgrade'));
-    expect(sent).toContainEqual({ type: 'host.start', op: 'upgrade', args: { name: 'studio' } });
+    expect(sent).toContainEqual({ type: 'host.start', op: 'upgrade', args: { name: HOME } });
     expect((screen.getByTestId('home-upgrade') as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByTestId('home-upgrade').textContent).toBe('Upgrading studio…');
     expect(retryHome).not.toHaveBeenCalled();

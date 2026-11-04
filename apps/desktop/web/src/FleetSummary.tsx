@@ -7,7 +7,7 @@ export function FleetSummary() {
   const width = usePanelWidth('card');
   const robots = Object.values(fleet.robots);
   const islands = islandsSorted(fleet);
-  const counts = countsByStatus(fleet);
+  const counts = countsByStatus(fleet, via);
   const blocked = robots.filter((c) => statusOf(c, fleet, via) === 'blocked').length;
   const unread = robots.filter(isUnread).length;
   return (
