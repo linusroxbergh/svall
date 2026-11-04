@@ -1,4 +1,4 @@
-import type { Robot } from '@svall/protocol';
+import { lastActive, type Robot } from '@svall/protocol';
 import { useApp } from '../hooks.js';
 import { contextPctOf, isUnread, statusOf } from '../selectors.js';
 import { theme } from '../theme.js';
@@ -11,7 +11,7 @@ type Props = { c: Robot; x: number; y: number; flip: boolean };
 export function HoverCard({ c, x, y, flip }: Props) {
   const status = useApp((s) => statusOf(c, s.fleet));
   const pct = contextPctOf(c);
-  const at = c.agent?.lastActivityAt ?? c.shell.lastOutputAt;
+  const at = c.agent ? lastActive(c.agent) : c.shell.lastOutputAt;
   return (
     <div className="hover-card panel" data-testid="hover-card" data-status={status} data-flip={flip}
       style={{ left: x, top: y, width: theme.hoverCardWidth }}>

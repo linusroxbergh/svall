@@ -18,6 +18,12 @@ describe('applyHook', () => {
     expect(c.agent).toEqual({ kind: 'claude', sessionId: 's', transcriptPath: '/t', status: 'idle', lastActivityAt: 5 });
     expect(applyHook(base(), { robotId: 'c_a', backend: 'claude', name: 'SessionStart' }, 5).agent).toBeUndefined();
   });
+  it('keeps a rest across its resume and an idle notification, and ends it at a prompt', () => {
+    const resting = (): Robot => ({ ...withAgent('done'), agent: { ...withAgent('done').agent!, restingSince: 3 } });
+    expect(applyHook(resting(), { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's' }, 9).agent?.restingSince).toBe(3);
+    expect(applyHook(resting(), { robotId: 'c_a', backend: 'claude', name: 'Notification', sessionId: 's' }, 9).agent?.restingSince).toBe(3);
+    expect(applyHook(resting(), { robotId: 'c_a', backend: 'claude', name: 'UserPromptSubmit', sessionId: 's' }, 9).agent?.restingSince).toBeUndefined();
+  });
   it('keeps status on SessionStart for the same session (compaction)', () => {
     const c = applyHook({ ...withAgent('working'), unread: false }, { robotId: 'c_a', backend: 'claude', name: 'SessionStart', sessionId: 's', transcriptPath: '/t2' }, 9);
     expect(c.agent).toMatchObject({ status: 'working', transcriptPath: '/t2', lastActivityAt: 9 });

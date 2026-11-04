@@ -1,5 +1,5 @@
 import { Fragment, useRef, useState, type JSX, type RefObject } from 'react';
-import { ROBOT_NOTE_MAX, contextKind, type Robot, type ContextItem, type Params } from '@svall/protocol';
+import { ROBOT_NOTE_MAX, contextKind, lastActive, type Robot, type ContextItem, type Params } from '@svall/protocol';
 import { webUrl } from '../bridge.js';
 import { AS_TYPED, commitFocused, FollowTextarea } from '../Field.js';
 import { useApp, useTick } from '../hooks.js';
@@ -122,7 +122,7 @@ function Details({ c }: { c: Robot }) {
         {pct !== undefined && <div><span>context</span><b>{Math.round(pct)}%</b></div>}
         {/* a path wraps at its slashes */}
         <div><span>cwd</span><b className="mono">{c.cwd.split(/(?<=\/)/).map((part, i) => <Fragment key={i}>{part}<wbr /></Fragment>)}</b></div>
-        <div><span>last activity</span><b>{ago(c.agent?.lastActivityAt ?? c.shell.lastOutputAt)} ago</b></div>
+        <div><span>last activity</span><b>{ago(c.agent ? lastActive(c.agent) : c.shell.lastOutputAt)} ago</b></div>
       </div>
     </div>
   );

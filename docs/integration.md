@@ -73,7 +73,7 @@ each machine's daemon and unit logs.
 2. **Move the robot on main.** `kanban` moves, and the move converts main into a worktree on a new branch `kanban`,
    staged and unstaged apart, leaving main clean with its stash; `node_modules` is named and never travels.
 3. **Worker restart.** A restart of the worker's unit keeps each agent's process. One that stops tmux too, as a
-   reboot does, leaves the robots dormant with their resume commands, and a revive from the home starts them there.
+   reboot does, ends them, and the robots inside the idle limit resume there on their own.
 4. **Home down during work.** With the home's unit stopped, two turns typed on remote wait in its outbox. Once the
    home starts, it takes each once and in order, from its first answer on.
 5. **The fault matrix**, below.

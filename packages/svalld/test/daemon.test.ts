@@ -228,6 +228,8 @@ runIf('startDaemon', () => {
     expect(again.tmux).toEqual(c.tmux);
     expect(await d2.fleet.readScreen(c.id, 20)).toContain('persist-me');
     await d2.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId: '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e', transcriptPath: '/nope' } });
+    // at rest past the idle limit, so the start leaves it for a revive
+    d2.store.update((s) => { s.robots[c.id].agent!.lastActivityAt = 0; });
     await d2.stop();
 
     await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
@@ -239,6 +241,24 @@ runIf('startDaemon', () => {
     await d3.fleet.reviveRobot(c.id);
     await waitFor(async () => (await d3.fleet.readScreen(c.id, 20)).includes('back'));
     await d3.stop();
+  });
+
+  it('resumes at its start an agent a tmux restart ended at rest inside the idle limit', async () => {
+    const home = makeHome();
+    homes.push(home);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    const paths = resolvePaths(home);
+    const sessionId = '9d1e4c2a-7b3f-4a6e-8c5d-2f1a0b9c8d7e';
+    const transcriptPath = path.join(home, `${sessionId}.jsonl`);
+    fs.writeFileSync(transcriptPath, '');
+    const d1 = await start({ home, port: 0, log: silentLogger });
+    const c = await d1.fleet.createRobot({ islandId: d1.fleet.createIsland({ name: 'x' }).id, cwd: '/tmp' });
+    await d1.fleet.onSocketEvent({ hook: { robotId: c.id, backend: 'claude', name: 'SessionStart', sessionId, transcriptPath } });
+    await d1.stop();
+    await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();
+    const d2 = await start({ home, port: 0, log: silentLogger });
+    await waitFor(async () => !!d2.store.state.robots[c.id].tmux && (await d2.fleet.readScreen(c.id, 20)).includes(`--resume ${sessionId}`));
+    await d2.stop();
   });
 
   it('rejects when the port is taken and leaves nothing running', async () => {

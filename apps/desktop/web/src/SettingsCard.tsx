@@ -74,7 +74,7 @@ function Dormancy() {
   const more = DORMANCY.find((h) => rank(h) > rank(hours));
   return (
     <div className="row">
-      <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up.</Info></span>
+      <span>close idle agents after<Info id="dormancy">Frees memory. Opening the terminal resumes the conversation, and agents with background work stay up. After a quit or restart, agents still inside this limit resume on their own.</Info></span>
       <b className="set-zoom">
         <button className="ib filled" data-testid="dormancy-less" aria-label="Sooner" disabled={less === undefined} onClick={() => setDormancy(deps(), less!)}><Minus /></button>
         <span className="tnum" data-testid="dormancy-level">{dormancyLabel(hours)}</span>

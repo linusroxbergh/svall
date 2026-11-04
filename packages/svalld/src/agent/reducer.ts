@@ -108,6 +108,7 @@ export function applyHook<T extends Slot>(c: T, e: HookEvent, now: number, alive
   }
   // a session started before its hooks named their process learns it from its own events
   if (e.pid && !next.agent.pid && e.sessionId === next.agent.sessionId) next.agent.pid = e.pid;
+  if (e.name === 'UserPromptSubmit') delete next.agent.restingSince;
   // a tool call's hooks come several to a second, and each new mark is a patch the app redraws for
   if (!TOOL_EVENTS.has(e.name) || now - next.agent.lastActivityAt >= TOOL_ACTIVITY_MS) next.agent.lastActivityAt = now;
   // Claude Code moves the transcript when a session enters or leaves a worktree; Codex names it only once it exists
