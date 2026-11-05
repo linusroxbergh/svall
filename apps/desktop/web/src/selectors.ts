@@ -167,13 +167,15 @@ export const placesOf = (f: FleetState): Map<string, string> => new Map(Object.v
 
 export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string | undefined): Panes => (id && s.ide[id]?.panes) || SINGLE;
 
-// the home takes the answer, so a window on the Mac's copy of its fleet is not asked, and its terminals draw
+// the home takes an ask's answer, so a window on the Mac's copy of its fleet is not asked, and its terminals draw
+const reachesHome = (s: { via?: Via }): boolean => !s.via || !!s.via.online;
+
 export const scribeAsking = (s: { fleet: FleetState; fleetPicker?: string; via?: Via }): boolean =>
-  !!s.fleet.scribeAsk && !s.fleetPicker && (!s.via || !!s.via.online);
+  !!s.fleet.scribeAsk && !s.fleetPicker && reachesHome(s);
 
 // the board asks about the scribe's placing once the scribe's own ask is answered
-export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string }): boolean =>
-  s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker;
+export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string; via?: Via }): boolean =>
+  s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker && reachesHome(s);
 
 // placing rides the scribe's passes, so with the scribe off nothing places robots
 export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scribeOff && !f.scribeAsk;

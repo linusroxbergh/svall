@@ -190,4 +190,17 @@ describe('in the app, over a terminal', () => {
     expect(isVeiled(store.getState())).toBe(false);
     expect(show).toHaveBeenCalled();
   });
+
+  test('the board\'s placing ask stands on the far home, and not on the Mac\'s copy, where the terminal of a robot on the Mac shows', () => {
+    const f = fleet();
+    f.robots.c0.machine = VIA.machine;
+    act(() => { store.getState().setFleet({ ...f, placingAsk: true }); store.getState().setVia({ ...VIA, online: true }); });
+    render(asked());
+    expect(screen.getByTestId('placing-ask')).toBeTruthy();
+    expect(show).not.toHaveBeenCalled();
+    act(() => store.getState().setVia(VIA));
+    expect(screen.queryByTestId('placing-ask')).toBeNull();
+    expect(isVeiled(store.getState())).toBe(false);
+    expect(show).toHaveBeenCalled();
+  });
 });
