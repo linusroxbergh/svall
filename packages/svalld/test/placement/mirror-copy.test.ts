@@ -976,10 +976,10 @@ describe('the entry a target keeps', () => {
 
   it('settings.json\'s env: the tick wins there too, with the file copied first', async () => {
     const { home, mac, backups, synced, consent } = target();
-    put(path.join(home.claudeDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-home-1234567890' } }));
+    put(path.join(home.claudeDir, 'settings.json'), JSON.stringify({ model: 'x', env: { ANTHROPIC_API_KEY: 'sk-home-1234567890' } }));
     await synced();
-    // set after the first push's copy, so only the tick's can hold it
-    put(path.join(mac.claudeDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_API_KEY: OWN } }));
+    // set once the record names the file, so only the tick's copy can hold it
+    editJson(path.join(mac.claudeDir, 'settings.json'), (j) => { j.env = { ANTHROPIC_API_KEY: OWN }; });
     await consent('claude:settings', ['env.ANTHROPIC_API_KEY'], true);
     expect(json(path.join(mac.claudeDir, 'settings.json')).env.ANTHROPIC_API_KEY).toBe('sk-home-1234567890');
     expect(holding(backups, OWN)).toHaveLength(1);
