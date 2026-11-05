@@ -1527,16 +1527,27 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('a blob on its way goes when the worker\'s link does, and one grant holds at a time', async () => {
-    const { w, linked } = copyOf();
+    const { w, linked, ask } = copyOf();
     await linked();
-    w.home.setupCopy!.arm(W);
-    expect(() => w.home.setupCopy!.arm(OTHER)).toThrow(expect.objectContaining({ code: 'busy' }));
     const c = w.worker.connection;
-    await c.call('config.blob', { id: 'mirror_a', sha256: '0'.repeat(64) });
+    let offered!: () => void;
+    const offering = new Promise<void>((resolve) => { offered = resolve; });
+    // the worker holds the copy open with a blob offered, until its link closes under it
+    w.worker.handlers['config.copyToHome'] = async () => {
+      await c.call('config.blob', { id: 'mirror_a', sha256: '0'.repeat(64) });
+      offered();
+      return new Promise(() => {});
+    };
+    const copying = ask();
+    await offering;
+    expect(() => w.home.setupCopy!.arm(OTHER)).toThrow(expect.objectContaining({ code: 'busy' }));
     const stage = () => (fs.existsSync(w.home.paths.cache) ? fs.readdirSync(w.home.paths.cache).filter((f) => f.startsWith('mirror-')) : []);
     expect(stage()).toHaveLength(1);
-    w.home.setupCopy!.lost(W);
+    const stopped = c.stop();
+    await expect(copying).rejects.toThrow();
+    await stopped;
     await until(() => expect(stage()).toEqual([]));
+    expect(w.home.setupCopy!.arm(OTHER)).toBeDefined();
   });
 
   it('takes the mirror\'s calls from no worker it was not told of, nor from any once told of another', async () => {
@@ -1558,8 +1569,8 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   });
 
   it('refuses a second use of one grant: a second blob, and anything past the apply', async () => {
-    const { home, mac, w } = copyOf();
-    await w.link();
+    const { home, mac, w, linked } = copyOf();
+    await linked();
     w.home.setupCopy!.arm(W);
     const c = w.worker.connection;
     await c.call('config.state', asks);
@@ -1575,15 +1586,12 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     expect(read(path.join(home.claudeDir, 'CLAUDE.md'))).toBe('# the server\n');
   });
 
-  it('the grant ends with the copy, one that failed too, and with the worker\'s link', async () => {
+  it('the grant ends with the copy, one that failed too', async () => {
     const { w, ask, linked } = copyOf();
     await linked();
     await ask();
     await refused(w.worker.connection.call('config.state', asks));
     await expect(w.home.setupCopy!.from(W, () => Promise.reject(new Error('no')))).rejects.toThrow('no');
-    await refused(w.worker.connection.call('config.state', asks));
-    w.home.setupCopy!.arm(W);
-    w.home.setupCopy!.lost(W);
     await refused(w.worker.connection.call('config.state', asks));
   });
 

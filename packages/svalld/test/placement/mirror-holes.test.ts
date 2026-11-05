@@ -138,7 +138,7 @@ describe('the mirror on what a person holds, by its guards', () => {
     const mac = macHome();
     const onHome = farHome();
     const scratch = makeHome();
-    const o = { ...onHome, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json'), additive: true };
+    const o = { ...onHome, stateFile: path.join(scratch, 'mirror-state.json'), varsFile: path.join(scratch, 'mirror-vars.json'), backups: path.join(scratch, 'mirror-backup'), additive: true };
     const apply = async (name: string) => {
       await packMirror(mirrorPlan(mac, new Set(['claude:plugin:acme:mcp:pdf#env.PDF_KEY', 'claude:agent:db.md#mcpServers.pg'])), path.join(scratch, name + '.tar'));
       await unpack(path.join(scratch, name + '.tar'), path.join(scratch, name));

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { NOT_NEEDED, type AgentKind, type SetupRow } from '@svall/protocol';
+import { AgentKind, NOT_NEEDED, type SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../hash.js';
@@ -9,7 +9,7 @@ import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import { docWithOverride } from './mirror-apply.js';
+import { docWithOverride, ownKeys } from './mirror-apply.js';
 import type { MirroredServer, MirrorPlan } from './mirror-plan.js';
 import { DOC_NAMES, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirrorHomes } from './mirror-state.js';
 
@@ -36,6 +36,8 @@ type Whole = z.infer<typeof Whole>;
 export const ReportAsk = z.object({
   homedir: z.string(), claudeDir: z.string(), commands: z.array(z.string()), vars: z.array(z.string()), secrets: z.array(Keyed), whole: z.array(Whole),
   oauth: z.array(z.object({ item: z.string(), name: z.string() })),
+  // each server in a doc that reads a variable, which a target holding a key of its own there does not need
+  reading: z.array(z.object({ item: z.string(), agent: AgentKind, doc: z.enum(DOC_NAMES), place: z.array(z.string()) })).default([]),
 });
 export type ReportAsk = z.infer<typeof ReportAsk>;
 /**
@@ -47,6 +49,8 @@ export const ConfigReport = z.object({
   whole: z.record(z.string(), z.boolean()), oauth: z.record(z.string(), z.boolean()),
   // an item the worker holds as its own, the very one ticked whole; and each field or item whose own value a tick went over, whose file its backup keeps
   ownWhole: z.record(z.string(), z.boolean()).optional(), replaced: z.record(z.string(), z.boolean()).optional(),
+  // a server this target keeps for a key of its own, which reads no variable here
+  keepsOwn: z.record(z.string(), z.boolean()).optional(),
 });
 export type ConfigReport = z.infer<typeof ConfigReport>;
 
@@ -101,6 +105,7 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
   return {
     homedir: plan.homes.homedir, claudeDir: plan.homes.claudeDir, commands: [...new Set(carried(plan).flatMap((s) => s.runtimes))], vars: plan.vars, secrets, whole,
     oauth: carried(plan).filter((s) => s.agent === 'claude' && s.oauth).map((s) => ({ item: s.key, name: s.name })),
+    reading: carried(plan).flatMap((s) => (s.doc && s.needs.length ? [{ item: s.key, agent: s.agent, doc: s.doc, place: s.place }] : [])),
   };
 }
 
@@ -108,7 +113,7 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
  * A worker's answer to `ask`, each thing looked for where the mirror writes it here, overrides merged; a secret field counts
  * only when neither empty nor as the mirror leaves it bare.
  */
-export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string }): ConfigReport {
+export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string; backups?: string }): ConfigReport {
   const move = mover(ask, o);
   const env = readEnvFile(o.envFile);
   const state = readState(o.stateFile);
@@ -160,13 +165,18 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     if (w.doc) wasReplaced(recordKey(w.doc, w.place), w.item);
     if (w.doc && recorded === undefined && there) ownWhole[w.item] = true;
   }
+  const keepsOwn: Record<string, boolean> = {};
+  for (const r of o.backups === undefined ? [] : ask.reading) {
+    const v = getAt(docHere(r.doc), placedIn(r.doc, r.place, move));
+    if (isDoc(v) && ownKeys(r.agent, v, recordKey(r.doc, r.place), state).length) keepsOwn[r.item] = true;
+  }
   let credentials: unknown;
   try { credentials = JSON.parse(fs.readFileSync(path.join(o.claudeDir, '.credentials.json'), 'utf8')); } catch { /* no login */ }
   const logins = isDoc(credentials) && isDoc(credentials.mcpOAuth) ? Object.keys(credentials.mcpOAuth) : [];
   return {
     commands: Object.fromEntries(ask.commands.map((c) => [c, path.posix.isAbsolute(c) ? isExecutable(move(c)) : onPath(c, process.env.PATH ?? '') !== undefined])),
     vars: Object.fromEntries(ask.vars.map((v) => [v, Boolean(process.env[v] || env[v])])),
-    secrets, whole, ownWhole, replaced,
+    secrets, whole, ownWhole, replaced, keepsOwn,
     oauth: Object.fromEntries(ask.oauth.map((a) => [a.item, logins.some((k) => k.startsWith(`${a.name}|`))])),
   };
 }
@@ -246,7 +256,10 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   };
   // a server Svall cannot copy one by one has a preview naming its fields
   for (const s of plan.servers) {
-    if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
+    // a tick cannot land in a plugin's file the plan does not carry
+    if (s.file && !plan.files.some((f) => f.from === s.file)) {
+      if (!s.known || s.secretFields.length) rows.push({ key: s.key, status: 'skip', detail: `${s.name} stays on ${homeWord()}: the mirror does not carry its file`, gap: { name: s.name, what: 'not copied: the mirror does not carry its file' } });
+    } else if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
     else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, s));
   }
 
@@ -254,7 +267,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const names = (has: (s: MirroredServer) => boolean): string[] => [...new Set(servers.filter(has).map((s) => s.name))];
   for (const v of plan.vars) {
     const readers = [
-      ...names((s) => s.needs.includes(v)), ...(plan.codex && configNeeds('codex', plan.codex).includes(v) ? ['config.toml'] : []),
+      ...names((s) => s.needs.includes(v) && !report?.keepsOwn?.[s.key]), ...(plan.codex && configNeeds('codex', plan.codex).includes(v) ? ['config.toml'] : []),
       ...plan.opencode.filter((d) => configNeeds('opencode', d.doc).includes(v)).map((d) => d.file),
     ];
     if (!readers.length) continue;

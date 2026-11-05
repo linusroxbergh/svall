@@ -258,7 +258,7 @@ async function start(opts: Options): Promise<Daemon> {
       void phone?.sync(machine);
       void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c) }, machine);
     },
-    onLost: (machine) => { terminals.lostMachine(machine); setupCopy?.lost(machine); },
+    onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: homeMirror,
     ...(homeDocs && { docs: homeDocs }),

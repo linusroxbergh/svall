@@ -1,7 +1,5 @@
 import { isDoc, PLUGIN_LISTS, type Doc, type WorkerState } from './mirror-state.js';
 
-/** The record's name for settings.json's enabledPlugins, beside each plugin list's `to`. */
-export const ENABLED = 'settings.json#enabledPlugins';
 export const isList = (to: string): boolean => PLUGIN_LISTS.some((n) => to === `claude/plugins/${n}`);
 
 export const entriesOf = (to: string, list: unknown): Doc => {

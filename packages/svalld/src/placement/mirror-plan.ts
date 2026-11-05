@@ -507,7 +507,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },
     vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], unreadInstalls, keep: carried.map((f) => f.to),
-    unticked: pluginRows.filter((r) => !r.ticked).flatMap((r) => r.files).filter((f) => holds(o.claudeDir, f)).map(landing), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
+    unticked: pluginRows.filter((r) => !r.ticked).flatMap((r) => r.files).filter((f) => holds(o.claudeDir, f)).map(landing).filter(carriable), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
     inPlace: inPlace.filter((f) => carried.some((c) => c.to === f.to)), skipped,
   };
 }

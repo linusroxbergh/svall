@@ -32,13 +32,13 @@ const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 
 /** What a push needs of the link to the machine it writes: a home's to a worker, or a worker's to its home. */
 export type MirrorLink = { machine: MachineId; call: WorkerLink['call']; sendBlob(id: string, file: string): Promise<void> };
-export type Pushed = { sent: number; backup?: string };
+export type Pushed = { sent: number; backup?: string; replaced?: string[]; left?: string[] };
 
 /** Where a push onto this machine keeps what it replaces of a person's own: a Mac, or a machine that dials its home, holds one. It is asked of the machine itself, as the record a home keeps of it says what was typed at its enrolment. */
 export const backupsHere = (folder: string, worker?: { homeSsh?: string }, platform: NodeJS.Platform = process.platform): string | undefined =>
   (platform === 'darwin' || worker?.homeSsh ? folder : undefined);
 
-/** The home's side: its agent configuration packed and sent to a worker, by what the consent file ticks for it. */
+/** The sender's side: its agent configuration packed and sent to a target, by what the consent file ticks for it. */
 export class Mirror {
   // each worker's last push, which its next one waits for
   private chains = new Map<MachineId, Promise<unknown>>();
@@ -144,8 +144,8 @@ export class Mirror {
       // above any push this home gave up on, which the worker may still be applying
       const seq = Math.max(this.sent.get(link.machine) ?? 0, facts.state.applied ?? 0) + 1;
       this.sent.set(link.machine, seq);
-      const { backup } = await link.call<{ backup?: string }>('config.apply', { id, seq }, { timeoutMs: APPLY_MS });
-      return { sent, ...(backup && { backup }) };
+      const { backup, replaced, left } = await link.call<Omit<Pushed, 'sent'>>('config.apply', { id, seq }, { timeoutMs: APPLY_MS });
+      return { sent, ...(backup && { backup }), ...(replaced && { replaced }), ...(left && { left }) };
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

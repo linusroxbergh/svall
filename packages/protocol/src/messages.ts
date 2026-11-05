@@ -330,7 +330,7 @@ export const methods = {
   // runs each agent's own update on `machine`, or on this Mac without one, one after another, and answers once all have ended
   'machines.updateAgents': { params: z.object({ machine: MachineId.optional(), kinds: z.array(AgentKind).min(1) }), result: z.object({}) },
   // has worker `machine` copy its agent setup onto this home, once, by the ticks it holds for this home; answers once it has, with the folder that keeps what this copy replaced, if it kept any
-  'machines.copySetupFrom': { params: z.object({ machine: MachineId }), result: z.object({ sent: z.number(), backup: z.string().optional() }) },
+  'machines.copySetupFrom': { params: z.object({ machine: MachineId }), result: z.object({ sent: z.number(), backup: z.string().optional(), replaced: z.array(z.string()).optional(), left: z.array(z.string()).optional() }) },
   // sets a variable for the fleet's robots on `machine`, from `value` or, with fromMac, from the daemon's own environment; answers the setup rows
   'machines.setVar': {
     params: z.object({ machine: MachineId, name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), value: z.string().min(1).max(4096).optional(), fromMac: z.literal(true).optional() }),

@@ -29,8 +29,8 @@ const Bare = z.record(z.string(), z.object({ value: z.string().optional(), envVa
  * apply cut short holds either of two shas. `bare` is what an untick leaves, `envVar` where a Codex server's env_vars names it.
  * `wholeKeys` each string a server copied whole carried, so one edited since is still known for its key.
  * `backup` the folder each file the record does not name is copied to before it is replaced; `listed` the names the mirror wrote
- * in each plugin list, by its `to`, and in settings.json's enabledPlugins; `replaced` each place, by its key, where a tick went
- * over what the target held itself, whose file `backup` keeps.
+ * in each plugin list, by its `to`, and in each table of a config file, by `<file>#<key>`; `replaced` each place, by its key, where
+ * a tick went over what the target held itself, whose file `backup` keeps.
  */
 export const WorkerState = z.object({
   files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), wholeKeys: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),

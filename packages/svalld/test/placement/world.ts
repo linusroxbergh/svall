@@ -139,7 +139,7 @@ export function world(o: {
       else homeTerminals.farEvent(key, ev, machine);
     },
     onSynced: (machine) => { void remoteWatches.reopen(machine); void homeTerminals.reopen(machine); },
-    onLost: (machine) => { homeTerminals.lostMachine(machine); setupCopy?.lost(machine); },
+    onLost: (machine) => homeTerminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: homeStore.state, agentHomes, home: '/Users/ada' }),
     ...(homeDocs && { docs: homeDocs }),
     ...(homeMirror && { mirror: homeMirror }),

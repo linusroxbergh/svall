@@ -40,7 +40,7 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
   const row = (key: string, label: string, go: () => void) => (
     <div className="row" key={key}>
       <span>{label}</span>
-      <b><button className="btn sm" data-testid={`setup-open-${key}`} onClick={go}>Open</button></b>
+      <b><button className="btn sm" data-testid={`setup-open-${key}`} aria-label={`Open ${label}`} onClick={go}>Open</button></b>
     </div>
   );
   return (
@@ -83,7 +83,14 @@ export function AgentSetup() {
     setSaid(undefined);
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
       (r) => {
-        setSaid({ ok: true, text: `Copied to ${home}.${r.backup ? ` What it replaced there is in ${r.backup}.` : ''}` });
+        setSaid({
+          ok: true,
+          text: [
+            `Copied to ${home}.`, r.backup && `What it replaced there is in ${r.backup}.`,
+            r.replaced && `A tick went over what ${home} held itself for ${r.replaced.join(', ')}: that is in its backup folder.`,
+            r.left && `You unticked ${r.left.join(', ')}, edited on ${home} since, so each stays there with its key until you remove it there.`,
+          ].filter(Boolean).join(' '),
+        });
         void reloadResources(deps());
       },
       (e: Error) => setSaid({ ok: false, text: e.message }),
@@ -128,7 +135,7 @@ export function AgentSetup() {
         )}
       {!!rows?.length && (
         <>
-          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
+          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
           <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>
         </>
       )}

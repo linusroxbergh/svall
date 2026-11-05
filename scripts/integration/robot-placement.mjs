@@ -704,6 +704,28 @@ function dialedSetup(ids) {
   check('the copy answers', copied.result?.sent > 0, () => brief(copied));
   check('the copy lands on the home', readRule(L) === 'copied from the worker\n', () => readRule(L));
   check('the home keeps what it replaced', !!copied.result?.backup && sh(L, `cat ${copied.result.backup}/.claude/rules/it-dial.md`, { ok: false }).stdout === 'changed on the home\n', () => brief(copied.result));
+
+  // a server a Copy brings reads its variable from the home's .env, in a robot the home starts after it
+  sh(R, `/opt/it/node/bin/node -e '${ADD_SERVERS}'`, { input: JSON.stringify({ itcopy: { command: 'npx', args: ['-y', 'it-copy-mcp'], env: { IT_COPY_KEY: '${IT_COPY_KEY}' } } }) });
+  sh(L, "printf 'IT_COPY_KEY=xyz\\n' >> ~/.svall/.env");
+  const brought = windowCall(L, 'machines.copySetupFrom', { machine: ids.remote });
+  check('the copy brings the server', !brought.error && serversOn(L).itcopy?.env?.IT_COPY_KEY === '${IT_COPY_KEY}', () => `${brief(brought)} ${brief(serversOn(L).itcopy)}`);
+  const reader = JSON.parse(sh(L, `svall --json robot new --island ${ctx.fx.island} --cwd ~/src/app --name itcopy --claude`).stdout).id;
+  const started = until(L, (s) => agentsOf(s, reader).length === 1, 60);
+  check("the home's robot has the variable", agentsOf(started, reader)[0]?.env?.includes('IT_COPY_KEY'), () => brief(agentsOf(started, reader)));
+  sh(L, `svall robot close ${reader}`);
+
+  // a push that fails here is told to this machine's window, until one lands
+  const toml = sh(R, 'cat ~/.codex/config.toml', { ok: false }).stdout;
+  sh(R, "mkdir -p ~/.codex && printf 'not toml [' > ~/.codex/config.toml");
+  const refused = windowCall(L, 'machines.consent', { machine: ids.remote, item: 'it:none', fields: [], on: false });
+  const told = windowCall(R, 'home.setup', {});
+  check('a failed push is told', !!refused.error && /cannot be parsed/.test(told.result?.pushFailed ?? ''), () => `${brief(refused)} ${brief(told.result?.pushFailed)}`);
+  sh(R, 'cat > ~/.codex/config.toml', { input: toml });
+  const landed = windowCall(L, 'machines.consent', { machine: ids.remote, item: 'it:none', fields: [], on: false });
+  const cleared = windowCall(R, 'home.setup', {});
+  check('and cleared by the next that lands', !landed.error && cleared.result?.pushFailed === undefined, () => `${brief(landed)} ${brief(cleared.result?.pushFailed)}`);
+
   for (const m of [L, R]) sh(m, `rm -f ${RULE} ~/.claude/rules/it-only-here.md`);
 }
 

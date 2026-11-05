@@ -4,7 +4,7 @@ import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import { Mirror, mirrorCalls, type MirrorLink, type Pushed } from './mirror.js';
-import type { Manifest } from './mirror-apply.js';
+import { entryName, type Manifest } from './mirror-apply.js';
 import { CONFIG_ITEMS } from './mirror-consent.js';
 import { carriable } from './mirror-plan.js';
 import { CODEX_MAC_ONLY, CODEX_WORKER_OWNED, OPENCODE_FILES, OPENCODE_WORKER_OWNED, readState, WORKER_OWNED, type DocName, type MirrorHomes } from './mirror-state.js';
@@ -86,11 +86,6 @@ export class SetupCopy {
     return this.calls.calls[method](params);
   }
 
-  /** The named worker's link closed: its push can come to nothing more. */
-  lost(machine: MachineId): void {
-    if (this.grant?.machine === machine) this.end();
-  }
-
   private end(): void {
     this.grant = undefined;
     this.calls.linkLost();
@@ -112,7 +107,7 @@ export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection
       const rows = await o.mirror.report(undefined, o.home, { name: o.homeName(), fleetFlag: '' });
       const { backup, replaced } = readState(o.stateFile);
       const here = backup !== undefined && fs.existsSync(backup.dir);
-      const named = replaced?.map((r) => (JSON.parse(r) as string[]).slice(1).join('.').replace(/^(mcpServers|mcp_servers|mcp)\./, ''));
+      const named = replaced?.map(entryName);
       const pushFailed = o.pushFailed?.();
       return { rows: rows.filter((r) => r.tick), ...(here && { backup: backup.dir, ...(named && { replaced: named }) }), ...(pushFailed && { pushFailed }) };
     },

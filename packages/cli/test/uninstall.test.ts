@@ -23,6 +23,18 @@ function fake(o: { answer?: string; isTTY?: boolean; data?: string[]; backups?: 
 }
 
 describe('uninstall', () => {
+  it('the command itself names a fleet home\'s mirror-backup in what it keeps', async () => {
+    const homedir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-u-'));
+    fs.mkdirSync(path.join(homedir, '.svall/mirror-backup/2026-11-05'), { recursive: true });
+    fs.writeFileSync(path.join(homedir, '.svall/fleet.json'), '{}');
+    vi.spyOn(os, 'homedir').mockReturnValue(homedir);
+    const out: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((...a) => { out.push(a.join(' ')); });
+    vi.spyOn(process.stdout, 'write').mockImplementation(((s: string) => { out.push(String(s)); return true; }) as never);
+    await uninstallCommand(() => true, (async () => []) as never).parseAsync(['--from-app'], { from: 'user' });
+    expect(out.join('\n')).toContain(path.join(homedir, '.svall/mirror-backup'));
+  });
+
   it('names the copies of a person\'s own files in mirror-backup, as it asks, as it keeps them, and as --purge deletes them', async () => {
     const backups = ['/u/.svall/mirror-backup'];
     const no = fake({ answer: 'n', backups });
