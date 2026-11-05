@@ -68,9 +68,10 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   setHomeMove: (homeMove) => set({ homeMove }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
-  // a step from an operation the page is no longer watching belongs to a run it has forgotten
-  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
-  hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
+  // a step from an operation the page is no longer watching belongs to a run it has forgotten, as does one after its run ended:
+  // a start refused while a run the page lost at a reload goes on in the shell
+  hostStep: (op, event) => set((s) => (s.host?.op === op && s.host.running ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
+  hostDone: (op, code) => set((s) => (s.host?.op === op && s.host.running ? { host: endRun(s.host, code) } : {})),
   hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows, machineNames(s.machines)) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),

@@ -768,15 +768,26 @@ describe('the machines robots run on', () => {
     store.getState().setMachines([{ name: 'studio', id: '5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', platform: 'linux-x64' }]);
     store.getState().hostStep('add', { step: 'master', status: 'fail', detail: 'u@h now reaches machine 5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f, not box' });
     expect(store.getState().host?.steps[1].detail).toBe('u@h now reaches studio, not box');
+    store.getState().hostStep('add', { step: 'mirror:var:X', status: 'warn', action: 'set X on box' });
     store.getState().hostDone('add', 0);
     expect(store.getState().host?.running).toBe(false);
     expect(store.getState().host?.code).toBe(0);
     // the rows a tick answers with stand where the run's own were
-    store.getState().hostStep('add', { step: 'mirror:var:X', status: 'warn', action: 'set X on box' });
     store.getState().hostRows([{ step: 'mirror:var:X', status: 'ok', detail: 'X is set on machine 5d4d0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' }]);
     expect(store.getState().host?.steps.map((s) => [s.step, s.status])).toEqual([['ssh', 'ok'], ['master', 'fail'], ['mirror:var:X', 'ok']]);
     expect(store.getState().host?.steps.at(-1)?.detail).toBe('X is set on studio');
   });
+  it('a start the shell refused takes nothing of the run of that op the page lost at a reload, still going there', () => {
+    const store = createAppStore();
+    store.getState().hostStarted('doctor', { name: 'studio' });
+    store.getState().hostStep('doctor', { step: 'svall', status: 'fail', detail: 'another machine run is under way; try again once it ends' });
+    store.getState().hostDone('doctor', 1);
+    store.getState().hostStep('doctor', { step: 'ssh', status: 'ok', detail: 'ada@studio answers' });
+    store.getState().hostDone('doctor', 0);
+    expect(store.getState().host).toMatchObject({ running: false, code: 1, steps: [{ step: 'svall', status: 'fail' }] });
+    expect(store.getState().host?.steps).toHaveLength(1);
+  });
+
   it('asks before it removes or forgets a machine, and only then', () => {
     const store = createAppStore();
     expect(store.getState().hostConfirm).toBeUndefined();

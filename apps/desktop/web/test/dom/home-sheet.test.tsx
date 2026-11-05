@@ -306,6 +306,17 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio has not let go of it: staged. Call it off again once it answers, or finish the move');
   });
 
+  it('the sheet\'s own run that failed past the mark says why alone, as its Close words were for the sheet', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, phase: 'rolledback' } } });
+    render(<HomeMoveBanner />);
+    await screen.findByTestId('home-move-banner');
+    act(() => { store.getState().hostStarted('home', { name: 'studio' }); });
+    step('adopt', 'fail', { detail: 'studio did not take the fleet: rolledback', action: 'svall fleet home abort, or svall fleet home retry', say: 'Close to finish the move or call it off' }, 'home');
+    act(() => { store.getState().hostDone('home', 1); });
+    expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio did not take the fleet: rolledback');
+  });
+
   it('a press while another run is under way starts nothing, and says so', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });

@@ -31,8 +31,8 @@ const STANDS: Record<string, (name: string) => string> = {
 };
 const stands = (phase: string, name: string): string => STANDS[phase]?.(name) ?? `${name} is at work on the move.`;
 
-// a run that failed, in the window's words: why, then what to do here
-const failedLine = (s: HostStep): string => onThisMac([s.detail ?? s.step, s.say ?? s.action].filter(Boolean).join('. '));
+// a run that failed, in the window's words: why, then what to do here; the sheet's own says why alone, as what it says to do was for the sheet
+const failedLine = (s: HostStep, sheet: boolean): string => onThisMac([s.detail ?? s.step, !sheet && (s.say ?? s.action)].filter(Boolean).join('. '));
 
 /** A move of the fleet's home that nothing is driving: this Mac's daemon waits on how it ends, and a person finishes it or calls it off. */
 export function HomeMoveBanner() {
@@ -60,7 +60,7 @@ export function HomeMoveBanner() {
         {here ? 'The fleet is moving to this Mac, and its old home takes no changes until the move ends; robots keep running.'
           : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
         {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {stands(moving.phase, moving.name)}</small>}
-        {failed && <small data-testid="home-move-failed"> {failedLine(failed)}</small>}
+        {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
       </span>
       <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>
       <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip="Works once the machine that holds the move says it was not taken" onClick={() => startHost('home-abort', { name: '' })}>{run?.op === 'home-abort' && running ? 'Calling it off…' : 'Abort'}</button>
