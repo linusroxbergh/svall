@@ -185,7 +185,7 @@ function Machines() {
       ))}
       {error && (
         <div className="row" data-testid="machines-error">
-          <span>{error}</span>
+          <span data-error>{error}</span>
           <b><button className="btn sm" data-testid="machines-reload" onClick={list}>Read again</button></b>
         </div>
       )}
@@ -238,7 +238,7 @@ function Scribe() {
         {error && (
           <div className="row" data-testid="set-scribe-error">
             <span>last failure</span>
-            <b data-tip={new Date(error.at).toLocaleString()}>{error.message}</b>
+            <b data-error data-tip={new Date(error.at).toLocaleString()}>{error.message}</b>
           </div>
         )}
         <div className="row">

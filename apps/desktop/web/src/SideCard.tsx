@@ -166,7 +166,7 @@ export function SideCard({ id }: { id: string }) {
               </div>
             )}
             <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
-            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b>{failed}</b></div>}
+            {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b data-error>{failed}</b></div>}
           </div>
         </Section>
       </div>

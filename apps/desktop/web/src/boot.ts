@@ -104,7 +104,7 @@ function createApp(): AppContext {
         return;
       }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
-      // the toast sits below a dialog, and this window is where the user stays
+      // this window is where the user stays, so the picker goes
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }
       if (m.type === 'host.step') { store.getState().hostStep(m.op, m.event); return; }
       if (m.type === 'host.done') { store.getState().hostDone(m.op, m.code); return; }

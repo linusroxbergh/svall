@@ -24,6 +24,8 @@ export const theme = {
   connectGraceMs: 10_000,
   // a toast offering to take something back stands long enough to be read and acted on
   toastActionMs: 9000,
+  // an error stands long enough to be read and copied, and longer while the pointer is over it
+  toastErrorMs: 15_000,
   docSaveMs: 800,                 // a doc is written this long after the last edit
   resourcesFreshMs: 3000,         // a listing read this recently serves the next ask
   card: { margin: 26, easeMs: 160 }, // tokens.css --map-inset and --dur
