@@ -139,6 +139,52 @@ describe('staging', () => {
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record).toMatchObject({ dial: 'worker' });
   });
 
+  it('an archive that comes again finds the move past staging, and wipes nothing of what its install set aside', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    crashAt('adopt.file');
+    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    disarmCrash();
+    w.studio.daemon.kill();
+    expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'installing' });
+    expect(fs.readdirSync(path.join(adoptDir(w.studio.paths, ID), 'original')).length).toBeGreaterThan(0);
+    w.studio.daemon.noAnswer = true;
+    expect(await abortAdopt(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+  });
+
+  it.each(['adopt.dropped', 'adopt.installed'] as const)('%s: a move not over stops a later one, and stays as it was', async (point) => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    crashAt(point);
+    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    disarmCrash();
+    w.studio.daemon.kill();
+    const later = 'hm_laterlater' as never;
+    const packed = await packFleet(w.mac.paths, { ...w.manifest, id: later });
+    expect(await stageAdopt(w.studio.deps, later, packed.sha256, packed.bytes)).toMatchObject({ status: 'pending', phase: 'busy', detail: expect.stringContaining(ID) });
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).not.toBe('aborted');
+    expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(true);
+  });
+
+  it('a rename that fails in the install restores what it had set aside, and the worker is what it was', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const real = fs.renameSync;
+    let left = 3;
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (String(from).includes(`${path.sep}ready${path.sep}`) && --left === 0) throw Object.assign(new Error('EIO: the disk said no'), { code: 'EIO' });
+      real(from, to);
+    });
+    const a = await installAdopt(w.studio.deps, ID, w.enrolment).finally(() => spy.mockRestore());
+    expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: expect.stringContaining('EIO') });
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+    expect(stateOf(w.studio).robots.placed.machine).toBe(STUDIO);
+    expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('rolledback');
+    expect(w.studio.daemon.role).toBe('worker');
+  });
+
   it('holds what it staged under a name Files refuses', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);

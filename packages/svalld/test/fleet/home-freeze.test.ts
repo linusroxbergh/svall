@@ -263,20 +263,20 @@ describe('a frozen home', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('a failure in the freeze releases its own hold, never a freeze that replaced it', async () => {
+  it('a freeze that fails after its driver left leaves a freeze begun since', async () => {
+    const { d, log } = setup();
     let open!: (ok: boolean) => void;
-    const { freeze, log } = setup({ barrier: new Promise<boolean>((r) => { open = r; }) });
+    const barriers = [new Promise<boolean>((r) => { open = r; }), Promise.resolve(true)];
+    const freeze = new HomeFreeze({ ...d, links: { ...d.links, barrier: () => barriers.shift()! } });
     const first = freeze.freeze(ID, STUDIO, holder);
     await vi.waitFor(() => expect(log).toContain('home.freeze'));
     freeze.left(holder);
     await vi.waitFor(() => expect(freeze.active).toBe(false));
-    const second = {};
+    await freeze.freeze('hm_otherother' as HomeMoveId, STUDIO, {});
     open(false);
-    const again = new Promise<void>((r) => { setImmediate(r); });
-    await freeze.freeze('hm_otherother' as HomeMoveId, STUDIO, second).catch(() => undefined);
     await expect(first).rejects.toThrow();
-    await again;
-    expect(log.filter((l) => l === 'resume').length).toBeGreaterThan(0);
+    expect(freeze.active).toBe(true);
+    expect(freeze.refusal('robot.update')?.code).toBe('frozen');
   });
 
   describe('a driver gone while it freezes', () => {
@@ -309,6 +309,32 @@ describe('a frozen home', () => {
       expect(freeze.active).toBe(false);
       expect(freeze.refusal('robot.update')).toBeUndefined();
       expect(log).not.toContain('home.freeze');
+    });
+
+    it('while what the home had taken drains: the worker is never told', async () => {
+      const { freeze, log } = setup();
+      const ended = freeze.admit('robot.update')!;
+      const freezing = freeze.freeze(ID, STUDIO, holder);
+      await vi.waitFor(() => expect(log).toContain('pause'));
+      freeze.left(holder);
+      await vi.waitFor(() => expect(log).toContain('resume'));
+      ended();
+      await expect(freezing).rejects.toThrow(/went away/);
+      expect(log).not.toContain('home.freeze');
+    });
+
+    it('while the store flushes: the phone it served stays on, and nothing says it went off', async () => {
+      let open!: (ok: boolean) => void;
+      const { d, log, paths } = setup({ serving: true });
+      const freeze = new HomeFreeze({ ...d, store: { ...d.store, flush: () => new Promise<boolean>((r) => { open = r; }) } });
+      const freezing = freeze.freeze(ID, STUDIO, holder);
+      await vi.waitFor(() => expect(open).toBeDefined());
+      freeze.left(holder);
+      await vi.waitFor(() => expect(log).toContain('resume'));
+      open(true);
+      await expect(freezing).rejects.toThrow(/went away/);
+      expect(log).not.toContain('phone false');
+      expect(fs.existsSync(paths.homeServed)).toBe(false);
     });
 
     it('while the worker is told: it stops there', async () => {

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
-import { deliverOwed, startDeliveries } from '../../src/fleet/home-far.js';
+import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
 import { abortAdopt, adoptDir, adoptStatus, enter, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
 import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side } from './home-world.js';
@@ -312,6 +312,17 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['worker', 'home']);
     expect(journalLines(w.studio.paths, BACK).at(-1)?.phase).toBe('released');
+  });
+});
+
+describe('whether the old home still holds this move', () => {
+  const FAR_OWED = { id: BACK, ssh: 'ada@studio', svallBase: '/home/ada/.local/share/svall', fleetHome: '/home/ada/.svall' } as never;
+  const facts = (moving?: string) => ({ run: () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, role: 'home', release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, ...(moving && { moving }) }) }) }) as never;
+
+  it('only its own mark says so: another move\'s is none', async () => {
+    expect(await markedThere(facts(BACK), FAR_OWED)).toBe(true);
+    expect(await markedThere(facts('hm_otherother'), FAR_OWED)).toBe(false);
+    expect(await markedThere(facts(), FAR_OWED)).toBe(false);
   });
 });
 

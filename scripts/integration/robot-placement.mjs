@@ -1269,11 +1269,28 @@ function journalsEnded(label, m) {
   const said = sh(m, 'for f in ~/.svall/journal/home/hm_*.ndjson; do case $f in *.driver.ndjson) ;; *) echo "$f $(grep -v \'"phase":"served"\' "$f" | tail -n 1)" ;; esac; done', { ok: false }).stdout;
   for (const line of said.split('\n').filter((l) => l.includes('{'))) {
     const phase = JSON.parse(line.slice(line.indexOf('{'))).phase;
-    check(`${label}: journal on ${m}`, phase === 'done' || phase === 'aborted', () => line);
+    check(`${label}: journal on ${m}`, phase === 'done' || phase === 'aborted' || phase === 'released', () => line);
   }
 }
 
-const homeView = () => ({ L: windows(L), R: windows(R) });
+// each robot as the home holds it: the machine it runs on and its note, which a rollback past a write would lose
+const robotsHeld = (on) => {
+  const { machine } = homeOf(on);
+  return Object.fromEntries(Object.values(call(on, 'state.get').robots).map((r) => [r.id, `${r.machine ?? machine}: ${r.note}`]));
+};
+const sameRobots = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.stringify(Object.entries(b).sort());
+
+const homeView = () => ({ L: windows(L), R: windows(R), robots: robotsHeld(tryHome(L)?.mine ? L : R) });
+
+// where a fault ends. Before the old home's mark nothing can be adopted; past the new home's answer a call-off comes too late, and it goes through
+const BEFORE_MARK = { out: ['adopt.staging', 'adopt.staged', 'mark.written'], back: ['deliver.owed', 'adopt.staging', 'adopt.staged', 'mark.written'] };
+const PAST_ANSWER = ['adopt.installed', 'adopt.started', 'adopt.committed', 'enrol.written', 'deliver.told', ...JOIN];
+const endsOn = (dir, ending) => (ending === 'retry') === (dir === 'out') ? 'remote' : 'local';
+const faultEnds = (dir, point, ending) => {
+  if (BEFORE_MARK[dir].includes(point)) return endsOn(dir, 'abort');
+  if (PAST_ANSWER.includes(point)) return endsOn(dir, 'retry');
+  return endsOn(dir, ending);
+};
 
 // one home takes writes, what ran where it ran still runs, nothing of the move stays on either machine, and the home holds what the fleet held
 function afterMove(label, ids, before, want) {
@@ -1293,14 +1310,26 @@ function afterMove(label, ids, before, want) {
   const off = on === L ? R : L;
   for (let i = 0; i < 40 && !(served(on) && !served(off)); i++) sh(L, 'sleep 0.5');
   check(`${label}: one origin serves the phone, the home`, served(on) && !served(off), () => `home ${served(on)}, the other ${served(off)}`);
+  const held = robotsHeld(on);
+  check(`${label}: every robot where it ran, with its note`, sameRobots(held, before.robots), () => `${brief(held)} vs ${brief(before.robots)}`);
+  // a frozen home answers `mine` too, so only a write says it takes them
+  const [first] = Object.keys(held);
+  const note = `after ${label}`;
+  const wrote = sh(on, `/opt/it/node/bin/node /opt/it/machine.mjs call robot.update '${JSON.stringify({ id: first, note })}'`, { ok: false });
+  check(`${label}: the home takes a write`, wrote.code === 0 && call(on, 'state.get').robots[first]?.note === note, () => `${wrote.code}: ${wrote.stderr.slice(0, 300)}`);
+  let heard;
+  for (let i = 0; i < 120 && heard !== note; i++) { if (i) sh(L, 'sleep 0.5'); heard = call(off, 'state.get').robots[first]?.note; }
+  check(`${label}: the worker hears it from that home`, heard === note, () => `the worker holds ${heard}`);
   ctx.home = home;
 }
 
 // what a person does: at the first answer that says the move is over they stop
-function person(ending) {
+function person(ending, revives = true) {
   for (let i = 0; i < 40; i++) {
-    revive(L);
-    revive(R);
+    if (revives) {
+      revive(L);
+      revive(R);
+    }
     if (settledHomes()) return;
     sh(L, `svall --json fleet home ${ending} </dev/null`, { ok: false });
     if (settledHomes()) return;
@@ -1308,7 +1337,7 @@ function person(ending) {
   }
 }
 
-function homeFault(ids, dir, point, where, ending) {
+function homeFault(ids, dir, point, where, ending, revives = true) {
   placeHome(dir === 'out' ? 'local' : 'remote');
   const machine = where === 'near' ? L : R;
   const before = homeView();
@@ -1318,8 +1347,9 @@ function homeFault(ids, dir, point, where, ending) {
   sh(machine, `rm -f ${FAULT}`);
   check(`${point}: the run reached it`, fired, 'the point was never reached');
   say(`   ${point}, on ${machine}: ${r.code === 0 ? 'went through' : 'stopped'}, ${ending}`);
-  person(ending);
-  afterMove(point, ids, before);
+  person(ending, revives);
+  if (!revives) for (const m of [L, R]) check(`${point}: ${m}'s unit is up with no one starting it`, sh(m, `systemctl --user is-active ${UNIT}`, { ok: false }).code === 0, () => sh(m, `systemctl --user status ${UNIT} | tail -n 5`, { ok: false }).stdout);
+  afterMove(point, ids, before, faultEnds(dir, point, ending));
 }
 
 // a kill, then another in the recovery of what the first left
@@ -1333,7 +1363,7 @@ function recoveryFault(ids, dir, point, after, ending) {
   person(ending);
   check(`${after}, then ${point}: the run reached both`, sh(taking, `test -e ${FAULT}`, { ok: false }).code !== 0, () => `left: ${sh(taking, `cat ${FAULT}`, { ok: false }).stdout} ${r.stdout.slice(-300)}`);
   sh(taking, `rm -f ${FAULT}`);
-  afterMove(point, ids, before);
+  afterMove(point, ids, before, endsOn(dir, ending));
 }
 
 // mission control's robot goes ahead, the move stops and is called off: it stays where it went until a person brings it back, its pane the same
@@ -1369,7 +1399,8 @@ function homeFaults(ids) {
   for (const dir of ['out', 'back']) {
     POINTS[dir].forEach(([point, where], i) => {
       if (!picked(`${dir} ${point}`)) return;
-      const ending = i % 2 ? 'abort' : 'retry';
+      // the same point takes the other ending the other way
+      const ending = (i + (dir === 'back' ? 1 : 0)) % 2 ? 'abort' : 'retry';
       step(`${point}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, ${where}, then ${ending}`, () => homeFault(ids, dir, point, where, ending));
     });
   }
@@ -1378,6 +1409,11 @@ function homeFaults(ids) {
       if (picked(`${dir} ${point}`)) step(`${point}, past ${after}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => recoveryFault(ids, dir, point, after, ending));
     }
     if (picked(`${dir} crew`)) step(`mission control comes back from a move called off, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => crewBack(ids, dir));
+  }
+  // what a person sees with no unit started for them: the recovery's own starts are all that bring a daemon back
+  for (const dir of ['out', 'back']) {
+    if (picked(`${dir} units adopt.stopped`)) step(`adopt.stopped, then abort, no unit started by hand, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => homeFault(ids, dir, 'adopt.stopped', dir === 'out' ? 'far' : 'near', 'abort', false));
+    if (picked(`${dir} units adopt.installed`)) step(`adopt.installed, then retry, no unit started by hand, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => homeFault(ids, dir, 'adopt.installed', dir === 'out' ? 'far' : 'near', 'retry', false));
   }
   for (const dir of ['out', 'back']) {
     if (picked(`${dir} link`)) for (const ending of ['retry', 'abort']) step(`the link drops between mark and adopt, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => linkDrop(ids, dir, ending));
@@ -1414,11 +1450,19 @@ function linkDrop(ids, dir, ending) {
   const [o, t] = [tryHome(old), tryHome(taking)];
   say(`   driver: ${brief(moveSteps(sh(L, 'cat /tmp/drive.ndjson').stdout).filter((e) => e.status === 'fail'))}`);
   check('the old home is frozen under its marker', sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code === 0, () => brief({ o, t }));
+  // what it says of its own move would read as the machine holding the fleet's answer
+  const { id } = JSON.parse(sh(old, 'cat ~/.svall/home-moving.json').stdout);
+  for (const op of ['status', 'abort']) {
+    const said = sh(old, `svall --json fleet ${op} ${id}`, { ok: false });
+    check(`fleet ${op} on the old home refuses`, said.code !== 0 && /fleet home abort/.test(said.stderr), () => `${said.code}: ${said.stdout} ${said.stderr}`);
+  }
+  check('its marker stands, and its journal says nothing of the move', sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code === 0 && sh(old, `test -e ~/.svall/journal/home/${id}.ndjson`, { ok: false }).code !== 0, 'it was written');
   if (dir === 'out') check('remote did not take it', t?.mine === false, () => brief(t));
   else check('local took it, and owes remote the outcome', t?.mine === true && sh(L, 'test -f ~/.svall/home-deliver.json', { ok: false }).code === 0, () => brief(t));
   sh(L, `iptables -D OUTPUT ${block}`, { root: true });
   person(ending);
-  afterMove(`link drop ${dir} ${ending}`, ids, before);
+  // coming back this machine has gone on and taken the fleet by the time it is called off
+  afterMove(`link drop ${dir} ${ending}`, ids, before, dir === 'back' ? 'local' : endsOn(dir, ending));
 }
 
 // the tar killed with the first file out, and the process that ran it: on the far machine a stage over ssh, on this one the driver itself
