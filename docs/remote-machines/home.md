@@ -121,8 +121,56 @@ On wake this Mac dials again, its changes land, and the window reconnects. A reb
 Quit stops this Mac's daemon and its tmux, as on any Mac: the robots here sleep and resume when you open Svall again. The question says so,
 and that "studio's 7 robots keep running". Nothing on studio is touched.
 
+## Starting on a server
+
+The first run offers three things. **Run the fleet on this Mac** is what it always was. **Install Svall on a server and connect
+this Mac** installs the companion as `svall host add` does and leaves the server a fleet's home, then joins it. **Connect to a
+fleet already on a server** joins one a server already runs. Both server paths need Tailscale on both machines, and both join
+before this Mac's fleet has ever started, so nothing here holds anything to lose.
+
+From a terminal, `svall fleet join <ssh>` makes a fleet that holds nothing a worker of the home there: it checks the home,
+takes that fleet's id and a token the home issues, restarts as its worker and ends on the first snapshot. It refuses a fleet
+that holds anything before it writes a thing, so name one that has never been opened: `svall -p <new fleet> fleet join <ssh>`.
+
+## Changing home
+
+Settings → Machines moves a fleet's home to a worker with **Make studio this fleet's home…**, and back with **Bring the fleet
+back to this Mac…**. From a terminal: `svall fleet home` says where it runs, `svall fleet home set studio` moves it there and
+`svall fleet home set local` brings it back.
+
+A move carries the fleet's islands, notes, settings, phone pairing and push keys, and no robot: each runs where it ran and its
+tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. The move
+pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
+window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
+once from its new QR code: it stays paired and pushes keep arriving.
+
+A move refuses until it can go through: the other machine linked, on the same release, with Tailscale, its clock within 5
+minutes and room for the fleet; no robot moving, and no other worker, which you remove and add again from the new home.
+
+### When a move stops
+
+The fleet never has two homes, and nothing is deleted. The machine the fleet leaves writes a marker before anything can take
+the fleet, and from then on it starts as a home only once the other machine has said for good that it did not take it. Whichever
+machine stops, however it stops, what is left is one of these:
+
+- **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied.
+- **Marked, and not taken.** The window says "Finishing the move to studio…", with **Finish the move** and **Abort**
+  (`svall fleet home retry`, `svall fleet home abort`). The old home takes no writes until one of them ends it. An abort works
+  only once the machine that would take the fleet refuses it for good, and that machine then refuses the move for good too.
+- **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
+  that the move went through. The other machine's files stand as they were kept: see below.
+
+Going out, the Mac asks the server how the move ended. Coming back, the server has no route to the Mac, so a server left frozen
+waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends the wait.
+
+Quit during a move ends the window and leaves this Mac's daemon up, as the move has to end. A move is not a backup, and keeps what it replaced:
+the old home's `state.json.home-<id>` and `docs.home-<id>` stay in its fleet home, and `adopt-<id>` holds what was staged until
+the old home links to the new one. Files refuses every `adopt-<id>` folder, as it holds the fleet's keys.
+
 ## Limitations
 
+- A move refuses with a second worker of either kind, and Linux workers of a server home come later.
+- A marked server whose Mac never comes back stays frozen.
 - Svall Dev carries no companion, so **Upgrade** there needs one named by hand: `svall-dev host upgrade studio --release <archive> --allow-unsigned`.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.

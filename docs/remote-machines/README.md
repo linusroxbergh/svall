@@ -1,14 +1,18 @@
 # Remote machines
 
-Svall can move a robot from your Mac to an always-on Linux machine, a **worker** of your fleet, and back: its
+The way to run Svall all day is to install it on a server and connect your Mac. The fleet's [home](home.md), with its islands,
+notes, mission control, scribe and phone link, runs on an always-on Linux machine, and your Mac is a worker that can sleep. The
+first run offers it, or `svall fleet home set` moves a fleet there later.
+
+Svall can also move a robot from your Mac to an always-on Linux machine, a **worker** of your fleet, and back: its
 Claude Code, Codex or OpenCode conversation, its branch, its commits and its uncommitted changes. On the worker the
-robot keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. The fleet stays on the Mac;
-robots on different machines share its islands, cards and map.
+robot keeps working while the Mac sleeps, and the app on the Mac reaches it over ssh. Robots on different machines share
+the fleet's islands, cards and map.
 
 | Page | What it covers |
 | --- | --- |
 | [Setting up a Linux machine](setup.md) | Supported machines, home paths, adding the machine as a worker, your agent setup there, upgrading and removing it |
-| [A fleet whose home is a server](home.md) | The app on a far home: what the window shows, terminals, what happens when the server does not answer, another release there, Quit |
+| [A fleet whose home is a server](home.md) | Starting on a server, changing home and what happens when a move stops. The app on a far home: what the window shows, terminals, what happens when the server does not answer, another release there, Quit |
 | [Moving a robot](placement.md) | Moving a robot there and back, the checks, what travels and what stays, the return, what a robot does while the home is away, what goes wrong, and limitations |
 | [Blockers, warnings and errors](errors.md) | Every code `svall host` and `svall doctor` report, what it means and what to do |
 | [Upgrading and downgrading](migration.md) | What the upgrade changes in your fleet homes, and how to go back |

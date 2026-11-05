@@ -340,6 +340,9 @@ and `input` are ignored.
 
 ## Remote machines
 
+To run Svall all day, install it on a server and connect your Mac: the first run offers it, and the fleet's home then runs there
+while the Mac sleeps. See [a fleet whose home is a server](docs/remote-machines/home.md).
+
 A robot can also run on an always-on Linux machine, a worker of your fleet,
 and keep working there while the Mac sleeps: **Move to** the machine on its
 card, or `svall robot move <id> --machine <name>`, carries its conversation,

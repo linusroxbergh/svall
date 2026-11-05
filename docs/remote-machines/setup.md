@@ -295,6 +295,15 @@ The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like th
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
 
+## A server as the fleet's home
+
+`svall host add <name> --ssh <destination> --as-home` installs the companion as above and enrols nothing, so the machine runs a
+fleet of its own, as its home. `svall fleet join <destination>` on the Mac then makes the Mac its worker. The first run does both,
+under **Install Svall on a server and connect this Mac**. A worker that is already there becomes the home with `svall fleet home
+set <name>`: see [Changing home](home.md#changing-home).
+
+`host add` refuses the fleet's own home, `host remove` keeps it until the fleet is back, and `host upgrade` restarts it as the home it is.
+
 ## The phone while the home is off
 
 A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** under Machines →

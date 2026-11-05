@@ -87,6 +87,20 @@ carries and under which licences, and which risks are accepted. Tests are named 
 | A drop that fills a machine's `/tmp`, tmpfs on many Linux systems, whose failed write would close that worker's link | The home names its size before it sends, and the machine refuses with a sentence what its disk has no room for. | `svalld/test/drops.test.ts` "refuses in words what would not fit, which would otherwise close the link as the write failed", "refuses in words a drop past the disk's room here, and leaves no folder" |
 | The page reading a file of the Mac by naming its path, or a phone sending a drop | The shell serves the page only what was dropped or pasted, a part per request, under a random token, until its last part or 11 minutes past its drop's last read. `drop.part` and `robot.drop` answer the app alone. | `apps/desktop/mac/Tests/SvallTests/DropFilesTests.swift` `testAFileIsReadPartByPartAndLetGoWithItsShortPart`, `testEveryFileOfADropOutlivesTheUploadOfThoseBeforeIt`, `testADropNoOneReadsGoesWhateverOtherDropsDo`, `WebAssetsDropTests`; `svalld/test/drops.test.ts` "refuses a robot that is moving, in the app's words, and a phone" |
 
+### A move of the fleet's home
+
+A move carries `fleet.json`, `state.json`, `docs/`, `agent-profiles/`, `push.json`, `vapid.json`, `mobile-pass`, `mobile-key`,
+`mirror-consent.json`, `retro/` and the journals of finished robot moves, so the new home can push to the paired phone. It never
+carries an agent's login, `.env`, an ssh key, `node.json`, the API token, the hooks, the cache or the outbox. The archive goes over the
+ssh login in base64 on stdin or stdout, never on argv, and is checked against its sha256 before anything is unpacked, with
+every name in it held to that list. It is unpacked at 0700 in `adopt-<id>/` in the fleet home, which Files refuses by name; that
+folder goes once the old home links with the token the move issued, and a later move gives up an older one. A worker token stays
+on stdin and stdout, and `home-moving.json` and `home-deliver.json` join the fleet's key files.
+
+A machine can take a fleet only over the ssh login that reaches it, and the old home starts as a home again only on the word of
+the machine holding the fleet, which refuses that move for good before it says so. The phone's authorization travels as what it was:
+`mobile.logins` empty means this machine's Tailscale owner, which a tagged server has none of, so the effective logins are written out.
+
 ## Release integrity
 
 - **Signing.** A release's `SHA256SUMS` covers every file, `release.json` included, and is signed with
