@@ -7,11 +7,18 @@ import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { installPrefix } from '@svall/svalld/release';
+import { machineId } from '@svall/svalld/machine';
+import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client } from '../client.js';
+import { joinHome } from '../controller/home.js';
+import type { StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
+import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
+import { interactiveSsh, stepLine } from './host.js';
+import { enrollHere, realEnrol } from './worker.js';
 
 export async function withClient<T>(connect: () => Promise<Client>, f: (c: Client) => Promise<T>): Promise<T> {
   const c = await connect();
@@ -68,6 +75,23 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
     .action(async (id: string, o: Facts) => {
       if (!json()) throw new Error('fleet enroll-worker prints a new token for svall worker enroll to read; run it with --json');
       printResult(await enrollWorker(target(), id, o), true);
+    });
+  cmd.command('join').description('make this fleet, empty, a worker of the fleet whose home is at <ssh>; the home never dials this machine')
+    .argument('<ssh>', "the home's ssh destination")
+    .option('--name <name>', 'the name the fleet knows this machine by; this machine\'s own, by default')
+    .option('--home-profile <name>', 'the fleet there, when it is not the private one')
+    .action(async (ssh: string, o: { name?: string; homeProfile?: string }) => {
+      const t = target();
+      const emit = json() ? (e: StepEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); } : (e: StepEvent) => { if (e.status !== 'start') process.stdout.write(`${stepLine(e)}\n`); };
+      const out = await joinHome({ ssh, ...o }, {
+        emit, openMaster: (destination) => SshMaster.open({ destination }), interactiveSsh, registry: MachineRegistry.load(), target: t, me: machineId(), svallBase: installPrefix(),
+        tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
+        enrol: (e, token) => enrollHere(t, e, { ...realEnrol, token: () => Promise.resolve(token), out: (line) => { if (!json()) process.stdout.write(`${line}\n`); } }),
+        state: () => withClient(() => Client.connect(t.home), (c) => c.call('state.get', {})),
+      });
+      if (json()) process.stdout.write(`${JSON.stringify({ outcome: out })}\n`);
+      else process.stdout.write(`${out.result === 'ready' ? 'This fleet runs on the server now, and this machine is its worker.' : out.actions.join('\n')}\n`);
+      if (out.result !== 'ready') process.exitCode = 1;
     });
   return cmd;
 }

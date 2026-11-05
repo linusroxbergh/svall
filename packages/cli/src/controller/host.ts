@@ -70,14 +70,14 @@ export type HostDeps = {
 export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
 
 /** A step that could not finish, with the one thing the user can do about it. */
-class StepError extends Error {
+export class StepError extends Error {
   constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
 }
 
 type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 
 /** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
-class Runner {
+export class Runner {
   readonly actions: string[] = [];
   private readonly setup: StepEvent[] = [];
   private failed?: string;
@@ -122,7 +122,7 @@ class Runner {
 }
 
 /** Runs a flow to its end or to its first blocker, and reports what the user is left holding. */
-async function flow(emit: (e: StepEvent) => void, fn: (run: Runner) => Promise<void>): Promise<HostOutcome> {
+export async function flow(emit: (e: StepEvent) => void, fn: (run: Runner) => Promise<void>): Promise<HostOutcome> {
   const run = new Runner(emit);
   try {
     await fn(run);
@@ -214,14 +214,14 @@ function lingerProbe(out: string, user: string, destination: string): Outcome<bo
     };
 }
 
-async function homeProbe(master: SshMaster): Promise<{ home: string; user: string }> {
+export async function homeProbe(master: SshMaster): Promise<{ home: string; user: string }> {
   const [home, user] = (await probe(master, sh('svall-home', 'printf "%s\\n%s\\n" "$HOME" "$USER"'), '$HOME')).split('\n');
   return { home, user: user?.trim() ?? '' };
 }
 
 // the companion's doctor prints its report and then exits 1 for any failing check, so a report is
 // read whatever the exit code, and only a run that printed none is a failure
-async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[], what: string, env: string[] = []): Promise<T> {
+export async function remoteJson<T>(master: SshMaster, svallBase: string, argv: string[], what: string, env: string[] = []): Promise<T> {
   const r = await master.run([...env, shq(svallExe(svallBase)), ...argv], { timeoutMs: PROBE_TIMEOUT });
   try {
     return JSON.parse(r.stdout) as T;
@@ -545,7 +545,7 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from} (${signedWord(companion.signed)})` };
 }
 
-const remotePaths = (home: string, version: string) => ({
+export const remotePaths = (home: string, version: string) => ({
   archive: path.posix.join(home, '.cache', 'svall', `companion-${version}.tar.gz`),
   staging: path.posix.join(home, '.cache', 'svall', `staging-${version}`),
   svallBase: path.posix.join(home, '.local', 'share', 'svall'),

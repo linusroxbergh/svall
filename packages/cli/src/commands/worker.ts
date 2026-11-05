@@ -61,10 +61,10 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
-type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string };
-type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
+export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string };
+export type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
-const realEnrol: EnrolDeps = {
+export const realEnrol: EnrolDeps = {
   platform: process.platform,
   token: async () => (await readAll(process.stdin)).trim(),
   daemonUp: (t) => daemonRuns(releaseVersion(), () => Client.connect(t.home)),
