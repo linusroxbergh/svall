@@ -22,8 +22,8 @@ const ARG = 'codex:config#model_providers.acme.auth.args[--token]';
 const ODD = { command: 'odd', env: { T: K }, sandbox: { token: 'odd_token_1234567890' } };
 const ODD_FIELDS = ['command', 'env', 'sandbox'].map((f) => `claude:mcp:odd#${f}`);
 
-// a sender and a target that keeps backups, its own record of what the mirror wrote; `copy` a home taking a worker's Copy
-function setup(mode: 'mac' | 'copy' = 'mac') {
+// a sender and a target that keeps backups, its own record of what the mirror wrote; `copy` a home taking a worker's Copy, `dialed` a Linux worker its home dials
+function setup(mode: 'mac' | 'copy' | 'dialed' = 'mac') {
   const home = macHome();
   const w = farHome();
   fs.rmSync(w.overrides, { recursive: true, force: true });
@@ -34,7 +34,7 @@ function setup(mode: 'mac' | 'copy' = 'mac') {
   fs.mkdirSync(path.dirname(stateFile), { recursive: true });
   let seq = 0;
   const consent = new Set<string>();
-  const options = { ...w, stateFile, varsFile, backups, ...(mode === 'copy' && { additive: true, refuse: refuseForeign }) };
+  const options = { ...w, stateFile, varsFile, ...(mode !== 'dialed' && { backups }), ...(mode === 'copy' && { additive: true, refuse: refuseForeign }) };
   const push = async () => {
     const dir = path.join(scratch, String(++seq));
     const tar = `${dir}.tar`;
@@ -449,6 +449,62 @@ describe('a tick over an entry holding a key of the target\'s own', () => {
   });
 });
 
+describe('a config entry under a tick', () => {
+  it('holding a key equal to the sender\'s and more of the target\'s, is copied first as it is replaced', async () => {
+    const s = setup();
+    await s.push();
+    put(s.homeToml, PROVIDER);
+    put(s.macToml, ['[model_providers.acme]', 'name = "Mine"', `http_headers = { "X-Key" = "${K}" }`, ''].join('\n'));
+    s.consent.add(FIELD);
+    await s.push();
+    expect(s.toml().model_providers.acme.name).toBe('Acme');
+    expect(s.holding('name = "Mine"').length).toBeGreaterThan(0);
+  });
+
+  it('holding a copied arg the person moved is no key of theirs: it is replaced and no copy holds it', async () => {
+    const s = setup();
+    put(s.homeToml, LISTED);
+    s.consent.add(ARG);
+    await s.push();
+    fs.writeFileSync(s.macToml, read(s.macToml).replace('"--verbose",', '"--new", "--verbose",'));
+    await s.push();
+    expect(s.toml().model_providers.acme.auth.args).toEqual(['--verbose', '--token', K]);
+    expect(s.holding(K)).toEqual([]);
+  });
+});
+
+describe('a Linux worker its home dials', () => {
+  it('takes a ticked config key by the leaf, a person\'s edit of the entry staying', async () => {
+    const s = setup('dialed');
+    put(s.homeToml, PROVIDER);
+    await s.push();
+    fs.writeFileSync(s.macToml, read(s.macToml).replace('name = "Acme"', 'name = "Edited"'));
+    s.consent.add(FIELD);
+    await s.push();
+    expect(s.toml().model_providers.acme).toMatchObject({ name: 'Edited', http_headers: { 'X-Key': K } });
+  });
+
+  it('reads a whole copy turning per-field, its key unticked, as its own: it stays', async () => {
+    const s = setup('dialed');
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', env: { T: K } }; });
+    s.consent.clear();
+    await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd.env.T).toBe(K);
+  });
+
+  it('is asked to set a variable its literal stands in for, as it does not keep the entry', async () => {
+    const s = setup('dialed');
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.remote.headers.Authorization = `Bearer ${OWN}`; });
+    const plan = mirrorPlan(s.home, s.consent);
+    const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'var:REMOTE_TOKEN')).toMatchObject({ status: 'warn' });
+  });
+});
+
 describe('a held value of another shape than the sender\'s', () => {
   it('a table holding a key stays where the sender holds a list', async () => {
     const s = setup();
@@ -479,8 +535,9 @@ describe('what a kept entry holds', () => {
     put(s.homeToml, PROVIDER.replace(K, '${K}'));
     await s.push();
     put(s.macToml, ['[model_providers.acme]', `http_headers = { "X-Key" = "${OWN}" }`, 'limit = inf', ''].join('\n'));
-    put(s.homeToml, PROVIDER.replace(K, '${K}').replace('name = "Acme"', 'name = "Changed"'));
+    put(s.homeToml, `model = "new"\n\n${PROVIDER.replace(K, '${K}').replace('name = "Acme"', 'name = "Changed"')}`);
     await s.push();
+    expect(s.toml().model).toBe('new');
     expect(s.toml().model_providers.acme.limit).toBe(Infinity);
   });
 });

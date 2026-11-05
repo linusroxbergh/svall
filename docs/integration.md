@@ -108,7 +108,7 @@ each machine's daemon and unit logs.
     which goes on stdin to `svall worker enroll --home-ssh` on remote. The link comes up over the socket sshd makes in
     local's fleet home, `srw-------`. The first push since remote began to dial keeps the file of its own that it replaces
     under `mirror-backup/<date>/`, owner-only, which `fs.read` refuses as it reads the agent setup beside it, and leaves a file only remote has; a second push keeps no copy; a
-    `machines.copySetupFrom` from a window on local lands remote's file on local and keeps what it replaced there. `faults` moves to remote and `svall status` on local shows it there, and a restart
+    `machines.copySetupFrom` from a window on local lands remote's file on local and keeps what it replaced there. A server such a copy brings reads its variable from local's `.env`, in a robot local starts after it, and a push that fails on remote is told by `home.setup` there until one lands. `faults` moves to remote and `svall status` on local shows it there, and a restart
     of remote's daemon and then of local's each relinks, local's with no new dial. A window's side of remote's daemon names its home, reaches its API over the forward it makes, holds the last screen of a robot on the home, and with local's daemon killed and its port file left answers unreachable, until it is back. With remote's dial cut and its tunnel killed, local marks remote
     unreachable, and links again once remote can dial. With remote's master frozen, which ssh alone feels, sshd's old
     listener still takes local's next stream, which no hello answers; within seconds of remote's next dial, local gives
