@@ -6,7 +6,8 @@
 // Each folder holds one release as scripts/release-build.sh writes it. The controller runs on this host from that
 // release's tree with a home of its own; the machine is a clean Ubuntu 24.04 container with an account at that home
 // path and no Node. The run does `svall host add` with the first release, `svall host upgrade` to the second, then
-// `svall setup --rollback` on the machine, checking each time that the unit runs that release and nothing else.
+// `svall setup --rollback` on the machine, checking each time that the unit runs that release and nothing else. Last, the
+// machine takes the fleet by `svall fleet adopt`, and `svall host upgrade` to the second release keeps it the home, with its robot.
 import { spawn, spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -73,8 +74,8 @@ const ENV = {
   ...(process.env.TMPDIR ? { TMPDIR: process.env.TMPDIR } : {}),
 };
 
-function spawnLogged(label, exe, args, env = ENV) {
-  const r = spawnSync(exe, args, { env, encoding: 'utf8', timeout: 30 * 60_000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
+function spawnLogged(label, exe, args, env = ENV, input = undefined) {
+  const r = spawnSync(exe, args, { env, encoding: 'utf8', timeout: 30 * 60_000, maxBuffer: 256 * 1024 * 1024, stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'], input });
   log(`$ ${label} ${args.join(' ')}\n${r.stdout ?? ''}${r.stderr ?? ''}[exit ${r.status ?? r.signal}]\n`);
   if (r.error) throw r.error;
   return { code: r.status, stdout: r.stdout ?? '', stderr: r.stderr ?? '' };
@@ -88,6 +89,7 @@ function svall(rel, ...args) {
 }
 
 const ssh = (...args) => spawnLogged('ssh fresh', path.join(BIN, 'ssh'), ['fresh', '--', ...args]);
+const sshIn = (input, ...args) => spawnLogged('ssh fresh', path.join(BIN, 'ssh'), ['fresh', '--', ...args], ENV, input);
 
 /** A shell on the machine, as root or, with `uid`, as the account beside its user manager, with no login of its own. */
 function root(script, opts = {}) {
@@ -330,6 +332,56 @@ function rollback(a) {
   check('rollback restarts', UNITS.every((u) => done.includes(`systemctl --user restart ${u}`)), () => brief(done));
 }
 
+// the far half of a home move, as `svall fleet home set` drives it: this controller runs no daemon, so its own half stays out
+function adopt(a) {
+  const id = 'hm_freshfresh';
+  // the fleet as the machine last took it, as the controller's own has not started
+  const worker = ssh('cat', '.svall/state.json');
+  check('the machine holds the fleet', worker.code === 0, () => worker.stderr);
+  fs.writeFileSync(path.join(HOME, '.svall', 'state.json'), worker.stdout, { mode: 0o600 });
+  const here = json(svall(a, 'version', '--json').stdout);
+  const there = json(ssh('.local/bin/svall', 'version', '--json').stdout);
+  const manifest = {
+    id, fleetId: there.fleetId ?? json(fs.readFileSync(path.join(HOME, '.svall', 'fleet.json'), 'utf8')).id, from: here.machineId, to: there.machineId, toName: 'fresh', toHome: HOME,
+    record: { name: 'controller', platform: 'darwin', arch: o.arch, home: HOME, svallBase: PREFIX, dial: 'worker' }, phone: { serving: false, logins: [] }, at: Date.now(),
+  };
+  const packed = json(svall(a, 'fleet', 'export', id, '--manifest', JSON.stringify(manifest)).stdout);
+  check('the fleet packs', packed?.sha256 && packed.archive, 'no archive');
+  const staged = json(sshIn(packed.archive, '.local/bin/svall', '--json', 'fleet', 'adopt', id, '--stage', '--sha256', packed.sha256).stdout);
+  check('it stages', staged?.status === 'pending' && staged.phase === 'staged', () => brief(staged));
+  const took = json(ssh('.local/bin/svall', '--json', 'fleet', 'adopt', id, '--home-ssh', 'fresh').stdout);
+  check('it adopts', took?.status === 'adopted', () => brief({ ...took, enrol: undefined }));
+  check('the machine is the home', json(ssh('.local/bin/svall', '--json', 'fleet', 'home').stdout)?.mine === true, 'it does not answer as the home');
+  check('no worker.json', ssh('test', '!', '-e', '.svall/worker.json').code === 0, 'worker.json stays');
+  check('the unit runs no --worker', !root(`systemctl --user cat ${UNITS[0]}`, { uid }).stdout.includes('--worker'), 'the unit still runs --worker');
+}
+
+const TMUX = `${PREFIX}/current/bin/tmux`;
+const panes = () => root(`'${TMUX}' -S '${HOME}/.svall/tmux.sock' list-panes -a -F '#{window_id} #{pane_pid}' | sort`, { uid, ok: false }).stdout;
+
+// a robot's window on the home, whose process an upgrade leaves running
+function keeper() {
+  const made = json(ssh('.local/bin/svall', '--json', 'robot', 'new', '--island', 'home', '--cwd', '.', '--name', 'keeper', '--command', 'sleep\ 86400').stdout);
+  check('a robot on the home', made?.id, 'no robot');
+  return { id: made.id, panes: panes() };
+}
+
+function upgradedHome(b, kept) {
+  const r = svall(b, 'host', 'upgrade', 'fresh', ...named(b), '--json');
+  save('home-upgrade.ndjson', r.stdout);
+  const events = lines(r.stdout);
+  const steps = events.filter((e) => e.step && e.status !== 'start');
+  for (const s of steps) check(`home upgrade ${s.step}`, s.status === 'ok' || s.status === 'skip' || (s.status === 'warn' && s.step === 'mirror:unchecked'), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
+  check('home upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
+  check('it enrolled nothing', steps.find((s) => s.step === 'enrol')?.status !== 'ok', () => brief(steps.find((s) => s.step === 'enrol')));
+  runs('home upgraded', b, [o.first, b.version]);
+  check('still the home', json(ssh('.local/bin/svall', '--json', 'fleet', 'home').stdout)?.mine === true, 'it does not answer as the home');
+  check('still no worker.json', ssh('test', '!', '-e', '.svall/worker.json').code === 0, 'the upgrade made it a worker');
+  check('the unit still runs no --worker', !root(`systemctl --user cat ${UNITS[0]}`, { uid }).stdout.includes('--worker'), 'the upgrade made it a worker');
+  check('its robot stands', json(ssh('.local/bin/svall', '--json', 'status').stdout)?.robots?.[kept.id] !== undefined, 'the robot is gone');
+  check('its process runs on', panes() === kept.panes, () => `${panes()} vs ${kept.panes}`);
+}
+
 let code = 0;
 let server;
 try {
@@ -357,6 +409,9 @@ try {
     runs('rolled back', a, [a.version, b.version]);
     doctor(a, 'rolled back');
   });
+  o.first = a.version;
+  const kept = step(`made the fleet's home by adopt, on ${a.version}`, () => { adopt(a); return keeper(); });
+  step(`host upgrade of the home to ${b.version} keeps it the home and keeps its robot`, () => upgradedHome(b, kept));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);

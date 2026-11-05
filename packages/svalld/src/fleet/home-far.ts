@@ -1,12 +1,13 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { AdoptAnswer, Enrolment, HomeDelivery, HomeFacts, type HomeMoving, type WorkerFile } from '@svall/protocol';
-import { writeDurable } from '../durable.js';
+import { AdoptAnswer, HomeFacts, type HomeMoving, type WorkerFile } from '@svall/protocol';
+import { homePoint } from '../failpoints.js';
 import type { Logger } from '../log.js';
 import { SshMaster } from '../link/ssh.js';
 import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
+import { moveOutcome, readOwed } from './home-move.js';
 
 const ASK_MS = 30_000;
 
@@ -38,42 +39,44 @@ export async function factsAcross(dial: { master(): SshMaster | undefined } | un
 const Settled = z.object({ status: z.string() });
 const FIRST_MS = 5_000;
 const LAST_MS = 5 * 60_000;
+const SETTLE_MS = 120_000;
 
-/** Tells the old home the outcome of a move over ssh: it has no route here, so it waits frozen for this. */
-export async function deliver(paths: Pick<Paths, 'homeDeliver'>, d: HomeDelivery, enrol: Enrolment | undefined, open: (destination: string) => Promise<Pick<SshMaster, 'run' | 'close'>> = (destination) => SshMaster.open({ destination })): Promise<void> {
-  const master = await open(d.ssh);
-  try {
-    const r = await master.run(farSvall(d.svallBase, d.fleetHome, ['fleet', 'settle', d.id, '--outcome', d.outcome]), { timeoutMs: 120_000, ...(enrol && { input: JSON.stringify(enrol) }) });
-    if (r.code !== 0) throw new Error(`svall fleet settle exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
-    Settled.parse(JSON.parse(r.stdout));
-  } finally { await master.close().catch(() => undefined); }
+/** Tells the old home how its move ended, once this machine's journal says: it has no route here, so it waits frozen for this. */
+export async function deliverOwed(paths: Paths, open: (destination: string) => Promise<Pick<SshMaster, 'run' | 'close'>> = (destination) => SshMaster.open({ destination })): Promise<'nothing' | 'waiting' | 'told'> {
+  const owed = readOwed(paths);
+  if (!owed) return 'nothing';
+  const said = moveOutcome(paths, owed.id);
+  if (!said) return 'waiting';
+  // `done`: only a link with the token this move issued says so, and that home has heard
+  if (said.status !== 'done') {
+    const master = await open(owed.ssh);
+    try {
+      const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, ...(said.status === 'adopted' && { input: JSON.stringify(said.enrol) }) });
+      if (r.code !== 0) throw new Error(`svall fleet settle exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
+      Settled.parse(JSON.parse(r.stdout));
+    } finally { await master.close().catch(() => undefined); }
+    homePoint('deliver.told');
+  }
   fs.rmSync(paths.homeDeliver, { force: true });
+  return 'told';
 }
 
-/** Owes the outcome across a stop and a start: the file is on disk before the first try, and each start tries again until it has gone. */
-export function owe(paths: Pick<Paths, 'homeDeliver'>, d: HomeDelivery, enrol?: Enrolment): void {
-  writeDurable(paths.homeDeliver, { ...d, ...(enrol && { enrol }) }, { mode: 0o600 });
-}
-
-/** Keeps trying an outcome this machine owes; the returned function stops it. */
-export function startDeliveries(paths: Pick<Paths, 'homeDeliver'>, log: Pick<Logger, 'error' | 'info'>): () => void {
+/** Tells the old home what this machine owes it, from the moment that is known, for as long as this daemon runs; the returned function stops it. */
+export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1]): () => void {
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
   let ms = FIRST_MS;
   const tick = async () => {
-    let text: string;
-    try { text = fs.readFileSync(paths.homeDeliver, 'utf8'); } catch { return; }
-    const raw = JSON.parse(text) as { enrol?: unknown };
     try {
-      await deliver(paths, HomeDelivery.parse(raw), raw.enrol === undefined ? undefined : Enrolment.parse(raw.enrol));
-      log.info('the old home has heard how the move ended');
+      if (await deliverOwed(paths, open) === 'told') log.info('the old home has heard how the move ended');
+      ms = FIRST_MS;
     } catch (e) {
       log.error(`the old home was not told how the move ended: ${(e as Error).message}; trying again`);
-      if (stopped) return;
       ms = Math.min(ms * 2, LAST_MS);
-      timer = setTimeout(() => void tick(), ms);
-      timer.unref?.();
     }
+    if (stopped) return;
+    timer = setTimeout(() => void tick(), ms);
+    timer.unref?.();
   };
   timer = setTimeout(() => void tick(), FIRST_MS);
   timer.unref?.();

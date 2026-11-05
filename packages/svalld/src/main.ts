@@ -15,7 +15,7 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, startDeliveries } from './fleet/home-far.js';
-import { homeGate } from './fleet/home-move.js';
+import { homeGate, landed } from './fleet/home-move.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { startHookReceiver } from './hooks/receiver.js';
@@ -266,6 +266,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
       void phone?.sync(machine);
       void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c) }, machine);
+      void landed({ paths }, machine).catch((e: Error) => log.error(`${machine}: ${e.message}`));
     },
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),

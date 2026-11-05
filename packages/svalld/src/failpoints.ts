@@ -47,19 +47,21 @@ export const HOME_FAILPOINTS = [
   'adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed',
   'restore.file', 'restore.done', 'abort.recorded',
   'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done',
-  'mark.written', 'enrol.written',
+  'mark.written', 'enrol.written', 'move.marked', 'deliver.owed', 'deliver.told',
 ] as const;
 export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
 /** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */
 export class HomeCrash extends Error {}
 let homeArmed: ((name: HomeFailpoint) => void) | undefined;
-/** A crash in a test falls here, or in the integration run, which names a failpoint in a file in the fleet home that this process dies on once. */
+/** A crash in a test falls here, or in the integration run, which names a failpoint in a file in the fleet home that this process dies on once, or with `stop` after the name, stands still on until it is continued. */
 export function homePoint(name: HomeFailpoint): void {
   homeArmed?.(name);
   const file = path.join(svallHome(), 'home-fault');
-  if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8').trim() !== name) return;
+  if (!fs.existsSync(file)) return;
+  const [point, how] = fs.readFileSync(file, 'utf8').trim().split(' ');
+  if (point !== name) return;
   fs.rmSync(file, { force: true });
-  process.kill(process.pid, 'SIGKILL');
+  process.kill(process.pid, how === 'stop' ? 'SIGSTOP' : 'SIGKILL');
 }
 export function armHomeFailpoints(hook: (name: HomeFailpoint) => void): () => void {
   homeArmed = hook;

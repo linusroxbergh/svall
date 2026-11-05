@@ -5,7 +5,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
-  AdoptAnswer, Enrolment, HomeManifest, HomeMoving, MachineRecord, migrateState, relabelHome, WorkerFile,
+  AdoptAnswer, Enrolment, HomeDelivery, HomeManifest, HomeMoving, MachineRecord, migrateState, relabelHome, WorkerFile,
   type FleetState, type HomeMoveId, type MachineId,
 } from '@svall/protocol';
 import { repoRootOf, repoSlug } from '../docs.js';
@@ -71,7 +71,7 @@ export type HomeDaemon = {
 export type AdoptDeps = { paths: Paths; me: MachineId; daemon: HomeDaemon; registryDir?: string };
 
 
-const readManifest = (p: Paths, id: string): HomeManifest => HomeManifest.parse(JSON.parse(fs.readFileSync(path.join(adoptDir(p, id), 'incoming', MANIFEST), 'utf8')));
+export const readManifest = (p: Paths, id: string): HomeManifest => HomeManifest.parse(JSON.parse(fs.readFileSync(path.join(adoptDir(p, id), 'incoming', MANIFEST), 'utf8')));
 
 const notAdopted = (detail?: string): AdoptAnswer => ({ status: 'not-adopted', ...(detail && { detail }) });
 const pending = (phase: string, detail?: string): AdoptAnswer => ({ status: 'pending', phase, ...(detail && { detail }) });
@@ -116,6 +116,8 @@ export function stageAdopt(d: AdoptDeps, id: HomeMoveId, sha256: string, archive
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
     if (at === 'installing' || at === 'installed' || at === 'staged' || at === 'rolledback') return pending(at);
+    const busy = refuseOlder(p, id);
+    if (busy) return pending('busy', `move ${busy} is not over here`);
     enter(p, id, 'staging');
     homePoint('adopt.staging');
     const dir = adoptDir(p, id);
@@ -138,6 +140,22 @@ export function stageAdopt(d: AdoptDeps, id: HomeMoveId, sha256: string, archive
     homePoint('adopt.staged');
     return pending('staged');
   });
+}
+
+const STALE = new Set<AdoptPhase>(['staging', 'staged', 'rolledback']);
+const moveIds = (p: Pick<Paths, 'homeMoves'>): string[] => (fs.existsSync(p.homeMoves) ? fs.readdirSync(p.homeMoves) : []).filter((n) => !n.endsWith('.driver.ndjson')).map((n) => n.replace(/\.ndjson$/, ''));
+
+// a home asks for one move at a time, so an archive of an earlier one was given up with its driver and holds keys for nothing: it is refused
+// for good. One that has begun to install is not over, and stops this one
+function refuseOlder(p: Paths, id: string): string | undefined {
+  for (const other of moveIds(p).filter((m) => m !== id)) {
+    const at = lastPhase(p, other);
+    if (at === 'installing' || at === 'installed') return other;
+    if (at === undefined || !STALE.has(at)) continue;
+    enter(p, other, 'aborted', 'a later move came');
+    fs.rmSync(adoptDir(p, other), { recursive: true, force: true });
+  }
+  return undefined;
 }
 
 // the outbox entries of this worker its home has not taken: they would be lost with the outbox unless they are of what a move carries
@@ -429,7 +447,7 @@ export function abortAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
 }
 
 /** The move has landed on both sides: what was staged here goes, keys and all. */
-export function confirmAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
+export function confirmAdopt(d: Pick<AdoptDeps, 'paths'>, id: HomeMoveId): Promise<AdoptAnswer> {
   const p = d.paths;
   return serialized(p, () => {
     const at = lastPhase(p, id);
@@ -438,6 +456,37 @@ export function confirmAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer>
     fs.rmSync(adoptDir(p, id), { recursive: true, force: true });
     return Promise.resolve({ status: 'done' });
   });
+}
+
+/** The old home has linked with the token its move issued, so it landed: what its move staged here goes, keys and all. */
+export async function landed(d: Pick<AdoptDeps, 'paths'>, from: MachineId): Promise<void> {
+  for (const id of moveIds(d.paths)) {
+    if (lastPhase(d.paths, id) === 'adopted' && readManifest(d.paths, id).from === from) await confirmAdopt(d, id as HomeMoveId);
+  }
+}
+
+/** How move `id` ended here by its journal, undefined while it can still go either way: what the old home is told. */
+export function moveOutcome(p: Paths, id: string): Exclude<AdoptAnswer, { status: 'pending' }> | undefined {
+  const at = lastPhase(p, id);
+  if (at === 'aborted') return { status: 'not-adopted' };
+  if (at === 'done') return { status: 'done' };
+  if (at === 'adopted') return adopted(p, id) as Extract<AdoptAnswer, { status: 'adopted' }>;
+  return undefined;
+}
+
+export function readOwed(p: Pick<Paths, 'homeDeliver'>): HomeDelivery | undefined {
+  let text: string;
+  try { text = fs.readFileSync(p.homeDeliver, 'utf8'); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+    throw e;
+  }
+  return HomeDelivery.parse(JSON.parse(text));
+}
+
+/** The machine taking the fleet owes the old home the outcome: on the disk before that home's mark, as nothing else could thaw it. */
+export function owe(p: Pick<Paths, 'homeDeliver'>, d: HomeDelivery): void {
+  writeDurable(p.homeDeliver, d, { mode: 0o600 });
+  homePoint('deliver.owed');
 }
 
 // ---------------------------------------------------------------------------------------- the machine the fleet leaves
@@ -455,6 +504,50 @@ export function readMarker(p: Pick<Paths, 'homeMoving'>): HomeMoving | undefined
 export function writeMarker(p: Pick<Paths, 'homeMoving' | 'homeMoves'>, m: HomeMoving): void {
   writeDurable(p.homeMoving, m, { mode: 0o600 });
   homePoint(m.enrol ? 'enrol.written' : 'mark.written');
+}
+
+// a daemon that ended may be about to start: its lock held, a start never meets a marker written after its join
+async function withoutDaemon(p: Paths, id: string, what: (held: HomeMoving) => void): Promise<void> {
+  const unlock = await waitForDaemonLock(p);
+  try {
+    const held = readMarker(p);
+    if (held?.id === id) what(held);
+  } finally { unlock(); }
+}
+
+/** The outcome `adopted` where this fleet's next start takes it, for a daemon that does not answer. */
+export const writeEnrol = (p: Paths, id: string, enrol: Enrolment): Promise<void> => withoutDaemon(p, id, (held) => writeMarker(p, { ...held, enrol }));
+
+/** This machine's own record that a move it left is off, before the marker goes. */
+export function dropMarker(p: Paths, id: string): void {
+  enter(p, id, 'aborted');
+  fs.rmSync(p.homeMoving, { force: true });
+}
+
+export type Settling = {
+  /** This fleet's daemon takes the outcome itself; each rejects when none answers. */
+  join(enrol: Enrolment): Promise<unknown>;
+  thaw(): Promise<unknown>;
+  start(): Promise<void>;
+};
+
+/** Told by the machine that took the fleet how a move ended, as often as it takes; what has heard already says `done`. */
+export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAnswer, { status: 'adopted' | 'not-adopted' }>, d: Settling): Promise<{ status: string }> {
+  if (readMarker(p)?.id !== id) return { status: 'done' };
+  if (told.status === 'adopted') {
+    await d.join(told.enrol).catch((e: unknown) => {
+      if (e instanceof Crash) throw e;
+      return writeEnrol(p, id, told.enrol);
+    });
+    await d.start();
+    return { status: 'adopted' };
+  }
+  await d.thaw().catch(async (e: unknown) => {
+    if (e instanceof Crash) throw e;
+    await withoutDaemon(p, id, () => dropMarker(p, id));
+    await d.start();
+  });
+  return { status: 'not-adopted' };
 }
 
 /** The fleet's files as an archive: only done moves, the running ones' journals being a machine's own. */
@@ -486,8 +579,8 @@ export async function packFleet(p: Paths, m: HomeManifest): Promise<{ sha256: st
   return { bytes, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
 }
 
-/** Whether this machine has taken the fleet in or was left by it, for a check that wants nothing under way. */
-export const moveInFlight = (p: Paths): string | undefined => readMarker(p)?.id;
+/** The move this machine waits on, as the one the fleet leaves or the one that owes it the outcome, for a check that wants nothing under way. */
+export const moveInFlight = (p: Paths): string | undefined => readMarker(p)?.id ?? readOwed(p)?.id;
 
 /**
  * The old home's install, from the state as it stood when its daemon stopped: run again it derives the same files from the

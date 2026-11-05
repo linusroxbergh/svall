@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { emptyState, MachineId, migrateState, relabelHome, WorkerFile, type Enrolment, type FleetState, type HomeManifest, type HomeMoveId, type HomeMoving, type Island, type Robot } from '@svall/protocol';
-import { homeGate, packFleet, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { homeGate, installAdopt, packFleet, stageAdopt, writeMarker, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { dialSocket, resolvePaths, type Paths } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -126,6 +126,20 @@ export async function world(): Promise<{ mac: Side; studio: Side; manifest: Home
     home: STUDIO_RECORD as never,
   });
   return { mac, studio, manifest, archive: { bytes: packed.bytes, sha256: packed.sha256 }, enrolment };
+}
+
+/** The fleet moved out for real: studio its home, the Mac a worker of it that took the join at a start. */
+export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
+  const w = await world();
+  await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+  await w.mac.daemon.stop();
+  writeMarker(w.mac.paths, marker());
+  const out = await installAdopt(w.studio.deps, ID, w.enrolment);
+  if (out.status !== 'adopted') throw new Error(out.status);
+  writeMarker(w.mac.paths, { ...marker(), enrol: out.enrol });
+  await w.mac.daemon.start();
+  if (w.mac.daemon.role !== 'worker' || w.studio.daemon.role !== 'home') throw new Error(`${w.mac.daemon.role}, ${w.studio.daemon.role}`);
+  return w;
 }
 
 export const marker = (): HomeMoving => ({

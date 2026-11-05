@@ -2,7 +2,7 @@
 //
 //   node scripts/integration/robot-placement.mjs [--archive <companion.tar.gz>] [--image <tag>] [--out <dir>]
 //                                                [--steps all|<n>,...] [--scenarios all|none|kill|drop|<fault>@<phase>,...]
-//                                                [--keep] [--prefix <name>]
+//                                                [--points <regex>] [--keep] [--prefix <name>]
 //
 // Two Ubuntu 24.04 containers: `svall-local`, the home, set up from the companion built from this checkout, and
 // `svall-remote`, made its worker by `svall host add`; their accounts have different homes, as a Mac's and a Linux
@@ -728,6 +728,26 @@ function dialedSetup(ids) {
 
   for (const m of [L, R]) sh(m, `rm -f ${RULE} ~/.claude/rules/it-only-here.md`);
 }
+// a window on a machine: its daemon's API and, over the forward that daemon makes, the home's
+const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
+const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
+const opens = `
+  import fs from 'node:fs';
+  const home = process.env.HOME + '/.svall';
+  const open = (port, token) => new Promise((resolve, reject) => {
+    const ws = new WebSocket('ws://127.0.0.1:' + port);
+    const waiting = new Map();
+    let n = 1;
+    const call = (method, params = {}) => new Promise((ok) => { const id = n++; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); });
+    ws.onopen = () => ws.send(JSON.stringify({ token }));
+    ws.onerror = () => reject(new Error('no socket on ' + port));
+    ws.onmessage = (ev) => {
+      const m = JSON.parse(ev.data);
+      if (m.id === 0) return resolve({ call, ws, protocol: m.result.protocol });
+      if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+    };
+  });
+  const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());`;
 
 function dialOut(ids) {
   const ip = (m) => sh(m, `getent hosts ${m} | cut -d' ' -f1`).stdout.trim();
@@ -771,25 +791,6 @@ console.log(a.socket);
     check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
 
     // a window on remote: what its daemon says of the home, then the home's own API over the forward it makes
-    const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
-    const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
-    const opens = `
-      import fs from 'node:fs';
-      const home = process.env.HOME + '/.svall';
-      const open = (port, token) => new Promise((resolve, reject) => {
-        const ws = new WebSocket('ws://127.0.0.1:' + port);
-        const waiting = new Map();
-        let n = 1;
-        const call = (method, params = {}) => new Promise((ok) => { const id = n++; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); });
-        ws.onopen = () => ws.send(JSON.stringify({ token }));
-        ws.onerror = () => reject(new Error('no socket on ' + port));
-        ws.onmessage = (ev) => {
-          const m = JSON.parse(ev.data);
-          if (m.id === 0) return resolve({ call, ws, protocol: m.result.protocol });
-          if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
-        };
-      });
-      const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());`;
     const ask = `${opens}
       const first = await here.call('fleet.home');
       const a = (await here.call('home.connection', { retry: true })).result;
@@ -1172,6 +1173,8 @@ function homeMoves(ids, fx) {
   sh(L, `svall robot wait ${crew} --until idle --timeout 60`);
   const phone = call(L, 'mobile.set', { enabled: true });
   check('the phone serves on local', phone.serving === true, () => brief(phone));
+  call(L, 'push.subscribe', { endpoint: 'https://push.example/phone', keys: { p256dh: 'p256dh', auth: 'auth' }, statuses: ['done'] });
+  check('a push subscription to carry', sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout.includes('push.example'), 'push.json holds none');
   const before = { L: windows(L), R: windows(R), push: sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout, pass: sh(L, 'cat ~/.svall/mobile-pass').stdout };
   const robots = snap(L, true).robots.map((r) => r.id);
   const steps = setHome(L, 'remote');
@@ -1218,45 +1221,106 @@ function homeBack(ids, again = true) {
 }
 
 // a process dies at each boundary; whatever is left, one home answers once a person has retried or called it off
+const JOIN = ['join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done'];
+const INSTALL = ['adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed'];
+// where each runs: `out` from the home on local to remote, `back` from remote to local, which only local can drive
 const POINTS = {
-  // where each side of a move runs it
-  out: { far: ['adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed'], near: ['enrol.written'] },
-  join: { daemon: ['join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done'] },
+  out: [
+    ['adopt.staged', 'far'], ...INSTALL.map((p) => [p, 'far']),
+    ['mark.written', 'near'], ['move.marked', 'near'], ['enrol.written', 'near'], ...JOIN.map((p) => [p, 'near']),
+  ],
+  back: [
+    ['deliver.owed', 'near'], ['move.marked', 'near'], ['adopt.staged', 'near'], ...INSTALL.map((p) => [p, 'near']), ['deliver.told', 'near'],
+    ['mark.written', 'far'], ['enrol.written', 'far'], ...JOIN.map((p) => [p, 'far']),
+  ],
 };
 
-function homeFault(ids, point, machine) {
+const revive = (m) => sh(m, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
+const tryHome = (m) => { try { return JSON.parse(sh(m, 'svall --json fleet home', { ok: false }).stdout); } catch { return undefined; } };
+const moveLeft = (m) => sh(m, 'ls -d ~/.svall/home-moving.json ~/.svall/home-deliver.json ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout.trim();
+const settledHomes = () => {
+  const [a, b] = [tryHome(L), tryHome(R)];
+  return a && b && a.mine !== b.mine && !moveLeft(L) && !moveLeft(R);
+};
+const homeAt = () => (tryHome(L)?.mine ? 'local' : 'remote');
+function placeHome(where) {
+  if (homeAt() !== where) setHome(L, where);
+  ctx.home = where;
+}
+
+// each move this machine has a part in ended, and none stands between
+function journalsEnded(label, m) {
+  const said = sh(m, 'for f in ~/.svall/journal/home/hm_*.ndjson; do case $f in *.driver.ndjson) ;; *) echo "$f $(tail -n 1 "$f")" ;; esac; done', { ok: false }).stdout;
+  for (const line of said.split('\n').filter((l) => l.includes('{'))) {
+    const phase = JSON.parse(line.slice(line.indexOf('{'))).phase;
+    check(`${label}: journal on ${m}`, phase === 'done' || phase === 'aborted', () => line);
+  }
+}
+
+const homeView = () => ({ L: windows(L), R: windows(R) });
+
+// one home takes writes, what ran where it ran still runs, nothing of the move stays on either machine, and the home holds what the fleet held
+function afterMove(label, ids, before, want) {
+  for (let i = 0; i < 40 && !settledHomes(); i++) sh(L, 'sleep 3');
+  const home = homeAt();
+  const on = home === 'local' ? L : R;
+  oneHome(on, ids);
+  if (want) check(`${label}: where it ended`, home === want, () => `the home is on ${home}, not ${want}`);
+  check(`${label}: nothing of the move stays`, !moveLeft(L) && !moveLeft(R), () => `${moveLeft(L)} ${moveLeft(R)}`);
+  journalsEnded(label, L);
+  journalsEnded(label, R);
+  const kept = (was, is) => was.split('\n').filter(Boolean).every((w) => is.includes(w));
+  check(`${label}: local's windows stay`, kept(before.L, windows(L)), () => `${windows(L)} vs ${before.L}`);
+  check(`${label}: remote's windows stay`, kept(before.R, windows(R)), () => `${windows(R)} vs ${before.R}`);
+  check(`${label}: the home holds the push keys`, sh(on, 'cat ~/.svall/push.json', { ok: false }).stdout === ctx.push && sh(on, 'cat ~/.svall/mobile-pass').stdout === ctx.pass, 'they differ');
+  ctx.home = home;
+}
+
+// what a person does: at the first answer that says the move is over they stop
+function person(ending) {
+  for (let i = 0; i < 40; i++) {
+    revive(L);
+    revive(R);
+    if (settledHomes()) return;
+    sh(L, `svall --json fleet home ${ending} </dev/null`, { ok: false });
+    if (settledHomes()) return;
+    sh(L, 'sleep 3');
+  }
+}
+
+function homeFault(ids, dir, point, where, ending) {
+  placeHome(dir === 'out' ? 'local' : 'remote');
+  const machine = where === 'near' ? L : R;
+  const before = homeView();
   sh(machine, `echo ${point} > ${FAULT}`);
-  const r = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
+  const r = sh(L, `svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} </dev/null`, { ok: false });
+  const fired = sh(machine, `test -e ${FAULT}`, { ok: false }).code !== 0;
   sh(machine, `rm -f ${FAULT}`);
-  say(`   ${point}: ${r.code === 0 ? 'went through' : 'stopped'}`);
-  // what a person does: look again until the outcome is known, then the supervisor has settled it
-  for (let i = 0; i < 40; i++) {
-    const a = homeOf(L);
-    if (a.machine === ids.remote || !JSON.parse(sh(L, 'svall --json fleet home abort', { ok: false }).stdout || '{}').moving) break;
-    sh(L, 'sleep 3');
-  }
-  sh(R, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
-  sh(L, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
-  for (let i = 0; i < 40; i++) {
-    const [a, b] = [homeOf(L), homeOf(R)];
-    if (a.mine !== b.mine) break;
-    sh(L, 'sleep 3');
-  }
-  const home = homeOf(L).mine ? L : R;
-  oneHome(home, ids);
-  const pending = sh(R, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0 || sh(L, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0;
-  check(`${point}: no marker left`, !pending, 'a marker stays');
-  // back to where the next begins
-  if (home === R) homeBack(ids, false);
-  else ctx.home = 'local';
+  check(`${point}: the run reached it`, fired, 'the point was never reached');
+  say(`   ${point}, on ${machine}: ${r.code === 0 ? 'went through' : 'stopped'}, ${ending}`);
+  person(ending);
+  afterMove(point, ids, before);
 }
 
 function homeFaults(ids) {
-  if (ctx.home === 'remote') homeBack(ids);
-  for (const point of POINTS.out.far) step(`${point}, on remote`, () => homeFault(ids, point, R));
-  for (const point of POINTS.join.daemon) step(`${point}, on local`, () => homeFault(ids, point, L));
+  const crew = Object.values(JSON.parse(sh(L, 'svall --json status').stdout).robots).find((r) => r.name === 'crew');
+  if (crew) sh(tryHome(L)?.mine ? L : R, `svall robot close ${crew.id}`, { ok: false });
+  ctx.pass = sh(tryHome(L)?.mine ? L : R, 'cat ~/.svall/mobile-pass').stdout;
+  ctx.push = sh(tryHome(L)?.mine ? L : R, 'cat ~/.svall/push.json', { ok: false }).stdout;
+  for (const dir of ['out', 'back']) {
+    POINTS[dir].forEach(([point, where], i) => {
+      if (o.points && !new RegExp(o.points).test(`${dir} ${point}`)) return;
+      const ending = i % 2 ? 'abort' : 'retry';
+      step(`${point}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, ${where}, then ${ending}`, () => homeFault(ids, dir, point, where, ending));
+    });
+  }
+  for (const dir of ['out', 'back']) {
+    for (const ending of ['retry', 'abort']) step(`the link drops between mark and adopt, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => linkDrop(ids, dir, ending));
+    step(`a kill inside the tar's extraction, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => tarKill(ids, dir));
+  }
   // a delayed adopt against an abort: the abort answered, the staged archive refused for good
   step('a delayed adopt against an abort', () => {
+    placeHome('local');
     const id = 'hm_delayedabc';
     const answered = JSON.parse(sh(R, `svall --json fleet status ${id}`).stdout);
     check('an id never heard of is refused', answered.status === 'not-adopted', () => brief(answered));
@@ -1264,6 +1328,116 @@ function homeFaults(ids) {
     check('the adopt that comes late is refused', late.status === 'not-adopted', () => brief(late));
     oneHome(L, ids);
   });
+}
+
+// the driver stands still right after the old home's mark; the link goes, it goes on, and it cannot reach the far side
+function linkDrop(ids, dir, ending) {
+  placeHome(dir === 'out' ? 'local' : 'remote');
+  const before = homeView();
+  const [old, taking] = dir === 'out' ? [L, R] : [R, L];
+  sh(L, `echo 'move.marked stop' > ${FAULT}`);
+  sh(L, `nohup svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} > /tmp/drive.ndjson 2>&1 </dev/null &`);
+  const stopped = () => sh(L, "ps -eo stat=,args= | grep 'fleet home [s]et' | grep -q '^T'", { ok: false }).code === 0;
+  for (let i = 0; i < 240 && !stopped(); i++) sh(L, 'sleep 0.5');
+  check('the driver stands still after the mark', stopped(), () => sh(L, 'cat /tmp/drive.ndjson').stdout.slice(-600));
+  const block = `-p tcp -d ${ipOf(R)} --dport 22 -j DROP`;
+  sh(L, `iptables -I OUTPUT ${block}`, { root: true });
+  sh(L, "pkill -CONT -f 'fleet home [s]et'", { ok: false });
+  for (let i = 0; i < 300 && sh(L, "pgrep -f 'fleet home [s]et'", { ok: false }).code === 0; i++) sh(L, 'sleep 1');
+  check('the driver ends, saying so', sh(L, "pgrep -f 'fleet home [s]et'", { ok: false }).code !== 0, 'it never returned');
+  // cut off: the old home has not thawed, and only the machine that could take the fleet can take writes
+  const [o, t] = [tryHome(old), tryHome(taking)];
+  say(`   driver: ${brief(moveSteps(sh(L, 'cat /tmp/drive.ndjson').stdout).filter((e) => e.status === 'fail'))}`);
+  check('the old home is frozen under its marker', sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code === 0, () => brief({ o, t }));
+  if (dir === 'out') check('remote did not take it', t?.mine === false, () => brief(t));
+  else check('local took it, and owes remote the outcome', t?.mine === true && sh(L, 'test -f ~/.svall/home-deliver.json', { ok: false }).code === 0, () => brief(t));
+  sh(L, `iptables -D OUTPUT ${block}`, { root: true });
+  person(ending);
+  afterMove(`link drop ${dir} ${ending}`, ids, before);
+}
+
+// the tar killed with the first file out, and the process that ran it: on the far machine a stage over ssh, on this one the driver itself
+function tarKill(ids, dir) {
+  placeHome(dir === 'out' ? 'local' : 'remote');
+  const before = homeView();
+  const taking = dir === 'out' ? R : L;
+  const old = dir === 'out' ? L : R;
+  const shim = '#!/bin/sh\ncase "$1" in\n  -x) /usr/bin/tar "$@" fleet.json; rm -f /usr/local/bin/tar; kill -9 $PPID $$ ;;\n  *) exec /usr/bin/tar "$@" ;;\nesac\n';
+  sh(taking, 'cat > /usr/local/bin/tar && chmod 755 /usr/local/bin/tar', { root: true, input: shim });
+  const r = sh(L, `svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} </dev/null`, { ok: false });
+  const fired = sh(taking, 'test -e /usr/local/bin/tar', { ok: false }).code !== 0;
+  sh(taking, 'rm -f /usr/local/bin/tar', { root: true });
+  check('the tar was killed inside its extraction', fired, () => `the shim is still there: ${r.stdout.slice(-400)}`);
+  check('the driver did not go on', r.code !== 0, () => r.stdout.slice(-400));
+  // nothing has been marked, so its daemon goes on as the home, and no marker stands
+  for (let i = 0; i < 20 && sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code === 0; i++) sh(L, 'sleep 1');
+  check('the old home holds no marker', sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code !== 0, 'a marker stands');
+  const takes = call(old, 'mobile.get');
+  check('the old home answers', takes !== undefined, 'no answer');
+  if (dir === 'back') {
+    // the driver died with it, so what it half unpacked waits for the next move, which gives it up
+    check('the half unpacked archive is where Files refuses it', sh(L, 'ls -d ~/.svall/adopt-*/unpacked', { ok: false }).code === 0, 'nothing staged');
+    setHome(L, 'local');
+    ctx.home = 'local';
+    setHome(L, 'remote');
+    ctx.home = 'remote';
+    afterMove('tar kill back, then a move each way', ids, before, 'remote');
+    return;
+  }
+  afterMove('tar kill out', ids, before, 'local');
+}
+
+// three terminals on the far home, the way the app attaches them: the master goes, every terminal comes back to its pane, and a copy in a far pane reaches this machine's terminal
+function terminalsAcross(ids) {
+  placeHome('remote');
+  const robots = ['t1', 't2', 't3'].map((name) => JSON.parse(sh(R, `svall --json robot new --island home --cwd ~/.svall/home --name ${name} --claude`).stdout).id);
+  for (const id of robots) sh(R, `svall robot wait ${id} --until idle --timeout 60`);
+  const onTerm = (args) => sh(L, `tmux -L term ${args}`, { ok: false });
+  const panes = () => sh(R, "~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock list-windows -a -F '#{session_name} #{pane_pid} #{pane_tty}'", { ok: false }).stdout;
+  const clients = () => sh(R, "~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock list-clients -F '#{session_name}'", { ok: false }).stdout.split('\n').filter(Boolean);
+  const pidsBefore = panes();
+  onTerm('kill-server');
+  check('the terminal starts', onTerm('new-session -d -s holder').code === 0, 'tmux');
+  onTerm('set -s set-clipboard on');
+  const attach = () => {
+    const a = window(L, `${opens}
+      const c = (await here.call('home.connection', { retry: true })).result;
+      if (c.state !== 'connected') { console.log(JSON.stringify({ state: c.state, detail: c.detail })); process.exit(0); }
+      const far = await open(c.port, c.token);
+      const attached = [];
+      for (const id of ${JSON.stringify(robots)}) attached.push((await far.call('term.attach', { id })).result);
+      console.log(JSON.stringify({ state: c.state, ssh: c.ssh, controlSocket: c.controlSocket, attached }));
+      process.exit(0);`);
+    return a;
+  };
+  const line = (c, a) => `env TERM=xterm-256color ssh -S ${shq(c.controlSocket)} -o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt -- ${shq(c.ssh)} ${shq(shq(a.tmux))} -S ${shq(shq(a.socket))} attach -t ${shq(shq(`=${a.session}`))}`;
+  const openAll = (c) => { for (const a of c.attached) onTerm(`new-window -d ${shq(line(c, a))}`); };
+  const waitFor = (label, f, seconds = 60) => {
+    for (let i = 0; i < seconds * 2; i++) { if (f()) return true; sh(L, 'sleep 0.5'); }
+    check(label, false, 'it did not happen');
+    return false;
+  };
+  let c = attach();
+  check('the window reaches the home', c.state === 'connected' && c.attached?.length === 3 && c.attached.every((a) => a.socket && a.session), () => brief(c));
+  openAll(c);
+  waitFor('three terminals attach', () => clients().length >= 3);
+  check('each attached to its own session', new Set(clients()).size >= 3, () => brief(clients()));
+
+  sh(L, `pkill -9 -f ${shq(`ssh .*-M -S ${c.controlSocket}`)}`, { ok: false });
+  waitFor('the terminals end with the master', () => clients().length === 0, 90);
+  const tries = [];
+  waitFor('the master comes back', () => { c = attach(); tries.push(c.state); return c.state === 'connected'; }, 90);
+  say(`   back after ${tries.length} tries: ${[...new Set(tries)].join(', ')}`);
+  openAll(c);
+  waitFor('every terminal comes back', () => clients().length >= 3);
+  check('the same panes, the agents never restarted', panes().split('\n').filter(Boolean).every((p) => pidsBefore.includes(p)), () => `${panes()} vs ${pidsBefore}`);
+
+  const tty = panes().split('\n').find((l) => l.includes(c.attached[0].session))?.split(' ')[2];
+  check('a pane has a tty', tty?.startsWith('/dev/'), () => panes());
+  sh(R, `printf '\\033]52;c;YnktZmFy\\a' > ${tty}`);
+  waitFor('a copy in a far pane reaches this terminal', () => onTerm('show-buffer').stdout.trim() === 'by-far');
+  onTerm('kill-server');
+  for (const id of robots) sh(R, `svall robot close ${id}`, { ok: false });
 }
 
 // a machine set up first, then joined
@@ -1289,10 +1463,10 @@ const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
   12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
-  16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join',
+  16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join', 20: 'terminals across a dropped master',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 19, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 20, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
@@ -1333,6 +1507,7 @@ try {
   if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => homeBack(ids));
   if (steps.includes(17)) homeFaults(ids);
   if (steps.includes(19)) step(`19. ${STEPS[19]}`, () => freshJoin(ids));
+  if (steps.includes(20)) step(`20. ${STEPS[20]}`, () => terminalsAcross(ids));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);

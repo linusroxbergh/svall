@@ -7,7 +7,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type MobileDeps } from '../mob
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { moveInFlight, writeMarker } from './home-move.js';
+import { dropMarker, moveInFlight, writeMarker } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -160,7 +160,7 @@ export class HomeFreeze {
   private async release(): Promise<void> {
     const held = this.moving;
     if (!held) return;
-    fs.rmSync(this.d.paths.homeMoving, { force: true });
+    if (this.marker) dropMarker(this.d.paths, held.id);
     this.marker = undefined;
     this.moving = undefined;
     clearTimeout(this.timer);

@@ -7,7 +7,7 @@ import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, homeGate, installAdopt
 import { readRegistry } from '../../src/machine.js';
 import { inStagedMove } from '../../src/paths.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
-import { cleanHomes } from '../helpers.js';
+import { cleanHomes, makeHome } from '../helpers.js';
 import { FLEET, ID, MAC, marker, robot, stateOf, STUDIO, TOKEN, world } from './home-world.js';
 
 let disarm: (() => void) | undefined;
@@ -41,13 +41,52 @@ describe('staging', () => {
     expect(fs.existsSync(path.join(adoptDir(w.studio.paths, ID), 'incoming'))).toBe(false);
   });
 
-  it('stages whole or not at all: a crash while unpacking leaves it pending, and a retry takes it', async () => {
+  it.each(['adopt.staging', 'adopt.staged'] as const)('%s: a crash leaves it pending, never a thaw, and a retry takes it', async (point) => {
     const w = await world();
-    const fired = crashAt('adopt.staging');
+    const fired = crashAt(point);
     await expect(stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).rejects.toThrow(HomeCrash);
     expect(fired()).toBe(true);
-    expect(await adoptStatus(w.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'staging' });
+    expect((await adoptStatus(w.studio.deps, ID)).status).toBe('pending');
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'staged' });
+    expect(fs.existsSync(path.join(adoptDir(w.studio.paths, ID), 'incoming', 'fleet.json'))).toBe(true);
+  });
+
+  describe('a kill inside the tar extraction', () => {
+    const realPath = process.env.PATH;
+    afterEach(() => { process.env.PATH = realPath; });
+
+    // the first file out, then the tar killed as a whole machine going down would kill it
+    const killedTar = async () => {
+      const w = await world();
+      const bin = makeHome();
+      fs.writeFileSync(path.join(bin, 'tar'), '#!/bin/sh\ncase "$1" in\n  -x) /usr/bin/tar "$@" fleet.json; kill -9 $$ ;;\n  *) exec /usr/bin/tar "$@" ;;\nesac\n', { mode: 0o755 });
+      process.env.PATH = `${bin}:${realPath}`;
+      await expect(stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).rejects.toThrow();
+      process.env.PATH = realPath;
+      const dir = adoptDir(w.studio.paths, ID);
+      expect(fs.readdirSync(path.join(dir, 'unpacked'))).toEqual(['fleet.json']);
+      expect(fs.existsSync(path.join(dir, 'incoming'))).toBe(false);
+      return { w, dir };
+    };
+
+    it('leaves the fleet home untouched and nothing that installs, and the retry starts over from the archive', async () => {
+      const { w, dir } = await killedTar();
+      expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+      expect(JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).id).not.toBe(FLEET);
+      expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'pending', phase: 'staging' });
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(inStagedMove(path.join(dir, 'unpacked', 'fleet.json'))).toBe(true);
+      expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'staged' });
+      expect(fs.existsSync(path.join(dir, 'unpacked'))).toBe(false);
+      expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    });
+
+    it('called off, what was half unpacked goes with it, and a retry is refused', async () => {
+      const { w, dir } = await killedTar();
+      expect(await abortAdopt(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+      expect(fs.existsSync(dir)).toBe(false);
+      expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
+    });
   });
 
   it('holds what it staged under a name Files refuses', async () => {
@@ -244,6 +283,18 @@ describe('a crash at each boundary of the adopt', () => {
     }
   });
 
+  it('a crash right after the restore ended, before it is journaled, restores nothing twice', async () => {
+    const w = await crashed('adopt.dropped');
+    const fired = crashAt('restore.done');
+    await expect(w.studio.daemon.start()).rejects.toThrow(HomeCrash);
+    expect(fired()).toBe(true);
+    w.studio.daemon.kill();
+    await w.studio.daemon.start();
+    expect(w.studio.daemon.role).toBe('worker');
+    expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('rolledback');
+  });
+
   it('a crash in the restore itself, at each file, restores on the next start', async () => {
     for (let n = 1; n <= 6; n++) {
       const w = await crashed('adopt.dropped');
@@ -375,8 +426,8 @@ describe('two homes are impossible', () => {
   });
 });
 
-it('every failpoint of a move is reached by a case here', () => {
-  const reached = new Set<string>([...ON_ADOPT, 'adopt.staging', 'abort.recorded', 'adopt.file', 'restore.file', 'mark.written', ...HOME_FAILPOINTS.filter((p) => p.startsWith('join.'))]);
-  // staged and the restore's end fall inside the cases above; the enrolment's write is the join's first
-  expect(HOME_FAILPOINTS.filter((p) => !reached.has(p))).toEqual(['adopt.staged', 'restore.done', 'enrol.written']);
+it('every failpoint of a move is reached by a case in this suite, or named where it is', () => {
+  const here = new Set<string>([...ON_ADOPT, 'adopt.staging', 'adopt.staged', 'abort.recorded', 'restore.file', 'restore.done', 'mark.written', ...HOME_FAILPOINTS.filter((p) => p.startsWith('join.'))]);
+  // home-back.test.ts has the first three, and the cli's fleet-home.test.ts the driver's
+  expect(HOME_FAILPOINTS.filter((p) => !here.has(p))).toEqual(['enrol.written', 'deliver.owed', 'deliver.told', 'move.marked']);
 });

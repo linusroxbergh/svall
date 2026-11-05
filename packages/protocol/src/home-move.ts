@@ -7,11 +7,8 @@ import type { FleetState } from './state.js';
 export const HomeMoveId = z.string().regex(/^hm_[0-9a-z]{10}$/);
 export type HomeMoveId = z.infer<typeof HomeMoveId>;
 
-/** What the machine that took the fleet still has to tell the old home, which has no route to it: kept until it has been told. */
-export const HomeDelivery = z.object({
-  id: HomeMoveId, ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath,
-  outcome: z.enum(['adopted', 'not-adopted']),
-});
+/** How the machine taking the fleet reaches the old home, which has no route to it: on disk from before that home's mark until it has heard how the move ended. */
+export const HomeDelivery = z.object({ id: HomeMoveId, ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath });
 export type HomeDelivery = z.infer<typeof HomeDelivery>;
 
 /** What makes the old home a worker of the new one: its worker.json, and the new home's record for its registry, none for a home it dials nothing to. */

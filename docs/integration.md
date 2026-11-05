@@ -26,6 +26,7 @@ pnpm integration:placement --out /tmp/robot-placement
 | `--out <dir>` | Where the logs go (default a new folder under the system temp folder, named when the run starts). |
 | `--steps <spec>` | `all` (default) or a list of step numbers such as `1,5`. The fixture always runs, and a step also runs the steps whose robots it works with. |
 | `--scenarios <spec>` | The faults of step 5: `all` (default), `none`, `kill`, `drop`, or a list such as `kill@rest,drop@commit`. |
+| `--points <regex>` | Run only the faults of step 17 whose `out <point>` or `back <point>` matches. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u svall svall-local bash -l`. |
 | `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
 

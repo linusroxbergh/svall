@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/main.ts",
     "./agents": "./src/agents.ts",
+    "./failpoints": "./src/failpoints.ts",
     "./fleet/home-far": "./src/fleet/home-far.ts",
     "./fleet/home-freeze": "./src/fleet/home-freeze.ts",
     "./fleet/home-move": "./src/fleet/home-move.ts",
