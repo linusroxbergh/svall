@@ -674,12 +674,11 @@ const placesIn = (d: DocSpec, doc: Doc, k: string): Place[] => {
   return d.name === '.claude.json' && place[0] === 'projects' ? Object.keys(isDoc(doc.projects) ? doc.projects : {}).map((p) => ['projects', p, ...place.slice(2)]) : [place];
 };
 
-// what in a server copied whole could be a key: a secret field's string, a field the mirror cannot read, or the args a script hides one in
-function keyStrings(agent: AgentKind, held: Doc): unknown[] {
-  const s = heldServer(agent, held);
-  const unread = Object.keys(held).filter((f) => !AGENT_FIELDS[agent].includes(f));
-  return [...secretsOf(s).flatMap(({ field }) => fieldPlace(agent, held, field)).map((p) => getAt(held, p)), ...unread.flatMap((f) => [...stringsIn(held[f])]), ...(!s.known && !unread.length ? s.args : [])];
-}
+// what in a server copied whole could be a key: a secret field's string, or any string of a field the mirror cannot read
+const keyStrings = (agent: AgentKind, held: Doc): unknown[] => [
+  ...secretsOf(heldServer(agent, held)).flatMap(({ field }) => fieldPlace(agent, held, field)).map((p) => getAt(held, p)),
+  ...Object.keys(held).filter((f) => !AGENT_FIELDS[agent].includes(f)).flatMap((f) => [...stringsIn(held[f])]),
+];
 
 // each string under `v`, one by one, as a .claude.json may hold a great many
 function* stringsIn(v: unknown): Generator<string> {
