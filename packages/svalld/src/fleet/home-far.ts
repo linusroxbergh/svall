@@ -7,7 +7,7 @@ import { SshMaster } from '../link/ssh.js';
 import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
-import { moveOutcome, readOwed } from './home-move.js';
+import { moveOutcome, phoneOwed, readOwed, servedPhone } from './home-move.js';
 
 const ASK_MS = 30_000;
 
@@ -66,13 +66,26 @@ export async function deliverOwed(paths: Paths, open: (destination: string) => P
   return 'told';
 }
 
-/** Tells the old home what this machine owes it, from the moment that is known, for as long as this daemon runs; the returned function stops it. */
-export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1]): () => void {
+// the link the old home's was, on this home once it has taken the fleet: tried once, and what fails is logged, and Settings → Phone says why
+async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, serve: () => Promise<{ error?: string }>): Promise<void> {
+  for (const id of phoneOwed(paths)) {
+    const why = await serve().then((s) => s.error, (e: Error) => e.message);
+    if (why) log.error(`the phone link did not come on here: ${why}`);
+    servedPhone(paths, id, why);
+  }
+}
+
+/**
+ * Tells the old home what this machine owes it, from the moment that is known, for as long as this daemon runs, and with `serve`,
+ * a home's, turns on the phone link a move it took owes; the returned function stops it.
+ */
+export function startDeliveries(paths: Paths, log: Pick<Logger, 'error' | 'info'>, open?: Parameters<typeof deliverOwed>[1], serve?: () => Promise<{ error?: string }>): () => void {
   let timer: NodeJS.Timeout | undefined;
   let stopped = false;
   let ms = FIRST_MS;
   const tick = async () => {
     try {
+      if (serve) await servePhones(paths, log, serve);
       if (await deliverOwed(paths, open) === 'told') log.info('the old home has heard how the move ended');
       ms = FIRST_MS;
     } catch (e) {

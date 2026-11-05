@@ -9,7 +9,7 @@ import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { MAC, movedOut, STUDIO, STUDIO_RECORD } from '../../svalld/test/fleet/home-world.js';
 import type { Client } from '../src/client.js';
-import { abortBack, moveHomeBack, moveHomeOut, resumeHome, type MoveDeps } from '../src/controller/home.js';
+import { abortBack, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, type MoveDeps } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import type { SshMaster } from '../src/controller/ssh.js';
@@ -34,6 +34,8 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; sta
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [MAC]: { name: 'mac', reachable: true, since: 1 } } });
       if (method === 'fleet.freeze') return Promise.resolve({ phone: { serving: false, logins: [] } });
+      if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
+      if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
       return Promise.resolve({});
     },
     close: () => {},
@@ -91,7 +93,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
     expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
-    expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
+    expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
   });
@@ -131,7 +133,9 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
 
   it('a mark that fails thaws and calls it off there, as nothing has been marked', async () => {
     const lines: string[] = [];
-    const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); }, { refuse: { 'fleet.homeMove': new Error('gone') } });
+    const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });
+    const client = await deps.client();
+    deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => ((p as Called['params']).op === 'mark' ? Promise.reject(new Error('gone')) : client.call(m, p)), close: () => {} } as unknown as Client);
     await moveHomeOut('studio', deps);
     expect(failed()?.step).toBe('mark');
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(true);
@@ -152,6 +156,76 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(readMarker(resolvePaths(home))?.enrol).toBeDefined();
   });
 
+  it('a machine named by its id goes by its name, in its steps and on the far side', async () => {
+    const lines: string[] = [];
+    const { deps } = outDeps((line) => { lines.push(line); return happy(line); });
+    const seen: HomeMoving[] = [];
+    const client = await deps.client();
+    deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { const o = p as Called['params']; if (o.op === 'mark') seen.push(o.marker!); return client.call(m, p); }, close: () => {} } as unknown as Client);
+    expect((await moveHomeOut(STUDIO, deps)).result).toBe('ready');
+    expect(seen[0].toName).toBe('studio');
+  });
+
+  it('a far fleet going by another fleet\'s worker.json is refused by the machine itself, with this home thawed', async () => {
+    const { deps, called } = outDeps((line) => (line.includes('--stage') ? { code: 1, stdout: '', stderr: 'svall: this machine is a worker of another fleet' } : answer({ status: 'not-adopted' })));
+    await moveHomeOut('studio', deps);
+    expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('another fleet') });
+    expect(called.some((c) => c.method === 'fleet.thaw')).toBe(true);
+  });
+
+  describe('mission control\'s robots', () => {
+    const crewState = (machine?: string) => ({ robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', ...(machine && { machine }) }, here: { id: 'here', name: 'here', islandId: 'i_a' } }, islands: { home: { id: 'home', kind: 'home' }, i_a: { id: 'i_a' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } });
+
+    it('a machine this one cannot log in to stops the move before any of them moves', async () => {
+      const { deps, called } = outDeps(happy, { state: crewState() });
+      deps.openMaster = () => Promise.reject(new Error('Permission denied (publickey)'));
+      await moveHomeOut('studio', deps);
+      expect(failed()).toMatchObject({ step: 'check', detail: expect.stringContaining('Permission denied') });
+      expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
+      expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
+    });
+
+    it('the daemon opens the move before the first of them moves under its id', async () => {
+      const { deps, called } = outDeps(happy, { state: crewState() });
+      await moveHomeOut('studio', deps);
+      const [open, move] = [called.findIndex((c) => c.params.op === 'open'), called.findIndex((c) => c.method === 'robot.moveTo')];
+      expect(open).toBeGreaterThanOrEqual(0);
+      expect(move).toBeGreaterThan(open);
+      expect(called[move].params.homeMove).toBe(called[open].params.id);
+    });
+
+    it('a move stopped after they went says they stayed, and how to bring them back', async () => {
+      const state = crewState();
+      const { deps } = outDeps((line) => (line.includes('--stage') ? { code: 1, stdout: '', stderr: 'svall: no room' } : answer({ status: 'not-adopted' })), { state });
+      const client = await deps.client();
+      deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') (state.robots.crew as { machine?: string }).machine = STUDIO; return client.call(m, p); }, close: () => {} } as unknown as Client);
+      const out = await moveHomeOut('studio', deps);
+      expect(out.actions).toContain('svall fleet home crew-back');
+      expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.detail).toContain('crew');
+    });
+
+    it('crew-back moves each back to the home under an id it opened, and names any that cannot return', async () => {
+      const state = crewState(STUDIO);
+      const { deps, called } = outDeps(happy, { state });
+      expect((await bringCrewBack(deps)).result).toBe('ready');
+      const open = called.find((c) => c.params.op === 'open');
+      const moves = called.filter((c) => c.method === 'robot.moveTo');
+      expect(moves.map((c) => [c.params.id, c.params.machine, c.params.homeMove])).toEqual([['crew', machineId(), open!.params.id]]);
+      events = [];
+      const stuck = outDeps(happy, { state, refuse: { 'robot.moveTo': new Error('its worktree is dirty') } });
+      const out = await bringCrewBack(stuck.deps);
+      expect(out.result).toBe('actions');
+      expect(failed()).toMatchObject({ step: 'crew', detail: expect.stringContaining('crew: its worktree is dirty') });
+    });
+
+    it('crew-back with all of them home says so and moves nothing', async () => {
+      const { deps, called } = outDeps(happy, { state: crewState() });
+      expect((await bringCrewBack(deps)).result).toBe('ready');
+      expect(ran()).toContain('crew:skip');
+      expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
+    });
+  });
+
   it('a driver killed right after the mark leaves the marker, and the far machine holding its archive', async () => {
     const lines: string[] = [];
     const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });
@@ -169,6 +243,29 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(lines.some((l) => /'fleet' 'abort'/.test(l))).toBe(false);
     expect(lines.some((l) => /--home-ssh/.test(l))).toBe(false);
+  });
+});
+
+describe('what the machine taking the fleet tells the old home', () => {
+  const m = { from: MAC, fleetId: FLEET, toName: 'studio', record: { name: 'mac', platform: 'darwin' } } as unknown as HomeManifest;
+  const paths = (home_: string) => resolvePaths(home_);
+
+  it('dials in: the socket here and its record, by the name the fleet knew it by', () => {
+    const e = enrolmentFor(paths('/home/ada/.svall'), STUDIO, { ssh: 'ada@studio', home: { ...STUDIO_RECORD, name: 'linus-vault3' } as never })('t'.repeat(48), m);
+    expect(e.worker).toMatchObject({ homeMachineId: STUDIO, fleetId: FLEET, homeName: 'studio', homeSsh: 'ada@studio', token: 't'.repeat(48) });
+    expect(e.worker.homeSocket).toMatch(/^\/home\/ada\/\.svall\/w\/[0-9a-f]+\.sock$/);
+    expect(e.home).toMatchObject({ name: 'studio', ssh: 'ada@studio' });
+  });
+
+  it('dialed: nothing of a socket', () => {
+    const e = enrolmentFor(paths('/Users/ada/.svall'), MAC, { home: STUDIO_RECORD as never })('t'.repeat(48), { ...m, from: STUDIO, record: { ...m.record, platform: 'linux' } } as never);
+    expect(e.worker.homeSocket).toBeUndefined();
+    expect(e.home).toBeUndefined();
+  });
+
+  it('a socket a Mac cannot bind is refused before anything is installed', () => {
+    const long = `/home/${'a'.repeat(90)}/.svall`;
+    expect(() => enrolmentFor(paths(long), STUDIO, { ssh: 'ada@studio', home: STUDIO_RECORD as never })('t'.repeat(48), m)).toThrow(/mac cannot dial into/);
   });
 });
 

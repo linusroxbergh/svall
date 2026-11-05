@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
 import { readFleetConfig } from '../config.js';
+import { writeDurable } from '../durable.js';
 import type { Logger } from '../log.js';
 import { realDeps, resolveTailscale, tailnetSelf, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
@@ -38,8 +39,12 @@ export type FreezeDeps = {
 
 /** A home that takes no writes while the fleet moves. Until its marker is written a thaw is free, and a driver that goes away is one; from then on only the machine holding the fleet can end it. */
 export class HomeFreeze {
-  private moving?: { id: HomeMoveId; to: MachineId; holder?: Holder; served: boolean };
+  // `ready` once the freeze has ended, as only then is there a cut for a marker to stand on
+  private moving?: { id: HomeMoveId; to: MachineId; holder?: Holder; served: boolean; ready: boolean };
   private marker?: HomeMoving;
+  private opened?: { id: HomeMoveId; holder: Holder };
+  private admitted = 0;
+  private idle?: () => void;
   private answer?: string;
   private timer?: NodeJS.Timeout;
   private askMs = FIRST_ASK_MS;
@@ -48,12 +53,13 @@ export class HomeFreeze {
   constructor(private d: FreezeDeps, frozen?: HomeMoving) {
     if (!frozen) return;
     this.marker = frozen;
-    this.moving = { id: frozen.id, to: frozen.to, served: frozen.phone === true };
+    this.moving = { id: frozen.id, to: frozen.to, served: fs.existsSync(d.paths.homeServed), ready: true };
   }
 
-  /** Starts asking, for a daemon that started under a marker. */
+  /** Starts asking, for a daemon that started under a marker; with none, what a crash around a freeze left off of the phone comes back. */
   start(): void {
-    if (this.marker) { this.d.background.pause(); this.d.links.hold(true); this.schedule(); }
+    if (this.marker) { this.d.background.pause(); this.d.links.hold(true); this.schedule(); return; }
+    if (fs.existsSync(this.d.paths.homeServed)) void this.servedAgain();
   }
 
   stop(): void {
@@ -65,56 +71,107 @@ export class HomeFreeze {
     return this.moving !== undefined;
   }
 
+  // what may change the fleet: a frozen home refuses these, and a freeze waits on those it had already taken
+  private writes(method: MethodName): boolean {
+    return !STILL.has(method) && (classification[method] !== 'read' || NOT_READS.has(method));
+  }
+
+  /** A call this home takes while it may still freeze; what it returns ends it, so the barrier can wait for it. */
+  admit(method: MethodName): (() => void) | undefined {
+    if (!this.writes(method)) return undefined;
+    this.admitted++;
+    return () => { if (--this.admitted === 0) this.idle?.(); };
+  }
+
+  // whether every call taken before the freeze has ended, within `ms`
+  private drained(ms: number): Promise<boolean> {
+    if (!this.admitted) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { this.idle = undefined; resolve(false); }, ms);
+      this.idle = () => { clearTimeout(timer); this.idle = undefined; resolve(true); };
+    });
+  }
+
+  /** Opens a move for its driver, whose calls alone may move mission control's robots under its id. */
+  open(id: HomeMoveId, holder: Holder): void {
+    if (this.moving) throw new ApiError('busy', `the fleet is already moving (${this.moving.id})`);
+    this.opened = { id, holder };
+  }
+
+  /** Whether `id` is the move this caller opened here. */
+  mayMoveCrew(id: string, holder: Holder): boolean {
+    return this.opened?.id === id && this.opened.holder === holder;
+  }
+
   /** Why a frozen home refuses `method`, when it does. */
   refusal(method: MethodName): ApiError | undefined {
-    if (!this.moving || STILL.has(method)) return undefined;
-    if (classification[method] === 'read' && !NOT_READS.has(method)) return undefined;
+    if (!this.moving || !this.writes(method)) return undefined;
     const name = this.d.store.state.machines?.[this.moving.to]?.name ?? this.marker?.toName ?? this.moving.to;
     return new ApiError('frozen', `the fleet is moving to ${name}; try again once it has`);
   }
 
   async freeze(id: HomeMoveId, to: MachineId, holder: Holder): Promise<Result<'fleet.freeze'>> {
-    if (this.moving && this.moving.id !== id) throw new ApiError('busy', `the fleet is already moving (${this.moving.id})`);
-    const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
-    if (robot) throw new ApiError('busy', `${robot.name} is moving; wait for its move to finish`);
-    const status = await this.d.phone.get().catch(() => ({ serving: false, logins: [] as string[] }));
-    if (!this.moving) {
-      this.moving = { id, to, holder, served: status.serving };
-      this.d.background.pause();
-    }
+    if (this.moving) throw new ApiError('busy', `the fleet is already moving (${this.moving.id})`);
+    const held = { id, to, holder, served: false, ready: false };
+    // from here new calls are refused, and a driver that leaves during any step below ends it by finding `moving` gone
+    this.moving = held;
+    this.d.background.pause();
+    const still = (): void => { if (this.moving !== held) throw new ApiError('not_frozen', `the driver of ${id} went away`); };
     try {
+      const status = await this.d.phone.get();
+      still();
+      held.served = status.serving;
+      if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'a call this home took is still running; try again in a moment');
+      still();
+      const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
+      if (robot) throw new ApiError('busy', `${robot.name} is moving; wait for its move to finish`);
       await this.d.links.call?.(to, 'home.freeze', { id });
+      still();
       // the worker starts nothing new, and what it sent is in; from here its metadata stays in its outbox
       if (!await this.d.links.barrier(to, DRAIN_MS)) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
+      still();
       this.d.links.hold(true);
       if (!await this.d.store.flush()) throw new ApiError('not_written', 'state.json was not written');
-      if (status.serving) await this.d.phone.set(false);
+      still();
+      if (status.serving) {
+        writeDurable(this.d.paths.homeServed, { id }, { mode: 0o600 });
+        await this.d.phone.set(false);
+        still();
+      }
+      held.ready = true;
+      return { phone: { serving: status.serving, logins: status.logins } };
     } catch (e) {
-      await this.release();
+      if (this.moving === held) await this.release();
       throw e;
     }
-    return { phone: { serving: status.serving, logins: status.logins } };
   }
 
   /** A driver that went away, before the marker: this home goes on as it was. */
   left(holder: Holder): void {
+    if (this.opened?.holder === holder) this.opened = undefined;
     if (this.moving?.holder !== holder) return;
     if (this.marker) { this.moving.holder = undefined; this.schedule(); return; }
     void this.release();
   }
 
-  /** The driver's own failure before the marker. Past it, only an answer of `not-adopted` thaws, or one delivered to a home with no route to ask. */
+  /** The driver's own failure before the marker. Past it, only the outcome `not-adopted` thaws. */
   async thaw(id: HomeMoveId): Promise<void> {
     if (this.moving?.id !== id) return;
-    if (this.marker?.ask) throw new ApiError('frozen', 'this move can be called off only where the fleet is going');
+    if (this.marker) throw new ApiError('frozen', 'this move can be called off only where the fleet is going');
+    await this.release();
+  }
+
+  /** The outcome `not-adopted`, delivered by the machine holding the fleet to a home with no route to ask it. */
+  async told(id: HomeMoveId): Promise<void> {
+    if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
+    if (this.marker.ask) throw new ApiError('frozen', 'this home asks where the fleet went, and is told by no one');
     await this.release();
   }
 
   mark(marker: HomeMoving): void {
-    if (this.moving?.id !== marker.id) throw new ApiError('not_frozen', `this home is not frozen for ${marker.id}: it stopped, and may have taken a write since`);
-    const m = { ...marker, phone: this.moving.served };
-    writeMarker(this.d.paths, m);
-    this.marker = m;
+    if (this.moving?.id !== marker.id || !this.moving.ready) throw new ApiError('not_frozen', `this home is not frozen for ${marker.id}: it stopped, and may have taken a write since`);
+    writeMarker(this.d.paths, marker);
+    this.marker = marker;
   }
 
   status(): Result<'fleet.homeMove'> {
@@ -156,7 +213,14 @@ export class HomeFreeze {
     this.timer.unref?.();
   }
 
-  // the marker goes first: a crash after it starts this home as it was, unserved; what served comes back by a person's switch
+  private async servedAgain(): Promise<void> {
+    try {
+      await this.d.phone.set(true);
+      fs.rmSync(this.d.paths.homeServed, { force: true });
+    } catch (e) { this.d.log.error(`the phone link did not come back: ${(e as Error).message}`); }
+  }
+
+  // the marker goes first: a crash after it starts this home as it was, and the start turns back on what served
   private async release(): Promise<void> {
     const held = this.moving;
     if (!held) return;
@@ -167,7 +231,7 @@ export class HomeFreeze {
     this.d.links.hold(false);
     await this.d.links.call?.(held.to, 'home.thaw', { id: held.id }).catch(() => undefined);
     this.d.background.resume();
-    if (held.served) await this.d.phone.set(true).catch((e: Error) => this.d.log.error(`the phone link did not come back: ${e.message}`));
+    if (held.served) await this.servedAgain();
   }
 }
 
@@ -198,7 +262,7 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
 }
 
 export type HomeCheckInput = {
-  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; serving: boolean; fromIsHome: boolean;
+  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. */

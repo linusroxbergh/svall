@@ -29,7 +29,7 @@ const report = (line: string, detail = line) => {
 };
 
 // changes whenever a config file or state.json is written, the files a start can be refused for
-const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, path.join(configDir(), 'machine.json')].map((file) => {
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, paths.homeMoving, path.join(configDir(), 'machine.json')].map((file) => {
   try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
 }).join(' ');
 

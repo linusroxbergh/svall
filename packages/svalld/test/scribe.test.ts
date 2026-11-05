@@ -1,12 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AgentStatus, Robot, Island } from '@svall/protocol';
 import { briefDiff, briefReply, renderBrief } from '../src/context/brief.js';
 import type { DocFolder } from '../src/docs.js';
 import { silentLogger, type Logger } from '../src/log.js';
 import { REST_BYTES, REST_MS } from '../src/scribe/eligible.js';
-import { RETRY_MS, SETTLE_MS, SPACING_MS, Scribe } from '../src/scribe/scribe.js';
+import { RETRY_MS, SETTLE_MS, SPACING_MS, Scribe, type FarPass } from '../src/scribe/scribe.js';
 import { Store } from '../src/store.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -628,5 +628,23 @@ describe('Scribe.stop', () => {
     fail(new Error('claude -p stopped'));
     await settle();
     expect(w.store.state.scribeError).toBeUndefined();
+  });
+});
+
+describe('a far pass while the fleet moves', () => {
+  it('that answers after the hold writes nothing, as the archive has been cut', async () => {
+    const w = world(answer({}));
+    w.island('i1');
+    w.robot('c1', { machine: '66666666-7777-8888-9999-aaaaaaaaaaaa' as never });
+    let answerIt!: (p: FarPass) => void;
+    const scribe = new Scribe({ store: w.store, log: silentLogger, now: () => T0, brief: (i, c) => renderBrief(i, c), run: async () => '{}', runsHere: () => false, far: () => new Promise((r) => { answerIt = r; }) });
+    const note = w.store.state.robots.c1.note;
+    const sweeping = scribe.sweep({ names: true }).catch(() => undefined);
+    await vi.waitFor(() => expect(answerIt).toBeDefined());
+    scribe.hold(true);
+    answerIt({ answer: { name: { value: 'a new name', reason: 'generated' }, note: 'written after the cut' }, evidence: '' });
+    await sweeping;
+    expect(w.store.state.robots.c1.note).toBe(note);
+    expect(w.store.state.robots.c1.name).toBe('golden heron');
   });
 });

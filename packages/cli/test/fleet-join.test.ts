@@ -71,11 +71,23 @@ describe('svall fleet join', () => {
     const out = await joinHome({ ssh: 'ada@studio' }, d);
     expect(out.result).toBe('ready');
     expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'enrol', 'worker', 'snapshot']);
-    expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN })]);
-    expect(readFleetConfig(resolvePaths(home)).id).toBe(FLEET);
+    expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN, takesFleetId: true })]);
     expect(d.far.closed()).toBe(true);
     // the token is no step's to print
     expect(JSON.stringify(events)).not.toContain(TOKEN);
+  });
+
+  it('an enrolment that refuses leaves this fleet under its own id, and no folder it did not have', async () => {
+    const refused = deps({}, { enrol: () => Promise.reject(new Error('worker.json not written: no private fleet yet; run svall setup first')) });
+    const out = await joinHome({ ssh: 'ada@studio' }, refused);
+    expect(out.result).toBe('actions');
+    expect(failure()).toMatchObject({ step: 'worker', detail: expect.stringContaining('run svall setup first') });
+    expect(fs.existsSync(home)).toBe(false);
+    fs.mkdirSync(home, { recursive: true });
+    const own = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
+    fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: own }));
+    await joinHome({ ssh: 'ada@studio' }, deps({}, { enrol: () => Promise.reject(new Error('worker.json not written: a name clash')) }));
+    expect(readFleetConfig(resolvePaths(home)).id).toBe(own);
   });
 
   it('refuses a fleet that holds a robot before anything is written or asked', async () => {

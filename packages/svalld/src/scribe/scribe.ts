@@ -209,7 +209,7 @@ export class Scribe {
     try {
       return job.kind === 'robot' ? await this.passRobot(job.id, only, sweep) : await this.passIsland(job.id);
     } catch (e) {
-      if (this.stopped) return [];
+      if (this.stopped || this.held) return [];
       const what = job.kind === 'robot' ? this.deps.store.state.robots[job.id]?.name : `island ${this.deps.store.state.islands[job.id]?.name}`;
       const { message: head, cause } = e as Error;
       // the child's stderr is shown, and kept out of the log a tester pastes into a bug report
@@ -224,8 +224,8 @@ export class Scribe {
 
   private async ask(system: string, prompt: string): Promise<string> {
     const text = await this.deps.run(system, prompt, this.aborter.signal);
-    // an answer that came as the fleet stopped is not written, nor is the pass's failure
-    if (this.stopped) throw new Error('the scribe has stopped');
+    // an answer that came as the fleet stopped or was held is not written, nor is the pass's failure
+    if (this.stopped || this.held) throw new Error('the scribe has stopped');
     return text;
   }
 
@@ -297,7 +297,7 @@ export class Scribe {
       this.unmade = true;
       return undefined;
     }
-    if (this.stopped) throw new Error('the scribe has stopped');
+    if (this.stopped || this.held) throw new Error('the scribe has stopped');
     if (!pass) {
       this.seen.set(c.id, { ...seen(), activityAt });
       this.unmade = true;

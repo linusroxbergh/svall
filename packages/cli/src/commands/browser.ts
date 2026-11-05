@@ -2,8 +2,8 @@ import type { FleetState } from '@svall/protocol';
 import { Command } from 'commander';
 import type { Client } from '../client.js';
 import { printResult, table } from '../format.js';
-import { withFleet } from './fleet.js';
 import { robotId } from './resolve.js';
+import { withFleet } from '../client.js';
 
 // --robot names the robot; inside a robot's own terminal SVALL_ROBOT_ID already does
 function target(state: FleetState, ref: string | undefined): string {

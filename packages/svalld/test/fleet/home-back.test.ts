@@ -1,27 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
-import { armHomeFailpoints, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
+import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, startDeliveries } from '../../src/fleet/home-far.js';
-import { abortAdopt, adoptDir, adoptStatus, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
-import { FLEET, ID, MAC, movedOut, stateOf, STUDIO, world, type Side } from './home-world.js';
+import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side } from './home-world.js';
 
-let disarm: (() => void) | undefined;
-afterEach(() => { disarm?.(); disarm = undefined; vi.useRealTimers(); cleanHomes(); });
+afterEach(() => { disarmCrash(); vi.useRealTimers(); cleanHomes(); });
+afterAll(() => { expect(POINTS_OF.back.filter((p) => !crashesFired().has(p))).toEqual([]); });
 
 const BACK = 'hm_backbackba' as HomeMoveId;
 const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never };
-
-function crashAt(point: HomeFailpoint, n = 1): () => boolean {
-  let hit = 0;
-  let fired = false;
-  disarm = armHomeFailpoints((name) => {
-    if (name === point && ++hit === n) { fired = true; disarm?.(); throw new HomeCrash(point); }
-  });
-  return () => fired;
-}
 
 /**
  * The fleet moved out to studio and back from it as far as studio's mark: studio's daemon frozen under a marker with no way to ask, the
@@ -46,6 +37,8 @@ async function markedBack() {
   return { ...w, enrolment };
 }
 
+const NOT_RUNNING = 'svalld is not running (no port): it runs while Svall is open on this fleet';
+
 /** The old home's side of what a delivery runs there, on the real settle, over a master that fails as told. */
 function studioAt(studio: Side, o: { down?: () => boolean } = {}) {
   let delivered = 0;
@@ -57,8 +50,8 @@ function studioAt(studio: Side, o: { down?: () => boolean } = {}) {
         const line = argv.join(' ');
         const told = !line.includes('not-adopted') ? { status: 'adopted' as const, enrol: JSON.parse(opts!.input!) as Enrolment } : { status: 'not-adopted' as const };
         const said = await settleMove(studio.paths, BACK, told, {
-          join: async (enrol) => { if (!studio.daemon.role) throw new Error('no daemon'); writeMarker(studio.paths, { ...readMarker(studio.paths)!, enrol }); await studio.daemon.stop(); },
-          thaw: async () => { if (!studio.daemon.role) throw new Error('no daemon'); fs.rmSync(studio.paths.homeMoving); await studio.daemon.start(); },
+          join: async (enrol) => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); writeMarker(studio.paths, { ...readMarker(studio.paths)!, enrol }); await studio.daemon.stop(); },
+          thaw: async () => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); fs.rmSync(studio.paths.homeMoving); await studio.daemon.start(); },
           start: () => studio.daemon.start(),
         });
         return { code: 0, signal: null, stdout: JSON.stringify(said), stderr: '' };
@@ -251,6 +244,58 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
   });
 
+  describe('the marker goes only on the word of the machine holding the fleet', () => {
+    const NOTHING = { join: () => Promise.reject(new Error('joined')), thaw: () => Promise.reject(new Error('thawed')), start: () => Promise.reject(new Error('started')) };
+
+    it('a daemon that answers and refuses the outcome leaves the marker, and the debt stays', async () => {
+      const w = await markedBack();
+      const refused = Object.assign(new Error('this move can be called off only where the fleet is going'), { code: 'frozen' });
+      await expect(settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, { ...NOTHING, thaw: () => Promise.reject(refused) })).rejects.toThrow(/only where the fleet is going/);
+      expect(readMarker(w.studio.paths)?.id).toBe(BACK);
+    });
+
+    it('a daemon that hangs or goes away mid-call is no refused connection, and leaves the marker', async () => {
+      const w = await markedBack();
+      for (const said of ['svalld did not answer the handshake within 5000ms', 'svalld closed the connection (1006)']) {
+        await expect(settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, { ...NOTHING, thaw: () => Promise.reject(new Error(said)) })).rejects.toThrow(said);
+        expect(readMarker(w.studio.paths)?.id).toBe(BACK);
+      }
+    });
+
+    it('a refused connection with no daemon there ends it on the file, and starts it', async () => {
+      const w = await markedBack();
+      w.studio.daemon.kill();
+      let started = 0;
+      expect(await settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, { ...NOTHING, thaw: () => Promise.reject(new Error('svalld not reachable on ws://127.0.0.1:1: connect ECONNREFUSED')), start: async () => { started++; } })).toEqual({ status: 'not-adopted' });
+      expect(readMarker(w.studio.paths)).toBeUndefined();
+      expect(started).toBe(1);
+    });
+
+    it('a marker that asks for itself is told by no one, whatever a hand runs', async () => {
+      const w = await markedBack();
+      await w.studio.daemon.stop();
+      writeMarker(w.studio.paths, { ...readMarker(w.studio.paths)!, ask: marker().ask });
+      await expect(settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, { ...NOTHING, thaw: () => Promise.reject(new Error(NOT_RUNNING)) })).rejects.toThrow(/told by no one/);
+      expect(readMarker(w.studio.paths)?.id).toBe(BACK);
+    });
+
+    it('an overlapping settle a start joined past says nothing was refused, and writes no marker back', async () => {
+      const w = await markedBack();
+      const a = await installAdopt(w.mac.deps, BACK, w.enrolment);
+      if (a.status !== 'adopted') throw new Error(a.status);
+      let joined = 0;
+      const told = await settleMove(w.studio.paths, BACK, a, {
+        ...NOTHING,
+        // the other delivery's start joined while this one's connection failed
+        join: async () => { fs.rmSync(w.studio.paths.homeMoving); throw new Error(NOT_RUNNING); },
+        start: async () => { joined++; },
+      });
+      expect(told).toEqual({ status: 'adopted' });
+      expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
+      expect(joined).toBe(1);
+    });
+  });
+
   it('a settle of a move this home holds no marker of says it has heard, and changes nothing', async () => {
     const w = await markedBack();
     fs.rmSync(w.studio.paths.homeMoving);
@@ -265,6 +310,75 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['worker', 'home']);
     expect(journalLines(w.studio.paths, BACK).at(-1)?.phase).toBe('aborted');
+  });
+});
+
+describe('the phone link a move owes', () => {
+  // a move out whose old home served it, on the machine that took it, a home that runs this tick
+  const serving = async () => {
+    const w = await world();
+    const m = { ...w.manifest, phone: { serving: true, logins: ['ada@tailnet'] } };
+    await w.mac.daemon.stop();
+    const packed = await packFleet(w.mac.paths, m);
+    await w.mac.daemon.start();
+    await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
+    return w;
+  };
+  const tick = async (paths: Side['paths'], serve: () => Promise<{ error?: string }>, log: string[] = []) => {
+    vi.useFakeTimers();
+    const stop = startDeliveries(paths, { error: (l) => log.push(l), info: (l) => log.push(l) }, undefined, serve);
+    await vi.advanceTimersByTimeAsync(5_100);
+    stop();
+    vi.useRealTimers();
+    return log;
+  };
+
+  it.each(['adopt.installed', 'adopt.started', 'adopt.committed'] as HomeFailpoint[])('%s: a commit reached by a status still owes it, and the home turns it on once', async (point) => {
+    const w = await serving();
+    crashAt(point);
+    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    w.studio.daemon.kill();
+    await w.studio.daemon.start();
+    expect((await adoptStatus(w.studio.deps, ID)).status).toBe('adopted');
+    expect(phoneOwed(w.studio.paths)).toEqual([ID]);
+    let on = 0;
+    await tick(w.studio.paths, async () => { on++; return {}; });
+    await tick(w.studio.paths, async () => { on++; return {}; });
+    expect(on).toBe(1);
+    expect(phoneOwed(w.studio.paths)).toEqual([]);
+    expect(moveOutcome(w.studio.paths, ID)?.status).toBe('adopted');
+  });
+
+  it('a home that did not serve owes nothing', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    await w.mac.daemon.stop();
+    const quiet = await packFleet(w.mac.paths, { ...w.manifest, id: BACK, phone: { serving: false, logins: [] } });
+    const again = await world();
+    await stageAdopt(again.studio.deps, BACK, quiet.sha256, quiet.bytes);
+    expect((await installAdopt(again.studio.deps, BACK, w.enrolment)).status).toBe('adopted');
+    expect(phoneOwed(again.studio.paths)).toEqual([]);
+  });
+
+  it('a link refused here is said and journaled, and the move stands', async () => {
+    const w = await serving();
+    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    const log = await tick(w.studio.paths, () => Promise.resolve({ error: 'Access denied: serve config denied' }));
+    expect(log.some((l) => /Access denied/.test(l))).toBe(true);
+    expect(journalLines(w.studio.paths, ID).at(-1)).toMatchObject({ phase: 'served', detail: 'Access denied: serve config denied' });
+    expect(moveOutcome(w.studio.paths, ID)?.status).toBe('adopted');
+    expect(phoneOwed(w.studio.paths)).toEqual([]);
+  });
+
+  it('a daemon with nothing to serve with, a worker\'s, leaves it owed', async () => {
+    const w = await serving();
+    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    vi.useFakeTimers();
+    const stop = startDeliveries(w.studio.paths, { error: () => {}, info: () => {} });
+    await vi.advanceTimersByTimeAsync(5_100);
+    stop();
+    vi.useRealTimers();
+    expect(phoneOwed(w.studio.paths)).toEqual([ID]);
   });
 });
 

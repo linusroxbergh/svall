@@ -3,7 +3,7 @@ import WebSocket from 'ws';
 import { handshake, handshakeHome, ProtocolMismatch } from '@svall/svalld/fleets';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
-import { ApiError, PART_BYTES, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, PART_BYTES, serverWait, type Event, type FleetState, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to svall and expects it to return.
@@ -118,3 +118,11 @@ export class Client {
     this.ws.once('close', fn);
   }
 }
+
+export async function withClient<T>(connect: () => Promise<Client>, f: (c: Client) => Promise<T>): Promise<T> {
+  const c = await connect();
+  try { return await f(c); } finally { c.close(); }
+}
+
+export const withFleet = <T>(connect: () => Promise<Client>, f: (c: Client, state: FleetState) => Promise<T>): Promise<T> =>
+  withClient(connect, async (c) => f(c, await c.call('state.get', {})));

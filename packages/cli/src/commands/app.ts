@@ -3,9 +3,9 @@ import { Command, Option } from 'commander';
 import QRCode from 'qrcode';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { withFleet } from './fleet.js';
 import { num, size } from './parse.js';
 import { robotId } from './resolve.js';
+import { withFleet } from '../client.js';
 
 type Shown = 'show' | 'hide';
 type Opts = {

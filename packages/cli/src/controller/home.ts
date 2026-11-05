@@ -3,8 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
-import { initConfig, patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
+import { AdoptAnswer, crewAway, FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
+import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
 import { abortAdopt, adoptDir, enter, installAdopt, moveOutcome, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
@@ -13,15 +13,14 @@ import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
 import { realRun, stopUnit } from '@svall/svalld/linux/service';
 import { serveAsWorker, svalldUnitName, unitDirOf } from '@svall/svalld/linux/setup';
-import { dialSocket, fleetHomeOfSocket, resolvePaths, type Paths } from '@svall/svalld/paths';
+import { dialSocket, dialSocketTooLong, fleetHomeOfSocket, resolvePaths, type Paths } from '@svall/svalld/paths';
 import { profileLabel } from '@svall/svalld/profile';
 import { installPrefix, svallExe } from '@svall/svalld/release';
 import { ownRuntime } from '@svall/svalld/runtime';
 import { shq } from '@svall/svalld/text';
 import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
-import { Client } from '../client.js';
-import { withClient } from '../commands/fleet.js';
+import { Client, withClient } from '../client.js';
 import type { Enrol } from '../commands/worker.js';
 import { farProfile, type Target } from '../target.js';
 import { flow, homeProbe, remoteJson, remotePaths, StepError, type HostDeps, type HostOutcome, type Runner } from './host.js';
@@ -150,15 +149,11 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         return { value: answer, detail: `${answer.homeName} issued this machine a token` };
       });
       await run.step('worker', async () => {
-        const paths = resolvePaths(d.target.home);
         // the fleet goes by its home's id from here, which `svall --host` and an upgrade compare; an empty fleet has nothing under its own
         try {
-          fs.mkdirSync(paths.home, { recursive: true, mode: 0o700 });
-          initConfig(paths);
-          patchFleetConfig(paths.fleetConfig, { id: enrolled.fleetId });
           await d.enrol({
             homeMachine: enrolled.homeMachineId, homeName: enrolled.homeName, fleetId: enrolled.fleetId, homeSsh: o.ssh, homeSocket: enrolled.socket,
-            homeSvallBase: enrolled.homeSvallBase, homePlatform: enrolled.homePlatform, homeArch: enrolled.homeArch, homePath: enrolled.homePath,
+            homeSvallBase: enrolled.homeSvallBase, homePlatform: enrolled.homePlatform, homeArch: enrolled.homeArch, homePath: enrolled.homePath, takesFleetId: true,
           }, enrolled.token);
         } catch (e) {
           throw new StepError((e as Error).message);
@@ -200,20 +195,23 @@ export function realHomeDaemon(t: Target): HomeDaemon {
       }
       return false;
     },
-    servePhone: async () => { await withClient(() => Client.connect(t.home), (c) => c.call('mobile.set', { enabled: true })); },
   };
 }
 
 /** What the machine taking the fleet tells the one it leaves. `ssh`: the way that machine dials this one; none where this one dials it. */
 export function enrolmentFor(paths: Paths, me: MachineId, o: { ssh?: string; home: MachineRecord }): (token: string, m: HomeManifest) => Enrolment {
-  return (token, m) => ({
-    worker: WorkerFile.parse({
-      homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName,
-      ...(o.ssh && { homeSsh: o.ssh, homeSocket: dialSocket(paths, m.from), homeSvallBase: installPrefix() }),
-    }),
-    // by the name the fleet has known it by
-    ...(o.ssh && { home: { ...o.home, name: m.toName, ssh: o.ssh } }),
-  });
+  return (token, m) => {
+    const long = o.ssh && dialSocketTooLong(dialSocket(paths, m.from), m.record.platform);
+    if (long) throw new Error(`${long.message}, so ${m.record.name} cannot dial into ${paths.home}; use an account whose home is ${long.over} bytes shorter`);
+    return {
+      worker: WorkerFile.parse({
+        homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName,
+        ...(o.ssh && { homeSsh: o.ssh, homeSocket: dialSocket(paths, m.from), homeSvallBase: installPrefix() }),
+      }),
+      // by the name the fleet has known it by
+      ...(o.ssh && { home: { ...o.home, name: m.toName, ssh: o.ssh } }),
+    };
+  };
 }
 
 // ------------------------------------------------------------------------------------------------- the move's driver
@@ -249,15 +247,19 @@ const refuse = (run: Runner, why: string, action?: string): Promise<never> => ru
 
 const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reason, ...(refusal.more ?? []).map((m) => m.reason)].join('; '), refusal.action);
 
-// mission control's robots go first, each journaled before its move, so a retry sees which landed
-async function moveMission(run: Runner, c: Client, paths: Paths, id: string, to: MachineId, name: string): Promise<void> {
+const CREW_BACK = 'svall fleet home crew-back';
+
+// mission control's robots go first, each journaled before its move, so a retry sees which landed; the daemon opens the move
+// first, as its id is what lets them move, and only for this caller
+async function moveMission(run: Runner, c: Client, paths: Paths, id: HomeMoveId, to: MachineId, name: string): Promise<void> {
   await run.step('mission', async () => {
+    await c.call('fleet.homeMove', { op: 'open', id });
     const state = await c.call('state.get', {});
     const crew = Object.values(state.robots).filter((r) => state.islands[r.islandId]?.kind === 'home' && r.machine !== to);
     driverJournal(paths, id, 'mission', { robots: crew.map((r) => r.id) });
     for (const r of crew) {
       const moved = await c.call('robot.moveTo', { id: r.id, machine: to, homeMove: id, interruptAfterMs: 30_000 }).catch((e: Error) => {
-        throw new StepError(`${r.name} did not move to ${name}: ${e.message}`, `fix it, and svall fleet home set ${name} again; the crew that moved stays on ${name}`);
+        throw new StepError(`${r.name} did not move to ${name}: ${e.message}`, `fix it, and svall fleet home set ${name} again; ${CREW_BACK} brings back the crew that moved`);
       });
       driverJournal(paths, id, 'mission.moved', { robot: r.id, move: moved.moveId });
     }
@@ -265,12 +267,51 @@ async function moveMission(run: Runner, c: Client, paths: Paths, id: string, to:
   });
 }
 
-/** `svall fleet home set <machine>`: this home's fleet moves to the machine, and this machine becomes its worker that dials in. */
-export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
+// a move that stopped before the mark leaves the crew that went ahead on the machine it went to, which a person may want back
+async function offerCrew(run: Runner, home: Client): Promise<void> {
+  const away = crewAway(await home.call('state.get', {}));
+  if (away.length) await run.step('crew', () => Promise.resolve({ value: undefined, status: 'warn' as const, detail: `mission control's ${away.map((r) => r.name).join(', ')} stayed where the move sent them`, action: CREW_BACK }));
+}
+
+/** `svall fleet home crew-back`: mission control's robots a move left away from the home go back to it through the move engine; each that cannot says why. */
+export function bringCrewBack(d: MoveDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const paths = resolvePaths(d.target.home);
-    const entry = d.registry.get(name);
-    if (!entry || !entry.record.ssh) return refuse(run, `no machine ${name} with an ssh destination in the registry`, 'add it under Machines first');
+    let master: SshMaster | undefined;
+    const worker = isWorker(paths) ? readWorkerFile(paths) : undefined;
+    const entry = worker && d.registry.get(worker.homeMachineId);
+    const home = await run.step('check', async () => {
+      if (!worker) return { value: await d.client(), detail: 'this machine is the home' };
+      if (!worker.homeSsh || !worker.homeSocket || !entry) throw new StepError(`${worker.homeName} dials this machine, so its crew is moved from there`);
+      master = await d.openMaster(worker.homeSsh).catch((e: Error) => { throw new StepError(e.message, 'try again once it answers'); });
+      return { value: await d.farClient(master, entry, fleetHomeOfSocket(worker.homeSocket), worker.fleetId), detail: `asked ${worker.homeName}` };
+    });
+    try {
+      await run.step('crew', async () => {
+        const away = crewAway(await home.call('state.get', {}));
+        if (!away.length) return { value: undefined, status: 'skip' as const, detail: 'mission control\'s robots are all on the home' };
+        const id = newHomeMoveId() as HomeMoveId;
+        await home.call('fleet.homeMove', { op: 'open', id });
+        const { machine } = await home.call('fleet.home', {});
+        const stuck: string[] = [];
+        for (const r of away) await home.call('robot.moveTo', { id: r.id, machine, homeMove: id, interruptAfterMs: 30_000 }).catch((e: Error) => { stuck.push(`${r.name}: ${e.message}`); });
+        if (stuck.length) throw new StepError(`these cannot come back: ${stuck.join('; ')}`, 'try again once what they name is fixed');
+        return { value: undefined, detail: `${away.map((r) => r.name).join(', ')} came back` };
+      });
+    } finally {
+      home.close();
+      await master?.close().catch(() => undefined);
+    }
+  });
+}
+
+/** `svall fleet home set <machine>`: this home's fleet moves to the machine, and this machine becomes its worker that dials in. */
+export function moveHomeOut(machine: string, d: MoveDeps): Promise<HostOutcome> {
+  return flow(d.emit, async (run) => {
+    const paths = resolvePaths(d.target.home);
+    const entry = d.registry.get(machine);
+    if (!entry || !entry.record.ssh) return refuse(run, `no machine ${machine} with an ssh destination in the registry`, 'add it under Machines first');
+    const name = entry.record.name;
     const to = entry.id;
     const ssh = entry.record.ssh;
     const toHome = entry.record.home;
@@ -285,6 +326,10 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
       await run.step('check', async () => {
         const c = await client.call('fleet.homeCheck', { to });
         if (!c.ok) throw refusalStep(c.refusal);
+        // before anything moves: a machine this one cannot log in to stops here, with mission control where it is
+        master = await d.openMaster(ssh).catch((e: Error) => { throw new StepError(`this machine cannot log in to ${name}: ${e.message}`, `ssh ${ssh} and see what it answers`); });
+        // the fleet there by the folder it answers from: its profile there need not be the one it has here
+        farHome = (await remoteConnectionInfo(master, entry, { ...(farProfile(d.target) && { profile: farProfile(d.target) }) })).fleetHome;
         return { value: undefined, detail: `${c.sheet.here} robots stay here, ${c.sheet.there} on ${name}` };
       });
       driverJournal(paths, id, 'check');
@@ -293,9 +338,6 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
       const { phone } = await run.step('pause', async () => ({ value: await client.call('fleet.freeze', { id, to }), detail: 'this home takes no more writes' }));
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
-        master = await d.openMaster(ssh);
-        // the fleet there by the folder it answers from: its profile there need not be the one it has here
-        farHome = (await remoteConnectionInfo(master, entry, { ...(farProfile(d.target) && { profile: farProfile(d.target) }) })).fleetHome;
         const here = d.registry.localMachine();
         const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now() };
         const { bytes, sha256 } = await packFleet(paths, manifest);
@@ -322,6 +364,7 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
         if (master) await far(['fleet', 'abort', id]).catch(() => undefined);
         fs.rmSync(adoptDir(paths, id), { recursive: true, force: true });
         driverJournal(paths, id, 'aborted');
+        await offerCrew(run, client).catch(() => undefined);
       }
       throw e;
     } finally {
@@ -433,6 +476,7 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
         await home?.call('fleet.thaw', { id }).catch(() => undefined);
         await abortAdopt(adoption, id).catch(() => undefined);
         driverJournal(paths, id, 'aborted');
+        if (home) await offerCrew(run, home).catch(() => undefined);
       }
       throw e;
     } finally {

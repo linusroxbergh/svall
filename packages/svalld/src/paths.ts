@@ -110,6 +110,8 @@ export function resolvePaths(home: string = svallHome()) {
     homeMoving: path.join(home, 'home-moving.json'),
     // the outcome of a move this machine still owes a home with no route to it
     homeDeliver: path.join(home, 'home-deliver.json'),
+    // what a freeze turned off of the phone link, until it is back or the fleet has gone
+    homeServed: path.join(home, 'home-served.json'),
     // each home move's journal, on either side of it
     homeMoves: path.join(home, 'journal', 'home'),
   };
@@ -144,8 +146,8 @@ export const isDialSocket = (socket: string, machine: string): boolean => socket
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile, p.homeMoving, p.homeDeliver];
 
-/** Whether `p` lies in a home move's staged folder, which holds a fleet's keys under names of their own. */
-export const inStagedMove = (p: string): boolean => /(^|\/)adopt-hm_[0-9a-z]{10}(\/|$)/.test(p);
+/** Whether `p` lies in a home move's staged folder or is its kept workers.json, which hold a fleet's keys under names of their own. */
+export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|workers\.json\.home-hm_[0-9a-z]{10}$)/.test(p);
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

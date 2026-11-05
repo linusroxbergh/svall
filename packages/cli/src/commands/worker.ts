@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { MachineRecord, WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
+import { initConfig, patchFleetConfig } from '@svall/svalld/config';
 import { writeDurable } from '@svall/svalld/durable';
 import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
 import { loadFleetAgent, realFleetDeps } from '@svall/svalld/fleets';
@@ -61,7 +62,8 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
-export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string };
+/** `takesFleetId`: for a fleet joining its home, which goes by the home's id from its worker.json on. */
+export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string; takesFleetId?: true };
 export type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
 export const realEnrol: EnrolDeps = {
@@ -123,7 +125,13 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
       }
     } catch (e) { throw new Error(`worker.json not written: ${(e as Error).message}`, { cause: e }); }
   }
+  // named after worker.json, so what is refused or cut short before it leaves no home going by the fleet's id, and a retry finishes
+  if (o.takesFleetId) fs.mkdirSync(paths.home, { recursive: true, mode: 0o700 });
   writeDurable(paths.workerFile, file.data, { mode: 0o600 });
+  if (o.takesFleetId) {
+    initConfig(paths);
+    patchFleetConfig(paths.fleetConfig, { id: file.data.fleetId });
+  }
   if (!t.managed || (d.platform !== 'linux' && d.platform !== 'darwin')) return;
   const done = linux
     ? await serveAsWorker({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, unitDir: unitDirOf(os.homedir()), fleet: t.name, home: t.home, run: realRun })

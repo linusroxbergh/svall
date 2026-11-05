@@ -415,12 +415,12 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const far = await factsAcross(dial, worker_).catch(() => undefined);
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId };
-      return homeCheck({ state: store.state, from, to: here, toName, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), serving: false, fromIsHome: to === me });
+      return homeCheck({ state: store.state, from, to: here, toName, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), fromIsHome: to === me });
     }
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, workers: workersOf(paths), rewrites: rewrites(os.homedir()), serving: mobile.served() !== undefined, fromIsHome: true });
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, workers: workersOf(paths), rewrites: rewrites(os.homedir()), fromIsHome: true });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear
   const homeWaits = () => {
@@ -522,7 +522,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       teardown.push(() => dial.stop());
     }
     if (homeApi) teardown.push(() => homeApi.stop());
-    teardown.push(startDeliveries(paths, log));
+    teardown.push(startDeliveries(paths, log, undefined, worker ? undefined : () => mobile.set(true)));
     for (const tails of [screens, homeScreens]) {
       if (!tails) continue;
       tails.start();

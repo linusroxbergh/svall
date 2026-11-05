@@ -53,9 +53,10 @@ export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
 /** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */
 export class HomeCrash extends Error {}
 let homeArmed: ((name: HomeFailpoint) => void) | undefined;
-/** A crash in a test falls here, or in the integration run, which names a failpoint in a file in the fleet home that this process dies on once, or with `stop` after the name, stands still on until it is continued. */
+/** A crash in a test falls here, or in the integration run, whose image alone sets SVALL_HOME_FAULTS: that run names a failpoint in a file in the fleet home that this process dies on once, or with `stop` after the name, stands still on until it is continued. */
 export function homePoint(name: HomeFailpoint): void {
   homeArmed?.(name);
+  if (process.env.SVALL_HOME_FAULTS !== '1') return;
   const file = path.join(svallHome(), 'home-fault');
   if (!fs.existsSync(file)) return;
   const [point, how] = fs.readFileSync(file, 'utf8').trim().split(' ');

@@ -23,8 +23,6 @@ export type Enrolment = z.infer<typeof Enrolment>;
 export const HomeMoving = z.object({
   id: HomeMoveId, from: MachineId, fromName: z.string(), fromHome: MachinePath, to: MachineId, toName: z.string(), toHome: MachinePath, at: z.number(),
   ask: z.object({ ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath }).optional(),
-  // what served the phone, which a thaw puts back
-  phone: z.boolean().optional(),
   enrol: Enrolment.optional(),
 });
 export type HomeMoving = z.infer<typeof HomeMoving>;
@@ -61,6 +59,9 @@ export const HomeSheet = z.object({
   rewrites: z.array(z.object({ key: z.string(), from: z.string(), to: z.string() })),
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
+
+/** Mission control's robots that are not on the home: only a move of the home sends them away, and one that stopped leaves them there. */
+export const crewAway = (s: Pick<FleetState, 'robots' | 'islands'>): FleetState['robots'][string][] => Object.values(s.robots).filter((r) => s.islands[r.islandId]?.kind === 'home' && r.machine !== undefined);
 
 export type Relabel = {
   from: MachineId; fromName: string; fromHome?: string; to: MachineId; toName: string; toHome?: string; at: number;

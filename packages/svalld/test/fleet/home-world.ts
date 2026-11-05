@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { emptyState, MachineId, migrateState, relabelHome, WorkerFile, type Enrolment, type FleetState, type HomeManifest, type HomeMoveId, type HomeMoving, type Island, type Robot } from '@svall/protocol';
+import { armHomeFailpoints, HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { homeGate, installAdopt, packFleet, stageAdopt, writeMarker, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { dialSocket, resolvePaths, type Paths } from '../../src/paths.js';
@@ -27,6 +28,8 @@ export class FakeDaemon implements HomeDaemon {
   role?: 'home' | 'worker' | 'frozen';
   held?: FleetState;
   noAnswer = false;
+  // why a start fails, as a unit that will not start does, with nothing changed
+  startFails?: string;
   starts = 0;
   private unlock?: () => void;
 
@@ -50,6 +53,7 @@ export class FakeDaemon implements HomeDaemon {
   }
 
   async start(): Promise<void> {
+    if (this.startFails) throw new Error(this.startFails);
     if (this.role) await this.stop();
     const unlock = await daemonLock(this.paths.home);
     if (!unlock) throw new Error('svalld is already running');
@@ -85,8 +89,11 @@ const side = (me: MachineId): Side => {
 export const MAC_RECORD = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/opt/svall', dial: 'worker' } as const;
 export const STUDIO_RECORD = { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as const;
 
-/** A Mac home with robots, an island that holds something and the old workers.json, and studio its worker with a robot of its own and a worker's copy. */
-export async function world(): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
+/**
+ * A Mac home with robots, an island that holds something, the old workers.json and what no move carries, and studio its worker with a
+ * robot of its own, a worker's copy and the phone's record. `sameId`: studio goes by the fleet's id, as a joined worker or a way back's destination does.
+ */
+export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
   const mac = side(MAC);
   const studio = side(STUDIO);
   const state: FleetState = {
@@ -106,11 +113,19 @@ export async function world(): Promise<{ mac: Side; studio: Side; manifest: Home
   write(mac, 'mobile-pass', 'the-pass');
   write(mac, 'docs/fleet/note.md', 'a note');
   write(mac, 'docs/repos/x/note.md', 'a repo note');
+  // none of these goes with the fleet
+  write(mac, 'token', 'the-api-token');
+  write(mac, '.env', 'SECRET=1\n');
+  write(mac, 'node.json', {});
+  write(mac, 'cache/mirror-state.json', { from: 'a Copy' });
+  write(mac, 'journal/outbox.ndjson', `${JSON.stringify({ seq: 1, kind: 'mutation', data: { method: 'robot.update' } })}\n`);
+  write(mac, 'journal/acked', '1\n');
   issueToken(mac.paths, STUDIO);
   // the worker's: its own copy with its home's stamp, its own fields of the robot it runs, and its own id until the fleet's comes
   const copy: FleetState = { ...structuredClone(state), robots: { placed: { ...robot('placed', STUDIO, 3), unread: true } }, machines: { [MAC]: { name: 'mac', reachable: true, since: 1, home: '/Users/ada', snapshot: { version: 7, at: 1 } } } };
   write(studio, 'state.json', copy);
-  write(studio, 'fleet.json', { id: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' });
+  write(studio, 'fleet.json', { id: o.sameId ? FLEET : '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' });
+  write(studio, 'phone.json', { serving: false });
   write(studio, 'worker.json', { homeMachineId: MAC, fleetId: FLEET, token: TOKEN, homeName: 'mac' });
   write(studio, 'journal/epoch', 'e1\n');
   write(studio, 'journal/acked', '4\n');
@@ -146,6 +161,31 @@ export const marker = (): HomeMoving => ({
   id: ID, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5,
   ask: { ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never },
 });
+
+/** Which suite crashes at each failpoint of a move, each failing at its end on one it never fired, and the list on a failpoint no suite takes. */
+export const POINTS_OF = {
+  move: ['adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed', 'restore.file', 'restore.done', 'abort.recorded', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done', 'mark.written'],
+  back: ['enrol.written', 'deliver.owed', 'deliver.told'],
+  driver: ['move.marked'],
+} as const satisfies Record<string, readonly HomeFailpoint[]>;
+export const pointsOf = Object.values(POINTS_OF).flat() as HomeFailpoint[];
+if (pointsOf.length !== HOME_FAILPOINTS.length || HOME_FAILPOINTS.some((p) => !pointsOf.includes(p))) throw new Error('POINTS_OF does not name every failpoint once');
+
+let disarm: (() => void) | undefined;
+const fired = new Set<HomeFailpoint>();
+/** What crashed in this file so far, for its last check. */
+export const crashesFired = (): ReadonlySet<HomeFailpoint> => fired;
+export const disarmCrash = (): void => { disarm?.(); disarm = undefined; };
+/** A crash at the `n`th time `point` is reached; answers whether it has fallen. */
+export function crashAt(point: HomeFailpoint, n = 1): () => boolean {
+  let hit = 0;
+  let fell = false;
+  disarm?.();
+  disarm = armHomeFailpoints((name) => {
+    if (name === point && ++hit === n) { fell = true; fired.add(point); disarmCrash(); throw new HomeCrash(point); }
+  });
+  return () => fell;
+}
 
 export const stateOf = (s: Side): FleetState => migrateState(JSON.parse(fs.readFileSync(s.paths.state, 'utf8'))).state;
 export const sha = (file: string): string => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');

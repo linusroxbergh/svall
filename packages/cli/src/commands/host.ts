@@ -11,7 +11,7 @@ import { resolvePaths } from '@svall/svalld/paths';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
-import { Client } from '../client.js';
+import { Client, withClient } from '../client.js';
 import { printResult, table } from '../format.js';
 import { addHost, consentHost, dialingFleet, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -20,7 +20,6 @@ import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
-import { withClient } from './fleet.js';
 
 /**
  * Where the first ssh asks its questions: the terminal, or a dialog when there is none, as when the

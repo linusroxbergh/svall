@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { MachineId, type SetupRow } from '@svall/protocol';
+import { ApiError, MachineId, type SetupRow } from '@svall/protocol';
 import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
@@ -629,6 +629,68 @@ describe('a window and the fleet\'s home', () => {
     ] } });
     const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
     expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
+  });
+});
+
+describe('mission control in a move of the home', () => {
+  const placedWith = () => {
+    const asked: unknown[] = [];
+    return { asked, placement: { start: (_id: string, _to: string, o: { homeMove?: string }) => { asked.push(o.homeMove); return Promise.resolve('mv'); } } };
+  };
+  const ID = 'hm_abcdefghij';
+  const moveTo = (ctx: Ctx) => dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W, homeMove: ID } }, ctx);
+  const freeze = (open: boolean, viewer: object) => ({ refusal: () => undefined, admit: () => undefined, mayMoveCrew: (id: string, who: object) => open && id === ID && who === viewer }) as never;
+
+  it('an id no daemon opened, or one opened by another caller, lifts no guard', async () => {
+    const viewer = { kind: 'app', loopback: true };
+    for (const ctx of [{ viewer }, { viewer, freeze: freeze(false, viewer) }, { viewer, freeze: freeze(true, {}) }, { viewer: { kind: 'phone', loopback: false }, freeze: freeze(true, viewer) }]) {
+      const { asked, placement } = placedWith();
+      expect(await moveTo({ ...ctx, placement } as unknown as Ctx)).toMatchObject({ result: { moveId: 'mv' } });
+      expect(asked).toEqual([undefined]);
+    }
+  });
+
+  it('the caller that opened it has its id honoured', async () => {
+    const viewer = { kind: 'app', loopback: true };
+    const { asked, placement } = placedWith();
+    await moveTo({ viewer, freeze: freeze(true, viewer), placement } as unknown as Ctx);
+    expect(asked).toEqual([ID]);
+  });
+
+  it('opening one is not for a phone, nor for a call from past this machine', async () => {
+    const opened: unknown[] = [];
+    const held = { refusal: () => undefined, admit: () => undefined, open: (id: string) => { opened.push(id); }, status: () => ({}) };
+    const open = (viewer: object) => dispatch({ id: 1, method: 'fleet.homeMove', params: { op: 'open', id: ID } }, { viewer, freeze: held } as unknown as Ctx);
+    expect(await open({ kind: 'phone', loopback: true })).toMatchObject({ error: { code: 'forbidden' } });
+    expect(await open({ kind: 'app', loopback: false })).toMatchObject({ error: { code: 'forbidden' } });
+    expect(opened).toEqual([]);
+    expect(await open({ kind: 'app', loopback: true })).toMatchObject({ result: {} });
+    expect(opened).toEqual([ID]);
+  });
+
+  it('a freeze and a thaw answer only on this machine', async () => {
+    const held = { refusal: () => undefined, admit: () => undefined, freeze: () => Promise.resolve({}), thaw: () => Promise.resolve() };
+    for (const [method, params] of [['fleet.freeze', { id: ID, to: W }], ['fleet.thaw', { id: ID }]] as const) {
+      expect(await dispatch({ id: 1, method, params }, { viewer: { kind: 'app', loopback: false }, freeze: held } as unknown as Ctx)).toMatchObject({ error: { code: 'forbidden' } });
+    }
+  });
+});
+
+describe('a home that may freeze', () => {
+  it('counts a call that may write from its admission to its answer, a failed one too, and a read not at all', async () => {
+    const events: string[] = [];
+    const freeze = { refusal: () => undefined, admit: (m: string) => (m === 'state.get' ? undefined : (events.push(`in ${m}`), () => events.push(`out ${m}`))) };
+    const viewer = { kind: 'app', loopback: true };
+    const placement = { start: () => { events.push('running'); return Promise.reject(new Error('refused')); } };
+    expect(await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, { viewer, freeze, placement } as unknown as Ctx)).toMatchObject({ error: {} });
+    expect(events).toEqual(['in robot.moveTo', 'running', 'out robot.moveTo']);
+  });
+
+  it('refuses what a freeze refuses, without counting it', async () => {
+    const events: string[] = [];
+    const freeze = { refusal: () => new ApiError('frozen', 'the fleet is moving'), admit: () => { events.push('in'); return undefined; } };
+    expect(await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, { viewer: { kind: 'app', loopback: true }, freeze } as unknown as Ctx)).toMatchObject({ error: { code: 'frozen' } });
+    expect(events).toEqual([]);
   });
 });
 

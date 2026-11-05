@@ -109,6 +109,7 @@ export class Fleet extends EventEmitter<Events> {
   // each revived terminal's resume, by window name, until its session starts
   private resuming = new Map<string, Resume>();
   private stopped = false;
+  private held = false;
   private activated?: Promise<void>;
   // the background writes in flight, which a settle waits for
   private background = new Set<Promise<unknown>>();
@@ -425,6 +426,7 @@ export class Fleet extends EventEmitter<Events> {
   /** While the fleet moves to another home, its scribe holds still. */
   holdScribe(on: boolean): void {
     this.scribe.hold(on);
+    this.held = on;
   }
 
   /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
@@ -1182,6 +1184,8 @@ export class Fleet extends EventEmitter<Events> {
     if (held && (promptId === undefined || promptId === held)) {
       // the home holds them
       if (this.deps.remote?.onWorker) return Promise.reject(new ApiError('not_reachable', `robot messages wait on ${this.deps.remote.homeWord}; answer there`));
+      // past the archive's cut, an answer is undone on the new home, which asks again
+      if (this.held) return Promise.reject(new ApiError('frozen', 'the fleet is moving; answer once it has'));
       this.deps.store.update((d) => {
         const c = d.robots[id];
         if (answer === 'approve') { delete c.relayed; return; }

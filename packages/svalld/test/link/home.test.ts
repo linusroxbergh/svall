@@ -124,6 +124,25 @@ describe('a worker that dials in', () => {
     await until(() => expect(acked()).toBe(2));
   });
 
+  it('once a change is held, a report after it waits too, as acks are cumulative: acking it would take the change with it', async () => {
+    let holding = false;
+    const applied: string[] = [];
+    const w = await world({ held: () => holding, onEvent: async () => { applied.push('mutation'); } });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    holding = true;
+    w.worker.journal('mutation', { nothing: true });
+    w.worker.journal('robot.sync', { robotId: 'nobody', generation: 0, fields: {} }, 'nobody');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(applied).toEqual([]);
+    expect(w.outbox.acked()).toBe(0);
+    holding = false;
+    w.links.released();
+    await until(() => expect(w.outbox.acked()).toBe(2), 4000);
+    expect(applied).toEqual(['mutation']);
+  });
+
   it('holds its socket folder to the account alone, whatever mode it found it at', async () => {
     const w = await world();
     w.links.start();

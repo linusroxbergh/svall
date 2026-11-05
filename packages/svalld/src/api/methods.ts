@@ -55,7 +55,7 @@ export type AppWindows = { show(p: AppShow): number };
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
 const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
 // what hands over the home's token never leaves this machine, whatever node.json's host says
-const LOOPBACK_ONLY = new Set<string>(['home.connection', 'fleet.homeMove'] satisfies MethodName[]);
+const LOOPBACK_ONLY = new Set<string>(['home.connection', 'fleet.homeMove', 'fleet.freeze', 'fleet.thaw'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -174,7 +174,7 @@ const handlers: Handlers = {
     const r = await placementOf(ctx).check(p.id, p.machine, p);
     return r.ok ? { ok: true, sheet: r.sheet } : { ok: false, refusal: r.refusal };
   },
-  'robot.moveTo': async (p, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, p) }),
+  'robot.moveTo': async ({ homeMove, ...p }, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, { ...p, ...(homeMove && ctx.freeze?.mayMoveCrew(homeMove, ctx.viewer) && { homeMove }) }) }),
   'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
   // the home first, whichever machine answers; a home holds no record of itself, and a worker's copy holds the home's
   'machines.list': (_p, { store, fleetHome, registered, router }) => {
@@ -276,11 +276,13 @@ const handlers: Handlers = {
     if (!homeChecks) throw new ApiError('not_found', 'this daemon checks no move of the home');
     return homeChecks(p.to);
   },
-  'fleet.homeMove': async (p, { freeze, homeWaits }) => {
+  'fleet.homeMove': async (p, { freeze, homeWaits, viewer }) => {
     if (!freeze && p.op === 'status') return homeWaits?.() ?? {};
     const held = freezeOf(freeze);
+    if (p.op === 'open') held.open(p.id, viewer);
     if (p.op === 'mark') held.mark(p.marker);
     if (p.op === 'join') held.join(p.id, p.enrol);
+    if (p.op === 'told') await held.told(p.id);
     if (p.op === 'ask' || p.op === 'abort') await held.settle(p.op === 'ask' ? 'status' : 'abort');
     const said = held.status();
     return said.moving ? said : homeWaits?.() ?? said;
@@ -434,17 +436,21 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
   if (LOOPBACK_ONLY.has(req.method) && !ctx.viewer.loopback) return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on this machine` } };
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
+  let admitted: (() => void) | undefined;
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
     const frozen = ctx.freeze?.refusal(req.method as MethodName);
     if (frozen) throw frozen;
+    admitted = ctx.freeze?.admit(req.method as MethodName);
     if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone' || ctx.viewer.fallback === true)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>, ctx.viewer.fallback === true) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
     return { id: req.id, error: errorFrame(e) };
+  } finally {
+    admitted?.();
   }
 }
 

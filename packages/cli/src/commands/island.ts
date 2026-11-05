@@ -2,9 +2,9 @@ import { Command } from 'commander';
 import type { Client } from '../client.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
-import { withClient, withFleet } from './fleet.js';
 import { num, point, size } from './parse.js';
 import { islandId } from './resolve.js';
+import { withClient, withFleet } from '../client.js';
 
 export function islandCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('island').description('manage islands');

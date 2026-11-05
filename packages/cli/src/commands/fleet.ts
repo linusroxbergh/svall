@@ -1,10 +1,10 @@
 import os from 'node:os';
 import { Command } from 'commander';
 import { z } from 'zod';
-import { Enrolment, FleetId, HomeManifest, HomeMoveId, MachineId, MachineRecord, type AdoptAnswer, type FleetState } from '@svall/protocol';
+import { Enrolment, FleetId, HomeManifest, HomeMoveId, MachineId, MachineRecord, type AdoptAnswer } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { homeFacts } from '@svall/svalld/fleet/home-freeze';
-import { abortAdopt, adoptStatus, installAdopt, packFleet, settleMove, stageAdopt, type AdoptDeps } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptStatus, installAdopt, packFleet, readMarker, settleMove, stageAdopt, type AdoptDeps } from '@svall/svalld/fleet/home-move';
 import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { fleetHomes } from '@svall/svalld/uninstall';
@@ -12,9 +12,9 @@ import { installPrefix } from '@svall/svalld/release';
 import { machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { isWorker } from '@svall/svalld/worker/mode';
-import { Client } from '../client.js';
+import { Client, withClient } from '../client.js';
 import { connectForwarded } from '../controller/connection.js';
-import { abortBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type MoveDeps } from '../controller/home.js';
+import { abortBack, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type MoveDeps } from '../controller/home.js';
 import type { HostOutcome, StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
@@ -22,14 +22,6 @@ import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { interactiveSsh, stepLine } from './host.js';
 import { enrollHere, realEnrol } from './worker.js';
-
-export async function withClient<T>(connect: () => Promise<Client>, f: (c: Client) => Promise<T>): Promise<T> {
-  const c = await connect();
-  try { return await f(c); } finally { c.close(); }
-}
-
-export const withFleet = <T>(connect: () => Promise<Client>, f: (c: Client, state: FleetState) => Promise<T>): Promise<T> =>
-  withClient(connect, async (c) => f(c, await c.call('state.get', {})));
 
 type Facts = { name: string; platform: string; arch: string; home: string; svallBase: string };
 
@@ -40,6 +32,8 @@ type Facts = { name: string; platform: string; arch: string; home: string; svall
 async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMachineId: MachineId; homeName: string; fleetId: string; socket: string; token: string; homeSvallBase: string; homePlatform: string; homeArch: string; homePath: string }> {
   const paths = resolvePaths(t.home);
   if (isWorker(paths)) throw new Error(`${t.home} is a worker's fleet home; run this on the fleet's home`);
+  const moving = readMarker(paths);
+  if (moving) throw new Error(`the fleet is moving to ${moving.toName}; take this machine once it has, from there`);
   const fleetId = readFleetConfig(paths).id;
   const parsedId = MachineId.safeParse(id);
   if (!parsedId.success) throw new Error(`${id} is not a machine id: ${z.prettifyError(parsedId.error)}`);
@@ -141,10 +135,11 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     .action(async (raw: string, o: { outcome: string }) => {
       const t = target();
       const id = idOf(raw);
+      if (o.outcome !== 'adopted' && o.outcome !== 'not-adopted') throw new Error(`--outcome takes adopted or not-adopted, not ${o.outcome}`);
       const told = o.outcome === 'adopted' ? { status: 'adopted' as const, enrol: Enrolment.parse(JSON.parse(await readStdin())) } : { status: 'not-adopted' as const };
       printResult(await settleMove(resolvePaths(t.home), id, told, {
         join: (enrol) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'join', id, enrol })),
-        thaw: () => withClient(() => Client.connect(t.home), (c) => c.call('fleet.thaw', { id })),
+        thaw: () => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'told', id })),
         start: () => realHomeDaemon(t).start(),
       }), true);
     });
@@ -168,9 +163,15 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
   home.command('abort').description('call off the move this machine waits on, once the machine that holds it says it was not taken').action(async () => {
     const t = target();
     const back = await abortBack(moveDeps(t, json()));
-    if (back) return printResult(back, json(), () => (back.status === 'not-adopted' ? `the move is off${back.told ? ', and the old home takes writes again' : '; the old home thaws once this machine reaches it'}` : 'the move has gone through here'));
+    // mission control's robots stay where the move sent them unless a person brings them back
+    const crew = 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back';
+    if (back) return printResult(back, json(), () => (back.status === 'not-adopted' ? `the move is off${back.told ? ', and the old home takes writes again' : '; the old home thaws once this machine reaches it'}\n${crew}` : 'the move has gone through here'));
     const m = await withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'abort' }));
-    printResult(m, json(), () => (m.moving ? `${m.moving.name} has not let go of it: ${m.moving.answer ?? 'no answer'}` : 'the move is off, and this home takes writes again'));
+    printResult(m, json(), () => (m.moving ? `${m.moving.name} has not let go of it: ${m.moving.answer ?? 'no answer'}` : `the move is off, and this home takes writes again\n${crew}`));
+  });
+  home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home').action(async () => {
+    const t = target();
+    finishFlow(await bringCrewBack(moveDeps(t, json())), json(), 'Mission control\'s robots are on the home.');
   });
 }
 
