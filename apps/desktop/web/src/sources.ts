@@ -66,7 +66,10 @@ export class FollowApi extends Api {
       if (generation !== this.generation) throw new SourceLeft();
       return r;
     }, (e: unknown) => {
-      throw generation === this.generation ? e : new SourceLeft();
+      if (generation !== this.generation) throw new SourceLeft();
+      // a far home frozen for a move to this machine names it by its hostname
+      if (e instanceof ApiError && e.code === 'frozen' && e.data?.to !== undefined && e.data.to === this.me) throw new ApiError(e.code, 'the fleet is moving to this Mac; try again once it has', e.data);
+      throw e;
     });
   }
 

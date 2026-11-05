@@ -112,7 +112,7 @@ export class HomeFreeze {
   refusal(method: MethodName): ApiError | undefined {
     if (!this.moving || !this.writes(method)) return undefined;
     const name = this.d.store.state.machines?.[this.moving.to]?.name ?? this.marker?.toName ?? this.moving.to;
-    return new ApiError('frozen', `the fleet is moving to ${name}; try again once it has`);
+    return new ApiError('frozen', `the fleet is moving to ${name}; try again once it has`, { to: this.moving.to });
   }
 
   async freeze(id: HomeMoveId, to: MachineId, holder: Holder): Promise<Result<'fleet.freeze'>> {

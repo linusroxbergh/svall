@@ -69,7 +69,7 @@ class Socket {
     const a = d.answers[m.method];
     void Promise.resolve().then(() => (a ? a(m.params) : {})).then(
       (result) => this.deliver({ id: m.id, result }),
-      (e: ApiError) => this.deliver({ id: m.id, error: { code: e.code ?? 'internal', message: e.message } }),
+      (e: ApiError) => this.deliver({ id: m.id, error: { code: e.code ?? 'internal', message: e.message, ...(e.data && { data: e.data }) } }),
     );
   }
   deliver(body: unknown): void { if (!this.gone) this.onmessage?.({ data: JSON.stringify(body) }); }
@@ -310,6 +310,14 @@ describe('the page follows the home while it answers, and this machine otherwise
     await following();
     home.answer('robot.update', () => { throw new ApiError('not_found', 'no robot'); });
     await expect(api.call('robot.update', { id: 'there', note: 'x' })).rejects.toThrow('no robot');
+  });
+
+  it('a far home frozen for a move to this machine says this Mac, and names any other machine as it is', async () => {
+    await following();
+    home.answer('robot.update', () => { throw new ApiError('frozen', 'the fleet is moving to ada-mac; try again once it has', { to: ME }); });
+    await expect(api.call('robot.update', { id: 'there', note: 'x' })).rejects.toThrow('the fleet is moving to this Mac; try again once it has');
+    home.answer('robot.update', () => { throw new ApiError('frozen', 'the fleet is moving to studio2; try again once it has', { to: 'another' }); });
+    await expect(api.call('robot.update', { id: 'there', note: 'x' })).rejects.toThrow('the fleet is moving to studio2');
   });
 
   it('a save for a robot here that lands across a switch stands, as the same daemon answered it', async () => {
