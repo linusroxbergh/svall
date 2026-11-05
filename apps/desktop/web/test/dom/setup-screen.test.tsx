@@ -235,6 +235,21 @@ describe('the first run forks three ways', () => {
     expect(replaced).toHaveBeenCalledWith('/');
   });
 
+  test('a server path keeps the notification ask, and shows Setup\'s warnings once the join lands', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Notify me when an agent needs me' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Notify me when an agent needs me' }));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ done: [], warnings: ['Trust the Codex hooks once.'] }) });
+    expect(sent.filter((m) => m.type === 'notify.enable')).toHaveLength(1);
+    expect(screen.queryByText('Trust the Codex hooks once.')).toBeNull();
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(screen.getByText('Trust the Codex hooks once.')).toBeTruthy();
+    expect(replaced).not.toHaveBeenCalled();
+  });
+
   test('a join that fails stays here, says why, and tries again; going back forgets it', () => {
     const { sent, receive } = shell(ready, { fork: false });
     fireEvent.click(screen.getByTestId('fork-join'));

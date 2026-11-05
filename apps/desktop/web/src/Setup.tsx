@@ -32,7 +32,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   const [fork, setFork] = useState<Fork>();
   const [ssh, setSsh] = useState('');
   const [farSteps, setFarSteps] = useState<HostStep[]>();
-  const going = useRef<{ fork: Fork; ssh: string } | undefined>(undefined);
+  const going = useRef<{ fork: Fork; ssh: string; warnings?: string[] } | undefined>(undefined);
   const farRows = useRef<HostStep[]>([]);
   const [plan, setPlan] = useState<SetupPlan>();
   const [step, setStep] = useState(1);
@@ -69,7 +69,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       if (!to) return;
       const failed = farRows.current.some((r) => r.status === 'fail');
       if (!failed && m.op === 'add') bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
-      else if (!failed && m.code === 0) window.location.replace('/');
+      else if (!failed && m.code === 0) { if (to.warnings?.length) setWarnings(to.warnings); else window.location.replace('/'); }
       else { pending.current = undefined; setRunning(false); setBusy(false); }
       return;
     }
@@ -98,8 +98,18 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       setError(undefined);
       return;
     }
+    const storage = localAppStorage(window.__svallHome);
+    // with nothing saved the keys stay unnamed, for the first window to settle against Ghostty
+    const { bindings: _unnamed, ...fresh } = DEFAULT_SETTINGS;
+    const settings = storage?.getSettings() ?? fresh;
+    storage?.setSettings({ ...settings, notifications: { ...settings.notifications, on: notify } } as Settings);
+    try { localStorage.setItem(TOUR_KEY, '0'); } catch { /* optional persistence */ }
+    if (notify) bridge.send({ type: 'notify.enable' });
+    const run = data as { warnings: string[] };
     const to = going.current;
     if (to && to.fork !== 'here') {
+      // shown once the join lands, as the window opens only then
+      to.warnings = run.warnings;
       // the machine runs that follow are this run's too, which a recheck must not cut into
       pending.current = 'run';
       setRunning(true);
@@ -109,14 +119,6 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         : { type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
       return;
     }
-    const storage = localAppStorage(window.__svallHome);
-    // with nothing saved the keys stay unnamed, for the first window to settle against Ghostty
-    const { bindings: _unnamed, ...fresh } = DEFAULT_SETTINGS;
-    const settings = storage?.getSettings() ?? fresh;
-    storage?.setSettings({ ...settings, notifications: { ...settings.notifications, on: notify } } as Settings);
-    try { localStorage.setItem(TOUR_KEY, '0'); } catch { /* optional persistence */ }
-    if (notify) bridge.send({ type: 'notify.enable' });
-    const run = data as { warnings: string[] };
     if (run.warnings.length) setWarnings(run.warnings);
     else window.location.replace('/');
   }), [bridge, notify]);
@@ -191,6 +193,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         {far && (
           <fieldset className="setup-fields" disabled={running} aria-busy={busy}>
             <label><span>ssh destination</span><input {...AS_TYPED} data-testid="fork-ssh" value={ssh} placeholder="you@studio" onChange={(e) => setSsh(e.target.value)} /></label>
+            <Preference {...NOTIFY} value={notify} set={setNotify} />
             <Preference {...PERMISSIONS} value={permissions} set={setPermissions} />
           </fieldset>
         )}
@@ -295,7 +298,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         {step === 3 && <>
           <div className="setup-list setup-preferences">
             {[
-              { title: 'Notify me when an agent needs me', text: 'A banner with Approve and Deny when an agent asks for permission, and one when it finishes.', value: notify, set: setNotify },
+              { ...NOTIFY, value: notify, set: setNotify },
               { title: 'Automatically update robot notes', text: "When an agent finishes, Svall asks your main agent for a short summary and updates the robot’s name and note. Each update uses a little of your plan or API credit.", value: scribe, set: setScribe },
               { ...PERMISSIONS, value: permissions, set: setPermissions },
             ].map((p) => <Preference key={p.title} {...p} />)}
@@ -317,6 +320,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   );
 }
 
+const NOTIFY = { title: 'Notify me when an agent needs me', text: 'A banner with Approve and Deny when an agent asks for permission, and one when it finishes.' };
 const PERMISSIONS = { title: 'Let robots run svall without asking', text: 'Robots can start, message and wait for other robots without a permission prompt.' };
 
 const Preference = ({ title, text, value, set }: { title: string; text: string; value: boolean; set: (on: boolean) => void }) => (

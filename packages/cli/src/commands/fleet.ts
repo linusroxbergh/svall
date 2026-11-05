@@ -160,7 +160,7 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
   });
   home.command('set').description('move the fleet to <machine>, or back here with local: its islands, notes, settings and phone pairing; robots stay where they run')
     .argument('<machine>', 'a worker of this fleet, or local')
-    .option('--interrupt-after <duration>', 'interrupt what a robot of mission control runs after this long, e.g. 30s or 0; without it, one at work stops the move before anything moves')
+    .option('--interrupt-after <duration>', 'interrupt what a robot of mission control runs after this long, 0 at once; without it, one at work stops the move before anything moves')
     .action(async (machine: string, o: { interruptAfter?: string }) => {
       const t = target();
       const d = moveDeps(t, json());
@@ -176,7 +176,7 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     finishFlow(await abortHome(moveDeps(target(), json())), json(), 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back');
   });
   home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home')
-    .option('--interrupt-after <duration>', 'interrupt what they run after this long, e.g. 30s or 0; without it, one at work stays there and says so')
+    .option('--interrupt-after <duration>', 'interrupt what they run after this long, 0 at once; without it, one at work stays there and says so')
     .action(async (o: { interruptAfter?: string }) => {
       const t = target();
       finishFlow(await bringCrewBack(moveDeps(t, json()), crewChoice(o)), json(), 'Mission control\'s robots are on the home.');
