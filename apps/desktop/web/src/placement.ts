@@ -15,6 +15,12 @@ export const destinationName = (f: Machines, to: MachineId, via?: Via): string =
  */
 export const isPlaced = (c: Pick<Robot, 'machine'>, via?: Via): boolean => (via ? c.machine !== via.machine : c.machine !== undefined);
 
+/** The machine a new robot starts on: the home the window follows, else this one. */
+export const startsOn = (via: Via): MachineId => (via.online ? via.home : via.machine);
+
+/** Whether a robot works on the machine a new one starts on, so that its folder is there. */
+export const startsBeside = (c: Pick<Robot, 'machine'>, via: Via): boolean => (c.machine ?? via.home) === startsOn(via);
+
 /** The machine a robot that is not here runs on, by name. */
 export const machineOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined => {
   if (!isPlaced(c, via)) return undefined;

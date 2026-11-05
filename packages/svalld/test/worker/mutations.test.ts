@@ -84,11 +84,19 @@ describe('a worker serving its robots while the home is away', () => {
 
   it('a cwd outside the clones is refused with its path; mission control is refused; the sixth create since the last ack is refused with the quota sentence', async () => {
     const { create, opened } = setup();
-    await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not inside a clone on w1; start it in one` } });
+    await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not in a clone on w1; while ada-mac is away a new robot starts in one` } });
     await expect(create({ islandId: HOME_ISLAND })).resolves.toMatchObject({ error: { message: 'mission control stays on ada-mac; start it on another island' } });
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
     await expect(create()).resolves.toMatchObject({ error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } });
     expect(opened).toHaveLength(5);
+  });
+
+  it('a window on this machine is told of this Mac, while the note goes by its name', async () => {
+    const { w, clone } = setup();
+    const inWindow = (p: Record<string, unknown> = {}) => dispatch({ id: 1, method: 'robot.create', params: { islandId: 'i_1', cwd: clone, ...p } }, { ...w.worker.ctx, viewer: { ...w.worker.ctx.viewer, fallback: true } });
+    await expect(inWindow({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not in a clone on this Mac; while ada-mac is away a new robot starts in one` } });
+    for (let i = 0; i < 5; i++) expect(await inWindow()).toMatchObject({ result: { note: 'started on w1 while ada-mac was away' } });
+    await expect(inWindow()).resolves.toMatchObject({ error: { code: 'invalid', message: 'this Mac has started 5 robots since ada-mac last answered; wait for it' } });
   });
 
   it('two creates at once for the fifth place start one robot, and the other is refused with the quota sentence', async () => {

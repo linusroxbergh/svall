@@ -1,6 +1,6 @@
 import { byCell, byIslandOrder, columnOf, placingOn, shownAgent, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
-import { unreachableOf, type Via } from './placement.js';
+import { startsBeside, unreachableOf, type Via } from './placement.js';
 import type { View } from './store/ui.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 'moving' | 'unknown';
@@ -36,8 +36,8 @@ export const robotsOf = (f: FleetState, islandId: string): Robot[] => {
 // where a new robot starts when it takes another one's directory: the repo itself, never the worktree that one sits in
 export const startCwd = (c: Robot): string => (c.repo?.isWorktree ? c.repo.mainRoot : c.cwd);
 
-export const islandCwd = (f: FleetState, islandId: string): string => {
-  const first = robotsOf(f, islandId)[0];
+export const islandCwd = (f: FleetState, islandId: string, via?: Via): string => {
+  const first = robotsOf(f, islandId).find((c) => !via || startsBeside(c, via));
   return f.islands[islandId]?.kind === 'home' ? f.home.cwd : first ? startCwd(first) : f.defaultCwd;
 };
 

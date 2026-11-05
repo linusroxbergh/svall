@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_CWD, emptyState } from '@svall/protocol';
+import { DEFAULT_CWD, emptyState, type MachineId } from '@svall/protocol';
 import { deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
@@ -17,6 +17,25 @@ function ctx() {
   store.getState().setFleet(fleet());
   return { calls, api, store };
 }
+
+it('a new robot button starts beside a robot on the machine it starts on: the home it follows, else this Mac', async () => {
+  const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
+  const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
+  const c = ctx();
+  const f = fleet();
+  f.defaultCwd = '/home/ada/projects';
+  f.robots.c0.cwd = '/home/ada/far';
+  f.robots.c1 = { ...f.robots.c1, cwd: '/Users/ada/here', machine: MAC };
+  c.store.getState().setFleet(f);
+  const started = async (island: string) => { await newRobotOn(c, island); return (c.calls.at(-1)?.params as { cwd: string }).cwd; };
+  expect(await started('i_b')).toBe('/home/ada/far');
+  c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+  expect(await started('i_b')).toBe('/home/ada/far');
+  c.store.getState().setVia({ machine: MAC, home: HOME });
+  expect(await started('i_b')).toBe('/Users/ada/here');
+  // no robot here to stand beside, so the fleet's own folder is asked for, and this Mac says what it wants
+  expect(await started('i_a')).toBe('/home/ada/projects');
+});
 
 it('new robot buttons use the chosen main agent and keep shell defaults for existing fleets', async () => {
   const c = ctx();

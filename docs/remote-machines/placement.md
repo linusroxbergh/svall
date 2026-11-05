@@ -236,7 +236,7 @@ the worker:
 
 - `svall robot new` starts the robot on the same worker, the home awake or not; mission control is refused: "mission
   control stays on this Mac; start it on another island". While the home is away, `--cwd` must be inside a clone the
-  worker has ("/home/ada/notes is not inside a clone on linus-vault; start it in one"), the robot's note says
+  worker has ("/home/ada/notes is not in a clone on linus-vault; while this Mac is away a new robot starts in one"), the robot's note says
   "started on linus-vault while this Mac was away", and the worker starts at most five robots until the home answers
   again; the sixth: "linus-vault has started 5 robots since this Mac last answered; wait for it".
 - `svall robot update` changes the name, note, context and instructions of a robot on the worker; `svall robot seen`,

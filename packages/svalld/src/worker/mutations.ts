@@ -17,7 +17,7 @@ import type { Entry, Outbox } from './outbox.js';
 /** How many robots a worker starts between two of its home's acks. */
 const OFFLINE_QUOTA = 5;
 const quotaLine = (worker: string, n: number, home: string) => `${worker} has started ${n} robots since ${home} last answered; wait for it`;
-const outsideClones = (worker: string, cwd: string) => `${cwd} is not inside a clone on ${worker}; start it in one`;
+const outsideClones = (worker: string, cwd: string, home: string) => `${cwd} is not in a clone on ${worker}; while ${home} is away a new robot starts in one`;
 export const SLEPT_NOTE = (worker: string, home: string) => `started on ${worker} while ${home} was away`;
 const notHome = (home: string) => `mission control stays on ${home}; start it on another island`;
 
@@ -28,8 +28,8 @@ type Served = 'robot.create' | 'robot.update' | 'robot.close' | 'robot.run' | 'r
 
 /** What a worker serves from its own store for the CLI in its panes, its home linked or not, and journals for the home to apply. */
 export class WorkerMutations {
-  private handlers: { [M in Served]: (p: ParsedParams<M>) => Promise<Result<M>> } = {
-    'robot.create': (p) => this.create(p),
+  private handlers: { [M in Served]: (p: ParsedParams<M>, where: string) => Promise<Result<M>> } = {
+    'robot.create': (p, where) => this.create(p, where),
     'robot.update': (p) => this.update(p),
     // journaled first, so a crash before the forget leaves a close the home applies and reconcile forgets here
     'robot.close': async (p) => {
@@ -43,9 +43,9 @@ export class WorkerMutations {
       return { delivery };
     },
     // journaled as the run it types, which the home applies as any other; the home keeps reports
-    'robot.send': async (p) => {
+    'robot.send': async (p, where) => {
       if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name, this.o.homeWord())}, and it keeps the report`);
-      return this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true });
+      return this.handlers['robot.run']({ id: p.id, text: this.o.fleet.message(p.id, p.from, p.text), enter: true }, where);
     },
     // `unread` is this machine's, which its report carries
     'robot.seen': async (p) => this.o.fleet.markSeen(p.id, p.term),
@@ -98,9 +98,10 @@ export class WorkerMutations {
     return this.away() || (phone && (method !== 'robot.update' || journaled(params)));
   }
 
-  serve<M extends MethodName>(method: M, params: ParsedParams<M>): Promise<Result<M>> {
+  /** `inWindow`: the person asking sits at this machine's window, which calls it this Mac; anyone else knows it by name. */
+  serve<M extends MethodName>(method: M, params: ParsedParams<M>, inWindow = false): Promise<Result<M>> {
     if (!Object.hasOwn(this.handlers, method)) throw new Error(`${method} is not served on a worker`);
-    return (this.handlers[method as Served] as unknown as (p: ParsedParams<M>) => Promise<Result<M>>)(params);
+    return (this.handlers[method as Served] as unknown as (p: ParsedParams<M>, where: string) => Promise<Result<M>>)(params, inWindow ? 'this Mac' : this.name);
   }
 
   /** Journals a robot made here, as the fleet has written it. */
@@ -135,16 +136,16 @@ export class WorkerMutations {
     return this.o.store.state.machines?.[this.o.me]?.name ?? os.hostname().split('.')[0];
   }
 
-  private async create(p: ParsedParams<'robot.create'>): Promise<Result<'robot.create'>> {
+  private async create(p: ParsedParams<'robot.create'>, where: string): Promise<Result<'robot.create'>> {
     if (this.o.store.state.islands[p.islandId]?.kind === 'home') throw new Invalid(notHome(this.o.homeWord()));
     // the quota, the clone and the note are for a robot started while the home cannot be reached
     if (this.o.connection.connected()) return this.o.fleet.createRobot(p);
     if (p.report) throw new ApiError('not_reachable', `${unreachableLine(this.name, this.o.homeWord())}, and it keeps the report`);
-    if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(this.name, OFFLINE_QUOTA, this.o.homeWord()));
+    if (this.started() >= OFFLINE_QUOTA) throw new Invalid(quotaLine(where, OFFLINE_QUOTA, this.o.homeWord()));
     const q = { ...p, note: SLEPT_NOTE(this.name, this.o.homeWord()) };
     this.starting.add(q);
     try {
-      if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(this.name, p.cwd));
+      if (!(await resolveRepo(expandHome(p.cwd)))) throw new Invalid(outsideClones(where, p.cwd, this.o.homeWord()));
       return await this.o.fleet.createRobot(q);
     } finally {
       this.starting.delete(q);

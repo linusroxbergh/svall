@@ -362,7 +362,7 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
-    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone' || ctx.viewer.fallback === true)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
+    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone' || ctx.viewer.fallback === true)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>, ctx.viewer.fallback === true) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
