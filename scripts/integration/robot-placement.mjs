@@ -1259,6 +1259,9 @@ function placeHome(where) {
   if (homeAt() !== where) setHome(L, where);
   if (homeAt() !== where) throw new Error(`the home did not move to ${where}`);
   ctx.home = where;
+  // the link a move's end closed comes back on its own backoff, and until then a check refuses, as it does a person
+  const to = JSON.parse(sh(where === 'local' ? R : L, 'svall version --json').stdout).machineId;
+  for (let i = 0; i < 90 && !call(L, 'fleet.homeCheck', { to }).ok; i++) sh(L, 'sleep 1');
 }
 
 // each move this machine has a part in ended, and none stands between
