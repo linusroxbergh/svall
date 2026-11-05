@@ -99,7 +99,8 @@ that folder goes once the old home links with the token the move issued, and a l
 on stdin and stdout, and `home-moving.json` and `home-deliver.json` join the fleet's key files.
 
 A machine can take a fleet only over the ssh login that reaches it, and the old home starts as a home again only on the word of
-the machine holding the fleet, which refuses that move for good before it says so. The phone's authorization travels as what it was:
+the machine holding the fleet, which refuses that move for good before it says so. An outcome sent to the old home carries, on
+stdin, a key only the move's driver holds and whose hash the marker keeps, so nothing typed there ends the move. The phone's authorization travels as what it was:
 `mobile.logins` empty means this machine's Tailscale owner, which a tagged server has none of, so the effective logins are written out.
 
 ## Release integrity

@@ -7,7 +7,7 @@ import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId,
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, adoptDir, enter, installAdopt, moveOutcome, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptDir, driverKey, enter, installAdopt, markKey, moveOutcome, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -382,11 +382,11 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
         return { value: undefined, detail: `${bytes.length} bytes checked and staged on ${name}` };
       });
-      driverJournal(paths, id, 'mark');
+      const keySha256 = markKey(paths, id);
       await run.step('mark', async () => {
         const here = d.registry.localMachine();
         await client.call('fleet.homeMove', { op: 'mark', marker: {
-          id, from: d.me, fromName: here.name, fromHome: here.home as HomeMoving['fromHome'], to, toName: name, toHome: toHome as HomeMoving['toHome'], at: Date.now(),
+          id, from: d.me, fromName: here.name, fromHome: here.home as HomeMoving['fromHome'], to, toName: name, toHome: toHome as HomeMoving['toHome'], at: Date.now(), keySha256,
           ask: { ssh, svallBase: entry.record.svallBase as never, fleetHome: farHome as never },
         } });
         marked = true;
@@ -426,7 +426,9 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
   driverJournal(paths, id, 'join');
   await run.step('join', async () => {
     if (enrol) {
-      await client.call('fleet.homeMove', { op: 'join', id, enrol }).catch(() => writeEnrol(paths, id, enrol));
+      const key = driverKey(paths, id);
+      if (!key) throw new StepError(`this machine's journal holds no key of ${id}; its daemon asks ${o.name} itself`);
+      await client.call('fleet.homeMove', { op: 'join', id, enrol, key }).catch(() => writeEnrol(paths, id, enrol, key));
       await d.daemon.start();
     }
     return { value: undefined, detail: `this machine runs as a worker of ${o.name}` };
@@ -503,10 +505,10 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`this machine did not stage the fleet's files: ${a.status}`);
         return { value: undefined, detail: 'checked and staged here' };
       });
-      driverJournal(paths, id, 'mark');
+      const keySha256 = markKey(paths, id);
       await run.step('mark', async () => {
         await home!.call('fleet.homeMove', { op: 'mark', marker: {
-          id, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(),
+          id, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(), keySha256,
         } });
         marked = true;
         return { value: undefined, detail: `${name} stays frozen until this machine tells it how the move ended` };

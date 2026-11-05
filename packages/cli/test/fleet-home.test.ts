@@ -1,11 +1,12 @@
 import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, INTERRUPT_ACTIONS, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, installAdopt, journalLines, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, driverKey, installAdopt, journalLines, markKey, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
@@ -161,6 +162,17 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     }, close: () => {} } as unknown as Client);
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(readMarker(resolvePaths(home))?.enrol).toBeDefined();
+  });
+
+  it('the mark holds the hash of a key only the driver\'s journal holds, and the join carries that key', async () => {
+    const { deps, called } = outDeps(happy);
+    expect((await moveHomeOut('studio', deps)).result).toBe('ready');
+    const op = (o: string) => called.find((c) => (c.params as Called['params']).op === o)?.params as Called['params'];
+    const { id, keySha256 } = op('mark').marker!;
+    const key = driverKey(resolvePaths(home), id)!;
+    expect(crypto.createHash('sha256').update(key).digest('hex')).toBe(keySha256);
+    expect(op('join').key).toBe(key);
+    expect(JSON.stringify(op('mark'))).not.toContain(key);
   });
 
   it('a machine named by its id goes by its name, in its steps and on the far side', async () => {
@@ -371,7 +383,7 @@ describe('what the machine taking the fleet tells the old home', () => {
 
 describe('fleet home retry', () => {
   const marker = (ask = true): HomeMoving => ({
-    id: 'hm_abcdefghij' as HomeMoveId, from: machineId(), fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5,
+    id: 'hm_abcdefghij' as HomeMoveId, from: machineId(), fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: markKey(resolvePaths(home), 'hm_abcdefghij'),
     ...(ask && { ask: { ssh: 'ada@studio' as never, svallBase: '/opt' as never, fleetHome: '/home/ada/.svall' as never } }),
   });
 
@@ -528,7 +540,8 @@ describe('fleet home set local', () => {
     expect(fs.existsSync(w.mac.paths.workerFile)).toBe(true);
     expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('aborted');
     expect(readOwed(w.mac.paths)).toBeUndefined();
-    expect(settled).toEqual(['not-adopted']);
+    // never marked, so there is no marker there to end
+    expect(settled).toEqual([]);
   }, 30_000);
 
   it('a driver killed before its archive came: a retry calls the move off', async () => {
@@ -542,7 +555,7 @@ describe('fleet home set local', () => {
     expect(out.actions).toEqual(['svall fleet home set local to start again']);
     expect(readOwed(w.mac.paths)).toBeUndefined();
     expect(w.mac.daemon.role).toBe('worker');
-    expect(settled).toEqual(['not-adopted']);
+    expect(settled).toEqual([]);
   }, 30_000);
 
   it('a retry with the old home out of reach changes nothing here', async () => {

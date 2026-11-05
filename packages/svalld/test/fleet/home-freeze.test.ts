@@ -15,7 +15,7 @@ import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { moveWorld, type MoveWorld } from '../placement/move-world.js';
 import { H, W } from '../placement/world.js';
-import { ID, MAC, marker, phoneAt, robot, STUDIO } from './home-world.js';
+import { ID, KEY, MAC, marker, phoneAt, robot, STUDIO } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -155,16 +155,31 @@ describe('a frozen home', () => {
     expect(held.status().moving?.asks).toBe(false);
     await expect(held.thaw(ID)).rejects.toThrow(/only where the fleet is going/);
     expect(readMarker(paths)?.id).toBe(ID);
-    await held.told(ID);
+    await expect(held.told(ID, 'typed by hand')).rejects.toThrow(/not ended by told/);
+    expect(held.active).toBe(true);
+    expect(readMarker(paths)?.id).toBe(ID);
+    await held.told(ID, KEY);
     expect(held.active).toBe(false);
     expect(readMarker(paths)).toBeUndefined();
   });
 
   it('a home that asks for itself takes no outcome from a call', async () => {
     const { freeze, paths } = setup({ frozen: true });
-    await expect(freeze.told(ID)).rejects.toThrow(/told by no one/);
+    await expect(freeze.told(ID, KEY)).rejects.toThrow(/told by no one/);
     freeze.stop();
     expect(readMarker(paths)?.id).toBe(ID);
+  });
+
+  it('a join without the key of the move\'s driver writes nothing and ends no daemon', () => {
+    const enrol = { worker: { homeMachineId: STUDIO, fleetId: '11111111-2222-3333-4444-555555555555', token: 'x'.repeat(48), homeName: 'studio' } } as never;
+    const { freeze, paths, log } = setup({ frozen: true });
+    expect(() => freeze.join(ID, enrol, 'typed by hand')).toThrow(/with its key/);
+    freeze.stop();
+    expect(readMarker(paths)).toEqual(marker());
+    expect(log).not.toContain('restart');
+    freeze.join(ID, enrol, KEY);
+    expect(readMarker(paths)?.enrol).toEqual(enrol);
+    expect(log).toContain('restart');
   });
 
   it('refuses a freeze under a marker, its own id included, and a failure there leaves it', async () => {
@@ -228,8 +243,8 @@ describe('a frozen home', () => {
     it('each outcome by id: told, join, mark and thaw of another move change nothing', async () => {
       const { ask: _ask, ...bare } = marker();
       const { freeze, paths, log } = setup({ frozen: bare });
-      await expect(freeze.told(OTHER)).rejects.toThrow(/no marker of/);
-      expect(() => freeze.join(OTHER, { worker: {} } as never)).toThrow(/no marker of/);
+      await expect(freeze.told(OTHER, KEY)).rejects.toThrow(/no marker of/);
+      expect(() => freeze.join(OTHER, { worker: {} } as never, KEY)).toThrow(/no marker of/);
       expect(() => freeze.mark({ ...marker(), id: OTHER })).toThrow(/not frozen/);
       await freeze.thaw(OTHER);
       freeze.stop();

@@ -7,7 +7,7 @@ import { adoptDir, journalLines, packFleet, readMarker, writeMarker } from '@sva
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { MAC, marker, world } from '../../svalld/test/fleet/home-world.js';
+import { KEY, MAC, marker, world } from '../../svalld/test/fleet/home-world.js';
 
 const daemon = vi.hoisted(() => ({ current: undefined as unknown as HomeDaemon, starts: 0 }));
 vi.mock('../src/controller/home.js', async (actual) => ({ ...(await actual<object>()), realHomeDaemon: () => daemon.current }));
@@ -19,10 +19,10 @@ const FAR_FLEET = '11111111-2222-3333-4444-555555555555';
 let home: string;
 let printed: string[];
 
-async function run(args: string[], stdin = ''): Promise<unknown> {
+async function run(args: string[], stdin = '', o: { tty?: boolean } = {}): Promise<unknown> {
   printed = [];
   const out = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { printed.push(String(s)); return true; });
-  const input = vi.spyOn(process, 'stdin', 'get').mockReturnValue(Readable.from([stdin]) as never);
+  const input = vi.spyOn(process, 'stdin', 'get').mockReturnValue(Object.assign(Readable.from([stdin]), o.tty && { isTTY: true }) as never);
   try {
     await fleetCommands(() => ({ name: 'private', home, managed: false }), () => true).parseAsync(args, { from: 'user' });
   } finally { out.mockRestore(); input.mockRestore(); }
@@ -116,7 +116,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
 
   it('not-adopted with no daemon there ends the marker and starts it', async () => {
     waiting();
-    expect(await run(['settle', ID, '--outcome', 'not-adopted'])).toEqual({ status: 'not-adopted' });
+    expect(await run(['settle', ID, '--outcome', 'not-adopted'], JSON.stringify({ key: KEY }))).toEqual({ status: 'not-adopted' });
     expect(readMarker(resolvePaths(home))).toBeUndefined();
     expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).toBe('released');
     expect(daemon.starts).toBe(1);
@@ -124,7 +124,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
 
   it('adopted with no daemon there writes the enrolment for its next start, and no thaw', async () => {
     waiting();
-    expect(await run(['settle', ID, '--outcome', 'adopted'], JSON.stringify(ENROL))).toEqual({ status: 'adopted' });
+    expect(await run(['settle', ID, '--outcome', 'adopted'], JSON.stringify({ key: KEY, enrol: ENROL }))).toEqual({ status: 'adopted' });
     expect(readMarker(resolvePaths(home))?.enrol?.worker.homeMachineId).toBe(MAC);
     expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).not.toBe('aborted');
     expect(daemon.starts).toBe(1);
@@ -132,7 +132,8 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
 
   it('adopted with an enrolment that is none changes nothing', async () => {
     waiting();
-    await expect(run(['settle', ID, '--outcome', 'adopted'], '{"worker":{}}')).rejects.toThrow();
+    await expect(run(['settle', ID, '--outcome', 'adopted'], JSON.stringify({ key: KEY, enrol: { worker: {} } }))).rejects.toThrow();
+    await expect(run(['settle', ID, '--outcome', 'adopted'], JSON.stringify({ key: KEY }))).rejects.toThrow(/takes the enrolment/);
     expect(readMarker(resolvePaths(home))?.enrol).toBeUndefined();
   });
 
@@ -145,6 +146,20 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
   it('a move this home holds no marker of: heard already', async () => {
     expect(await run(['settle', ID, '--outcome', 'not-adopted'])).toEqual({ status: 'done' });
     expect(daemon.starts).toBe(0);
+  });
+
+  it.each(['not-adopted', 'adopted'])('%s typed by hand, at a terminal or piped without the key, refuses naming fleet home abort, and the marker stands', async (outcome) => {
+    waiting();
+    for (const [stdin, tty] of [['', true], ['', false], [JSON.stringify({ key: 'typed by hand', enrol: ENROL }), false]] as const) {
+      await expect(run(['settle', ID, '--outcome', outcome], stdin, { tty })).rejects.toThrow(/only studio ends this move.*svall fleet home abort there/);
+    }
+    expect(readMarker(resolvePaths(home))?.enrol).toBeUndefined();
+    expect(journalLines(resolvePaths(home), ID)).toEqual([]);
+    expect(daemon.starts).toBe(0);
+  });
+
+  it('is not offered in the help', () => {
+    expect(fleetCommands(() => ({ name: 'private', home, managed: false }), () => true).helpInformation()).not.toMatch(/settle/);
   });
 
   it('a home that asks for itself is told by no one', async () => {

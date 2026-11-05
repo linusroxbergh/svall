@@ -8,7 +8,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps }
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { endMove, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
+import { endMove, keyFits, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -174,10 +174,10 @@ export class HomeFreeze {
   }
 
   /** The outcome `not-adopted`, delivered by the machine holding the fleet to a home with no route to ask it. */
-  async told(id: HomeMoveId): Promise<void> {
+  async told(id: HomeMoveId, key: string): Promise<void> {
     if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
     if (this.marker.ask) throw new ApiError('frozen', 'this home asks where the fleet went, and is told by no one');
-    await this.release('told');
+    await this.release({ by: 'told', key });
   }
 
   mark(marker: HomeMoving): void {
@@ -197,22 +197,27 @@ export class HomeFreeze {
     if (!asked?.ask) return;
     const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: e.message }));
     // an answer about an earlier move says nothing of the one standing now
-    if (this.marker?.id === asked.id) await this.act(this.marker.id, answer);
+    if (this.marker?.id === asked.id) await this.act(this.marker, answer);
   }
 
-  /** The outcome `adopted`, on the disk before this daemon ends. */
-  join(id: HomeMoveId, enrol: Enrolment): void {
+  /** The outcome `adopted` from the move's driver, on the disk before this daemon ends. */
+  join(id: HomeMoveId, enrol: Enrolment, key: string): void {
     if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
-    const m = { ...this.marker, enrol };
+    if (!keyFits(this.marker, key)) throw new ApiError('frozen', `only the driver of ${id} ends it, with its key`);
+    this.enrolled(this.marker, enrol);
+  }
+
+  private enrolled(held: HomeMoving, enrol: Enrolment): void {
+    const m = { ...held, enrol };
     writeMarker(this.d.paths, m);
     this.marker = m;
     this.d.restart();
   }
 
-  private async act(id: HomeMoveId, a: AdoptAnswer): Promise<void> {
+  private async act(held: HomeMoving, a: AdoptAnswer): Promise<void> {
     this.phase = a.status === 'pending' ? a.phase : a.status;
-    if (a.status === 'adopted') return this.join(id, a.enrol);
-    if (a.status === 'not-adopted') return this.release('asked');
+    if (a.status === 'adopted') return this.enrolled(held, a.enrol);
+    if (a.status === 'not-adopted') return this.release({ by: 'asked' });
     this.answer = a.status === 'pending' ? a.detail ?? a.phase : 'done';
     this.schedule();
   }
@@ -235,12 +240,12 @@ export class HomeFreeze {
   }
 
   // the marker goes first: a crash after it starts this home as it was, and the start turns back on what served
-  private async release(end?: 'asked' | 'told'): Promise<void> {
+  private async release(end?: { by: 'asked' } | { by: 'told'; key: string }): Promise<void> {
     const held = this.moving;
     if (!held) return;
     if (this.marker) {
       if (!end) throw new ApiError('frozen', 'this move can be called off only where the fleet is going');
-      endMove(this.d.paths, this.marker.id, { by: end });
+      endMove(this.d.paths, this.marker.id, end);
     }
     this.marker = undefined;
     this.moving = undefined;

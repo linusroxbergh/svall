@@ -281,8 +281,8 @@ const handlers: Handlers = {
     const held = freezeOf(freeze);
     if (p.op === 'open') held.open(p.id, viewer);
     if (p.op === 'mark') held.mark(p.marker);
-    if (p.op === 'join') held.join(p.id, p.enrol);
-    if (p.op === 'told') await held.told(p.id);
+    if (p.op === 'join') held.join(p.id, p.enrol, p.key);
+    if (p.op === 'told') await held.told(p.id, p.key);
     if (p.op === 'ask' || p.op === 'abort') await held.settle(p.op === 'ask' ? 'status' : 'abort');
     const said = held.status();
     return said.moving ? said : homeWaits?.() ?? said;

@@ -597,15 +597,37 @@ async function withoutDaemon(p: Paths, id: string, what: (held: HomeMoving) => v
   } finally { unlock(); }
 }
 
+const driverOf = (id: string): string => `${id}.driver`;
+
+/** A new key for the move `id`, in its driver's journal: the marker holds its hash, and only an outcome carrying it ends that marker. */
+export function markKey(p: Pick<Paths, 'homeMoves'>, id: string): string {
+  const key = crypto.randomBytes(32).toString('base64url');
+  enter(p, driverOf(id), 'mark', JSON.stringify({ key }));
+  return sha256Hex(key);
+}
+
+/** The key the driver of `id` wrote before its mark; none, and no machine was marked for it. */
+export const driverKey = (p: Pick<Paths, 'homeMoves'>, id: string): string | undefined => journalLines(p, driverOf(id)).flatMap((l) => {
+  try { return l.phase === 'mark' && l.detail ? [z.object({ key: z.string() }).parse(JSON.parse(l.detail)).key] : []; } catch { return []; }
+}).at(-1);
+
+/** Whether `key` is the one the driver of the marker's move holds. */
+export function keyFits(m: HomeMoving, key: string | undefined): key is string {
+  return key !== undefined && crypto.timingSafeEqual(Buffer.from(sha256Hex(key)), Buffer.from(m.keySha256));
+}
+
 /** The outcome `adopted` where this fleet's next start takes it, for a daemon that does not answer. */
-export const writeEnrol = (p: Paths, id: string, enrol: Enrolment): Promise<void> => withoutDaemon(p, id, (held) => writeMarker(p, { ...held, enrol }));
+export const writeEnrol = (p: Paths, id: string, enrol: Enrolment, key: string): Promise<void> => withoutDaemon(p, id, (held) => {
+  if (!keyFits(held, key)) throw new Error(`the marker of ${id} is not ended without the key of its driver`);
+  writeMarker(p, { ...held, enrol });
+});
 
 /**
  * Who says a move is over here. `refused`: this machine, about to take the fleet, turns the move down for good. The rest end the
  * marker of a home the fleet left: `asked`, the machine holding the fleet answered `not-adopted`; `told`, it delivered that to a
  * home with no route to ask it; `joined`, its enrolment is in place; `recorded`, a call of this function got as far as its journal line.
  */
-export type MoveEnd = { by: 'refused'; detail?: string } | { by: 'asked' | 'told' | 'joined' | 'recorded' };
+export type MoveEnd = { by: 'refused'; detail?: string } | { by: 'told'; key: string } | { by: 'asked' | 'joined' | 'recorded' };
 
 /**
  * The only way a marker goes or an id is written off, so a thawed home always has an answer from the machine holding the fleet
@@ -620,7 +642,7 @@ export function endMove(p: Paths, id: string, end: MoveEnd): void {
   }
   if (marker?.id !== id) throw new Error(`this home holds no marker of ${id}`);
   const at = lastPhase(p, id);
-  const fits = end.by === 'asked' ? marker.ask !== undefined : end.by === 'told' ? marker.ask === undefined : end.by === 'joined' ? marker.enrol !== undefined : at === 'released' || at === 'done';
+  const fits = end.by === 'asked' ? marker.ask !== undefined : end.by === 'told' ? marker.ask === undefined && keyFits(marker, end.key) : end.by === 'joined' ? marker.enrol !== undefined : at === 'released' || at === 'done';
   if (!fits) throw new Error(`the marker of ${id} is not ended by ${end.by}`);
   if (end.by === 'asked' || end.by === 'told') enter(p, id, 'released', end.by);
   if (end.by === 'joined') enter(p, id, 'done');
@@ -630,9 +652,9 @@ export function endMove(p: Paths, id: string, end: MoveEnd): void {
 }
 
 export type Settling = {
-  /** This fleet's daemon takes the outcome itself; each rejects when none answers. */
-  join(enrol: Enrolment): Promise<unknown>;
-  thaw(): Promise<unknown>;
+  /** This fleet's daemon takes the outcome itself, with the driver's key; each rejects when none answers. */
+  join(enrol: Enrolment, key: string): Promise<unknown>;
+  thaw(key: string): Promise<unknown>;
   start(): Promise<void>;
 };
 
@@ -640,13 +662,15 @@ export type Settling = {
 const noDaemon = (e: unknown): boolean => /svalld is not running|ECONNREFUSED/.test((e as Error).message);
 
 /**
- * Told by the machine that took the fleet how a move ended, as often as it takes; what has heard already says `done`. The file
- * is changed only with no daemon there to take it, and only on a marker that waits to be told; a daemon that refuses leaves it.
+ * Told by the machine that took the fleet how a move ended, as often as it takes, with the key its driver holds; what has heard
+ * already says `done`. The file is changed only with no daemon there to take it, and only on a marker that waits to be told; a
+ * daemon that refuses leaves it.
  */
-export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAnswer, { status: 'adopted' | 'not-adopted' }>, d: Settling): Promise<{ status: string }> {
+export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAnswer, { status: 'adopted' | 'not-adopted' }>, key: string | undefined, d: Settling): Promise<{ status: string }> {
   const held = readMarker(p);
   if (held?.id !== id) return { status: 'done' };
-  if (held.ask) throw new Error(`this home asks ${held.toName} how its move ended, and is told by no one`);
+  if (held.ask) throw new Error(`this home asks ${held.toName} how its move ended, and is told by no one; svall fleet home abort calls it off`);
+  if (!keyFits(held, key)) throw new Error(`only ${held.toName} ends this move, with a key it alone holds; svall fleet home abort there calls it off`);
   const onFile = async (e: unknown, write: () => Promise<void>): Promise<boolean> => {
     if (e instanceof Crash) throw e;
     // a daemon that joined or thawed past this call has heard
@@ -656,11 +680,11 @@ export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAn
     return true;
   };
   if (told.status === 'adopted') {
-    await d.join(told.enrol).catch((e: unknown) => onFile(e, () => writeEnrol(p, id, told.enrol)));
+    await d.join(told.enrol, key).catch((e: unknown) => onFile(e, () => writeEnrol(p, id, told.enrol, key)));
     await d.start();
     return { status: 'adopted' };
   }
-  if (await d.thaw().then(() => false, (e: unknown) => onFile(e, () => withoutDaemon(p, id, () => endMove(p, id, { by: 'told' }))))) await d.start();
+  if (await d.thaw(key).then(() => false, (e: unknown) => onFile(e, () => withoutDaemon(p, id, () => endMove(p, id, { by: 'told', key }))))) await d.start();
   return { status: 'not-adopted' };
 }
 

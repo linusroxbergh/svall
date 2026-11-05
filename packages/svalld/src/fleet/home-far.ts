@@ -8,7 +8,7 @@ import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import type { Mobile } from '../mobile.js';
-import { forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readOwed, servedPhone } from './home-move.js';
+import { driverKey, forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readOwed, servedPhone } from './home-move.js';
 
 const ASK_MS = 30_000;
 
@@ -53,11 +53,14 @@ export async function deliverOwed(paths: Paths, open: (destination: string) => P
   if (!owed) return 'nothing';
   const said = moveOutcome(paths, owed.id);
   if (!said) return 'waiting';
-  // `done`: only a link with the token this move issued says so, and that home has heard
-  if (said.status !== 'done') {
+  // `done`: only a link with the token this move issued says so, and that home has heard. No key: no marker of it there to end
+  const key = driverKey(paths, owed.id);
+  if (said.status !== 'done' && key) {
     const master = await open(owed.ssh);
     try {
-      const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, ...(said.status === 'adopted' && { input: JSON.stringify(said.enrol) }) });
+      // the key on stdin, as an argv is seen by every account there
+      const input = JSON.stringify({ key, ...(said.status === 'adopted' && { enrol: said.enrol }) });
+      const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, input });
       if (r.code !== 0) throw new Error(`svall fleet settle exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
       Settled.parse(JSON.parse(r.stdout));
     } finally { await master.close().catch(() => undefined); }

@@ -7,7 +7,7 @@ import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines,
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { ID, marker, world } from './home-world.js';
+import { ID, KEY, marker, world } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -65,20 +65,21 @@ describe('what a machine a move leaves says of that move', () => {
 });
 
 describe('the one way a move ends', () => {
+  const byHand = { by: 'told', key: 'typed by hand' } as const;
   it.each([
-    ['asked', told], ['told', marker()], ['joined', marker()], ['recorded', marker()],
-    ['asked', { ...marker(), id: OTHER }], ['told', { ...told, id: OTHER }], ['joined', { ...marker(), id: OTHER, enrol: { worker: {} } } as never], ['recorded', { ...marker(), id: OTHER }],
-  ] as const)('by %s on a marker it does not fit: throws, and the marker stands', (by, m) => {
+    [{ by: 'asked' }, told], [{ by: 'told', key: KEY }, marker()], [byHand, told], [{ by: 'joined' }, marker()], [{ by: 'recorded' }, marker()],
+    [{ by: 'asked' }, { ...marker(), id: OTHER }], [{ by: 'told', key: KEY }, { ...told, id: OTHER }], [{ by: 'joined' }, { ...marker(), id: OTHER, enrol: { worker: {} } } as never], [{ by: 'recorded' }, { ...marker(), id: OTHER }],
+  ] as const)('by %o on a marker it does not fit: throws, and the marker stands', (end, m) => {
     const paths = marked(m as never);
     const before = fs.readFileSync(paths.homeMoving);
-    expect(() => endMove(paths, ID, { by })).toThrow();
+    expect(() => endMove(paths, ID, end)).toThrow();
     expect(fs.readFileSync(paths.homeMoving)).toEqual(before);
     expect(journalLines(paths, ID)).toEqual([]);
   });
 
   it('with no marker: nothing but a refusal goes through', () => {
     const paths = resolvePaths(makeHome());
-    for (const by of ['asked', 'told', 'joined', 'recorded'] as const) expect(() => endMove(paths, ID, { by })).toThrow(/no marker/);
+    for (const end of [{ by: 'asked' }, { by: 'told', key: KEY }, { by: 'joined' }, { by: 'recorded' }] as const) expect(() => endMove(paths, ID, end)).toThrow(/no marker/);
     endMove(paths, ID, { by: 'refused' });
     expect(journalLines(paths, ID).map((l) => l.phase)).toEqual(['aborted']);
   });
@@ -103,13 +104,38 @@ describe('the one way a move ends', () => {
     const none = () => Promise.reject(new Error('svalld is not running'));
     let starts = 0;
     const d = { join: none, thaw: none, start: () => { starts++; return Promise.resolve(); } };
-    expect(await settleMove(paths, OTHER, { status: 'not-adopted' }, d)).toEqual({ status: 'done' });
+    expect(await settleMove(paths, OTHER, { status: 'not-adopted' }, KEY, d)).toEqual({ status: 'done' });
     expect(readMarker(paths)?.id).toBe(ID);
     expect(starts).toBe(0);
-    expect(await settleMove(paths, ID, { status: 'not-adopted' }, d)).toEqual({ status: 'not-adopted' });
+    expect(await settleMove(paths, ID, { status: 'not-adopted' }, KEY, d)).toEqual({ status: 'not-adopted' });
     expect(readMarker(paths)).toBeUndefined();
     expect(journalLines(paths, ID).at(-1)).toMatchObject({ phase: 'released', detail: 'told' });
     expect(starts).toBe(1);
+  });
+
+  describe('a settle without the key of the move\'s driver, as one typed by hand', () => {
+    const enrol = { worker: { homeMachineId: marker().from, homeName: 'mac', fleetId: '11111111-2222-3333-4444-555555555555', token: 'b'.repeat(48) } } as never;
+    it.each([
+      ['not-adopted', 'up', { status: 'not-adopted' }], ['not-adopted', 'down', { status: 'not-adopted' }],
+      ['adopted', 'up', { status: 'adopted', enrol }], ['adopted', 'down', { status: 'adopted', enrol }],
+    ] as const)('%s, its daemon %s: refuses, naming fleet home abort, and asks no daemon and writes nothing', async (_o, daemon, said) => {
+      const paths = marked(told);
+      const asked: string[] = [];
+      const call = (what: string) => () => { asked.push(what); return daemon === 'up' ? Promise.resolve() : Promise.reject(new Error('svalld is not running')); };
+      const d = { join: call('join'), thaw: call('thaw'), start: () => { asked.push('start'); return Promise.resolve(); } };
+      for (const key of [undefined, 'typed by hand']) await expect(settleMove(paths, ID, said, key, d)).rejects.toThrow(/only studio ends this move.*svall fleet home abort there/);
+      expect(asked).toEqual([]);
+      expect(readMarker(paths)).toEqual(told);
+      expect(journalLines(paths, ID)).toEqual([]);
+    });
+
+    it('on the disk, an enrolment without it is refused and the marker stands as it was', async () => {
+      const paths = marked(told);
+      await expect(writeEnrol(paths, ID, enrol, 'typed by hand')).rejects.toThrow(/key of its driver/);
+      expect(readMarker(paths)).toEqual(told);
+      await writeEnrol(paths, ID, enrol, KEY);
+      expect(readMarker(paths)?.enrol).toEqual(enrol);
+    });
   });
 
   describe('on the disk, a daemon holding its lock', () => {
@@ -118,7 +144,7 @@ describe('the one way a move ends', () => {
     it('a marker already gone is one that daemon heard: nothing waits for the lock', async () => {
       const paths = resolvePaths(makeHome());
       const unlock = await daemonLock(paths.home);
-      await writeEnrol(paths, ID, enrol);
+      await writeEnrol(paths, ID, enrol, KEY);
       unlock?.();
       expect(readMarker(paths)).toBeUndefined();
     });
@@ -126,7 +152,7 @@ describe('the one way a move ends', () => {
     it('a marker that changed while it waited for the lock is left as it is', async () => {
       const paths = marked();
       const unlock = await daemonLock(paths.home);
-      const writing = writeEnrol(paths, ID, enrol);
+      const writing = writeEnrol(paths, ID, enrol, KEY);
       writeMarker(paths, { ...marker(), id: OTHER });
       unlock?.();
       await writing;

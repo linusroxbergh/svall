@@ -66,6 +66,8 @@ const readStdin = async (): Promise<string> => {
   return text;
 };
 
+const Settle = z.object({ key: z.string().optional(), enrol: Enrolment.optional() });
+
 const adoptDeps = (t: Target): AdoptDeps => ({ paths: resolvePaths(t.home), me: machineId(), daemon: realHomeDaemon(t) });
 
 const crewChoice = (o: { interruptAfter?: string }): CrewChoice => (o.interruptAfter === undefined ? {} : { interruptAfterMs: parseDuration(o.interruptAfter) });
@@ -134,16 +136,20 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
       const { bytes, sha256 } = await packFleet(resolvePaths(target().home), m);
       printResult({ sha256, archive: bytes.toString('base64') }, true);
     });
-  cmd.command('settle').description('told how a move ended, by the machine this one has no route to: adopted joins it, with the enrolment on stdin; not-adopted thaws').argument('<id>', 'the move\'s id')
+  // the machine that took the fleet tells the old home over ssh, with its driver's key on stdin; nothing a person types ends the wait
+  cmd.command('settle', { hidden: true }).argument('<id>', 'the move\'s id')
     .requiredOption('--outcome <outcome>', 'adopted or not-adopted')
     .action(async (raw: string, o: { outcome: string }) => {
       const t = target();
       const id = idOf(raw);
       if (o.outcome !== 'adopted' && o.outcome !== 'not-adopted') throw new Error(`--outcome takes adopted or not-adopted, not ${o.outcome}`);
-      const told = o.outcome === 'adopted' ? { status: 'adopted' as const, enrol: Enrolment.parse(JSON.parse(await readStdin())) } : { status: 'not-adopted' as const };
-      printResult(await settleMove(resolvePaths(t.home), id, told, {
-        join: (enrol) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'join', id, enrol })),
-        thaw: () => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'told', id })),
+      const sent = Settle.parse(process.stdin.isTTY ? {} : JSON.parse((await readStdin()) || '{}'));
+      if (o.outcome === 'adopted' && sent.key && !sent.enrol) throw new Error('--outcome adopted takes the enrolment on stdin');
+      // without the key the settle refuses before it reads the enrolment
+      const told = o.outcome === 'adopted' ? { status: 'adopted' as const, enrol: sent.enrol! } : { status: 'not-adopted' as const };
+      printResult(await settleMove(resolvePaths(t.home), id, told, sent.key, {
+        join: (enrol, key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'join', id, enrol, key })),
+        thaw: (key) => withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'told', id, key })),
         start: () => realHomeDaemon(t).start(),
       }), true);
     });

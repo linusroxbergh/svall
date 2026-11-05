@@ -160,8 +160,10 @@ export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
 /** What the real link answers: never a rejection, its failures in `error`. */
 export const phoneAt = (serving: boolean, logins: string[] = [], error?: string): MobileStatus => ({ serving, url: serving ? 'https://mac.tail:8443/' : '', port: 8443, logins, phones: [], ...(error && { error }) });
 
+/** The key a move's driver holds, of which `marker()` holds the hash. */
+export const KEY = 'k'.repeat(43);
 export const marker = (): HomeMoving => ({
-  id: ID, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5,
+  id: ID, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: crypto.createHash('sha256').update(KEY).digest('hex'),
   ask: { ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never },
 });
 

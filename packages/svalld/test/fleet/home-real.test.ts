@@ -13,7 +13,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
-import { crashAt, disarmCrash, FLEET, ID, MAC, marker, robot, stateOf, STUDIO, TOKEN, world } from './home-world.js';
+import { crashAt, disarmCrash, FLEET, ID, KEY, MAC, marker, robot, stateOf, STUDIO, TOKEN, world } from './home-world.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -146,7 +146,9 @@ runIf('a home move through real starts', () => {
     expect(await d.ask('robot.update', { id: 'c_here', note: 'x' })).toMatchObject({ error: { code: 'frozen' } });
     // a delivered outcome is the one thing that ends it; a thaw is refused
     expect(await d.ask('fleet.thaw', { id: ID })).toMatchObject({ error: { code: 'frozen' } });
-    expect(await d.ask('fleet.homeMove', { op: 'told', id: ID })).toMatchObject({ result: {} });
+    expect(await d.ask('fleet.homeMove', { op: 'told', id: ID, key: 'typed by hand' })).toMatchObject({ error: { message: expect.stringMatching(/not ended by told/) } });
+    expect(fs.existsSync(paths.homeMoving)).toBe(true);
+    expect(await d.ask('fleet.homeMove', { op: 'told', id: ID, key: KEY })).toMatchObject({ result: {} });
     expect(fs.existsSync(paths.homeMoving)).toBe(false);
     expect(await d.ask('robot.update', { id: 'c_here', note: 'x' })).toMatchObject({ result: {} });
   }, 120_000);

@@ -18,10 +18,11 @@ export type Enrolment = z.infer<typeof Enrolment>;
 /**
  * home-moving.json on the machine the fleet leaves: this daemon may no longer start as a home that takes writes. `ask`: how it
  * learns the outcome itself; none where the new home has the only route, and delivers it. `enrol`: the outcome was `adopted`,
- * which the next start of this daemon finishes.
+ * which the next start of this daemon finishes. `keySha256`: of the key only the move's driver holds, which every outcome sent here carries.
  */
 export const HomeMoving = z.object({
   id: HomeMoveId, from: MachineId, fromName: z.string(), fromHome: MachinePath, to: MachineId, toName: z.string(), toHome: MachinePath, at: z.number(),
+  keySha256: z.string().regex(/^[0-9a-f]{64}$/),
   ask: z.object({ ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath }).optional(),
   enrol: Enrolment.optional(),
 });
