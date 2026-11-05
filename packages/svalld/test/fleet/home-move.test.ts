@@ -9,6 +9,7 @@ import { InvalidConfig } from '../../src/config.js';
 import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
+import { WorkerDocs } from '../../src/placement/docs-sync.js';
 import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, readMarker, stageAdopt, writeMarker } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
@@ -16,7 +17,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world } from './home-world.js';
+import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world } from './home-world.js';
 
 afterEach(() => { disarmCrash(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.move.filter((p) => !crashesFired().has(p))).toEqual([]); });
@@ -144,6 +145,9 @@ describe('staging', () => {
     expect(fs.readFileSync(path.join(adoptDir(w.studio.paths, ID), 'incoming', 'mobile-pass'), 'utf8')).toBe('the-pass');
     expect(inStagedMove(path.join(adoptDir(w.studio.paths, ID), 'incoming', 'mobile-pass'))).toBe(true);
     expect(inStagedMove(w.studio.paths.state)).toBe(false);
+    // what answers to another spelling on a volume that folds case
+    expect(inStagedMove(path.join(w.studio.paths.home, 'ADOPT-hm_abcdefghij', 'incoming', 'mobile-pass'))).toBe(true);
+    expect(inStagedMove(path.join(w.studio.paths.home, 'WORKERS.json.home-hm_abcdefghij'))).toBe(true);
   });
 });
 
@@ -460,6 +464,7 @@ describe('a crash at each boundary of the adopt', () => {
   it.each(CUT_BEFORE_COMMIT)('%s: called off, every original is back and the delayed adopt is refused', async (point) => {
     const w = await crashed(point);
     const worker = 'worker.json';
+    w.studio.daemon.noAnswer = true;
     const a = await abortAdopt(w.studio.deps, ID);
     expect(a).toEqual({ status: 'not-adopted' });
     expect(fs.existsSync(path.join(w.studio.paths.home, worker))).toBe(true);
@@ -479,6 +484,45 @@ describe('a crash at each boundary of the adopt', () => {
     expect(w.studio.daemon.role).toBe('worker');
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
     expect(stateOf(w.studio).robots.placed.machine).toBe(STUDIO);
+  });
+
+  it.each(['adopt.installed', 'adopt.started'] as const)('%s: an abort with the daemon down starts it before it decides, and a home that answers is not rolled back', async (point) => {
+    const w = await crashed(point);
+    expect((await abortAdopt(w.studio.deps, ID)).status).toBe('adopted');
+    expect(w.studio.daemon.role).toBe('home');
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(false);
+  });
+
+  it('a start that rejects after its restart is asked all the same: a home that answers goes forward', async () => {
+    const w = await crashed('adopt.started');
+    await w.studio.daemon.start();
+    w.studio.daemon.held!.robots.here.note = 'written after the start';
+    w.studio.daemon.startFails = 'enableUnit failed';
+    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect(w.studio.daemon.held!.robots.here.note).toBe('written after the start');
+  });
+
+  it('restore.restarting: a crash after the files are back and before the start leaves a status or an abort to start the worker, and a thaw only then', async () => {
+    const forAbort = await world();
+    await staged(forAbort);
+    forAbort.studio.daemon.noAnswer = true;
+    crashAt('restore.restarting');
+    await expect(installAdopt(forAbort.studio.deps, ID, forAbort.enrolment)).rejects.toThrow(HomeCrash);
+    disarmCrash();
+    forAbort.studio.daemon.kill();
+    expect(journalLines(forAbort.studio.paths, ID).at(-1)?.phase).toBe('stopping');
+    expect(await abortAdopt(forAbort.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+    expect(forAbort.studio.daemon.role).toBe('worker');
+    cleanHomes();
+    const forStatus = await world();
+    await staged(forStatus);
+    forStatus.studio.daemon.noAnswer = true;
+    crashAt('restore.restarting');
+    await expect(installAdopt(forStatus.studio.deps, ID, forStatus.enrolment)).rejects.toThrow(HomeCrash);
+    disarmCrash();
+    forStatus.studio.daemon.kill();
+    expect(await adoptStatus(forStatus.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    expect(forStatus.studio.daemon.role).toBe('worker');
   });
 
   it('adopt.stopped: an abort starts the worker\'s daemon again', async () => {
@@ -744,8 +788,39 @@ describe('the join', () => {
     expect(fs.readFileSync(path.join(copy, 'repos', 'x', 'note.md'), 'utf8')).toBe('changed while frozen');
     expect(fs.existsSync(path.join(copy, 'linked'))).toBe(false);
     expect(fs.existsSync(path.join(copy, 'fleet', 'note.md'))).toBe(false);
-    expect(fs.existsSync(w.mac.paths.docsSynced)).toBe(false);
     expect(fs.readdirSync(w.mac.paths.home).filter((n) => n.startsWith('docs-cut-'))).toEqual([]);
+  });
+
+  it('what the old home did since the cut reaches the new home through the real worker docs, a change over the cut, a new note and a removal, and survives the first tar', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const atCut = sha(path.join(w.mac.paths.docs, 'repos', 'x', 'note.md'));
+    const noteAtCut = sha(path.join(w.mac.paths.docs, 'fleet', 'note.md'));
+    fs.writeFileSync(path.join(w.mac.paths.docs, 'fleet', 'late.md'), 'written while frozen');
+    fs.writeFileSync(path.join(w.mac.paths.docs, 'repos', 'x', 'note.md'), 'changed while frozen');
+    fs.rmSync(path.join(w.mac.paths.docs, 'fleet', 'note.md'));
+    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    if (a.status !== 'adopted') throw new Error(a.status);
+    await w.mac.daemon.stop();
+    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    await w.mac.daemon.start();
+    const journaled: Record<string, { base?: string; kind: string }> = {};
+    let seq = 0;
+    const dir = path.join(w.mac.paths.cache, 'docs');
+    const docs = new WorkerDocs({
+      dir, file: w.mac.paths.docsSynced, stage: path.join(w.mac.paths.cache, 'stage'), log: silentLogger,
+      connection: { journal: (kind: string, d: { path: string; base?: string }) => { journaled[d.path] = { kind, ...(d.base && { base: d.base }) }; return ++seq; }, receiveBlob: () => Promise.reject(new Error('no blob')) } as never,
+    });
+    docs.start();
+    docs.stop();
+    expect(journaled).toEqual({
+      'fleet/late.md': { kind: 'docs.write' },
+      'repos/x/note.md': { kind: 'docs.write', base: atCut },
+      'fleet/note.md': { kind: 'docs.delete', base: noteAtCut },
+    });
+    const empty = fs.mkdtempSync(path.join(w.mac.paths.home, 'tar-'));
+    (docs as unknown as { settle(from: string, seq: number): void }).settle(empty, 0);
+    expect(fs.readFileSync(path.join(dir, 'fleet', 'late.md'), 'utf8')).toBe('written while frozen');
   });
 
   it('a kept workers.json is where Files refuses it', async () => {
@@ -761,8 +836,10 @@ describe('the join', () => {
   it('run again on what it wrote, it derives the same state', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();
+    writeMarker(w.mac.paths, marked);
     joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
     const once = fs.readFileSync(w.mac.paths.state, 'utf8');
+    writeMarker(w.mac.paths, marked);
     joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
     expect(fs.readFileSync(w.mac.paths.state, 'utf8')).toBe(once);
   });
@@ -775,7 +852,7 @@ describe('two homes are impossible', () => {
     const freeze = new HomeFreeze({
       paths: w.mac.paths, store: { state: w.mac.daemon.held!, flush: () => Promise.resolve(true) }, me: MAC, log: silentLogger,
       links: { barrier: () => Promise.resolve(true), hold: () => {} }, background: { pause: () => {}, resume: () => {} },
-      phone: { get: () => Promise.resolve({ serving: false, logins: [] }), set: () => Promise.resolve({}) },
+      phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) },
       ask: () => adoptStatus(w.studio.deps, ID), restart: () => { restarted = true; },
     }, readMarker(w.mac.paths));
     return { freeze, restarted: () => restarted };
@@ -818,6 +895,7 @@ describe('two homes are impossible', () => {
     await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     const { freeze } = asking(w);
+    w.studio.daemon.noAnswer = true;
     expect((await abortAdopt(w.studio.deps, ID)).status).toBe('not-adopted');
     await freeze.settle('status');
     freeze.stop();

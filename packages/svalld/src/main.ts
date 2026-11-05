@@ -14,7 +14,7 @@ import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
-import { askAcross, factsAcross, startDeliveries } from './fleet/home-far.js';
+import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
 import { homeGate, landed, readOwed } from './fleet/home-move.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
@@ -72,7 +72,9 @@ import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { fleetConfigFile } from './workspace/fleet-config.js';
 import { Workspace } from './workspace/workspace.js';
 
-export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; stop(): Promise<void> };
+export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; stop(): Promise<void>;
+  /** Runs `then` once this daemon's fleet has stopped, at once if it stopped while the daemon was starting. */
+  whenStopped(then: () => void): void };
 
 // how long a usage reading stands before the panel's next open pays for another
 const USAGE_TTL_MS = 60_000;
@@ -392,6 +394,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     pause() { if (!this.on) return; this.on = false; fleet.holdForMove(true); retro?.stop(); for (const h of held) { h.stop?.(); h.stop = undefined; } },
     resume() { if (this.on) return; this.on = true; fleet.holdForMove(false); retro?.start(); for (const h of held) h.stop ??= h.start(); },
   };
+  // an outcome told as this daemon starts ends it too, before whoever runs it has asked to hear
+  let fleetStopped = false;
+  fleet.once('stopped', () => { fleetStopped = true; });
   const freeze = links && new HomeFreeze({
     paths, store, me, log,
     links: {
@@ -482,7 +487,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));
     const port = opts.port ?? config.port;
     const listen = (at: number) => startApi({
-      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
+      host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: off.has('mobile') ? mobile : phoneWithReason(mobile, paths), log,
       origins: () => [...config.mobile.origins, ...workerPhone?.origins() ?? []], logins: workerPhone ? () => workerPhone.logins() : mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
       // diagnostics read the last minute's agent probe
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
@@ -507,6 +512,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     if (wasWorker) store.update((d) => { for (const c of Object.values(d.robots)) delete c.agent?.restingSince; });
     else fleet.resumeResting();
     fs.writeFileSync(paths.port, String(api.port));
+    freeze?.phoneBack();
     // gone last: whoever waits for it to go may read state.json next
     teardown.unshift(() => fs.rmSync(paths.port, { force: true }));
     // pushes go out only over a link seen served: it is looked at once the port it proxies to is known,
@@ -542,6 +548,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     return {
       port: api.port, token, store, fleet,
       stop: async () => { await stop(); log.info('svalld stopped'); },
+      whenStopped: (then) => { if (fleetStopped) then(); else fleet.once('stopped', then); },
     };
   } catch (err) {
     await stop();

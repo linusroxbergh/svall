@@ -1,20 +1,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, emptyState, type AdoptAnswer, type HomeFacts, type HomeMoving, type MachineId } from '@svall/protocol';
+import { ApiError, emptyState, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
-import { phoneOwed, readMarker, writeMarker } from '../../src/fleet/home-move.js';
+import { phoneWithReason } from '../../src/fleet/home-far.js';
+import { phoneOwed, readMarker, servedPhone, writeMarker } from '../../src/fleet/home-move.js';
+import { mobileControl } from '../../src/mobile.js';
+import { Phones } from '../../src/phones.js';
 import { resolvePaths } from '../../src/paths.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { moveWorld, type MoveWorld } from '../placement/move-world.js';
 import { H, W } from '../placement/world.js';
-import { ID, MAC, marker, robot, STUDIO } from './home-world.js';
+import { ID, MAC, marker, phoneAt, robot, STUDIO } from './home-world.js';
 
 afterEach(cleanHomes);
 
-function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barrier?: boolean | Promise<boolean>; serving?: boolean; flush?: boolean; phone?: Promise<{ serving: boolean; logins: string[] }>; link?: () => Promise<unknown> } = {}) {
+function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barrier?: boolean | Promise<boolean>; serving?: boolean; flush?: boolean; phone?: Promise<MobileStatus>; set?: (on: boolean) => MobileStatus; link?: () => Promise<unknown> } = {}) {
   const paths = resolvePaths(makeHome());
   const log: string[] = [];
   const answers = o.answers ?? [];
@@ -27,7 +30,7 @@ function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barr
       call: (_m: MachineId, method: string) => { log.push(method); return (o.link?.() ?? Promise.resolve({})) as never; },
     },
     background: { pause: () => log.push('pause'), resume: () => log.push('resume') },
-    phone: { get: () => o.phone ?? Promise.resolve({ serving: o.serving ?? false, logins: o.serving ? ['ada@tailnet'] : [] }), set: (on) => { log.push(`phone ${on}`); return Promise.resolve({}); } },
+    phone: { get: () => o.phone ?? Promise.resolve(phoneAt(o.serving ?? false, o.serving ? ['ada@tailnet'] : [])), set: (on) => { log.push(`phone ${on}`); return Promise.resolve(o.set?.(on) ?? phoneAt(on)); } },
     ask: () => Promise.resolve(answers.shift() ?? { status: 'pending', phase: 'staged' }),
     restart: () => log.push('restart'),
   };
@@ -47,7 +50,7 @@ describe('a frozen home', () => {
       expect(freeze.refusal(m)?.code).toBe('frozen');
     }
     expect(freeze.refusal('robot.update')?.message).toBe('the fleet is moving to studio; try again once it has');
-    for (const m of ['state.get', 'term.open', 'term.input', 'robot.answer', 'robot.read', 'fleet.homeMove'] as const) expect(freeze.refusal(m)).toBeUndefined();
+    for (const m of ['state.get', 'term.open', 'term.attach', 'term.input', 'robot.answer', 'robot.read', 'fleet.homeMove'] as const) expect(freeze.refusal(m)).toBeUndefined();
   });
 
   it('a home not frozen refuses nothing', () => {
@@ -185,6 +188,95 @@ describe('a frozen home', () => {
     expect(readMarker(paths)?.id).toBe(ID);
   });
 
+  describe('an answer goes with the move it is of', () => {
+    const OTHER = 'hm_otherother' as HomeMoveId;
+    // move A aborted and released with an ask still out, and move B marked since
+    const moved = async (late: AdoptAnswer) => {
+      let reply!: (a: AdoptAnswer) => void;
+      const { d, paths, log } = setup();
+      const asks: string[] = [];
+      const freeze = new HomeFreeze({ ...d, ask: (m, op) => { asks.push(m.id); return op === 'abort' ? Promise.resolve({ status: 'not-adopted' as const }) : new Promise((r) => { reply = r; }); } });
+      await freeze.freeze(ID, STUDIO, holder);
+      freeze.mark(marker());
+      freeze.left(holder);
+      const slow = freeze.settle('status');
+      await freeze.settle('abort');
+      await freeze.freeze(OTHER, STUDIO, holder);
+      freeze.mark({ ...marker(), id: OTHER });
+      reply(late);
+      await slow;
+      return { freeze, paths, log };
+    };
+
+    it('a late not-adopted of an earlier move leaves the next one marked and frozen', async () => {
+      const { freeze, paths } = await moved({ status: 'not-adopted' });
+      freeze.stop();
+      expect(freeze.active).toBe(true);
+      expect(readMarker(paths)?.id).toBe(OTHER);
+      expect(freeze.refusal('robot.update')?.code).toBe('frozen');
+    });
+
+    it('a late adopted of an earlier move joins nothing', async () => {
+      const { freeze, paths, log } = await moved({ status: 'adopted', enrol: { worker: { homeMachineId: STUDIO, homeName: 'studio', fleetId: '11111111-2222-3333-4444-555555555555', token: 'b'.repeat(48) } as never } });
+      freeze.stop();
+      expect(readMarker(paths)?.enrol).toBeUndefined();
+      expect(log).not.toContain('restart');
+    });
+
+    it('each outcome by id: told, join, mark and thaw of another move change nothing', async () => {
+      const { ask: _ask, ...bare } = marker();
+      const { freeze, paths, log } = setup({ frozen: bare });
+      await expect(freeze.told(OTHER)).rejects.toThrow(/no marker of/);
+      expect(() => freeze.join(OTHER, { worker: {} } as never)).toThrow(/no marker of/);
+      expect(() => freeze.mark({ ...marker(), id: OTHER })).toThrow(/not frozen/);
+      await freeze.thaw(OTHER);
+      freeze.stop();
+      expect(readMarker(paths)).toEqual(bare);
+      expect(freeze.active).toBe(true);
+      expect(log).not.toContain('restart');
+    });
+
+    it('a thaw of another move leaves a freeze with no marker frozen', async () => {
+      const { freeze } = setup();
+      await freeze.freeze(ID, STUDIO, holder);
+      await freeze.thaw(OTHER);
+      expect(freeze.active).toBe(true);
+    });
+  });
+
+  it('a driver gone under a marker leaves it asking', async () => {
+    vi.useFakeTimers();
+    try {
+      const asks: string[] = [];
+      const { d } = setup();
+      const freeze = new HomeFreeze({ ...d, ask: (m) => { asks.push(m.id); return Promise.resolve({ status: 'pending', phase: 'staged' }); } });
+      await freeze.freeze(ID, STUDIO, holder);
+      freeze.mark(marker());
+      await vi.advanceTimersByTimeAsync(120_000);
+      expect(asks).toEqual([]);
+      freeze.left(holder);
+      await vi.advanceTimersByTimeAsync(11_000);
+      expect(asks.length).toBeGreaterThan(0);
+      freeze.stop();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a failure in the freeze releases its own hold, never a freeze that replaced it', async () => {
+    let open!: (ok: boolean) => void;
+    const { freeze, log } = setup({ barrier: new Promise<boolean>((r) => { open = r; }) });
+    const first = freeze.freeze(ID, STUDIO, holder);
+    await vi.waitFor(() => expect(log).toContain('home.freeze'));
+    freeze.left(holder);
+    await vi.waitFor(() => expect(freeze.active).toBe(false));
+    const second = {};
+    open(false);
+    const again = new Promise<void>((r) => { setImmediate(r); });
+    await freeze.freeze('hm_otherother' as HomeMoveId, STUDIO, second).catch(() => undefined);
+    await expect(first).rejects.toThrow();
+    await again;
+    expect(log.filter((l) => l === 'resume').length).toBeGreaterThan(0);
+  });
+
   describe('a driver gone while it freezes', () => {
     it('during the barrier: thawed, with no hold and the phone it served', async () => {
       let open!: (ok: boolean) => void;
@@ -204,13 +296,13 @@ describe('a frozen home', () => {
     });
 
     it('while it reads the phone: no holder left dead, nothing frozen', async () => {
-      let open!: (s: { serving: boolean; logins: string[] }) => void;
+      let open!: (s: MobileStatus) => void;
       const { freeze, log } = setup({ phone: new Promise((r) => { open = r; }) });
       const freezing = freeze.freeze(ID, STUDIO, holder);
       expect(freeze.refusal('robot.update')?.code).toBe('frozen');
       freeze.left(holder);
       await vi.waitFor(() => expect(log).toContain('resume'));
-      open({ serving: false, logins: [] });
+      open(phoneAt(false));
       await expect(freezing).rejects.toThrow(/went away/);
       expect(freeze.active).toBe(false);
       expect(freeze.refusal('robot.update')).toBeUndefined();
@@ -336,7 +428,7 @@ describe('a frozen home', () => {
       await freeze.freeze(ID, STUDIO, holder);
       log.length = 0;
       const next = new HomeFreeze(d);
-      next.start();
+      next.phoneBack();
       await vi.waitFor(() => expect(log).toEqual(['phone true']));
       await vi.waitFor(() => expect(fs.existsSync(paths.homeServed)).toBe(false));
     });
@@ -349,7 +441,7 @@ describe('a frozen home', () => {
       // the marker went, the link has yet to come back
       fs.rmSync(paths.homeMoving);
       log.length = 0;
-      new HomeFreeze(d).start();
+      new HomeFreeze(d).phoneBack();
       await vi.waitFor(() => expect(log).toEqual(['phone true']));
     });
 
@@ -372,6 +464,87 @@ describe('a frozen home', () => {
       d.phone.set = () => Promise.reject(new Error('tailscale went away'));
       await freeze.thaw(ID);
       expect(fs.existsSync(paths.homeServed)).toBe(true);
+    });
+
+    // the real link, whose every failure comes back as `error`
+    const realLink = (home: string, serve: 'ok' | 'denied') => {
+      fs.writeFileSync(resolvePaths(home).mobileKey, 'k'.repeat(48));
+      fs.writeFileSync(resolvePaths(home).port, '1234');
+      let serving = false;
+      const run = (_c: string, args: string[]) => {
+        if (args[0] === 'status') return Promise.resolve(JSON.stringify({ BackendState: 'Running', Self: { DNSName: 'mac.tail.', UserID: 1 }, User: { 1: { ID: 1, LoginName: 'ada@x' } } }));
+        if (args[0] === 'serve' && args[1] === 'status') return Promise.resolve(serving ? JSON.stringify({ TCP: { 8443: { HTTPS: true } }, Web: { 'mac.tail:8443': { Handlers: { '/': { Proxy: 'http://127.0.0.1:1' } } } } }) : '{}');
+        if (args[0] === 'serve' && serve === 'denied') return Promise.reject(new Error('Access denied: serve config denied'));
+        if (args[0] === 'serve') serving = !args.includes('off');
+        return Promise.resolve('');
+      };
+      return mobileControl({ run: run as never, exists: () => true, read: (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return undefined; } } }, {
+        home, profile: 'private', logins: () => ['ada@x'], phones: new Phones(), httpsPort: 8443, rotateKey: () => {}, pass: 'p', kept: () => [], savePort: () => true,
+      });
+    };
+
+    it('the real link refusing: the record stays for the next start, and why is logged', async () => {
+      const { d, log, paths } = setup();
+      fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+      const phone = realLink(paths.home, 'denied');
+      new HomeFreeze({ ...d, phone }).phoneBack();
+      await vi.waitFor(() => expect(log.join()).toMatch(/did not come back: .*denied/));
+      expect(fs.existsSync(paths.homeServed)).toBe(true);
+    });
+
+    it('a start before the port file is written is why it comes back after: the real link has nothing to proxy to, and says so', async () => {
+      const { d, paths, log } = setup();
+      fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+      const phone = realLink(paths.home, 'ok');
+      fs.rmSync(paths.port);
+      new HomeFreeze({ ...d, phone }).phoneBack();
+      await vi.waitFor(() => expect(log.join()).toMatch(/did not come back: the fleet is not running/));
+      expect(fs.existsSync(paths.homeServed)).toBe(true);
+    });
+
+    it('a link that answers off with no error keeps the record too', async () => {
+      const { d, paths, log } = setup({ set: () => phoneAt(false) });
+      fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+      new HomeFreeze(d).phoneBack();
+      await vi.waitFor(() => expect(log.join()).toMatch(/does not serve/));
+      expect(fs.existsSync(paths.homeServed)).toBe(true);
+    });
+
+    it('no record comes back under a marker: its thaw does that', async () => {
+      const { d, paths, log } = setup({ frozen: true, serving: true });
+      fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+      const held = new HomeFreeze(d, marker());
+      held.phoneBack();
+      held.stop();
+      expect(log).not.toContain('phone true');
+    });
+
+    it('a read that answers an error freezes nothing, as the real link never rejects', async () => {
+      const { freeze, log } = setup({ phone: Promise.resolve(phoneAt(false, [], 'tailscale is starting')) });
+      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/cannot be read: tailscale is starting/);
+      expect(freeze.active).toBe(false);
+      expect(log).toContain('resume');
+    });
+
+    it('a link that will not go off freezes nothing, and comes back as it served', async () => {
+      const { freeze, log } = setup({ serving: true, set: (on) => (on ? phoneAt(true) : phoneAt(true, [], 'serve is stuck')) });
+      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not go off: serve is stuck/);
+      expect(freeze.active).toBe(false);
+      expect(log.at(-1)).toBe('phone true');
+    });
+
+    it('Settings → Phone says why a move left it off, and a person\'s own switch ends that', async () => {
+      const { paths } = setup();
+      const link = { get: () => Promise.resolve(phoneAt(false)), set: (on: boolean) => Promise.resolve(phoneAt(on)) };
+      const panel = phoneWithReason(link, paths);
+      expect((await panel.get()).error).toBeUndefined();
+      servedPhone(paths, ID, 'Access denied');
+      expect((await panel.get()).error).toBe('Access denied');
+      expect((await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(true)) }, paths).get()).error).toBeUndefined();
+      expect((await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(false, [], 'tailscale is down')) }, paths).get()).error).toBe('tailscale is down');
+      await panel.set(false);
+      expect((await panel.get()).error).toBeUndefined();
+      expect(phoneOwed(paths)).toEqual([]);
     });
   });
 
@@ -406,7 +579,7 @@ describe('a real move the API took as the freeze came', () => {
     const freeze = new HomeFreeze({
       paths: resolvePaths(w.base), me: H, log: { error: () => {}, info: () => {} }, store: { state: home.store.state, flush: () => home.store.flush() },
       links: { barrier: () => Promise.resolve(true), hold: () => {}, call: () => Promise.resolve({} as never) }, background: { pause: () => {}, resume: () => {} },
-      phone: { get: () => Promise.resolve({ serving: false, logins: [] }), set: () => Promise.resolve({}) }, ask: () => Promise.resolve({ status: 'pending', phase: 'x' }), restart: () => {},
+      phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) }, ask: () => Promise.resolve({ status: 'pending', phase: 'x' }), restart: () => {},
     });
     const moving = dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, { viewer: { kind: 'app', loopback: true }, placement: home.placement, freeze } as unknown as Ctx);
     expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_1', note: 'too soon' } }, { viewer: { kind: 'app', loopback: true }, freeze: { refusal: () => undefined, admit: () => undefined } } as unknown as Ctx)).toBeDefined();

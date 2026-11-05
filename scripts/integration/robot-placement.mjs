@@ -1245,7 +1245,7 @@ const POINTS = {
 };
 
 // reached only in the recovery of a kill before them: each, after which kill, ended how
-const RECOVERY = [['restore.file', 'adopt.dropped', 'abort'], ['restore.done', 'adopt.dropped', 'retry'], ['abort.recorded', 'adopt.stopped', 'abort']];
+const RECOVERY = [['restore.restarting', 'adopt.dropped', 'abort'], ['restore.file', 'adopt.dropped', 'abort'], ['restore.done', 'adopt.dropped', 'retry'], ['abort.recorded', 'adopt.stopped', 'abort']];
 
 const revive = (m) => sh(m, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
 const tryHome = (m) => { try { return JSON.parse(sh(m, 'svall --json fleet home', { ok: false }).stdout); } catch { return undefined; } };

@@ -123,6 +123,17 @@ runIf('a home move through real starts', () => {
     expect(fs.readFileSync(`${paths.state}.home-${ID}`, 'utf8')).toBe(held);
   }, 120_000);
 
+  it('an outcome told while it starts ends the daemon all the same, whoever asks to hear of it later', async () => {
+    const paths = resolvePaths(makeHome());
+    const daemon = new RealDaemon(paths);
+    daemons.push(daemon);
+    await daemon.start();
+    daemon.d!.fleet.emit('stopped');
+    let ended = false;
+    daemon.d!.whenStopped(() => { ended = true; });
+    expect(ended).toBe(true);
+  });
+
   it('a marker with nothing to tell it starts no home that takes writes through a restart', async () => {
     const paths = fleetHome();
     const d = await firstStart(paths);

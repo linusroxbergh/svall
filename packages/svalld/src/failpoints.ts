@@ -44,7 +44,7 @@ export type Failpoint = (typeof FAILPOINTS)[number];
 
 /** Every operation of a home move a crash can fall before or after: each file replaced, each role change and each commit. */
 export const HOME_FAILPOINTS = [
-  'adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed',
+  'adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'restore.restarting', 'adopt.committed',
   'restore.file', 'restore.done', 'abort.recorded',
   'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done',
   'mark.written', 'enrol.written', 'move.marked', 'deliver.owed', 'deliver.told',

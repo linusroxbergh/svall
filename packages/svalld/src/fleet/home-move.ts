@@ -37,8 +37,8 @@ const MANIFEST = 'home-move.json';
 // how long a stopped daemon has to let go of its lock
 const STOP_MS = 60_000;
 
-/** A destination's phases: `stopping` while its daemon is down with its files as they were; `installing` while its files are changing, which only a recovery ends; `installed` until its daemon answers as the home. */
-const AdoptPhase = z.enum(['staging', 'staged', 'stopping', 'installing', 'installed', 'rolledback', 'adopted', 'aborted', 'done']);
+/** A destination's phases: `stopping` while its daemon is down with its files as they were; `installing` while its files are changing, which only a recovery ends; `installed` until its daemon answers as the home. `released`: the old home's own, that the machine holding the fleet ended its marker. */
+const AdoptPhase = z.enum(['staging', 'staged', 'stopping', 'installing', 'installed', 'rolledback', 'adopted', 'aborted', 'released', 'done']);
 type AdoptPhase = z.infer<typeof AdoptPhase>;
 const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string().optional() });
 
@@ -129,6 +129,18 @@ export function phoneOwed(p: Pick<Paths, 'homeMoves'>): string[] {
 
 export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string): void => enter(p, id, SERVED, why);
 
+// by the newest try of any move: what its failure said stands until a later try, or a person's own switch, says otherwise
+const phoneTries = (p: Pick<Paths, 'homeMoves'>): { id: string; at: number; detail?: string }[] => moveIds(p).flatMap((id) => journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ id, at: l.at, ...(l.detail && { detail: l.detail }) }))).sort((a, b) => a.at - b.at);
+
+/** Why the phone link did not come on when a move last tried it, for Settings → Phone to say. */
+export const phoneReason = (p: Pick<Paths, 'homeMoves'>): string | undefined => phoneTries(p).at(-1)?.detail;
+
+/** A person's own switch: what a move's try said no longer stands. */
+export function forgetPhoneReason(p: Pick<Paths, 'homeMoves'>): void {
+  const last = phoneTries(p).at(-1);
+  if (last?.detail) servedPhone(p, last.id);
+}
+
 // the record is the account's, so a machine another fleet here reaches over ssh would lose that route to one that dials in
 function refuseShared(d: AdoptDeps, m: HomeManifest): void {
   if (m.record.ssh) return;
@@ -188,7 +200,7 @@ function refuseOlder(p: Paths, id: string): string | undefined {
     const at = lastPhase(p, other);
     if (at === 'installing' || at === 'installed') return other;
     if (at === undefined || !STALE.has(at)) continue;
-    enter(p, other, 'aborted', 'a later move came');
+    endMove(p, other, { by: 'refused', detail: 'a later move came' });
     fs.rmSync(adoptDir(p, other), { recursive: true, force: true });
   }
   return undefined;
@@ -286,6 +298,9 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
   return ready;
 }
 
+const NO_HOME = "its daemon did not answer as this fleet's home";
+const CUT_SHORT = 'the install was cut short';
+
 const inHome = (p: Paths, name: string): string => path.join(p.home, name);
 
 const isLink = (file: string): boolean => { try { return fs.lstatSync(file).isSymbolicLink(); } catch { return false; } };
@@ -345,9 +360,16 @@ async function rollback(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, why?: str
     enter(p, id, 'installing', 'rolling back');
     restoreOriginal(p, id);
     restoreRecord(d, id, m);
-    enter(p, id, 'rolledback', why);
+    enter(p, id, 'stopping', why);
   } finally { unlock(); }
+  await startAgain(d, id, why);
+}
+
+// `stopping` until the daemon is back, so a crash before it leaves a status or an abort to start it
+async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<void> {
+  homePoint('restore.restarting');
   await d.daemon.start().catch(() => undefined);
+  enter(d.paths, id, 'rolledback', why);
 }
 
 function restoreRecord(d: Pick<AdoptDeps, 'paths' | 'registryDir'>, id: HomeMoveId, m: HomeManifest): void {
@@ -377,8 +399,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, enrolment: (token: st
       homePoint('adopt.stopped');
       const unlock = await waitForDaemonLock(p).catch((e: Error) => e);
       if (unlock instanceof Error) {
-        enter(p, id, 'rolledback', unlock.message);
-        await d.daemon.start().catch(() => undefined);
+        await startAgain(d, id, unlock.message);
         return pending('rolledback', unlock.message);
       }
       try {
@@ -402,28 +423,32 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, enrolment: (token: st
           restoreOriginal(p, id);
           restoreRecord(d, id, manifest);
         }
-        enter(p, id, 'rolledback', (e as Error).message);
+        enter(p, id, 'stopping', (e as Error).message);
         unlock();
-        await d.daemon.start().catch(() => undefined);
+        await startAgain(d, id, (e as Error).message);
         return pending('rolledback', (e as Error).message);
       } finally { unlock(); }
     }
-    let why = "its daemon did not answer as this fleet's home";
-    let up = false;
-    try {
-      await d.daemon.start();
-      homePoint('adopt.started');
-      up = await d.daemon.answersHome(manifest.fleetId);
-    } catch (e) {
+    let why = NO_HOME;
+    // a start that rejects may have restarted it: only its answer says, as a home that took writes must not be rolled back
+    await d.daemon.start().catch((e: Error) => {
       if (e instanceof Crash) throw e;
-      why = (e as Error).message;
-    }
-    if (!up) {
+      why = e.message;
+    });
+    homePoint('adopt.started');
+    if (!await d.daemon.answersHome(manifest.fleetId).catch(() => false)) {
       await rollback(d, id, manifest, why);
       return pending('rolledback', why);
     }
     return commit(p, id, manifest);
   });
+}
+
+// whether a daemon answers as the home, started first if none does: one that answers may have taken writes
+async function homeAnswers(d: AdoptDeps, m: HomeManifest): Promise<boolean> {
+  if (await d.daemon.answersHome(m.fleetId).catch(() => false)) return true;
+  await d.daemon.start().catch(() => undefined);
+  return d.daemon.answersHome(m.fleetId).catch(() => false);
 }
 
 // the daemon that would start on half-installed files is held off by this lock, and a daemon that starts first has done this already
@@ -433,9 +458,14 @@ async function recoverInstall(d: AdoptDeps, id: HomeMoveId): Promise<void> {
     if (lastPhase(d.paths, id) === 'installing') {
       restoreOriginal(d.paths, id);
       restoreRecord(d, id, readManifest(d.paths, id));
-      enter(d.paths, id, 'rolledback', 'the install was cut short');
+      enter(d.paths, id, 'stopping', CUT_SHORT);
     }
   } finally { unlock(); }
+}
+
+// a machine a move leaves hears how it ended from where the fleet went, and what it says of the move itself would read as that
+function refuseLeaving(p: Paths, id: HomeMoveId): void {
+  if (readMarker(p)?.id === id) throw new Error(`this home is what move ${id} leaves, so it cannot say how that ended; svall fleet home abort calls it off, once the machine holding the fleet says it was not taken`);
 }
 
 /**
@@ -445,39 +475,30 @@ async function recoverInstall(d: AdoptDeps, id: HomeMoveId): Promise<void> {
 export function adoptStatus(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
   const p = d.paths;
   return serialized(p, async () => {
+    refuseLeaving(p, id);
     const at = lastPhase(p, id);
     if (at === undefined) {
-      enter(p, id, 'aborted', 'asked before any archive came');
+      endMove(p, id, { by: 'refused', detail: 'asked before any archive came' });
       homePoint('abort.recorded');
       return notAdopted();
     }
-    if (at === 'aborted') {
+    if (at === 'aborted' || at === 'released') {
       fs.rmSync(adoptDir(p, id), { recursive: true, force: true });
       return notAdopted();
     }
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
-    if (at === 'stopping') {
-      await d.daemon.start().catch(() => undefined);
-      enter(p, id, 'rolledback', 'the adopt was cut short');
-      return pending('rolledback', 'the adopt was cut short');
-    }
-    if (at === 'installing') {
-      await recoverInstall(d, id);
-      await d.daemon.start().catch(() => undefined);
-      return pending('rolledback', 'the install was cut short');
+    if (at === 'installing') await recoverInstall(d, id);
+    if (at === 'stopping' || at === 'installing') {
+      const why = at === 'stopping' ? 'the adopt was cut short' : CUT_SHORT;
+      await startAgain(d, id, why);
+      return pending('rolledback', why);
     }
     if (at === 'installed') {
       const manifest = readManifest(p, id);
-      let up = await d.daemon.answersHome(manifest.fleetId).catch(() => false);
-      if (!up) {
-        await d.daemon.start().catch(() => undefined);
-        up = await d.daemon.answersHome(manifest.fleetId).catch(() => false);
-      }
-      if (up) return commit(p, id, manifest);
-      const why = "its daemon did not answer as this fleet's home";
-      await rollback(d, id, manifest, why);
-      return pending('rolledback', why);
+      if (await homeAnswers(d, manifest)) return commit(p, id, manifest);
+      await rollback(d, id, manifest, NO_HOME);
+      return pending('rolledback', NO_HOME);
     }
     return pending(at);
   });
@@ -487,16 +508,17 @@ export function adoptStatus(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> 
 export function abortAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
   const p = d.paths;
   return serialized(p, async () => {
+    refuseLeaving(p, id);
     const at = lastPhase(p, id);
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
     // a home that answers may have taken writes a rollback would lose, so the move goes forward
-    if (at === 'installed' && await d.daemon.answersHome(readManifest(p, id).fleetId).catch(() => false)) return commit(p, id, readManifest(p, id));
+    if (at === 'installed' && await homeAnswers(d, readManifest(p, id))) return commit(p, id, readManifest(p, id));
     if (at === 'installing' || at === 'installed') await rollback(d, id, readManifest(p, id));
     // the daemon comes back before the record, so a crash between leaves a status to start it
     if (at === 'stopping') await d.daemon.start().catch(() => undefined);
-    if (at !== 'aborted') {
-      enter(p, id, 'aborted');
+    if (at !== 'aborted' && at !== 'released') {
+      endMove(p, id, { by: 'refused' });
       homePoint('abort.recorded');
     }
     fs.rmSync(adoptDir(p, id), { recursive: true, force: true });
@@ -566,6 +588,8 @@ export function writeMarker(p: Pick<Paths, 'homeMoving' | 'homeMoves'>, m: HomeM
 
 // a daemon that ended may be about to start: its lock held, a start never meets a marker written after its join
 async function withoutDaemon(p: Paths, id: string, what: (held: HomeMoving) => void): Promise<void> {
+  // a daemon past this marker has heard already, and holds its lock for as long as it runs
+  if (readMarker(p)?.id !== id) return;
   const unlock = await waitForDaemonLock(p);
   try {
     const held = readMarker(p);
@@ -576,11 +600,33 @@ async function withoutDaemon(p: Paths, id: string, what: (held: HomeMoving) => v
 /** The outcome `adopted` where this fleet's next start takes it, for a daemon that does not answer. */
 export const writeEnrol = (p: Paths, id: string, enrol: Enrolment): Promise<void> => withoutDaemon(p, id, (held) => writeMarker(p, { ...held, enrol }));
 
-/** This machine's own record that a move it left is off, before the marker goes. */
-export function dropMarker(p: Paths, id: string): void {
-  enter(p, id, 'aborted');
+/**
+ * Who says a move is over here. `refused`: this machine, about to take the fleet, turns the move down for good. The rest end the
+ * marker of a home the fleet left: `asked`, the machine holding the fleet answered `not-adopted`; `told`, it delivered that to a
+ * home with no route to ask it; `joined`, its enrolment is in place; `recorded`, a call of this function got as far as its journal line.
+ */
+export type MoveEnd = { by: 'refused'; detail?: string } | { by: 'asked' | 'told' | 'joined' | 'recorded' };
+
+/**
+ * The only way a marker goes or an id is written off, so a thawed home always has an answer from the machine holding the fleet
+ * behind it. Anything that does not fit the marker standing here throws, and leaves it.
+ */
+export function endMove(p: Paths, id: string, end: MoveEnd): void {
+  const marker = readMarker(p);
+  if (end.by === 'refused') {
+    if (marker?.id === id) throw new Error(`this home holds the marker of ${id}, which only the machine holding the fleet can end`);
+    enter(p, id, 'aborted', end.detail);
+    return;
+  }
+  if (marker?.id !== id) throw new Error(`this home holds no marker of ${id}`);
+  const at = lastPhase(p, id);
+  const fits = end.by === 'asked' ? marker.ask !== undefined : end.by === 'told' ? marker.ask === undefined : end.by === 'joined' ? marker.enrol !== undefined : at === 'released' || at === 'done';
+  if (!fits) throw new Error(`the marker of ${id} is not ended by ${end.by}`);
+  if (end.by === 'asked' || end.by === 'told') enter(p, id, 'released', end.by);
+  if (end.by === 'joined') enter(p, id, 'done');
   fs.rmSync(p.homeMoving, { force: true });
   fs.rmSync(docsCut(p, id), { force: true });
+  if (end.by === 'joined' || at === 'done') fs.rmSync(p.homeServed, { force: true });
 }
 
 export type Settling = {
@@ -614,7 +660,7 @@ export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAn
     await d.start();
     return { status: 'adopted' };
   }
-  if (await d.thaw().then(() => false, (e: unknown) => onFile(e, () => withoutDaemon(p, id, () => dropMarker(p, id))))) await d.start();
+  if (await d.thaw().then(() => false, (e: unknown) => onFile(e, () => withoutDaemon(p, id, () => endMove(p, id, { by: 'told' }))))) await d.start();
   return { status: 'not-adopted' };
 }
 
@@ -658,16 +704,22 @@ export async function packFleet(p: Paths, m: HomeManifest): Promise<{ sha256: st
 const docsCut = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home, `docs-cut-${id}.json`);
 const docsAt = (dir: string): Record<string, string> => Object.fromEntries(ownFiles(dir).map((rel) => [rel, sha256Hex(fs.readFileSync(path.join(dir, rel)))]));
 
-// what the old home's robots wrote between the cut and the join, in the worker's copy with no record of the home having it, so it goes to the new home
+// what the old home's robots did between the cut and the join, as a worker's own changes over what the new home took at the cut: its
+// first tar would take any file with no record of it, and so what this writes is the cut's hash of each, none for a doc the cut lacked
 function carrySinceCut(p: Paths, id: string, kept: string): void {
   let cut: Record<string, string> | undefined;
   try { cut = read(docsCut(p, id)) as Record<string, string>; } catch { return; }
-  for (const [rel, sha256] of Object.entries(docsAt(kept))) {
+  const now = docsAt(kept);
+  const synced: Record<string, string> = {};
+  for (const [rel, sha256] of Object.entries(now)) {
     if (cut[rel] === sha256) continue;
     const to = path.join(p.cache, 'docs', rel);
     fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 });
     fs.copyFileSync(path.join(kept, rel), to);
+    if (cut[rel]) synced[rel] = cut[rel];
   }
+  for (const [rel, sha256] of Object.entries(cut)) if (!(rel in now)) synced[rel] = sha256;
+  writeDurable(p.docsSynced, synced, { mode: 0o600 });
 }
 
 /** The move this machine waits on, as the one the fleet leaves or the one that owes it the outcome, for a check that wants nothing under way. */
@@ -695,10 +747,7 @@ export function joinAsWorker(p: Paths, m: HomeMoving & { enrol: Enrolment }, reg
   if (m.enrol.home) putRecord(m.to, m.enrol.home, registryDir);
   writeDurable(p.workerFile, m.enrol.worker, { mode: 0o600 });
   homePoint('join.worker');
-  appendDurable(journalOf(p, m.id), { phase: 'done', at: Date.now() });
-  fs.rmSync(p.homeMoving, { force: true });
-  fs.rmSync(docsCut(p, m.id), { force: true });
-  fs.rmSync(p.homeServed, { force: true });
+  endMove(p, m.id, { by: 'joined' });
   homePoint('join.done');
 }
 
@@ -713,14 +762,15 @@ export function homeGate(p: Paths, registryDir?: string): { frozen?: HomeMoving 
     if (lastPhase(p, id) !== 'installing') continue;
     restoreOriginal(p, id);
     restoreRecord({ paths: p, registryDir }, id as HomeMoveId, readManifest(p, id));
-    enter(p, id, 'rolledback', 'the install was cut short');
+    enter(p, id, 'rolledback', CUT_SHORT);
   }
   const marker = readMarker(p);
   if (!marker) return {};
-  // past its join, or past the record that it is off: this machine has heard already, and a join run again would rewind it
+  // past its join, or past the record that it is off: this machine has heard already, and a join run again would rewind it. An
+  // `aborted` here is no such record: this machine's own refusal, of a move it had not yet marked, says nothing of where the fleet is
   const over = lastPhase(p, marker.id);
-  if (over === 'done' || over === 'aborted') {
-    fs.rmSync(p.homeMoving, { force: true });
+  if (over === 'done' || over === 'released') {
+    endMove(p, marker.id, { by: 'recorded' });
     return {};
   }
   if (marker.enrol) {

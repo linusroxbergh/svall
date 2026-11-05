@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { emptyState, MachineId, migrateState, relabelHome, WorkerFile, type Enrolment, type FleetState, type HomeManifest, type HomeMoveId, type HomeMoving, type Island, type Robot } from '@svall/protocol';
+import { emptyState, MachineId, migrateState, relabelHome, WorkerFile, type Enrolment, type FleetState, type HomeManifest, type HomeMoveId, type HomeMoving, type Island, type MobileStatus, type Robot } from '@svall/protocol';
 import { armHomeFailpoints, HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { homeGate, installAdopt, packFleet, stageAdopt, writeMarker, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
@@ -157,6 +157,9 @@ export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
   return w;
 }
 
+/** What the real link answers: never a rejection, its failures in `error`. */
+export const phoneAt = (serving: boolean, logins: string[] = [], error?: string): MobileStatus => ({ serving, url: serving ? 'https://mac.tail:8443/' : '', port: 8443, logins, phones: [], ...(error && { error }) });
+
 export const marker = (): HomeMoving => ({
   id: ID, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5,
   ask: { ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never },
@@ -164,7 +167,7 @@ export const marker = (): HomeMoving => ({
 
 /** Which suite crashes at each failpoint of a move, each failing at its end on one it never fired, and the list on a failpoint no suite takes. */
 export const POINTS_OF = {
-  move: ['adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed', 'restore.file', 'restore.done', 'abort.recorded', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done', 'mark.written'],
+  move: ['adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'restore.restarting', 'adopt.committed', 'restore.file', 'restore.done', 'abort.recorded', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done', 'mark.written'],
   back: ['enrol.written', 'deliver.owed', 'deliver.told'],
   driver: ['move.marked'],
 } as const satisfies Record<string, readonly HomeFailpoint[]>;

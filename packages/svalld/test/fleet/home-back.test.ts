@@ -4,7 +4,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, startDeliveries } from '../../src/fleet/home-far.js';
-import { abortAdopt, adoptDir, adoptStatus, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, enter, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
 import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side } from './home-world.js';
 
@@ -185,7 +185,9 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
   it.each(INSTALL)('%s: called off, this machine is the worker it was, and studio thaws as the home', async (point) => {
     const w = await killed(point);
+    w.mac.daemon.noAnswer = true;
     expect(await abortAdopt(w.mac.deps, BACK)).toEqual({ status: 'not-adopted' });
+    w.mac.daemon.noAnswer = false;
     await w.mac.daemon.start();
     expect(w.mac.daemon.role).toBe('worker');
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
@@ -309,7 +311,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     w.studio.daemon.kill();
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['worker', 'home']);
-    expect(journalLines(w.studio.paths, BACK).at(-1)?.phase).toBe('aborted');
+    expect(journalLines(w.studio.paths, BACK).at(-1)?.phase).toBe('released');
   });
 });
 
@@ -347,6 +349,20 @@ describe('the phone link a move owes', () => {
     expect(on).toBe(1);
     expect(phoneOwed(w.studio.paths)).toEqual([]);
     expect(moveOutcome(w.studio.paths, ID)?.status).toBe('adopted');
+  });
+
+  it('a `tailscale serve` that hangs keeps no old home waiting: the outcome goes out, and the link is tried once', async () => {
+    const w = await markedBack();
+    expect((await installAdopt(w.mac.deps, BACK, w.enrolment)).status).toBe('adopted');
+    enter(w.mac.paths, BACK, 'adopted', 'serve');
+    let tries = 0;
+    vi.useFakeTimers();
+    const stop = startDeliveries(w.mac.paths, { error: () => {}, info: () => {} }, studioAt(w.studio).open, () => { tries++; return new Promise(() => {}); });
+    await vi.advanceTimersByTimeAsync(30_000);
+    stop();
+    vi.useRealTimers();
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+    expect(tries).toBe(1);
   });
 
   it('a home that did not serve owes nothing', async () => {

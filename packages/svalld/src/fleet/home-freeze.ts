@@ -4,15 +4,15 @@ import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type Ado
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
 import type { Logger } from '../log.js';
-import { realDeps, resolveTailscale, tailnetSelf, type MobileDeps } from '../mobile.js';
+import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { dropMarker, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
+import { endMove, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
-const STILL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
+const STILL = new Set<MethodName>(['term.open', 'term.attach', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
 // and reads that are no reads: a quit that ends the robots, or a link that would come back
 const NOT_READS = new Set<MethodName>(['fleet.stop', 'machines.refresh', 'fleets.create', 'fleets.start']);
 const DRAIN_MS = 30_000;
@@ -30,7 +30,7 @@ export type FreezeDeps = {
   links: { barrier(machine: MachineId, ms: number): Promise<boolean>; hold(on: boolean): void; call?<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
   /** the scribe, the pusher, the relay and the retro, which only a home runs and which a frozen one holds still */
   background: { pause(): void; resume(): void };
-  phone: { get(): Promise<{ serving: boolean; logins: string[] }>; set(on: boolean): Promise<unknown> };
+  phone: Mobile;
   /** the machine holding the fleet, asked about this move over ssh */
   ask(marker: HomeMoving, op: 'status' | 'abort'): Promise<AdoptAnswer>;
   /** ends this daemon, whose next start finishes the join */
@@ -56,10 +56,14 @@ export class HomeFreeze {
     this.moving = { id: frozen.id, to: frozen.to, served: fs.existsSync(d.paths.homeServed), ready: true };
   }
 
-  /** Starts asking, for a daemon that started under a marker; with none, what a crash around a freeze left off of the phone comes back. */
+  /** Starts asking, for a daemon that started under a marker. */
   start(): void {
-    if (this.marker) { this.d.background.pause(); this.d.links.hold(true); this.schedule(); return; }
-    if (fs.existsSync(this.d.paths.homeServed)) void this.servedAgain();
+    if (this.marker) { this.d.background.pause(); this.d.links.hold(true); this.schedule(); }
+  }
+
+  /** What a crash around a freeze left off of the phone comes back: once the port it proxies to is known, and under no marker. */
+  phoneBack(): void {
+    if (!this.moving && fs.existsSync(this.d.paths.homeServed)) void this.servedAgain();
   }
 
   stop(): void {
@@ -120,6 +124,8 @@ export class HomeFreeze {
     try {
       const status = await this.d.phone.get();
       still();
+      // a link that cannot be read must not be taken for off, as the next home would never serve it
+      if (status.error) throw new ApiError('busy', `the phone link cannot be read: ${status.error}`);
       // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut
       const owed = phoneOwed(this.d.paths);
       const serving = status.serving || owed.length > 0;
@@ -139,8 +145,9 @@ export class HomeFreeze {
       if (serving) {
         writeDurable(this.d.paths.homeServed, { id }, { mode: 0o600 });
         for (const was of owed) servedPhone(this.d.paths, was);
-        await this.d.phone.set(false);
+        const off = await this.d.phone.set(false);
         still();
+        if (off.error) throw new ApiError('busy', `the phone link did not go off: ${off.error}`);
       }
       held.ready = true;
       return { phone: { serving, logins: status.logins } };
@@ -169,7 +176,7 @@ export class HomeFreeze {
   async told(id: HomeMoveId): Promise<void> {
     if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
     if (this.marker.ask) throw new ApiError('frozen', 'this home asks where the fleet went, and is told by no one');
-    await this.release();
+    await this.release('told');
   }
 
   mark(marker: HomeMoving): void {
@@ -185,9 +192,11 @@ export class HomeFreeze {
 
   /** The machine holding the fleet asked now, and what it says acted on. */
   async settle(op: 'status' | 'abort'): Promise<void> {
-    if (!this.marker?.ask) return;
-    const answer = await this.d.ask(this.marker, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: e.message }));
-    await this.act(answer);
+    const asked = this.marker;
+    if (!asked?.ask) return;
+    const answer = await this.d.ask(asked, op).catch((e: Error): AdoptAnswer => ({ status: 'pending', phase: 'unreachable', detail: e.message }));
+    // an answer about an earlier move says nothing of the one standing now
+    if (this.marker?.id === asked.id) await this.act(this.marker.id, answer);
   }
 
   /** The outcome `adopted`, on the disk before this daemon ends. */
@@ -199,10 +208,9 @@ export class HomeFreeze {
     this.d.restart();
   }
 
-  private async act(a: AdoptAnswer): Promise<void> {
-    if (!this.marker) return;
-    if (a.status === 'adopted') return this.join(this.marker.id, a.enrol);
-    if (a.status === 'not-adopted') return this.release();
+  private async act(id: HomeMoveId, a: AdoptAnswer): Promise<void> {
+    if (a.status === 'adopted') return this.join(id, a.enrol);
+    if (a.status === 'not-adopted') return this.release('asked');
     this.answer = a.status === 'pending' ? a.detail ?? a.phase : 'done';
     this.schedule();
   }
@@ -218,22 +226,27 @@ export class HomeFreeze {
   }
 
   private async servedAgain(): Promise<void> {
-    try {
-      await this.d.phone.set(true);
-      fs.rmSync(this.d.paths.homeServed, { force: true });
-    } catch (e) { this.d.log.error(`the phone link did not come back: ${(e as Error).message}`); }
+    // kept unless it serves, so the next start tries again
+    const s = await this.d.phone.set(true).catch((e: Error) => ({ serving: false, error: e.message }));
+    if (s.serving) fs.rmSync(this.d.paths.homeServed, { force: true });
+    else this.d.log.error(`the phone link did not come back: ${s.error ?? 'it does not serve'}`);
   }
 
   // the marker goes first: a crash after it starts this home as it was, and the start turns back on what served
-  private async release(): Promise<void> {
+  private async release(end?: 'asked' | 'told'): Promise<void> {
     const held = this.moving;
     if (!held) return;
-    if (this.marker) dropMarker(this.d.paths, held.id);
+    if (this.marker) {
+      if (!end) throw new ApiError('frozen', 'this move can be called off only where the fleet is going');
+      endMove(this.d.paths, this.marker.id, { by: end });
+    }
     this.marker = undefined;
     this.moving = undefined;
     clearTimeout(this.timer);
     this.d.links.hold(false);
     await this.d.links.call?.(held.to, 'home.thaw', { id: held.id }).catch(() => undefined);
+    // a freeze begun during that call holds all of it
+    if (this.moving) return;
     this.d.background.resume();
     if (held.served) await this.servedAgain();
   }

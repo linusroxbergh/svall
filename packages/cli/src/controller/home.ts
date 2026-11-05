@@ -380,13 +380,17 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
   const enrol = await run.step('adopt', async () => {
     const answer = await far(['fleet', 'adopt', id, '--home-ssh', o.ssh]).catch(async (e: Error) => settleAcross(far, id, e));
     if (answer.status === 'adopted') return { value: answer.enrol, detail: `${o.name} runs the fleet` };
+    // a start of this daemon took the outcome first, and has joined
+    if (answer.status === 'done') return { value: undefined, detail: `${o.name} runs the fleet` };
     const said = answer.status === 'pending' ? answer.detail ?? answer.phase : answer.status;
     throw new StepError(`${o.name} did not take the fleet: ${said}`, 'svall fleet home abort, or svall fleet home retry');
   });
   driverJournal(paths, id, 'join');
   await run.step('join', async () => {
-    await client.call('fleet.homeMove', { op: 'join', id, enrol }).catch(() => writeEnrol(paths, id, enrol));
-    await d.daemon.start();
+    if (enrol) {
+      await client.call('fleet.homeMove', { op: 'join', id, enrol }).catch(() => writeEnrol(paths, id, enrol));
+      await d.daemon.start();
+    }
     return { value: undefined, detail: `this machine runs as a worker of ${o.name}` };
   });
   await run.step('probe', async () => {
