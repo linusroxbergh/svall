@@ -1374,17 +1374,10 @@ function tarKill(ids, dir) {
   check('the old home holds no marker', sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code !== 0, 'a marker stands');
   const takes = call(old, 'mobile.get');
   check('the old home answers', takes !== undefined, 'no answer');
-  if (dir === 'back') {
-    // the driver died with it, so what it half unpacked waits for the next move, which gives it up
-    check('the half unpacked archive is where Files refuses it', sh(L, 'ls -d ~/.svall/adopt-*/unpacked', { ok: false }).code === 0, 'nothing staged');
-    setHome(L, 'local');
-    ctx.home = 'local';
-    setHome(L, 'remote');
-    ctx.home = 'remote';
-    afterMove('tar kill back, then a move each way', ids, before, 'remote');
-    return;
-  }
-  afterMove('tar kill out', ids, before, 'local');
+  // a driver that died with its tar leaves what it staged for a person, who finds the old home never frozen
+  if (dir === 'back') check('the half unpacked archive is where Files refuses it', sh(L, 'ls -d ~/.svall/adopt-*/unpacked', { ok: false }).code === 0, 'nothing staged');
+  person('retry');
+  afterMove(`tar kill ${dir}`, ids, before, dir === 'out' ? 'local' : 'remote');
 }
 
 // three terminals on the far home, the way the app attaches them: the master goes, every terminal comes back to its pane, and a copy in a far pane reaches this machine's terminal

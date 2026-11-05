@@ -117,6 +117,21 @@ each machine's daemon and unit logs.
     its next beat, the socket a killed tunnel leaves refuses, and remote's next dial replaces it. `faults` then moves back.
     A window's daemon side runs here too: remote's daemon names local as its home and how to reach it, local's API answers as the home over the
     forward it makes, with each machine's role, and no log there holds local's token.
+16. **The home moves to remote.** Local's ssh in from remote is blocked first, so what links them after can only be
+    local's dial. Mission control's robot goes first with the move engine, then `svall fleet home set remote`: both
+    machines keep their tmux windows, one daemon answers as the home and the other as its worker, the phone serves from
+    remote under the same pass and logins and local's link is off, a push subscription and the pass came along, local
+    keeps its old state and docs, and nothing staged stays on either machine.
+17. **The home move's fault matrix**, below.
+18. **The home comes back.** `svall fleet home set local` from local: remote is a worker again with its robots, then a
+    robot moves each way on the home that came back.
+19. **A machine set up first takes a join.** `svall -p joined fleet join` on remote makes a fleet never opened a worker
+    of the home on local, under the home's fleet id, ending on its first snapshot; a fleet that holds anything is
+    refused.
+20. **Terminals across a dropped master.** A window on local holds three terminals attached to robots on the home on
+    remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
+    master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its
+    process unchanged, and an OSC 52 copy in a far pane reaches the terminal.
 
 Steps 1, 2, 5, 6 and 14 also check that the bare repository on remote is untouched: a move never pushes.
 
@@ -144,6 +159,36 @@ faults and 2 directions, 24 moves. Before each, `faults` is moved to the side th
   `aborted` as above; the robot runs on one machine alone, with one agent on its session and one window, and both
   machines' records agree. An aborted move leaves the source's worktree unlocked and as it was, and no worktree of
   the move on the destination.
+
+### The home move's fault matrix
+
+Step 17 kills a process at each operation boundary of a home move, in both directions, then does what a person does:
+starts what the kill left down and runs `svall fleet home retry` or `abort`, in turn, until the move is over. A boundary
+the run never reached fails it.
+
+| Direction | Where | Boundaries |
+| --- | --- | --- |
+| local to remote | remote's `fleet adopt` | `adopt.staged`, `stopped`, `installing`, `file`, `dropped`, `registry`, `installed`, `started`, `committed` |
+| local to remote | local's driver | `move.marked` |
+| local to remote | local's daemon | `mark.written`, `enrol.written`, `join.kept`, `state`, `docs`, `worker`, `done` |
+| remote to local | local's driver | `deliver.owed`, `move.marked`, and each `adopt.*` as above, which runs there |
+| remote to local | local's daemon | `deliver.told` |
+| remote to local | remote's daemon | `mark.written`, `enrol.written`, each `join.*` |
+
+- **A link drop between mark and adopt**, each way, ended by retry and by abort. The driver stands still at `move.marked`,
+  local's packets to remote's port 22 are dropped, and it goes on. Going out, local stays frozen and remote takes nothing.
+  Coming back, local takes the fleet and owes remote the outcome, and remote stays frozen until the link returns.
+- **A kill inside the tar's extraction**, each way: a `tar` standing in on that machine unpacks one file, then kills itself
+  and the `svall` that ran it. Nothing is marked, so the old home goes on as the home. A driver that died with its tar
+  leaves the half unpacked folder, which a retry calls off on finding the old home never frozen.
+- **A delayed adopt against an abort.** A status on an id never heard of refuses it for good, and the adopt that comes
+  later is refused.
+- **Afterwards**: exactly one daemon answers as the home and the other names it; every window on either machine stands;
+  no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`; and the home holds the
+  fleet's `push.json` and pass.
+
+A move needs the daemons it moves between, so a failed check does not stop a step: a run that seems to hang there is
+often a failed drive waiting to settle, and `run.log` says which. `--points` narrows the matrix while working on one.
 
 ### The CI job
 
@@ -242,6 +287,11 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
 6. **`svall setup --rollback`**, run over ssh on the machine: `current` goes back to the first release, the unit
    restarts, setup itself finds the fleet's daemon answering from that release, and step 4's checks pass against the
    first release. `host doctor` from the first release's controller agrees.
+7. **Made home by adopt.** The far half of a home move on the machine as a worker: `svall fleet export` on the controller,
+   which runs no daemon, then `svall fleet adopt --stage` and `svall fleet adopt` over ssh. The machine answers as the
+   fleet's home, with no `worker.json` and no `--worker` in its unit.
+8. **`svall host upgrade` of that home** to the second release: the machine stays the home, enrolled as nothing, runs
+   that release, and a robot started there keeps its window and its process.
 
 ### x86-64 on an Apple Silicon Mac
 

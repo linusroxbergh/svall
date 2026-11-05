@@ -404,6 +404,8 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
       await moveMission(run, home, paths, id, d.me, 'this machine');
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await home!.call('fleet.freeze', { id, to: d.me }), detail: `${name} takes no more writes` }));
+      // from here a kill leaves what this machine holds of the move for a person to finish or call off
+      owe(paths, delivery);
       driverJournal(paths, id, 'copy');
       const here = d.registry.localMachine();
       await run.step('copy', async () => {
@@ -416,7 +418,6 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
         return { value: undefined, detail: 'checked and staged here' };
       });
       driverJournal(paths, id, 'mark');
-      owe(paths, delivery);
       await run.step('mark', async () => {
         await home!.call('fleet.homeMove', { op: 'mark', marker: {
           id, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(),
@@ -494,18 +495,21 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
       await daemonClient(d).then((c) => c.close());
       const said = moveOutcome(paths, owed.id);
       if (said?.status === 'not-adopted') return refuse(run, 'this move was called off here', await told(paths) ? undefined : 'this machine keeps telling the old home');
-      const { from, record } = readManifest(paths, owed.id);
+      let staged: HomeManifest | undefined;
+      try { staged = readManifest(paths, owed.id); } catch { /* its driver died before the archive came */ }
       // a home its driver left before the mark went on taking writes, so this machine must not take the fleet too
-      if (!said) {
-        await run.step('check', async () => {
-          const master = await d.openMaster(owed.ssh).catch((e: Error) => { throw new StepError(e.message, 'svall fleet home retry once it answers'); });
-          try {
-            if (await markedThere(master, owed)) return { value: undefined, detail: `${record.name} is still frozen for this move` };
-          } finally { await master.close().catch(() => undefined); }
-          await abortAdopt(adoption, owed.id);
-          throw new StepError(`${record.name} is not frozen for this move and goes on as the home`, 'svall fleet home set local to start again');
-        });
+      const marked = said || !staged ? true : await run.step('check', async () => {
+        const master = await d.openMaster(owed.ssh).catch((e: Error) => { throw new StepError(e.message, 'svall fleet home retry once it answers'); });
+        try {
+          return { value: await markedThere(master, owed), detail: `asked ${staged.record.name}` };
+        } finally { await master.close().catch(() => undefined); }
+      });
+      if (!staged || !marked) {
+        await abortAdopt(adoption, owed.id);
+        await told(paths);
+        return refuse(run, 'the old home is not frozen for this move and goes on as the home', 'svall fleet home set local to start again');
       }
+      const { from, record } = staged;
       return finishBack(run, d, adoption, owed.id, { from, name: record.name });
     }
     const marker = readMarker(paths);

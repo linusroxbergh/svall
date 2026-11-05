@@ -300,19 +300,38 @@ describe('fleet home set local', () => {
   it('a retry past a driver that died before the mark does not take the fleet from a home that thawed: two homes, otherwise', async () => {
     let frozen = true;
     const { w, deps, settled, master } = await workerHere(() => frozen);
-    const disarm = armHomeFailpoints((name) => { if (name === 'deliver.owed') throw new HomeCrash(name); });
+    // killed as the copy ends, with the archive here and the mark not gone
+    const emit = deps.emit;
+    deps.emit = (e) => { emit(e); if (e.step === 'copy' && e.status === 'ok') throw new HomeCrash('killed'); };
     await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
-    disarm();
+    deps.emit = emit;
     const id = readOwed(w.mac.paths)!.id;
     frozen = false;
     events = [];
+    const stop = telling(w, master);
     const out = await resumeHome(deps);
+    stop();
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not frozen for this move and goes on as the home' });
+    expect(failed()).toMatchObject({ step: 'check', detail: 'the old home is not frozen for this move and goes on as the home' });
     expect(w.mac.daemon.role).toBe('worker');
     expect(fs.existsSync(w.mac.paths.workerFile)).toBe(true);
     expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('aborted');
-    expect(await deliverOwed(w.mac.paths, () => Promise.resolve(master))).toBe('told');
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+    expect(settled).toEqual(['not-adopted']);
+  }, 30_000);
+
+  it('a driver killed before its archive came: a retry calls the move off', async () => {
+    const { w, deps, settled, master } = await workerHere();
+    const disarm = armHomeFailpoints((name) => { if (name === 'deliver.owed') throw new HomeCrash(name); });
+    await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+    disarm();
+    events = [];
+    const stop = telling(w, master);
+    const out = await resumeHome(deps);
+    stop();
+    expect(out.actions).toEqual(['svall fleet home set local to start again']);
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+    expect(w.mac.daemon.role).toBe('worker');
     expect(settled).toEqual(['not-adopted']);
   }, 30_000);
 
