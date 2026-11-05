@@ -45,6 +45,8 @@ export type ReportAsk = z.infer<typeof ReportAsk>;
 export const ConfigReport = z.object({
   commands: z.record(z.string(), z.boolean()), vars: z.record(z.string(), z.boolean()), secrets: z.record(z.string(), z.enum(['copied', 'own'])),
   whole: z.record(z.string(), z.boolean()), oauth: z.record(z.string(), z.boolean()),
+  // an item the worker holds as its own, the very one ticked whole; and each field or item whose own value a tick went over, whose file its backup keeps
+  ownWhole: z.record(z.string(), z.boolean()).optional(), replaced: z.record(z.string(), z.boolean()).optional(),
 });
 export type ConfigReport = z.infer<typeof ConfigReport>;
 
@@ -130,12 +132,16 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   };
 
   const secrets: ConfigReport['secrets'] = {};
+  const inBackup = state.backup !== undefined && fs.existsSync(state.backup.dir);
+  const replaced: Record<string, boolean> = {};
+  const wasReplaced = (key: string, name: string): void => { if (inBackup && state.replaced?.includes(key)) replaced[name] = true; };
   for (const k of ask.secrets) {
     // what the mirror leaves there without keys, moved as apply moves it: a server's command, args and cwd, a config
     // file's path keys, a plugin's server file not at all
     const bare = k.file !== undefined ? k.bare : k.place.length ? relocatedServer(k.bare, move) : relocated(k.bare, move);
     const file = k.file !== undefined ? fileHere(k.file) : undefined;
     for (const { field, leaf } of k.fields) {
+      if (k.doc) wasReplaced(recordKey(k.doc, [...k.place, ...leaf]), fieldKey(k.item, field));
       const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
       if (typeof value !== 'string' || value === '' || value === getAt(bare, leaf)) continue;
       const copied = k.doc ? isCopy(state.secrets[recordKey(k.doc, [...k.place, ...leaf])], value) : file?.copied === true;
@@ -144,12 +150,15 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     }
   }
   const whole: ConfigReport['whole'] = {};
+  const ownWhole: Record<string, boolean> = {};
   for (const w of ask.whole) {
     const v = w.doc ? getAt(docHere(w.doc), placedIn(w.doc, w.place, move)) : w.file !== undefined ? getAt(fileHere(w.file).doc, w.place) : undefined;
     const recorded = w.doc ? state.servers[recordKey(w.doc, w.place)] : w.file !== undefined ? state.files[w.file] : undefined;
     // a file carried whole is there once the worker has it
     const there = !w.doc && w.file !== undefined && !w.place.length ? fileHere(w.file).there : isDoc(v) && w.fields.every((f) => Object.hasOwn(v, f));
     whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && there;
+    if (w.doc) wasReplaced(recordKey(w.doc, w.place), w.item);
+    if (w.doc && recorded === undefined && there) ownWhole[w.item] = true;
   }
   let credentials: unknown;
   try { credentials = JSON.parse(fs.readFileSync(path.join(o.claudeDir, '.credentials.json'), 'utf8')); } catch { /* no login */ }
@@ -157,7 +166,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   return {
     commands: Object.fromEntries(ask.commands.map((c) => [c, path.posix.isAbsolute(c) ? isExecutable(move(c)) : onPath(c, process.env.PATH ?? '') !== undefined])),
     vars: Object.fromEntries(ask.vars.map((v) => [v, Boolean(process.env[v] || env[v])])),
-    secrets, whole,
+    secrets, whole, ownWhole, replaced,
     oauth: Object.fromEntries(ask.oauth.map((a) => [a.item, logins.some((k) => k.startsWith(`${a.name}|`))])),
   };
 }
@@ -200,7 +209,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   };
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
   // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
-  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
+  const keyRow = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
@@ -217,8 +226,13 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
       gap: { name, what: `keys not copied (${fields.filter((f) => !own(f)).join(', ')})` },
     };
   };
+  // what a tick went over stays in the machine's backup, and its row says so
+  const inBackup = (row: SetupRow, names: string[]): SetupRow => (names.some((n) => report?.replaced?.[n]) ? { ...row, detail: `${row.detail}; what ${m} held itself is in its mirror-backup` } : row);
+  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow =>
+    inBackup(keyRow(item, name, fields, ticked, preview, server), fields.map((f) => fieldKey(item, f)));
   // a server or plugin config with settings Svall cannot copy one by one, whose file travels as it is once ticked
-  const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
+  const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => inBackup(wholeRow(item, name, fields, on), [item]);
+  const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
     if (!on && report?.whole[item]) return stillOn(tick, name);
     if (!on) {
@@ -227,6 +241,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
         gap: { name, what: 'not copied; tick to copy it as it is' },
       };
     }
+    if (report?.ownWhole?.[item]) return { key: item, status: 'ok', detail: `${m} has its own`, tick };
     return report?.whole[item] ? { key: item, status: 'ok', detail: `copied to ${m} as it is`, tick } : notYet(tick, name);
   };
   // a server Svall cannot copy one by one has a preview naming its fields

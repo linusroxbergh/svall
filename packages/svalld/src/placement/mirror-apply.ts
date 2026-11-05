@@ -40,6 +40,7 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
     secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
     bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }), ...(next.backup && { backup: next.backup }),
     ...(next.listed && { listed: Object.fromEntries(keys(state.listed ?? {}, next.listed).map((k) => [k, [...new Set([...state.listed?.[k] ?? [], ...next.listed?.[k] ?? []])]])) }),
+    ...(next.replaced && { replaced: next.replaced }),
   };
 }
 
@@ -104,15 +105,18 @@ function newBackup(backups: string): string {
 }
 
 // copies each of `files` under `dir` by its place under the user's home, on disk before any is touched, answering how many; a
-// copy there is the earlier one, which stays. A copy may hold keys, so it is the owner's alone
-async function keepCopies(files: string[], dir: string, homedir: string): Promise<number> {
+// copy there is the earlier one, which stays, and `own`, what a tick is about to go over, lies beside it under the next free
+// name. A copy may hold keys, so it is the owner's alone
+async function keepCopies(files: { file: string; own?: Buffer }[], dir: string, homedir: string): Promise<number> {
   const fleetHome = path.dirname(path.dirname(dir));
   const batch = new DurableBatch();
   const parents = new Set([fleetHome]);
-  const kept = await pool(files, BATCH_WIDTH, async (file) => {
+  const kept = await pool(files, BATCH_WIDTH, async ({ file, own }) => {
     const rel = path.relative(homedir, file);
-    const to = path.join(dir, rel.startsWith('..') ? path.join('outside-home', file) : rel);
-    const was = fs.existsSync(to) ? undefined : await held(realPath(file));
+    const at = path.join(dir, rel.startsWith('..') ? path.join('outside-home', file) : rel);
+    let to = at;
+    for (let n = 2; own && fs.existsSync(to) && !fs.readFileSync(to).equals(own); n++) to = `${at}.${n}`;
+    const was = fs.existsSync(to) ? undefined : own ?? await held(realPath(file));
     if (!was) return false;
     await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
     await batch.write(to, was, (fs.statSync(realPath(file)).mode & 0o700) | 0o600);
@@ -199,9 +203,10 @@ export function docWithOverride(name: DocName, o: Homes & { overrides: string })
 
 /**
  * A secret value's place in a doc: `want` the Mac's if ticked, else `bare`; `named` when the place is the value itself, not a url
- * or arg holding it; `remerged` when this merge wrote over it; `overOwn` when it may replace the worker's own; `server` its Codex server.
+ * or arg holding it; `remerged` when this merge wrote over it; `overOwn` when it may replace the worker's own; `held` when the
+ * target holds a literal of its own there; `server` its Codex server.
  */
-type Leaf = { record: string; place: Place; want?: string; bare?: string; named: boolean; remerged: boolean; overOwn: boolean; server?: Place };
+type Leaf = { record: string; place: Place; want?: string; bare?: string; named: boolean; remerged: boolean; overOwn: boolean; held?: boolean; server?: Place };
 
 // `v` at the leaf; a Codex env value not set is named in its server's env_vars instead, and only then
 function setLeaf(doc: Doc, l: Pick<Leaf, 'place' | 'server'>, v: string | undefined): void {
@@ -215,8 +220,8 @@ function setLeaf(doc: Doc, l: Pick<Leaf, 'place' | 'server'>, v: string | undefi
 
 // a ticked value is the Mac's unless it would go over the worker's own; a copy is emptied once unticked; the worker's own goes
 // back where the merge wrote over it, and a value it held before the mirror wrote it is no copy. `next` keeps a copy while its
-// place holds it or its bare form
-function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next: WorkerState): void {
+// place holds it or its bare form, and `over` names a place where a tick goes over what the target held itself
+function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next: WorkerState, over: string[]): void {
   const pre = getAt(was, l.place);
   const copied = isCopy(recorded, pre);
   const own = typeof pre === 'string' && pre !== '' && pre !== l.bare && !copied && (l.named || !l.remerged);
@@ -226,6 +231,7 @@ function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next:
     (next.bare ??= {})[l.record] = { ...(l.bare !== undefined && { value: l.bare }), ...(l.server && { envVar: true as const }) };
   };
   if (l.want !== undefined && (l.overOwn || !own)) {
+    if (l.held && !copied && pre !== l.want) over.push(l.record);
     if (now !== l.want) setLeaf(doc, l, l.want);
     if (copied || pre !== l.want) keep(sha256Hex(l.want));
     return;
@@ -260,7 +266,7 @@ export async function applyMirror(
   const state = readState(o.stateFile);
   const applied = o.seq ?? state.applied;
   const backup = o.backups === undefined ? state.backup : { dir: state.backup?.dir ?? newBackup(o.backups) };
-  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(backup && { backup }), ...(state.listed && { listed: { ...state.listed } }) };
+  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(backup && { backup }), ...(state.listed && { listed: { ...state.listed } }), ...(state.replaced && { replaced: state.replaced }) };
   const written: string[] = [];
   const removed: string[] = [];
   const move = mover(m.homes, o);
@@ -298,20 +304,28 @@ export async function applyMirror(
     return home ? filesIn(path.join(o.overrides, root)).filter((rel) => !docOverrides.has(path.posix.join(root, rel))).map((rel) => ({ to: path.posix.join(root, rel), from: path.join(o.overrides, root, rel), file: path.join(home, rel) })) : [];
   });
   const batch = new DurableBatch();
+  const keepsOwn = o.backups !== undefined && backup !== undefined;
+  // what a tick goes over in doc `i`, the file kept first and each place noted
+  const overIn = (i: number) => ({ file: DOCS[i].at(o), own: Buffer.from(ownText(DOCS[i], current[i].text ?? '', state)) });
+  const noteOver = (): void => {
+    const replaced = [...new Set([...state.replaced ?? [], ...docs.flatMap((d) => d.over)])];
+    if (keepsOwn && replaced.length) next.replaced = replaced;
+  };
   let kept = 0;
-  if (o.backups !== undefined && backup) {
+  if (keepsOwn) {
     const unnamed = (to: string): boolean => !Object.hasOwn(state.files, to);
     const replaced = await pool(overrides.filter((f) => unnamed(f.to) && !Object.hasOwn(next.files, f.to)), BATCH_WIDTH, async (f) => ((await held(realPath(f.file)))?.equals(await fsp.readFile(f.from)) === false ? [f.file] : []));
     const first = [
-      ...DOCS.filter((d, i) => current[i].doc && !namesDoc(state, d.name) && (docs[i].doc || namesDoc(next, d.name))).map((d) => d.at(o)),
-      ...carried.filter((f) => unnamed(f.to)).map((f) => path.join(f.home, f.rel)), ...replaced.flat(),
+      ...DOCS.flatMap((d, i) => (docs[i].over.length ? [overIn(i)] : current[i].doc && !namesDoc(state, d.name) && (docs[i].doc || namesDoc(next, d.name)) ? [{ file: d.at(o) }] : [])),
+      ...[...carried.filter((f) => unnamed(f.to)).map((f) => path.join(f.home, f.rel)), ...replaced.flat()].map((file) => ({ file })),
     ];
-    // a push cut short while it copies goes on in the same folder
+    // a push cut short while it copies goes on in the same folder, and has written nothing else
     if (first.length && !state.backup) {
       await place(batch, o.stateFile, Buffer.from(asJson({ ...state, backup })), 0o600);
       await batch.settle();
     }
     kept = await keepCopies(first, backup.dir, o.homedir);
+    noteOver();
   }
   await place(batch, o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
   await batch.settle();
@@ -328,6 +342,10 @@ export async function applyMirror(
       current[i].text = text;
       forgetDoc(next, d.name);
       docs[i] = applyDoc(d, docIn(d.at(o), text, d.parse), current[i].override, applying);
+      if (keepsOwn && docs[i].over.length) {
+        kept += await keepCopies([overIn(i)], backup.dir, o.homedir);
+        noteOver();
+      }
     }
     const { doc, keyed } = docs[i];
     if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
@@ -450,8 +468,9 @@ function refuseForeign(m: Manifest, files: string[]): void {
 
 // one config file as the mirror leaves it, none when unchanged, and whether it holds a ticked value; one the Mac could not
 // read keeps its record
-function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, applying: Applying): { doc?: Doc; keyed: boolean } {
+function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, applying: Applying): { doc?: Doc; keyed: boolean; over: string[] } {
   const { m, state, next, move, additive } = applying;
+  const over: string[] = [];
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
   const was = JSON.parse(before) as Doc;
@@ -467,6 +486,9 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   const fields = oc ? oc.fields : config?.fields ?? [];
   const remergedKeys = new Set<string>();
   let bareDoc: Doc = {};
+  let heldKeys: { field: string; place: Place }[] = [];
+  const holdsKey = (keys: { field: string; place: Place }[], g: { place: Place; fields: string[] }): boolean =>
+    keys.some((k) => g.fields.includes(k.field) || JSON.stringify(k.place) === JSON.stringify(g.place));
   if (d.name !== '.claude.json' && leave) next.docs[d.name] = state.docs[d.name] ?? {};
   else if (d.name !== '.claude.json') {
     const ticked = relocated(macDoc ?? {}, move) as Doc;
@@ -475,9 +497,10 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     const recorded = state.docs[d.name] ?? {};
     const shas: Record<string, string> = {};
     // a key the target holds itself stays where the sender holds a reference or nothing
-    const own = configSecrets(AGENT_OF[d.name], Object.fromEntries(Object.entries(was).filter(([k]) => !d.owned.includes(k))))
-      .flatMap((f) => (config?.ticked.includes(f.field) ? [] : configPlace(was, f.field)))
-      .filter((p) => !isCopy(state.secrets[recordKey(d.name, p)], getAt(was, p)));
+    heldKeys = configSecrets(AGENT_OF[d.name], Object.fromEntries(Object.entries(was).filter(([k]) => !d.owned.includes(k))))
+      .flatMap((f) => configPlace(was, f.field).map((place) => ({ field: f.field, place })))
+      .filter(({ place }) => !isCopy(state.secrets[recordKey(d.name, place)], getAt(was, place)));
+    const own = heldKeys.filter((f) => !config?.ticked.includes(f.field)).map((f) => f.place);
     const enabled = (k: string): boolean => d.name === 'settings.json' && k === 'enabledPlugins';
     const ownEnabled = (k: string): Doc => ownEntries(ENABLED, isDoc(doc[k]) ? doc[k] : {}, Object.hasOwn(recorded, k), applying);
     for (const [k, v] of Object.entries(bare)) {
@@ -499,7 +522,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
         record: recordKey(d.name, g.place), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
-        bare: getAt(bare, g.place) as string, named: g.fields.every((f) => f === g.place.join('.')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
+        bare: getAt(bare, g.place) as string, named: g.fields.every((f) => f === g.place.join('.')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true, held: holdsKey(heldKeys, g),
       });
     }
   }
@@ -533,19 +556,20 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     if (whole) (next.whole ??= {})[rk] = whole;
     const remerged = state.servers[rk] !== servers[rk] || holds === undefined;
     if (remerged) setAt(doc, at, structuredClone(bare));
-    if (remerged && isDoc(holds) && !isCopyOf(state.whole?.[rk], serverSha(holds))) {
-      for (const { field, place: own } of ownKeys(s.agent, holds, (p, v) => isCopy(state.secrets[recordKey(d.name, [...s.place, ...p])], v))) {
-        if (s.ticked.includes(field)) continue;
-        // a url holds its key in its text, and an arg's place in the list is the list's: each stays whole
-        if (typeof own[1] === 'number') setAt(doc, [...at, own[0]], getAt(holds, [own[0]]));
-        else setLeaf(doc, { place: [...at, ...own], ...(s.agent === 'codex' && own[0] === 'env' && { server: at }) }, getAt(holds, own) as string);
-      }
+    const ownHere = isDoc(holds) && !isCopyOf(state.whole?.[rk], serverSha(holds));
+    const held = ownHere ? ownKeys(s.agent, holds, (p, v) => isCopy(state.secrets[recordKey(d.name, [...s.place, ...p])], v)) : [];
+    if (whole && ownHere && serverSha(holds) !== whole && (held.length > 0 || (state.servers[rk] === undefined && !heldServer(s.agent, holds).known))) over.push(rk);
+    for (const { field, place: own } of remerged ? held : []) {
+      if (s.ticked.includes(field)) continue;
+      // a url holds its key in its text, and an arg's place in the list is the list's: each stays whole
+      if (typeof own[1] === 'number') setAt(doc, [...at, own[0]], getAt(holds, [own[0]]));
+      else setLeaf(doc, { place: [...at, ...own], ...(s.agent === 'codex' && own[0] === 'env' && { server: at }) }, getAt(holds, own) as string);
     }
     for (const g of leavesOf(s.secretFields, (f) => fieldPlace(s.agent, s.entry, f))) {
       leaves.push({
         record: recordKey(d.name, [...s.place, ...g.place]), place: [...at, ...g.place],
         want: g.fields.some((f) => s.ticked.includes(f)) ? getAt(entry, g.place) as string : undefined, bare: getAt(bare, g.place) as string | undefined,
-        named: !g.fields.some((f) => f.startsWith('url') || f.startsWith('args[')), remerged, overOwn: true,
+        named: !g.fields.some((f) => f.startsWith('url') || f.startsWith('args[')), remerged, overOwn: true, held: holdsKey(held, g),
         ...(s.agent === 'codex' && g.place[0] === 'env' && { server: at }),
       });
     }
@@ -565,14 +589,14 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
   Object.assign(next.servers, servers);
 
-  for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next);
+  for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next, over);
   // a value copied where the Mac now holds no secret is emptied as that place stands bare, while it is still the copy
   for (const [k, h] of records(state.secrets)) {
     if (leave || additive) {
       next.secrets[k] ??= h;
       if (state.bare?.[k]) (next.bare ??= {})[k] ??= state.bare[k];
     }
-    if (leave || additive || Object.hasOwn(next.secrets, k)) continue;
+    if (leave || Object.hasOwn(next.secrets, k)) continue;
     const place = (JSON.parse(k) as Place).slice(1);
     const s = carried.find((c) => c.place.every((p, i) => place[i] === p));
     const leaf = s ? place.slice(s.place.length) : place;
@@ -586,7 +610,28 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
 
   overrideOver(d, doc, override);
   const keyed = leaves.some((l) => l.want !== undefined) || m.servers.some((x) => x.doc === d.name && Object.keys(x.entry).length > 0 && x.ticked.length > 0);
-  return JSON.stringify(doc) === before ? { keyed } : { doc, keyed };
+  return JSON.stringify(doc) === before ? { keyed, over } : { doc, keyed, over };
+}
+
+// config file `d` as it stands in `text` with what the mirror copied there taken out, as a backup holds no key it copied
+function ownText(d: DocSpec, text: string, state: WorkerState): string {
+  const doc = d.parse(text) as Doc;
+  let took = false;
+  for (const k of inDoc(state.secrets, d.name)) {
+    for (const at of placesIn(d, doc, k)) {
+      if (!isCopy(state.secrets[k], getAt(doc, at))) continue;
+      setAt(doc, at, state.bare?.[k]?.value ?? '');
+      took = true;
+    }
+  }
+  for (const k of inDoc(state.whole, d.name)) {
+    for (const at of placesIn(d, doc, k)) {
+      if (!isCopyOf(state.whole?.[k], serverSha(getAt(doc, at)))) continue;
+      setAt(doc, at, undefined);
+      took = true;
+    }
+  }
+  return took ? d.format(doc) : text;
 }
 
 // a Claude project lies under this machine's own path of it, which the record does not keep
