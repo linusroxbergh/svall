@@ -167,6 +167,10 @@ export const placesOf = (f: FleetState): Map<string, string> => new Map(Object.v
 
 export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string | undefined): Panes => (id && s.ide[id]?.panes) || SINGLE;
 
+// the home takes the answer, so a window on the Mac's copy of its fleet is not asked, and its terminals draw
+export const scribeAsking = (s: { fleet: FleetState; fleetPicker?: string; via?: Via }): boolean =>
+  !!s.fleet.scribeAsk && !s.fleetPicker && (!s.via || !!s.via.online);
+
 // the board asks about the scribe's placing once the scribe's own ask is answered
 export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string }): boolean =>
   s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker;
@@ -176,9 +180,9 @@ export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scrib
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState; via?: Via }): boolean =>
   s.namingRobot || s.missionPrompt || s.palette || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.deletingColumn !== undefined || s.fleetPicker !== undefined
-  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || !!s.fleet.scribeAsk || placingAsking(s);
+  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || scribeAsking(s) || placingAsking(s);
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

@@ -19,7 +19,7 @@ import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
 import { MoveSheet } from './MoveSheet.js';
 import { NewRobot } from './NewRobot.js';
-import { PlacingAsk } from './ScribeAsk.js';
+import { PlacingAsk, ScribeAsk } from './ScribeAsk.js';
 import { SettingsCard } from './SettingsCard.js';
 import { Collapse, SideCard } from './SideCard.js';
 import { SideGrip } from './SideGrip.js';
@@ -117,6 +117,7 @@ function Screen() {
       <ConfirmDeleteIsland />
       <MoveSheet />
       <ConfirmDeleteColumn />
+      <ScribeAsk />
       <PlacingAsk />
       <FleetPicker />
       <LinkAsk />

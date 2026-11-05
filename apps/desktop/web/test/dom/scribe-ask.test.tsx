@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, sent, store } from './harness.js';
 
@@ -8,6 +9,10 @@ bridge.present = true;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { PlacingAsk, ScribeAsk } = await import('../../src/ScribeAsk.js');
+const { App } = await import('../../src/App.js');
+const { TerminalArea } = await import('../../src/TerminalArea.js');
+const { app } = await import('../../src/boot.js');
+const { isVeiled } = await import('../../src/selectors.js');
 
 beforeEach(() => {
   window.__svallHome = undefined;
@@ -135,4 +140,54 @@ test('with the scribe on, the placing ask leaves it be; Escape keeps placing off
   fireEvent.keyDown(screen.getByTestId('placing-ask-off'), { key: 'Escape' });
   expect(call).toHaveBeenCalledWith('placing.set', { enabled: false });
   expect(call).not.toHaveBeenCalledWith('scribe.set', expect.anything());
+});
+
+describe('in the app, over a terminal', () => {
+  const VIA = { machine: 'mac' as MachineId, home: 'far' as MachineId };
+  const asked = () => <><App /><TerminalArea id="c0" /></>;
+  const show = vi.mocked(app.manager().show);
+
+  beforeEach(() => {
+    show.mockClear();
+    store.setState({ view: 'board' });
+    call.mockImplementation(async (method) => {
+      if (method === 'scribe.set') store.getState().setFleet({ ...fleet(), scribeOff: true });
+      return {};
+    });
+  });
+  afterEach(() => { call.mockReset(); call.mockImplementation(() => Promise.resolve({})); });
+
+  test('a fleet with the ask shows the dialog over a hidden terminal, and the answer lets the terminal show', async () => {
+    render(asked());
+    expect(screen.getByTestId('scribe-ask')).toBeTruthy();
+    expect(show).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId('scribe-ask-off'));
+    expect(call).toHaveBeenCalledWith('scribe.set', { enabled: false });
+    await waitFor(() => expect(screen.queryByTestId('scribe-ask')).toBeNull());
+    expect(show).toHaveBeenCalled();
+  });
+
+  test('a fleet that was never asked, or has answered, shows no dialog', () => {
+    act(() => store.getState().setFleet(fleet()));
+    render(asked());
+    expect(screen.queryByTestId('scribe-ask')).toBeNull();
+    expect(show).toHaveBeenCalled();
+  });
+
+  test('a window on the far home is asked', () => {
+    act(() => store.getState().setVia({ ...VIA, online: true }));
+    render(asked());
+    expect(screen.getByTestId('scribe-ask')).toBeTruthy();
+    expect(show).not.toHaveBeenCalled();
+  });
+
+  test('a window on the Mac\'s copy of the far fleet is not asked, and the terminal of a robot on the Mac shows', () => {
+    const f = fleet();
+    f.robots.c0.machine = VIA.machine;
+    act(() => { store.getState().setFleet({ ...f, scribeAsk: true }); store.getState().setVia(VIA); });
+    render(asked());
+    expect(screen.queryByTestId('scribe-ask')).toBeNull();
+    expect(isVeiled(store.getState())).toBe(false);
+    expect(show).toHaveBeenCalled();
+  });
 });

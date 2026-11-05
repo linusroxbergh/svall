@@ -6,7 +6,7 @@ import { shim } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { dialogKeys, useApp } from './hooks.js';
-import { directoryName, NO_AGENTS, placingAsking } from './selectors.js';
+import { directoryName, NO_AGENTS, placingAsking, scribeAsking } from './selectors.js';
 
 // the private fleet lives in ~/.svall
 const isPrivateHome = (): boolean => window.__svallHome !== undefined && directoryName(window.__svallHome) === 'private';
@@ -60,7 +60,7 @@ function Ask({ id, title, answer, children }: { id: string; title: string; answe
 
 // a new fleet's scribe stays off until the user accepts its extra agent calls
 export function ScribeAsk() {
-  const asking = useApp((s) => !!s.fleet.scribeAsk && !s.fleetPicker);
+  const asking = useApp(scribeAsking);
   const named = useApp((s) => !!s.fleet.name);
   const [skipped, setSkipped] = useState(false);
   const naming = asking && !named && !skipped && isPrivateHome();
