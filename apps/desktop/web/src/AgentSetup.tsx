@@ -147,7 +147,7 @@ export function AgentSetup() {
       )}
       <div className="desc" data-testid="setup-copy-says">
         {backup && <>A push from {home} replaced same-named files on this Mac; they are in the folder below. Put back what you want from there first, as a Copy sends what is on this Mac now. </>}
-        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home} but what you unticked and Svall&apos;s rollback copies that hold it. A second Mac&apos;s Copy works against the same history: it skips what the first sent and replaces edits made since.
+        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home} but what you unticked, while it is still the copy, and Svall&apos;s rollback copies that hold a key you unticked or changed. A second Mac&apos;s Copy works against the same history: it skips what the first sent and replaces edits made since.
       </div>
       <div className="opens">
         <button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined} data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>

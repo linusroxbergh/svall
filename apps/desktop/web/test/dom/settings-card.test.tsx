@@ -431,7 +431,7 @@ test('a far home\'s pane opens its files in the shelf, and one it has not as an 
     show('setup');
     expect(screen.getByTestId('setup-lives').textContent).toContain('lives on studio');
     expect(screen.queryByTestId('setup-away')).toBeNull();
-    await screen.findByTestId('setup-open-skills');
+    expect((await screen.findByTestId('setup-open-skills')).getAttribute('aria-label')).toMatch(/^Open /);
     expect(screen.getByTestId('setup-files').textContent).toContain('1 skill');
     await screen.findByTestId('setup-open-rules/style.md');
     await screen.findByTestId('setup-open-rules/deep/more.md');
@@ -609,6 +609,24 @@ test('with no backup named the pane does not speak of one', async () => {
     show('setup');
     await screen.findByTestId('setup-tick-claude:mcp:linear');
     expect(screen.getByTestId('setup-copy-says').textContent).not.toContain('Put back');
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a copy says what a tick went over on the home and what an untick left there', async () => {
+  try {
+    farWindow({
+      ...SETUP,
+      'machines.copySetupFrom': () => ({ sent: 1, backup: '/home/ada/.svall/mirror-backup/2026-11-04', replaced: ['linear'], left: ['odd'] }),
+    });
+    render(<SettingsCard />);
+    show('setup');
+    await screen.findByTestId('setup-tick-claude:mcp:linear');
+    fireEvent.click(screen.getByTestId('setup-copy'));
+    const said = (await screen.findByTestId('setup-copied')).textContent;
+    expect(said).toContain('A tick went over what studio held itself for linear: that is in its backup folder.');
+    expect(said).toContain('You unticked odd, edited on studio since, so each stays there with its key until you remove it there.');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
