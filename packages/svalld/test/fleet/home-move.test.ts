@@ -429,5 +429,5 @@ describe('two homes are impossible', () => {
 it('every failpoint of a move is reached by a case in this suite, or named where it is', () => {
   const here = new Set<string>([...ON_ADOPT, 'adopt.staging', 'adopt.staged', 'abort.recorded', 'restore.file', 'restore.done', 'mark.written', ...HOME_FAILPOINTS.filter((p) => p.startsWith('join.'))]);
   // home-back.test.ts has the first three, and the cli's fleet-home.test.ts the driver's
-  expect(HOME_FAILPOINTS.filter((p) => !here.has(p))).toEqual(['enrol.written', 'deliver.owed', 'deliver.told', 'move.marked']);
+  expect(HOME_FAILPOINTS.filter((p) => !here.has(p))).toEqual(['enrol.written', 'move.marked', 'deliver.owed', 'deliver.told']);
 });

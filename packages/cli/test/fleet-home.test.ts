@@ -202,7 +202,7 @@ describe('fleet home retry', () => {
 
 describe('fleet home set local', () => {
   // this machine a worker of studio by a real move out, its registry naming it, and studio answering over a master
-  async function workerHere() {
+  async function workerHere(marked: () => boolean = () => true) {
     const w = await movedOut();
     const registry = MachineRegistry.load();
     registry.put(STUDIO, STUDIO_RECORD as never);
@@ -224,6 +224,7 @@ describe('fleet home set local', () => {
           return ok({ sha256, archive: bytes.toString('base64') });
         }
         if (line.includes("'settle'")) { settled.push(line.includes('not-adopted') ? 'not-adopted' : 'adopted'); return ok({ status: 'done' }); }
+        if (line.includes("'facts'")) return ok({ machineId: STUDIO, role: 'home', release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
         throw new Error(`unexpected ${line}`);
       },
       close: () => Promise.resolve(),
@@ -291,9 +292,43 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     expect((await resumeHome(deps)).result).toBe('ready');
     stop();
-    expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
     expect(settled).toEqual(['adopted']);
     expect(w.mac.daemon.role).toBe('home');
+  }, 30_000);
+
+  it('a retry past a driver that died before the mark does not take the fleet from a home that thawed: two homes, otherwise', async () => {
+    let frozen = true;
+    const { w, deps, settled, master } = await workerHere(() => frozen);
+    const disarm = armHomeFailpoints((name) => { if (name === 'deliver.owed') throw new HomeCrash(name); });
+    await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+    disarm();
+    const id = readOwed(w.mac.paths)!.id;
+    frozen = false;
+    events = [];
+    const out = await resumeHome(deps);
+    expect(out.result).toBe('actions');
+    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not frozen for this move and goes on as the home' });
+    expect(w.mac.daemon.role).toBe('worker');
+    expect(fs.existsSync(w.mac.paths.workerFile)).toBe(true);
+    expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('aborted');
+    expect(await deliverOwed(w.mac.paths, () => Promise.resolve(master))).toBe('told');
+    expect(settled).toEqual(['not-adopted']);
+  }, 30_000);
+
+  it('a retry with the old home out of reach changes nothing here', async () => {
+    const { w, deps } = await workerHere();
+    const disarm = armHomeFailpoints((name) => { if (name === 'move.marked') throw new HomeCrash(name); });
+    await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+    disarm();
+    const id = readOwed(w.mac.paths)!.id;
+    const opened = deps.openMaster;
+    deps.openMaster = () => Promise.reject(new Error('ssh: connect to host studio'));
+    const out = await resumeHome(deps);
+    deps.openMaster = opened;
+    expect(out.actions).toEqual(['svall fleet home retry once it answers']);
+    expect(w.mac.daemon.role).toBe('worker');
+    expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('staged');
   }, 30_000);
 
   it('a driver killed after the mark: abort refuses the move for good, and the old home hears', async () => {

@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { AdoptAnswer, HomeFacts, type HomeMoving, type WorkerFile } from '@svall/protocol';
+import { AdoptAnswer, HomeFacts, type HomeDelivery, type HomeMoving, type WorkerFile } from '@svall/protocol';
 import { homePoint } from '../failpoints.js';
 import type { Logger } from '../log.js';
 import { SshMaster } from '../link/ssh.js';
@@ -34,6 +34,11 @@ export async function factsAcross(dial: { master(): SshMaster | undefined } | un
   const master = dial?.master();
   if (!master || !worker.homeSvallBase || !worker.homeSocket) throw new Error(`no connection to ${worker.homeName}`);
   return farJson(master, worker.homeSvallBase, fleetHomeOfSocket(worker.homeSocket), ['fleet', 'facts'], HomeFacts, 'svall fleet facts');
+}
+
+/** Whether the old home still holds its mark of this move: only a marked home stays frozen, so only then may this machine go on and take the fleet. */
+export async function markedThere(master: Pick<SshMaster, 'run'>, owed: HomeDelivery): Promise<boolean> {
+  return (await farJson(master, owed.svallBase, owed.fleetHome, ['fleet', 'facts'], HomeFacts, 'svall fleet facts')).moving === owed.id;
 }
 
 const Settled = z.object({ status: z.string() });

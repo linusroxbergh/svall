@@ -5,8 +5,9 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { AdoptAnswer, FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
 import { initConfig, patchFleetConfig, readFleetConfig } from '@svall/svalld/config';
-import { homePoint } from '@svall/svalld/failpoints';
-import { abortAdopt, adoptDir, enter, installAdopt, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
+import { markedThere } from '@svall/svalld/fleet/home-far';
+import { abortAdopt, adoptDir, enter, installAdopt, moveOutcome, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -415,8 +416,8 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
         return { value: undefined, detail: 'checked and staged here' };
       });
       driverJournal(paths, id, 'mark');
+      owe(paths, delivery);
       await run.step('mark', async () => {
-        owe(paths, delivery);
         await home!.call('fleet.homeMove', { op: 'mark', marker: {
           id, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(),
         } });
@@ -427,7 +428,7 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
       await finishBack(run, d, adoption, id, { from, name });
     } catch (e) {
       // an abort is what the old home is told, if it has heard of this move at all
-      if (!marked) {
+      if (!marked && !(e instanceof HomeCrash)) {
         await home?.call('fleet.thaw', { id }).catch(() => undefined);
         await abortAdopt(adoption, id).catch(() => undefined);
         driverJournal(paths, id, 'aborted');
@@ -489,9 +490,23 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
     const paths = resolvePaths(d.target.home);
     const owed = readOwed(paths);
     if (owed) {
+      const adoption: AdoptDeps = { paths, me: d.me, daemon: d.daemon };
       await daemonClient(d).then((c) => c.close());
+      const said = moveOutcome(paths, owed.id);
+      if (said?.status === 'not-adopted') return refuse(run, 'this move was called off here', await told(paths) ? undefined : 'this machine keeps telling the old home');
       const { from, record } = readManifest(paths, owed.id);
-      return finishBack(run, d, { paths, me: d.me, daemon: d.daemon }, owed.id, { from, name: record.name });
+      // a home its driver left before the mark went on taking writes, so this machine must not take the fleet too
+      if (!said) {
+        await run.step('check', async () => {
+          const master = await d.openMaster(owed.ssh).catch((e: Error) => { throw new StepError(e.message, 'svall fleet home retry once it answers'); });
+          try {
+            if (await markedThere(master, owed)) return { value: undefined, detail: `${record.name} is still frozen for this move` };
+          } finally { await master.close().catch(() => undefined); }
+          await abortAdopt(adoption, owed.id);
+          throw new StepError(`${record.name} is not frozen for this move and goes on as the home`, 'svall fleet home set local to start again');
+        });
+      }
+      return finishBack(run, d, adoption, owed.id, { from, name: record.name });
     }
     const marker = readMarker(paths);
     if (!marker) return refuse(run, 'no move of the fleet waits on this machine');
