@@ -436,6 +436,12 @@ export function abortAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
     const at = lastPhase(p, id);
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
+    // a home that answers may have taken writes a rollback would lose, so the move goes forward
+    if (at === 'installed' && await d.daemon.answersHome(readManifest(p, id).fleetId).catch(() => false)) {
+      enter(p, id, 'adopted');
+      homePoint('adopt.committed');
+      return adopted(p, id);
+    }
     if (at === 'installing' || at === 'installed') await rollback(d, id, readManifest(p, id));
     if (at !== 'aborted') {
       enter(p, id, 'aborted');

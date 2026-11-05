@@ -263,6 +263,17 @@ describe('a crash at each boundary of the adopt', () => {
     expect(fs.existsSync(w.studio.paths.workerFile) || journalLines(w.studio.paths, ID).at(-1)?.phase === 'installed').toBe(true);
   });
 
+  it.each(['adopt.installed', 'adopt.started'] as const)('%s: an abort with a home answering goes forward, as a rollback would lose what it took since', async (point) => {
+    const w = await crashed(point);
+    await w.studio.daemon.start();
+    expect(w.studio.daemon.role).toBe('home');
+    w.studio.daemon.held!.robots.here.note = 'written after the start';
+    expect((await abortAdopt(w.studio.deps, ID)).status).toBe('adopted');
+    expect(w.studio.daemon.role).toBe('home');
+    expect(w.studio.daemon.held!.robots.here.note).toBe('written after the start');
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(false);
+  });
+
   it('adopt.committed: recovery goes forward, the answer the same as it was', async () => {
     const w = await crashed('adopt.committed');
     await w.studio.daemon.start();
