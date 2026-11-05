@@ -154,7 +154,7 @@ export const stepSaid = (row: HostStep, machine: string): string | undefined =>
   (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
 
 export const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', home: 'Move the home', 'home-retry': 'Finish the move', 'home-abort': 'Call off the move', join: 'Join',
+  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', home: 'Move the home', 'home-retry': 'Finish the move', 'home-abort': 'Call off the move', 'home-crew': 'Bring mission control back', join: 'Join',
 };
 
 /** `note`: the agent setup, which never holds a robot back; `done`: nothing is left to fix; `next`: the one step the panel offers;

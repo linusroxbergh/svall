@@ -48,7 +48,7 @@ enum BundledSvall {
 
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
-    case add, doctor, upgrade, rollback, remove, home, homeRetry = "home-retry", homeAbort = "home-abort", join
+    case add, doctor, upgrade, rollback, remove, home, homeRetry = "home-retry", homeAbort = "home-abort", homeCrew = "home-crew", join
 }
 
 struct HostArgs: Decodable, Equatable {
@@ -80,9 +80,9 @@ enum HostCommand {
         case .home:
             guard args.ssh == nil, args.forget == nil, args.asHome == nil, args.name.allowed(by: machineNamePattern) else { return nil }
             return ["--json", "fleet", "home", "set", args.name]
-        case .homeRetry, .homeAbort:
+        case .homeRetry, .homeAbort, .homeCrew:
             guard args.name.isEmpty, args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
-            return ["--json", "fleet", "home", op == .homeRetry ? "retry" : "abort"]
+            return ["--json", "fleet", "home", op == .homeRetry ? "retry" : op == .homeAbort ? "abort" : "crew-back"]
         case .join:
             guard args.name.isEmpty, args.forget == nil, args.asHome == nil, let ssh = args.ssh, ssh.allowed(by: sshDestinationPattern) else { return nil }
             return ["--json", "fleet", "join", ssh]
@@ -107,7 +107,7 @@ enum HostCommand {
         case .rollback:
             guard args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
             argv.append("--rollback")
-        case .home, .homeRetry, .homeAbort, .join:
+        case .home, .homeRetry, .homeAbort, .homeCrew, .join:
             return nil
         }
         return argv + ["--json"]

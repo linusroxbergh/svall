@@ -307,6 +307,8 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(HostCommand.arguments(op: .homeRetry, args: HostArgs(name: "")), ["--json", "fleet", "home", "retry"])
         XCTAssertEqual(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "")), ["--json", "fleet", "home", "abort"])
         XCTAssertNil(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "studio")))
+        XCTAssertEqual(HostCommand.arguments(op: .homeCrew, args: HostArgs(name: "")), ["--json", "fleet", "home", "crew-back"])
+        XCTAssertNil(HostCommand.arguments(op: .homeCrew, args: HostArgs(name: "studio")))
         XCTAssertEqual(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "ada@studio")), ["--json", "fleet", "join", "ada@studio"])
         XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "-oProxyCommand=x")))
         XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "")))

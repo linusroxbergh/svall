@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Result } from '@svall/protocol';
+import { crewAway, type Result } from '@svall/protocol';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -42,6 +42,25 @@ export function HomeMoveBanner() {
       </span>
       <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>
       <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip="Works once the machine that holds the move says it was not taken" onClick={() => startHost('home-abort', { name: '' })}>Abort</button>
+    </div>
+  );
+}
+
+/** Mission control's robots a move that stopped left away from the home, and the way to bring them back. */
+export function CrewAwayBanner() {
+  const away = useApp((s) => crewAway(s.fleet).map((r) => r.name).join(', '));
+  const run = useApp((s) => (s.host?.op === 'home-crew' ? s.host : undefined));
+  const busy = useApp((s) => s.homeSheet !== undefined || (s.host?.running === true && s.host.op.startsWith('home')));
+  const running = run?.running === true;
+  if (!away || (busy && !running)) return null;
+  const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
+  return (
+    <div className="banner warn" data-testid="crew-away-banner">
+      <span>
+        Mission control's {away} stayed where a move that stopped sent them
+        {failed && <small data-testid="crew-away-failed"> {failed.detail ?? failed.step}</small>}
+      </span>
+      <button className="btn sm" data-testid="crew-away-back" disabled={running} onClick={() => startHost('home-crew', { name: '' })}>{running ? 'Bringing them back…' : 'Bring them back'}</button>
     </div>
   );
 }

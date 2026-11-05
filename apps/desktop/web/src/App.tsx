@@ -27,7 +27,7 @@ import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
 import { Tips } from './Tips.js';
-import { HomeBanner, HomeMoveBanner } from './HomeBanner.js';
+import { CrewAwayBanner, HomeBanner, HomeMoveBanner } from './HomeBanner.js';
 import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
@@ -85,6 +85,7 @@ function Screen() {
       {status !== 'online' && <div className="banner dan" data-testid="offline-banner"><span>{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</span></div>}
       <HomeBanner />
       <HomeMoveBanner />
+      <CrewAwayBanner />
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           <span>Ghostty config: {configErrors.join('; ')}</span>

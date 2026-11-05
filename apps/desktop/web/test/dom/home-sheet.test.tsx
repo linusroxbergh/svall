@@ -7,7 +7,7 @@ import { call, freshStore, sent, store } from './harness.js';
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { HomeSheet } = await import('../../src/HomeSheet.js');
-const { HomeMoveBanner } = await import('../../src/HomeBanner.js');
+const { CrewAwayBanner, HomeMoveBanner } = await import('../../src/HomeBanner.js');
 
 const STUDIO = '66666666-7777-4888-9999-aaaaaaaaaaaa' as MachineId;
 const ME = '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId;
@@ -136,5 +136,39 @@ describe('a move nothing is driving', () => {
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true }); });
     rerender(<HomeMoveBanner />);
     expect(screen.queryByTestId('home-move-banner')).toBeNull();
+  });
+});
+
+describe('mission control left away by a move that stopped', () => {
+  const crew = (machine?: string) => act(() => {
+    store.setState((s) => ({ fleet: { ...s.fleet, islands: { home: { id: 'home', kind: 'home' } }, robots: { r1: { id: 'r1', name: 'golden heron', islandId: 'home', ...(machine && { machine }) } } } }) as never);
+  });
+
+  it('says nothing with them on the home', () => {
+    crew();
+    const { container } = render(<CrewAwayBanner />);
+    expect(container.textContent).toBe('');
+  });
+
+  it('names them, and offers to bring them back', () => {
+    crew(STUDIO);
+    render(<CrewAwayBanner />);
+    expect(screen.getByTestId('crew-away-banner').textContent).toContain('golden heron');
+    fireEvent.click(screen.getByTestId('crew-away-back'));
+    expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-crew', args: { name: '' } });
+  });
+
+  it('names what could not come back, and stands down for a sheet that is moving them', () => {
+    crew(STUDIO);
+    const { rerender } = render(<CrewAwayBanner />);
+    act(() => { store.getState().hostStarted('home-crew', { name: '' }); });
+    rerender(<CrewAwayBanner />);
+    expect((screen.getByTestId('crew-away-back') as HTMLButtonElement).disabled).toBe(true);
+    act(() => { store.getState().hostStep('home-crew', { step: 'crew', status: 'fail', detail: 'these cannot come back: golden heron: dirty' } as never); store.getState().hostDone('home-crew', 1); });
+    rerender(<CrewAwayBanner />);
+    expect(screen.getByTestId('crew-away-failed').textContent).toContain('dirty');
+    act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false }); });
+    rerender(<CrewAwayBanner />);
+    expect(screen.queryByTestId('crew-away-banner')).toBeNull();
   });
 });
