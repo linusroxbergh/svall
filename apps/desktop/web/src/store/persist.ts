@@ -1,6 +1,7 @@
 import { ResourceTier } from '@svall/protocol';
 import type { Tier } from '../resources/model.js';
-import { readSettings, type Settings } from '../settings.js';
+import type { Bindings } from '../keys.js';
+import { readBindings, readSettings, type Settings } from '../settings.js';
 import type { View } from './ui.js';
 
 // the half card's footprint as a fraction of the map, so one window size carries to the next; the first leaves 3% of
@@ -40,6 +41,7 @@ export type AppStorage = {
   getView(): View | undefined; setView(v: View): void;
   getSidebarOpen(): boolean | undefined; setSidebarOpen(v: boolean): void;
   getSettings(): Settings | undefined; setSettings(v: Settings): void;
+  getSavedBindings(): Bindings | undefined;
   getHalfCard(): HalfCard | undefined; setHalfCard(v: HalfCard): void;
   getResourceCols(): ResourceCols | undefined; setResourceCols(v: ResourceCols): void;
   getResourceSize(): HalfCard | undefined; setResourceSize(v: HalfCard): void;
@@ -83,6 +85,19 @@ const isSections = (v: unknown): v is Sections =>
   typeof v === 'object' && v !== null && Object.values(v).every((x: Section) => typeof x === 'object' && x !== null
     && ['boolean', 'undefined'].includes(typeof x.shut) && (x.height === undefined || (Number.isFinite(x.height) && x.height > 0)));
 
+// the keys any fleet saved in this store, for a Mac with no record of them yet: the private fleet's, this fleet's, then
+// another's. Setup's save names none, which leaves the first window to ask Ghostty.
+function savedBindings(ls: Storage, own: string): Bindings | undefined {
+  const rank = (k: string) => (/@.*\/\.svall(-dev)?$/.test(k) ? 0 : k === SETTINGS_KEY ? 1 : k === own ? 2 : 3);
+  const keys = Array.from({ length: ls.length }, (_, i) => ls.key(i) ?? '').filter((k) => k === SETTINGS_KEY || k.startsWith(`${SETTINGS_KEY}@`));
+  const hasKeys = (v: unknown): v is { bindings: unknown } => typeof v === 'object' && v !== null && 'bindings' in v;
+  for (const k of keys.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))) {
+    const saved = readJson(ls.getItem(k), hasKeys);
+    if (saved) return readBindings(saved.bindings);
+  }
+  return undefined;
+}
+
 // every fleet's window shares one localStorage, so a fleet keeps its keys under its home and reads
 // the unscoped key until it has written its own
 export const scopedKey = (k: string, fleet?: string): string => (fleet ? `${k}@${fleet}` : k);
@@ -117,6 +132,7 @@ export function localAppStorage(fleet?: string): AppStorage | undefined {
       setSections: (v) => write(SECTIONS_KEY, JSON.stringify(v)),
       getSettings: () => { const raw = read(SETTINGS_KEY); if (raw === null) return undefined; try { return readSettings(JSON.parse(raw)); } catch { return undefined; } },
       setSettings: (v) => write(SETTINGS_KEY, JSON.stringify(v)),
+      getSavedBindings: () => savedBindings(ls, own(SETTINGS_KEY)),
     };
   } catch {
     return undefined;

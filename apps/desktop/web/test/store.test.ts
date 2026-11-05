@@ -19,6 +19,7 @@ const memStorage = (): Mem => {
     getSideWidths: () => s.sides, setSideWidths: (v) => { s.sides = v; },
     getFilesTree: () => s.tree, setFilesTree: (v) => { s.tree = v; },
     getSettings: () => s.settings, setSettings: (v) => { s.settings = v; },
+    getSavedBindings: () => s.settings?.bindings,
     getResourceGroups: () => s.groups, setResourceGroups: (v) => { s.groups = v; },
     getSections: () => s.sections, setSections: (v) => { s.sections = v; },
   };
@@ -152,6 +153,15 @@ describe('store', () => {
     const store = createAppStore(storage);
     store.getState().setShell(shellInfo({ 'cmd+t': 'new_split:right' }));
     expect(store.getState().settings.bindings).toEqual({});
+  });
+  it('takes the record over what the fleet saved and what Ghostty spends, once', () => {
+    const storage = memStorage();
+    storage.settings = { ...DEFAULT_SETTINGS, bindings: { nextRobot: 'cmd+y' } };
+    const store = createAppStore(storage);
+    store.getState().setShell({ ...shellInfo({ 'cmd+t': 'new_split:right' }), bindings: { newRobot: 'cmd+t' } });
+    expect(store.getState().settings.bindings).toEqual({ newRobot: 'cmd+t' });
+    store.getState().setShell({ ...shellInfo({ 'cmd+t': 'new_split:right' }), bindings: { newRobot: 'cmd+u' } });
+    expect(store.getState().settings.bindings).toEqual({ newRobot: 'cmd+t' });
   });
   it('stops listening for a chord when the card that was waiting for one goes', () => {
     const store = createAppStore(memStorage());

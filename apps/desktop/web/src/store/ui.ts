@@ -3,7 +3,7 @@ import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
 import { declineTaken, type ActionId } from '../keys.js';
-import { DEFAULT_SETTINGS, type Settings } from '../settings.js';
+import { DEFAULT_SETTINGS, readBindings, type Settings } from '../settings.js';
 import type { App } from './index.js';
 import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type Section, type Sections, type SideWidths } from './persist.js';
 
@@ -167,11 +167,8 @@ export type UiActions = {
 };
 
 export const createUiSlice = (storage: AppStorage | undefined, view: View): StateCreator<App, [], [], UiState & UiActions> => (set, get) => {
-  // a machine with no settings of its own has never had them in front of it: the window opens with the
-  // fleet, and closing it is what writes them and keeps the asking to that one launch
-  const firstRun = storage !== undefined && storage.getSettings() === undefined;
-  // the collision check belongs to that same launch: after it, what is written down is the user's answer
-  let checkGhosttyKeys = firstRun;
+  // the Mac's record settles this window's keys once, at the shell's first word
+  let keysSettled = false;
   // the dock has one open utility at a time; leaving first-run settings still records the answer
   const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen' | 'feedbackOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
     const next = open ?? !s[which];
@@ -281,9 +278,14 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setConfigErrors: (errors) => set({ configErrors: errors }),
     setCapturingKey: (capturingKey) => set({ capturingKey }),
     setShell: (shell) => set((s) => {
-      if (!checkGhosttyKeys || !shell.ghosttyKeys) return { shell };
-      checkGhosttyKeys = false;
-      return { shell, settings: { ...s.settings, bindings: declineTaken(shell.ghosttyKeys, s.settings.bindings) } };
+      if (keysSettled || !shell.ghosttyKeys) return { shell };
+      keysSettled = true;
+      if (shell.bindings) {
+        const bindings = readBindings(shell.bindings);
+        return { shell: { ...shell, bindings }, settings: { ...s.settings, bindings } };
+      }
+      // no record: what a fleet saved before there was one becomes it, and a Mac with nothing saved leaves Ghostty its chords
+      return { shell, settings: { ...s.settings, bindings: storage?.getSavedBindings() ?? declineTaken(shell.ghosttyKeys, s.settings.bindings) } };
     }),
     setNotifyPermission: (notifyPermission) => set({ notifyPermission }),
     setUpdate: (update) => set({ update }),

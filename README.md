@@ -258,8 +258,9 @@ has the steps.
 
 Terminals are Ghostty surfaces and read your Ghostty config. The app takes the
 chords below and passes everything else to the terminal. Rebind or clear any of
-them under *Keyboard* in Settings. A chord your Ghostty config binds when
-Svall first launches stays with Ghostty until you claim it there.
+them under *Keyboard* in Settings. The keys are the Mac's: every fleet and both
+builds read them from `~/.config/svall/bindings.json`. A chord your Ghostty config
+binds when Svall first launches on the Mac stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |

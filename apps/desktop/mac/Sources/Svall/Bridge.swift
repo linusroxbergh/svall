@@ -34,6 +34,7 @@ enum ToShell: Decodable {
     case keysRegister(chords: [String])
     case keysCapture(on: Bool)
     case keysQuit(chord: String?)
+    case keysSave(bindings: [String: String?])
     case openUrl(url: String)
     case openFolder(path: String)
     case reveal(path: String)
@@ -72,7 +73,7 @@ enum ToShell: Decodable {
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -87,6 +88,7 @@ enum ToShell: Decodable {
         case "keys.register": self = .keysRegister(chords: try c.decode([String].self, forKey: .chords))
         case "keys.capture": self = .keysCapture(on: try c.decode(Bool.self, forKey: .on))
         case "keys.quit": self = .keysQuit(chord: try c.decodeIfPresent(String.self, forKey: .chord))
+        case "keys.save": self = .keysSave(bindings: try c.decode([String: String?].self, forKey: .bindings))
         case "openUrl": self = .openUrl(url: try c.decode(String.self, forKey: .url))
         case "openFolder": self = .openFolder(path: try c.decode(String.self, forKey: .path))
         case "reveal": self = .reveal(path: try c.decode(String.self, forKey: .path))
@@ -137,7 +139,7 @@ enum FromShell {
     case hostStep(op: String, step: HostProcess.Step)
     case hostDone(op: String, code: Int32)
     case hostMachines(machines: [[String: Any]], error: String?)
-    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String])
+    case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], bindings: [String: Any]?)
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -185,8 +187,10 @@ enum FromShell {
             var json: [String: Any] = ["type": "host.machines", "machines": machines]
             if let error { json["error"] = error }
             return json
-        case .shellInfo(let home, let log, let op, let ghosttyKeys):
-            return ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
+        case .shellInfo(let home, let log, let op, let ghosttyKeys, let bindings):
+            var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
+            if let bindings { json["bindings"] = bindings }
+            return json
         case .key(let chord): return ["type": "key", "chord": chord]
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]

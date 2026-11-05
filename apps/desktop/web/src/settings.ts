@@ -77,7 +77,7 @@ export const fontDelta = (zoom: number): number => Math.round((zoom - 1) * BASE_
 // that layout puts there; what has to match is the cmd/shift prefix neither side will look past
 const CHORD = /^cmd\+(shift\+)?(enter|.)$/u;
 
-function readBindings(v: unknown): Bindings {
+export function readBindings(v: unknown): Bindings {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out: Bindings = {};
   for (const saved of Object.keys(o)) {
