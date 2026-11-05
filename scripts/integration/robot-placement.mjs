@@ -1339,6 +1339,8 @@ function crewBack(ids, dir) {
   const [home, taking] = dir === 'out' ? [L, R] : [R, L];
   const crew = JSON.parse(sh(home, 'svall --json robot new --island home --cwd ~/.svall/home --name crew --claude').stdout).id;
   sh(home, `svall robot wait ${crew} --until idle --timeout 60`);
+  // a conversation to carry: one that has had no turn starts anew wherever it lands
+  sh(home, `svall robot run ${crew} 'hello' && svall robot wait ${crew} --until done,idle --timeout 60`);
   const session = (m) => JSON.parse(sh(m, 'svall --json status').stdout).robots[crew];
   const before = session(home).agent?.sessionId;
   sh(taking, `echo adopt.stopped > ${FAULT}`);
@@ -1350,7 +1352,7 @@ function crewBack(ids, dir) {
   const r = sh(L, 'svall --json fleet home crew-back </dev/null', { ok: false });
   check('crew-back runs', r.code === 0, () => `${r.code}: ${brief(moveSteps(r.stdout))}`);
   const home2 = session(home);
-  check('it runs on the home again, the same conversation', home2?.machine === undefined && home2?.tmux !== undefined && home2?.agent?.sessionId === before, () => brief(home2));
+  check('it runs on the home again, the same conversation', home2?.machine === undefined && home2?.tmux !== undefined && home2?.agent?.sessionId === before, () => brief({ machine: home2?.machine, tmux: home2?.tmux, was: before, is: home2?.agent?.sessionId, there: there?.agent?.sessionId }));
   sh(home, `svall robot close ${crew}`, { ok: false });
 }
 
