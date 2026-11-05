@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import { isRelease, releaseSigned } from './release.js';
 
 /** Every step of a robot move, the worker's outbox and the home's apply of it that a crash can fall before or after; the
@@ -50,10 +51,14 @@ export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
 /** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */
 export class HomeCrash extends Error {}
 let homeArmed: ((name: HomeFailpoint) => void) | undefined;
-/** A crash in a test falls here, or by SVALL_HOME_FAULT in a build no one signed, which dies on the spot. */
+// the integration run names a failpoint here, on either machine, and the build no one signed dies on it, once
+const FAULT_FILE = '/tmp/svall-home-fault';
+/** A crash in a test falls here, or by the fault file in an unsigned build. */
 export function homePoint(name: HomeFailpoint): void {
   homeArmed?.(name);
-  if (process.env.SVALL_HOME_FAULT === name && !releaseSigned()) process.kill(process.pid, 'SIGKILL');
+  if (releaseSigned() || !fs.existsSync(FAULT_FILE) || fs.readFileSync(FAULT_FILE, 'utf8').trim() !== name) return;
+  fs.rmSync(FAULT_FILE, { force: true });
+  process.kill(process.pid, 'SIGKILL');
 }
 export function armHomeFailpoints(hook: (name: HomeFailpoint) => void): () => void {
   homeArmed = hook;

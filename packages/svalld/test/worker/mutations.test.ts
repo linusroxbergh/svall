@@ -82,6 +82,14 @@ describe('a worker serving its robots while the home is away', () => {
     expect(await call('robot.show', { id })).toMatchObject({ result: { text: expect.stringContaining(`You are Svall robot ${id}`) } });
   });
 
+  it('refuses what it would journal while the fleet moves here, and takes it again as the move ends', async () => {
+    const w = setup();
+    w.w.worker.ctx.mutations!.setFrozen(true);
+    await expect(w.create()).resolves.toMatchObject({ error: { code: 'frozen', message: 'the fleet is moving here from ada-mac; try again once it has' } });
+    w.w.worker.ctx.mutations!.setFrozen(false);
+    expect(await w.create()).toMatchObject({ result: { machine: W } });
+  });
+
   it('a cwd outside the clones is refused with its path; mission control is refused; the sixth create since the last ack is refused with the quota sentence', async () => {
     const { create, opened } = setup();
     await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not in a clone on w1; while ada-mac is away a new robot starts in one` } });

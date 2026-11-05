@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
-import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { AdoptAnswer, FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
@@ -23,7 +22,7 @@ import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client } from '../client.js';
 import { withClient } from '../commands/fleet.js';
 import type { Enrol } from '../commands/worker.js';
-import type { Target } from '../target.js';
+import { farProfile, type Target } from '../target.js';
 import { flow, homeProbe, remoteJson, remotePaths, StepError, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
 import { SshError, type SshMaster } from './ssh.js';
@@ -199,6 +198,7 @@ export function realHomeDaemon(t: Target): HomeDaemon {
       }
       return false;
     },
+    servePhone: async () => { await withClient(() => Client.connect(t.home), (c) => c.call('mobile.set', { enabled: true })); },
   };
 }
 
@@ -273,7 +273,8 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
     const client = await d.client();
     let marked = false;
     let master: SshMaster | undefined;
-    const far = (args: string[], input?: string): Promise<AdoptAnswer> => farAnswer(master!, entry.record.svallBase, farFleetHome(toHome, d.target), args, input);
+    let farHome = '';
+    const far = (args: string[], input?: string): Promise<AdoptAnswer> => farAnswer(master!, entry.record.svallBase, farHome, args, input);
     try {
       await run.step('check', async () => {
         const c = await client.call('fleet.homeCheck', { to });
@@ -287,6 +288,8 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
         master = await d.openMaster(ssh);
+        // the fleet there by the folder it answers from: its profile there need not be the one it has here
+        farHome = (await remoteConnectionInfo(master, entry, { ...(farProfile(d.target) && { profile: farProfile(d.target) }) })).fleetHome;
         const here = d.registry.localMachine();
         const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now() };
         const { bytes, sha256 } = await packFleet(paths, manifest);
@@ -299,7 +302,7 @@ export function moveHomeOut(name: string, d: MoveDeps): Promise<HostOutcome> {
         const here = d.registry.localMachine();
         await client.call('fleet.homeMove', { op: 'mark', marker: {
           id, from: d.me, fromName: here.name, fromHome: here.home as HomeMoving['fromHome'], to, toName: name, toHome: toHome as HomeMoving['toHome'], at: Date.now(),
-          ask: { ssh, svallBase: entry.record.svallBase as never, fleetHome: farFleetHome(toHome, d.target) as never },
+          ask: { ssh, svallBase: entry.record.svallBase as never, fleetHome: farHome as never },
         } });
         marked = true;
         return { value: undefined, detail: 'this home starts as a home again only if the move is called off' };
@@ -363,9 +366,6 @@ async function firstSnapshot(client: () => Promise<Client>, home: MachineId): Pr
   }
   return undefined;
 }
-
-// a fleet's folder on the far machine, named as it is here
-const farFleetHome = (farHome: string, t: Target): string => path.posix.join(farHome, path.basename(t.home));
 
 /** `svall fleet home set local`: the fleet comes back to this machine from the home it dials; the old home joins it. */
 export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {

@@ -35,16 +35,17 @@ const errors = (): Logger & { lines: string[] } => {
 };
 
 /** A home and a worker that dials it; `tunnel()` binds the home's socket onto the worker's link.sock, as sshd does for -R. */
-async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void } = {}) {
+async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void; held?: () => boolean } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
   const home = Store.load(homePaths.state, () => {});
   const store = Store.load(workerPaths.state, () => {});
   store.update((d) => { Object.assign(d, emptyState()); });
+  const outbox = Outbox.open(workerPaths);
   const worker = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'studio' }, me: W, store,
-    outbox: Outbox.open(workerPaths), log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {}, onLink: o.onLink,
+    outbox, log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {}, onLink: o.onLink,
   });
   await worker.start();
   stops.push(() => worker.stop());
@@ -72,12 +73,12 @@ async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; 
     paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: o.machines ?? (() => [dialing]),
     connect: o.connect ?? (() => Promise.reject(new Error('the home never ssh-es to a worker that dials in'))),
     dialIn: (e) => { tries++; return dialIn(e); },
-    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {},
+    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {}, held: o.held,
     snapshot: () => ({ version: 1, state: home.state, agentHomes: { claude: '/c', codex: '/x', opencode: '/o' }, home: '/home/ada' }),
     ...(o.mirror && { mirror: o.mirror }),
   });
   stops.push(() => links.stop());
-  return { homePaths, workerPaths, token, home, worker, sock, tunnel, links, firsts, tries: () => tries };
+  return { homePaths, workerPaths, token, home, worker, outbox, sock, tunnel, links, firsts, tries: () => tries };
 }
 
 // a socket whose listener is gone without unlinking it, as a tunnel sshd dropped without its cancel leaves
@@ -98,6 +99,29 @@ describe('a worker that dials in', () => {
     expect(JSON.parse(w.firsts[0])).toMatchObject({ t: 'hello', token: w.token });
     expect(w.links.for(W)?.via()).toBeUndefined();
     expect(w.home.state.machines?.[W]).toMatchObject({ name: 'mac', reachable: true });
+  });
+
+  it('while the fleet moves, leaves a change in the worker\'s outbox unacknowledged, and applies it once the move is off; a report goes on', async () => {
+    let holding = false;
+    const applied: string[] = [];
+    const w = await world({ held: () => holding, onEvent: async () => { applied.push('mutation'); } });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    expect(await w.links.barrier(W, 2000)).toBe(true);
+    holding = true;
+    const acked = () => w.outbox.acked();
+    w.worker.journal('robot.sync', { robotId: 'nobody', generation: 0, fields: {} }, 'nobody');
+    await until(() => expect(acked()).toBe(1));
+    w.worker.journal('mutation', { nothing: true });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(applied).toEqual([]);
+    expect(acked()).toBe(1);
+    expect(await w.links.barrier(W, 100)).toBe(false);
+    holding = false;
+    w.links.released();
+    await until(() => expect(applied).toEqual(['mutation']), 4000);
+    await until(() => expect(acked()).toBe(2));
   });
 
   it('holds its socket folder to the account alone, whatever mode it found it at', async () => {

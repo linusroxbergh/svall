@@ -15,11 +15,10 @@ RUN systemctl mask getty@tty1.service console-getty.service systemd-udevd.servic
       systemd-networkd-wait-online.service apt-daily.timer apt-daily-upgrade.timer motd-news.timer \
  && systemctl enable ssh.service
 
-# the machines have no tailnet, so `host add`'s tailscale check meets a double that answers its version and nothing
+# the machines have no tailnet, so what asks tailscale meets a double
 # else, as the unit tests' does
-RUN printf '#!/bin/sh\n[ "$1" = version ] && { echo 0.0.0-integration; exit 0; }\necho "tailscale is a test double" >&2\nexit 1\n' \
-      > /usr/local/bin/tailscale \
- && chmod 755 /usr/local/bin/tailscale
+COPY tailscale.sh /usr/local/bin/tailscale
+RUN chmod 755 /usr/local/bin/tailscale
 
 RUN userdel -r ubuntu 2>/dev/null || true
 

@@ -430,6 +430,7 @@ export class WorkerLink {
     // acks are cumulative, so all that follows a held event waits with it; a stream after the thaw replays them
     if (f.t === 'event' && (this.holding || (f.kind !== 'robot.sync' && f.seq > this.acked && this.o.held?.()))) {
       this.holding = true;
+      this.last = Math.max(this.last, f.seq);
       return;
     }
     try {

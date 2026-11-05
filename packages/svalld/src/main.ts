@@ -465,11 +465,12 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
         owns: (c) => router.runsHere(c), machine: me,
       }));
     }
-    for (const h of held) h.stop = h.start();
+    // a daemon that starts under a marker holds still from the first
     if (freeze) {
       freeze.start();
       teardown.push(() => freeze.stop());
     }
+    if (background.on) for (const h of held) h.stop = h.start();
     if (phone) teardown.push(phone.start());
     // a running server keeps its old options if the new conf has a line this tmux rejects
     await tmux.sourceConf().catch((e: Error) => log.error(`tmux source-file: ${e.message}`));

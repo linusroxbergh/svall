@@ -64,6 +64,8 @@ export type HomeDaemon = {
   start(): Promise<void>;
   /** Whether a running daemon's own API answers as this fleet's home. */
   answersHome(fleetId: string): Promise<boolean>;
+  /** Turns the phone link on, as the old home's was; what fails leaves the move as it is, and Settings → Phone says why. */
+  servePhone?(): Promise<void>;
 };
 
 export type AdoptDeps = { paths: Paths; me: MachineId; daemon: HomeDaemon; registryDir?: string };
@@ -351,6 +353,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, enrolment: (token: st
     }
     enter(p, id, 'adopted');
     homePoint('adopt.committed');
+    if (manifest.phone.serving) await d.daemon.servePhone?.().catch(() => undefined);
     return adopted(p, id);
   });
 }

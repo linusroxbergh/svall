@@ -1138,20 +1138,147 @@ function faults(ids, list) {
   }
 }
 
+// ---------------------------------------------------------------------------------------------- the home moves
+
+const homeOf = (m) => JSON.parse(sh(m, 'svall --json fleet home').stdout);
+const moveSteps = (text) => lines(text).filter((e) => e.step);
+const windows = (m) => sh(m, "tmux -S ~/.svall/tmux.sock list-windows -a -F '#{window_id} #{pane_pid}' | sort", { ok: false }).stdout;
+const FAULT = '/tmp/svall-home-fault';
+const ipOf = (m) => sh(m, `getent hosts ${m} | cut -d' ' -f1`).stdout.trim();
+const blockSsh = (from) => `-p tcp -s ${ipOf(from)} --dport 22 -j DROP`;
+
+// exactly one daemon runs as the home, the other as its worker, and each answers
+function oneHome(home, ids) {
+  const [a, b] = [homeOf(home), homeOf(home === L ? R : L)];
+  check('one home', a.mine === true && b.mine === false, () => brief({ [home]: a, other: b }));
+  check('the worker names it', b.machine === (home === L ? ids.local : ids.remote), () => brief(b));
+}
+
+function setHome(on, target, label = target) {
+  const r = sh(on, `svall --json fleet home set ${target} </dev/null`, { ok: false });
+  const steps = moveSteps(r.stdout);
+  for (const e of steps.filter((x) => x.status === 'fail')) check(`${label}: ${e.step}`, false, `${e.detail ?? ''} ${e.action ?? ''}`);
+  check(`${label} exit`, r.code === 0, () => `${r.code}: ${r.stderr.slice(0, 400)}`);
+  return steps;
+}
+
+function homeMoves(ids, fx) {
+  if (ctx.at !== 'remote') reposition(ids, 'remote');
+  // nothing on remote can reach local from here on, so what links them after is local's own dial
+  sh(L, `iptables -I INPUT ${blockSsh(R)}`, { root: true });
+  ctx.blocked = true;
+  const before = { L: windows(L), R: windows(R), push: sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout, pass: sh(L, 'cat ~/.svall/mobile-pass').stdout };
+  const robots = snap(L, true).robots.map((r) => r.id);
+  const steps = setHome(L, 'remote');
+  check('the steps ran in order', ['check', 'mission', 'pause', 'copy', 'mark', 'adopt', 'join', 'probe'].every((want) => steps.some((e) => e.step === want && e.status !== 'fail')), () => brief(steps));
+  oneHome(R, ids);
+  check("local's windows stay", windows(L) === before.L, () => `${windows(L)} vs ${before.L}`);
+  check("remote's windows stay", windows(R) === before.R, () => `${windows(R)} vs ${before.R}`);
+  const far = JSON.parse(sh(R, 'svall --json status').stdout);
+  for (const id of robots) check(`${id} in the fleet on remote`, far.robots[id] !== undefined, () => id);
+  check('a robot here runs on local', far.robots[fx.agent]?.machine === ids.local || far.robots[fx.agent]?.machine === undefined, () => brief(far.robots[fx.agent]));
+  const worker = JSON.parse(sh(L, 'cat ~/.svall/worker.json').stdout);
+  check('local dials remote', worker.homeMachineId === ids.remote && worker.homeSsh === `svall@${R}`, () => brief({ ...worker, token: undefined }));
+  check('push.json and the pass came along', sh(R, 'cat ~/.svall/push.json', { ok: false }).stdout === before.push && sh(R, 'cat ~/.svall/mobile-pass').stdout === before.pass, 'they differ');
+  check('nothing staged stays', sh(R, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'adopt folder left');
+  check("local keeps the old files", sh(L, 'ls -d ~/.svall/state.json.home-* ~/.svall/docs.home-*', { ok: false }).code === 0, 'no copy kept');
+  // what the new home knows of local, over local's own dial
+  let seen;
+  for (let i = 0; i < 120 && !seen?.reachable; i++) { if (i) sh(R, 'sleep 1'); seen = call(R, 'machines.list').machines.find((m) => m.id === ids.local); }
+  check('the new home reaches local, with its robots', seen?.reachable === true && seen.robots > 0, () => brief(seen));
+  ctx.home = 'remote';
+}
+
+function homeBack(ids) {
+  const before = { L: windows(L), R: windows(R) };
+  const steps = setHome(L, 'local');
+  check('the steps ran', steps.some((e) => e.step === 'join' && e.status === 'ok'), () => brief(steps));
+  oneHome(L, ids);
+  check("local's windows stay", windows(L) === before.L, () => `${windows(L)} vs ${before.L}`);
+  check("remote's windows stay", windows(R) === before.R, () => `${windows(R)} vs ${before.R}`);
+  check('remote takes local as its home', JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout).homeMachineId === ids.local, 'remote names another');
+  ctx.home = 'local';
+}
+
+// a process dies at each boundary; whatever is left, one home answers once a person has retried or called it off
+const POINTS = {
+  // where each side of a move runs it
+  out: { far: ['adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed'], near: ['enrol.written'] },
+  join: { daemon: ['join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done'] },
+};
+
+function homeFault(ids, point, machine) {
+  sh(machine, `echo ${point} > ${FAULT}`);
+  const r = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
+  sh(machine, `rm -f ${FAULT}`);
+  say(`   ${point}: ${r.code === 0 ? 'went through' : 'stopped'}`);
+  // what a person does: look again until the outcome is known, then the supervisor has settled it
+  for (let i = 0; i < 40; i++) {
+    const a = homeOf(L);
+    if (a.machine === ids.remote || !JSON.parse(sh(L, 'svall --json fleet home abort', { ok: false }).stdout || '{}').moving) break;
+    sh(L, 'sleep 3');
+  }
+  sh(R, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
+  sh(L, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
+  for (let i = 0; i < 40; i++) {
+    const [a, b] = [homeOf(L), homeOf(R)];
+    if (a.mine !== b.mine) break;
+    sh(L, 'sleep 3');
+  }
+  const home = homeOf(L).mine ? L : R;
+  oneHome(home, ids);
+  const pending = sh(R, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0 || sh(L, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0;
+  check(`${point}: no marker left`, !pending, 'a marker stays');
+  // back to where the next begins
+  if (home === R) homeBack(ids);
+  else ctx.home = 'local';
+}
+
+function homeFaults(ids) {
+  if (ctx.home === 'remote') homeBack(ids);
+  for (const point of POINTS.out.far) step(`${point}, on remote`, () => homeFault(ids, point, R));
+  for (const point of POINTS.join.daemon) step(`${point}, on local`, () => homeFault(ids, point, L));
+  // a delayed adopt against an abort: the abort answered, the staged archive refused for good
+  step('a delayed adopt against an abort', () => {
+    const id = 'hm_delayedabc';
+    const answered = JSON.parse(sh(R, `svall --json fleet status ${id}`).stdout);
+    check('an id never heard of is refused', answered.status === 'not-adopted', () => brief(answered));
+    const late = JSON.parse(sh(R, `svall --json fleet adopt ${id}`).stdout);
+    check('the adopt that comes late is refused', late.status === 'not-adopted', () => brief(late));
+    oneHome(L, ids);
+  });
+}
+
+// a machine set up first, then joined
+function freshJoin(ids) {
+  if (ctx.home === 'remote') homeBack(ids);
+  const r = sh(R, `SHELL=/bin/bash svall -p joined --json fleet join svall@${L} --name remote-joined </dev/null`, { ok: false });
+  const steps = moveSteps(r.stdout);
+  check('the join ran', r.code === 0, () => `${r.code}: ${brief(steps.filter((s) => s.status === 'fail'))} ${r.stderr.slice(0, 400)}`);
+  check('it ended on its snapshot', steps.some((e) => e.step === 'snapshot' && e.status === 'ok'), () => brief(steps));
+  const worker = JSON.parse(sh(R, 'cat ~/.svall-joined/worker.json').stdout);
+  check('it names the home and the fleet', worker.homeMachineId === ids.local && worker.fleetId === ids.fleet, () => brief({ ...worker, token: undefined }));
+  check('it goes by the fleet\'s id', JSON.parse(sh(R, 'cat ~/.svall-joined/fleet.json').stdout).id === ids.fleet, 'another id');
+  check('a fleet that holds something is refused', sh(L, `svall --json fleet join svall@${R} </dev/null`, { ok: false }).code !== 0, 'it joined');
+}
+
 // ---------------------------------------------------------------------------------------------- the run
 
 const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
   12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
+  16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
-if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 15, not ${o.steps}`);
+if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 19, not ${o.steps}`);
 // the home's stop and the return work with the robot the first move placed, 7 to 11 with the one the second placed, and
 // the scribe and the delete with the robots 7 starts
 if ((steps.includes(4) || steps.includes(6)) && !steps.includes(1)) steps.unshift(1);
 if (steps.some((s) => s >= 7 && s <= 11) && !steps.includes(2)) steps.unshift(2);
 if ((steps.includes(8) || steps.includes(11)) && !steps.includes(7)) steps.push(7);
+// the way back starts from a home on remote
+if (steps.includes(18) && !steps.includes(16)) steps.push(16);
 // 14 starts its robot in the clone the second move makes there
 if (steps.includes(14) && !steps.includes(2)) steps.unshift(2);
 
@@ -1181,6 +1308,10 @@ try {
   if (steps.includes(13)) step(`13. ${STEPS[13]}`, () => sshConfig(ids, fx));
   if (steps.includes(14)) step(`14. ${STEPS[14]}`, () => bornOnWorker(ids, fx));
   if (steps.includes(15)) step(`15. ${STEPS[15]}`, () => dialOut(ids));
+  if (steps.includes(16)) step(`16. ${STEPS[16]}`, () => homeMoves(ids, fx));
+  if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => homeBack(ids));
+  if (steps.includes(17)) homeFaults(ids);
+  if (steps.includes(19)) step(`19. ${STEPS[19]}`, () => freshJoin(ids));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);
