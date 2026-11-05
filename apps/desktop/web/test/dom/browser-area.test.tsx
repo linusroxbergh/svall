@@ -42,3 +42,16 @@ test('import cookies names the active tab, so the shell reloads it once they are
   fireEvent.click(screen.getByTestId('browser-cookies'));
   expect(send).toHaveBeenLastCalledWith({ type: 'browser.importCookies', tab: 't_1' });
 });
+
+test('the address bar holds the whole of a failure, for a selection to copy; the sheet only clips it', () => {
+  store = createAppStore();
+  setAppStore(store);
+  const f = fleet();
+  f.robots.c0 = chr('c0', 'i_b', { x: 1, y: 1 }, { browser: { tabs: [{ id: 't_1', url: 'https://a.test/', title: '' }], active: 't_1' } });
+  store.getState().setFleet(f);
+  store.getState().webviewOpened('t_1', { x: 0, y: 0, width: 0, height: 0 });
+  render(<BrowserArea id="c0" />);
+  const failure = 'A server with the specified hostname could not be found, and that is all it says about it';
+  act(() => store.getState().webviewState('t_1', { error: failure }));
+  expect(screen.getByTestId('browser-error').textContent).toBe(failure);
+});

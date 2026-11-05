@@ -51,17 +51,10 @@ function Screen() {
   const settingsOpen = useApp((s) => s.settingsOpen);
   const selectedId = useApp((s) => (s.selectedId && s.fleet.robots[s.selectedId] ? s.selectedId : undefined));
   const selectedIslandId = useApp((s) => s.selectedIslandId);
-  const toast = useApp((s) => s.toast);
   const bindings = useApp((s) => s.settings.bindings);
   // a launch finds svalld in moments, even one still starting; the setup hint and the log wait out that grace
   const [waiting, setWaiting] = useState(true);
   useEffect(() => { const t = setTimeout(() => setWaiting(false), theme.connectGraceMs); return () => clearTimeout(t); }, []);
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => app.store.getState().clearToast(), toast.action ? theme.toastActionMs : theme.toastMs);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   if (!loaded && waiting && !feedbackOpen && status !== 'outdated') return <div className="connect" data-testid="connect-screen"><Starting /></div>;
   if (!loaded) {

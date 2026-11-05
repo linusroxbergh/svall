@@ -45,7 +45,10 @@
 .toast:has(.toast-act) { pointer-events: auto; }
 .toast-act { margin-left: var(--sp-xl); padding: 0; background: none; border: 0; font: inherit; font-weight: var(--w-semibold); color: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 /* a toast with two buttons keeps them on its one line */
-.toast:has(.toast-dismiss) { max-width: none; white-space: nowrap; }
+.toast[data-tone="ok"]:has(.toast-dismiss) { max-width: none; white-space: nowrap; }
+/* an error's words wrap and scroll, so the whole of a long one can be read */
+.toast[data-tone="error"] { max-height: 50%; overflow-y: auto; overflow-wrap: anywhere; }
+.toast[data-tone="error"] .toast-dismiss { color: inherit; }
 .toast-dismiss { font-weight: var(--w-medium); text-decoration: none; color: color-mix(in srgb, currentColor 65%, transparent); }
 /* a cleared toast sinks away through its own transition before it leaves the page */
 .toast[data-leaving] { opacity: 0; transform: translateY(4px); pointer-events: none; }

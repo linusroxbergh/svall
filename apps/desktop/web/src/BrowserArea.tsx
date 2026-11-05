@@ -100,7 +100,7 @@ export function BrowserArea({ id, aside }: { id: string; aside?: boolean }) {
             // the page's own Escape would close the card around the field
             if (e.key === 'Escape') { e.stopPropagation(); fresh.current = false; setDraft(undefined); e.currentTarget.blur(); }
           }} />
-        {failure && <span className="baddr-err" data-testid="browser-error" data-tip={failure}>{ellipsis(failure, 40)}</span>}
+        {failure && <span className="baddr-err" data-testid="browser-error" data-tip={failure}>{failure}</span>}
         {fills && <button className="ib bar" data-testid="browser-fill" disabled={!active} data-tip="Fill from 1Password" aria-label="Fill from 1Password"
           onClick={() => active && app.bridge.send({ type: 'browser.fill', tab: active })}>⚿</button>}
       </div>

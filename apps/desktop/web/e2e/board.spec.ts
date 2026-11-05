@@ -1,10 +1,12 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import type { Page } from '@playwright/test';
 import { FAKE_CLAUDE, expect, test, type Svall } from './fixtures.js';
 import type { ToShell } from '../src/bridge.js';
 import { DEFAULT_SETTINGS } from '../src/settings.js';
 import { SETTINGS_KEY } from '../src/store/index.js';
+import { theme } from '../src/theme.js';
 
 // a deleted default column comes back under a new id, so the specs find each by its name
 const columns = async (svall: Svall): Promise<Record<string, string>> =>
@@ -460,10 +462,10 @@ test('a toast takes a hole in the terminal under it, beside a half card and over
   const cutout = async () => (await sent()).filter((m) => m.type === 'shell.cutout').at(-1) as Extract<ToShell, { type: 'shell.cutout' }> | undefined;
   const toast = page.getByTestId('toast');
   // the terminal is drawn above the page, and the hole it gives up is where the toast stands once it has eased in;
-  // a refusal has nothing to press, so the presses in it stay with the terminal
+  // a refusal's words can be selected, so the presses in it are the toast's
   const holed = async () => {
     const c = await cutout(), b = await toast.boundingBox();
-    return !!c && !!b && c.rects.length === 0 && c.passive.some((r) => Math.max(Math.abs(r.x - b.x), Math.abs(r.y - b.y), Math.abs(r.width - b.width), Math.abs(r.height - b.height)) < 1);
+    return !!c && !!b && c.passive.length === 0 && c.rects.some((r) => Math.max(Math.abs(r.x - b.x), Math.abs(r.y - b.y), Math.abs(r.width - b.width), Math.abs(r.height - b.height)) < 1);
   };
   // a path that is not there, dropped on the robot's card, is refused on a toast
   const refused = async () => {
@@ -476,8 +478,9 @@ test('a toast takes a hole in the terminal under it, beside a half card and over
   await expect.poll(async () => (await sent()).some((m) => m.type === 'term.show' && m.id === c.id)).toBe(true);
   await refused();
   await expect.poll(holed).toBe(true);
+  await toast.getByTestId('toast-dismiss').click();
   await expect(toast).toHaveCount(0);
-  await expect.poll(async () => (await cutout())?.passive).toEqual([]);
+  await expect.poll(async () => (await cutout())?.rects).toEqual([]);
 
   // the full card leaves no corner free, so the toast stands on its terminal
   await page.getByTestId('card-size').click();
@@ -485,6 +488,84 @@ test('a toast takes a hole in the terminal under it, beside a half card and over
   await refused();
   await expect(toast).toHaveAttribute('data-corner', 'bottom-left');
   await expect.poll(holed).toBe(true);
+});
+
+test('a refusal can be selected, and waits while the pointer is over it', async ({ page, svall }) => {
+  const island = await svall.api.call('island.create', { name: svall.uniq('toast') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: '/tmp', name: 'a' });
+  const { receive } = await svall.nativeShell();
+  await page.clock.install();
+  await svall.open();
+  const row = (await page.getByTestId(`sb-robot-${c.id}`).boundingBox())!;
+  await receive({ type: 'drag.drop', paths: ['/no/such/path'], x: row.x + row.width / 2, y: row.y + row.height / 2 });
+  const words = page.getByTestId('toast-text');
+  await expect(words).toContainText('no such file');
+  const message = await words.innerText();
+  const selected = () => page.evaluate(() => String(getSelection()));
+
+  await words.click({ clickCount: 3 });
+  expect((await selected()).trim()).toBe(message);
+  // a press on what is selected would drag it
+  await page.evaluate(() => getSelection()?.removeAllRanges());
+  const at = (await words.boundingBox())!;
+  await page.mouse.move(at.x + 2, at.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(at.x + 50, at.y + 8, { steps: 4 });
+  await page.mouse.up();
+  expect((await selected()).length).toBeGreaterThan(0);
+  expect((await selected()).length).toBeLessThan(message.length);
+
+  await page.clock.fastForward(theme.toastErrorMs * 2);
+  await expect(words).toBeVisible();
+  await page.mouse.move(at.x + 400, at.y - 200);
+  await page.clock.fastForward(theme.toastErrorMs);
+  await expect(page.getByTestId('toast')).toHaveCount(0);
+});
+
+test('a banner\'s words can be selected', async ({ page, svall }) => {
+  const { receive } = await svall.nativeShell();
+  await svall.open();
+  await receive({ type: 'ghostty.configErrors', errors: ['unknown field: font-sizes'] });
+  const words = page.getByTestId('config-errors').locator('span');
+  await words.click({ clickCount: 3 });
+  expect((await page.evaluate(() => String(getSelection()))).trim()).toBe('Ghostty config: unknown field: font-sizes');
+});
+
+test('a refusal from a dialog stands over its scrim, on the board and the map, and a press on it leaves the dialog up', async ({ page, svall }) => {
+  const gone = fs.mkdtempSync(path.join(os.tmpdir(), 'gone-'));
+  const island = await svall.api.call('island.create', { name: svall.uniq('scrim') });
+  const c = await svall.api.call('robot.create', { islandId: island.id, cwd: gone, name: 'a' });
+  // an agent's start command only runs where it was meant to, so a folder that has gone is refused
+  await svall.api.call('robotPreferences.set', { newRobotStart: 'agent' });
+  fs.rmSync(gone, { recursive: true });
+  try {
+    await svall.open();
+    await page.getByTestId(`kc-${c.id}`).click();
+    const toast = page.getByTestId('toast');
+    const refused = async () => {
+      await page.keyboard.press('Meta+t');
+      await page.getByTestId('new-robot-name').fill('refused');
+      await page.getByTestId('new-robot-name').press('Enter');
+      await expect(toast).toContainText('is not a directory');
+      // once it has eased in; what is on top at its middle is what the user reads
+      await expect.poll(() => toast.evaluate((el) => {
+        const r = el.getBoundingClientRect();
+        return el.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2));
+      })).toBe(true);
+      await page.getByTestId('toast-text').click();
+      await expect(page.getByTestId('new-robot')).toBeVisible();
+      await page.getByTestId('toast-dismiss').click();
+      await expect(toast).toHaveCount(0);
+      await expect(page.getByTestId('new-robot')).toBeVisible();
+      await page.getByTestId('new-robot-close').click();
+    };
+    await refused();
+    await page.keyboard.press('Meta+m');
+    await expect(page.getByTestId('map')).toBeVisible();
+    await refused();
+  } finally {
+    await svall.api.call('robotPreferences.set', { newRobotStart: 'shell' });
+  }
 });
 
 test('the board asks once whether the scribe places robots, and Turn on brings the scribe with it', async ({ page, svall }) => {

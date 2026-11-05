@@ -34,7 +34,7 @@ export function UsagePanel() {
     return () => { live = false; clearInterval(tick); };
   }, []);
 
-  if (error) return <div className="use-note" data-testid="usage-error">{error}</div>;
+  if (error) return <div className="use-note" data-error data-testid="usage-error">{error}</div>;
   if (!snapshot) return <div className="use-note" data-testid="usage-loading">Reading your limits…</div>;
   if (!snapshot.available) return <div className="use-note" data-testid="usage-none">Plan limits don't apply to this login.</div>;
   // a plan shows only while an agent runs on it, and codex reports its limits with its first turn

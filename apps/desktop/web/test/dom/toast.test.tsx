@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
-import { act, render } from '@testing-library/react';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import fs from 'node:fs';
+import path from 'node:path';
+import { act, fireEvent, render } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { bridge, freshStore, sent, store } from './harness.js';
 
 bridge.present = true;
@@ -16,12 +18,21 @@ beforeEach(() => {
 });
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
+const sheet = (f: string) => fs.readFileSync(path.join(__dirname, '../../src', f), 'utf8');
+const layer = (name: string) => Number(sheet('tokens.css').match(new RegExp(`--z-${name}: (\\d+)`))?.[1]);
+
+test('a toast stands over every dialog\'s scrim', () => {
+  expect(sheet('map/chrome.css')).toMatch(/\.toast \{[^}]*z-index: var\(--z-toast\)/);
+  expect(sheet('modal.css')).toMatch(/\.modal-back \{[^}]*z-index: var\(--z-modal\)/);
+  expect(layer('toast')).toBeGreaterThan(layer('modal'));
+});
+
 const last = () => sent.filter((m) => m.type === 'shell.cutout').at(-1);
 const hole = { x: 26, y: 700, width: 200, height: 40 };
 
-test('a toast with nothing to press shows through the terminal and leaves the presses there to it', () => {
+test('an ok toast with nothing to press shows through the terminal and leaves the presses there to it', () => {
   render(<Toast />);
-  act(() => store.getState().showToast('no such file'));
+  act(() => store.getState().showToast('Copied', 'ok'));
   expect(last()).toEqual({ type: 'shell.cutout', rects: [], passive: [hole] });
   act(() => store.getState().clearToast());
   expect(last()).toEqual({ type: 'shell.cutout', rects: [], passive: [] });
@@ -43,8 +54,163 @@ test('Dismiss takes the presses in its hole and clears the toast without running
 
 test('a toast with an action takes the presses in its hole, and gives them back once it has none', () => {
   render(<Toast />);
-  act(() => store.getState().showToast('started, prompt not sent', 'error', { label: 'Send it', run() {} }));
+  act(() => store.getState().showToast('Deleted plan', 'ok', { label: 'Undo', run() {} }));
   expect(last()).toEqual({ type: 'shell.cutout', rects: [hole], passive: [] });
-  act(() => store.getState().showToast('no such file'));
+  act(() => store.getState().showToast('Copied', 'ok'));
   expect(last()).toEqual({ type: 'shell.cutout', rects: [], passive: [hole] });
+});
+
+test('an error toast takes the presses in its hole, so its words can be selected over a terminal, and offers Dismiss', () => {
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('no such file'));
+  expect(last()).toEqual({ type: 'shell.cutout', rects: [hole], passive: [] });
+  expect(getByTestId('toast-text').textContent).toBe('no such file');
+  act(() => getByTestId('toast-dismiss').click());
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('an ok toast offers no Dismiss of its own', () => {
+  const { queryByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('Copied', 'ok'));
+  expect(queryByTestId('toast-dismiss')).toBeNull();
+});
+
+const after = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+
+test('an ok toast stands as long as it always has, with or without something to take back', () => {
+  vi.useFakeTimers();
+  render(<Toast />);
+  act(() => store.getState().showToast('Copied', 'ok'));
+  after(theme.toastMs - 1);
+  expect(store.getState().toast).toBeDefined();
+  after(1);
+  expect(store.getState().toast).toBeUndefined();
+  act(() => store.getState().showToast('Deleted plan', 'ok', { label: 'Undo', run() {} }));
+  after(theme.toastActionMs - 1);
+  expect(store.getState().toast).toBeDefined();
+  after(1);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('an error toast stands clearly longer than any ok toast', () => {
+  vi.useFakeTimers();
+  render(<Toast />);
+  expect(theme.toastErrorMs).toBeGreaterThan(theme.toastActionMs);
+  act(() => store.getState().showToast('no such file'));
+  after(theme.toastErrorMs - 1);
+  expect(store.getState().toast).toBeDefined();
+  after(1);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('an error toast waits while the pointer is over it, and has its whole time again once the pointer leaves', () => {
+  vi.useFakeTimers();
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('no such file'));
+  fireEvent.pointerEnter(getByTestId('toast'));
+  after(theme.toastErrorMs * 3);
+  expect(store.getState().toast).toBeDefined();
+  fireEvent.pointerLeave(getByTestId('toast'));
+  after(theme.toastErrorMs - 1);
+  expect(store.getState().toast).toBeDefined();
+  after(1);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('a press holds an error toast as the pointer over it does, until the pointer leaves', () => {
+  vi.useFakeTimers();
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('no such file'));
+  fireEvent.pointerDown(getByTestId('toast-text'));
+  after(theme.toastErrorMs * 3);
+  expect(store.getState().toast).toBeDefined();
+  fireEvent.pointerLeave(getByTestId('toast'));
+  after(theme.toastErrorMs);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('an ok toast does not wait for the pointer', () => {
+  vi.useFakeTimers();
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('Deleted plan', 'ok', { label: 'Undo', run() {} }));
+  fireEvent.pointerEnter(getByTestId('toast'));
+  after(theme.toastActionMs);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+test('a toast dismissed under the pointer, which never saw it leave, does not hold up the next', () => {
+  vi.useFakeTimers();
+  const { getByTestId } = render(<Toast />);
+  act(() => store.getState().showToast('no such file'));
+  fireEvent.pointerEnter(getByTestId('toast'));
+  act(() => getByTestId('toast-dismiss').click());
+  after(theme.toastLeaveMs);
+  act(() => store.getState().showToast('no such file either'));
+  after(theme.toastErrorMs);
+  expect(store.getState().toast).toBeUndefined();
+});
+
+describe('the keys a press on an error toast takes from the terminal under it', () => {
+  const ID = 'c1';
+  const focuses = () => sent.filter((m) => m.type === 'term.focus');
+  const pressed = () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const view = render(<Toast />);
+    act(() => { store.getState().focus(ID); store.getState().showToast('no such file'); });
+    sent.length = 0;
+    fireEvent.pointerDown(view.getByTestId('toast-text'));
+    fireEvent.pointerLeave(view.getByTestId('toast'));
+    return view;
+  };
+
+  test('go back when it times out', () => {
+    pressed();
+    after(theme.toastErrorMs);
+    expect(focuses()).toEqual([{ type: 'term.focus', id: ID }]);
+  });
+
+  test('go back when it is dismissed, however the press left the focus on its button', () => {
+    const { getByTestId } = pressed();
+    getByTestId('toast-dismiss').focus();
+    act(() => getByTestId('toast-dismiss').click());
+    expect(focuses()).toEqual([{ type: 'term.focus', id: ID }]);
+  });
+
+  test('stay with a field the user has moved them to', () => {
+    pressed();
+    const field = document.body.appendChild(document.createElement('input'));
+    field.focus();
+    after(theme.toastErrorMs);
+    field.remove();
+    expect(focuses()).toEqual([]);
+  });
+
+  test('stay with a surface the user has pressed since', () => {
+    pressed();
+    vi.mocked(document.hasFocus).mockReturnValue(false);
+    after(theme.toastErrorMs);
+    expect(focuses()).toEqual([]);
+  });
+
+  test('are left alone by a toast nobody pressed', () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    render(<Toast />);
+    act(() => { store.getState().focus(ID); store.getState().showToast('no such file'); });
+    sent.length = 0;
+    after(theme.toastErrorMs);
+    expect(focuses()).toEqual([]);
+  });
+
+  test('are left to what its action opens', () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    const { getByTestId } = render(<Toast />);
+    act(() => { store.getState().focus(ID); store.getState().showToast('refused', 'error', { label: 'Check again', run() {} }); });
+    sent.length = 0;
+    fireEvent.pointerDown(getByTestId('toast-action'));
+    act(() => getByTestId('toast-action').click());
+    expect(focuses()).toEqual([]);
+  });
 });
