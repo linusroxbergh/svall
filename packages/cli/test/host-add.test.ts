@@ -106,6 +106,16 @@ describe('host add', () => {
     }
   });
 
+  it('adds nothing over the fleet\'s own home, which would make it a worker of its worker', async () => {
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    healthy();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    expect(out.stopped).toBe('release');
+    expect(step('release').at(-1)?.detail).toBe("trift is this fleet's home, so it cannot be added as its worker");
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+  });
+
   it('uploads and enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {
     const action = 'on bea-mbp, run svall host remove trift';
     const worker = { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET };
