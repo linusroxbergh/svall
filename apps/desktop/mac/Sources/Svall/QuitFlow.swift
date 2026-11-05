@@ -69,13 +69,14 @@ final class QuitFlow {
 
     /// The page's answer to `.quitAsk`: the files the quit would drop, the agents it would stop mid-task, the robots elsewhere,
     /// which keep running there, the fleet's home when it is another machine, which the quit leaves alone, and a move of the home
-    /// that stands: to `frozenFor`, which keeps this daemon up, or `movingHere`, which waits on its next start.
-    func answered(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false) {
+    /// that stands: to `frozenFor`, which keeps this daemon up, or `movingHere`, which waits on its next start. `callsOff`: where
+    /// a move the window drives, not yet marked, goes, which the quit calls off.
+    func answered(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false, callsOff: String? = nil) {
         guard quitAnswer != nil, !confirming, !stopping else { return }
         quitTimeout?.invalidate()
         if userQuit || !unsaved.isEmpty {
             confirming = true
-            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere)
+            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff)
             confirming = false
             guard ok else { return finishQuit(false) }
         }
@@ -131,7 +132,7 @@ final class QuitFlow {
         kill { [weak self] in self?.finishQuit(true) }
     }
 
-    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false) -> Bool {
+    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false, callsOff: String? = nil) -> Bool {
         // a daemon frozen for a move refuses the stop, so nothing on this Mac stops
         let busy = working == 0 || frozenFor != nil ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
         let away = if let home {
@@ -139,7 +140,9 @@ final class QuitFlow {
         } else {
             placed == 0 ? "" : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
         }
-        let move = if let frozenFor {
+        let move = if let callsOff {
+            " Quitting calls off the move to \(callsOff)" + (frozenFor != nil ? ", and this Mac's daemon stays up with its robots running." : ".")
+        } else if let frozenFor {
             " The fleet is moving to \(frozenFor), so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off."
         } else if movingHere {
             " The move to this Mac waits until you open Svall again, and \(home ?? "its old home") takes no changes until then."

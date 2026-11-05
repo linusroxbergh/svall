@@ -83,7 +83,7 @@ export function CrewAwayBanner() {
     <div className="banner warn" data-testid="crew-away-banner">
       <span>
         Mission control's {away} stayed where a move that stopped sent them
-        {failed && <small data-testid="crew-away-failed"> {chosen ? onThisMac(failed.detail ?? failed.step) : failedLine(failed)}</small>}
+        {failed && <small data-testid="crew-away-failed"> {chosen ? onThisMac(failed.detail ?? failed.step) : failedLine(failed, false)}</small>}
       </span>
       <button className="btn sm" data-testid="crew-away-back" disabled={running} onClick={() => startHost('home-crew', { name: '', ...(chosen && { interrupt: true }) })}>
         {running ? 'Bringing them back…' : chosen ? KEPT[chosen] : 'Bring them back'}

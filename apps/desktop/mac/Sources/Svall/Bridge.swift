@@ -62,7 +62,7 @@ enum ToShell: Decodable {
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
     case hostList
-    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?, frozenFor: String?, movingHere: Bool)
+    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?, frozenFor: String?, movingHere: Bool, callsOff: String?)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
@@ -76,7 +76,7 @@ enum ToShell: Decodable {
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, frozenFor, movingHere, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, frozenFor, movingHere, callsOff, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -120,7 +120,8 @@ enum ToShell: Decodable {
         case "quit.answer":
             self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working),
                                placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home),
-                               frozenFor: try c.decodeIfPresent(String.self, forKey: .frozenFor), movingHere: try c.decodeIfPresent(Bool.self, forKey: .movingHere) ?? false)
+                               frozenFor: try c.decodeIfPresent(String.self, forKey: .frozenFor), movingHere: try c.decodeIfPresent(Bool.self, forKey: .movingHere) ?? false,
+                               callsOff: try c.decodeIfPresent(String.self, forKey: .callsOff))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle

@@ -221,8 +221,8 @@ final class ShellRouter {
             menu.show(chords: chords, state: state)
         case .menuFleets(let fleets, let note):
             menu.show(fleets: fleets, note: note)
-        case .quitAnswer(let unsaved, let working, let placed, let home, let frozenFor, let movingHere):
-            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere)
+        case .quitAnswer(let unsaved, let working, let placed, let home, let frozenFor, let movingHere, let callsOff):
+            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff)
         case .quitStopped(let ok):
             quitFlow.stopped(ok: ok)
         case .openUrl(let url):

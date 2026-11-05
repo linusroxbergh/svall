@@ -86,7 +86,7 @@ export type ToShell =
   // `svall host list`, answered by host.machines
   | { type: 'host.list' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
-  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number; home?: string; frozenFor?: string; movingHere?: true }
+  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number; home?: string; frozenFor?: string; movingHere?: true; callsOff?: string }
   // the fleet has stopped, or could not be asked to
   | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone

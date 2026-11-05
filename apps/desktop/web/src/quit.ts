@@ -44,8 +44,12 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       const robots = Object.values(s.fleet.robots);
       const working = robots.filter((c) => !isPlaced(c, s.via) && statusOf(c) === 'working').length;
       const placed = robots.filter((c) => isPlaced(c, s.via)).length;
-      // a move of the home that stands: elsewhere, this daemon stays up for it; here, it waits on the next start
-      const move = s.homeMove && (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name });
+      // a move of the home that stands: elsewhere, this daemon stays up for it; here, it waits on the next start. One this window
+      // drives and has yet to mark ends with its driver; this daemon, paused for a move out, refuses the stop
+      const sheet = s.host?.op === 'home' && s.host.running ? s.homeSheet : undefined;
+      const paused = !!sheet && !sheet.back && s.host!.steps.some((x) => x.step === 'pause' && x.status === 'ok');
+      const move = s.homeMove ? (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name })
+        : sheet && { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(paused && { frozenFor: sheet.name }) };
       bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
     });
   });

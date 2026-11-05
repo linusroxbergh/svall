@@ -126,7 +126,7 @@ describe('a second terminal\'s key outside the protocol', () => {
 
 it('the shell hands a far home on to the quit question', () => {
   const router = fs.readFileSync(new URL('../../mac/Sources/Svall/ShellRouter.swift', import.meta.url), 'utf8');
-  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home, frozenFor: frozenFor, movingHere: movingHere\)/);
+  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff\)/);
 });
 
 it('the shell admits the machine id the banner upgrades by, or it answers that these are no arguments and nothing runs', () => {

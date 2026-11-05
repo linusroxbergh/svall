@@ -155,6 +155,28 @@ describe('followQuit', () => {
     q.stop();
   });
 
+  it('names a move the window drives and has yet to mark, which the quit calls off: this daemon stays up once paused for a move out', async () => {
+    const q = setup();
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    const ask = async () => { q.bridge.emit({ type: 'quit.ask' }); await vi.advanceTimersByTimeAsync(0); };
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+    q.store.getState().hostStarted('home', { name: 'studio' });
+    await ask();
+    q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
+    await ask();
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true });
+    await ask();
+    q.store.getState().hostDone('home', 0);
+    await ask();
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+    ]);
+    q.stop();
+  });
+
   it('a daemon frozen for a home move refuses the stop and stays up: nothing is killed for it, as the move has to end', async () => {
     const q = setup({ stop: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) });
     q.bridge.emit({ type: 'quit.stop' });
