@@ -93,8 +93,9 @@ A move carries `fleet.json`, `state.json`, `docs/`, `agent-profiles/`, `push.jso
 `mirror-consent.json`, `retro/` and the journals of finished robot moves, so the new home can push to the paired phone. It never
 carries an agent's login, `.env`, an ssh key, `node.json`, the API token, the hooks, the cache or the outbox. The archive goes over the
 ssh login in base64 on stdin or stdout, never on argv, and is checked against its sha256 before anything is unpacked, with
-every name in it held to that list. It is unpacked at 0700 in `adopt-<id>/` in the fleet home, which Files refuses by name; that
-folder goes once the old home links with the token the move issued, and a later move gives up an older one. A worker token stays
+every name in it held to that list. A link inside a carried folder stays behind, so what it leads to does not travel. It is
+unpacked at 0700 in `adopt-<id>/` in the fleet home, which Files refuses by name, as it does the old home's `workers.json.home-<id>`;
+that folder goes once the old home links with the token the move issued, and a later move gives up an older one. A worker token stays
 on stdin and stdout, and `home-moving.json` and `home-deliver.json` join the fleet's key files.
 
 A machine can take a fleet only over the ssh login that reaches it, and the old home starts as a home again only on the word of
