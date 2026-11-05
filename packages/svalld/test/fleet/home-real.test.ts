@@ -172,7 +172,7 @@ runIf('a home move through real starts', () => {
     expect(Object.values(s.machines ?? {}).some((m) => m.snapshot)).toBe(false);
     expect(fs.existsSync(paths.workerFile)).toBe(false);
     expect(fs.existsSync(paths.epoch)).toBe(false);
-    expect(fs.readFileSync(paths.push, 'utf8')).toContain('phone');
+    expect(fs.readFileSync(paths.mobilePass, 'utf8')).toBe('the-pass');
     expect(await daemon.ask('robot.update', { id: 'mine', note: 'it takes writes' })).toMatchObject({ result: {} });
   }, 120_000);
 
