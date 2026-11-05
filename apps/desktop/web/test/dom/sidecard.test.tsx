@@ -698,6 +698,19 @@ describe('what a robot offers by where it runs', () => {
     expect(store.getState().hostTerminal).toEqual({});
   });
 
+  test('a path\'s machine a failed list cannot speak for opens its terminal; one missing from a good list is said, and the list asked for again', async () => {
+    onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'added', reachable: true, since: 0 } });
+    act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
+    await follow(pill('folder', '/home/linus/app'), 'c0');
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/app'" });
+    act(() => { store.getState().closeHostTerminal(); store.getState().toggleHost(false); store.getState().setMachines([]); });
+    sent.length = 0;
+    await follow(pill('folder', '/home/linus/app'), 'c0');
+    expect(store.getState().hostTerminal).toBeUndefined();
+    expect(store.getState().toast?.text).toBe('/home/linus/app is on added; open it there');
+    expect(sent).toEqual([{ type: 'host.list' }]);
+  });
+
   test('a list that failed says nothing of a machine: it keeps its terminal', async () => {
     onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
     act(() => store.getState().setMachines([], 'svall host list exited with code 1'));

@@ -156,6 +156,14 @@ describe('a typed path, which the home checks before the robot starts', () => {
     expect(window).not.toHaveBeenCalled();
   });
 
+  it('says an island gone while the window opened is gone, rather than crash on it', async () => {
+    const paths = resolvePaths(makeHome());
+    const store = Store.load(paths.state, () => {});
+    const fleet: Fleet = new Fleet({ store, tmux: new Proxy({}, { get: (_t, k) => (k === 'newWindow' ? async () => { fleet.deleteIsland(islandId); return { windowId: '@1', paneId: '%1' }; } : async () => {}) }) as Tmux, paths, config: Config.parse({}), log: silentLogger });
+    const islandId = fleet.createIsland({ name: 'x' }).id;
+    await expect(fleet.createRobot({ islandId, cwd: paths.home })).rejects.toMatchObject({ code: 'not_found', message: `no island ${islandId}` });
+  });
+
   it('starts in a link that leads to a folder, wherever that is, as the CLI does', async () => {
     window.mockClear();
     const { fleet, islandId, root } = fleetOn();

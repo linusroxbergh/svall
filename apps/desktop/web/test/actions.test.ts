@@ -349,6 +349,36 @@ describe('a crew member whose directory is gone', () => {
     ]);
   });
 
+  it('keeps the fresh island on any other refusal, as the next try may need it, and a delete that fails hides nothing', async () => {
+    for (const [code, kept] of [['not_found', true], ['not_a_folder', false]] as const) {
+      const calls: Call[] = [];
+      const s = createAppStore(undefined);
+      s.getState().setFleet(emptyState());
+      const refused = Object.assign(new Error('no island i_new'), { code });
+      const api = { call: (method: string, params: unknown) => {
+        calls.push({ method, params } as Call);
+        return method === 'island.create' ? Promise.resolve({ id: 'i_new' }) : Promise.reject(method === 'island.delete' ? new Error('the delete failed') : refused);
+      } } as never;
+      await expect(newNamedRobot({ api, store: s }, { name: 'a', note: '', refs: [], cwd: '/srv/app' })).rejects.toBe(refused);
+      expect(calls.some((c) => c.method === 'island.delete')).toBe(!kept);
+    }
+  });
+
+  it('answers a refused folder only once the fresh island has gone', async () => {
+    const s = createAppStore(undefined);
+    s.getState().setFleet(emptyState());
+    let gone: (v: unknown) => void = () => {};
+    const refused = Object.assign(new Error('no'), { code: 'not_a_folder' });
+    const api = { call: (method: string) => (method === 'island.create' ? Promise.resolve({ id: 'i_new' }) : method === 'island.delete' ? new Promise((r) => { gone = r; }) : Promise.reject(refused)) } as never;
+    let settled = false;
+    const made = newNamedRobot({ api, store: s }, { name: 'a', note: '', refs: [], cwd: '/srv/app' }).catch(() => { settled = true; });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(settled).toBe(false);
+    gone({});
+    await made;
+    expect(settled).toBe(true);
+  });
+
   it('leaves an island that was there when the folder chosen is refused', async () => {
     const calls: Call[] = [];
     const s = store();

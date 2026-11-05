@@ -53,6 +53,11 @@ test('the shell names this machine, and a local action it refuses is said on a t
   expect(store.getState().toast?.text).toBe('This Mac cannot open that: it is on studio');
   receive({ type: 'local.unavailable', machine: '' });
   expect(store.getState().toast?.text).toBe('This Mac cannot open that yet; try again');
+  // the home is no machine of its own fleet's list, and goes by the name the daemon gave it
+  store.getState().setVia({ machine: 'mac-id' as MachineId, home: 'home-id' as MachineId, name: 'far-home' });
+  receive({ type: 'local.unavailable', machine: 'home-id' });
+  expect(store.getState().toast?.text).toBe('This Mac cannot open that: it is on far-home');
+  store.getState().setVia(undefined);
   // the page's stale word for this machine is no other machine
   receive({ type: 'shell.info', home: '/h', log: [], op: false, ghosttyKeys: {}, machine: 'mac-id' });
   store.getState().showToast('other');

@@ -126,4 +126,5 @@ and that "studio's 7 robots keep running". Nothing on studio is touched.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.
 - A Mac whose home dials it over Remote Login, set up with the CLI, has no route to the home's API. Its window lists this Mac's folders, its
-  shelf shows this Mac's files with Finder, and **New robot** starts on this Mac.
+  shelf shows this Mac's files with Finder, and **New robot** starts on this Mac. Fleet config is off, its tip naming the home, and the Phone tab
+  is hidden.

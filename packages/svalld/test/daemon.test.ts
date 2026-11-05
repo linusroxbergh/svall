@@ -419,6 +419,7 @@ runIf('startDaemon', () => {
     const home = makeHome();
     homes.push(home);
     const d = await start({ home, port: 0, log: silentLogger });
+    let running = d;
     const paths = resolvePaths(home);
     const ws = new WebSocket(`ws://127.0.0.1:${d.port}`);
     let next = 1;
@@ -449,17 +450,31 @@ runIf('startDaemon', () => {
       expect(await call('fs.list', { id: config.rootId, path: '' })).toMatchObject(unknownRoot);
       expect(await call('fs.write', { id: config.rootId, path: config.path, text: '{ nope', mtimeMs: read.result.mtimeMs, root: read.result.root })).toMatchObject({ error: { code: 'invalid' } });
       expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(read.result.text);
-      const text = `${read.result.text.trimEnd()}\n`;
+      const text = `${JSON.stringify({ ...JSON.parse(read.result.text), defaultCwd: os.tmpdir() }, null, 2)}\n`;
       expect(await call('fs.write', { id: config.rootId, path: config.path, text, mtimeMs: read.result.mtimeMs, root: read.result.root })).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+
+      // a link to a key is refused as the key is, by what this start handed the root
+      const aside = `${paths.fleetConfig}.aside`;
+      fs.renameSync(paths.fleetConfig, aside);
+      fs.symlinkSync(paths.token, paths.fleetConfig);
+      expect(await call('fs.read', { id: config.rootId, path: config.path })).toMatchObject({ error: { code: 'invalid' } });
+      fs.rmSync(paths.fleetConfig);
+      fs.renameSync(aside, paths.fleetConfig);
 
       const robots = Object.keys(d.store.state.robots).length;
       for (const cwd of [path.join(home, 'no-such'), paths.fleetConfig, path.join(paths.fleetConfig, 'under'), 'relative/path']) {
         expect(await call('robot.create', { islandId: island.id, cwd })).toMatchObject({ error: { code: 'not_a_folder' } });
       }
       expect(Object.keys(d.store.state.robots)).toHaveLength(robots);
-    } finally {
+
+      // what the editor saved is what the next start runs on
       ws.close();
       await d.stop();
+      running = await start({ home, port: 0, log: silentLogger });
+      expect(running.store.state.defaultCwd).toBe(os.tmpdir());
+    } finally {
+      ws.close();
+      await running.stop();
     }
   });
 

@@ -597,6 +597,8 @@ export class Fleet extends EventEmitter<Events> {
     const w = await this.deps.tmux.newWindow(id, cwd, this.robotEnv(id), this.robotKeys());
     try {
       this.deps.store.update((d) => {
+        // the island can have gone while the window opened
+        if (!Object.hasOwn(d.islands, p.islandId)) throw new NotFound(`no island ${p.islandId}`);
         // a name asked for twice, as a button pressed twice does, gets a number
         const names = Object.values(d.robots).map((c) => c.name);
         d.robots[id] = {

@@ -198,6 +198,26 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio', online: true });
   });
 
+  it('says served from the start of a reopened socket, and no longer once a route has come', async () => {
+    worker();
+    local.answer('home.connection', () => ({ machine: HOME, name: 'studio', state: 'connected' }));
+    await open();
+    expect(store.getState().via).toMatchObject({ online: true, served: true });
+    const seen: unknown[] = [];
+    const stop = store.subscribe((s) => { if (s.via?.online && !s.via.served) seen.push(s.via); });
+    local.drop();
+    await vi.advanceTimersByTimeAsync(10_000);
+    await settle();
+    stop();
+    expect(seen).toEqual([]);
+    expect(store.getState().via).toMatchObject({ online: true, served: true });
+    local.answer('home.connection', () => CONNECTED);
+    await vi.advanceTimersByTimeAsync(20_000);
+    await settle();
+    expect(store.getState().via?.online).toBe(true);
+    expect(store.getState().via?.served).toBeUndefined();
+  });
+
   it('asks where a robot would start for its folders, and the home alone for its config', async () => {
     await following();
     const answers = (d: Daemon) => { d.answer('workspace.clones', () => ({ machine: d === home ? HOME : ME, folders: [] })); d.answer('fleet.config', () => ({ rootId: 'r:/h', path: 'fleet.json' })); };

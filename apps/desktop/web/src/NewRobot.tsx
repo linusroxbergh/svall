@@ -35,7 +35,7 @@ export function NewRobot() {
   }, [open]);
 
   // answered by whichever machine a robot would start on now, so a window that changes source reads the list again
-  const online = via?.online;
+  const startsAt = via && startsOn(via);
   useEffect(() => {
     if (!open || !via) return;
     let left = false;
@@ -48,10 +48,10 @@ export function NewRobot() {
       const start = newRobotFolder(s);
       // state holds the fleet's own folders as they were typed, `~` and all
       const wanted = start === s.fleet.home.cwd ? r.defaults.home : start === s.fleet.defaultCwd ? r.defaults.cwd : start;
-      if (!chosen.current) setCwd(offered.includes(wanted) ? wanted : offered[0] ?? '');
+      if (!chosen.current) setCwd([wanted, r.defaults.cwd, offered[0]].find((p) => p !== undefined && offered.includes(p)) ?? '');
     }, () => {});
     return () => { left = true; };
-  }, [open, !via, online]);
+  }, [open, startsAt]);
 
   if (!open) return null;
   const close = () => app.store.getState().setNamingRobot(false);

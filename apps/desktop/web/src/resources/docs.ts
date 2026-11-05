@@ -18,18 +18,18 @@ const refuse = (d: ResourcesDeps, text: string): false => { d.store.getState().s
 const fresh = new Set<string>();
 export const isFresh = (rootId: string, path: string): boolean => fresh.has(key(rootId, path));
 
-// the root of the fleet.json last opened here, whose save says what nothing in the file can
-let configRoot: string | undefined;
-onSaved((d, id) => {
+// the fleet.json last opened here, whose save says what nothing in the file can
+let configFile: string | undefined;
+onSaved((d, id, path) => {
   const { fleet, via } = d.store.getState();
-  if (id === configRoot && via) d.store.getState().showToast(`Saved on ${homeName(fleet, via)}. Most of it takes effect when its daemon next starts`, 'ok');
+  if (key(id, path) === configFile && via) d.store.getState().showToast(`Saved on ${homeName(fleet, via)}. Most of it takes effect when its daemon next starts`, 'ok');
 });
 
 /** The home's fleet.json in the shelf's editor: the Mac's text editor cannot reach it. */
 export async function openFleetConfig(d: ResourcesDeps): Promise<void> {
   try {
     const { rootId, path } = await d.api.call('fleet.config', {});
-    configRoot = rootId;
+    configFile = key(rootId, path);
     if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false);
     d.store.getState().toggleResources(true);
     await openFile(d, rootId, path);

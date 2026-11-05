@@ -92,8 +92,10 @@ runIf('svalld --worker', () => {
       };
     };
     const island = { id: 'i_a', name: 'a', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 4, h: 3 }, seed: 1 };
-    const mine = robot('c_mine', { machine: me, placement: { generation: 1 } });
-    const others = robot('c_home', { tmux: undefined, agent: { ...robot('x', {}).agent, restingSince: Date.now() }, revive: { command: 'true' } });
+    const here = fs.realpathSync(makeHome());
+    const onHome = fs.realpathSync(makeHome());
+    const mine = robot('c_mine', { cwd: here, machine: me, placement: { generation: 1 } });
+    const others = robot('c_home', { cwd: onHome, tmux: undefined, agent: { ...robot('x', {}).agent, restingSince: Date.now() }, revive: { command: 'true' } });
     fs.writeFileSync(paths.state, JSON.stringify({ ...emptyState(), islands: { i_a: island }, robots: { c_mine: mine, c_home: others } }));
     const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
     try {
@@ -101,6 +103,14 @@ runIf('svalld --worker', () => {
       await waitFor(() => fs.readFileSync(paths.outbox, 'utf8').includes('c_mine'));
       expect(d.store.state.robots.c_home.tmux).toBeUndefined();
       expect(d.store.state.machines?.[workerFile.homeMachineId as never]?.reachable).not.toBe(true);
+      // its window lists its own robot's folder, with what it spells its defaults as, and not the home's
+      const api = await client(d.port, d.token);
+      const { result } = await api.call('workspace.clones') as unknown as { result: { machine: string; folders: { path: string }[]; defaults: { cwd: string; home: string } } };
+      api.close();
+      expect(result.machine).toBe(me);
+      expect(result.defaults).toEqual({ cwd: expect.any(String), home: expect.any(String) });
+      expect(result.folders.map((f) => f.path)).toContain(here);
+      expect(result.folders.map((f) => f.path)).not.toContain(onHome);
     } finally {
       await d.stop();
       await new Tmux(paths.tmuxSock, paths.tmuxConf).killServer();

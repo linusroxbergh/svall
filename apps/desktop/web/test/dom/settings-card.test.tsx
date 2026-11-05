@@ -13,7 +13,7 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 
 const { SettingsCard } = await import('../../src/SettingsCard.js');
 const { dropBuffer, getBuffer, isDirty } = await import('../../src/ide/buffers.js');
-const { saveFile } = await import('../../src/ide/files.js');
+const { openFile, saveFile } = await import('../../src/ide/files.js');
 const { deps } = await import('../../src/boot.js');
 
 beforeEach(() => {
@@ -754,6 +754,27 @@ describe('Fleet config', () => {
     await act(async () => { await saveFile(deps(), rootId, 'fleet.json'); });
     expect(call).toHaveBeenCalledWith('fs.write', expect.objectContaining({ id: rootId, path: 'fleet.json' }));
     expect(store.getState().toast?.text).toBe('Saved on studio. Most of it takes effect when its daemon next starts');
+  });
+
+  test('saying so on a save is for that file, on a far home', async () => {
+    const rootId = 'r:/home/linus/.svall';
+    call.mockImplementation(((m: string) => Promise.resolve(m === 'fleet.config' ? { rootId, path: 'fleet.json' } : m === 'fs.read' ? { text: '{}', mtimeMs: 1, root: '/home/linus/.svall' } : m === 'fs.write' ? { mtimeMs: 2 } : { serving: false, logins: [], phones: [] })) as never);
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }));
+    open();
+    await act(async () => { fireEvent.click(button()); });
+    await act(async () => { await openFile(deps(), rootId, 'other.json'); await saveFile(deps(), rootId, 'other.json'); });
+    expect(store.getState().toast).toBeUndefined();
+    act(() => store.getState().setVia(undefined));
+    await act(async () => { await saveFile(deps(), rootId, 'fleet.json'); });
+    expect(store.getState().toast).toBeUndefined();
+  });
+
+  test('a window its daemon serves opens nothing, names the home, and has no phone tab', () => {
+    act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true }));
+    open();
+    expect(button().hasAttribute('disabled')).toBe(true);
+    expect(button().getAttribute('data-tip')).toBe('This window has no route to studio, where its fleet.json is');
+    expect(screen.queryByTestId('settings-tab-phone')).toBeNull();
   });
 
   test('a refusal is said where the button was', async () => {

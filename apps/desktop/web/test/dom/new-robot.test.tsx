@@ -244,7 +244,7 @@ test('on a Mac home a folder refused with an agent to start is said on the toast
   expect(screen.queryByTestId('new-robot-refused')).toBeNull();
 });
 
-test('an answer from a source it has left is not listed, nor one for a dialog since closed', async () => {
+test('an answer from a source it has left is not listed', async () => {
   let answer: (r: unknown) => void = () => {};
   call.mockImplementationOnce((() => new Promise((r) => { answer = r; })) as never);
   await open(far);
@@ -268,4 +268,22 @@ test('the field takes a path as typed', async () => {
   answers(STUDIO, FOLDERS);
   await open(far);
   expect([folder().getAttribute('autocapitalize'), folder().getAttribute('spellcheck')]).toEqual(['off', 'false']);
+});
+
+test('a window its daemon stops serving reads the list again, as the robot now starts on the home', async () => {
+  answers(MAC, [{ path: '/Users/ada/app', clone: true }]);
+  await open({ ...far, served: true });
+  expect(screen.getByTestId('new-robot-where').textContent).toBe('Folder on this Mac');
+  answers(STUDIO, FOLDERS);
+  await act(async () => { store.getState().setVia(far); });
+  expect(asked()).toBe(2);
+  expect(screen.getByTestId('new-robot-where').textContent).toBe('Folder on studio');
+});
+
+test('a robot\'s folder gone gives way to the fleet\'s default, not to the first clone sorted', async () => {
+  const f = store.getState().fleet;
+  act(() => store.getState().setFleet({ ...f, robots: { c0: { ...f.robots.c0, cwd: '/home/linus/gone' } } }));
+  answers(STUDIO, [{ path: '/home/linus/aardvark', clone: true }, { path: DEFAULTS.cwd, clone: false }]);
+  await open(far);
+  expect(folder().value).toBe(DEFAULTS.cwd);
 });

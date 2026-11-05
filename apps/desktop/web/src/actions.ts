@@ -234,7 +234,7 @@ export async function newRobotTarget(d: ActionDeps, folder?: string): Promise<{ 
 }
 
 // the caller reports a refusal, so the dialog can stay open on one; a folder it names is the one meant, with nothing to give way
-// to, and an island made for it goes with its refusal
+// to, and an island made for it goes if the folder is refused. Any other refusal keeps it, as the next try may need it
 export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[]; cwd?: string }): Promise<string> {
   closeSettings(d);
   const { islandId, cwd, made } = await newRobotTarget(d, p.cwd);
@@ -242,8 +242,8 @@ export async function newNamedRobot(d: ActionDeps, p: { name: string; note: stri
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   const params = { islandId, cwd: p.cwd ?? cwd, ...(p.name ? { name: p.name } : {}), ...start };
-  const c = await (p.cwd === undefined ? createRobot(d.api, params, f.defaultCwd) : d.api.call('robot.create', params).catch((e: unknown) => {
-    if (made) d.api.call('island.delete', { id: islandId }).catch(() => {});
+  const c = await (p.cwd === undefined ? createRobot(d.api, params, f.defaultCwd) : d.api.call('robot.create', params).catch(async (e: unknown) => {
+    if (made && (e as { code?: string }).code === 'not_a_folder') await d.api.call('island.delete', { id: islandId }).catch(() => {});
     throw e;
   }));
   if (p.note || p.refs.length) {
