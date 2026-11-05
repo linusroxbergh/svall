@@ -109,6 +109,8 @@ export type FromShell =
   // the registry, read again after every host operation too; `error` when it could not be read
   | { type: 'host.machines'; machines: MachineRow[]; error?: string }
   | ({ type: 'shell.info' } & ShellInfo)
+  // the Mac's record again, as this window comes to the front
+  | { type: 'keys.record'; bindings: Record<string, unknown> }
   | { type: 'key'; chord: string }
   | { type: 'term.exited'; id: string }
   | { type: 'term.failed'; id: string; reason: string }

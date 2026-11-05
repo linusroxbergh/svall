@@ -2,7 +2,7 @@ import type { FeedbackKind, MachineId, MobileStatus, PhoneSession } from '@svall
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
-import { declineTaken, type ActionId } from '../keys.js';
+import { declineTaken, sameChords, type ActionId } from '../keys.js';
 import { DEFAULT_SETTINGS, readBindings, type Settings } from '../settings.js';
 import type { App } from './index.js';
 import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type Section, type Sections, type SideWidths } from './persist.js';
@@ -158,6 +158,7 @@ export type UiActions = {
   setPhoneRedact(qr?: string): void;
   pageFocusSettled(): void;
   setSettings(patch: Partial<Settings>): void;
+  adoptBindings(record: Record<string, unknown>): void;
   setHalfCard(size: HalfCard, persist?: boolean): void;
   setSideWidths(widths: SideWidths, persist?: boolean): void;
   toggleFilesTree(open?: boolean): void;
@@ -286,6 +287,13 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
       }
       // no record: what a fleet saved before there was one becomes it, and a Mac with nothing saved leaves Ghostty its chords
       return { shell, settings: { ...s.settings, bindings: storage?.getSavedBindings() ?? declineTaken(shell.ghosttyKeys, s.settings.bindings) } };
+    }),
+    // what another window changed; a record that names keys and has none it can act on is damaged, and this copy stands
+    adoptBindings: (record) => set((s) => {
+      const bindings = readBindings(record);
+      const damaged = Object.keys(record).length > 0 && Object.keys(bindings).length === 0;
+      if (!keysSettled || damaged || sameChords(bindings, s.settings.bindings)) return s;
+      return { shell: s.shell && { ...s.shell, bindings }, settings: { ...s.settings, bindings } };
     }),
     setNotifyPermission: (notifyPermission) => set({ notifyPermission }),
     setUpdate: (update) => set({ update }),

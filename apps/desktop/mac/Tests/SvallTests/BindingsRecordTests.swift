@@ -75,6 +75,24 @@ final class BindingsRecordTests: XCTestCase {
         XCTAssertTrue(record["quit"] is NSNull)
     }
 
+    func testAReReadTellsTheWindowTheRecord() throws {
+        BindingsRecord.write(["newRobot": "cmd+n", "quit": nil], to: file)
+        let json = try XCTUnwrap(BindingsRecord.reread(from: file)).json
+        XCTAssertEqual(json["type"] as? String, "keys.record")
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(json))
+        let bindings = try XCTUnwrap(json["bindings"] as? [String: Any])
+        XCTAssertEqual(bindings["newRobot"] as? String, "cmd+n")
+        XCTAssertTrue(bindings["quit"] is NSNull)
+    }
+
+    func testAReReadOfAMissingOrCorruptFileTellsTheWindowNothing() throws {
+        XCTAssertNil(BindingsRecord.reread(from: file))
+        for text in ["{ \"newRobot\": ", "[]", "3", ""] {
+            try corrupt(text)
+            XCTAssertNil(BindingsRecord.reread(from: file), text)
+        }
+    }
+
     func testTheShellInfoCarriesARecordThatCanCrossAndOmitsOneThatIsNot() throws {
         BindingsRecord.write(["quit": nil], to: file)
         let info = FromShell.shellInfo(home: "/h", log: [], op: false, ghosttyKeys: [:], bindings: BindingsRecord.read(from: file))

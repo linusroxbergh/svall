@@ -163,6 +163,11 @@ describe('store', () => {
     store.getState().setShell({ ...shellInfo({ 'cmd+t': 'new_split:right' }), bindings: { newRobot: 'cmd+u' } });
     expect(store.getState().settings.bindings).toEqual({ newRobot: 'cmd+t' });
   });
+  it('leaves a record that comes before the shell\'s first word to that word', () => {
+    const store = createAppStore(memStorage());
+    store.getState().adoptBindings({ newRobot: 'cmd+n' });
+    expect(store.getState().settings.bindings).toEqual({});
+  });
   it('stops listening for a chord when the card that was waiting for one goes', () => {
     const store = createAppStore(memStorage());
     store.getState().setCapturingKey('quit');

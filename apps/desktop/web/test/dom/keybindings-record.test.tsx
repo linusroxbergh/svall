@@ -8,7 +8,7 @@ const GHOSTTY = { 'cmd+t': 'new_split:right' };
 
 // the Mac: its bindings.json as text, read as the shell reads it, and the windows opened on it through the real boot
 function mac(file?: string, ghosttyKeys: Record<string, string> = GHOSTTY) {
-  const m = { file, saves: 0 };
+  const m = { file, saves: 0, sent: [] as string[] };
   const record = () => { try { const v: unknown = JSON.parse(m.file ?? ''); return typeof v === 'object' && v !== null && !Array.isArray(v) ? v : undefined; } catch { return undefined; } };
   const tell = (message: FromShell) => act(() => window.__svall!.receive(JSON.stringify(message)));
   const open = async (home: string) => {
@@ -17,6 +17,7 @@ function mac(file?: string, ghosttyKeys: Record<string, string> = GHOSTTY) {
     window.__svallHome = home;
     window.webkit = { messageHandlers: { svall: { postMessage(json: string) {
       const sent = JSON.parse(json) as { type: string; bindings?: unknown };
+      m.sent.push(sent.type);
       if (sent.type === 'keys.save') { m.saves += 1; m.file = JSON.stringify(sent.bindings); }
       if (sent.type === 'connection') {
         const bindings = record();
@@ -33,7 +34,9 @@ function mac(file?: string, ghosttyKeys: Record<string, string> = GHOSTTY) {
     fireEvent.click(screen.getByTestId(`key-${id}`));
     tell({ type: 'key', chord });
   };
-  return Object.assign(m, { open, press, json: () => JSON.parse(m.file!) as unknown });
+  // the shell as this window comes to the front: the record if the file holds one, and nothing otherwise
+  const front = () => { const bindings = record(); if (bindings) tell({ type: 'keys.record', bindings: bindings as Record<string, unknown> }); };
+  return Object.assign(m, { open, press, front, json: () => JSON.parse(m.file!) as unknown });
 }
 
 const shows = (id: string) => screen.getByTestId(`key-${id}`).textContent;
@@ -157,6 +160,51 @@ test('with a record, what a fleet saved before stays out of it', async () => {
   await m.open('/u/.svall');
   expect(shows('nextRobot')).toBe('⌘U');
   expect(m.saves).toBe(0);
+});
+
+test('a window coming to the front takes what another window changed, and writes nothing', async () => {
+  const m = mac('{"newRobot":"cmd+t"}');
+  await m.open('/u/.svall-a');
+  m.file = '{"newRobot":"cmd+n"}';
+  m.front();
+  expect(shows('newRobot')).toBe('⌘N');
+  expect(m.saves).toBe(0);
+});
+
+test('its next change keeps what the other window changed', async () => {
+  const m = mac('{"newRobot":"cmd+t"}');
+  await m.open('/u/.svall-a');
+  m.file = '{"newRobot":"cmd+n"}';
+  m.front();
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ newRobot: 'cmd+n', nextRobot: 'cmd+y' });
+});
+
+test('another window that put every key back is taken too', async () => {
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall-a');
+  m.file = '{}';
+  m.front();
+  expect(shows('newRobot')).toBe('⌘T');
+});
+
+test.each([[undefined], ['{ "newRobot": '], ['[]'], ['{"newRobot":5}']])('a file found missing or corrupt (%s) leaves the window its copy', async (found) => {
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall-a');
+  m.file = found;
+  m.front();
+  expect(shows('newRobot')).toBe('⌘N');
+  expect(m.saves).toBe(0);
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ newRobot: 'cmd+n', nextRobot: 'cmd+y' });
+});
+
+test('coming to the front with nothing changed tells the shell nothing', async () => {
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall-a');
+  m.sent.length = 0;
+  m.front();
+  expect(m.sent).toEqual([]);
 });
 
 test('a page with no shell keeps its keys in its own store, and sends nothing', async () => {

@@ -10,6 +10,9 @@ enum BindingsRecord {
     /// Nil when there is none, or what is there is no record: the page then writes one.
     static func read(from file: String = file()) -> [String: Any]? { readJSON(file) }
 
+    /// What a window coming to the front is told, so it has what another window changed; a missing or corrupt file tells it nothing.
+    static func reread(from file: String = file()) -> FromShell? { read(from: file).map { .keysRecord(bindings: $0) } }
+
     static func write(_ bindings: [String: String?], to file: String = file()) {
         do {
             let dir = (file as NSString).deletingLastPathComponent

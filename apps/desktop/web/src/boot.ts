@@ -104,6 +104,7 @@ function createApp(): AppContext {
         store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, bindings: m.bindings });
         return;
       }
+      if (m.type === 'keys.record') { store.getState().adoptBindings(m.bindings); return; }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
       // this window is where the user stays, so the picker goes
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }

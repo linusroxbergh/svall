@@ -140,6 +140,7 @@ enum FromShell {
     case hostDone(op: String, code: Int32)
     case hostMachines(machines: [[String: Any]], error: String?)
     case shellInfo(home: String, log: [String], op: Bool, ghosttyKeys: [String: String], bindings: [String: Any]?)
+    case keysRecord(bindings: [String: Any])
     case key(chord: String)
     case termExited(id: String)
     case termFailed(id: String, reason: String)
@@ -191,6 +192,7 @@ enum FromShell {
             var json: [String: Any] = ["type": "shell.info", "home": home, "log": log, "op": op, "ghosttyKeys": ghosttyKeys]
             if let bindings { json["bindings"] = bindings }
             return json
+        case .keysRecord(let bindings): return ["type": "keys.record", "bindings": bindings]
         case .key(let chord): return ["type": "key", "chord": chord]
         case .termExited(let id): return ["type": "term.exited", "id": id]
         case .termFailed(let id, let reason): return ["type": "term.failed", "id": id, "reason": reason]

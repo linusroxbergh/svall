@@ -88,6 +88,7 @@ final class ShellRouter {
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.sendAppActive()
             self?.notifier.refreshPermission()
+            if let record = BindingsRecord.reread() { self?.bridge.send(record) }
         }
         center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.sendAppActive() }
         center.addObserver(forName: NSWindow.didMiniaturizeNotification, object: webView.window, queue: .main) { [weak self] _ in self?.sendAppActive() }
