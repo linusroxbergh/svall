@@ -349,6 +349,19 @@ describe('a server copied whole that the person edits', () => {
     }
   });
 
+  it('swapped for one with every field and nothing of the mirror\'s, its row says it stays', async () => {
+    const s = setup();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd = { command: 'mine', env: { X: 'mine too' }, sandbox: { a: 'b' } }; });
+    s.consent.clear();
+    await s.push();
+    const plan = mirrorPlan(s.home, s.consent);
+    const row = setupRows(plan, configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') }), { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === 'claude:mcp:odd');
+    expect(row).toMatchObject({ status: 'skip', detail: 'odd stays as you edited it' });
+  });
+
   it('edited, deleted by the person, is done with: its record goes and a tick writes it anew', async () => {
     const s = setup();
     editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
@@ -825,6 +838,17 @@ describe('what a table is', () => {
 });
 
 describe('what a kept entry holds', () => {
+  it('a TOML date in it does not hide a tick going over a key of the target\'s', async () => {
+    const s = setup();
+    await s.push();
+    put(s.homeToml, ['[model_providers.acme]', 'since = 2026-01-02', `http_headers = { "X-Key" = "${K}" }`, ''].join('\n'));
+    put(s.macToml, ['[model_providers.acme]', 'since = 2026-01-02', `http_headers = { "X-Key" = "${OWN}" }`, ''].join('\n'));
+    s.consent.add(FIELD);
+    await s.push();
+    expect(s.toml().model_providers.acme.http_headers['X-Key']).toBe(K);
+    expect(s.holding(OWN).length).toBeGreaterThan(0);
+  });
+
   it('a TOML value JSON cannot hold stays as it was', async () => {
     const s = setup();
     put(s.homeToml, PROVIDER.replace(K, '${K}'));
@@ -881,6 +905,20 @@ describe('a link where a keyed file lay', () => {
     fs.rmSync(landed);
     await s.push();
     expect(readState(s.stateFile).keyed ?? {}).toEqual({});
+  });
+
+  it('a plain keyed file edited goes at the untick, its key with it', async () => {
+    const s = setup();
+    put(path.join(s.home.claudeDir, 'agents/keyed.md'), ['---', 'name: keyed', 'mcpServers:', '  x:', '    command: x', '    env:', `      K: ${K}`, '---', 'hi', ''].join('\n'));
+    const row = mirrorPlan(s.home, s.consent, { state: readState(s.stateFile), projects: {}, platform: 'darwin' } as never).plugins.find((p) => p.key.startsWith('claude:agent:'))!;
+    for (const f of row.fields) s.consent.add(`${row.key}#${f}`);
+    await s.push();
+    const landed = path.join(s.w.claudeDir, 'agents/keyed.md');
+    fs.appendFileSync(landed, 'my edit\n');
+    s.consent.clear();
+    const r = await s.push();
+    expect(fs.existsSync(landed)).toBe(false);
+    expect(r.left).toBeUndefined();
   });
 
   it('to a folder stops no push', async () => {
