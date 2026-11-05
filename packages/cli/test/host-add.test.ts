@@ -68,6 +68,7 @@ describe('host add', () => {
 
 
   it('--as-home leaves the machine a fleet of its own, enrols nothing there and offers no setup, for a join to follow', async () => {
+    healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
