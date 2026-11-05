@@ -10,7 +10,7 @@ import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
 import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
-import { machineOf } from './placement.js';
+import { frozen, machineOf } from './placement.js';
 import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, statusOf, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
@@ -279,7 +279,7 @@ export function Board() {
               dragging={lift?.id === c.id} fileHover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               renaming={renamingRobot === c.id} onRename={(name) => saveRobot(deps(), c.id, { name })} onRenamed={() => setRenamingRobot(undefined)}
               on={{
-                onPointerDown: (e) => liftCard(e, c, id),
+                onPointerDown: (e) => { if (!frozen(c, via)) liftCard(e, c, id); },
                 onClick: () => pick(c.id),
                 onDoubleClick: () => app.store.getState().focus(c.id),
                 // the rename field keeps the text menu

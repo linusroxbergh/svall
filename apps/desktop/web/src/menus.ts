@@ -1,6 +1,7 @@
 import { columnOf } from '@svall/protocol';
 import { deleteEmptyColumn, placeNow, placeRobot, releaseRobot, setPlacing, setStar } from './actions.js';
 import { app, deps } from './boot.js';
+import { frozen } from './placement.js';
 import { scribePlaces } from './selectors.js';
 import type { MenuEntry } from './store/ui.js';
 
@@ -15,16 +16,21 @@ const showMenu = (e: Press, items: MenuEntry[]): void => {
 // Rename shows where the caller has a field to rename in
 const renameEntry = (rename?: () => void) => (rename ? [{ title: 'Rename', run: rename }] : []);
 
+const fixed = (id: string): boolean => {
+  const { fleet, via } = app.store.getState();
+  return Object.hasOwn(fleet.robots, id) && frozen(fleet.robots[id], via);
+};
+
 const openEntry = (id: string): MenuEntry => ({ title: 'Open terminal', run: () => app.store.getState().focus(id) });
 const starEntry = (id: string): MenuEntry => {
   const starred = app.store.getState().fleet.robots[id]?.star !== undefined;
-  return { title: starred ? 'Unstar' : 'Star', run: () => setStar(deps(), id, !starred) };
+  return { title: starred ? 'Unstar' : 'Star', run: fixed(id) ? undefined : () => setStar(deps(), id, !starred) };
 };
-const deleteEntry = (id: string): MenuEntry => ({ title: 'Delete', danger: true, run: () => app.store.getState().setClosingRobot(id) });
+const deleteEntry = (id: string): MenuEntry => ({ title: 'Delete', danger: true, run: fixed(id) ? undefined : () => app.store.getState().setClosingRobot(id) });
 
 // the right-click menus the sidebar and the map share; Delete only asks, and the confirmation does the deleting
 export const robotMenu = (e: Press, id: string, rename?: () => void): void =>
-  showMenu(e, [openEntry(id), ...renameEntry(rename), starEntry(id), deleteEntry(id)]);
+  showMenu(e, [openEntry(id), ...renameEntry(fixed(id) ? undefined : rename), starEntry(id), deleteEntry(id)]);
 
 // the board's adds the columns to move the robot to and a hand move to hand back to the scribe
 export const boardRobotMenu = (e: Press, id: string, rename: () => void): void => {
@@ -34,10 +40,10 @@ export const boardRobotMenu = (e: Press, id: string, rename: () => void): void =
   const here = columnOf(f, c).id;
   showMenu(e, [
     openEntry(id),
-    { title: 'Rename', run: rename },
+    { title: 'Rename', run: fixed(id) ? undefined : rename },
     starEntry(id),
-    { title: 'Move to', items: f.columns.map((k) => ({ title: k.name, checked: k.id === here, run: () => { if (k.id !== here) void placeRobot(deps(), id, k.id); } })) },
-    { title: 'Let the scribe place it', run: c.columnSource === 'manual' ? () => releaseRobot(deps(), id) : undefined },
+    { title: 'Move to', items: fixed(id) ? undefined : f.columns.map((k) => ({ title: k.name, checked: k.id === here, run: () => { if (k.id !== here) void placeRobot(deps(), id, k.id); } })) },
+    { title: 'Let the scribe place it', run: c.columnSource === 'manual' && !fixed(id) ? () => releaseRobot(deps(), id) : undefined },
     deleteEntry(id),
   ]);
 };

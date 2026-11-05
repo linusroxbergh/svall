@@ -14,7 +14,7 @@ import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
-import { answers, awayLine, homeName, machineOf } from './placement.js';
+import { answers, awayLine, frozen, homeName, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -50,13 +50,13 @@ function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   );
 }
 
-function PortraitPicker({ id, portrait, figure }: Pick<Robot, 'id' | 'portrait' | 'figure'>) {
+function PortraitPicker({ id, portrait, figure, fixed }: Pick<Robot, 'id' | 'portrait' | 'figure'> & { fixed: boolean }) {
   const step = (by: 1 | -1) => saveRobot(deps(), id, { figure: stepFigure(figureOf({ portrait, figure }), by) });
   return (
     <div className="side-portrait" data-testid="side-portrait">
-      <button className="ib pnav" data-testid="portrait-prev" aria-label="Previous portrait" onClick={() => step(-1)}><Caret dir="left" /></button>
+      <button className="ib pnav" data-testid="portrait-prev" aria-label="Previous portrait" disabled={fixed} onClick={() => step(-1)}><Caret dir="left" /></button>
       <img className="side-figure" src={figureUrl(figureOf({ portrait, figure }))} alt="robot" draggable={false} />
-      <button className="ib pnav" data-testid="portrait-next" aria-label="Next portrait" onClick={() => step(1)}><Caret dir="right" /></button>
+      <button className="ib pnav" data-testid="portrait-next" aria-label="Next portrait" disabled={fixed} onClick={() => step(1)}><Caret dir="right" /></button>
     </div>
   );
 }
@@ -96,6 +96,7 @@ export function SideCard({ id }: { id: string }) {
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;
+  const fixed = frozen(c, via);
   const save = (patch: Patch) => saveRobot(deps(), id, patch);
   const saveContext = (context: ContextItem[], removed?: string) => saveRobotContext(deps(), id, context, removed);
 
@@ -106,11 +107,11 @@ export function SideCard({ id }: { id: string }) {
       </div>
       <div className="side-id">
         <div className="side-head">
-          <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} />
-          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} data-testid="side-name"
+          <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} fixed={fixed} />
+          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} readOnly={fixed} data-testid="side-name"
             onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
           <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
-            aria-label="Star" onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
+            aria-label="Star" disabled={fixed} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
         {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
         {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
@@ -126,18 +127,18 @@ export function SideCard({ id }: { id: string }) {
       <div className="side-secs">
         {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} readOnly={fixed} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
-          <AgentProfilePick id={id} />
-          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} data-testid="side-instructions"
+          <AgentProfilePick id={id} fixed={fixed} />
+          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} readOnly={fixed} data-testid="side-instructions"
             onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
           <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
-            robotId={id} onChange={saveContext} />
-          <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />
+            robotId={id} onChange={fixed ? undefined : saveContext} />
+          {!fixed && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
         </Section>
         {started && (
           <Section name="robot.started" title="Robots it started">
@@ -192,7 +193,7 @@ export function SideCard({ id }: { id: string }) {
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
         <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
-        <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal"
+        <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal" disabled={fixed}
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>

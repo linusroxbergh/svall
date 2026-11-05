@@ -114,7 +114,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     // A release may arrive without a final move event; use its exact pointer position for the grid target.
     if (ev.type === 'up' && interactions.current.drag()) interactions.current.handle({ ...event, type: 'move' }, st.fleet, st.selectedId);
     const before = ev.type === 'up' ? interactions.current.drag() : undefined;
-    let intent = interactions.current.handle(event, st.fleet, st.selectedId);
+    let intent = interactions.current.handle(event, st.fleet, st.selectedId, st.via);
     // mission control is drawn over the world, so land put down on it would vanish under it: the island goes back
     if (intent?.type === 'moveIsland' || intent?.type === 'resize') {
       const island = st.fleet.islands[intent.id], below = host.current && camera.belowOf(host.current);

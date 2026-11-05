@@ -1,5 +1,6 @@
 import { HOME_ISLAND, MIN_SIZE, isHomeSlot, type Cell, type FleetState, type Size } from '@svall/protocol';
 import { cellOwner, robotAt, crowded } from './layout.js';
+import { frozen, type Via } from '../placement.js';
 import { theme } from '../theme.js';
 import type { Drag, Target } from './types.js';
 
@@ -18,7 +19,7 @@ export type Intent =
   | { type: 'moveIsland'; id: string; position: Cell }
   | { type: 'resize'; id: string; size: Size };
 
-type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string): Intent | undefined; drag(): Drag | undefined; cancel(): void };
+type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string, via?: Via): Intent | undefined; drag(): Drag | undefined; cancel(): void };
 
 const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 
@@ -35,8 +36,9 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
   let drag: Drag | undefined;
   let lastClick: { key: string; time: number } | undefined;
 
-  const startOrUpdateDrag = (ev: CellEv, fleet: FleetState) => {
+  const startOrUpdateDrag = (ev: CellEv, fleet: FleetState, via?: Via) => {
     const t = pending!.target;
+    if (t.kind === 'figure' && Object.hasOwn(fleet.robots, t.id) && frozen(fleet.robots[t.id], via)) return;
     const offset = ev.screen && pending!.screen && pending!.scale
       ? { x: (ev.screen.x - pending!.screen.x) / pending!.scale, y: (ev.screen.y - pending!.screen.y) / pending!.scale }
       : undefined;
@@ -86,7 +88,7 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
   };
 
   return {
-    handle(ev, fleet, selectedId) {
+    handle(ev, fleet, selectedId, via) {
       switch (ev.type) {
         case 'down': {
           const target = ev.target ?? { kind: 'water' };
@@ -106,7 +108,7 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
         case 'move':
           if (pending && (drag || !same(ev.cell, pending.cell) ||
             (pending.target.kind !== 'figure' && ev.screen && pending.screen &&
-              Math.hypot(ev.screen.x - pending.screen.x, ev.screen.y - pending.screen.y) > 4))) startOrUpdateDrag(ev, fleet);
+              Math.hypot(ev.screen.x - pending.screen.x, ev.screen.y - pending.screen.y) > 4))) startOrUpdateDrag(ev, fleet, via);
           return undefined;
         case 'up': {
           const p = pending, d = drag;

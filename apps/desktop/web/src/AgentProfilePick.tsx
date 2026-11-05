@@ -15,7 +15,7 @@ type Opt = { value: string; name: string; detail?: string; error?: boolean; disa
 const enabled = (o: Opt): boolean => !o.disabled;
 
 /** The role a robot plays, picked from the fleet's agent profiles; the line under it says what the role is without opening it. */
-export function AgentProfilePick({ id }: { id: string }) {
+export function AgentProfilePick({ id, fixed }: { id: string; fixed: boolean }) {
   const picked = useApp((s) => s.fleet.robots[id]?.agentProfile);
   const running = useApp((s) => Boolean(s.fleet.robots[id]?.agent));
   const profiles = useApp((s) => s.resources.find((r) => r.tier === 'profiles'));
@@ -86,7 +86,7 @@ export function AgentProfilePick({ id }: { id: string }) {
       <div className="side-profile" ref={row}>
         {/* WebKit leaves a clicked button unfocused, so the click focuses it: the keys and the blur that closes the menu come to it;
             the press keeps focus where it is, or WebKit's blur would close the menu just before the click opens it again */}
-        <button type="button" className="fld" role="combobox" aria-label="Agent profile" aria-haspopup="listbox" aria-expanded={open}
+        <button type="button" className="fld" role="combobox" aria-label="Agent profile" aria-haspopup="listbox" aria-expanded={open} disabled={fixed}
           aria-controls={`side-profile-menu-${id}`} aria-activedescendant={open ? `side-profile-${id}-${active}` : undefined}
           data-none={picked === undefined} data-testid="side-agent-profile" onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => { e.currentTarget.focus(); if (open) setOpen(false); else show(); }} onKeyDown={onKey} onBlur={() => setOpen(false)}>
