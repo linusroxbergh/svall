@@ -24,12 +24,13 @@ describe('interactions', () => {
     expect(i.handle(ev('down', 1, 1, fig('c0'), 1000), f)).toBeUndefined();
     expect(i.handle(ev('up', 1, 1, undefined, 1050), f)).toEqual({ type: 'select', id: 'c0' });
   });
-  it('a far robot on the Mac\'s copy of the fleet does not drag, and a press on it still selects', () => {
+  it('a far robot on the Mac\'s copy of the fleet does not drag, says why once, and a press on it still selects', () => {
     const f = fleet(), i = createInteractions({ dblClickMs: 300 });
     f.robots.c1.machine = MAC;
     const copy = { machine: MAC, home: HOME };
     expect(i.handle(ev('down', 1, 1, fig('c0'), 0), f, undefined, copy)).toBeUndefined();
-    i.handle(ev('move', 2, 2), f, undefined, copy);
+    expect(i.handle(ev('move', 2, 2), f, undefined, copy)).toEqual({ type: 'refused', line: expect.stringContaining('which is not reachable') });
+    expect(i.handle(ev('move', 3, 2), f, undefined, copy)).toBeUndefined();
     expect(i.drag()).toBeUndefined();
     expect(i.handle(ev('up', 2, 2, undefined, 50), f, undefined, copy)).toEqual({ type: 'select', id: 'c0' });
     i.handle(ev('down', 4, 1, fig('c1'), 1000), f, undefined, copy);

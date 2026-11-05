@@ -58,8 +58,12 @@ export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via)
 /** Through a worker, a robot that runs on another machine, which takes none of the actions the Mac would answer. */
 export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && c.machine !== via.machine;
 
-/** A robot elsewhere, in a window on this Mac's copy of the fleet: only its home takes a change to it, and that cannot be asked. */
-export const frozen = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && !via.online && elsewhere(c, via);
+/** What a try at changing a robot is told when it runs elsewhere and the window is on this Mac's copy of the fleet: only its home takes a change to it, and that cannot be asked. */
+export const frozenLine = (s: { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via }, id: string): string | undefined => {
+  if (!s.via || s.via.online || !Object.hasOwn(s.fleet.robots, id)) return undefined;
+  const c = s.fleet.robots[id];
+  return elsewhere(c, s.via) ? `${c.name} runs on ${machineOf(s.fleet, c, s.via)}, which is not reachable; you can change it once it answers.` : undefined;
+};
 
 /** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade. */
 export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined {

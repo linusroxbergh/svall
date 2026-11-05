@@ -63,6 +63,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     switch (intent.type) {
       // an open card is the terminal in view, so the selection moves it rather than leaving it on the robot behind
       case 'select': if (s.card) s.focus(intent.id); else s.select(intent.id); return;
+      case 'refused': s.showToast(intent.line); return;
       case 'selectIsland': s.selectIsland(intent.id); return;
       case 'deselect': s.select(undefined); s.closeCard(); return;
       case 'open': s.focus(intent.id); return;

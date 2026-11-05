@@ -1,6 +1,6 @@
 import { HOME_ISLAND, MIN_SIZE, isHomeSlot, type Cell, type FleetState, type Size } from '@svall/protocol';
 import { cellOwner, robotAt, crowded } from './layout.js';
-import { frozen, type Via } from '../placement.js';
+import { frozenLine, type Via } from '../placement.js';
 import { theme } from '../theme.js';
 import type { Drag, Target } from './types.js';
 
@@ -9,6 +9,7 @@ export type CellEv = { type: 'down' | 'move' | 'up' | 'cancel'; cell: Cell; home
 
 export type Intent =
   | { type: 'select'; id: string }
+  | { type: 'refused'; line: string }
   | { type: 'selectIsland'; id: string }
   | { type: 'deselect' }
   | { type: 'open'; id: string }
@@ -32,13 +33,12 @@ export const DBL_CLICK_MS = 300;
 // pointer events produce grid intents; map islands use the screen delta for continuous preview
 export function createInteractions(opts: { dblClickMs?: number } = {}): Interactions {
   const dbl = opts.dblClickMs ?? DBL_CLICK_MS;
-  let pending: { target: Target; cell: Cell; time: number; opened?: boolean; screen?: { x: number; y: number }; scale?: number } | undefined;
+  let pending: { target: Target; cell: Cell; time: number; opened?: boolean; refused?: boolean; screen?: { x: number; y: number }; scale?: number } | undefined;
   let drag: Drag | undefined;
   let lastClick: { key: string; time: number } | undefined;
 
-  const startOrUpdateDrag = (ev: CellEv, fleet: FleetState, via?: Via) => {
+  const startOrUpdateDrag = (ev: CellEv, fleet: FleetState) => {
     const t = pending!.target;
-    if (t.kind === 'figure' && Object.hasOwn(fleet.robots, t.id) && frozen(fleet.robots[t.id], via)) return;
     const offset = ev.screen && pending!.screen && pending!.scale
       ? { x: (ev.screen.x - pending!.screen.x) / pending!.scale, y: (ev.screen.y - pending!.screen.y) / pending!.scale }
       : undefined;
@@ -108,7 +108,11 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
         case 'move':
           if (pending && (drag || !same(ev.cell, pending.cell) ||
             (pending.target.kind !== 'figure' && ev.screen && pending.screen &&
-              Math.hypot(ev.screen.x - pending.screen.x, ev.screen.y - pending.screen.y) > 4))) startOrUpdateDrag(ev, fleet, via);
+              Math.hypot(ev.screen.x - pending.screen.x, ev.screen.y - pending.screen.y) > 4))) {
+            const line = pending.target.kind === 'figure' ? frozenLine({ fleet, via }, pending.target.id) : undefined;
+            if (!line) startOrUpdateDrag(ev, fleet);
+            else if (!pending.refused) { pending.refused = true; return { type: 'refused', line }; }
+          }
           return undefined;
         case 'up': {
           const p = pending, d = drag;

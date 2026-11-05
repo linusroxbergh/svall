@@ -14,7 +14,8 @@ import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
-import { answers, awayLine, frozen, homeName, machineOf } from './placement.js';
+import { buttonTry, fieldTry, useRefusal } from './frozen.js';
+import { answers, awayLine, homeName, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -50,13 +51,13 @@ function LastCommand({ id, agent }: { id: string; agent: Robot['agent'] }) {
   );
 }
 
-function PortraitPicker({ id, portrait, figure, fixed }: Pick<Robot, 'id' | 'portrait' | 'figure'> & { fixed: boolean }) {
+function PortraitPicker({ id, portrait, figure, refuse }: Pick<Robot, 'id' | 'portrait' | 'figure'> & { refuse?: () => void }) {
   const step = (by: 1 | -1) => saveRobot(deps(), id, { figure: stepFigure(figureOf({ portrait, figure }), by) });
   return (
     <div className="side-portrait" data-testid="side-portrait">
-      <button className="ib pnav" data-testid="portrait-prev" aria-label="Previous portrait" disabled={fixed} onClick={() => step(-1)}><Caret dir="left" /></button>
+      <button className="ib pnav" data-testid="portrait-prev" aria-label="Previous portrait" {...buttonTry(refuse)} onClick={() => step(-1)}><Caret dir="left" /></button>
       <img className="side-figure" src={figureUrl(figureOf({ portrait, figure }))} alt="robot" draggable={false} />
-      <button className="ib pnav" data-testid="portrait-next" aria-label="Next portrait" disabled={fixed} onClick={() => step(1)}><Caret dir="right" /></button>
+      <button className="ib pnav" data-testid="portrait-next" aria-label="Next portrait" {...buttonTry(refuse)} onClick={() => step(1)}><Caret dir="right" /></button>
     </div>
   );
 }
@@ -69,6 +70,7 @@ function LastActivity({ at }: { at: number }) {
 
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
+  const refuse = useRefusal(id);
   const machines = useApp((s) => s.fleet.machines);
   const via = useApp((s) => s.via);
   const islands = useApp((s) => s.fleet.islands);
@@ -96,7 +98,6 @@ export function SideCard({ id }: { id: string }) {
   const accent = `var(--${status})`;
   const pct = contextPctOf(c);
   const starred = c.star !== undefined;
-  const fixed = frozen(c, via);
   const save = (patch: Patch) => saveRobot(deps(), id, patch);
   const saveContext = (context: ContextItem[], removed?: string) => saveRobotContext(deps(), id, context, removed);
 
@@ -107,14 +108,14 @@ export function SideCard({ id }: { id: string }) {
       </div>
       <div className="side-id">
         <div className="side-head">
-          <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} fixed={fixed} />
-          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} readOnly={fixed} data-testid="side-name"
+          <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} refuse={refuse} />
+          <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse)} data-testid="side-name"
             onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
           <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
-            aria-label="Star" disabled={fixed} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
+            aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
         {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
-        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} />}
+        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} readOnly={!!refuse} />}
         {c.repo && (
           <div className="side-branch" data-testid="side-branch">
             <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -127,18 +128,18 @@ export function SideCard({ id }: { id: string }) {
       <div className="side-secs">
         {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
-          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} readOnly={fixed} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
+          <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
             onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
-          <AgentProfilePick id={id} fixed={fixed} />
-          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} readOnly={fixed} data-testid="side-instructions"
+          <AgentProfilePick id={id} refuse={refuse} />
+          <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse)} data-testid="side-instructions"
             onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
           <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}
-            robotId={id} onChange={fixed ? undefined : saveContext} />
-          {!fixed && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
+            robotId={id} onChange={refuse ? undefined : saveContext} />
+          {!refuse && <AddLink id={id} ids={{ ref: 'context-ref', add: 'context-add' }} onAdd={(item) => saveContext([...c.context, item])} />}
         </Section>
         {started && (
           <Section name="robot.started" title="Robots it started">
@@ -193,7 +194,7 @@ export function SideCard({ id }: { id: string }) {
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
         <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>
-        <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal" disabled={fixed}
+        <button className="btn sm dan" data-testid="side-close" data-tip="Deletes the robot and kills its terminal" {...buttonTry(refuse)}
           onClick={() => app.store.getState().setClosingRobot(id)}>Delete robot</button>
       </div>
     </aside>
@@ -232,11 +233,11 @@ function Held({ id, n, promptId }: { id: string; n: number; promptId: string }) 
 }
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
-function AwayLine({ name, line, running }: { name: string; line: string; running: boolean }) {
+function AwayLine({ name, line, running, readOnly }: { name: string; line: string; running: boolean; readOnly: boolean }) {
   const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name }); };
   return (
     <div className="side-away" data-testid="side-away">
-      <span>{line}</span>
+      <span>{line}{readOnly && <small data-testid="side-away-read-only">Read-only until it answers.</small>}</span>
       <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
     </div>
   );

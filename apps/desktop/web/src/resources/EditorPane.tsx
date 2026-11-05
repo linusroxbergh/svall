@@ -9,7 +9,7 @@ import { basename } from '../paths.js';
 import { asDoc } from './docEditor.js';
 import { isFresh, letGo } from './docs.js';
 import { DocHeader } from './DocHeader.js';
-import { frozen } from '../placement.js';
+import { fieldTry, useRefusal } from '../frozen.js';
 import { takesKeys } from './keys.js';
 import { entityOf, fieldLabel, fieldValue, isAgentProfiles, isDoc, kindOf, tierOf, type FieldRef } from './model.js';
 
@@ -17,14 +17,14 @@ import { entityOf, fieldLabel, fieldValue, isAgentProfiles, isDoc, kindOf, tierO
 function Field({ r }: { r: FieldRef }) {
   const e = useApp((s) => entityOf(s, r))!;
   const value = fieldValue(e, r.field);
-  const fixed = useApp((s) => r.tier === 'robot' && Object.hasOwn(s.fleet.robots, r.id) && frozen(s.fleet.robots[r.id], s.via));
+  const refuse = useRefusal(r.tier === 'robot' ? r.id : undefined);
   const save = (v: string) => {
     if (v === value) return;
     saveEntityField(deps(), r, v);
   };
   return (
     <FollowTextarea className="res-field" data-testid="resources-field" aria-label={fieldLabel(r)}
-      placeholder={r.field === 'note' ? fieldLabel(r) : 'Instructions for the agent'} key={`${r.id}:${r.field}`} value={value} readOnly={fixed} onSave={save} />
+      placeholder={r.field === 'note' ? fieldLabel(r) : 'Instructions for the agent'} key={`${r.id}:${r.field}`} value={value} {...fieldTry(refuse)} onSave={save} />
   );
 }
 

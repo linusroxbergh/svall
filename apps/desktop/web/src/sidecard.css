@@ -46,6 +46,7 @@
 .side-on b { font-weight: var(--w-semibold); }
 /* a robot whose worker this Mac has lost: why, and the run that tells more */
 .side-away { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-sm); color: var(--ink-3); font-size: var(--text-sm); }
+.side-away small { display: block; font-size: inherit; }
 .side-portrait { position: relative; flex: none; }
 .side-portrait .side-figure { display: block; box-sizing: border-box; width: var(--disc-side); height: var(--disc-side); padding: calc(var(--disc-side) * .08);
   object-fit: contain; object-position: center bottom; }

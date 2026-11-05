@@ -7,7 +7,8 @@ import { memoByValue, stop, useApp, usePanelWidth } from './hooks.js';
 import { robotMenu, islandMenu } from './menus.js';
 import { Caret, Eye, Feedback, Plus, Pr, Star, Update } from './icons.js';
 import { MachineLine, reviewText } from './indicators.js';
-import { frozen, machineOf, type Via } from './placement.js';
+import { buttonTry, useRefusal } from './frozen.js';
+import { machineOf, type Via } from './placement.js';
 import { robotsOf, inReview, isMonitoring, islandStatus, islandsSorted, isUnread, mainPr, resumeErrorOf, STARRED, statusOf, wantsUser } from './selectors.js';
 
 // what a folded island would hide: the robots that want the user
@@ -68,9 +69,9 @@ const pick = (id: string, starred = false) => {
 
 function StarButton({ c, testid }: { c: Robot; testid: string }) {
   const on = c.star !== undefined;
-  const fixed = useApp((s) => frozen(c, s.via));
+  const refuse = useRefusal(c.id);
   return (
-    <button className="ib xs sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'} disabled={fixed}
+    <button className="ib xs sb-star" data-testid={testid} aria-pressed={on} aria-label={`Star ${c.name}`} data-tip={on ? 'Unstar' : 'Star'} {...buttonTry(refuse)}
       onClick={(e) => { stop(e); setStar(deps(), c.id, !on); }}><Star on={on} /></button>
   );
 }
@@ -139,14 +140,14 @@ const RobotRow = memo(function RobotRow({ c, machine, editing, setEditing }: { c
   const [dragging, setDragging] = useState(false);
   const status = useApp((s) => statusOf(c, s.fleet, s.via));
   const attention = useApp((s) => wantsUser(c, s.fleet, s.via));
-  const fixed = useApp((s) => frozen(c, s.via));
+  const refuse = useRefusal(c.id);
   return (
     <div
       className="sb-row list-row sb-child" data-testid={`sb-robot-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={attention} data-selected={selected}
       data-drop={`robot:${c.id}`} data-drop-hover={hover} data-drop-reorder={reorderHover} data-drop-after={hoverAfter} {...dropZone({ kind: 'robot', id: c.id })}
-      draggable={!editing && !fixed} data-dragging={dragging}
-      onDragStart={(e) => { e.dataTransfer.setData(ROBOT_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
+      draggable={!editing} data-dragging={dragging}
+      onDragStart={(e) => { if (refuse) { e.preventDefault(); refuse(); return; } e.dataTransfer.setData(ROBOT_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => { setDragging(false); app.store.getState().setDropHover(undefined); }}
       onClick={() => pick(c.id)}
       onContextMenu={editing ? undefined : (e) => robotMenu(e, c.id, () => setEditing(c.id))}
@@ -180,13 +181,13 @@ const StarredRow = memoByValue(function StarredRow({ c, machine, hover, zone }: 
   const [dragging, setDragging] = useState(false);
   const status = useApp((s) => statusOf(c, s.fleet, s.via));
   const attention = useApp((s) => wantsUser(c, s.fleet, s.via));
-  const fixed = useApp((s) => frozen(c, s.via));
+  const refuse = useRefusal(c.id);
   return (
     <div className="sb-row list-row sb-child sb-starred-row" data-testid={`sb-star-${c.id}`} data-status={status} data-unread={isUnread(c)}
       data-attention={attention} data-selected={selected} data-drop={`robot:${c.id}`} data-drop-hover={fileHover}
       data-drop-reorder={hover?.id === c.id} data-drop-after={hover?.id === c.id && hover.after}
-      draggable={!fixed} data-dragging={dragging} {...zone}
-      onDragStart={(e) => { e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
+      draggable data-dragging={dragging} {...zone}
+      onDragStart={(e) => { if (refuse) { e.preventDefault(); refuse(); return; } e.dataTransfer.setData(STAR_DRAG, c.id); e.dataTransfer.effectAllowed = 'move'; setDragging(true); }}
       onDragEnd={() => setDragging(false)}
       onClick={() => pick(c.id, true)} onContextMenu={(e) => robotMenu(e, c.id)}>
       <i className="sdot" data-status={status} />

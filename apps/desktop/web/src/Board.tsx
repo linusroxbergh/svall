@@ -10,7 +10,7 @@ import { useHover } from './map/hover.js';
 import { HoverCard } from './map/HoverCard.js';
 import { TerminalCard } from './map/TerminalCard.js';
 import { boardRobotMenu, columnMenu, placingMenu } from './menus.js';
-import { frozen, machineOf } from './placement.js';
+import { frozenLine, machineOf } from './placement.js';
 import { boardColumns, islandsSorted, placesOf, robotsOf, scribePlaces, statusOf, wantsUser, type BoardColumn } from './selectors.js';
 import { theme } from './theme.js';
 import { Toast, toastCorner } from './Toast.js';
@@ -188,8 +188,15 @@ export function Board() {
     const r = e.currentTarget.getBoundingClientRect();
     const base = { id: c.id, from, dx: e.clientX - r.left, dy: e.clientY - r.top, w: r.width, h: r.height };
     let last: Lift | undefined;
+    let refusal = frozenLine(app.store.getState(), c.id);
+    const frozen = refusal !== undefined;
     track(e, (m) => {
       hov.end();
+      if (frozen) {
+        if (refusal) app.store.getState().showToast(refusal);
+        refusal = undefined;
+        return;
+      }
       last = { ...base, x: m.clientX, y: m.clientY, over: columnAt(m.clientX, m.clientY)?.getAttribute('data-col') ?? undefined };
       setLift(last);
     }, (dropped) => {
@@ -279,7 +286,7 @@ export function Board() {
               dragging={lift?.id === c.id} fileHover={dropHover?.kind === 'robot' && dropHover.id === c.id}
               renaming={renamingRobot === c.id} onRename={(name) => saveRobot(deps(), c.id, { name })} onRenamed={() => setRenamingRobot(undefined)}
               on={{
-                onPointerDown: (e) => { if (!frozen(c, via)) liftCard(e, c, id); },
+                onPointerDown: (e) => liftCard(e, c, id),
                 onClick: () => pick(c.id),
                 onDoubleClick: () => app.store.getState().focus(c.id),
                 // the rename field keeps the text menu
