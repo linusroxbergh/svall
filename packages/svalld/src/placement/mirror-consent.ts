@@ -47,6 +47,13 @@ export function setConsent(file: string, machine: MachineId, item: string, field
   writeAll(file, all);
 }
 
+/** The ticks of `item` for `machine` become `fields`, whatever it held. */
+export function replaceConsent(file: string, machine: MachineId, item: string, fields: string[]): void {
+  const all = readAll(file);
+  all[machine] = [...(all[machine] ?? []).filter((k) => !k.startsWith(`${item}#`)), ...fields.map((f) => fieldKey(item, f))];
+  writeAll(file, all);
+}
+
 export function clearConsent(file: string, machine: MachineId): void {
   const all = readAll(file);
   delete all[machine];

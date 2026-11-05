@@ -900,7 +900,7 @@ describe('a link where a keyed file lay', () => {
     expect(Object.keys(readState(s.stateFile).keyed ?? {})).toEqual(['claude/agents/keyed.md']);
     const plan = mirrorPlan(s.home, s.consent);
     const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
-    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === row.key)?.detail).toBe('agents/keyed.md stays as you edited it, with the key the mirror copied in it; remove it yourself');
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === row.key)?.detail).toBe('agents/keyed.md stays as you edited it, with any key the mirror copied in it; remove it yourself');
     expect((await takeBackCopies(s.options)).join('\n')).toContain(landed);
     fs.rmSync(landed);
     await s.push();

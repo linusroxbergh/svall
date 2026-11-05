@@ -1,17 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { parse as parseToml } from 'smol-toml';
+import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import { onPath } from '../../src/agents.js';
 import { applyMirror } from '../../src/placement/mirror-apply.js';
 import { mirrorPlan, packMirror } from '../../src/placement/mirror-plan.js';
-import { readState } from '../../src/placement/mirror-state.js';
+import { readState, serverSha } from '../../src/placement/mirror-state.js';
 import { unpack } from '../../src/placement/move-steps.js';
 import { makeHome } from '../helpers.js';
 import { farHome, macHome, put, read } from './mirror-homes.js';
 
 const K = 'sk_home_key_1234567890';
+const K2 = 'sk_home_key_0987654321';
 // the test environment's PATH leads with a fake agent of that name
 const FOUND = onPath('codex', (process.env.PATH ?? '').split(':').filter((d) => !d.includes('test/fixtures')).join(':'));
 const CODEX = FOUND && path.join(FOUND, 'codex');
@@ -74,6 +75,39 @@ describe.skipIf(!CODEX)('real codex loads what a target keeps', () => {
     for (const f of ['command', 'script', 'default_tools_approval_mode', 'env']) s.consent.add(`codex:mcp:odd#${f}`);
     await s.push();
     must(s, 'ticked again');
+  });
+  it('a server only in the overrides, and a whole tick of a shape that reads known now: loads at each step, through a per-field untick', async () => {
+    const s = setup();
+    const stateFile = path.join(s.w.homedir, '.svall/cache/mirror-state.json');
+    const odd = { url: 'https://x.test/mcp', default_tools_approval_mode: 'approve', http_headers: { 'X-Key': K, 'Y-Key': K2 } };
+    put(s.homeToml, stringifyToml({ mcp_servers: { odd: { ...odd, scopes: ['r'] } } }));
+    for (const f of [...Object.keys(odd), 'scopes']) s.consent.add(`codex:mcp:odd#${f}`);
+    put(path.join(s.w.overrides, 'codex/config.toml'), '[mcp_servers.mine]\ncommand = "my-tool"\n[mcp_servers.far]\nurl = "https://far.test/mcp"\n');
+    await s.push();
+    must(s, 'ticked whole');
+    const d = parseToml(read(s.toml)) as any;
+    delete d.mcp_servers.odd.scopes;
+    put(s.toml, stringifyToml(d));
+    const st = JSON.parse(read(stateFile));
+    st.whole[JSON.stringify(['config.toml', 'mcp_servers', 'odd'])] = serverSha(d.mcp_servers.odd);
+    put(stateFile, JSON.stringify(st));
+    put(s.homeToml, stringifyToml({ mcp_servers: { odd } }));
+    s.consent.delete('codex:mcp:odd#scopes');
+    await s.push();
+    must(s, 'reads known');
+    expect(read(s.toml)).toContain(K);
+    expect((parseToml(read(s.toml)) as any).mcp_servers.mine).toEqual({ command: 'my-tool' });
+    expect((parseToml(read(s.toml)) as any).mcp_servers.far).toEqual({ url: 'https://far.test/mcp' });
+    s.consent.clear();
+    s.consent.add('codex:mcp:odd#headers.Y-Key');
+    await s.push();
+    must(s, 'one key unticked');
+    expect(read(s.toml)).not.toContain(K);
+    expect(read(s.toml)).toContain(K2);
+    s.consent.clear();
+    await s.push();
+    must(s, 'unticked');
+    expect(read(s.toml)).not.toContain(K2);
   });
   it('MF3 a per-field server with a required url: loads when the home drops it, with a header of the person', async () => {
     const s = setup();

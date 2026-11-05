@@ -16,9 +16,9 @@ import type { Logger } from '../log.js';
 import { homeWord } from '../machine.js';
 import { fileSha } from './bundle.js';
 import { applyMirror, dropBlobs, type Manifest } from './mirror-apply.js';
-import { readPlugins, readServers } from './mirror-config.js';
-import { CONFIG_ITEMS, readConsent, setConsent } from './mirror-consent.js';
-import { mirrorPlan, packMirror } from './mirror-plan.js';
+import { readPlugins, readServers, secretsOf } from './mirror-config.js';
+import { CONFIG_ITEMS, itemKey, readConsent, replaceConsent, setConsent } from './mirror-consent.js';
+import { mirrorPlan, packMirror, tickedWhole } from './mirror-plan.js';
 import { ConfigReport, configReport, forRobot, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
 import { configState, OPENCODE_FILES, readState, StateAsk, WorkerFacts, type MirrorHomes } from './mirror-state.js';
 import { unpack } from './move-steps.js';
@@ -68,6 +68,9 @@ export class Mirror {
 
   /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it, or with `exact` those `fields`. */
   consent(machine: MachineId, item: string, fields: string[], on: boolean, exact = false): void {
+    const consent = readConsent(this.o.consent, machine);
+    const whole = readServers(this.o, readPlugins(this.o.claudeDir, [])).servers.find((s) => itemKey(s) === item && tickedWhole(s, consent));
+    if (whole) replaceConsent(this.o.consent, machine, item, [...new Set(secretsOf(whole).map((f) => f.field))]);
     setConsent(this.o.consent, machine, item, fields, on, exact);
   }
 

@@ -158,12 +158,16 @@ function configDoc(file: string, parse: (source: string) => unknown, unreadable:
 const withoutLogins = (v: unknown): unknown =>
   typeof v === 'string' ? withoutCredentials(v) : Array.isArray(v) ? v.map(withoutLogins) : isDoc(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, withoutLogins(x)])) : v;
 
+/** A known server with every raw field ticked, as ticking it whole left it, which stands for a tick of each of its keys until the item's first change. */
+export const tickedWhole = (s: McpServer, consent: ReadonlySet<string>): boolean =>
+  s.known && Object.keys(s.raw).length > 0 && tickedFields(consent, itemKey(s), Object.keys(s.raw)).length === Object.keys(s.raw).length;
+
 /** A server as the mirror carries it, by what `consent` ticks: one whose fields it does not know whole or not at all. */
 function mirrored(s: McpServer, consent: ReadonlySet<string>): MirroredServer {
   const key = itemKey(s);
   const secrets = s.known ? secretsOf(s) : [];
   const secretFields = [...new Set(secrets.map((f) => f.field))];
-  const ticked = tickedFields(consent, key, s.known ? secretFields : Object.keys(s.raw));
+  const ticked = tickedWhole(s, consent) ? secretFields : tickedFields(consent, key, s.known ? secretFields : Object.keys(s.raw));
   const entry = s.known ? redacted(s, new Set(ticked)) : ticked.length === Object.keys(s.raw).length ? structuredClone(s.raw) : {};
   const plugin = typeof s.scope === 'object' && 'plugin' in s.scope;
   const doc: DocName | undefined = plugin ? undefined : s.agent === 'claude' ? '.claude.json' : s.agent === 'codex' ? 'config.toml' : (path.basename(s.file ?? '') as DocName);

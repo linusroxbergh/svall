@@ -626,7 +626,7 @@ test('a copy says what a tick went over on the home and what an untick left ther
     fireEvent.click(screen.getByTestId('setup-copy'));
     const said = (await screen.findByTestId('setup-copied')).textContent;
     expect(said).toContain('A tick went over what studio held itself for linear: that is in its backup folder.');
-    expect(said).toContain('odd stays as you edited it, with the key the mirror copied in it; remove it yourself.');
+    expect(said).toContain('odd stays as you edited it, with any key the mirror copied in it; remove it yourself.');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }

@@ -9,7 +9,7 @@ import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, heldServer, needsOf, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import { docWithOverride, isTheirs, ownKeys, stringsIn, under } from './mirror-apply.js';
+import { docWithOverride, holdsWholeKey, isTheirs, ownKeys, under } from './mirror-apply.js';
 import type { MirroredServer, MirrorPlan } from './mirror-plan.js';
 import { DOC_NAMES, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirrorHomes } from './mirror-state.js';
 
@@ -49,8 +49,8 @@ export const ConfigReport = z.object({
   whole: z.record(z.string(), z.boolean()), oauth: z.record(z.string(), z.boolean()),
   // an item the worker holds as its own, the very one ticked whole; and each field or item whose own value a tick went over, whose file its backup keeps
   ownWhole: z.record(z.string(), z.boolean()).optional(), replaced: z.record(z.string(), z.boolean()).optional(),
-  // each server this target keeps as its own, with the variables what it holds reads; and each item edited since, holding what the mirror copied whole or not
-  keepsOwn: z.record(z.string(), z.array(z.string())).optional(), edited: z.record(z.string(), z.enum(['copy', 'own'])).optional(),
+  // each server this target keeps as its own, with the variables what it holds reads; and each item edited since: holding what the mirror copied whole or not, or a link nothing writes through
+  keepsOwn: z.record(z.string(), z.array(z.string())).optional(), edited: z.record(z.string(), z.enum(['copy', 'own', 'link'])).optional(),
 });
 export type ConfigReport = z.infer<typeof ConfigReport>;
 
@@ -166,7 +166,10 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     if (w.doc) wasReplaced(recordKey(w.doc, w.place), w.item);
     if (w.doc && recorded === undefined && there) ownWhole[w.item] = true;
     // a keyed file that stays once no longer the copy
-    if (o.backups !== undefined && w.file !== undefined && state.keyed?.[w.file] && fileHere(w.file).there && !fileHere(w.file).copied) edited[w.item] = 'copy';
+    if (o.backups !== undefined && w.file !== undefined && state.keyed?.[w.file] && fileHere(w.file).there && !fileHere(w.file).copied) {
+      const linked = fs.lstatSync(path.join(o.claudeDir, w.file.slice('claude/'.length)), { throwIfNoEntry: false })?.isSymbolicLink();
+      edited[w.item] = linked ? 'link' : edited[w.item] ?? 'copy';
+    }
   }
   const keepsOwn: NonNullable<ConfigReport['keepsOwn']> = {};
   for (const h of o.backups === undefined ? [] : ask.held) {
@@ -174,7 +177,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     const v = getAt(docHere(h.doc), placedIn(h.doc, h.place, move));
     if (!isDoc(v)) continue;
     const theirs = isTheirs(h.agent, v, rk, state);
-    if (theirs) edited[h.item] = [...stringsIn(v)].some((x) => isCopy(state.wholeKeys?.[rk], x)) ? 'copy' : 'own';
+    if (theirs) edited[h.item] = holdsWholeKey(h.agent, v, rk, state) ? 'copy' : 'own';
     if (theirs || ownKeys(h.agent, v, rk, state).length) keepsOwn[h.item] = needsOf(heldServer(h.agent, v));
   }
   let credentials: unknown;
@@ -251,6 +254,10 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => inBackup(wholeRow(item, name, fields, on), [item]);
   const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
+    // the record of a linked file holds its sha alone, so it cannot say whether the key is still there
+    if (report?.edited?.[item] === 'link') {
+      return { key: item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with any key the mirror copied in it' } };
+    }
     if (!on && report?.edited?.[item] === 'copy') {
       return { key: item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with the key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with the key the mirror copied in it' } };
     }
