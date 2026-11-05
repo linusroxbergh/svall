@@ -413,7 +413,8 @@ export const methods = {
       z.object({ op: z.literal('join'), id: HomeMoveId, enrol: Enrolment }),
       z.object({ op: z.literal('told'), id: HomeMoveId }),
     ]),
-    result: z.object({ moving: z.object({ id: HomeMoveId, to: MachineId, name: z.string(), asks: z.boolean(), answer: z.string().optional() }).optional() }),
+    // `phase`: where the machine holding the fleet last said the move stands, and `answer` what it said
+    result: z.object({ moving: z.object({ id: HomeMoveId, to: MachineId, name: z.string(), asks: z.boolean(), answer: z.string().optional(), phase: z.string().optional() }).optional() }),
   },
   // the root fs.read and fs.write reach fleet.json through, in the editor of a window on a far home; a worker holds no fleet's config
   'fleet.config': { params: z.object({}), result: z.object({ rootId: z.string(), path: z.string() }) },

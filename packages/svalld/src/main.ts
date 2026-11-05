@@ -419,8 +419,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       // the way back: this machine takes the fleet, and the home answers over this daemon's own connection to it
       const far = await factsAcross(dial, worker_).catch(() => undefined);
       const toName = ownName();
-      const from = far ?? { ...here, machineId: worker_.homeMachineId };
-      return homeCheck({ state: store.state, from, to: here, toName, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), fromIsHome: to === me });
+      const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
+      const back = store.state.machines?.[worker_.homeMachineId]?.name ?? worker_.homeName;
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), fromIsHome: to === me });
     }
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;

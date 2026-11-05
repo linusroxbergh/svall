@@ -33,8 +33,9 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain; forward: the
 // port its terminal forwards from this Mac; tick: the consent a mirror row toggles; gap: what will not work there yet;
 // here: that this Mac has the variable a row is about
+// say: what a window shows in place of `action`, where a button stands for the command
 export type StepEvent = {
-  step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'];
+  step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'];
 };
 // actions: the things to fix there; stopped: the step a run failed at, past which nothing ran; setup: the mirror rows of
 // what will not work there yet, which never stop a robot moving there
@@ -71,10 +72,10 @@ export type AddOptions = { name: string; ssh: string; release?: string; allowUns
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
-  constructor(readonly detail: string, readonly action?: string, readonly run?: string) { super(detail); }
+  constructor(readonly detail: string, readonly action?: string, readonly run?: string, readonly say?: string) { super(detail); }
 }
 
-type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
+type Outcome<T> = { value: T; status?: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 
 /** The step events a host command emits, the actions they leave the user with, and the mirror rows of what will not work there. */
 export class Runner {
@@ -98,12 +99,12 @@ export class Runner {
       const e = err instanceof StepError ? err : new StepError((err as Error).message);
       this.failed = step;
       this.todo(e.action ?? e.detail);
-      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}) });
+      this.emit({ step, status: 'fail', detail: e.detail, ...(e.action ? { action: e.action } : {}), ...(e.run ? { run: e.run } : {}), ...(e.say ? { say: e.say } : {}) });
       throw e;
     }
     const event: StepEvent = {
       step, status: r.status ?? 'ok',
-      ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}),
+      ...(r.detail ? { detail: r.detail } : {}), ...(r.action ? { action: r.action } : {}), ...(r.run ? { run: r.run } : {}), ...(r.say ? { say: r.say } : {}),
       ...(r.forward !== undefined ? { forward: r.forward } : {}), ...(r.tick ? { tick: r.tick } : {}), ...(r.gap ? { gap: r.gap } : {}), ...(r.here ? { here: r.here } : {}),
     };
     if (step.startsWith('mirror:')) {
@@ -727,11 +728,10 @@ const machineOutcome = (registry: MachineRegistry, name: string): Outcome<Regist
 const removable = (name: string, d: HostDeps): Outcome<MachineEntry> => {
   const entry = d.registry.get(name);
   // without its record a fleet cannot upgrade or check the home it serves, and the far uninstall would stop that home and its robots
-  const leaving = (home: string): string => `delete ${resolvePaths(home).workerFile} or that fleet first, once you no longer serve it`;
-  if (entry && servedHome(entry.id, d)) throw new StepError(`${name} is this fleet's home, so it stays listed here`, leaving(d.fleet.home));
+  if (entry && servedHome(entry.id, d)) throw new StepError(`${name} is this fleet's home, so it stays listed here`, `bring the fleet back here first: svall${d.fleet.profile ? ` -p ${d.fleet.profile}` : ''} fleet home set local`);
   const dialing = entry && dialingFleet(entry.id, d.homedir);
   if (dialing?.unreadable) throw new StepError(`cannot read ${resolvePaths(dialing.home).workerFile}, which may name ${name}`, 'fix it');
-  if (dialing && dialing.home !== d.fleet.home) throw new StepError(`${name} is the home of the fleet in ${dialing.home}, so it stays listed here and keeps running`, leaving(dialing.home));
+  if (dialing && dialing.home !== d.fleet.home) throw new StepError(`${name} is the home of the fleet in ${dialing.home}, so it stays listed here and keeps running`, `bring the fleet in ${dialing.home} back here first: SVALL_HOME=${dialing.home} svall fleet home set local`);
   return entry?.record.dial === 'worker' ? { value: entry, detail: `${name} dials in` } : machineOutcome(d.registry, name);
 };
 

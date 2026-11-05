@@ -1,4 +1,4 @@
-import type { MachineId } from '@svall/protocol';
+import type { MachineId, Result } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyStep, beginRun, endRun, machineNames, replaceRows, type HostRun } from '../host.js';
@@ -17,6 +17,8 @@ export type HostState = {
   hostConfirm?: HostConfirm;
   // the move of the fleet's home the sheet is asking about: to a worker, or back to this Mac
   homeSheet?: HomeSheetAsk;
+  // a move of the fleet's home that stands, as this Mac's daemon last said
+  homeMove?: Result<'fleet.homeMove'>['moving'];
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
   hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
@@ -38,6 +40,7 @@ export type HostActions = {
   hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
   setHomeSheet(ask?: HomeSheetAsk): void;
+  setHomeMove(moving?: Result<'fleet.homeMove'>['moving']): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
 
@@ -47,6 +50,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   hostMachine: undefined,
   hostConfirm: undefined,
   homeSheet: undefined,
+  homeMove: undefined,
   hostTerminal: undefined,
   machines: undefined,
   machinesError: undefined,
@@ -61,6 +65,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   setHomeSheet: (homeSheet) => set({ homeSheet }),
+  setHomeMove: (homeMove) => set({ homeMove }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten

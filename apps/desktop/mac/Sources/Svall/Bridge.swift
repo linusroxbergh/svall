@@ -62,7 +62,7 @@ enum ToShell: Decodable {
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
     case hostList
-    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?)
+    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?, frozenFor: String?, movingHere: Bool)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
@@ -75,7 +75,7 @@ enum ToShell: Decodable {
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, frozenFor, movingHere, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -118,7 +118,8 @@ enum ToShell: Decodable {
         case "host.list": self = .hostList
         case "quit.answer":
             self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working),
-                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home))
+                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home),
+                               frozenFor: try c.decodeIfPresent(String.self, forKey: .frozenFor), movingHere: try c.decodeIfPresent(Bool.self, forKey: .movingHere) ?? false)
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle
@@ -181,6 +182,7 @@ enum FromShell {
             if let detail = step.detail { event["detail"] = detail }
             if let action = step.action { event["action"] = action }
             if let run = step.run { event["run"] = run }
+            if let say = step.say { event["say"] = say }
             if let forward = step.forward { event["forward"] = forward }
             if let tick = step.tick { event["tick"] = ["item": tick.item, "fields": tick.fields, "on": tick.on, "preview": tick.preview] as [String: Any] }
             if let gap = step.gap { event["gap"] = ["name": gap.name, "what": gap.what] }

@@ -46,6 +46,7 @@ export class HomeFreeze {
   private admitted = 0;
   private idle?: () => void;
   private answer?: string;
+  private phase?: string;
   private timer?: NodeJS.Timeout;
   private askMs = FIRST_ASK_MS;
   private stopped = false;
@@ -187,7 +188,7 @@ export class HomeFreeze {
 
   status(): Result<'fleet.homeMove'> {
     if (!this.marker) return {};
-    return { moving: { id: this.marker.id, to: this.marker.to, name: this.marker.toName, asks: this.marker.ask !== undefined, ...(this.answer && { answer: this.answer }) } };
+    return { moving: { id: this.marker.id, to: this.marker.to, name: this.marker.toName, asks: this.marker.ask !== undefined, ...(this.answer && { answer: this.answer }), ...(this.phase && { phase: this.phase }) } };
   }
 
   /** The machine holding the fleet asked now, and what it says acted on. */
@@ -209,6 +210,7 @@ export class HomeFreeze {
   }
 
   private async act(id: HomeMoveId, a: AdoptAnswer): Promise<void> {
+    this.phase = a.status === 'pending' ? a.phase : a.status;
     if (a.status === 'adopted') return this.join(id, a.enrol);
     if (a.status === 'not-adopted') return this.release('asked');
     this.answer = a.status === 'pending' ? a.detail ?? a.phase : 'done';
@@ -242,6 +244,8 @@ export class HomeFreeze {
     }
     this.marker = undefined;
     this.moving = undefined;
+    this.answer = undefined;
+    this.phase = undefined;
     clearTimeout(this.timer);
     this.d.links.hold(false);
     await this.d.links.call?.(held.to, 'home.thaw', { id: held.id }).catch(() => undefined);
@@ -278,34 +282,37 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
   return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, from: value, to: `~${value.slice(fromHome.length)}` }] : []));
 }
 
+/** `back`: the name of the home the fleet leaves for this machine, on the way back. */
 type HomeCheckInput = {
-  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
+  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
 };
 
-/** Every reason the fleet cannot move now, each with its action, and what it would move. */
+/** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
 export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const { state, from, to, toName } = i;
+  const far = i.back ?? toName;
+  const [there, here] = i.back ? [from, to] : [to, from];
+  const goesTo = i.back ? 'this machine' : toName;
   const failed: { reason: string; action: string; run?: string }[] = [];
   const fail = (reason: string, action: string): void => { failed.push({ reason, action }); };
   const robots = Object.values(state.robots);
   if (!i.fromIsHome) fail('this daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
-  if (!i.linked) fail(`${toName} is not reachable`, 'try again when it is awake');
-  else if (!i.synced) fail(`${toName} is still catching up`, 'try again in a moment');
-  if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${toName} runs ${to.release}, this machine ${from.release}`, 'upgrade it under Machines');
+  if (!i.linked) fail(`${far} is not reachable`, 'try again when it is awake');
+  else if (!i.synced) fail(`${far} is still catching up`, 'try again in a moment');
+  if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${far} runs ${there.release}, this machine ${here.release}`, 'upgrade it under Machines');
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
   const others = i.workers.filter((m) => m !== to.machineId && m !== from.machineId);
   for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
-    fail(`${name} is a worker of this fleet too`, `remove ${name} first, and add it again from ${toName}`);
+    fail(`${name} is a worker of this fleet too`, `remove ${name} first, and add it again from ${goesTo}`);
   }
-  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${toName}'s clock is off by more than 5 minutes`, `set its clock: ssh there, then sudo timedatectl set-ntp on`);
-  if (to.freeKb !== undefined && to.freeKb < MIN_FREE_KB) fail(`${toName} has ${to.freeKb} KB free, too little for the fleet's files`, 'free some space there');
+  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock is off by more than 5 minutes`, `set its clock: ssh there, then sudo timedatectl set-ntp on`);
+  if (to.freeKb !== undefined && to.freeKb < MIN_FREE_KB) fail(`${goesTo} has ${to.freeKb} KB free, too little for the fleet's files`, i.back ? 'free some space here' : 'free some space there');
   if (from.moving) fail(`the fleet is moving already (${from.moving})`, 'finish or call off that move first');
-  if (to.moving) fail(`${toName} is still leaving a move (${to.moving})`, 'finish or call off that move first');
-  if (to.tailscale.error) fail(`${toName} has no Tailscale: ${to.tailscale.error}`, 'install Tailscale there and sign in');
-  if (from.tailscale.error) fail(`this machine has no Tailscale: ${from.tailscale.error}`, 'install Tailscale and sign in');
+  if (to.moving) fail(`${goesTo} is still leaving a move (${to.moving})`, 'finish or call off that move first');
+  if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
+  if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
   const sheet: HomeSheet = {
-    toName,
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),

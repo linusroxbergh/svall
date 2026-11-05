@@ -221,8 +221,8 @@ final class ShellRouter {
             menu.show(chords: chords, state: state)
         case .menuFleets(let fleets, let note):
             menu.show(fleets: fleets, note: note)
-        case .quitAnswer(let unsaved, let working, let placed, let home):
-            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home)
+        case .quitAnswer(let unsaved, let working, let placed, let home, let frozenFor, let movingHere):
+            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere)
         case .quitStopped(let ok):
             quitFlow.stopped(ok: ok)
         case .openUrl(let url):
@@ -341,7 +341,12 @@ final class ShellRouter {
 
     /// The page names an operation and its arguments; the argv, and the binary, are the shell's own.
     private func startHost(op: HostOp, args: HostArgs) {
-        guard hostRun == nil else { return }
+        // one run at a time; a page that lost track of the one running, as after a reload, hears why this one did not start
+        guard hostRun == nil else {
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: "another machine run is under way; try again once it ends", action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+            return
+        }
         let svall = BundledSvall.locate()
         guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args) else {
             let detail = svall == nil ? "this build has no svall beside it to set a machine up with"

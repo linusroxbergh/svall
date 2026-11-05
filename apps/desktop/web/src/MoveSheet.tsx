@@ -20,19 +20,19 @@ export function terminalOn(machine: string, run?: string, forward?: number): voi
   store().openHostTerminal(machine, run, forward);
 }
 
-type Interrupt = keyof typeof INTERRUPT_ACTIONS;
+export type Interrupt = keyof typeof INTERRUPT_ACTIONS;
 // the refusals the sheet answers itself by choosing the interrupt, and the box that then keeps it, worded for what it ends
-const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
-const KEPT: Record<Interrupt, string> = { agent: 'Interrupt it now', command: 'Move anyway and end it' };
+export const interruptOf = (action: string): Interrupt | undefined => (Object.keys(INTERRUPT_ACTIONS) as Interrupt[]).find((k) => INTERRUPT_ACTIONS[k] === action);
+export const KEPT: Record<Interrupt, string> = { agent: 'Interrupt it now', command: 'Move anyway and end it' };
 // a credential file's box says whether it stays
 const staying = (w: What): What => ({ ...w, stays: w.stays.filter((x) => !w.credentialFiles.some((f) => x === `${f} stays here`)) });
 const OWN_WORKTREE = `${WORKTREE_ACTION[0].toUpperCase()}${WORKTREE_ACTION.slice(1)}`;
 // every check a move failed, the first and the rest alike
-const blockersOf = (r: Refusal): Blocker[] => [r, ...(r.more ?? [])];
+export const blockersOf = (r: Refusal): Blocker[] => [r, ...(r.more ?? [])];
 // whether a blocker's row has a button of its own; one without leaves checking again to the sheet's foot
 const hasButton = (b: Blocker, atMe: boolean): boolean => (!atMe && (b.action === UPGRADE_ACTION || !!b.run)) || b.action === WORKTREE_ACTION || interruptOf(b.action) !== undefined;
 // the interrupt: Escape at once
-const INTERRUPT_AFTER_MS = 0;
+export const INTERRUPT_AFTER_MS = 0;
 
 type Answer = { ok: true; sheet: What } | { ok: false; refusal: Refusal } | { error: string };
 // a refusal fixed from the sheet: on its way, `upgrade` the machine's upgrade the Machines panel's run carries, or failed

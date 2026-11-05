@@ -197,6 +197,8 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
+    // a home move's sheet stands over the settings it opens from, and stays while its run runs
+    if (st.homeSheet) { if (!(st.host?.op === 'home' && st.host.running)) st.setHomeSheet(undefined); return; }
     // the settings window stands over the shelf
     if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.resourcesOpen) { st.toggleResources(false); refocusSurface(ctx); return; }
@@ -206,7 +208,6 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
     if (st.feedbackOpen) { st.toggleFeedback(false); refocusSurface(ctx); return; }
     // the move sheet stands over the card
     if (st.moveSheet) { st.setMoveSheet(undefined); return; }
-    if (st.homeSheet) { st.setHomeSheet(undefined); return; }
     if (st.card) { st.closeCard(); return; }
     st.select(undefined);
     st.selectIsland(undefined);

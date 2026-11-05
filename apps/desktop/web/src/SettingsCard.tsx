@@ -208,7 +208,7 @@ function Machines() {
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
-          {m.ssh && (via ? m.role === 'home' : m.role !== 'home') && <MachineActions name={m.name} home={m.role === 'home'} worker={m.role === 'worker' && !m.dialsIn} />}
+          {m.ssh && (via ? m.role === 'home' : m.role !== 'home') && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={m.role === 'worker' && !m.dialsIn} />}
         </div>
       ))}
       {error && (

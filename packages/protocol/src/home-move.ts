@@ -55,7 +55,7 @@ export type HomeFacts = z.infer<typeof HomeFacts>;
 
 /** What the sheet says will move: robots by where they run, and the mission control's that go first. */
 export const HomeSheet = z.object({
-  here: z.number().int(), there: z.number().int(), mission: z.array(z.object({ id: z.string(), name: z.string() })), toName: z.string(),
+  here: z.number().int(), there: z.number().int(), mission: z.array(z.object({ id: z.string(), name: z.string() })),
   rewrites: z.array(z.object({ key: z.string(), from: z.string(), to: z.string() })),
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;

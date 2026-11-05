@@ -43,6 +43,20 @@ test('Esc reaching the page while the move sheet is open closes the sheet and le
   expect(store.getState().card).toBe('c0');
 });
 
+test('Esc reaching the page while a home move runs leaves its sheet, and the settings under it, open; once it ends it closes the sheet first', () => {
+  const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as never;
+  store.getState().toggleSettings(true);
+  store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+  store.getState().hostStarted('home', { name: 'studio' });
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  expect(store.getState().homeSheet).toBeDefined();
+  expect(store.getState().settingsOpen).toBe(true);
+  store.getState().hostDone('home', 1);
+  fireEvent.keyDown(document.body, { key: 'Escape' });
+  expect(store.getState().homeSheet).toBeUndefined();
+  expect(store.getState().settingsOpen).toBe(true);
+});
+
 test('Esc in the mission prompt closes it and leaves the board side card open', () => {
   store.getState().setView('board');
   store.getState().setMissionPrompt(true);

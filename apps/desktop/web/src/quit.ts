@@ -4,7 +4,7 @@ import type { Bridge } from './bridge.js';
 import { commitFocused } from './Field.js';
 import { chordFor } from './keys.js';
 import { basename } from './paths.js';
-import { isPlaced } from './placement.js';
+import { isPlaced, myMachine } from './placement.js';
 import { flushDocs } from './resources/autosave.js';
 import { statusOf } from './selectors.js';
 import type { IdeState } from './store/ide.js';
@@ -44,7 +44,9 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       const robots = Object.values(s.fleet.robots);
       const working = robots.filter((c) => !isPlaced(c, s.via) && statusOf(c) === 'working').length;
       const placed = robots.filter((c) => isPlaced(c, s.via)).length;
-      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }) });
+      // a move of the home that stands: elsewhere, this daemon stays up for it; here, it waits on the next start
+      const move = s.homeMove && (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name });
+      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
     });
   });
   return () => { unwatch(); off(); };

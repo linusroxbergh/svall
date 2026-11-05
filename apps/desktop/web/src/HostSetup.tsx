@@ -19,16 +19,19 @@ import { VarField } from './VarField.js';
 const SETUP = /^svall(-dev)? setup$/;
 const FORGET = /\bhost remove \S+ --forget\b/;
 
-/** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
-export function MachineActions({ name, home = false, worker = false }: { name: string; home?: boolean; worker?: boolean }) {
+/** What can be done to a machine in the registry, each on that machine and in the panel that follows it. `id`: the machine's,
+ * where the row knows it, as a far home names itself otherwise than the registry; the registry's name is what svall takes. */
+export function MachineActions({ id: rowId, name: shown, home = false, worker = false }: { id?: string; name: string; home?: boolean; worker?: boolean }) {
   const running = useApp((s) => !!s.host?.running);
+  const row = useApp((s) => s.machines?.find((m) => (rowId ? m.id === rowId : m.name === shown)));
+  const name = row?.name ?? shown;
   // a terminal needs the destination the registry has for it, which the page may not have read yet
-  const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
-  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
-  const dialedBy = useApp((s) => s.machines?.find((m) => m.name === name)?.dialedBy);
-  const unread = useApp((s) => s.machines?.find((m) => m.name === name)?.unreadWorker);
+  const reachable = !!row?.ssh;
+  const id = row?.id;
+  const dialedBy = row?.dialedBy;
+  const unread = row?.unreadWorker;
   // why neither Remove nor Forget goes, and what clears it
-  const stays = dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet. Delete ${dialedBy}/worker.json or that fleet first, once you no longer serve it`
+  const stays = dialedBy ? `The home of the fleet in ${dialedBy}; removing it would stop that fleet. Bring that fleet back to this Mac first: SVALL_HOME=${dialedBy} svall fleet home set local`
     : unread && `Cannot read ${unread}, which may name this machine; fix it`;
   const placed = useApp((s) => Object.values(s.fleet.robots).filter((r) => id && (r.machine === id || r.moving?.to === id)).length);
   const up = useApp((s) => !!id && answers(s.fleet.machines?.[id as MachineId]));
@@ -81,11 +84,11 @@ export function MachineActions({ name, home = false, worker = false }: { name: s
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
           {worker && id && (
             <button role="menuitem" className="menu-item" data-testid="machine-make-home" disabled={running} data-tip={`The fleet's islands, notes, settings and phone pairing move to ${name}; robots stay where they run`}
-              onClick={item(() => store().setHomeSheet({ to: id as MachineId, name, back: false }))}>Make {name} this fleet's home…</button>
+              onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: false }); })}>Make {name} this fleet's home…</button>
           )}
           {home && id && (
             <button role="menuitem" className="menu-item" data-testid="machine-bring-back" disabled={running} data-tip="The fleet's islands, notes, settings and phone pairing come back here; robots stay where they run"
-              onClick={item(() => store().setHomeSheet({ to: id as MachineId, name, back: true }))}>Bring the fleet back to this Mac…</button>
+              onClick={item(() => { store().toggleHost(false); store().setHomeSheet({ to: id as MachineId, name, back: true }); })}>Bring the fleet back to this Mac…</button>
           )}
           {!home && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
             data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
@@ -322,6 +325,9 @@ export function HostSetup() {
   const confirm = useApp((s) => s.hostConfirm);
   const machine = useApp((s) => s.hostMachine);
   const known = useApp((s) => !!s.machines?.some((m) => m.name === s.hostMachine));
+  // what the machine is to this fleet, as its row in Settings says: the far home this window follows, or a worker of this Mac's home it reaches
+  const isHome = useApp((s) => { const id = s.machines?.find((m) => m.name === s.hostMachine)?.id; return !!id && id === s.via?.home; });
+  const isWorker = useApp((s) => { const m = s.machines?.find((r) => r.name === s.hostMachine); return !s.via && !!m?.ssh && !!s.fleet.machines?.[m.id as MachineId]; });
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
@@ -373,7 +379,7 @@ export function HostSetup() {
         <div className="host-body">
           {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
-              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} /></div>}
+              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} home={isHome} worker={isWorker} /></div>}
               {confirm && (
                 <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
                   <span>

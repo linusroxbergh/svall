@@ -56,6 +56,8 @@ struct HostArgs: Decodable, Equatable {
     var ssh: String?
     var forget: Bool?
     var asHome: Bool?
+    // a person's choice that what mission control's robots run is interrupted, for a home move or bringing them back
+    var interrupt: Bool?
 }
 
 extension String {
@@ -79,15 +81,19 @@ enum HostCommand {
         switch op {
         case .home:
             guard args.ssh == nil, args.forget == nil, args.asHome == nil, args.name.allowed(by: machineNamePattern) else { return nil }
-            return ["--json", "fleet", "home", "set", args.name]
-        case .homeRetry, .homeAbort, .homeCrew:
+            return ["--json", "fleet", "home", "set", args.name] + (args.interrupt == true ? ["--interrupt-after", "0"] : [])
+        case .homeCrew:
             guard args.name.isEmpty, args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
-            return ["--json", "fleet", "home", op == .homeRetry ? "retry" : op == .homeAbort ? "abort" : "crew-back"]
+            return ["--json", "fleet", "home", "crew-back"] + (args.interrupt == true ? ["--interrupt-after", "0"] : [])
+        case .homeRetry, .homeAbort:
+            guard args.name.isEmpty, args.ssh == nil, args.forget == nil, args.asHome == nil, args.interrupt == nil else { return nil }
+            return ["--json", "fleet", "home", op == .homeRetry ? "retry" : "abort"]
         case .join:
-            guard args.name.isEmpty, args.forget == nil, args.asHome == nil, let ssh = args.ssh, ssh.allowed(by: sshDestinationPattern) else { return nil }
+            guard args.name.isEmpty, args.forget == nil, args.asHome == nil, args.interrupt == nil, let ssh = args.ssh, ssh.allowed(by: sshDestinationPattern) else { return nil }
             return ["--json", "fleet", "join", ssh]
         default: break
         }
+        guard args.interrupt == nil else { return nil }
         guard args.name.allowed(by: machineNamePattern) || args.name.allowed(by: machineIdPattern) else { return nil }
         // a rollback is the upgrade command's
         var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
@@ -135,6 +141,8 @@ final class HostProcess {
         let detail: String?, action: String?
         // a next command toward `action`'s fix, for the user to run on the machine; more steps may remain
         var run: String? = nil
+        // what a window says in place of `action`, where a button stands for the command
+        var say: String? = nil
         // the port a login on the machine is forwarded through, and the consent a row asks for
         var forward: Int? = nil
         var tick: Tick? = nil

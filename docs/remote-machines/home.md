@@ -155,8 +155,9 @@ the fleet, and from then on it starts as a home only once the other machine has 
 machine stops, however it stops, what is left is one of these:
 
 - **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied.
-- **Marked, and not taken.** The window says "Finishing the move to studio…", with **Finish the move** and **Abort**
-  (`svall fleet home retry`, `svall fleet home abort`). The old home takes no writes until one of them ends it. An abort works
+- **Marked, and not taken.** The window says "The fleet is moving to studio, and this Mac takes no changes until the move
+  ends", where studio says the move stands, with **Finish the move** and **Abort** (`svall fleet home retry`, `svall fleet
+  home abort`). The old home takes no writes until one of them ends it. An abort works
   only once the machine that would take the fleet refuses it for good, and that machine then refuses the move for good too.
 - **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
   that the move went through. The other machine's files stand as they were kept: see below.

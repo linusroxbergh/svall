@@ -63,7 +63,7 @@ test('Forget says why it is held back too, what clears it, and an unreadable wor
   fireEvent.click(more());
   const forget = () => screen.getByTestId('machine-forget') as HTMLButtonElement;
   expect(forget().disabled).toBe(true);
-  expect(forget().getAttribute('data-tip')).toContain('Delete /Users/ada/.svall-fartest/worker.json or that fleet first, once you no longer serve it');
+  expect(forget().getAttribute('data-tip')).toContain('Bring that fleet back to this Mac first: SVALL_HOME=/Users/ada/.svall-fartest svall fleet home set local');
   act(() => store.getState().setMachines(store.getState().machines!.map(({ dialedBy: _d, ...m }) => ({ ...m, unreadWorker: '/Users/ada/.svall-x/worker.json' }))));
   expect(forget().disabled).toBe(true);
   for (const b of [forget(), screen.getByTestId('machine-remove')]) {

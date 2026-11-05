@@ -14,7 +14,7 @@ import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@sval
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client, withClient } from '../client.js';
 import { connectForwarded } from '../controller/connection.js';
-import { abortBack, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps } from '../controller/home.js';
+import { abortHome, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps } from '../controller/home.js';
 import type { HostOutcome, StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
@@ -82,10 +82,11 @@ function moveDeps(t: Target, json: boolean): MoveDeps {
   };
 }
 
-function finishFlow(out: HostOutcome, json: boolean, done: string): void {
+/** A flow that went through ends 0, saying what it leaves to do after its own line; one that stopped ends 1 on what to do. */
+export function finishFlow(out: HostOutcome, json: boolean, done: string): void {
   if (json) process.stdout.write(`${JSON.stringify(out)}\n`);
-  else process.stdout.write(`${out.result === 'ready' ? done : out.actions.join('\n')}\n`);
-  if (out.result !== 'ready') process.exitCode = 1;
+  else process.stdout.write(`${(out.stopped ? out.actions : [done, ...out.actions]).join('\n')}\n`);
+  if (out.stopped) process.exitCode = 1;
 }
 
 /** A home move's commands: those the far machine runs for a driver over ssh, and `home`, the driver. */
@@ -165,13 +166,8 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     finishFlow(await resumeHome(moveDeps(t, json())), json(), 'The move has gone through. Open the phone from its new QR code once.');
   });
   home.command('abort').description('call off the move this machine waits on, once the machine that holds it says it was not taken').action(async () => {
-    const t = target();
-    const back = await abortBack(moveDeps(t, json()));
     // mission control's robots stay where the move sent them unless a person brings them back
-    const crew = 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back';
-    if (back) return printResult(back, json(), () => (back.status === 'not-adopted' ? `the move is off${back.told ? ', and the old home takes writes again' : '; the old home thaws once this machine reaches it'}\n${crew}` : 'the move has gone through here'));
-    const m = await withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'abort' }));
-    printResult(m, json(), () => (m.moving ? `${m.moving.name} has not let go of it: ${m.moving.answer ?? 'no answer'}` : `the move is off, and this home takes writes again\n${crew}`));
+    finishFlow(await abortHome(moveDeps(target(), json())), json(), 'mission control\'s robots that went ahead stay there: svall fleet home crew-back brings them back');
   });
   home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home')
     .option('--interrupt-after <duration>', 'interrupt what they run after this long, e.g. 30s or 0; without it, one at work stays there and says so')

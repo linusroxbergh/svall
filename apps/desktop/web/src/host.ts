@@ -32,11 +32,15 @@ function withoutIds(text: string, names: MachineNames): string {
 
 export const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
 
+/** What the CLI says of this machine, as a window on it says it. */
+export const onThisMac = (text: string): string => text.replace(/\bthis machine\b/g, 'this Mac').replace(/\bThis machine\b/g, 'This Mac');
+
 const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   step: event.step, status: event.status,
   ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
   ...(event.action ? { action: plainStep(event.action, names) } : {}),
   ...(event.run ? { run: event.run } : {}),
+  ...(event.say ? { say: plainStep(event.say, names) } : {}),
   ...(event.forward ? { forward: event.forward } : {}),
   ...(event.tick ? { tick: event.tick } : {}),
   ...(event.gap ? { gap: event.gap } : {}),
@@ -118,6 +122,7 @@ const STEP_LABEL: Record<string, string> = {
   systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
+  mark: 'Mark the move', crew: 'Mission control',
 };
 
 const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };

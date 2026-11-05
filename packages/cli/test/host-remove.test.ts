@@ -21,10 +21,21 @@ describe('host remove', () => {
     fs.writeFileSync(sibling.workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: OTHER_FLEET, token: 't'.repeat(48), homeName: 'studio' }));
     const out = await removeHost('studio', o, deps({ registry }));
     expect(out.result).not.toBe('ready');
-    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home), action: `delete ${sibling.workerFile} or that fleet first, once you no longer serve it` });
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home), action: `bring the fleet in ${sibling.home} back here first: SVALL_HOME=${sibling.home} svall fleet home set local` });
     expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
     expect(ssh.calls()).toEqual([]);
     expect(MachineRegistry.load(path.join(work, 'config')).get('studio')).toBeDefined();
+  });
+
+  it('this fleet\'s own home stays, until the fleet is brought back', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: HOME, svallBase: BASE });
+    registry.save();
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'studio' }));
+    const out = await removeHost('studio', {}, deps({ registry }));
+    expect(out.result).not.toBe('ready');
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: "studio is this fleet's home, so it stays listed here", action: 'bring the fleet back here first: svall fleet home set local' });
+    expect(ssh.calls()).toEqual([]);
   });
 
   describe('a fleet on this account that dials the machine', () => {

@@ -137,6 +137,24 @@ describe('followQuit', () => {
     q.stop();
   });
 
+  it('names a move of the home that stands: one elsewhere, which keeps this daemon up, or one coming here, which waits on the next start', async () => {
+    const q = setup();
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+    ]);
+    q.stop();
+  });
+
   it('a daemon frozen for a home move refuses the stop and stays up: nothing is killed for it, as the move has to end', async () => {
     const q = setup({ stop: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) });
     q.bridge.emit({ type: 'quit.stop' });

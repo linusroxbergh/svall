@@ -314,6 +314,33 @@ test('a window standing in for its home offers no Phone pane, and no Add machine
   }
 });
 
+test('a far home that calls itself otherwise than this Mac\'s registry is acted on by the registry\'s name: checked, opened, and brought back', async () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
+    { id: HOME, name: 'vps-1234', role: 'home', platform: 'linux', reachable: true, robots: 7 },
+    { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
+  ] } : {}));
+  try {
+    act(() => {
+      store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'vps-1234', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    const row = await screen.findByTestId('machine-vps-1234');
+    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    fireEvent.click(row.querySelector('[data-testid="machine-more"]')!);
+    expect((row.querySelector('[data-testid="machine-terminal"]') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(row.querySelector('[data-testid="machine-bring-back"]')!);
+    expect(store.getState().homeSheet).toEqual({ to: HOME, name: 'studio', back: true });
+    fireEvent.click(row.querySelector('[data-testid="machine-doctor"]')!);
+    expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and a far home takes no Add machine', async () => {
   const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
   const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
