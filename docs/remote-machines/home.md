@@ -130,7 +130,9 @@ before this Mac's fleet has ever started, so nothing here holds anything to lose
 
 From a terminal, `svall fleet join <ssh>` makes a fleet that holds nothing a worker of the home there: it checks the home,
 takes that fleet's id and a token the home issues, restarts as its worker and ends on the first snapshot. It refuses a fleet
-that holds anything before it writes a thing, so name one that has never been opened: `svall -p <new fleet> fleet join <ssh>`.
+that holds anything before it writes a thing, so name one that has never been opened: `svall -p <new fleet> fleet join <ssh>`. The
+fleet keeps the name it has on each machine, and the home follows it there however the two are named (`--home-profile` names
+the fleet on the home when it is not the private one).
 
 ## Changing home
 
@@ -139,7 +141,9 @@ back to this Mac…**. From a terminal: `svall fleet home` says where it runs, `
 `svall fleet home set local` brings it back.
 
 A move carries the fleet's islands, notes, settings, phone pairing and push keys, and no robot: each runs where it ran and its
-tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. The move
+tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. One at work
+stops the move at its check, before anything moves, until you choose **Interrupt it now** (`--interrupt-after 0`); none is
+interrupted otherwise. The move
 pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
 window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
 once from its new QR code: it stays paired and pushes keep arriving. The new home turns its phone link on within seconds of
@@ -160,10 +164,11 @@ machine stops, however it stops, what is left is one of these:
   home abort`). The old home takes no writes until one of them ends it. An abort works
   only once the machine that would take the fleet refuses it for good, and that machine then refuses the move for good too.
 - **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
-  that the move went through. The other machine's files stand as they were kept: see below.
+  that the move went through. A new home whose daemon has started answers so too, as it may already have taken a write. The other machine's files stand as they were kept: see below.
 
 A move that stops leaves mission control's robots that went ahead where they went: a banner names them, with **Bring them back**
-(`svall fleet home crew-back`), and says which cannot return and why.
+(`svall fleet home crew-back`), and says which cannot return and why. A robot you placed on mission control yourself is no such
+robot, and stays where it runs.
 
 Going out, the Mac asks the server how the move ended. Coming back, the server has no route to the Mac, so a server left frozen
 waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends the wait.

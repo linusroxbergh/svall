@@ -1,8 +1,8 @@
 # Setting up a Linux machine
 
 An always-on Linux machine can be a **worker** of your fleet: robots you [move there](placement.md) keep working
-while your Mac sleeps. The fleet itself stays on the Mac, its **home**: islands, map, notes, phone and mission
-control. A fleet can have several workers, and a machine can be a worker of several fleets. This page covers what the
+while your Mac sleeps. The fleet's **home** holds its islands, map, notes, phone and mission control: your Mac, or a
+server you made the home ([home.md](home.md)). A fleet can have several workers, and a machine can be a worker of several fleets. This page covers what the
 machine needs, how to add it, and how to look after it.
 
 ## Supported machines
