@@ -144,6 +144,7 @@ hooks (your own statusline stays), the launchd agents, the `svall` command and
 each fleet's phone link, and moves the app to the Trash. The settings backups
 stay. With "Also delete fleet data" ticked, it deletes `~/.svall`, the other
 fleets' homes and the app's preferences, sign-ins and caches in `~/Library` too.
+`~/.config/svall`, with this Mac's machine id, machines and keys, stays either way.
 
 `svall uninstall` does the same from a terminal, but deletes the app instead of
 moving it to the Trash, and asks before deleting it or the fleets. `--purge`

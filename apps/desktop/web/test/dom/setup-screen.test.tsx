@@ -7,7 +7,7 @@ import { setAppStore } from '../../src/hooks.js';
 import { Setup } from '../../src/Setup.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
 
-afterEach(() => { delete window.webkit; });
+afterEach(() => { delete window.webkit; delete window.__svallHome; });
 
 test('a plan that is not the JSON asked for is shown as it came, not left on the loading line', async () => {
   window.webkit = { messageHandlers: { svall: { postMessage(json: string) {
@@ -173,7 +173,6 @@ test('a fresh install stays a fresh install for the keys: Setup\'s save names no
   const store = createAppStore(localAppStorage('/u/.svall'));
   store.getState().setShell({ home: '/u/.svall', log: [], op: false, ghosttyKeys: { 'cmd+t': 'new_split:right' } });
   expect(store.getState().settings.bindings).toEqual({ newRobot: null });
-  delete window.__svallHome;
 });
 
 test('Setup keeps the keys a fleet has saved', () => {
@@ -182,5 +181,4 @@ test('Setup keeps the keys a fleet has saved', () => {
   localStorage.setItem('svall.settings@/u/.svall', JSON.stringify({ bindings: { newRobot: 'cmd+n' } }));
   finishSetup();
   expect(localAppStorage('/u/.svall')!.getSavedBindings()).toEqual({ newRobot: 'cmd+n' });
-  delete window.__svallHome;
 });

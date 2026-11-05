@@ -178,7 +178,7 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
 export function followBindings({ store, bridge }: Pick<Deps, 'store' | 'bridge'>): () => void {
   return store.subscribe((s, prev) => {
     const b = s.settings.bindings;
-    if (b !== prev.settings.bindings && b !== s.shell?.bindings) bridge.send({ type: 'keys.save', bindings: b });
+    if (b !== prev.settings.bindings && b !== s.keyRecord?.bindings) bridge.send({ type: 'keys.save', bindings: { ...s.keyRecord?.others, ...b } });
   });
 }
 

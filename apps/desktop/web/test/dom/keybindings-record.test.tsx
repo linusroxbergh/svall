@@ -109,7 +109,7 @@ test('another setting leaves the file alone', async () => {
   expect(m.saves).toBe(1);
 });
 
-test.each(['{ "newRobot": ', '[]'])('a corrupt file (%s) reads as no record and is replaced', async (file) => {
+test.each(['{ "newRobot": ', '[]', '{"newRobot":5}', '{"newRobot":"cmd+opt+n"}'])('a corrupt file (%s) reads as no record and is replaced', async (file) => {
   const m = mac(file);
   await m.open('/u/.svall');
   expect(shows('newRobot')).toBe('—');
@@ -124,7 +124,36 @@ test('a record keeps what it can act on, and the next change rewrites it whole',
   expect(shows('newRobot')).toBe('⌘T');
   expect(shows('quit')).toBe('—');
   m.press('nextRobot', 'cmd+y');
-  expect(m.json()).toEqual({ quit: null, nextRobot: 'cmd+y' });
+  expect(m.json()).toEqual({ quit: null, nextRobot: 'cmd+y', gone: 'cmd+x' });
+});
+
+test('a change carries on what the record holds for actions only another build has', async () => {
+  const m = mac('{"futureAction":"cmd+k","newRobot":null}');
+  await m.open('/u/.svall');
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ futureAction: 'cmd+k', newRobot: null, nextRobot: 'cmd+y' });
+});
+
+test('a record of another build\'s actions alone is a record, here at start and on coming to the front', async () => {
+  const m = mac('{"futureAction":"cmd+k"}');
+  await m.open('/u/.svall');
+  expect(shows('newRobot')).toBe('⌘T');
+  expect(m.saves).toBe(0);
+  m.press('newRobot', 'cmd+n');
+  m.file = '{"futureAction":"cmd+u"}';
+  m.front();
+  expect(shows('newRobot')).toBe('⌘T');
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ futureAction: 'cmd+u', nextRobot: 'cmd+y' });
+});
+
+test('coming to the front takes another build\'s entries even when this build\'s keys are the same', async () => {
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall');
+  m.file = '{"newRobot":"cmd+n","futureAction":"cmd+k"}';
+  m.front();
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ futureAction: 'cmd+k', newRobot: 'cmd+n', nextRobot: 'cmd+y' });
 });
 
 test('on upgrade the fleet that opens seeds the record, and Ghostty is not asked', async () => {
@@ -144,6 +173,22 @@ test.each([['/u/.svall'], [undefined]])('on upgrade the default fleet (%s) wins 
   expect(shows('newRobot')).toBe('⌘T');
   expect(shows('nextRobot')).toBe('⌘Y');
   expect(m.json()).toEqual({ nextRobot: 'cmd+y' });
+});
+
+test('on upgrade a default fleet that kept the shipped keys leaves a named fleet\'s changes', async () => {
+  save('/u/.svall', {});
+  save('/u/.svall-work', { nextRobot: 'cmd+y' });
+  const m = mac();
+  await m.open('/u/.svall-new');
+  expect(m.json()).toEqual({ nextRobot: 'cmd+y' });
+});
+
+test('on upgrade a Mac whose fleets all kept the shipped keys keeps them, Ghostty not asked', async () => {
+  save('/u/.svall', {});
+  const m = mac();
+  await m.open('/u/.svall-new');
+  expect(shows('newRobot')).toBe('⌘T');
+  expect(m.json()).toEqual({});
 });
 
 test('on upgrade a new fleet takes what another fleet saved, not Ghostty\'s word', async () => {
@@ -199,6 +244,51 @@ test.each([[undefined], ['{ "newRobot": '], ['[]'], ['{"newRobot":5}']])('a file
   expect(m.json()).toEqual({ newRobot: 'cmd+n', nextRobot: 'cmd+y' });
 });
 
+test('a window that started with no record takes what another window wrote since', async () => {
+  const m = mac();
+  await m.open('/u/.svall-a');
+  m.file = '{"newRobot":"cmd+n"}';
+  m.front();
+  expect(shows('newRobot')).toBe('⌘N');
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ newRobot: 'cmd+n', nextRobot: 'cmd+y' });
+});
+
+test('coming to the front takes what it can act on from a mixed record, and writes only that and another build\'s entries', async () => {
+  const m = mac('{"newRobot":"cmd+t"}');
+  await m.open('/u/.svall-a');
+  m.file = '{"newRobot":"cmd+n","quit":5,"gone":"cmd+x"}';
+  m.front();
+  expect(shows('newRobot')).toBe('⌘N');
+  expect(shows('quit')).toBe('⌘Q');
+  m.press('nextRobot', 'cmd+y');
+  expect(m.json()).toEqual({ newRobot: 'cmd+n', nextRobot: 'cmd+y', gone: 'cmd+x' });
+});
+
+test('a fleet\'s saved copy follows the record it takes, at start and on coming to the front', async () => {
+  save('/u/.svall-a', {});
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall-a');
+  const copy = () => JSON.parse(localStorage.getItem('svall.settings@/u/.svall-a')!).bindings as unknown;
+  expect(copy()).toEqual({ newRobot: 'cmd+n' });
+  m.file = '{"newRobot":"cmd+u"}';
+  m.front();
+  expect(copy()).toEqual({ newRobot: 'cmd+u' });
+  // the file lost, the next fleet's window seeds from that copy
+  m.file = undefined;
+  await m.open('/u/.svall-b');
+  expect(shows('newRobot')).toBe('⌘U');
+  expect(m.json()).toEqual({ newRobot: 'cmd+u' });
+});
+
+test('a never-opened fleet that takes the record saves nothing of its own', async () => {
+  const m = mac('{"newRobot":"cmd+n"}');
+  await m.open('/u/.svall-new');
+  m.file = '{"newRobot":"cmd+u"}';
+  m.front();
+  expect(localStorage.getItem('svall.settings@/u/.svall-new')).toBeNull();
+});
+
 test('coming to the front with nothing changed tells the shell nothing', async () => {
   const m = mac('{"newRobot":"cmd+n"}');
   await m.open('/u/.svall-a');
@@ -207,7 +297,7 @@ test('coming to the front with nothing changed tells the shell nothing', async (
   expect(m.sent).toEqual([]);
 });
 
-test('a page with no shell keeps its keys in its own store, and sends nothing', async () => {
+test('a page with no shell keeps its keys in its own store', async () => {
   vi.resetModules();
   const app = (await import('../../src/boot.js')).initApp();
   expect(app.bridge.present).toBe(false);

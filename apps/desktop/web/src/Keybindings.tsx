@@ -114,7 +114,7 @@ export function Keybindings() {
         })}
       </div>
       <div className="desc">
-        These keys are this Mac's, in every fleet. Unlisted ⌘ chords go to the terminal.
+        {app.bridge.present && 'These keys are this Mac\'s, in every fleet. '}Unlisted ⌘ chords go to the terminal.
         {Object.keys(theirs).length > 0 && ` ${Object.keys(theirs).filter((c) => !bound[c]).length} of your Ghostty chords stay with Ghostty.`}
       </div>
     </>
