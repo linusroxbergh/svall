@@ -168,37 +168,64 @@ describe('the one way a move ends', () => {
     expect(freeze.active).toBe(true);
   });
 
+  // every line that touches a marker or a home move's journal, each one named: a new one fails here until it is read and named
+  const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/];
+  // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's key
+  const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|\benter\(p, driverOf\(id\), 'mark'/;
+  const NAMED: [RegExp, RegExp][] = [
+    [/svalld\/src\/paths\.ts$/, /^\s*(homeMoving|homeMoves): path\.join\(home, |^export const fleetKeys = /],
+    [/svalld\/src\/bin\.ts$/, /^const stamp = /],
+    [/svalld\/src\/fleet\/home-move\.ts$/, new RegExp([
+      NO_END.source, /Pick<Paths, 'homeMoves'>|Pick<Paths, 'homeMoving'( \| 'homeMoves')?>/.source, /^const journalOf = |readFileSync\(journalOf\(p, id\)|appendDurable\(journalOf\(p, id\), \{ phase, /.source,
+      /readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*writeDurable\(p\.homeMoving, m, /.source, /fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/.source,
+      // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
+      /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/.source,
+    ].join('|'))],
+    [/svalld\/src\/fleet\/home-far\.ts$/, /^export const phoneWithReason = .*Pick<Paths, 'homeMoves'>/],
+    // the robot moves' own journal, of another folder
+    [/svalld\/src\/placement\/move\.ts$/, /\bthis\.enter\(|^\s*private enter\(j: MoveJournal/],
+    [/svalld\/src\/placement\/prepare\.ts$/, /^\s*this\.save\(\{ \.\.\.j, phase: '(done|aborted)'/],
+    [/cli\/src\/controller\/home\.ts$/, /^const driverJournal = .*enter\(paths, `\$\{id\}\.driver`, /],
+    // the containers' checks, which read alone
+    [/scripts\/integration\/robot-placement\.mjs$/, /^function homeMoves\(|homeMoves\(ids, fx\)|'(ls -d|test -f|cat) ~\/\.svall\/home-moving\.json|for f in ~\/\.svall\/journal\/home\/hm_\*\.ndjson|`test -e ~\/\.svall\/journal\/home\//],
+  ];
+  const offenders = (files: { file: string; text: string }[]): string[] => files.flatMap(({ file, text }) => text.split('\n')
+    .filter((line) => TOUCHES.some((t) => t.test(line)) && !/^\s*(\*|\/\/|\/\*)/.test(line) && !NAMED.some(([f, l]) => f.test(file) && l.test(line)))
+    .map((line) => `${file}: ${line.trim()}`));
+
   it('no other code removes a marker or writes an id off', () => {
-    const root = path.resolve(__dirname, '../../..');
+    const root = path.resolve(__dirname, '../../../..');
     const sources = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      if (e.name === 'node_modules' || e.name === 'dist' || e.name === 'test') return [];
+      if (['node_modules', 'dist', 'test', 'build.noindex', '.build'].includes(e.name)) return [];
       const file = path.join(dir, e.name);
-      return e.isDirectory() ? sources(file) : /\.(ts|tsx|mjs)$/.test(e.name) ? [file] : [];
+      return e.isDirectory() ? sources(file) : /\.(ts|tsx|mjs|swift)$/.test(e.name) ? [file] : [];
     });
-    const FORBIDDEN = [
-      /(rmSync|unlinkSync|rm|unlink|renameSync|rename)\([^)]*(homeMoving|home-moving)/,
-      /(enter|appendDurable|writeDurable)\([^;]*['"](aborted|released)['"]/,
-      /phase:\s*['"](aborted|released)['"]/,
-      /home-moving\.json/,
-      /\.homeMoving\b/,
-    ];
-    // what may hold them: the function itself, the path's one definition and its readers, and the placement moves' own unrelated journal
-    const ALLOWED = (file: string, line: string): boolean => /^\s*(\*|\/\/|\/\*)/.test(line)
-      || (file.endsWith('/paths.ts') && /homeMoving: path\.join|fleetKeys/.test(line))
-      || (file.endsWith('/bin.ts') && /const stamp/.test(line))
-      || (file.endsWith('/fleet/home-move.ts') && /readFileSync\(p\.homeMoving|invalid \$\{p\.homeMoving|writeDurable\(p\.homeMoving/.test(line))
-      || /\/placement\/(move|prepare)\.ts$/.test(file);
-    const home = path.join(root, 'svalld/src/fleet/home-move.ts');
-    const offenders = ['svalld', 'cli', 'protocol'].flatMap((pkg) => sources(path.join(root, pkg, 'src'))).flatMap((file) => {
+    const files = ['packages/svalld/src', 'packages/cli/src', 'packages/protocol/src', 'apps/desktop/web/src', 'apps/desktop/mac/Sources', 'scripts'].flatMap((d) => sources(path.join(root, d))).map((file) => {
       let text = fs.readFileSync(file, 'utf8');
-      if (file === home) {
+      if (file.endsWith('/svalld/src/fleet/home-move.ts')) {
         const from = text.indexOf('export function endMove(');
         expect(from).toBeGreaterThan(0);
-        const to = text.indexOf('\n}\n', from);
-        text = text.slice(0, from) + text.slice(to);
+        text = text.slice(0, from) + text.slice(text.indexOf('\n}\n', from));
       }
-      return text.split('\n').filter((line) => FORBIDDEN.some((f) => f.test(line)) && !ALLOWED(file, line)).map((line) => `${path.relative(root, file)}: ${line.trim()}`);
+      return { file: path.relative(root, file), text };
     });
-    expect(offenders).toEqual([]);
+    expect(files.length).toBeGreaterThan(100);
+    expect(offenders(files)).toEqual([]);
+  });
+
+  it.each([
+    ['packages/svalld/src/fleet/home-move.ts', "  enter(p, id, 'done');"],
+    ['packages/svalld/src/fleet/home-move.ts', '  enter(p, id, DONE);'],
+    ['packages/svalld/src/fleet/home-move.ts', '  enter(p, id, `released`);'],
+    ['packages/svalld/src/fleet/home-move.ts', '  enter('],
+    ['packages/svalld/src/fleet/home-freeze.ts', '  const { homeMoving: marker } = this.d.paths;'],
+    ['packages/svalld/src/fleet/home-freeze.ts', "  fs.rmSync(this.d.paths['homeMoving']);"],
+    ['packages/svalld/src/placement/move.ts', "  fs.unlinkSync(path.join(home, 'home-moving.json'));"],
+    ['packages/svalld/src/placement/prepare.ts', "  appendDurable(path.join(p.home, 'journal', 'home', `${id}.ndjson`), { phase: 'released' });"],
+    ['apps/desktop/web/src/HomeBanner.tsx', "  call('fs.delete', { path: '~/.svall/home-moving.json' });"],
+    ['scripts/integration/robot-placement.mjs', "  sh(old, 'rm ~/.svall/home-moving.json');"],
+    ['packages/cli/src/commands/fleet.ts', "  writeDurable(file, { phase: 'done' });"],
+  ])('a line in %s that ends a move some other way fails it: %s', (file, line) => {
+    expect(offenders([{ file, text: line }])).toHaveLength(1);
   });
 });
