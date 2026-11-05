@@ -343,7 +343,9 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     // no route in this Mac's registry says nothing of who opens the link
     expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
     expect(screen.queryByTestId('machine-add')).toBeNull();
-    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+    // the far home has its Check and ⋯ from this window; a worker of it is that home's to manage
+    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
+    expect(screen.getByTestId('machine-mac').querySelector('[data-testid="machine-doctor"]')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }

@@ -86,7 +86,7 @@ function moveDeps(t: Target, json: boolean): MoveDeps {
 }
 
 function finishFlow(out: HostOutcome, json: boolean, done: string): void {
-  if (json) process.stdout.write(`${JSON.stringify({ outcome: out })}\n`);
+  if (json) process.stdout.write(`${JSON.stringify(out)}\n`);
   else process.stdout.write(`${out.result === 'ready' ? done : out.actions.join('\n')}\n`);
   if (out.result !== 'ready') process.exitCode = 1;
 }
@@ -201,7 +201,7 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
         enrol: (e, token) => enrollHere(t, e, { ...realEnrol, token: () => Promise.resolve(token), out: (line) => { if (!json()) process.stdout.write(`${line}\n`); } }),
         state: () => withClient(() => Client.connect(t.home), (c) => c.call('state.get', {})),
       });
-      if (json()) process.stdout.write(`${JSON.stringify({ outcome: out })}\n`);
+      if (json()) process.stdout.write(`${JSON.stringify(out)}\n`);
       else process.stdout.write(`${out.result === 'ready' ? 'This fleet runs on the server now, and this machine is its worker.' : out.actions.join('\n')}\n`);
       if (out.result !== 'ready') process.exitCode = 1;
     });

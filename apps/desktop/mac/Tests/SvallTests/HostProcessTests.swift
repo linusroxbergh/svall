@@ -298,4 +298,19 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(FromShell.hostDone(op: "add", code: 1).json as NSDictionary,
                        ["type": "host.done", "op": "add", "code": 1] as NSDictionary)
     }
+
+    func testHomeMoveAndJoinArguments() {
+        XCTAssertEqual(HostCommand.arguments(op: .home, args: HostArgs(name: "studio")), ["--json", "fleet", "home", "set", "studio"])
+        XCTAssertEqual(HostCommand.arguments(op: .home, args: HostArgs(name: "local")), ["--json", "fleet", "home", "set", "local"])
+        XCTAssertNil(HostCommand.arguments(op: .home, args: HostArgs(name: "--force")))
+        XCTAssertNil(HostCommand.arguments(op: .home, args: HostArgs(name: "studio", ssh: "a@b")))
+        XCTAssertEqual(HostCommand.arguments(op: .homeRetry, args: HostArgs(name: "")), ["--json", "fleet", "home", "retry"])
+        XCTAssertEqual(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "")), ["--json", "fleet", "home", "abort"])
+        XCTAssertNil(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "studio")))
+        XCTAssertEqual(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "ada@studio")), ["--json", "fleet", "join", "ada@studio"])
+        XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "-oProxyCommand=x")))
+        XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "")))
+        XCTAssertEqual(HostCommand.arguments(op: .add, args: HostArgs(name: "studio", ssh: "ada@studio", asHome: true)), ["host", "add", "studio", "--ssh", "ada@studio", "--as-home", "--json"])
+        XCTAssertNil(HostCommand.arguments(op: .upgrade, args: HostArgs(name: "studio", asHome: true)))
+    }
 }

@@ -66,6 +66,19 @@ describe('host add', () => {
     expect(refreshed).toBe(1);
   });
 
+
+  it('--as-home leaves the machine a fleet of its own, enrols nothing there and offers no setup, for a join to follow', async () => {
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    await d.close();
+    const said = events.filter((e) => e.status !== 'start').map((e) => e.step);
+    expect(said).not.toContain('enrol');
+    expect(said.some((step) => step.startsWith('mirror:'))).toBe(false);
+    expect(said).toContain('registry');
+    expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+  });
+
   it('tells the release the machine runs once it answers on it, for host list', async () => {
     healthy();
     const d = await daemon();

@@ -24,8 +24,8 @@ export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
 // the machines robots run on: what the shell may run `svall host …` for, and with what
-export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove';
-export type HostArgs = { name: string; ssh?: string; forget?: boolean };
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'home' | 'home-retry' | 'home-abort' | 'join';
+export type HostArgs = { name: string; ssh?: string; forget?: boolean; asHome?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked

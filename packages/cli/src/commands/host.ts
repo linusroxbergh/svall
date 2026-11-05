@@ -285,7 +285,8 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .requiredOption('--ssh <destination>', 'the ssh destination to reach it at')
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean }) => {
+    .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
+    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean }) => {
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
       return runFlow(json(), (out) => outcomeText(out, 'add', name, { there }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
     });

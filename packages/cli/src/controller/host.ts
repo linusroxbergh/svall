@@ -67,7 +67,7 @@ export type HostDeps = {
   consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
 };
 
-export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean };
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
@@ -659,10 +659,12 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
-      await run.step('enrol', async () => {
-        const { off } = await claimUnits(master, { name: o.name, home, svallBase: remote.svallBase }, d);
-        return enrol(master, { name: o.name, machine, svallBase: remote.svallBase, off }, d);
-      });
+      if (!o.asHome) {
+        await run.step('enrol', async () => {
+          const { off } = await claimUnits(master, { name: o.name, home, svallBase: remote.svallBase }, d);
+          return enrol(master, { name: o.name, machine, svallBase: remote.svallBase, off }, d);
+        });
+      }
 
       const versions = await agentChecks(master, { destination: o.ssh, home, svallBase: remote.svallBase, report, homedir: d.homedir }, run);
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
@@ -675,7 +677,8 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         d.registry.save();
         return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
       });
-      await setupSteps(run, machine, o.name, d);
+      // a home's agent setup is its own, and this fleet joins it next
+      if (!o.asHome) await setupSteps(run, machine, o.name, d);
     } finally {
       await master.close().catch(() => undefined);
     }

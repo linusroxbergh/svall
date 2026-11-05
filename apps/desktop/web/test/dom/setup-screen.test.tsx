@@ -2,7 +2,7 @@
 import './setup.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { SetupPlan } from '@svall/protocol';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
 import { Setup } from '../../src/Setup.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
@@ -30,7 +30,7 @@ const missing: SetupPlan = {
   install: [{ kind: 'claude', command: 'install-claude', url: 'https://example.com/claude' }, { kind: 'codex', command: 'install-codex', url: 'https://example.com/codex' }],
 };
 
-function shell(plan: SetupPlan) {
+function shell(plan: SetupPlan, opts: { fork?: false } = {}) {
   const sent: Array<{ type: string; [key: string]: unknown }> = [];
   window.webkit = { messageHandlers: { svall: { postMessage(json: string) {
     sent.push(JSON.parse(json));
@@ -39,6 +39,7 @@ function shell(plan: SetupPlan) {
   const receive = (message: object) => act(() => window.__svall!.receive(JSON.stringify(message)));
   const reply = (next = plan) => receive({ type: 'setup.result', step: 'plan', ok: true, json: JSON.stringify(next) });
   reply();
+  if (opts.fork !== false) fireEvent.click(screen.getByTestId('fork-here'));
   return { sent, receive, reply };
 }
 
@@ -192,4 +193,87 @@ test('Setup keeps the keys a fleet has saved', () => {
   localStorage.setItem('svall.settings@/u/.svall', JSON.stringify({ bindings: { newRobot: 'cmd+n' } }));
   finishSetup();
   expect(localAppStorage('/u/.svall')!.getSavedBindings()).toEqual({ newRobot: 'cmd+n' });
+});
+
+describe('the first run forks three ways', () => {
+  const FAR = { type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ done: [], warnings: [] }) };
+  const hosts = (sent: Array<{ type: string; op?: unknown; args?: unknown }>) => sent.filter((m) => m.type === 'host.start').map((m) => [m.op, m.args]);
+  const replaced = vi.fn();
+  beforeEach(() => { replaced.mockClear(); vi.stubGlobal('location', { ...window.location, replace: replaced, search: '' }); });
+  afterEach(() => vi.unstubAllGlobals());
+  const toSsh = (dest: string) => fireEvent.change(screen.getByTestId('fork-ssh'), { target: { value: dest } });
+
+  test('offers running here, installing on a server and connecting, and nothing starts until one is picked', () => {
+    const { sent } = shell(ready, { fork: false });
+    expect(screen.getByTestId('fork-here').textContent).toBe('Run the fleet on this Mac');
+    expect(screen.getByTestId('fork-server').textContent).toBe('Install Svall on a server and connect this Mac');
+    expect(screen.getByTestId('fork-join').textContent).toBe('Connect to a fleet already on a server');
+    expect(sent.some((m) => m.type === 'setup.run')).toBe(false);
+  });
+
+  test('running here is today\'s three steps', () => {
+    shell(ready);
+    expect(screen.getByText('Connect your agents')).toBeTruthy();
+    expect(screen.queryByTestId('fork-ssh')).toBeNull();
+  });
+
+  test('connecting sets this Mac up, then joins, and only a join that ended well opens the window, so no first start comes before it', async () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
+    toSsh('-oProxyCommand=x');
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    expect(sent.at(-1)?.type).toBe('setup.run');
+    expect(hosts(sent)).toEqual([]);
+    receive(FAR);
+    expect(hosts(sent)).toEqual([['join', { name: '', ssh: 'ada@studio' }]]);
+    expect(replaced).not.toHaveBeenCalled();
+    receive({ type: 'host.step', op: 'join', event: { step: 'snapshot', status: 'ok', detail: "studio's fleet is here" } });
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(replaced).toHaveBeenCalledWith('/');
+  });
+
+  test('a join that fails stays here, says why, and tries again; going back forgets it', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255', action: 'run ssh ada@studio once in Terminal' } });
+    receive({ type: 'host.done', op: 'join', code: 1 });
+    expect(replaced).not.toHaveBeenCalled();
+    expect(screen.getByTestId('fork-steps').textContent).toContain('ssh ada@studio exited 255');
+    expect(screen.getByTestId('fork-go').textContent).toBe('Try again');
+    fireEvent.click(screen.getByTestId('fork-back'));
+    expect(screen.getByTestId('setup-fork')).toBeTruthy();
+    expect(hosts(sent)).toHaveLength(1);
+  });
+
+  test('installing on a server adds it as a home, then joins it', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@Studio.tailnet.ts.net');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    expect(hosts(sent)).toEqual([['add', { name: 'studio', ssh: 'ada@Studio.tailnet.ts.net', asHome: true }]]);
+    receive({ type: 'host.step', op: 'add', event: { step: 'claude', status: 'warn', detail: 'claude is not installed there' } });
+    receive({ type: 'host.done', op: 'add', code: 1 });
+    expect(hosts(sent)[1]).toEqual(['join', { name: '', ssh: 'ada@Studio.tailnet.ts.net' }]);
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(replaced).toHaveBeenCalledWith('/');
+  });
+
+  test('an install that stops joins nothing', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('100.117.42.24');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    expect(hosts(sent)[0]?.[1]).toMatchObject({ name: 'server' });
+    receive({ type: 'host.step', op: 'add', event: { step: 'os', status: 'fail', detail: 'not Ubuntu' } });
+    receive({ type: 'host.done', op: 'add', code: 1 });
+    expect(hosts(sent)).toHaveLength(1);
+  });
 });

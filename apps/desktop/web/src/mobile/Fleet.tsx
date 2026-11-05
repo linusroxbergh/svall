@@ -120,6 +120,8 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
       .catch((e: Error) => setFailed({ islandId: island.id, message: e.message }));
   };
 
+  // a page this machine still serves, of a fleet whose home took it away: only a worker's copy holds its home's snapshot
+  const movedTo = !via && status === 'online' ? Object.values(fleet.machines ?? {}).find((m) => m.snapshot)?.name : undefined;
   return (
     <div className="fleet">
       <header className="top">
@@ -130,6 +132,7 @@ export function Fleet({ onOpen }: { onOpen(id: string): void }): JSX.Element {
           {status !== 'online' ? status : via ? `on ${machineName(fleet, via.machine)} · ${homeName(fleet, via)} asleep` : need ? `${need} waiting` : 'all quiet'}
         </span>
       </header>
+      {movedTo && <p className="empty" data-testid="phone-moved">This fleet runs on {movedTo} now. Open it from the new QR code in Svall's phone panel.</p>}
       {status === 'refused' && <p className="empty">This tailnet login can't open this fleet. On the Mac, add it to mobile.logins in fleet.json, then quit and reopen Svall.</p>}
       {status === 'unpaired' && <p className="empty">This phone isn't paired with the fleet. Open the link from the QR code in Svall's phone panel on the Mac; a Home Screen app has to be removed and added again from that link.</p>}
       {loaded && groups.length === 0 && <p className="empty">No islands yet. Tap + to make one.</p>}

@@ -20,7 +20,7 @@ const SETUP = /^svall(-dev)? setup$/;
 const FORGET = /\bhost remove \S+ --forget\b/;
 
 /** What can be done to a machine in the registry, each on that machine and in the panel that follows it. */
-export function MachineActions({ name }: { name: string }) {
+export function MachineActions({ name, home = false, worker = false }: { name: string; home?: boolean; worker?: boolean }) {
   const running = useApp((s) => !!s.host?.running);
   // a terminal needs the destination the registry has for it, which the page may not have read yet
   const reachable = useApp((s) => !!s.machines?.find((m) => m.name === name)?.ssh);
@@ -79,10 +79,18 @@ export function MachineActions({ name }: { name: string }) {
           <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
-          <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
+          {worker && id && (
+            <button role="menuitem" className="menu-item" data-testid="machine-make-home" disabled={running} data-tip={`The fleet's islands, notes, settings and phone pairing move to ${name}; robots stay where they run`}
+              onClick={item(() => store().setHomeSheet({ to: id as MachineId, name, back: false }))}>Make {name} this fleet's home…</button>
+          )}
+          {home && id && (
+            <button role="menuitem" className="menu-item" data-testid="machine-bring-back" disabled={running} data-tip="The fleet's islands, notes, settings and phone pairing come back here; robots stay where they run"
+              onClick={item(() => store().setHomeSheet({ to: id as MachineId, name, back: true }))}>Bring the fleet back to this Mac…</button>
+          )}
+          {!home && <button role="menuitem" className="menu-item dan" data-testid="machine-remove" disabled={running || placed > 0 || !!stays}
             data-tip={stays || (placed ? `${placed === 1 ? '1 robot is' : `${placed} robots are`} placed there; move ${placed === 1 ? 'it' : 'them'} back first` : 'Uninstall Svall on this machine and drop its route')}
-            onClick={item(() => ask(false))}>Remove</button>
-          {!up && (
+            onClick={item(() => ask(false))}>Remove</button>}
+          {!home && !up && (
             <button role="menuitem" className="menu-item dan" data-testid="machine-forget" disabled={running || !!stays}
               data-tip={stays || 'Drop the route for a machine that cannot be reached, leaving it untouched'} onClick={item(() => ask(true))}>Forget</button>
           )}

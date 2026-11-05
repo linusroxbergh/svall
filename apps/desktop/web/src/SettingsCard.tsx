@@ -197,7 +197,7 @@ function Machines() {
   return (
     <div className="rows" data-testid="machines">
       {machines && !shown.length && (
-        <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.</span></div>
+        <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps, or runs the whole fleet while this Mac is off.</span></div>
       )}
       {shown.map((m) => (
         <div key={m.id} className="machine" data-testid={`machine-${m.name}`} data-role={m.role}>
@@ -208,7 +208,7 @@ function Machines() {
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
-          {m.ssh && !via && m.role !== 'home' && <MachineActions name={m.name} />}
+          {m.ssh && (via ? m.role === 'home' : m.role !== 'home') && <MachineActions name={m.name} home={m.role === 'home'} worker={m.role === 'worker' && !m.dialsIn} />}
         </div>
       ))}
       {error && (

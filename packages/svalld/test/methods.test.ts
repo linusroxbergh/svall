@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MachineId, type SetupRow } from '@svall/protocol';
-import { dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
+import { answer, dispatch, systemInfo, type Ctx } from '../src/api/methods.js';
 import { Config } from '../src/config.js';
 import { NotFound } from '../src/errors.js';
 import { Fleet } from '../src/fleet.js';
@@ -629,5 +629,17 @@ describe('a window and the fleet\'s home', () => {
     ] } });
     const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
     expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
+  });
+});
+
+describe('fleet.homeMove on a daemon that freezes nothing', () => {
+  const moving = { moving: { id: 'hm_abcdefghij', to: '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f', name: 'mac', asks: false } };
+  const worker = (homeWaits?: () => unknown) => ({ homeWaits, viewer: { kind: 'app' } }) as unknown as Ctx;
+  it('a worker answers its status with the move it owes the old home, or none', async () => {
+    expect(await answer('fleet.homeMove', { op: 'status' }, worker(() => moving))).toEqual(moving);
+    expect(await answer('fleet.homeMove', { op: 'status' }, worker())).toEqual({});
+  });
+  it('and takes nothing that only a home can do', async () => {
+    await expect(answer('fleet.homeMove', { op: 'abort' }, worker(() => moving))).rejects.toThrow(/only the fleet's home/);
   });
 });

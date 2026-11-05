@@ -48,13 +48,14 @@ enum BundledSvall {
 
 /// The host operations the page may ask the shell to run, and nothing else.
 enum HostOp: String, Decodable {
-    case add, doctor, upgrade, rollback, remove
+    case add, doctor, upgrade, rollback, remove, home, homeRetry = "home-retry", homeAbort = "home-abort", join
 }
 
 struct HostArgs: Decodable, Equatable {
     let name: String
     var ssh: String?
     var forget: Bool?
+    var asHome: Bool?
 }
 
 extension String {
@@ -71,10 +72,22 @@ let machineIdPattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F
 /// An ssh destination the app hands to ssh: never one that reads as a flag.
 let sshDestinationPattern = "^[A-Za-z0-9][A-Za-z0-9._@:\\[\\]-]*$"
 
-/// The argv of `svall host <op> … --json`. The page never passes argv: it names an operation and its
+/// The argv of `svall host <op> … --json`, or of what `svall fleet` does to the fleet as a whole. The page never passes argv: it names an operation and its
 /// arguments, and every one of them is held to the flag it belongs to before it becomes a word here.
 enum HostCommand {
     static func arguments(op: HostOp, args: HostArgs) -> [String]? {
+        switch op {
+        case .home:
+            guard args.ssh == nil, args.forget == nil, args.asHome == nil, args.name.allowed(by: machineNamePattern) else { return nil }
+            return ["--json", "fleet", "home", "set", args.name]
+        case .homeRetry, .homeAbort:
+            guard args.name.isEmpty, args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
+            return ["--json", "fleet", "home", op == .homeRetry ? "retry" : "abort"]
+        case .join:
+            guard args.name.isEmpty, args.forget == nil, args.asHome == nil, let ssh = args.ssh, ssh.allowed(by: sshDestinationPattern) else { return nil }
+            return ["--json", "fleet", "join", ssh]
+        default: break
+        }
         guard args.name.allowed(by: machineNamePattern) || args.name.allowed(by: machineIdPattern) else { return nil }
         // a rollback is the upgrade command's
         var argv = ["host", op == .rollback ? "upgrade" : op.rawValue, args.name]
@@ -83,16 +96,19 @@ enum HostCommand {
             guard let ssh = args.ssh, args.forget == nil,
                   ssh.allowed(by: sshDestinationPattern) else { return nil }
             argv += ["--ssh", ssh]
+            if args.asHome == true { argv.append("--as-home") }
         case .remove:
-            guard args.ssh == nil else { return nil }
+            guard args.ssh == nil, args.asHome == nil else { return nil }
             if args.forget == true { argv.append("--forget") }
         case .doctor, .upgrade:
-            guard args.ssh == nil, args.forget == nil else { return nil }
+            guard args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
             // a check prints its steps as it goes, as the others do, ahead of the report it ends with
             if op == .doctor { argv.append("--steps") }
         case .rollback:
-            guard args.ssh == nil, args.forget == nil else { return nil }
+            guard args.ssh == nil, args.forget == nil, args.asHome == nil else { return nil }
             argv.append("--rollback")
+        case .home, .homeRetry, .homeAbort, .join:
+            return nil
         }
         return argv + ["--json"]
     }

@@ -15,7 +15,7 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, startDeliveries } from './fleet/home-far.js';
-import { homeGate, landed } from './fleet/home-move.js';
+import { homeGate, landed, readOwed } from './fleet/home-move.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { startHookReceiver } from './hooks/receiver.js';
@@ -422,6 +422,11 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
     return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, workers: workersOf(paths), rewrites: rewrites(os.homedir()), serving: mobile.served() !== undefined, fromIsHome: true });
   };
+  // a move coming here that its driver left, or an outcome the old home has yet to hear
+  const homeWaits = () => {
+    const owed = readOwed(paths);
+    return owed ? { moving: { id: owed.id, to: me, name: ownName(), asks: false } } : {};
+  };
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   const fleetHome = () => (worker
     ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me, fleetId: worker.worker.fleetId }
@@ -484,7 +489,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
-      ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks,
+      ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

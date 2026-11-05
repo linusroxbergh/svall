@@ -17,6 +17,7 @@ import { keyTip } from './keys.js';
 import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
+import { HomeSheet } from './HomeSheet.js';
 import { MoveSheet } from './MoveSheet.js';
 import { NewRobot } from './NewRobot.js';
 import { PlacingAsk, ScribeAsk } from './ScribeAsk.js';
@@ -26,7 +27,7 @@ import { SideGrip } from './SideGrip.js';
 import { Starting } from './Starting.js';
 import { Sidebar } from './Sidebar.js';
 import { Tips } from './Tips.js';
-import { HomeBanner } from './HomeBanner.js';
+import { HomeBanner, HomeMoveBanner } from './HomeBanner.js';
 import { Tour } from './Tour.js';
 import { UtilityDock } from './UtilityDock.js';
 import { theme } from './theme.js';
@@ -83,6 +84,7 @@ function Screen() {
     <div className="app">
       {status !== 'online' && <div className="banner dan" data-testid="offline-banner"><span>{status === 'outdated' ? OUTDATED() : 'svalld connection lost, reconnecting…'}</span></div>}
       <HomeBanner />
+      <HomeMoveBanner />
       {configErrors.length > 0 && (
         <div className="banner warn" data-testid="config-errors">
           <span>Ghostty config: {configErrors.join('; ')}</span>
@@ -116,6 +118,7 @@ function Screen() {
       <ConfirmSleep />
       <ConfirmDeleteIsland />
       <MoveSheet />
+      <HomeSheet />
       <ConfirmDeleteColumn />
       <ScribeAsk />
       <PlacingAsk />

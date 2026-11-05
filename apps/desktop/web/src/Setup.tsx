@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
-import { copyText, createBridge, openUrl, type Bridge } from './bridge.js';
+import { copyText, createBridge, openUrl, type Bridge, type HostStep } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
 import { shortPath } from './paths.js';
@@ -20,7 +20,20 @@ export function Setup() {
   );
 }
 
+// where this Mac's fleet goes to run: here, on a server this sets up, or on a fleet a server already runs. Each server path joins before any first start, so nothing here seeds a robot for a join to refuse
+type Fork = 'here' | 'server' | 'join';
+// the name the fleet knows a server by, from its ssh destination, as `svall host add` holds names
+const nameFromSsh = (ssh: string): string => {
+  const name = (ssh.split('@').pop() ?? '').split('.')[0].toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  return /^[a-z]/.test(name) ? name.slice(0, 32) : 'server';
+};
+
 function SetupScreen({ bridge }: { bridge: Bridge }) {
+  const [fork, setFork] = useState<Fork>();
+  const [ssh, setSsh] = useState('');
+  const [farSteps, setFarSteps] = useState<HostStep[]>();
+  const going = useRef<{ fork: Fork; ssh: string } | undefined>(undefined);
+  const farRows = useRef<HostStep[]>([]);
   const [plan, setPlan] = useState<SetupPlan>();
   const [step, setStep] = useState(1);
   const [main, setMain] = useState<AgentKind>('claude');
@@ -50,6 +63,16 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
   }, [bridge]);
 
   useEffect(() => bridge.onMessage((m) => {
+    if (m.type === 'host.step') { farRows.current = [...farRows.current, m.event]; setFarSteps(farRows.current); return; }
+    if (m.type === 'host.done') {
+      const to = going.current;
+      if (!to) return;
+      const failed = farRows.current.some((r) => r.status === 'fail');
+      if (!failed && m.op === 'add') bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
+      else if (!failed && m.code === 0) window.location.replace('/');
+      else { setRunning(false); setBusy(false); }
+      return;
+    }
     if (m.type === 'shell.info') { machine.current = m.machine || undefined; return; }
     if (m.type === 'folder.picked') { if (pending.current !== 'run') { if (picking.current === 'project') setFirstProject(m.path); else setProjects(m.path); } return; }
     if (m.type !== 'setup.result') return;
@@ -73,6 +96,15 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       }
       previousPlan.current = p;
       setError(undefined);
+      return;
+    }
+    const to = going.current;
+    if (to && to.fork !== 'here') {
+      setRunning(true);
+      setBusy(true);
+      bridge.send(to.fork === 'server'
+        ? { type: 'host.start', op: 'add', args: { name: nameFromSsh(to.ssh), ssh: to.ssh, asHome: true } }
+        : { type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
       return;
     }
     const storage = localAppStorage(window.__svallHome);
@@ -117,6 +149,57 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     </Page>
   );
   if (!plan) return <div className="connect" data-testid="setup" role="status">Looking for Claude Code, Codex and OpenCode…</div>;
+  // the server paths take this Mac's agents as they are found, for the robots that move here
+  const farRun = (to: Fork) => {
+    if (pending.current) return;
+    going.current = { fork: to, ssh: ssh.trim() };
+    pending.current = 'run';
+    farRows.current = [];
+    setFarSteps([]);
+    setBusy(true);
+    setRunning(true);
+    setError(undefined);
+    const kinds = plan.agents.filter((a) => !a.folderOnly).map((a) => a.kind);
+    bridge.send({ type: 'setup.run', agents: plan.agents.map((a) => a.kind), found: plan.agents.map((a) => a.kind), projects: plan.projects, mainAgent: plan.mainAgent ?? kinds[0] ?? 'claude', firstProject: undefined, scribe: true, svallPermissions: true, newRobotStart: 'agent' });
+  };
+  if (fork !== 'here') {
+    const far = fork === 'server' || fork === 'join';
+    const said = farSteps?.filter((r) => r.status !== 'start');
+    const failed = said?.find((r) => r.status === 'fail');
+    return (
+      <Page>
+        <header className="setup-intro">
+          <h1>{fork === 'server' ? 'Install Svall on a server' : fork === 'join' ? 'Connect to a fleet on a server' : 'Where should your fleet run?'}</h1>
+          <p>{fork === 'server' ? 'The server runs your fleet all day; this Mac joins it and can sleep. Tailscale is needed on both.' : fork === 'join' ? 'This Mac joins the fleet that server runs. Tailscale is needed on both.' : 'You can change this later in Settings.'}</p>
+        </header>
+        {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
+        {!far && (
+          <section className="setup-list" data-testid="setup-fork">
+            <button type="button" className="btn pri" data-testid="fork-here" onClick={() => setFork('here')}>Run the fleet on this Mac</button>
+            <button type="button" className="btn" data-testid="fork-server" onClick={() => setFork('server')}>Install Svall on a server and connect this Mac</button>
+            <button type="button" className="btn" data-testid="fork-join" onClick={() => setFork('join')}>Connect to a fleet already on a server</button>
+          </section>
+        )}
+        {far && (
+          <fieldset className="setup-fields" disabled={running} aria-busy={busy}>
+            <label><span>ssh destination</span><input {...AS_TYPED} data-testid="fork-ssh" value={ssh} placeholder="you@studio" onChange={(e) => setSsh(e.target.value)} /></label>
+          </fieldset>
+        )}
+        {said && said.length > 0 && (
+          <div className="setup-list" data-testid="fork-steps">
+            {said.map((r) => <p key={`${r.step}-${r.status}`} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{r.detail ?? r.step}{r.action && <small> {r.action}</small>}</p>)}
+          </div>
+        )}
+        {error && <p className="setup-error" role="alert">{error}</p>}
+        {far && (
+          <div className="setup-acts">
+            <button type="button" className="btn pri" data-testid="fork-go" disabled={running || plan.blockers.length > 0 || !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim())} onClick={() => farRun(fork)}>{failed ? 'Try again' : fork === 'server' ? 'Install and connect' : 'Connect'}</button>
+            <button type="button" className="btn" data-testid="fork-back" disabled={running} onClick={() => { setFork(undefined); setFarSteps(undefined); going.current = undefined; }}>Back</button>
+          </div>
+        )}
+      </Page>
+    );
+  }
   const on = plan.agents.filter((a) => !off.includes(a.kind));
   const runnable = on.filter((a) => !a.folderOnly);
   const agent = runnable.find((a) => a.kind === main)?.kind ?? runnable[0]?.kind ?? main;

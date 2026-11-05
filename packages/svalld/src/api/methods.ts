@@ -48,7 +48,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's
   fleetConfig?: ReturnType<typeof fleetConfigFile>;
   // a move of the home as this daemon holds it, and what its check asks both machines
-  freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>> };
+  freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -276,12 +276,14 @@ const handlers: Handlers = {
     if (!homeChecks) throw new ApiError('not_found', 'this daemon checks no move of the home');
     return homeChecks(p.to);
   },
-  'fleet.homeMove': async (p, { freeze }) => {
+  'fleet.homeMove': async (p, { freeze, homeWaits }) => {
+    if (!freeze && p.op === 'status') return homeWaits?.() ?? {};
     const held = freezeOf(freeze);
     if (p.op === 'mark') held.mark(p.marker);
     if (p.op === 'join') held.join(p.id, p.enrol);
     if (p.op === 'ask' || p.op === 'abort') await held.settle(p.op === 'ask' ? 'status' : 'abort');
-    return held.status();
+    const said = held.status();
+    return said.moving ? said : homeWaits?.() ?? said;
   },
   // a home is reached at the socket this window already holds
   'home.connection': async (p, { fleetHome, homeApi }) => {

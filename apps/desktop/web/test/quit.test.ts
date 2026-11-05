@@ -1,3 +1,4 @@
+import { ApiError } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
@@ -133,6 +134,14 @@ describe('followQuit', () => {
     q.bridge.emit({ type: 'quit.ask' });
     await vi.advanceTimersByTimeAsync(0);
     expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 0, placed: 2 }]);
+    q.stop();
+  });
+
+  it('a daemon frozen for a home move refuses the stop and stays up: nothing is killed for it, as the move has to end', async () => {
+    const q = setup({ stop: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) });
+    q.bridge.emit({ type: 'quit.stop' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.stopped', ok: true }]);
     q.stop();
   });
 

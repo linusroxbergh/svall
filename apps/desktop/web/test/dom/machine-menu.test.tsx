@@ -11,14 +11,14 @@ const { MachineActions } = await import('../../src/HostSetup.js');
 
 const VAULT = '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId;
 
-function setup(reachable: boolean | undefined, placed: number, mismatch?: true) {
+function setup(reachable: boolean | undefined, placed: number, mismatch?: true, role: { home?: boolean; worker?: boolean } = {}) {
   freshStore();
   const f = fleet();
   if (reachable !== undefined) f.machines = { [VAULT]: { name: 'vault', reachable, since: 0, mismatch } };
   for (let i = 0; i < placed; i++) f.robots[`c${i}`] = chr(`c${i}`, 'i_b', { x: 1, y: 1 }, { name: `r${i}`, machine: VAULT });
   store.getState().setFleet(f);
   act(() => store.getState().setMachines([{ name: 'vault', id: VAULT, ssh: 'ada@vault', platform: 'linux-x64' }]));
-  render(<MachineActions name="vault" />);
+  render(<MachineActions name="vault" {...role} />);
 }
 const more = () => screen.getByTestId('machine-more');
 // as a key press reaches the page: at what has focus, through the window's capture and back up to it
@@ -97,4 +97,28 @@ test('a machine on another build answers, so it is not offered Forget', () => {
   fireEvent.click(more());
   expect(screen.getByTestId('machine-remove')).toBeTruthy();
   expect(screen.queryByTestId('machine-forget')).toBeNull();
+});
+
+test('a worker its Mac home dials offers to become the home; a machine that is no such worker does not', () => {
+  setup(true, 0, undefined, { worker: true });
+  fireEvent.click(more());
+  expect(screen.getByTestId('machine-make-home').textContent).toBe("Make vault this fleet's home…");
+  fireEvent.click(screen.getByTestId('machine-make-home'));
+  expect(store.getState().homeSheet).toEqual({ to: VAULT, name: 'vault', back: false });
+  document.body.replaceChildren();
+  setup(true, 0);
+  fireEvent.click(more());
+  expect(screen.queryByTestId('machine-make-home')).toBeNull();
+  expect(screen.queryByTestId('machine-bring-back')).toBeNull();
+});
+
+test('the far home offers to bring the fleet back, keeps Check, Upgrade and its terminal, and has no Remove or Forget', () => {
+  setup(false, 0, undefined, { home: true });
+  fireEvent.click(more());
+  expect(screen.getByTestId('machine-upgrade')).toBeTruthy();
+  expect(screen.getByTestId('machine-terminal')).toBeTruthy();
+  expect(screen.queryByTestId('machine-remove')).toBeNull();
+  expect(screen.queryByTestId('machine-forget')).toBeNull();
+  fireEvent.click(screen.getByTestId('machine-bring-back'));
+  expect(store.getState().homeSheet).toEqual({ to: VAULT, name: 'vault', back: true });
 });

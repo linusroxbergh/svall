@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import type { Result } from '@svall/protocol';
 import { app } from './boot.js';
 import { useApp } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -11,6 +12,38 @@ function said(name: string, state: string, detail?: string): string {
   if (state === 'mismatch') return detail ?? `${name} holds a different fleet than this Mac expects`;
   if (state === 'machine') return detail ?? `${name} is a different machine than this Mac expects`;
   return `${name} is not reachable`;
+}
+
+const WAIT_MS = 5000;
+
+/** A move of the fleet's home that nothing is driving: this Mac's daemon waits on how it ends, and a person finishes it or calls it off. */
+export function HomeMoveBanner() {
+  const [moving, setMoving] = useState<Result<'fleet.homeMove'>['moving']>();
+  const online = useApp((s) => s.status === 'online');
+  const run = useApp((s) => (s.host?.op === 'home' || s.host?.op === 'home-retry' || s.host?.op === 'home-abort' ? s.host : undefined));
+  const sheet = useApp((s) => s.homeSheet);
+  useEffect(() => {
+    if (!online) return;
+    let left = false;
+    const look = () => { void (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' }).then((r) => { if (!left) setMoving(r.moving); }, () => { if (!left) setMoving(undefined); }); };
+    look();
+    const timer = setInterval(look, WAIT_MS);
+    return () => { left = true; clearInterval(timer); };
+  }, [online]);
+  if (!moving || sheet) return null;
+  const running = run?.running === true;
+  const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
+  return (
+    <div className="banner warn" data-testid="home-move-banner">
+      <span>
+        {moving.to === app.store.getState().via?.machine ? 'Finishing the move to this Mac…' : `Finishing the move to ${moving.name}…`}
+        {moving.answer && <small data-testid="home-move-answer"> {moving.answer}</small>}
+        {failed && <small data-testid="home-move-failed"> {failed.detail ?? failed.step}</small>}
+      </span>
+      <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>
+      <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip="Works once the machine that holds the move says it was not taken" onClick={() => startHost('home-abort', { name: '' })}>Abort</button>
+    </div>
+  );
 }
 
 /** How this window stands with a fleet's home on another machine; nothing while it follows one, or has yet to hear. */

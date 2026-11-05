@@ -1,3 +1,4 @@
+import type { MachineId } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyStep, beginRun, endRun, machineNames, replaceRows, type HostRun } from '../host.js';
@@ -14,6 +15,8 @@ export type HostState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
+  // the move of the fleet's home the sheet is asking about: to a worker, or back to this Mac
+  homeSheet?: HomeSheetAsk;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
   hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
@@ -21,6 +24,8 @@ export type HostState = {
   machines?: MachineRow[];
   machinesError?: string;
 };
+
+export type HomeSheetAsk = { to: MachineId; name: string; back: boolean };
 
 export type HostActions = {
   toggleHost(open?: boolean, machine?: string): void;
@@ -32,6 +37,7 @@ export type HostActions = {
   // the mirror's rows as a tick left them, in place of the run's own
   hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
+  setHomeSheet(ask?: HomeSheetAsk): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
 
@@ -40,6 +46,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   hostOpen: false,
   hostMachine: undefined,
   hostConfirm: undefined,
+  homeSheet: undefined,
   hostTerminal: undefined,
   machines: undefined,
   machinesError: undefined,
@@ -53,6 +60,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
     hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...((s.hostTerminal ? s.hostTerminal.fromPanel : s.hostOpen) && { fromPanel: true as const }) },
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
+  setHomeSheet: (homeSheet) => set({ homeSheet }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
   // a step from an operation the page is no longer watching belongs to a run it has forgotten
