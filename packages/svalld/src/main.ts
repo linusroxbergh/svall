@@ -15,7 +15,7 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
-import { homeGate, landed, readOwed } from './fleet/home-move.js';
+import { homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
 import { workerProfile } from './placement/workers.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
@@ -434,7 +434,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // a move coming here that its driver left, or an outcome the old home has yet to hear
   const homeWaits = () => {
     const owed = readOwed(paths);
-    return owed ? { moving: { id: owed.id, to: me, name: ownName(), asks: false } } : {};
+    const from = owed && oldHomeName(paths, owed.id);
+    return owed ? { moving: { id: owed.id, to: me, name: ownName(), asks: false, ...(from && { from }) } } : {};
   };
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   const fleetHome = () => (worker

@@ -189,7 +189,7 @@ function Machines() {
   const registered = new Map(machines?.map((m) => [m.id, m]));
   const known = new Set<string>(fleetRows?.map((m) => m.id));
   const rows = [
-    ...fleetRows?.map((f) => ({ id: f.id, name: f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
+    ...fleetRows?.map((f) => ({ id: f.id, name: registered.get(f.id)?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
     // on a registry here and not yet a machine of this fleet
     ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
   ];

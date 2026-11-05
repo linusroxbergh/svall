@@ -7,7 +7,7 @@ import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId,
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, adoptDir, driverKey, enter, installAdopt, markKey, moveOutcome, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptDir, driverKey, enter, installAdopt, markKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -634,8 +634,10 @@ export async function abortBack(d: Pick<MoveDeps, 'client' | 'daemon' | 'me' | '
 export function abortHome(d: MoveDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     await run.step('abort', async () => {
+      const owed = readOwed(resolvePaths(d.target.home));
+      const old = (owed && oldHomeName(resolvePaths(d.target.home), owed.id)) ?? 'the old home';
       const back = await abortBack(d);
-      if (back?.status === 'not-adopted') return { value: undefined, detail: back.told ? 'the move is off, and the old home takes writes again' : 'the move is off; the old home thaws once this machine reaches it' };
+      if (back?.status === 'not-adopted') return { value: undefined, detail: back.told ? `the move is off, and ${old} takes writes again` : `the move is off; ${old} thaws once this machine reaches it` };
       if (back?.status === 'pending') throw new StepError(`the move is still under way here: ${back.said}`, 'svall fleet home abort again in a moment', undefined, 'Call it off again in a moment');
       if (back) throw new StepError('the move has gone through here, so it cannot be called off');
       const { moving } = await withClient(d.client, (c) => c.call('fleet.homeMove', { op: 'abort' }));

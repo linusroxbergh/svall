@@ -762,6 +762,12 @@ function carrySinceCut(p: Paths, id: string, kept: string, renames: Map<string, 
   writeDurable(p.docsSynced, synced, { mode: 0o600 });
 }
 
+/** The name of the home move `id` comes from, on the machine it comes to: as its archive says, or as this worker's home before that came. */
+export function oldHomeName(p: Paths, id: string): string | undefined {
+  try { return readManifest(p, id).record.name; } catch { /* no archive yet */ }
+  try { return JSON.parse(fs.readFileSync(p.workerFile, 'utf8')).homeName as string; } catch { return undefined; }
+}
+
 /** The move this machine waits on, as the one the fleet leaves or the one that owes it the outcome, for a check that wants nothing under way. */
 export const moveInFlight = (p: Paths): string | undefined => readMarker(p)?.id ?? readOwed(p)?.id;
 

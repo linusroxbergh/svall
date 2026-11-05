@@ -268,9 +268,9 @@ describe('a move nothing is driving', () => {
   it('on a worker the move comes here, and stands down for the sheet that drives it', async () => {
     online();
     act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
-    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false } } });
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio' } } });
     const { rerender } = render(<HomeMoveBanner />);
-    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac, and its old home takes no changes until the move ends');
+    expect((await screen.findByTestId('home-move-banner')).textContent).toContain('The fleet is moving to this Mac, and studio takes no changes until the move ends');
     act(() => { store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true }); });
     rerender(<HomeMoveBanner />);
     expect(screen.queryByTestId('home-move-banner')).toBeNull();

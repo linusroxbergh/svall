@@ -4,7 +4,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
-import { abortAdopt, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
 import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side } from './home-world.js';
 
@@ -72,6 +72,7 @@ const homes = (w: { mac: Side; studio: Side }) => roles(w).filter((r) => r === '
 describe('the way back: the outcome is owed before the old home is marked', () => {
   it('says nothing while the move can go either way, and studio stays frozen', async () => {
     const w = await markedBack();
+    expect(oldHomeName(w.mac.paths, BACK)).toBe('studio');
     expect(moveOutcome(w.mac.paths, BACK)).toBeUndefined();
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('waiting');
     expect(w.studio.daemon.role).toBe('frozen');

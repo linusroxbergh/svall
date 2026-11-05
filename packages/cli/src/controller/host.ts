@@ -126,7 +126,7 @@ export class Runner {
 
 /** This machine's Tailscale, which a fleet on a server needs on both machines. */
 export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>): Promise<Outcome<void>> {
-  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
+  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines, and this Mac says: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
   return { value: undefined, detail: 'connected' };
 }
 

@@ -70,7 +70,14 @@ const Settle = z.object({ key: z.string().optional(), enrol: Enrolment.optional(
 
 const adoptDeps = (t: Target): AdoptDeps => ({ paths: resolvePaths(t.home), me: machineId(), daemon: realHomeDaemon(t) });
 
-const crewChoice = (o: { interruptAfter?: string }): CrewChoice => (o.interruptAfter === undefined ? {} : { interruptAfterMs: parseDuration(o.interruptAfter) });
+// a timer holds at most 2^31 - 1 ms
+const MAX_INTERRUPT_MS = 24 * 3_600_000;
+const crewChoice = (o: { interruptAfter?: string }): CrewChoice => {
+  if (o.interruptAfter === undefined) return {};
+  const ms = parseDuration(o.interruptAfter);
+  if (ms > MAX_INTERRUPT_MS) throw new Error(`--interrupt-after takes at most 24h, not ${o.interruptAfter}`);
+  return { interruptAfterMs: ms };
+};
 
 const flowReporter = (json: boolean) => (json
   ? (e: StepEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); }

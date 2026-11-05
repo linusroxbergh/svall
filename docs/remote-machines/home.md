@@ -21,7 +21,7 @@ a typed path before the robot starts: "/home/linus/x is not a folder on studio".
 that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
-too, as "dials in". What a machine does for you from there, and adding another, is for a home on this Mac.
+too, as "dials in". Each machine's ⋯ holds what it does for you, whichever machine is the home, and Add machine adds another.
 
 ## What opens on this Mac
 
@@ -173,7 +173,9 @@ robot, and stays where it runs.
 Going out, the Mac asks the server how the move ended. Coming back, the server has no route to the Mac, so a server left frozen
 waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends the wait.
 
-Quit during a move ends the window and leaves this Mac's daemon up, as the move has to end. A move is not a backup, and keeps what it replaced:
+Quit during a move ends the window. A Mac frozen for a move out keeps its daemon up, as the move has to end; a Mac the fleet is
+coming back to stops as a worker does, and the old home waits until Svall opens again. A quit while the window drives a move it
+has not marked yet calls the move off, and the dialog says so. A move is not a backup, and keeps what it replaced:
 the old home's `state.json.home-<id>` and `docs.home-<id>` stay in its fleet home, and `adopt-<id>` holds what was staged until
 the old home links to the new one. Files refuses every `adopt-<id>` folder and `workers.json.home-<id>`, as they hold the fleet's keys.
 A link inside `docs/` is not carried, and neither is a name a tar cannot hold, which refuses the move and names the file. A note

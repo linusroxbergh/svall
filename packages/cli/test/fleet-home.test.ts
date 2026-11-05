@@ -667,7 +667,7 @@ describe('fleet home set local', () => {
       const out = await abortHome(deps);
       stop();
       expect(out.result).toBe('ready');
-      expect(events.filter((e) => e.status !== 'start')).toEqual([{ step: 'abort', status: 'ok', detail: 'the move is off, and the old home takes writes again' }]);
+      expect(events.filter((e) => e.status !== 'start')).toEqual([{ step: 'abort', status: 'ok', detail: 'the move is off, and studio takes writes again' }]);
     }, 30_000);
 
     it('another step of the move under way here: says so at once, as it stands', async () => {

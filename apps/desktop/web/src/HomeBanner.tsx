@@ -57,7 +57,7 @@ export function HomeMoveBanner() {
   return (
     <div className="banner warn" data-testid="home-move-banner">
       <span>
-        {here ? 'The fleet is moving to this Mac, and its old home takes no changes until the move ends; robots keep running.'
+        {here ? `The fleet is moving to this Mac, and ${moving.from ?? 'its old home'} takes no changes until the move ends; robots keep running.`
           : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
         {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {stands(moving.phase, moving.name)}</small>}
         {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
