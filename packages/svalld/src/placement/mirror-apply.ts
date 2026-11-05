@@ -309,7 +309,7 @@ export async function applyMirror(
   const overIn = (i: number) => ({ file: DOCS[i].at(o), own: Buffer.from(ownText(DOCS[i], current[i].text ?? '', state)) });
   const noteOver = (): void => {
     const replaced = [...new Set([...state.replaced ?? [], ...docs.flatMap((d) => d.over)])];
-    if (keepsOwn && replaced.length) next.replaced = replaced;
+    if (replaced.length) next.replaced = replaced;
   };
   let kept = 0;
   if (keepsOwn) {

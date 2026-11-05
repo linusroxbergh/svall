@@ -686,9 +686,10 @@ describe('a key the target holds itself', () => {
       const said: string[] = [];
       for (const m of ['info', 'error'] as const) vi.spyOn(silentLogger, m).mockImplementation((msg: string) => { said.push(msg); });
       editJson(home.claudeJson, (j) => { j.mcpServers.other = { command: 'npx', args: ['-y', 'o-mcp'], env: { O_KEY: 'sk_other_1234567890' } }; });
+      put(worker.claudeJson, JSON.stringify({ numStartups: 1 }));
       await w.link();
       await w.home.links.mirrorSettled(W);
-      // the first push's copy, if any, holds no K1: the person sets it after
+      // the first push's copy holds no K1: the person sets it after
       editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = K1; });
       await consent('claude:mcp:other', ['env.O_KEY'], true);
       expect(live(worker)).toBe(K1);
@@ -696,7 +697,9 @@ describe('a key the target holds itself', () => {
       expect(live(worker)).toBe(KEY);
       const { rows } = await linear(false);
       expect(live(worker)).toBe('${LINEAR_API_KEY}');
-      expect(holding(backups, K1)).toHaveLength(1);
+      const kept = path.relative(worker.homedir, worker.claudeJson);
+      expect(holding(backups, K1)).toEqual([path.join(folders(backups)[0], `${kept}.2`)]);
+      expect(json(path.join(backups, folders(backups)[0], kept))).toEqual({ numStartups: 1 });
       // the copy holds the person's own and nothing the mirror copied
       expect(holding(backups, 'sk_other_1234567890')).toEqual([]);
       expect(holding(backups, KEY)).toEqual([]);
@@ -723,6 +726,27 @@ describe('a key the target holds itself', () => {
       expect(live(worker)).toBe(KEY);
       expect(read(first)).toBe(own);
       expect(holding(backups, K1).length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('a push cut short after its copy keeps no second copy as the next goes on', async () => {
+      const { worker, backups, w, linear } = onMac();
+      await w.link();
+      await w.home.links.mirrorSettled(W);
+      editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = K1; });
+      const stop = realPath(worker.claudeJson);
+      const write = DurableBatch.prototype.write;
+      const spy = vi.spyOn(DurableBatch.prototype, 'write').mockImplementation(function (this: DurableBatch, file, data, mode) {
+        if (file === stop) throw new Error('killed');
+        return write.call(this, file, data, mode);
+      });
+      await expect(linear(true)).rejects.toThrow('did not take it');
+      expect(live(worker)).toBe(K1);
+      const kept = holding(backups, K1);
+      expect(kept).toHaveLength(1);
+      spy.mockRestore();
+      await w.home.links.pushMirror(W);
+      expect(live(worker)).toBe(KEY);
+      expect(holding(backups, K1)).toEqual(kept);
     });
 
     it('a url and a config file\'s key go the same way', async () => {
