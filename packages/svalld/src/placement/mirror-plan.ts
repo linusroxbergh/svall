@@ -76,6 +76,19 @@ const secret = (file: string): boolean => {
   const lower = file.toLowerCase();
   return SECRET.some((re) => re.test(path.basename(file))) || SECRET_DIRS.some((d) => lower.includes(`${path.sep}${d}${path.sep}`)) || SECRET_FILES.some((f) => lower.endsWith(`${path.sep}${f}`));
 };
+// what each home takes of a mirror, as the plan below walks it
+const CARRIED: Record<Root, (rel: string) => boolean> = {
+  claude: (r) => r === 'CLAUDE.md' || r === 'keybindings.json' || ['skills', 'rules', 'agents', 'commands', 'plugins'].some((t) => r.startsWith(`${t}/`)),
+  codex: (r) => r === 'AGENTS.md',
+  home: (r) => r.startsWith('.agents/skills/'),
+  opencode: (r) => r === 'AGENTS.md' || OPENCODE_TREES.some((t) => r.startsWith(`${t}/`)),
+  profiles: () => true,
+};
+/** Whether `to` is a file a plan could carry. */
+export const carriable = (to: string): boolean => {
+  const [root, ...rest] = to.split('/');
+  return Object.hasOwn(CARRIED, root) && rest.length > 0 && !rest.includes('..') && !rest.includes('') && CARRIED[root as Root](rest.join('/')) && !secret(`/${to}`);
+};
 const without = (doc: Doc, keys: readonly string[]): Doc => Object.fromEntries(Object.entries(doc).filter(([k]) => !keys.includes(k)));
 
 type Walk = { found: { file: string; rel: string; mode: number }[]; bytes: number; seen: Set<string> };

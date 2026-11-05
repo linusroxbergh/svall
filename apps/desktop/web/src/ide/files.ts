@@ -28,19 +28,24 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
   saveListeners.add(listener);
 }
 
-async function load(d: FilesDeps, id: string, path: string): Promise<void> {
+// `seed`: what a file not there yet holds as an unsaved buffer, whose mtime 0 says no file was read and which only a save writes
+async function load(d: FilesDeps, id: string, path: string, seed?: string): Promise<void> {
   if (getBuffer(id, path)) return;
-  const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
+  const read = d.api.call('fs.read', { id, path }).catch((e: { code?: string }) => {
+    if (seed === undefined || e.code !== 'not_found') throw e;
+    return { text: seed, mtimeMs: 0, root: undefined };
+  });
+  const [{ text, mtimeMs, root }, lang] = await Promise.all([read, languageFor(basename(path))]);
   const on = readsOn(d.store.getState().fleet, id, d.store.getState().via);
   Object.assign(loadBuffer(id, path, text, mtimeMs, [access.of(accessOn(d, id, path, on)), lang ?? []]), { root, on });
 }
 
-/** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why. */
-export async function openFile(d: FilesDeps, id: string, path: string): Promise<void> {
+/** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why, unless `seed` stands in for one not there yet. */
+export async function openFile(d: FilesDeps, id: string, path: string, seed?: string): Promise<void> {
   // an absolute path under the root opens as its place there, so the file has one tab
   const root = rootIn(d.store.getState(), id);
   const place = root !== undefined && isAbsolute(path) ? placeOf(path, root) : path;
-  try { await load(d, id, place); } catch (e) {
+  try { await load(d, id, place, seed); } catch (e) {
     d.store.getState().showToast(`${place}: ${(e as Error).message}`);
     return;
   }

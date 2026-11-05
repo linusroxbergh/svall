@@ -278,7 +278,7 @@ two halves:
 The worker then dials again after sleep, a new network or either daemon's restart; after a reboot or a quit it stays out
 of reach until its app opens, as launchd starts its daemon only then. Its robots' terminals open on the worker itself; the
 home shows their screens, files and changes, but no terminal: "kanban runs on ada-mac; open it there". A Mac takes the
-home's agent setup like any worker, with [a copy kept of what the first push replaces](home.md#your-agent-setup). Fleet, repository and robot notes the fleet held before it enrolled
+home's agent setup like any worker, with [a copy kept of each file a push is the first to take](home.md#your-agent-setup). Fleet, repository and robot notes the fleet held before it enrolled
 stay on disk, unread by a worker. A Linux worker keeps the home dialing it.
 
 `svall host remove <name>` on the home drops the record and its token in every fleet there, which ends this fleet's link

@@ -8,12 +8,13 @@ import { bundleRuntime, releaseRuntime } from '@svall/svalld/runtime';
 import { runUninstall } from '@svall/svalld/uninstall';
 import { keptLine, uninstall, uninstallCommand, type UninstallDeps } from '../src/commands/uninstall.js';
 
-function fake(o: { answer?: string; isTTY?: boolean; data?: string[] } = {}) {
+function fake(o: { answer?: string; isTTY?: boolean; data?: string[]; backups?: string[] } = {}) {
   const prompts: string[] = [];
   const purged: string[][] = [];
   const deps: UninstallDeps = {
     uninstall: async () => ['removed /u/.local/bin/svall'],
     data: () => o.data ?? ['/u/.svall', '/Applications/Svall.app'],
+    backups: () => o.backups ?? [],
     purge: async (paths) => { purged.push(paths); return paths.map((p) => `deleted ${p}`); },
     prompt: async (q) => { prompts.push(q); return o.answer ?? ''; },
     isTTY: o.isTTY ?? true,
@@ -22,6 +23,21 @@ function fake(o: { answer?: string; isTTY?: boolean; data?: string[] } = {}) {
 }
 
 describe('uninstall', () => {
+  it('names the copies of a person\'s own files in mirror-backup, as it asks, as it keeps them, and as --purge deletes them', async () => {
+    const backups = ['/u/.svall/mirror-backup'];
+    const no = fake({ answer: 'n', backups });
+    const kept = await uninstall({ purge: false }, no.deps);
+    expect(no.prompts[0]).toContain('/u/.svall/mirror-backup, which holds the copies of your own agent files');
+    expect(kept.done.join('\n')).toContain('kept /u/.svall/mirror-backup, which holds the copies of your own agent files');
+    const purge = fake({ backups });
+    const gone = await uninstall({ purge: true }, purge.deps);
+    expect(purge.prompts).toEqual([]);
+    expect(gone.done.join('\n')).toContain('deleted /u/.svall/mirror-backup, which holds the copies of your own agent files');
+    const none = fake({ answer: 'n' });
+    await uninstall({ purge: false }, none.deps);
+    expect(none.prompts[0]).not.toContain('mirror-backup');
+  });
+
   it('asks before deleting the fleets, and keeps them unless the answer is yes', async () => {
     const no = fake({ answer: 'n' });
     expect(await uninstall({ purge: false }, no.deps)).toEqual({ done: ['removed /u/.local/bin/svall'], kept: ['/u/.svall', '/Applications/Svall.app'] });

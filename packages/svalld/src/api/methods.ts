@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
 import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
@@ -292,7 +293,12 @@ const handlers: Handlers = {
   },
   'fs.list': async (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.list', p, signal) ?? { entries: await workspace.list(p.id, p.path) },
   'fs.read': (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.read', p, signal) ?? workspace.read(p.id, p.path),
-  'fs.write': (p, ctx) => { refuseRemote(ctx, p.id, p.path); return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root); },
+  'fs.write': (p, ctx) => {
+    refuseRemote(ctx, p.id, p.path);
+    // a home with no agent setup yet has no folder for Claude's files until the first is saved
+    if (p.mtimeMs === 0 && ctx.claude && p.id === rootIdOf(ctx.claude.dir)) fs.mkdirSync(ctx.claude.dir, { recursive: true });
+    return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root);
+  },
   'docs.create': (p, { workspace }) => workspace.create(p.id, p.path, p.text),
   'docs.rename': (p, { workspace, fleet, agentProfiles }) => {
     workspace.rename(p.id, p.path, p.to);

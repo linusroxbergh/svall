@@ -14,7 +14,8 @@ const refused = (method: string): ApiError => new ApiError('unauthorized', `${me
 
 /**
  * The home's side of a copy of a worker's agent setup: it takes one push from the worker `machines.copySetupFrom` named, and
- * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. The first copy keeps what it replaces.
+ * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. It removes nothing here, and keeps
+ * a copy of each file it replaces that no copy wrote.
  */
 export class SetupCopy {
   private grant?: { machine: MachineId; until: number; offered?: true; used?: true };
@@ -28,7 +29,7 @@ export class SetupCopy {
       const link = this.grant && this.o.links.for(this.grant.machine);
       return link ? link.receiveBlob(id, into) : Promise.reject(new ApiError('not_reachable', 'no worker is copying its agent setup here'));
     };
-    this.calls = mirrorCalls({ ...o, connection: { receiveBlob } });
+    this.calls = mirrorCalls({ ...o, additive: true, connection: { receiveBlob } });
   }
 
   takes(method: string): boolean {
@@ -90,7 +91,7 @@ export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection
       const dir = readState(o.stateFile).backup?.dir;
       return { rows: rows.filter((r) => r.tick), ...(dir !== undefined && fs.existsSync(dir) && { backup: dir }) };
     },
-    consent: (item, fields, on) => o.mirror.consent(o.home, item, fields, on),
+    consent: (item, fields, on) => o.mirror.consent(o.home, item, fields, on, true),
     push: () => o.mirror.push(link),
   };
 }

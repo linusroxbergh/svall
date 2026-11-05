@@ -73,13 +73,18 @@ The app and the server speak one protocol, with no window between releases.
 Your agent setup lives where the fleet lives. studio is the source, and every worker takes it from there, this Mac included: each time
 studio links to this Mac and before every move here, only what changed on studio since the last time.
 
-- **Your own files.** The first push onto this Mac keeps a copy of each file it replaces under `~/.svall/mirror-backup/<date>/` (`~/.svall-<fleet>/` for a named fleet), laid out as under your home, for you alone. Settings → Agent setup names the folder. A later push keeps no copy.
-- **What it leaves.** A push never removes a file it did not write, nor a setting only this Mac has. `mirror-overrides/` in the fleet's home here stands over what comes, as on [any worker](setup.md#your-agent-setup-on-the-machine).
+- **Your own files.** Each file a push is the first to take, the first push's and any later one's, is copied first under `~/.svall/mirror-backup/<date>/` (`~/.svall-<fleet>/` for a named fleet), laid out as under your home, for you alone, even where it held the same bytes. Settings → Agent setup names the folder. A file the mirror wrote keeps no copy, whatever you edit in it since.
+- **What it leaves.** A push removes a file only once it has taken it, so one you held yourself lies in that folder first. A key you hold yourself stays where studio holds a reference or nothing, a server holding one stays when studio drops it, and a plugin or marketplace studio does not list stays in `installed_plugins.json`, `known_marketplaces.json` and `enabledPlugins`, as does a setting only this Mac has. A setting both hold is studio's, `permissions` among them, and the folder keeps what you had. `mirror-overrides/` in the fleet's home here stands over what comes, as on [any worker](setup.md#your-agent-setup-on-the-machine).
 - **Editing it.** Settings → Agent setup opens studio's `CLAUDE.md`, `settings.json`, skills and rules in the app's editor, and saves them on studio. It offers this while the window reaches studio. A Mac that is its fleet's home has no such pane.
-- **Copy my agent setup from this Mac to studio.** The same pane sends what is on this Mac now, once. Keys stay on this Mac unless you tick them there, field by field; the ticks are this Mac's, and studio has no say in them. studio's first copy keeps what it replaces in studio's own `mirror-backup/<date>/`, and the pane names it; a later copy keeps none.
+- **Copy my agent setup from this Mac to studio.** The same pane sends what is on this Mac now, once. Keys in config files stay on this Mac unless you tick them there, field by field; the ticks are this Mac's, and studio has no say in them. `CLAUDE.md`, rules, skills and agent profiles go as they are, anything written in them included. An untick takes a key back from studio at the next copy, and the row says so until then. By the same rule as a push, studio keeps each file a copy is the first to take in its own `mirror-backup/<date>/`, and the pane names it.
 
-A copy carries what changed on this Mac since the last one, so a file you edited on studio since stays unless this Mac's changed too. It
-sends this Mac's files as they are now: what the first push replaced lies in the backup folder, so put back what you want from there first.
+A copy removes nothing on studio. It carries what changed on this Mac since the last one, so a file you edited on studio since stays unless this Mac's changed too.
+The first copy has no last one: it replaces studio's same-named files, your edits there included, and those lie in studio's backup folder. It
+sends this Mac's files as they are now: what a push replaced on this Mac lies in the backup folder here, so put back what you want from there first.
+
+An untick also removes Svall's own rollback copies beside a config file (`.claude.json.bak-<ts>`, `settings.json.bak-<ts>`) that hold the key, whole, as nothing else tells what was yours in one. `mirror-backup` is never touched.
+
+`svall uninstall` leaves your agent folders as they stand, with the home's setup in them, and names `mirror-backup`, which it keeps unless you say yes. `--purge` deletes it with the fleet.
 
 studio has no source setting, and nothing syncs by two hops. A Linux worker of studio takes studio's files as they stand, a copy from
 this Mac included, overrides merged, at its next link or move.

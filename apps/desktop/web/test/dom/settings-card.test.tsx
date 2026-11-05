@@ -10,6 +10,8 @@ bridge.present = true;
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { SettingsCard } = await import('../../src/SettingsCard.js');
+const { dropBuffer, getBuffer, isDirty } = await import('../../src/ide/buffers.js');
+const { saveFile } = await import('../../src/ide/files.js');
 
 beforeEach(() => {
   freshStore();
@@ -417,15 +419,13 @@ function farWindow(answers: Record<string, (params: any) => unknown>, o: { follo
 }
 const SETUP = { 'home.setup': () => ({ rows: [tickRow] }), 'resources.get': () => ({ sources: [claude] }), 'fs.list': () => ({ entries: [{ name: 'style.md', kind: 'file' }] }) };
 
-test('a far home\'s pane opens its files in the shelf and makes one it has not', async () => {
+test('a far home\'s pane opens its files in the shelf, and one it has not as an unsaved buffer that only a save writes', async () => {
   try {
     farWindow({
       ...SETUP,
       'fs.list': (p: { path: string }) => ({ entries: p.path === 'rules' ? [{ name: 'style.md', kind: 'file' }, { name: 'deep', kind: 'dir' }] : [{ name: 'more.md', kind: 'file' }] }),
-      'fs.read': (p: { path: string }) => {
-        if (p.path === 'CLAUDE.md' && !call.mock.calls.some(([m]) => m === 'fs.write')) throw Object.assign(new Error('not there'), { code: 'not_found' });
-        return { text: '', mtimeMs: 1, root: '/home/ada/.claude' };
-      },
+      'fs.read': () => { throw Object.assign(new Error('/home/ada/.claude is gone'), { code: 'not_found' }); },
+      'fs.write': () => ({ mtimeMs: 5 }),
     });
     render(<SettingsCard />);
     show('setup');
@@ -435,11 +435,16 @@ test('a far home\'s pane opens its files in the shelf and makes one it has not',
     expect(screen.getByTestId('setup-files').textContent).toContain('1 skill');
     await screen.findByTestId('setup-open-rules/style.md');
     await screen.findByTestId('setup-open-rules/deep/more.md');
-    fireEvent.click(screen.getByTestId('setup-open-CLAUDE.md'));
-    await waitFor(() => expect(call).toHaveBeenCalledWith('fs.write', { id: CLAUDE, path: 'CLAUDE.md', text: '', mtimeMs: 0 }));
-    await waitFor(() => expect(store.getState().resourcesShown).toEqual({ rootId: CLAUDE, path: 'CLAUDE.md' }));
+    fireEvent.click(screen.getByTestId('setup-open-settings.json'));
+    await waitFor(() => expect(store.getState().resourcesShown).toEqual({ rootId: CLAUDE, path: 'settings.json' }));
     expect(store.getState().resourcesOpen).toBe(true);
     expect(store.getState().settingsOpen).toBe(false);
+    const seeded = getBuffer(CLAUDE, 'settings.json')!;
+    expect([seeded.state.doc.toString(), seeded.mtimeMs, isDirty(seeded)]).toEqual(['{}\n', 0, false]);
+    expect(call).not.toHaveBeenCalledWith('fs.write', expect.anything());
+    await saveFile({ api: { call: call as never }, store: store as never }, CLAUDE, 'settings.json');
+    expect(call).toHaveBeenCalledWith('fs.write', { id: CLAUDE, path: 'settings.json', text: '{}\n', mtimeMs: 0, root: undefined });
+    dropBuffer(CLAUDE, 'settings.json');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -464,6 +469,132 @@ test('the pane\'s ticks go to this Mac\'s daemon, and the copy to the home, nami
     fireEvent.click(copy);
     expect(call).toHaveBeenCalledWith('machines.copySetupFrom', { machine: FAR_ME });
     expect((await screen.findByTestId('setup-copied')).textContent).toBe('Copied to studio. What it replaced there is in /home/ada/.svall/mirror-backup/2026-11-04.');
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+const twoKeys = { key: 'claude:mcp:two', status: 'warn', tick: { item: 'claude:mcp:two', fields: ['env.A', 'env.B'], on: false, preview: ['env.A a…1', 'env.B b…2'], ticked: ['env.A'] } };
+
+test('a row of several keys has a box for each and says when it is partly ticked, and each box says only its own field', async () => {
+  try {
+    farWindow({
+      ...SETUP,
+      'home.setup': () => ({ rows: [twoKeys] }),
+      'home.setupConsent': () => ({ rows: [{ ...twoKeys, tick: { ...twoKeys.tick, ticked: [] } }] }),
+    });
+    render(<SettingsCard />);
+    show('setup');
+    const a = await screen.findByTestId('setup-tick-claude:mcp:two#env.A') as HTMLInputElement;
+    const b = screen.getByTestId('setup-tick-claude:mcp:two#env.B') as HTMLInputElement;
+    expect([a.checked, b.checked]).toEqual([true, false]);
+    expect(screen.getByTestId('setup-partial-claude:mcp:two').textContent).toContain('1 of 2 keys go');
+    expect(screen.queryByTestId('setup-tick-claude:mcp:two')).toBeNull();
+    fireEvent.click(a);
+    expect(call).toHaveBeenCalledWith('home.setupConsent', { item: 'claude:mcp:two', fields: ['env.A'], on: false });
+    await waitFor(() => expect(screen.queryByTestId('setup-partial-claude:mcp:two')).toBeNull());
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('an item that travels whole keeps one box', async () => {
+  try {
+    const whole = { key: 'claude:mcp:odd', status: 'warn', tick: { item: 'claude:mcp:odd', fields: ['command', 'sandbox'], on: false, preview: ['command', 'sandbox'] } };
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [whole] }) });
+    render(<SettingsCard />);
+    show('setup');
+    fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:odd'));
+    expect(call).toHaveBeenCalledWith('home.setupConsent', { item: 'claude:mcp:odd', fields: ['command', 'sandbox'], on: true });
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('an untick says its key stays on the home until the next Copy, which ends the saying, and no Copy runs by itself', async () => {
+  try {
+    const on = { ...tickRow, tick: { ...tickRow.tick, on: true, ticked: ['env.KEY'] } };
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [on] }), 'home.setupConsent': () => ({ rows: [{ ...tickRow, tick: { ...tickRow.tick, ticked: [] } }] }), 'machines.copySetupFrom': () => ({ sent: 1 }) });
+    render(<SettingsCard />);
+    show('setup');
+    fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
+    expect((await screen.findByTestId('setup-stays-claude:mcp:linear')).textContent).toContain('stays on studio until the next Copy');
+    expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
+    fireEvent.click(screen.getByTestId('setup-copy'));
+    await screen.findByTestId('setup-copied');
+    expect(screen.queryByTestId('setup-stays-claude:mcp:linear')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('Copy waits for the rows and for each tick, and stays off with the failure shown until a check answers', async () => {
+  try {
+    let answerRows: ((r: unknown) => void) | undefined;
+    farWindow({
+      ...SETUP,
+      'home.setup': () => new Promise((r) => { answerRows = r; }),
+      'home.setupConsent': () => { throw new Error('the consent file cannot be written'); },
+    });
+    render(<SettingsCard />);
+    show('setup');
+    const copy = screen.getByTestId('setup-copy') as HTMLButtonElement;
+    expect(copy.disabled).toBe(true);
+    await waitFor(() => expect(answerRows).toBeDefined());
+    act(() => answerRows!({ rows: [tickRow] }));
+    await waitFor(() => expect(copy.disabled).toBe(false));
+    fireEvent.click(screen.getByTestId('setup-tick-claude:mcp:linear'));
+    expect(copy.disabled).toBe(true);
+    expect((await screen.findByTestId('setup-failed')).textContent).toContain('the consent file cannot be written');
+    expect(copy.disabled).toBe(true);
+    answerRows = undefined;
+    fireEvent.click(screen.getByTestId('setup-retry'));
+    await waitFor(() => expect(answerRows).toBeDefined());
+    act(() => answerRows!({ rows: [tickRow] }));
+    await waitFor(() => expect(screen.queryByTestId('setup-failed')).toBeNull());
+    expect(copy.disabled).toBe(false);
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a home.setup that fails shows why and leaves Copy off', async () => {
+  try {
+    farWindow({ ...SETUP, 'home.setup': () => { throw new Error('this Mac\'s daemon did not answer'); } });
+    render(<SettingsCard />);
+    show('setup');
+    expect((await screen.findByTestId('setup-failed')).textContent).toContain('did not answer');
+    expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('the pane says what a Copy sends: with a backup named, to put back what is wanted first; only what changed; the first Copy\'s exception', async () => {
+  try {
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [tickRow], backup: '/Users/ada/.svall/mirror-backup/2026-11-04' }) });
+    render(<SettingsCard />);
+    show('setup');
+    await screen.findByTestId('setup-backup');
+    const says = screen.getByTestId('setup-copy-says').textContent;
+    expect(says).toContain('replaced same-named files on this Mac');
+    expect(says).toContain('Put back what you want from there first');
+    expect(says).toContain('only what changed on this Mac since the last one');
+    expect(says).toContain('The first Copy has no last one');
+    expect(says).toContain('removes nothing on studio');
+    expect(screen.getByTestId('setup-keys').textContent).toContain('anything written in them included');
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('with no backup named the pane does not speak of one', async () => {
+  try {
+    farWindow(SETUP);
+    render(<SettingsCard />);
+    show('setup');
+    await screen.findByTestId('setup-tick-claude:mcp:linear');
+    expect(screen.getByTestId('setup-copy-says').textContent).not.toContain('Put back');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -510,7 +641,7 @@ test('a window on a worker the home dials has no route of its own, so it reads n
     act(() => store.getState().setHome({ name: 'studio', state: 'connected' }));
     render(<SettingsCard />);
     show('setup');
-    expect(screen.getByTestId('setup-away')).toBeTruthy();
+    expect(screen.getByTestId('setup-away').textContent).toContain('studio reaches this Mac over its own link');
     expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));

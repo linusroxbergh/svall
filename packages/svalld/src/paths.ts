@@ -74,9 +74,9 @@ export function resolvePaths(home: string = svallHome()) {
     agentProfiles: path.join(home, 'agent-profiles'),
     // a worker's own settings and files, in the mirror's layout, over what the home's agent configuration brings
     mirrorOverrides: path.join(home, 'mirror-overrides'),
-    // the home's: which keys each worker's mirror may copy, field by field
+    // which keys each machine's mirror may copy, field by field: the home's for its workers, a worker's for its home
     mirrorConsent: path.join(home, 'mirror-consent.json'),
-    // what the first push onto this machine replaced: a Mac worker's, or its home's first copy from a worker
+    // the files a push replaced here that the mirror had not written: a Mac worker's, or its home's by a worker's copy
     mirrorBackup: path.join(home, 'mirror-backup'),
     trash: path.join(home, 'trash'),
     opencodeConfig: path.join(home, 'opencode-config'),

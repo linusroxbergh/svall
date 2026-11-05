@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parse as parseToml, stringify as stringifyToml } from 'smol-toml';
 import { z } from 'zod';
 import { AgentKind } from '@svall/protocol';
+import type { Logger } from '../log.js';
 import { BATCH_WIDTH, DurableBatch, writeDurable } from '../durable.js';
 import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
@@ -12,13 +13,16 @@ import { realPath } from '../paths.js';
 import { fileSha } from './bundle.js';
 import { filesIn } from './docs-sync.js';
 import { agentDoc } from './mirror-agents.js';
-import { configPlace, configRedacted, fieldPlace, getAt, isReferenceOnly, parseJsonc, relocatedServer, setAt, type Place } from './mirror-config.js';
+import { configPlace, configRedacted, configSecrets, fieldPlace, getAt, heldServer, isReferenceOnly, parseJsonc, relocatedServer, secretsOf, setAt, type Place } from './mirror-config.js';
 import { CONFIG_ITEMS } from './mirror-consent.js';
+import { carriable } from './mirror-plan.js';
 import {
   CODEX_MAC_ONLY, CODEX_WORKER_OWNED, Doc, DOC_NAMES, InPlace, isCopy, isCopyOf, isDoc, isNoFile, MANIFEST, mover, OPENCODE_FILES, OPENCODE_WORKER_OWNED, placedIn,
   PLUGIN_LISTS, readState, recordKey, relocated, ROOTS, serverSha, statOf, WORKER_OWNED, type Copied, type DocName, type Homes, type MirrorHomes, type Root, type WorkerState,
 } from './mirror-state.js';
 
+// how many times an apply merges a config file again that changed under it
+const REMERGES = 3;
 // matches no file and no value, so a push writes again what an apply cut short may have left half done
 const UNSURE = '0'.repeat(64);
 
@@ -34,8 +38,8 @@ function provisional(state: WorkerState, next: WorkerState): WorkerState {
     files: shas(state.files, next.files), servers: shas(state.servers, next.servers),
     docs: Object.fromEntries(keys(state.docs, next.docs).map((d) => [d, shas(state.docs[d] ?? {}, next.docs[d] ?? {})])),
     secrets: either(state.secrets, next.secrets), whole: either(state.whole ?? {}, next.whole ?? {}), keyed: either(state.keyed ?? {}, next.keyed ?? {}),
-    bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }),
-    ...(next.backup && { backup: state.backup?.done ? state.backup : { dir: next.backup.dir } }),
+    bare: { ...state.bare, ...next.bare }, ...(next.applied !== undefined && { applied: next.applied }), ...(next.backup && { backup: next.backup }),
+    ...(next.listed && { listed: Object.fromEntries(keys(state.listed ?? {}, next.listed).map((k) => [k, [...new Set([...state.listed?.[k] ?? [], ...next.listed?.[k] ?? []])]])) }),
   };
 }
 
@@ -80,44 +84,43 @@ function put(file: string, data: Buffer, mode: number): boolean {
   return true;
 }
 
-type Keep = (file: string, was: Buffer) => Promise<void>;
-
 const held = (at: string): Promise<Buffer | void> => fsp.readFile(at).catch((e: NodeJS.ErrnoException) => { if (e.code !== 'ENOENT') throw e; });
 
-// as `put`, written in `batch`, what it replaces handed to `keep` first
-async function place(batch: DurableBatch, file: string, data: Buffer, mode: number, keep?: Keep): Promise<boolean> {
+// as `put`, written in `batch`
+async function place(batch: DurableBatch, file: string, data: Buffer, mode: number): Promise<boolean> {
   const at = realPath(file);
-  const was = await held(at);
-  if (was?.equals(data)) return false;
-  if (was) await keep?.(file, was);
+  if ((await held(at))?.equals(data)) return false;
   await batch.write(at, data, mode);
   return true;
 }
 
-// a folder under `backups` no earlier push named, by the day
+// a folder under `backups` no earlier push named, by the day here
 function newBackup(backups: string): string {
-  const day = new Date().toISOString().slice(0, 10);
+  const day = new Date().toLocaleDateString('en-CA');
   for (let n = 1; ; n++) {
     const dir = path.join(backups, n === 1 ? day : `${day}-${n}`);
     if (!fs.existsSync(dir)) return dir;
   }
 }
 
-// keeps what `file` holds under `dir`, by its place under the user's home, on disk before the file is touched; a copy there is
-// what a push cut short found, which comes before anything the mirror wrote. A copy may hold keys, so it is the owner's alone
-function keeper(dir: string, homedir: string): Keep {
+// copies each of `files` under `dir` by its place under the user's home, on disk before any is touched, answering how many; a
+// copy there is the earlier one, which stays. A copy may hold keys, so it is the owner's alone
+async function keepCopies(files: string[], dir: string, homedir: string): Promise<number> {
   const fleetHome = path.dirname(path.dirname(dir));
-  return async (file, was) => {
+  const batch = new DurableBatch();
+  const parents = new Set([fleetHome]);
+  const kept = await pool(files, BATCH_WIDTH, async (file) => {
     const rel = path.relative(homedir, file);
     const to = path.join(dir, rel.startsWith('..') ? path.join('outside-home', file) : rel);
-    if (fs.existsSync(to)) return;
+    const was = fs.existsSync(to) ? undefined : await held(realPath(file));
+    if (!was) return false;
     await fsp.mkdir(dir, { recursive: true, mode: 0o700 });
-    const batch = new DurableBatch();
-    await batch.write(to, was, 0o600);
-    const parents = [fleetHome];
-    for (let d = path.dirname(to); d !== fleetHome && d !== path.dirname(d); d = path.dirname(d)) parents.push(d);
-    await batch.settle(parents);
-  };
+    await batch.write(to, was, (fs.statSync(realPath(file)).mode & 0o700) | 0o600);
+    for (let d = path.dirname(to); d !== fleetHome && d !== path.dirname(d); d = path.dirname(d)) parents.add(d);
+    return true;
+  });
+  await batch.settle([...parents]);
+  return kept.filter(Boolean).length;
 }
 
 const asJson = (doc: Doc): string => `${JSON.stringify(doc, null, 2)}\n`;
@@ -153,18 +156,23 @@ const DOCS: DocSpec[] = [
   })),
 ];
 
-// a config file's object, or undefined for none; one that holds no object stops the mirror, named without what it holds
-function readDocFile(file: string, parse: (text: string) => unknown): Doc | undefined {
-  let text: string;
-  try { text = fs.readFileSync(file, 'utf8'); } catch (e) {
+const textOf = (file: string): string | undefined => {
+  try { return fs.readFileSync(file, 'utf8'); } catch (e) {
     if (isNoFile(e)) return undefined;
     throw e;
   }
+};
+
+// a config file's object from its text, or undefined for none; one that holds no object stops the mirror, named without what it holds
+function docIn(file: string, text: string | undefined, parse: (text: string) => unknown): Doc | undefined {
+  if (text === undefined) return undefined;
   let doc: unknown;
   try { doc = parse(text); } catch { /* named below */ }
   if (!isDoc(doc)) throw new Error(`${file} cannot be parsed, so the mirror left this machine's agent configuration as it was`);
   return doc;
 }
+
+const readDocFile = (file: string, parse: (text: string) => unknown): Doc | undefined => docIn(file, textOf(file), parse);
 
 const overlay = (a: unknown, b: unknown): unknown =>
   isDoc(a) && isDoc(b) ? { ...a, ...Object.fromEntries(Object.entries(b).map(([k, v]) => [k, overlay(a[k], v)])) } : b;
@@ -196,7 +204,7 @@ export function docWithOverride(name: DocName, o: Homes & { overrides: string })
 type Leaf = { record: string; place: Place; want?: string; bare?: string; named: boolean; remerged: boolean; overOwn: boolean; server?: Place };
 
 // `v` at the leaf; a Codex env value not set is named in its server's env_vars instead, and only then
-function setLeaf(doc: Doc, l: Leaf, v: string | undefined): void {
+function setLeaf(doc: Doc, l: Pick<Leaf, 'place' | 'server'>, v: string | undefined): void {
   setAt(doc, l.place, v);
   if (!l.server) return;
   const name = String(l.place[l.place.length - 1]);
@@ -206,7 +214,8 @@ function setLeaf(doc: Doc, l: Leaf, v: string | undefined): void {
 }
 
 // a ticked value is the Mac's unless it would go over the worker's own; a copy is emptied once unticked; the worker's own goes
-// back where the merge wrote over it. `next` keeps a copy while its place holds it or its bare form
+// back where the merge wrote over it, and a value it held before the mirror wrote it is no copy. `next` keeps a copy while its
+// place holds it or its bare form
 function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next: WorkerState): void {
   const pre = getAt(was, l.place);
   const copied = isCopy(recorded, pre);
@@ -218,7 +227,7 @@ function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, next:
   };
   if (l.want !== undefined && (l.overOwn || !own)) {
     if (now !== l.want) setLeaf(doc, l, l.want);
-    keep(sha256Hex(l.want));
+    if (copied || pre !== l.want) keep(sha256Hex(l.want));
     return;
   }
   if (copied && now !== l.bare) setLeaf(doc, l, l.bare);
@@ -239,33 +248,37 @@ function leavesOf(fields: string[], placesOf: (field: string) => Place[]): { pla
 }
 
 /**
- * Puts the mirror at `blobDir` into this machine's homes. A record of all it may write goes first, so an apply cut short still
- * knows each copy it left, the final one last; files go off the event loop, a few at once, so the link is answered meanwhile.
- * With `backups`, the first push here keeps a copy of each file it replaces or removes, in a folder that a push cut short hands
- * on to the next, and answers that folder.
+ * Puts the mirror at `blobDir` into this machine's homes. With `backups`, each file the record does not name is copied first,
+ * all before anything is written, into one folder, and the apply answers it when this one kept any. A record of all it may
+ * write goes next, so an apply cut short still knows each copy it left, the final one last; files go off the event loop, a few
+ * at once, so the link is answered meanwhile. `additive`: a worker's Copy, which removes nothing here.
  */
 export async function applyMirror(
-  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number; backups?: string },
+  blobDir: string, o: MirrorHomes & { overrides: string; stateFile: string; varsFile: string; seq?: number; backups?: string; additive?: boolean; log?: Pick<Logger, 'error'> },
 ): Promise<{ written: string[]; removed: string[]; backup?: string }> {
   const m = Manifest.parse(JSON.parse(fs.readFileSync(path.join(blobDir, MANIFEST), 'utf8')));
   const state = readState(o.stateFile);
   const applied = o.seq ?? state.applied;
-  const backup = o.backups === undefined || state.backup?.done ? undefined : state.backup?.dir ?? newBackup(o.backups);
-  const keep = backup === undefined ? undefined : keeper(backup, o.homedir);
-  const kept = backup === undefined ? state.backup : { dir: backup, done: true as const };
-  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(kept && { backup: kept }) };
+  const backup = o.backups === undefined ? state.backup : { dir: state.backup?.dir ?? newBackup(o.backups) };
+  const next: WorkerState = { files: {}, docs: {}, servers: {}, secrets: {}, ...(applied !== undefined && { applied }), ...(backup && { backup }), ...(state.listed && { listed: { ...state.listed } }) };
   const written: string[] = [];
   const removed: string[] = [];
   const move = mover(m.homes, o);
-  // read before anything is written: a config file or override that cannot be parsed stops the mirror rather than be replaced
-  const current = DOCS.map((d) => ({ doc: readDocFile(d.at(o), d.parse), override: readDocFile(path.join(o.overrides, d.override), d.parse) }));
-  const docs = DOCS.map((d, i) => applyDoc(d, current[i].doc, current[i].override, { m, state, next, move }));
+  const applying = { m, state, next, move, additive: o.additive === true };
   const carried = (Object.keys(ROOTS) as Root[]).flatMap((root) => {
     const home = o[ROOTS[root]];
     return home ? filesIn(path.join(blobDir, root)).map((rel) => ({ root, home, rel, to: path.posix.join(root, rel), from: path.join(blobDir, root, rel) })) : [];
   });
+  refuseForeign(m, carried.map((f) => f.to));
+  // read before anything is written: a config file or override that cannot be parsed stops the mirror rather than be replaced
+  const current = DOCS.map((d) => {
+    const text = textOf(d.at(o));
+    return { text, doc: docIn(d.at(o), text, d.parse), override: readDocFile(path.join(o.overrides, d.override), d.parse) };
+  });
+  const docs = DOCS.map((d, i) => applyDoc(d, current[i].doc, current[i].override, applying));
   const shas = await pool(carried, BATCH_WIDTH, (f) => fileSha(f.from));
   carried.forEach((f, i) => { next.files[f.to] = shas[i]; });
+  for (const f of carried.filter((x) => isList(x.to))) (next.listed ??= {})[f.to] = Object.keys(entriesOf(f.to, JSON.parse(fs.readFileSync(f.from, 'utf8'))));
   for (const to of m.keyed) {
     const h = next.files[to] ?? state.files[to];
     if (h) (next.keyed ??= {})[to] = h;
@@ -279,7 +292,27 @@ export async function applyMirror(
       (next.bare ??= {})[k] = { value: p.bare };
     }
   }
+  const docOverrides = new Set(DOCS.map((d) => d.override));
+  const overrides = (Object.keys(ROOTS) as Root[]).flatMap((root) => {
+    const home = o[ROOTS[root]];
+    return home ? filesIn(path.join(o.overrides, root)).filter((rel) => !docOverrides.has(path.posix.join(root, rel))).map((rel) => ({ to: path.posix.join(root, rel), from: path.join(o.overrides, root, rel), file: path.join(home, rel) })) : [];
+  });
   const batch = new DurableBatch();
+  let kept = 0;
+  if (o.backups !== undefined && backup) {
+    const unnamed = (to: string): boolean => !Object.hasOwn(state.files, to);
+    const replaced = await pool(overrides.filter((f) => unnamed(f.to) && !Object.hasOwn(next.files, f.to)), BATCH_WIDTH, async (f) => ((await held(realPath(f.file)))?.equals(await fsp.readFile(f.from)) === false ? [f.file] : []));
+    const first = [
+      ...DOCS.filter((d, i) => current[i].doc && !namesDoc(state, d.name) && (docs[i].doc || namesDoc(next, d.name))).map((d) => d.at(o)),
+      ...carried.filter((f) => unnamed(f.to)).map((f) => path.join(f.home, f.rel)), ...replaced.flat(),
+    ];
+    // a push cut short while it copies goes on in the same folder
+    if (first.length && !state.backup) {
+      await place(batch, o.stateFile, Buffer.from(asJson({ ...state, backup })), 0o600);
+      await batch.settle();
+    }
+    kept = await keepCopies(first, backup.dir, o.homedir);
+  }
   await place(batch, o.stateFile, Buffer.from(asJson(provisional(state, next))), 0o600);
   await batch.settle();
   const fileOf = (to: string): string | undefined => {
@@ -290,18 +323,24 @@ export async function applyMirror(
 
   // a config file holding a ticked key is its owner's alone, whether or not this apply changed it
   for (const [i, d] of DOCS.entries()) {
+    // what an agent wrote there since it was read stays, as Claude Code writes its login to .claude.json as it runs
+    for (let tries = 0, text = textOf(d.at(o)); text !== current[i].text && tries < REMERGES; tries++, text = textOf(d.at(o))) {
+      current[i].text = text;
+      forgetDoc(next, d.name);
+      docs[i] = applyDoc(d, docIn(d.at(o), text, d.parse), current[i].override, applying);
+    }
     const { doc, keyed } = docs[i];
-    if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777, keep)) written.push(d.at(o));
+    if (doc && await place(batch, d.at(o), Buffer.from(d.format(doc)), keyed ? 0o600 : (statOf(d.at(o))?.mode ?? 0o600) & 0o777)) written.push(d.at(o));
     if (keyed) ownerOnly(d.at(o));
   }
   const changed = carried.filter((f) => state.files[f.to] !== next.files[f.to]);
-  const wrote = await pool(changed, BATCH_WIDTH, async ({ root, home, rel, from }) => {
+  const wrote = await pool(changed, BATCH_WIDTH, async ({ root, home, rel, to, from }) => {
     const data = await fsp.readFile(from);
     const override = path.join(o.overrides, root, rel);
-    const list = root === 'claude' && PLUGIN_LISTS.some((n) => rel === path.join('plugins', n));
-    const bytes = fs.existsSync(override) ? await fsp.readFile(override) : list ? Buffer.from(asJson(relocated(JSON.parse(data.toString('utf8')), move) as Doc)) : data;
     const file = path.join(home, rel);
-    return await place(batch, file, bytes, fs.statSync(from).mode & 0o777, keep) ? file : undefined;
+    const list = async (): Promise<Doc> => withOwnEntries(to, relocated(JSON.parse(data.toString('utf8')), move) as Doc, parsed(await held(realPath(file))), applying);
+    const bytes = fs.existsSync(override) ? await fsp.readFile(override) : isList(to) ? Buffer.from(asJson(await list())) : data;
+    return await place(batch, file, bytes, fs.statSync(from).mode & 0o777) ? file : undefined;
   });
   written.push(...wrote.filter((f) => f !== undefined));
   const staying = new Set(m.keep);
@@ -315,22 +354,27 @@ export async function applyMirror(
   };
   for (const [to, h] of Object.entries(state.files)) {
     if (Object.hasOwn(next.files, to)) continue;
-    if (staying.has(to) || unread(to)) {
+    const stays = o.additive || unread(to);
+    if (staying.has(to) || stays) {
       next.files[to] = h;
-      if (unread(to) && state.keyed?.[to]) (next.keyed ??= {})[to] = state.keyed[to];
-      for (const k of Object.keys(state.secrets).filter((x) => unread(to) && JSON.parse(x)[0] === to)) {
+      if (stays && state.keyed?.[to]) (next.keyed ??= {})[to] = state.keyed[to];
+      for (const k of Object.keys(state.secrets).filter((x) => stays && JSON.parse(x)[0] === to)) {
         next.secrets[k] = state.secrets[k];
         if (state.bare?.[k]) (next.bare ??= {})[k] = state.bare[k];
       }
       continue;
     }
     const file = fileOf(to);
-    if (file && fs.lstatSync(file, { throwIfNoEntry: false })) {
-      const was = keep && await held(realPath(file));
-      if (was) await keep?.(file, was);
-      await fsp.rm(file, { force: true });
-      removed.push(file);
+    if (!file || !fs.lstatSync(file, { throwIfNoEntry: false })) continue;
+    // a list the home no longer has leaves what this machine's own plugins need of it
+    const list = isList(to) ? withOwnEntries(to, {}, parsed(await held(realPath(file))), applying) : {};
+    delete next.listed?.[to];
+    if (Object.keys(entriesOf(to, list)).length) {
+      await place(batch, file, Buffer.from(asJson(list)), (statOf(realPath(file))?.mode ?? 0o600) & 0o777);
+      continue;
     }
+    await fsp.rm(file, { force: true });
+    removed.push(file);
   }
   // a file holding a ticked key is its owner's alone, whether or not this apply wrote it
   for (const to of Object.keys(next.keyed ?? {})) {
@@ -338,31 +382,76 @@ export async function applyMirror(
     if (file) ownerOnly(file);
   }
   // the overrides of whole files, each over what the mirror wrote there
-  const docOverrides = new Set(DOCS.map((d) => d.override));
-  for (const root of Object.keys(ROOTS) as Root[]) {
-    const home = o[ROOTS[root]];
-    if (!home) continue;
-    for (const rel of filesIn(path.join(o.overrides, root))) {
-      if (docOverrides.has(path.posix.join(root, rel))) continue;
-      const from = path.join(o.overrides, root, rel);
-      const file = path.join(home, rel);
-      if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777, keep)) written.push(file);
-    }
+  for (const { from, file } of overrides) {
+    if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777)) written.push(file);
   }
 
   await place(batch, o.varsFile, Buffer.from(`${JSON.stringify(m.vars, null, 2)}\n`), 0o644);
   await batch.settle();
-  removed.push(...dropRollbacks([state, next], o));
+  removed.push(...await dropRollbacks([state, next], o, (file, e) => o.log?.error(`mirror: the rollback copy ${file} was left: ${e.message}`)));
   await place(batch, o.stateFile, Buffer.from(asJson(next)), 0o600);
   await batch.settle();
-  return { written, removed, ...(backup !== undefined && fs.existsSync(backup) && { backup }) };
+  return { written, removed, ...(kept > 0 && backup && { backup: backup.dir }) };
 }
 
-type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string };
+type Applying = { m: Manifest; state: WorkerState; next: WorkerState; move: (p: string) => string; additive: boolean };
+
+// what each doc's servers and keys are, as the record keeps them
+const AGENT_OF: Record<DocName, AgentKind> = { 'settings.json': 'claude', '.claude.json': 'claude', 'config.toml': 'codex', 'opencode.json': 'opencode', 'opencode.jsonc': 'opencode' };
+const inDoc = (of: Record<string, unknown> | undefined, name: string): string[] => Object.keys(of ?? {}).filter((k) => JSON.parse(k)[0] === name);
+// whether the record holds anything of doc `name`, as it does once the mirror has merged into it
+const namesDoc = (r: WorkerState, name: DocName): boolean => Object.keys(r.docs[name] ?? {}).length > 0 || [r.servers, r.secrets, r.whole].some((of) => inDoc(of, name).length > 0);
+function forgetDoc(r: WorkerState, name: DocName): void {
+  delete r.docs[name];
+  for (const of of [r.servers, r.secrets, r.whole, r.bare]) for (const k of inDoc(of, name)) delete of![k];
+}
+
+// each key the target holds itself in server entry `entry`, by its place there: a literal no record names a copy
+function ownKeys(agent: AgentKind, entry: Doc, isCopied: (place: Place, v: unknown) => boolean): { field: string; place: Place }[] {
+  return secretsOf(heldServer(agent, entry)).flatMap(({ field }) => fieldPlace(agent, entry, field).filter((p) => !isCopied(p, getAt(entry, p))).map((place) => ({ field, place })));
+}
+
+// a plugin list's or enabledPlugins' name in the record; what a merge leaves of the entries `held` holds is what the mirror did not
+// write, a record from before it kept their names leaving none
+const ENABLED = 'settings.json#enabledPlugins';
+const isList = (to: string): boolean => PLUGIN_LISTS.some((n) => to === `claude/plugins/${n}`);
+const entriesOf = (to: string, list: unknown): Doc => {
+  const e = to.endsWith('installed_plugins.json') && isDoc(list) ? list.plugins : list;
+  return isDoc(e) ? e : {};
+};
+const ownEntries = (key: string, held: Doc, named: boolean, { state, additive }: Pick<Applying, 'state' | 'additive'>): Doc => {
+  const wrote = additive ? [] : state.listed?.[key] ?? (named ? Object.keys(held) : []);
+  return Object.fromEntries(Object.entries(held).filter(([k]) => !wrote.includes(k)));
+};
+// list `to` as it lands: the sender's entries over this machine's own
+function withOwnEntries(to: string, list: Doc, heldList: unknown, a: Pick<Applying, 'state' | 'additive'>): Doc {
+  const merged = { ...ownEntries(to, entriesOf(to, heldList), Object.hasOwn(a.state.files, to), a), ...entriesOf(to, list) };
+  return to.endsWith('installed_plugins.json') ? { ...(isDoc(heldList) ? heldList : {}), ...list, plugins: merged } : merged;
+}
+const parsed = (text: string | Buffer | void): unknown => {
+  try { return text === undefined ? undefined : JSON.parse(text.toString()); } catch { return undefined; }
+};
+
+// a blob as mirrorPlan makes it, nothing else: a worker's Copy lands here
+function refuseForeign(m: Manifest, files: string[]): void {
+  const SERVER_PLACE: Record<AgentKind, (p: string[], doc: DocName) => boolean> = {
+    claude: (p, doc) => doc === '.claude.json' && ((p.length === 2 && p[0] === 'mcpServers') || (p.length === 4 && p[0] === 'projects' && p[2] === 'mcpServers')),
+    codex: (p, doc) => doc === 'config.toml' && p.length === 2 && p[0] === 'mcp_servers',
+    opencode: (p, doc) => (OPENCODE_FILES as readonly string[]).includes(doc) && p[0] === 'mcp' && (p.length === 2 || (p.length === 3 && p[1] === 'servers')),
+  };
+  for (const to of [...files, ...m.keep, ...m.keyed, ...m.inPlace.map((f) => f.to)]) if (!carriable(to)) throw new Error(`the agent configuration names ${to}, which the mirror does not carry`);
+  for (const s of m.servers) if (s.doc && !SERVER_PLACE[s.agent](s.place, s.doc)) throw new Error(`the agent configuration places a ${s.agent} server at ${s.place.join('.')}`);
+  const fieldOk = (d: DocSpec | undefined, f: string): boolean => !d?.owned.includes(f.split('.')[0]) || (d.name === 'settings.json' && f.startsWith('env.'));
+  for (const c of m.configs) {
+    const d = DOCS.find((x) => x.item === c.key);
+    for (const f of c.fields) if (!fieldOk(d, f)) throw new Error(`the agent configuration names a key at ${f}, which this machine owns`);
+  }
+}
 
 // one config file as the mirror leaves it, none when unchanged, and whether it holds a ticked value; one the Mac could not
 // read keeps its record
-function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, { m, state, next, move }: Applying): { doc?: Doc; keyed: boolean } {
+function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefined, applying: Applying): { doc?: Doc; keyed: boolean } {
+  const { m, state, next, move, additive } = applying;
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
   const was = JSON.parse(before) as Doc;
@@ -385,14 +474,27 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     bareDoc = bare;
     const recorded = state.docs[d.name] ?? {};
     const shas: Record<string, string> = {};
+    // a key the target holds itself stays where the sender holds a reference or nothing
+    const own = configSecrets(AGENT_OF[d.name], Object.fromEntries(Object.entries(was).filter(([k]) => !d.owned.includes(k))))
+      .flatMap((f) => (config?.ticked.includes(f.field) ? [] : configPlace(was, f.field)))
+      .filter((p) => !isCopy(state.secrets[recordKey(d.name, p)], getAt(was, p)));
+    const enabled = (k: string): boolean => d.name === 'settings.json' && k === 'enabledPlugins';
+    const ownEnabled = (k: string): Doc => ownEntries(ENABLED, isDoc(doc[k]) ? doc[k] : {}, Object.hasOwn(recorded, k), applying);
     for (const [k, v] of Object.entries(bare)) {
       if (d.owned.includes(k)) continue;
       shas[k] = sha(v);
       if (recorded[k] === shas[k]) continue;
-      doc[k] = structuredClone(v);
+      doc[k] = enabled(k) && isDoc(v) ? { ...ownEnabled(k), ...v } : structuredClone(v);
       remergedKeys.add(k);
+      if (enabled(k) && isDoc(v)) (next.listed ??= {})[ENABLED] = Object.keys(v);
     }
-    for (const k of Object.keys(recorded)) if (!Object.hasOwn(shas, k) && !d.owned.includes(k)) delete doc[k];
+    for (const k of Object.keys(recorded)) {
+      if (Object.hasOwn(shas, k) || d.owned.includes(k)) continue;
+      if (additive) shas[k] = recorded[k];
+      else if (enabled(k) && Object.keys(ownEnabled(k)).length) doc[k] = ownEnabled(k);
+      else if (!own.some((p) => p[0] === k)) delete doc[k];
+    }
+    for (const p of own) if (remergedKeys.has(String(p[0]))) setAt(doc, p, getAt(was, p));
     next.docs[d.name] = shas;
     for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
@@ -421,13 +523,24 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     const at = placed(s.place);
     const entry = relocatedServer(s.entry, move);
     const bare = relocatedServer(s.bare, move);
-    carried.push({ place: s.place, at, bare, codex: s.agent === 'codex' });
-    servers[rk] = sha(bare);
+    const holds = getAt(doc, at);
     // a server ticked whole carries its fields as they are, keys among them
     const whole = !s.secretFields.length && s.ticked.length ? serverSha(bare) : undefined;
+    // the target's own: one the mirror never wrote that it cannot read field by field, or the very one ticked whole
+    if (state.servers[rk] === undefined && isDoc(holds) && (whole ? serverSha(holds) === whole : !heldServer(s.agent, holds).known)) continue;
+    carried.push({ place: s.place, at, bare, codex: s.agent === 'codex' });
+    servers[rk] = sha(bare);
     if (whole) (next.whole ??= {})[rk] = whole;
-    const remerged = state.servers[rk] !== servers[rk] || getAt(doc, at) === undefined;
+    const remerged = state.servers[rk] !== servers[rk] || holds === undefined;
     if (remerged) setAt(doc, at, structuredClone(bare));
+    if (remerged && isDoc(holds) && !isCopyOf(state.whole?.[rk], serverSha(holds))) {
+      for (const { field, place: own } of ownKeys(s.agent, holds, (p, v) => isCopy(state.secrets[recordKey(d.name, [...s.place, ...p])], v))) {
+        if (s.ticked.includes(field)) continue;
+        // a url holds its key in its text, and an arg's place in the list is the list's: each stays whole
+        if (typeof own[1] === 'number') setAt(doc, [...at, own[0]], getAt(holds, [own[0]]));
+        else setLeaf(doc, { place: [...at, ...own], ...(s.agent === 'codex' && own[0] === 'env' && { server: at }) }, getAt(holds, own) as string);
+      }
+    }
     for (const g of leavesOf(s.secretFields, (f) => fieldPlace(s.agent, s.entry, f))) {
       leaves.push({
         record: recordKey(d.name, [...s.place, ...g.place]), place: [...at, ...g.place],
@@ -439,22 +552,27 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
   for (const [rk, h] of records(state.servers)) {
     if (Object.hasOwn(servers, rk)) continue;
-    if (!leave) setAt(doc, placed((JSON.parse(rk) as Place).slice(1)), undefined);
-    else {
+    if (leave || additive) {
       servers[rk] = h;
       if (state.whole?.[rk]) (next.whole ??= {})[rk] = state.whole[rk];
+      continue;
     }
+    const place = (JSON.parse(rk) as Place).slice(1);
+    const holds = getAt(doc, placed(place));
+    // one holding a key of the target's own stays, the mirror's no longer
+    const own = isDoc(holds) && !isCopyOf(state.whole?.[rk], serverSha(holds)) && ownKeys(AGENT_OF[d.name], holds, (p, v) => isCopy(state.secrets[recordKey(d.name, [...place, ...p])], v)).length > 0;
+    if (!own) setAt(doc, placed(place), undefined);
   }
   Object.assign(next.servers, servers);
 
   for (const l of leaves) settle(doc, was, l, state.secrets[l.record], next);
   // a value copied where the Mac now holds no secret is emptied as that place stands bare, while it is still the copy
   for (const [k, h] of records(state.secrets)) {
-    if (leave) {
+    if (leave || additive) {
       next.secrets[k] ??= h;
       if (state.bare?.[k]) (next.bare ??= {})[k] ??= state.bare[k];
     }
-    if (leave || Object.hasOwn(next.secrets, k)) continue;
+    if (leave || additive || Object.hasOwn(next.secrets, k)) continue;
     const place = (JSON.parse(k) as Place).slice(1);
     const s = carried.find((c) => c.place.every((p, i) => place[i] === p));
     const leaf = s ? place.slice(s.place.length) : place;
@@ -477,30 +595,49 @@ const placesIn = (d: DocSpec, doc: Doc, k: string): Place[] => {
   return d.name === '.claude.json' && place[0] === 'projects' ? Object.keys(isDoc(doc.projects) ? doc.projects : {}).map((p) => ['projects', p, ...place.slice(2)]) : [place];
 };
 
+// each string under `v`, one by one, as a .claude.json may hold a great many
+function* stringsIn(v: unknown): Generator<string> {
+  if (typeof v === 'string') yield v;
+  else if (typeof v === 'object' && v !== null) for (const x of Object.values(v)) yield* stringsIn(x);
+}
+
 /**
  * Removes each rollback copy of a config file that holds a value the records say the mirror copied and the file itself no longer
- * holds, so an untick reaches it, and answers them. One that cannot be parsed is left, as nothing says what it holds.
+ * holds, so an untick reaches it, and answers them. One that cannot be parsed is left, as nothing says what it holds, and one
+ * that cannot be read or removed goes to `failed`. It lets the event loop on between strings.
  */
-function dropRollbacks(records: WorkerState[], o: Homes): string[] {
+async function dropRollbacks(records: WorkerState[], o: Homes, failed: (file: string, e: Error) => void): Promise<string[]> {
   const copied = new Set(records.flatMap((r) => [...Object.values(r.secrets), ...Object.values(r.whole ?? {})].flat()));
   const gone: string[] = [];
+  if (!copied.size) return gone;
   for (const d of DOCS) {
-    const files = copied.size ? rollbacksOf(d.at(o)) : [];
-    if (!files.length) continue;
-    const whole = [...new Set(records.flatMap((r) => Object.keys(r.whole ?? {})))].filter((k) => JSON.parse(k)[0] === d.name);
-    const held = (doc: Doc | undefined): string[] => (doc ? [
-      ...stringPlaces(doc).map((p) => sha256Hex(getAt(doc, p) as string)),
-      ...whole.flatMap((k) => placesIn(d, doc, k).flatMap((at) => serverSha(getAt(doc, at)) ?? [])),
-    ] : []);
-    let live: Set<string>;
-    try { live = new Set(held(readDocFile(d.at(o), d.parse))); } catch { continue; }
-    for (const file of files) {
-      let doc: Doc | undefined;
-      try { doc = readDocFile(file, d.parse); } catch { continue; }
-      if (!held(doc).some((h) => copied.has(h) && !live.has(h))) continue;
-      fs.rmSync(file, { force: true });
-      gone.push(file);
-    }
+    try {
+      const files = rollbacksOf(d.at(o));
+      if (!files.length) continue;
+      const whole = [...new Set(records.flatMap((r) => inDoc(r.whole, d.name)))];
+      const shasIn = async (doc: Doc | undefined): Promise<Set<string>> => {
+        const shas = new Set<string>();
+        if (!doc) return shas;
+        let n = 0;
+        for (const v of stringsIn(doc)) {
+          shas.add(sha256Hex(v));
+          if (++n % 1000 === 0) await new Promise(setImmediate);
+        }
+        for (const k of whole) for (const at of placesIn(d, doc, k)) { const h = serverSha(getAt(doc, at)); if (h) shas.add(h); }
+        return shas;
+      };
+      let live: Set<string>;
+      try { live = await shasIn(docIn(d.at(o), (await held(d.at(o)))?.toString('utf8'), d.parse)); } catch { continue; }
+      for (const file of files) {
+        let shas: Set<string>;
+        try { shas = await shasIn(docIn(file, await fsp.readFile(file, 'utf8'), d.parse)); } catch { continue; }
+        if (![...shas].some((h) => copied.has(h) && !live.has(h))) continue;
+        try {
+          await fsp.rm(file, { force: true });
+          gone.push(file);
+        } catch (e) { failed(file, e as Error); }
+      }
+    } catch (e) { failed(d.at(o), e as Error); }
   }
   return gone;
 }
@@ -516,7 +653,7 @@ export function dropBlobs(stage: string): number {
  * Takes back each copy the mirror's record names while it is still the copy: a value becomes its bare form, a server copied
  * whole leaves, another keyed file goes. Answers a line for each file it changed or could not, and each copy changed since.
  */
-export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
+export async function takeBackCopies(o: Homes & { stateFile: string }): Promise<string[]> {
   const state = readState(o.stateFile);
   const done: string[] = [];
   const what = (keys: number, servers: number): string => [keys && `${keys} ${keys === 1 ? 'key' : 'keys'} the mirror copied`, servers && `${servers} ${servers === 1 ? 'server' : 'servers'} the mirror copied whole`]
@@ -528,7 +665,7 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
     if (!isCopy(state.secrets[k], v)) {
       return bare && one && typeof v === 'string' && v !== '' && v !== bare.value && !isReferenceOnly(v) ? 'changed' : undefined;
     }
-    setLeaf(doc as Doc, { record: k, place: at, named: true, remerged: false, overOwn: true, ...(server && { server }) }, bare ? bare.value : '');
+    setLeaf(doc as Doc, { place: at, ...(server && { server }) }, bare ? bare.value : '');
     return 'took';
   };
   for (const d of DOCS) {
@@ -623,11 +760,8 @@ export function takeBackCopies(o: Homes & { stateFile: string }): string[] {
       done.push(`could not remove ${file}, which holds keys the mirror copied: ${(e as Error).message}`);
     }
   }
-  try {
-    for (const f of dropRollbacks([state], o)) done.push(`removed ${f}, a rollback copy that held keys the mirror copied`);
-  } catch (e) {
-    done.push(`could not remove a rollback copy that holds keys the mirror copied: ${(e as Error).message}`);
-  }
+  const dropped = await dropRollbacks([state], o, (f, e) => done.push(`could not remove ${f}, a rollback copy that holds keys the mirror copied: ${e.message}`));
+  for (const f of dropped) done.push(`removed ${f}, a rollback copy that held keys the mirror copied`);
   const blobs = dropBlobs(path.dirname(o.stateFile));
   if (blobs) done.push(`removed ${blobs} mirror ${blobs === 1 ? 'blob' : 'blobs'} left in ${path.dirname(o.stateFile)}`);
   return done;

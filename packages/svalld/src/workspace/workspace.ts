@@ -81,10 +81,20 @@ export class Workspace {
   private refusal(): { refused: string[]; is: (abs: string) => boolean } {
     const refused = this.refused();
     const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
-    // one not on disk yet is matched as it is spelled, as `realOf` would answer the folder it is to lie in
-    const sealed = this.sealed().flatMap((s) => [s, ...(fs.existsSync(s) ? [realOf(s) ?? s] : [])]);
+    // a sealed folder on disk goes by its identity, against each folder that leads to the path, as spelled and where it really
+    // is; one not on disk yet is matched as it is spelled, as `realOf` would answer the folder it is to lie in
+    const sealedNames = this.sealed();
+    const sealedIds = new Set(sealedNames.map(idOf).filter((i) => i !== undefined));
+    const leadsThrough = (p: string): boolean => {
+      for (let at = p; ; at = path.dirname(at)) {
+        const id = idOf(at);
+        if (id !== undefined && sealedIds.has(id)) return true;
+        if (at === path.dirname(at)) return false;
+      }
+    };
     const is = (abs: string): boolean => {
-      if (sealed.some((s) => within(abs, s) || within(realOf(abs) ?? abs, s))) return true;
+      if (sealedNames.some((s) => within(abs, s))) return true;
+      if (sealedIds.size && [abs, realOf(abs) ?? abs].some(leadsThrough)) return true;
       if ([abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p), refused))) return true;
       const own = idOf(abs);
       if (own !== undefined) return ids.has(own);

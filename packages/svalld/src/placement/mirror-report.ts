@@ -201,7 +201,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
   // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
   const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
-    const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
+    const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
@@ -282,7 +282,9 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;
-    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on a Mac; not mirrored`, gap: { name: s.name, what: 'runs only on a Mac' } });
+    // a Mac's machine may be a Mac too, which runs it, and is simply not sent it
+    const where = o.apt === false ? homeWord() : 'a Mac';
+    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on ${where}; not mirrored`, gap: { name: s.name, what: `runs only on ${where}` } });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));

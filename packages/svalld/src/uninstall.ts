@@ -222,7 +222,7 @@ export async function runUninstall(o: {
   const { takeBackCopies } = await import('./placement/mirror-apply.js');
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
-  for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
+  for (const home of o.homes) done.push(...await takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
   // a worker's phone.json holds its home's push signing key and devices
   for (const home of o.homes) {
     const { phone } = resolvePaths(home);

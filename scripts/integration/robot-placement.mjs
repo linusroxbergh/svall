@@ -683,6 +683,13 @@ function dialedSetup(ids) {
   check('the first push kept what it replaced', sh(R, `cat ${kept}`, { ok: false }).stdout === 'my own\n', () => `folders ${brief(folders())}`);
   check("the backup is its owner's alone", /^drwx------/.test(sh(R, `ls -ld ~/.svall/mirror-backup/${day}`).stdout) && /^-rw-------/.test(sh(R, `ls -l ${kept}`).stdout), () => sh(R, `ls -l ${kept}`).stdout);
   check('a file only the worker has stays', sh(R, 'cat ~/.claude/rules/it-only-here.md', { ok: false }).stdout === 'only here\n', () => 'it went');
+  // Files reaches Claude's folder here and not the backup, by the path as by a link into it
+  const home = sh(R, 'echo ~').stdout.trim();
+  const files = (path) => windowCall(R, 'fs.read', { id: `r:${home}/.claude`, path });
+  const plain = files('rules/it-only-here.md');
+  check('Files reads the agent setup', plain.result?.text === 'only here\n', () => brief(plain));
+  const sealed = files(`${home}/.svall/mirror-backup/${day}/.claude/rules/it-dial.md`);
+  check('and the backup is sealed from it', /not the fleet's to open/.test(sealed.error?.message ?? ''), () => brief(sealed));
 
   // a tick answers once its push is applied
   putRule(L, 'changed on the home');

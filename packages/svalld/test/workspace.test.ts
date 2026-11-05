@@ -388,6 +388,36 @@ describe('Workspace files', () => {
     expect(ws.read('c', 'plain.md').text).toBe('plain');
   });
 
+  it('keeps a sealed folder out by what it is, however a call spells it', async () => {
+    const dir = fs.realpathSync(makeHome());
+    const sealed = path.join(dir, 'mirror-backup');
+    fs.mkdirSync(path.join(sealed, '2026-11-04'), { recursive: true });
+    fs.writeFileSync(path.join(sealed, '2026-11-04/.claude.json'), '{"key":"x"}');
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [sealed]);
+    // a case-folding volume reads each of these as the folder itself; a volume that does not has no such folder
+    const folds = fs.existsSync(path.join(dir, 'MIRROR-BACKUP'));
+    for (const under of ['MIRROR-BACKUP', 'Mirror-Backup', path.join(dir.toUpperCase(), 'mirror-backup')]) {
+      if (!folds) continue;
+      const file = path.join(under, '2026-11-04/.claude.json');
+      expect(() => ws.read('c', file), file).toThrow('not the fleet\'s to open');
+      await expect(ws.list('c', path.join(under, '2026-11-04')), under).rejects.toThrow('not the fleet\'s to open');
+      expect(() => ws.write('c', path.join(under, '2026-11-04/new.md'), 'x', 0), under).toThrow('not the fleet\'s to open');
+    }
+    if (folds) expect(fs.readdirSync(path.join(sealed, '2026-11-04'))).toEqual(['.claude.json']);
+  });
+
+  it('keeps a sealed folder out by what it is when the list names it through a link', async () => {
+    const dir = fs.realpathSync(makeHome());
+    fs.mkdirSync(path.join(dir, 'real-fleet/mirror-backup/2026-11-04'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'real-fleet/mirror-backup/2026-11-04/.claude.json'), '{"key":"x"}');
+    fs.symlinkSync(path.join(dir, 'real-fleet'), path.join(dir, 'fleet'));
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [path.join(dir, 'fleet/mirror-backup')]);
+    expect(() => ws.read('c', 'real-fleet/mirror-backup/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
+    expect(() => ws.read('c', 'fleet/mirror-backup/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
+    await expect(ws.list('c', 'real-fleet/mirror-backup')).rejects.toThrow('not the fleet\'s to open');
+    expect((await ws.list('c', 'real-fleet')).map((e) => e.name)).toEqual([]);
+  });
+
   it('a sealed folder not on disk yet keeps out what would lie in it, and leaves the folder it is to lie in open', () => {
     const dir = fs.realpathSync(makeHome());
     fs.writeFileSync(path.join(dir, 'fleet.json'), '{}');

@@ -34,8 +34,7 @@ const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 export type MirrorLink = { machine: MachineId; call: WorkerLink['call']; sendBlob(id: string, file: string): Promise<void> };
 export type Pushed = { sent: number; backup?: string };
 
-/** Where a first push onto this machine keeps what it replaces: a Mac, or a machine that dials its home, holds a person's own
- *  setup. It is asked of the machine itself, as the record a home keeps of it says what was typed at its enrolment. */
+/** Where a push onto this machine keeps what it replaces of a person's own: a Mac, or a machine that dials its home, holds one. It is asked of the machine itself, as the record a home keeps of it says what was typed at its enrolment. */
 export const backupsHere = (folder: string, worker?: { homeSsh?: string }, platform: NodeJS.Platform = process.platform): string | undefined =>
   (platform === 'darwin' || worker?.homeSsh ? folder : undefined);
 
@@ -67,9 +66,9 @@ export class Mirror {
     return this.chains.get(machine) ?? Promise.resolve();
   }
 
-  /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it. */
-  consent(machine: MachineId, item: string, fields: string[], on: boolean): void {
-    setConsent(this.o.consent, machine, item, fields, on);
+  /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it, or with `exact` those `fields`. */
+  consent(machine: MachineId, item: string, fields: string[], on: boolean, exact = false): void {
+    setConsent(this.o.consent, machine, item, fields, on, exact);
   }
 
   /** The file of this Mac that holds `item` and cannot be read now, which leaves the item on a worker as the mirror last wrote it. */
@@ -164,7 +163,7 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
  * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; platform?: NodeJS.Platform;
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; additive?: boolean; platform?: NodeJS.Platform;
 }): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {

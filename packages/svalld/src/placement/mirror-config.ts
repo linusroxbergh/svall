@@ -777,8 +777,9 @@ export type Place = (string | number)[];
 export const getAt = (doc: unknown, place: Place): unknown =>
   place.reduce<unknown>((v, k) => (typeof v === 'object' && v !== null && Object.hasOwn(v, k) ? (v as Record<string | number, unknown>)[k] : undefined), doc);
 
-/** Makes the objects that lead to `place`; `undefined` removes what lies there, but not from an array. */
+/** Makes the objects that lead to `place`; `undefined` removes what lies there, but not from an array. No place lies under `__proto__`. */
 export function setAt(doc: Record<string, unknown>, place: Place, v: unknown): void {
+  if (place.includes('__proto__')) throw new Error('an agent configuration names a place under __proto__');
   let at = doc as Record<string | number, unknown>;
   for (const [i, k] of place.slice(0, -1).entries()) {
     if (typeof at[k] !== 'object' || at[k] === null) {
@@ -924,3 +925,6 @@ export const headedEntries = (doc: unknown): string[] => (isDoc(doc) && Array.is
   .flatMap((e, i) => (isDoc(e) && (at(e, ['**', 'headers']).length || at(e, ['**', 'headersHelper']).length) ? [`plugins.${typeof e.name === 'string' ? e.name : i}`] : []));
 
 export const agentServer = (name: string, raw: Doc): McpServer => toServer('claude', 'user', { name, raw, file: '', place: [] });
+
+/** The server entry `raw` a machine holds, read as the mirror reads one it carries. */
+export const heldServer = (agent: AgentKind, raw: Doc): McpServer => toServer(agent, 'user', { name: '', raw, file: '', place: [] });

@@ -8,12 +8,15 @@ import { openFile } from './ide/files.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
 
-// what a file holds when the home has none yet and a person opens it
+// what an unsaved buffer holds when the home has no such file yet and a person opens it
 const FILES = [['CLAUDE.md', ''], ['settings.json', '{}\n']] as const;
 
-// the files under `dir` on the home; a folder it cannot list holds none
+// the files under `dir` on the home; a folder not there holds none
 async function filesUnder(id: string, dir: string): Promise<string[]> {
-  const { entries } = await deps().api.call('fs.list', { id, path: dir }).catch(() => ({ entries: [] as Result<'fs.list'>['entries'] }));
+  const { entries } = await deps().api.call('fs.list', { id, path: dir }).catch((e: { code?: string }) => {
+    if (e.code !== 'not_found') throw e;
+    return { entries: [] as Result<'fs.list'>['entries'] };
+  });
   const deeper = await Promise.all(entries.filter((e) => e.kind === 'dir').map((e) => filesUnder(id, `${dir}/${e.name}`)));
   return [...entries.filter((e) => e.kind === 'file').map((e) => `${dir}/${e.name}`), ...deeper.flat()];
 }
@@ -23,7 +26,7 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
   const [rules, setRules] = useState<string[]>([]);
   useEffect(() => {
     let left = false;
-    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); });
+    void filesUnder(id, 'rules').then((found) => { if (!left) setRules(found); }, (e: Error) => deps().store.getState().showToast(`rules: ${e.message}`, 'error'));
     return () => { left = true; };
   }, [id]);
   const shelf = (what?: 'skills') => {
@@ -31,15 +34,8 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
     app.store.getState().toggleResources(true, { where: id, ...(what && { what }) });
   };
   const open = async (path: string, seed?: string) => {
-    const d = deps();
-    try {
-      if (seed !== undefined && await d.api.call('fs.read', { id, path }).then(() => false, (e: { code?: string }) => e.code === 'not_found')) await d.api.call('fs.write', { id, path, text: seed, mtimeMs: 0 });
-    } catch (e) {
-      d.store.getState().showToast((e as Error).message, 'error');
-      return;
-    }
     shelf();
-    await openFile(d, id, path);
+    await openFile(deps(), id, path, seed);
   };
   const row = (key: string, label: string, go: () => void) => (
     <div className="row" key={key}>
@@ -62,16 +58,29 @@ export function AgentSetup() {
   const me = useApp((s) => s.via?.machine);
   // a window that follows the home over its own route; through this machine's link the files read are this machine's
   const follows = useApp((s) => !!s.via?.online && !!s.home?.master);
+  const dialed = useApp((s) => !!s.via?.online && !s.home?.master);
   const source = useApp((s) => s.resources.find((r) => r.name === 'Claude' && r.tier === 'global'));
   const [rows, setRows] = useState<SetupRow[]>();
   const [backup, setBackup] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<{ ok: boolean; text: string }>();
-  const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); };
-  useEffect(() => { app.api().call('home.setup', {}).then(show, () => setRows([])); }, []);
+  // a consent call out, and what the last call about the ticks failed with: a copy waits until the ticks it sends are known
+  const [pending, setPending] = useState(0);
+  const [failed, setFailed] = useState<string>();
+  // each item and field unticked since the last copy, whose key stays on the home until the next
+  const [taken, setTaken] = useState<string[]>([]);
+  const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); setFailed(undefined); };
+  const fail = (e: Error) => setFailed(e.message);
+  const load = () => { app.api().call('home.setup', {}).then(show, fail); };
+  useEffect(load, []);
   useEffect(() => { if (follows) void reloadResources(deps()); }, [follows]);
-  const tick = (r: SetupRow, on: boolean) => {
-    app.api().call('home.setupConsent', { item: r.tick!.item, fields: r.tick!.fields, on }).then(show, (e: Error) => setSaid({ ok: false, text: e.message }));
+  const tick = (r: SetupRow, fields: string[], on: boolean) => {
+    setPending((n) => n + 1);
+    app.api().call('home.setupConsent', { item: r.tick!.item, fields, on }).then((answer) => {
+      show(answer);
+      const named = fields.map((f) => `${r.key}#${f}`);
+      setTaken((t) => (on ? t.filter((x) => !named.includes(x)) : [...new Set([...t, ...named])]));
+    }, fail).finally(() => setPending((n) => n - 1));
   };
   const copy = () => {
     setBusy(true);
@@ -79,39 +88,76 @@ export function AgentSetup() {
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
       (r) => {
         setSaid({ ok: true, text: `Copied to ${home}.${r.backup ? ` What it replaced there is in ${r.backup}.` : ''}` });
+        setTaken([]);
         void reloadResources(deps());
       },
       (e: Error) => setSaid({ ok: false, text: e.message }),
     ).finally(() => setBusy(false));
+  };
+  const stays = (r: SetupRow, fields: string[]) => fields.some((f) => taken.includes(`${r.key}#${f}`)) && (
+    <small data-testid={`setup-stays-${r.key}`}> stays on {home} until the next Copy</small>
+  );
+  const box = (r: SetupRow, id: string, label: string, fields: string[], on: boolean) => (
+    <b><input type="checkbox" data-testid={`setup-tick-${id}`} aria-label={label} checked={on} onChange={(e) => tick(r, fields, e.target.checked)} /></b>
+  );
+  const row = (r: SetupRow) => {
+    const t = r.tick!;
+    const label = stepLabel(`mirror:${r.key}`);
+    // a key row with several fields has a box each; what travels whole has one
+    if (!t.ticked || t.fields.length < 2) {
+      return (
+        <div className="row" key={r.key}>
+          <span>{label} <small>{t.preview.join(', ')}</small>{stays(r, t.fields)}</span>
+          {box(r, r.key, label, t.fields, t.on)}
+        </div>
+      );
+    }
+    return [
+      <div className="row" key={r.key}>
+        <span>{label}{t.ticked.length > 0 && !t.on && <small data-testid={`setup-partial-${r.key}`}> partly ticked: {t.ticked.length} of {t.fields.length} keys go</small>}</span>
+      </div>,
+      ...t.fields.map((f) => (
+        <div className="row" key={`${r.key}#${f}`}>
+          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small>{stays(r, [f])}</span>
+          {box(r, `${r.key}#${f}`, `${label} ${f}`, [f], t.ticked!.includes(f))}
+        </div>
+      )),
+    ];
   };
   return (
     <>
       <div className="desc" data-testid="setup-lives">Your agent setup lives on {home}. Every worker takes it from there, this Mac included.</div>
       {follows && source
         ? <HomeFiles id={source.rootId} skills={source.groups.find((g) => g.kind === 'skills')?.items.length ?? 0} />
-        : !follows && <div className="desc" data-testid="setup-away">Its files open here while this window reaches {home}.</div>}
+        : !follows && (
+          <div className="desc" data-testid="setup-away">
+            {dialed ? `${home} reaches this Mac over its own link, so this window has no way to ${home}: its files and the copy open only where a window reaches it.` : `Its files open here while this window reaches ${home}.`}
+          </div>
+        )}
       {!!rows?.length && (
         <>
-          <div className="desc">Keys stay on this Mac unless you tick them for {home}.</div>
-          <div className="rows" data-testid="setup-rows">
-            {rows.map((r) => (
-              <div className="row" key={r.key}>
-                <span>{stepLabel(`mirror:${r.key}`)} <small>{r.tick!.preview.join(', ')}</small></span>
-                <b><input type="checkbox" data-testid={`setup-tick-${r.key}`} aria-label={stepLabel(`mirror:${r.key}`)} checked={r.tick!.on} onChange={(e) => tick(r, e.target.checked)} /></b>
-              </div>
-            ))}
-          </div>
+          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, rules, skills and agent profiles go as they are, anything written in them included. An untick takes a key back at the next Copy.</div>
+          <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>
         </>
       )}
+      {failed && (
+        <div className="desc" role="alert" data-testid="setup-failed">
+          {failed} <button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button>
+        </div>
+      )}
+      <div className="desc" data-testid="setup-copy-says">
+        {backup && <>A push from {home} replaced same-named files on this Mac; they are in the folder below. Put back what you want from there first, as a Copy sends what is on this Mac now. </>}
+        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home}.
+      </div>
       <div className="opens">
-        <button className="btn sm" data-testid="setup-copy" disabled={!follows || busy} data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>
+        <button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined} data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>
           {busy ? 'Copying…' : `Copy my agent setup from this Mac to ${home}`}
         </button>
       </div>
       {said && <div className="desc" role="status" data-testid={said.ok ? 'setup-copied' : 'setup-copy-failed'}>{said.text}</div>}
       {backup && (
         <div className="desc" data-testid="setup-backup">
-          The first push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}
+          A push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}
           <button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup)}>Show in Finder</button>
         </div>
       )}
