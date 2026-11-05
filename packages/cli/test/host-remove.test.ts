@@ -145,6 +145,15 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeUndefined();
   });
 
+  it('drops the token, and the profile a move kept with it, so a later add enrols afresh', async () => {
+    for (const forget of [false, true]) {
+      fs.writeFileSync(resolvePaths(fleet).workersFile, JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'private' } }));
+      ssh.reply(['uninstall'], { stdout: 'removed\n' });
+      expect((await removeHost('trift', { forget }, deps({ registry: registered('trift.test'), fleet: { home: fleet, profile: 'work' } }))).result).toBe('ready');
+      expect(JSON.parse(fs.readFileSync(resolvePaths(fleet).workersFile, 'utf8'))).toEqual({});
+    }
+  });
+
   it("clears the machine's consent in every fleet home here, on remove and on --forget", async () => {
     const second = path.join(work, '.svall-other');
     fs.mkdirSync(second, { recursive: true });

@@ -31,7 +31,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; diagnostics?: Ctx['diagnostics']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations; retro?: Ctx['retro'];
-  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: string; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi']; setupCopy?: Ctx['setupCopy']; workerSetup?: Ctx['workerSetup']; fleetConfig?: Ctx['fleetConfig']; freeze?: Ctx['freeze']; homeChecks?: Ctx['homeChecks']; homeWaits?: Ctx['homeWaits'];
+  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: Ctx['fleetFlag']; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi']; setupCopy?: Ctx['setupCopy']; workerSetup?: Ctx['workerSetup']; fleetConfig?: Ctx['fleetConfig']; freeze?: Ctx['freeze']; homeChecks?: Ctx['homeChecks']; homeWaits?: Ctx['homeWaits'];
   // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };

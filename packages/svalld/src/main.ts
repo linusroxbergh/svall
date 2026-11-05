@@ -185,6 +185,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const push = new PushStore(paths.push, log.error);
   const vapid = readOrCreateVapid(paths.vapid);
   const profile = profileOf(paths.home);
+  // the fleet's profile on worker `m`, as its link dials it
+  const profileOn = (m: string): string => workerProfile(paths, m) ?? profile;
   config.mainAgent = fleetMainAgent(paths.home, config.mainAgent);
   // launchd's PATH, which setup built to include where the shell found claude and codex
   const agentsFound = findAgents(process.env.PATH ?? '');
@@ -239,12 +241,12 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     ...agentHomes,
     consent: paths.mirrorConsent, log, envFile: paths.env,
     // a worker runs the release, whose fleet homes are ~/.svall and ~/.svall-<name>
-    overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
+    overridesThere: (m) => `~/${profileOn(m) === PRIVATE ? '.svall' : `.svall-${profileOn(m)}`}/mirror-overrides`,
   });
   // while the fleet moves, what a worker sends but its running fields stays in its outbox
   let holding = false;
   const links = worker ? undefined : new HomeLinks({
-    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: (m) => workerProfile(paths, m) }), dialIn: socketTransport({ paths }),
+    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: profileOn }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (replay && kind === 'mutation') return replay.prepare(data, machine);
@@ -494,7 +496,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       // diagnostics read the last minute's agent probe
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
-      mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
+      mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: (m) => (profileOn(m) === PRIVATE ? '' : `-p ${isProfileName(profileOn(m)) ? profileOn(m) : shq(profileOn(m))} `),
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
       ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks, homeWaits,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),

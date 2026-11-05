@@ -6,7 +6,8 @@ import { FleetMismatch, MachineMismatch, remoteConnectionInfo, type ConnectionIn
 import { machineId, versionMachineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svalldUnitName } from '@svall/svalld/linux/setup';
-import { profileOf } from '@svall/svalld/profile';
+import { PRIVATE, profileOf } from '@svall/svalld/profile';
+import { workerProfile } from '@svall/svalld/placement/workers';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
@@ -116,10 +117,13 @@ export async function connectRemote(o: { registry: MachineRegistry; machine: str
   const destination = machine.record.ssh;
   if (!destination) throw new Error(`the machine ${machine.record.name} has no ssh destination in the registry`);
   const fleetId = localFleetId(o.fleetHome);
+  // the fleet there by the profile its link dials, which a move may have named apart from this one's
+  const there = workerProfile(resolvePaths(o.fleetHome), machine.id) ?? o.profile;
+  const profile = there === PRIVATE ? undefined : there;
   return withReconnect(async () => {
     const master = await SshMaster.open({ destination });
     // an attempt that fails takes its master with it, so a retry does not leave one open
-    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile: o.profile }).catch(async (err: Error) => {
+    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile }).catch(async (err: Error) => {
       await master.close().catch(() => undefined);
       throw err instanceof SshError ? err : new SshError(/not reachable|did not accept/.test(err.message) ? 'daemon_down' : 'other', err.message);
     });

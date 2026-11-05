@@ -875,6 +875,35 @@ esac
     await d.close();
     expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);
   });
+
+  describe('a fleet named apart on its two machines, the server its worker under the private profile there', () => {
+    const T = 'a'.repeat(48);
+    const cameBack = () => {
+      serves(SERVES);
+      fs.writeFileSync(resolvePaths(fleet).workersFile, JSON.stringify({ [REMOTE]: { token: T, addedAt: 1, profile: 'private' } }));
+    };
+    const named = (w: string[]) => w.includes('mac2') || w.includes("'mac2'");
+
+    it('upgrade asks that fleet, finds it serving this one, and enrols nothing', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      cameBack();
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: { home: fleet, profile: 'mac2' } }));
+      await far.close();
+      expect(out.result).toBe('ready');
+      expect(step('enrol').at(-1)).toMatchObject({ status: 'skip' });
+      expect(ssh.remoteCalls().filter(named)).toEqual([]);
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBe(T);
+    });
+
+    it('doctor reads that fleet as this one\'s worker', async () => {
+      const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]] });
+      cameBack();
+      const report = await doctorHost('trift', deps({ registry: far.registry, fleet: { home: fleet, profile: 'mac2' } }));
+      await far.close();
+      expect(report.checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'ok' });
+      expect(ssh.remoteCalls().filter(named)).toEqual([]);
+    });
+  });
 });
 
 // GNU tar writes a member spelled another way, or one under a link, over a file it extracted by name, where the Mac's

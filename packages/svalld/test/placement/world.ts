@@ -168,7 +168,7 @@ export function world(o: {
   const homeDrops = new Drops({ dir: path.join(homePaths.cache, 'drops'), store: homeStore, router: homeRouter, links, machine: () => 'mac', folder: { tmp: tmp.home } });
   const homeCtx = ctxOf(homeStore, homeFleet, homeRouter, {
     usage: homeUsage, links, workspace: homeWorkspace, remoteWatches, terminals: homeTerminals, claude: homeClaude, docs: homePaths.docs, agentProfiles: homePaths.agentProfiles,
-    mirror: homeMirror, drops: homeDrops, fleetFlag: '', setupCopy,
+    mirror: homeMirror, drops: homeDrops, fleetFlag: () => '', setupCopy,
   });
 
   const workerStore = storeWith(workerPaths, o.worker ?? {});

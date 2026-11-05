@@ -155,6 +155,19 @@ describe('remote connections', () => {
     await new Promise((r) => wss.close(r));
   });
 
+  it('asks the fleet there by the profile this fleet\'s link dials it by, which a move named apart', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => ws.on('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }))));
+    ssh.answer(description({ port: (wss.address() as { port: number }).port }));
+    fs.writeFileSync(path.join(home, 'workers.json'), JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'far' } }));
+    const client = await connectRemote({ registry, machine: 'trift', fleetHome: home, profile: 'mac2' });
+    expect(ssh.remoteCalls().find((w) => w.includes('connection-info'))?.slice(-2)).toEqual(['-p', 'far']);
+    client.close();
+    await waitFor(() => control('exit').length === 1);
+    await new Promise((r) => wss.close(r));
+  });
+
   it('lets go of its forward and its master once its client closes', async () => {
     const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
     await new Promise((r) => wss.once('listening', r));

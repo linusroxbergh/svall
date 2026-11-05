@@ -247,6 +247,12 @@ describe('the setup rows of the mirror', () => {
     expect(of(['claude'], [])).toContain('maconly:claude:chrome');
   });
 
+  it('Mirror.report names the overrides folder of the fleet on the machine it reports on', async () => {
+    const mirror = new Mirror({ ...mac, consent: path.join(makeHome(), 'mirror-consent.json'), log: silentLogger, overridesThere: (m) => `~/.svall-${m === W ? 'far' : 'other'}/mirror-overrides` });
+    const row = (await mirror.report(undefined, W, { name: 'w1', fleetFlag: '-p far ' })).find(byKey('claude:mcp:linear'));
+    expect(row?.detail).toContain('(svall -p far worker env LINEAR_API_KEY), or set them in ~/.svall-far/mirror-overrides there');
+  });
+
   it('Mirror.report reads no link as not reachable and one in mismatch as another release; a worker that does not answer is asked once, logged, and the rows come unchecked', async () => {
     const errors: string[] = [];
     const mirror = new Mirror({ ...mac, consent: path.join(makeHome(), 'mirror-consent.json'), log: { ...silentLogger, error: (m) => errors.push(m) } });

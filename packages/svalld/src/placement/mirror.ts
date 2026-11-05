@@ -47,7 +47,7 @@ export class Mirror {
 
   /** `overridesThere`: the fleet's overrides folder on a worker, as its rows name it. */
   /** `envFile`: the fleet's .env on this Mac, one place a variable may be copied to a worker from. */
-  constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: string; envFile?: string }) {}
+  constructor(private o: MirrorHomes & { consent: string; log: Logger; overridesThere?: (machine: MachineId) => string; envFile?: string }) {}
 
   /** Resolves once the worker has applied what `link` carried; pushes to one worker go one at a time, in order. */
   push(link: MirrorLink): Promise<Pushed> {
@@ -114,7 +114,7 @@ export class Mirror {
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere?.(machine) ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
   }
 
   /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */

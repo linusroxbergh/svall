@@ -7,7 +7,7 @@ import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
-import { dropToken, issueToken } from '@svall/svalld/placement/workers';
+import { dropToken, issueToken, workerProfile } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
@@ -418,7 +418,13 @@ async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: strin
   return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, ${o.asHome ? 'as its home' : 'serves this fleet as a worker'}, and tmux opens and closes a window there` };
 }
 
-const farFlags = (fleet: HostDeps['fleet']): string[] => (fleet.profile ? ['-p', shq(fleet.profile)] : []);
+/** This fleet's profile on `machine`, as its link dials it: the one its worker there was enrolled or moved under, else its own; none for the private one. */
+const profileOn = (machine: string | undefined, d: HostDeps): string | undefined => {
+  const held = machine === undefined ? undefined : workerProfile(resolvePaths(d.fleet.home), machine);
+  return held === undefined ? d.fleet.profile : held === PRIVATE ? undefined : held;
+};
+
+const farFlags = (profile: string | undefined): string[] => (profile ? ['-p', shq(profile)] : []);
 
 /** This fleet's worker.json, while it names `machine` as the fleet's home; one that cannot be read leaves that unknown, so nothing is done on a guess. */
 function servedHome(machine: string, d: HostDeps): WorkerFile | undefined {
@@ -456,7 +462,7 @@ const dialedHome = (machine: string | undefined, d: HostDeps): string | undefine
 /** How a command names this fleet there: by that folder, else by this fleet's profile. */
 function farFleet(machine: string | undefined, d: HostDeps): { env: string[]; flags: string[] } {
   const home = dialedHome(machine, d);
-  return home ? { env: ['env', shq(`SVALL_HOME=${home}`)], flags: [] } : { env: [], flags: farFlags(d.fleet) };
+  return home ? { env: ['env', shq(`SVALL_HOME=${home}`)], flags: [] } : { env: [], flags: farFlags(profileOn(machine, d)) };
 }
 
 /** What this fleet's fleet home there serves, as its own `svall version --json` reads it; `machine` undefined for one not listed yet. */
@@ -499,11 +505,19 @@ function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh:
  * back; a machine whose svall does not answer has nothing to refuse yet.
  */
 async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string; machine?: string; adding?: true; asHome?: boolean }, d: HostDeps): Promise<void> {
-  const far = await farHome(master, o.svallBase, d, o.machine).catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
+  // a home there is its private fleet
+  const asked = o.asHome ? remoteJson<RemoteVersion>(master, o.svallBase, ['version', '--json'], 'svall version --json') : farHome(master, o.svallBase, d, o.machine);
+  const far = await asked.catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
   if (!far) return;
   const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
   if (refused) throw refused;
-  if (o.asHome && far.role === 'worker') throw new StepError(`${o.name} serves ${far.worker?.homeName ?? 'another home'} as a worker, so it cannot be a home`, `svall${d.fleet.profile ? ` -p ${d.fleet.profile}` : ''} fleet home set ${o.name} makes it this fleet's home`);
+  if (o.asHome && far.role === 'worker') {
+    const home = far.worker?.homeName ?? 'another home';
+    // a worker of another Mac is refused above, so this one serves a fleet here, which a move makes its home once it is listed
+    const p = d.fleet.profile ? ` -p ${d.fleet.profile}` : '';
+    const listed = d.registry.get(far.machineId) ? '' : `svall${p} host add ${o.name} --ssh ${o.ssh} lists it again, then `;
+    throw new StepError(`${o.name} serves ${home} as a worker, so it cannot be a home`, servesUs(far, d) ? `${listed}svall${p} fleet home set ${o.name} makes it this fleet's home` : `remove ${o.name} from the fleet it serves on ${home} first`);
+  }
   if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
@@ -511,10 +525,10 @@ async function mayInstall(master: SshMaster, o: { name: string; ssh: string; sva
 }
 
 /** Refuses a fleet home there that serves another Mac, then stops and removes the gateway unit there; `off` is what the enrol detail adds. */
-async function claimUnits(master: SshMaster, o: { name: string; home: string; svallBase: string; far?: RemoteVersion }, d: HostDeps): Promise<{ far: RemoteVersion; units: string[]; off: string }> {
+async function claimUnits(master: SshMaster, o: { name: string; machine: MachineId; home: string; svallBase: string; far?: RemoteVersion }, d: HostDeps): Promise<{ far: RemoteVersion; units: string[]; off: string }> {
   const unitDir = unitDirOf(o.home);
-  const units = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(d.fleet.profile ?? PRIVATE)), 'the units there')).split('\n');
-  const far = o.far ?? await farHome(master, o.svallBase, d);
+  const units = (await probe(master, sh('svall-units', UNITS, unitDir, GATEWAY_UNIT, svalldUnitName(profileOn(o.machine, d) ?? PRIVATE)), 'the units there')).split('\n');
+  const far = o.far ?? await farHome(master, o.svallBase, d, o.machine);
   const refused = notOurs(far, o.name, d);
   if (refused) throw refused;
   if (!units.includes('gateway')) return { far, units, off: '' };
@@ -529,7 +543,7 @@ async function enrol(master: SshMaster, o: { name: string; machine: MachineId; s
   const home = d.registry.localMachine().name;
   const token = issueToken(paths, o.machine);
   const r = await master.run([
-    shq(svallExe(o.svallBase)), ...farFlags(d.fleet), 'worker', 'enroll', '--home-machine', shq(d.machineId()), '--home-name', shq(home), '--fleet-id', shq(fleetId),
+    shq(svallExe(o.svallBase)), ...farFlags(profileOn(o.machine, d)), 'worker', 'enroll', '--home-machine', shq(d.machineId()), '--home-name', shq(home), '--fleet-id', shq(fleetId),
   ], { input: token, timeoutMs: ENROL_TIMEOUT });
   if (r.code !== 0) throw new StepError(`svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
   const last = r.stdout.trim().split('\n').at(-1);
@@ -619,7 +633,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (remote.home !== plain) {
           throw new StepError(`${remote.home} is ${remote.user}'s home there, which names ${plain} another way`, `make ${plain} the account's home on ${o.ssh}, then add the machine again`);
         }
-        const tooLong = socketTooLong(path.posix.join(profileHome(d.fleet.profile ?? PRIVATE, remote.home), 'hooks.sock'), 'linux');
+        const tooLong = socketTooLong(path.posix.join(profileHome(profileOn(held?.id, d) ?? PRIVATE, remote.home), 'hooks.sock'), 'linux');
         if (tooLong) {
           throw new StepError(tooLong.message, `use an account on ${o.ssh} whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes`);
         }
@@ -632,7 +646,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const companion = await run.step('release', async () => {
         const c = await companionFor(o, d, arch);
-        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version, adding: true, asHome: o.asHome }, d);
+        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version, adding: true, asHome: o.asHome, ...(held && { machine: held.id }) }, d);
         return c;
       });
       const remote = remotePaths(home, companion.version);
@@ -672,7 +686,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       });
       if (!o.asHome) {
         await run.step('enrol', async () => {
-          const { off } = await claimUnits(master, { name: o.name, home, svallBase: remote.svallBase }, d);
+          const { off } = await claimUnits(master, { name: o.name, machine, home, svallBase: remote.svallBase }, d);
           return enrol(master, { name: o.name, machine, svallBase: remote.svallBase, off }, d);
         });
       }
@@ -939,7 +953,7 @@ async function becomeWorker(master: SshMaster, entry: Registered, run: Runner, d
       if (homeOfUs(far, d)) return { value: false, status: 'skip' as const, detail: `${name} is this fleet's home, and its daemon runs the new release as the home` };
       throw new StepError(`${name} is this fleet's home, and its fleet home there answers as another, so it is not enrolled`);
     }
-    const { units, off } = await claimUnits(master, { name, home: entry.record.home, svallBase: entry.record.svallBase, far }, d);
+    const { units, off } = await claimUnits(master, { name, machine: entry.id, home: entry.record.home, svallBase: entry.record.svallBase, far }, d);
     if (units.includes('worker') && servesUs(far, d)) return { value: true, status: off ? 'ok' as const : 'skip' as const, detail: `${name} serves this fleet as a worker${off}` };
     return { ...await enrol(master, { name, machine: entry.id, svallBase: entry.record.svallBase, off }, d), value: true };
   });
@@ -1120,8 +1134,8 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     await run.step('registry', async () => {
       for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) {
         clearConsent(resolvePaths(home).mirrorConsent, entry.id);
-        // nothing there ends the link of a worker that dials in, so its token goes, and with it the link
-        if (!ssh) try { dropToken(resolvePaths(home), entry.id); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ }
+        // nothing there ends the link of a worker that dials in, so its token goes, and with it the link; one this home dials keeps no profile for a later add
+        try { dropToken(resolvePaths(home), entry.id); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ }
       }
       d.registry.remove(entry.id);
       d.registry.save();

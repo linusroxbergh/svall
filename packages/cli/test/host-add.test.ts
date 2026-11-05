@@ -67,6 +67,18 @@ describe('host add', () => {
   });
 
 
+  it('enrols a machine this fleet holds a profile for, as a move named it apart, under that profile, which its link dials', async () => {
+    fs.writeFileSync(resolvePaths(fleet).workersFile, JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'private' } }));
+    ssh.reply(['worker', 'enroll'], { stdout: '' });
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'work' } }));
+    await d.close();
+    expect(ssh.remoteCalls().find((w) => w.includes('enroll'))?.slice(1, 3)).toEqual(['worker', 'enroll']);
+    expect(JSON.parse(fs.readFileSync(resolvePaths(fleet).workersFile, 'utf8'))[REMOTE]).toMatchObject({ profile: 'private' });
+  });
+
   it('--as-home leaves the machine a fleet of its own, enrols nothing there and offers no setup, for a join to follow', async () => {
     // as the machine answers once nothing enrolled it: a home of its own, naming no one
     ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }) });
@@ -153,9 +165,19 @@ describe('host add', () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry }));
     expect(out.stopped).toBe('release');
-    expect(step('release').at(-1)).toMatchObject({ detail: 'trift serves mac as a worker, so it cannot be a home', action: "svall fleet home set trift makes it this fleet's home" });
+    expect(step('release').at(-1)).toMatchObject({ detail: 'trift serves mac as a worker, so it cannot be a home', action: "svall host add trift --ssh trift.test lists it again, then svall fleet home set trift makes it this fleet's home" });
     expect(ssh.remoteCalls().some((w) => w[0] === 'sh' && w[2].includes('cat > "$1"'))).toBe(false);
     expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('--as-home asks the private fleet there, the one it makes a home, whatever this fleet\'s profile; one serving another fleet here is removed from it first', async () => {
+    const worker = { homeMachineId: MAC, homeName: 'mac', fleetId: OTHER_FLEET };
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'worker', worker }) });
+    healthy();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'mac2' } }));
+    expect(out.stopped).toBe('release');
+    expect(step('release').at(-1)).toMatchObject({ action: 'remove trift from the fleet it serves on mac first' });
+    expect(ssh.remoteCalls().filter((w) => w.includes('version')).every((w) => !w.includes('mac2') && !w.includes("'mac2'"))).toBe(true);
   });
 
   it('--as-home asks for Tailscale on this Mac before any ssh; a worker\'s add does not', async () => {
