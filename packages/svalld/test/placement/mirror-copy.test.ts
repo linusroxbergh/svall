@@ -7,6 +7,7 @@ import { MachineId, type SetupRow } from '@svall/protocol';
 import { answer, dispatch, type Ctx } from '../../src/api/methods.js';
 import { rootIdOf } from '../../src/resources/scan.js';
 import { DurableBatch } from '../../src/durable.js';
+import { fileSha } from '../../src/placement/bundle.js';
 import { filesIn } from '../../src/placement/docs-sync.js';
 import { backupsHere } from '../../src/placement/mirror.js';
 import { applyMirror, takeBackCopies } from '../../src/placement/mirror-apply.js';
@@ -931,11 +932,54 @@ describe('the entry a target keeps', () => {
     expect(holding(backups, OWN)).toHaveLength(1);
   });
 
+  it('a tick on an entry the person reshaped since replaces it whole, so its key lands by the sender\'s form', async () => {
+    const { home, mac, synced, consent } = target();
+    const K = 'sk_home_00001234567890';
+    editJson(home.claudeJson, (j) => { j.mcpServers.a = { command: 'npx', args: ['a-mcp', '--api-key', K] }; });
+    await synced();
+    editJson(mac.claudeJson, (j) => { j.mcpServers.a.args = ['-y', 'a-mcp', '--api-key', OWN]; });
+    await consent('claude:mcp:a', ['args[--api-key]'], true);
+    expect(json(mac.claudeJson).mcpServers.a.args).toEqual(['a-mcp', '--api-key', K]);
+  });
+
+  it('a copied arg in a server that stays for an own key is emptied when the home drops it', async () => {
+    const { home, mac, synced, consent } = target();
+    const K = 'sk_home_00001234567890';
+    editJson(home.claudeJson, (j) => { j.mcpServers.a = { command: 'npx', args: ['a-mcp', '--api-key', K] }; });
+    await synced();
+    await consent('claude:mcp:a', ['args[--api-key]'], true);
+    expect(json(mac.claudeJson).mcpServers.a.args[2]).toBe(K);
+    editJson(mac.claudeJson, (j) => { j.mcpServers.a.env = { MINE: OWN }; });
+    editJson(home.claudeJson, (j) => { delete j.mcpServers.a; });
+    await consent('claude:mcp:other', [], false);
+    expect(json(mac.claudeJson).mcpServers.a).toEqual({ command: 'npx', args: ['a-mcp', '--api-key', ''], env: { MINE: OWN } });
+  });
+
+  it('a push cut short while it copies is no lost record: a key the person holds stays theirs at the next', async () => {
+    const { home, mac, backups, w, synced, consent, push } = target();
+    const LINEAR = { command: 'npx', args: ['l'], env: { LINEAR_API_KEY: KEY } };
+    editJson(home.claudeJson, (j) => { j.mcpServers.linear = LINEAR; });
+    put(mac.claudeJson, JSON.stringify({ mcpServers: { linear: LINEAR } }));
+    setConsent(w.home.paths.mirrorConsent, W, 'claude:mcp:linear', ['env.LINEAR_API_KEY'], true);
+    const write = DurableBatch.prototype.write;
+    const spy = vi.spyOn(DurableBatch.prototype, 'write').mockImplementation(function (this: DurableBatch, file, data, mode) {
+      if (file.startsWith(backups)) throw new Error('killed');
+      return write.call(this, file, data, mode);
+    });
+    fs.mkdirSync(path.join(backups, new Date().toLocaleDateString('en-CA')), { recursive: true });
+    await synced();
+    spy.mockRestore();
+    await push();
+    await consent('claude:mcp:linear', ['env.LINEAR_API_KEY'], false);
+    expect(json(mac.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe(KEY);
+  });
+
   it('settings.json\'s env: the tick wins there too, with the file copied first', async () => {
     const { home, mac, backups, synced, consent } = target();
     put(path.join(home.claudeDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_API_KEY: 'sk-home-1234567890' } }));
-    put(path.join(mac.claudeDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_API_KEY: OWN } }));
     await synced();
+    // set after the first push's copy, so only the tick's can hold it
+    put(path.join(mac.claudeDir, 'settings.json'), JSON.stringify({ env: { ANTHROPIC_API_KEY: OWN } }));
     await consent('claude:settings', ['env.ANTHROPIC_API_KEY'], true);
     expect(json(path.join(mac.claudeDir, 'settings.json')).env.ANTHROPIC_API_KEY).toBe('sk-home-1234567890');
     expect(holding(backups, OWN)).toHaveLength(1);
@@ -989,6 +1033,8 @@ describe('the entry a target keeps', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
     await push();
     await push();
+    // the edit stands: this is the mirror's entry, no own key that a tick would replace
+    expect(json(mac.claudeJson).mcpServers.odd.timeout).toBe(5);
     expect(holding(backups, 'odd_key_secret')).toEqual([]);
     await consent('claude:mcp:odd', ['command', 'env', 'sandbox'], false);
     expect(json(mac.claudeJson).mcpServers.odd).toBeUndefined();
@@ -1064,6 +1110,52 @@ describe('the entry a target keeps', () => {
     const plan = mirrorPlan(mac);
     expect(plan.files.map((f) => f.to).filter((to) => !carriable(to))).toEqual([]);
     expect(plan.skipped.join('\n')).toContain('token.json has a name kept for a key or a login');
+  });
+});
+
+describe('a Linux worker its home dials', () => {
+  it('behaves as it always has: no entry, plugin or same-value key of its own is kept, and no copy', async () => {
+    const home = macHome();
+    const worker = farHome();
+    fs.rmSync(worker.overrides, { recursive: true, force: true });
+    const list = (m: { claudeDir: string }) => path.join(m.claudeDir, 'plugins/installed_plugins.json');
+    const OWN = 'sk_live_00001234567890';
+    editJson(home.claudeJson, (j) => { j.mcpServers.byRef = { command: 'npx', args: ['r'], env: { R: '${R}' } }; j.mcpServers.gone = { command: 'npx', args: ['g'] }; });
+    editJson(path.join(home.claudeDir, 'settings.json'), (j) => { j.enabledPlugins = { 'acme@mp': true }; });
+    put(worker.claudeJson, JSON.stringify({ mcpServers: {
+      byRef: { command: 'npx', args: ['r'], env: { R: OWN } },
+      linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: KEY } },
+    } }));
+    put(list(worker), JSON.stringify({ version: 2, plugins: { mine: [{ scope: 'user', installPath: '/m', version: '1' }] } }));
+    editJson(path.join(worker.claudeDir, 'settings.json'), (j) => { j.enabledPlugins = { 'mine@x': true }; });
+    const w = world({ mirror: { home, worker } });
+    await w.link();
+    await w.home.links.mirrorSettled(W);
+    expect(json(worker.claudeJson).mcpServers.byRef.env.R).toBe('${R}');
+    expect(Object.keys(json(list(worker)).plugins)).toEqual(['acme']);
+    expect(json(path.join(worker.claudeDir, 'settings.json')).enabledPlugins).toEqual({ 'acme@mp': true });
+    const consent = (on: boolean) => call(w.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:linear', fields: ['env.LINEAR_API_KEY'], on });
+    await consent(true);
+    await consent(false);
+    expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('${LINEAR_API_KEY}');
+    // a server it filled in by hand goes when the home drops it
+    editJson(worker.claudeJson, (j) => { j.mcpServers.gone.env = { G: OWN }; });
+    editJson(home.claudeJson, (j) => { delete j.mcpServers.gone; });
+    await w.home.links.pushMirror(W);
+    expect(json(worker.claudeJson).mcpServers.gone).toBeUndefined();
+    expect(fs.existsSync(path.join(worker.homedir, '.svall/mirror-backup'))).toBe(false);
+    expect(readState(w.worker.paths.mirrorState).listed).toBeUndefined();
+  });
+
+  it('takes a list or a plan a Copy would refuse: a plan is not refused on a push', async () => {
+    const mac = macHome();
+    const worker = farHome();
+    const scratch = makeHome();
+    const o = { ...worker, stateFile: path.join(scratch, 'state.json'), varsFile: path.join(scratch, 'vars.json') };
+    const plan = mirrorPlan(mac);
+    await packMirror({ ...plan, keep: [...plan.keep, 'home/.ssh/config'] }, path.join(scratch, 'm.tar'));
+    await unpack(path.join(scratch, 'm.tar'), path.join(scratch, 'm'));
+    await expect(applyMirror(path.join(scratch, 'm'), o)).resolves.toBeDefined();
   });
 });
 
@@ -1410,6 +1502,22 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     expect(carriable('claude/../.ssh/config')).toBe(false);
     expect(carriable('opencode/agent/x.md')).toBe(true);
     expect(carriable('codex/config.toml')).toBe(false);
+  });
+
+  it('refuses a forged blob sent through the grant itself', async () => {
+    const { mac, w, linked, home } = copyOf();
+    await linked();
+    const scratch = makeHome();
+    const tar = path.join(scratch, 'm.tar');
+    const plan = mirrorPlan(mac);
+    await packMirror({ ...plan, keep: [...plan.keep, 'home/.ssh/config'] }, tar);
+    const before = read(path.join(home.claudeDir, 'CLAUDE.md'));
+    w.home.setupCopy!.arm(W);
+    const c = w.worker.connection;
+    await c.call('config.blob', { id: 'mirror_forged', sha256: await fileSha(tar) });
+    await c.sendBlob('mirror_forged', tar);
+    await expect(c.call('config.apply', { id: 'mirror_forged', seq: 1 })).rejects.toThrow('does not carry');
+    expect(read(path.join(home.claudeDir, 'CLAUDE.md'))).toBe(before);
   });
 
   it('what a plan carries for a Mac of every shape passes the check', async () => {
