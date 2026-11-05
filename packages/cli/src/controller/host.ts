@@ -489,12 +489,12 @@ function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh:
  * another Mac, and a release there newer than `version`, which installing would take back; a machine whose svall does
  * not answer has nothing to refuse yet.
  */
-async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string; machine?: string }, d: HostDeps): Promise<void> {
+async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string; machine?: string; adding?: true }, d: HostDeps): Promise<void> {
   const far = await farHome(master, o.svallBase, d, o.machine).catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
   if (!far) return;
   const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
   if (refused) throw refused;
-  if (servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
+  if (o.adding && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
   }
@@ -621,7 +621,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const companion = await run.step('release', async () => {
         const c = await companionFor(o, d, arch);
-        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version }, d);
+        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version, adding: true }, d);
         return c;
       });
       const remote = remotePaths(home, companion.version);
