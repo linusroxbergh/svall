@@ -12,7 +12,9 @@ import { makeHome } from '../helpers.js';
 import { farHome, macHome, put, read } from './mirror-homes.js';
 
 const K = 'sk_home_key_1234567890';
-const CODEX = onPath('codex', process.env.PATH ?? '');
+// the test environment's PATH leads with a fake agent of that name
+const FOUND = onPath('codex', (process.env.PATH ?? '').split(':').filter((d) => !d.includes('test/fixtures')).join(':'));
+const CODEX = FOUND && path.join(FOUND, 'codex');
 const S = makeHome();
 let n = 0;
 function loads(toml: string): { ok: boolean; out: string } {
