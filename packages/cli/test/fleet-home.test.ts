@@ -1,13 +1,13 @@
 import fs from 'node:fs';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ApiError, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
-import { armHomeFailpoints, HomeCrash } from '@svall/svalld/failpoints';
+import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
 import { installAdopt, journalLines, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { MAC, movedOut, STUDIO, STUDIO_RECORD } from '../../svalld/test/fleet/home-world.js';
+import { crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD } from '../../svalld/test/fleet/home-world.js';
 import type { Client } from '../src/client.js';
 import { abortBack, bringCrewBack, enrolmentFor, moveHomeBack, moveHomeOut, resumeHome, type MoveDeps } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
@@ -55,7 +55,8 @@ beforeEach(() => {
   fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: FLEET }));
   fs.writeFileSync(resolvePaths(home).state, JSON.stringify({ schema: 1, robots: {}, islands: {}, machines: {} }));
 });
-afterEach(cleanHomes);
+afterEach(() => { disarmCrash(); cleanHomes(); });
+afterAll(() => { expect(POINTS_OF.driver.filter((p) => !crashesFired().has(p))).toEqual([]); });
 
 function outDeps(far: (line: string, input?: string) => { code: number; stdout: string; stderr?: string } | Promise<{ code: number; stdout: string; stderr?: string }>, o: Parameters<typeof daemon>[0] = {}) {
   const registry = MachineRegistry.load();
@@ -236,9 +237,8 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       if (params.op === 'mark') writeMarker(resolvePaths(home), params.marker!);
       return client.call(m, p);
     }, close: () => {} } as unknown as Client);
-    const disarm = armHomeFailpoints((name) => { if (name === 'move.marked') throw new HomeCrash(name); });
+    crashAt('move.marked');
     await expect(moveHomeOut('studio', deps)).rejects.toThrow(HomeCrash);
-    disarm();
     expect(readMarker(resolvePaths(home))).toBeDefined();
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(lines.some((l) => /'fleet' 'abort'/.test(l))).toBe(false);
@@ -432,9 +432,8 @@ describe('fleet home set local', () => {
 
   it('a driver killed before its archive came: a retry calls the move off', async () => {
     const { w, deps, settled, master } = await workerHere();
-    const disarm = armHomeFailpoints((name) => { if (name === 'deliver.owed') throw new HomeCrash(name); });
+    crashAt('deliver.owed');
     await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
-    disarm();
     events = [];
     const stop = telling(w, master);
     const out = await resumeHome(deps);
@@ -447,9 +446,8 @@ describe('fleet home set local', () => {
 
   it('a retry with the old home out of reach changes nothing here', async () => {
     const { w, deps } = await workerHere();
-    const disarm = armHomeFailpoints((name) => { if (name === 'move.marked') throw new HomeCrash(name); });
+    crashAt('move.marked');
     await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
-    disarm();
     const id = readOwed(w.mac.paths)!.id;
     const opened = deps.openMaster;
     deps.openMaster = () => Promise.reject(new Error('ssh: connect to host studio'));
@@ -462,9 +460,8 @@ describe('fleet home set local', () => {
 
   it('a driver killed after the mark: abort refuses the move for good, and the old home hears', async () => {
     const { w, deps, far, settled, master } = await workerHere();
-    const disarm = armHomeFailpoints((name) => { if (name === 'move.marked') throw new HomeCrash(name); });
+    crashAt('move.marked');
     await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
-    disarm();
     expect(far.called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     const id = readOwed(w.mac.paths)!.id;
     const stop = telling(w, master);

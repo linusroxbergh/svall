@@ -676,6 +676,22 @@ describe('mission control in a move of the home', () => {
   });
 });
 
+describe('robot messages held for the user while the fleet moves', () => {
+  it('take no answer past the cut, as the new home would ask again, and take one once it is off', async () => {
+    const home = makeHome();
+    const paths = resolvePaths(home);
+    const store = Store.load(paths.state, () => {});
+    store.update((d) => { d.robots.c_1 = { ...robot({ id: 'c_1' }), relayed: { n: 3, user: 'u1', held: 'h1' } }; });
+    const { fleet } = unstarted(store, paths);
+    fleet.holdForMove(true);
+    await expect(fleet.answerPrompt('c_1', 'approve', 'h1')).rejects.toMatchObject({ code: 'frozen' });
+    expect(store.state.robots.c_1.relayed?.held).toBe('h1');
+    fleet.holdForMove(false);
+    await fleet.answerPrompt('c_1', 'approve', 'h1');
+    expect(store.state.robots.c_1.relayed).toBeUndefined();
+  });
+});
+
 describe('a home that may freeze', () => {
   it('counts a call that may write from its admission to its answer, a failed one too, and a read not at all', async () => {
     const events: string[] = [];

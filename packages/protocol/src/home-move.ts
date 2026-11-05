@@ -48,7 +48,7 @@ export type HomeManifest = z.infer<typeof HomeManifest>;
 export const HomeFacts = z.object({
   machineId: MachineId, role: z.enum(['home', 'worker']), fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
   clock: z.number(), freeKb: z.number().optional(), home: MachinePath, svallBase: MachinePath, fleetHome: MachinePath, moving: z.string().optional(),
-  tailscale: z.object({ host: z.string().optional(), owner: z.string().optional(), error: z.string().optional() }),
+  tailscale: z.object({ host: z.string().optional(), error: z.string().optional() }),
   paths: z.record(z.string(), z.boolean()).optional(),
 });
 export type HomeFacts = z.infer<typeof HomeFacts>;
@@ -63,7 +63,7 @@ export type HomeSheet = z.infer<typeof HomeSheet>;
 /** Mission control's robots that are not on the home: only a move of the home sends them away, and one that stopped leaves them there. */
 export const crewAway = (s: Pick<FleetState, 'robots' | 'islands'>): FleetState['robots'][string][] => Object.values(s.robots).filter((r) => s.islands[r.islandId]?.kind === 'home' && r.machine !== undefined);
 
-export type Relabel = {
+type Relabel = {
   from: MachineId; fromName: string; fromHome?: string; to: MachineId; toName: string; toHome?: string; at: number;
   /** For the side about to run as a worker: its home's entry says a snapshot is held, which a start refuses a fleet's home without. Never for one about to start as a home, which would take itself for a worker's copy. */
   stamp?: true;

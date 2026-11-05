@@ -26,9 +26,9 @@ pnpm integration:placement --out /tmp/robot-placement
 | `--out <dir>` | Where the logs go (default a new folder under the system temp folder, named when the run starts). |
 | `--steps <spec>` | `all` (default) or a list of step numbers such as `1,5`. The fixture always runs, and a step also runs the steps whose robots it works with. |
 | `--scenarios <spec>` | The faults of step 5: `all` (default), `none`, `kill`, `drop`, or a list such as `kill@rest,drop@commit`. |
-| `--points <regex>` | Run only the faults of step 17 whose name matches: `out` or `back`, then a boundary, `link` or `tar`. |
+| `--points <regex>` | Run only the faults of step 17 whose name matches: `out` or `back`, then a boundary, `crew`, `link` or `tar`. |
 | `--keep` | Leave the containers running afterwards, to look around with `docker exec -it -u svall svall-local bash -l`. |
-| `--prefix <name>` | Name the containers `<name>-local` and `<name>-remote` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
+| `--prefix <name>` | Name the containers `<name>-local`, `<name>-remote` and step 19's `<name>-server` and the network `<name>-it` (default `svall`), so another run can share the Docker host. |
 
 The script builds the companion archive for the Docker host's architecture (`scripts/build-companion.mjs`), and
 `apps/desktop/web/dist-mobile` first if it is missing. It exits 0 when every check passed. Each step prints `PASS`, or
@@ -127,7 +127,9 @@ each machine's daemon and unit logs.
     robot moves each way on the home that came back.
 19. **A machine set up first takes a join.** `svall -p joined fleet join` on remote makes a fleet never opened a worker
     of the home on local, under the home's fleet id, ending on its first snapshot; a fleet that holds anything is
-    refused.
+    refused. Then a third machine of no fleet, `<prefix>-server`: `svall -p mac2 host add --as-home` from local leaves it a
+    home and enrols no one, `svall -p mac2 fleet join` makes local's empty fleet its worker, and the server reaches it over
+    that dial.
 20. **Terminals across a dropped master.** A window on local holds three terminals attached to robots on the home on
     remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
     master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its
@@ -164,17 +166,22 @@ faults and 2 directions, 24 moves. Before each, `faults` is moved to the side th
 
 Step 17 kills a process at each operation boundary of a home move, in both directions, then does what a person does:
 starts what the kill left down and runs `svall fleet home retry` or `abort`, in turn, until the move is over. A boundary
-the run never reached fails it.
+the run never reached fails it. The kills come from a `home-fault` file in the fleet home, read only where
+`SVALL_HOME_FAULTS=1`, which the image sets for commands, ssh and the daemon's unit.
 
 | Direction | Where | Boundaries |
 | --- | --- | --- |
-| local to remote | remote's `fleet adopt` | `adopt.staged`, `stopped`, `installing`, `file`, `dropped`, `registry`, `installed`, `started`, `committed` |
+| local to remote | remote's `fleet adopt` | `adopt.staging`, `staged`, `stopped`, `installing`, `file`, `dropped`, `registry`, `installed`, `started`, `committed` |
 | local to remote | local's driver | `move.marked` |
 | local to remote | local's daemon | `mark.written`, `enrol.written`, `join.kept`, `state`, `docs`, `worker`, `done` |
 | remote to local | local's driver | `deliver.owed`, `move.marked`, and each `adopt.*` as above, which runs there |
 | remote to local | local's daemon | `deliver.told` |
 | remote to local | remote's daemon | `mark.written`, `enrol.written`, each `join.*` |
 
+- **A kill in the recovery of a kill**, each way: `restore.file` and `restore.done` past `adopt.dropped`, `abort.recorded`
+  past `adopt.stopped`.
+- **Mission control comes back**, each way: its robot goes ahead, the move stops at `adopt.stopped` and is called off, the
+  robot stays where it went, and `svall fleet home crew-back` returns it to the home in the same conversation.
 - **A link drop between mark and adopt**, each way, ended by retry and by abort. The driver stands still at `move.marked`,
   local's packets to remote's port 22 are dropped, and it goes on. Going out, local stays frozen and remote takes nothing.
   Coming back, local takes the fleet and owes remote the outcome, and remote stays frozen until the link returns.
@@ -184,8 +191,8 @@ the run never reached fails it.
 - **A delayed adopt against an abort.** A status on an id never heard of refuses it for good, and the adopt that comes
   later is refused.
 - **Afterwards**: exactly one daemon answers as the home and the other names it; every window on either machine stands;
-  no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`; and the home holds the
-  fleet's `push.json` and pass.
+  no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`; the home holds the
+  fleet's `push.json` and pass; and the home's phone link alone serves.
 
 A move needs the daemons it moves between, so a failed check does not stop a step: a run that seems to hang there is
 often a failed drive waiting to settle, and `run.log` says which. `--points` narrows the matrix while working on one.

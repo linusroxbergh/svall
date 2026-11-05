@@ -142,7 +142,8 @@ A move carries the fleet's islands, notes, settings, phone pairing and push keys
 tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. The move
 pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
 window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
-once from its new QR code: it stays paired and pushes keep arriving.
+once from its new QR code: it stays paired and pushes keep arriving. The new home turns its phone link on within seconds of
+taking the fleet, if the old one served; if Tailscale refuses it there, the move stands, and Settings → Phone says why.
 
 A move refuses until it can go through: the other machine linked, on the same release, with Tailscale, its clock within 5
 minutes and room for the fleet; no robot moving, and no other worker, which you remove and add again from the new home.
@@ -160,12 +161,17 @@ machine stops, however it stops, what is left is one of these:
 - **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
   that the move went through. The other machine's files stand as they were kept: see below.
 
+A move that stops leaves mission control's robots that went ahead where they went: a banner names them, with **Bring them back**
+(`svall fleet home crew-back`), and says which cannot return and why.
+
 Going out, the Mac asks the server how the move ended. Coming back, the server has no route to the Mac, so a server left frozen
 waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends the wait.
 
 Quit during a move ends the window and leaves this Mac's daemon up, as the move has to end. A move is not a backup, and keeps what it replaced:
 the old home's `state.json.home-<id>` and `docs.home-<id>` stay in its fleet home, and `adopt-<id>` holds what was staged until
-the old home links to the new one. Files refuses every `adopt-<id>` folder, as it holds the fleet's keys.
+the old home links to the new one. Files refuses every `adopt-<id>` folder and `workers.json.home-<id>`, as they hold the fleet's keys.
+A link inside `docs/` is not carried, and neither is a name a tar cannot hold, which refuses the move and names the file. A note
+written after the copy goes to the new home, and one the new home changed too is kept beside it as a conflict copy.
 
 ## Limitations
 

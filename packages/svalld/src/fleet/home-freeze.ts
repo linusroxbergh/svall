@@ -22,7 +22,7 @@ const CLOCK_SKEW_MS = 5 * 60_000;
 // a fleet's kilobytes, with room for what its robots write meanwhile
 const MIN_FREE_KB = 100 * 1024;
 
-export type Holder = object;
+type Holder = object;
 
 export type FreezeDeps = {
   paths: Paths; store: { state: FleetState; flush(): Promise<boolean> }; me: MachineId; log: Pick<Logger, 'error' | 'info'>;
@@ -241,7 +241,7 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   try {
     const m = o.tailscale ?? realDeps();
     const self = await tailnetSelf(m, await resolveTailscale(m));
-    tailscale = { host: self.host, ...(self.owner && { owner: self.owner }) };
+    tailscale = { host: self.host };
   } catch (e) { tailscale = { error: (e as Error).message }; }
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
@@ -261,7 +261,7 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
   return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, from: value, to: `~${value.slice(fromHome.length)}` }] : []));
 }
 
-export type HomeCheckInput = {
+type HomeCheckInput = {
   state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
 };
 

@@ -1,10 +1,14 @@
 import fs from 'node:fs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, emptyState, type AdoptAnswer, type HomeFacts, type HomeMoving, type MachineId } from '@svall/protocol';
+import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { readMarker, writeMarker } from '../../src/fleet/home-move.js';
 import { resolvePaths } from '../../src/paths.js';
+import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
+import { moveWorld, type MoveWorld } from '../placement/move-world.js';
+import { H, W } from '../placement/world.js';
 import { ID, MAC, marker, robot, STUDIO } from './home-world.js';
 
 afterEach(cleanHomes);
@@ -61,6 +65,13 @@ describe('a frozen home', () => {
   ] as const)('%s thaws what it froze and says why', async (_what, o, said) => {
     const { freeze, log } = setup(o);
     await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(said);
+    expect(freeze.active).toBe(false);
+    expect(log).toContain('resume');
+  });
+
+  it('a phone that cannot be read freezes nothing, as what served must not be taken for off', async () => {
+    const { freeze, log } = setup({ phone: Promise.reject(new Error('no answer')) });
+    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow('no answer');
     expect(freeze.active).toBe(false);
     expect(log).toContain('resume');
   });
@@ -358,6 +369,30 @@ describe('a frozen home', () => {
       expect(() => freeze.open('hm_otherother' as never, {})).toThrow(/already moving/);
     });
   });
+});
+
+describe('a real move the API took as the freeze came', () => {
+  const worlds: MoveWorld[] = [];
+  afterEach(async () => { for (const w of worlds.splice(0)) await w.stop(); });
+
+  it.skipIf(!hasGit)('lands before the cut, and nothing of it changes past the freeze\'s return', async () => {
+    const w = moveWorld();
+    worlds.push(w);
+    const home = await w.start();
+    const freeze = new HomeFreeze({
+      paths: resolvePaths(w.base), me: H, log: { error: () => {}, info: () => {} }, store: { state: home.store.state, flush: () => home.store.flush() },
+      links: { barrier: () => Promise.resolve(true), hold: () => {}, call: () => Promise.resolve({} as never) }, background: { pause: () => {}, resume: () => {} },
+      phone: { get: () => Promise.resolve({ serving: false, logins: [] }), set: () => Promise.resolve({}) }, ask: () => Promise.resolve({ status: 'pending', phase: 'x' }), restart: () => {},
+    });
+    const moving = dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, { viewer: { kind: 'app', loopback: true }, placement: home.placement, freeze } as unknown as Ctx);
+    expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_1', note: 'too soon' } }, { viewer: { kind: 'app', loopback: true }, freeze: { refusal: () => undefined, admit: () => undefined } } as unknown as Ctx)).toBeDefined();
+    await freeze.freeze(ID, W, holder);
+    const cut = home.store.state.robots.c_1.machine;
+    expect(cut).toBe(W);
+    expect(home.store.state.robots.c_1.moving).toBeUndefined();
+    expect(await moving).toMatchObject({ result: {} });
+    expect(home.store.state.robots.c_1.machine).toBe(cut);
+  }, 60_000);
 });
 
 const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, role: 'home', release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, home: '/Users/ada', svallBase: '/opt', fleetHome: '/x', tailscale: { host: 'h' }, ...o } as HomeFacts);

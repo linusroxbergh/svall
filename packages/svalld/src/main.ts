@@ -389,8 +389,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const held: { start(): () => void; stop?: () => void }[] = [];
   const background = {
     on: false,
-    pause() { if (!this.on) return; this.on = false; fleet.holdScribe(true); retro?.stop(); for (const h of held) { h.stop?.(); h.stop = undefined; } },
-    resume() { if (this.on) return; this.on = true; fleet.holdScribe(false); retro?.start(); for (const h of held) h.stop ??= h.start(); },
+    pause() { if (!this.on) return; this.on = false; fleet.holdForMove(true); retro?.stop(); for (const h of held) { h.stop?.(); h.stop = undefined; } },
+    resume() { if (this.on) return; this.on = true; fleet.holdForMove(false); retro?.start(); for (const h of held) h.stop ??= h.start(); },
   };
   const freeze = links && new HomeFreeze({
     paths, store, me, log,

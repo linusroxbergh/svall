@@ -48,7 +48,7 @@ const Enrolled = z.object({
   homeSvallBase: z.string(), homePlatform: z.string(), homeArch: z.string(), homePath: z.string(),
 });
 
-export type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
+type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
 
 export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh'> & {
   registry: MachineRegistry;

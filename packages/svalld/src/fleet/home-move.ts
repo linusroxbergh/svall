@@ -316,7 +316,7 @@ function installFiles(p: Paths, id: HomeMoveId): void {
 }
 
 /** Everything back as it was before the install began, whichever of its steps a crash cut it or this at; what a failed home wrote goes with it. */
-export function restoreOriginal(p: Paths, id: string): void {
+function restoreOriginal(p: Paths, id: string): void {
   const dir = adoptDir(p, id);
   const [original, thrown] = [path.join(dir, 'original'), path.join(dir, `thrown-${Date.now()}`)];
   fs.mkdirSync(path.join(thrown, 'journal'), { recursive: true, mode: 0o700 });

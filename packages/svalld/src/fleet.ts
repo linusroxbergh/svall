@@ -424,7 +424,7 @@ export class Fleet extends EventEmitter<Events> {
   }
 
   /** While the fleet moves to another home, its scribe holds still. */
-  holdScribe(on: boolean): void {
+  holdForMove(on: boolean): void {
     this.scribe.hold(on);
     this.held = on;
   }
