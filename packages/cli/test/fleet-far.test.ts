@@ -118,7 +118,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
     waiting();
     expect(await run(['settle', ID, '--outcome', 'not-adopted'])).toEqual({ status: 'not-adopted' });
     expect(readMarker(resolvePaths(home))).toBeUndefined();
-    expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).toBe('aborted');
+    expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).toBe('released');
     expect(daemon.starts).toBe(1);
   });
 

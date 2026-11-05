@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ApiError, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
+import { ApiError, INTERRUPT_ACTIONS, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
 import { installAdopt, journalLines, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
@@ -20,7 +20,7 @@ const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0
 type Called = { method: string; params: { op?: string; marker?: HomeMoving } & Record<string, unknown> };
 
 /** This fleet's daemon as the driver sees it. */
-function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; state?: object } = {}) {
+function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; state?: object; crewRefused?: object } = {}) {
   const called: Called[] = [];
   const client = {
     call: (method: string, params: Called['params']) => {
@@ -36,6 +36,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; sta
       if (method === 'fleet.freeze') return Promise.resolve({ phone: { serving: false, logins: [] } });
       if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
       if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
+      if (method === 'robot.moveCheck') return Promise.resolve(o.crewRefused && (params as { interruptAfterMs?: number }).interruptAfterMs === undefined ? { ok: false, refusal: o.crewRefused } : { ok: true, sheet: {} });
       return Promise.resolve({});
     },
     close: () => {},
@@ -175,7 +176,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
   });
 
   describe('mission control\'s robots', () => {
-    const crewState = (machine?: string) => ({ robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', ...(machine && { machine }) }, here: { id: 'here', name: 'here', islandId: 'i_a' } }, islands: { home: { id: 'home', kind: 'home' }, i_a: { id: 'i_a' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } });
+    const crewState = (machine?: string) => ({ robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', ...(machine && { machine, sentAhead: 'hm_abcdefghij' }) }, here: { id: 'here', name: 'here', islandId: 'i_a' } }, islands: { home: { id: 'home', kind: 'home' }, i_a: { id: 'i_a' } }, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } });
 
     it('a machine this one cannot log in to stops the move before any of them moves', async () => {
       const { deps, called } = outDeps(happy, { state: crewState() });
@@ -184,6 +185,52 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       expect(failed()).toMatchObject({ step: 'check', detail: expect.stringContaining('Permission denied') });
       expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
       expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
+    });
+
+    const WORKING = { reason: 'crew is working', action: INTERRUPT_ACTIONS.agent, details: [] };
+
+    it('one at work is named in the check, with the flag that decides it, and nothing has moved or frozen', async () => {
+      const { deps, called } = outDeps(happy, { state: crewState(), crewRefused: WORKING });
+      const out = await moveHomeOut('studio', deps);
+      expect(failed()).toMatchObject({ step: 'check', detail: 'crew is working' });
+      expect(out.actions.join()).toContain('svall fleet home set studio --interrupt-after 0');
+      expect(called.some((c) => c.method === 'robot.moveTo' || c.method === 'fleet.freeze' || c.params.op === 'open')).toBe(false);
+    });
+
+    it('any other refusal of theirs stops it there too, by the robot\'s name and in its own words', async () => {
+      const { deps, called } = outDeps(happy, { state: crewState(), crewRefused: { reason: 'claude is not logged in on studio', action: 'log in there', details: [] } });
+      const out = await moveHomeOut('studio', deps);
+      expect(failed()).toMatchObject({ step: 'check', detail: 'crew: claude is not logged in on studio' });
+      expect(out.actions).toContain('log in there');
+      expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
+    });
+
+    it('its interrupt runs only on that choice', async () => {
+      const without = outDeps(happy, { state: crewState() });
+      await moveHomeOut('studio', without.deps);
+      expect(without.called.find((c) => c.method === 'robot.moveTo')?.params).not.toHaveProperty('interruptAfterMs');
+      const chose = outDeps(happy, { state: crewState(), crewRefused: WORKING });
+      await moveHomeOut('studio', chose.deps, { interruptAfterMs: 0 });
+      expect(chose.called.find((c) => c.method === 'robot.moveCheck')?.params.interruptAfterMs).toBe(0);
+      expect(chose.called.find((c) => c.method === 'robot.moveTo')?.params.interruptAfterMs).toBe(0);
+    });
+
+    it('bringing them back interrupts only on the choice too', async () => {
+      const without = outDeps(happy, { state: crewState(STUDIO) });
+      await bringCrewBack(without.deps);
+      expect(without.called.find((c) => c.method === 'robot.moveTo')?.params).not.toHaveProperty('interruptAfterMs');
+      const chose = outDeps(happy, { state: crewState(STUDIO) });
+      await bringCrewBack(chose.deps, { interruptAfterMs: 0 });
+      expect(chose.called.find((c) => c.method === 'robot.moveTo')?.params.interruptAfterMs).toBe(0);
+    });
+
+    it('a placed robot dragged onto mission control is no crew a move left behind: nothing offers it back', async () => {
+      const state = crewState();
+      Object.assign(state.robots.crew, { machine: STUDIO });
+      const { deps, called } = outDeps(happy, { state });
+      await bringCrewBack(deps);
+      expect(ran()).toContain('crew:skip');
+      expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
     });
 
     it('the daemon opens the move before the first of them moves under its id', async () => {
@@ -199,7 +246,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       const state = crewState();
       const { deps } = outDeps((line) => (line.includes('--stage') ? { code: 1, stdout: '', stderr: 'svall: no room' } : answer({ status: 'not-adopted' })), { state });
       const client = await deps.client();
-      deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') (state.robots.crew as { machine?: string }).machine = STUDIO; return client.call(m, p); }, close: () => {} } as unknown as Client);
+      deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => { if ((m as string) === 'robot.moveTo') Object.assign(state.robots.crew, { machine: STUDIO, sentAhead: 'hm_abcdefghij' }); return client.call(m, p); }, close: () => {} } as unknown as Client);
       const out = await moveHomeOut('studio', deps);
       expect(out.actions).toContain('svall fleet home crew-back');
       expect(events.find((e) => e.step === 'crew' && e.status === 'warn')?.detail).toContain('crew');

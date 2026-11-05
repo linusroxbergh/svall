@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { emptyState, MachineId, relabelHome, type FleetState, type Robot } from '../src/index.js';
+import { crewAway, emptyState, MachineId, relabelHome, type FleetState, type Robot } from '../src/index.js';
 
 const MAC = MachineId.parse('42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f');
 const STUDIO = MachineId.parse('66666666-7777-8888-9999-aaaaaaaaaaaa');
@@ -13,6 +13,24 @@ const fleet = (): FleetState => ({
   machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, home: '/home/ada', replayed: { epoch: 'e', seq: 9 } } },
 });
 const out = { from: MAC, fromName: 'mac', fromHome: '/Users/ada', to: STUDIO, toName: 'studio', toHome: '/home/ada', at: 5 };
+
+describe('crewAway', () => {
+  const [AWAY, OTHER] = ['66666666-7777-8888-9999-aaaaaaaaaaaa' as MachineId, '42aa0b1c-2d3e-4f50-8617-9a0b1c2d3e4f' as MachineId];
+  const state = (robot: object) => ({ islands: { home: { kind: 'home' }, work: { kind: 'island' } }, robots: { r: { id: 'r', islandId: 'home', ...robot } } }) as never;
+
+  it('names only a robot a home move sent ahead that is still away', () => {
+    expect(crewAway(state({ machine: AWAY, sentAhead: 'hm_abcdefghij' }))).toHaveLength(1);
+    expect(crewAway(state({ sentAhead: 'hm_abcdefghij' }))).toEqual([]);
+    expect(crewAway(state({ machine: AWAY }))).toEqual([]);
+    expect(crewAway(state({ machine: AWAY, sentAhead: 'hm_abcdefghij', islandId: 'work' }))).toEqual([]);
+  });
+
+  it('a move that landed clears the record, wherever the robot runs', () => {
+    const s = { robots: { r: { id: 'r', machine: AWAY, sentAhead: 'hm_abcdefghij' }, q: { id: 'q', sentAhead: 'hm_abcdefghij' } }, islands: {}, machines: {} } as never;
+    const next = relabelHome(s, { from: OTHER, fromName: 'mac', to: AWAY, toName: 'studio', at: 1 });
+    expect(Object.values(next.robots).map((r) => r.sentAhead)).toEqual([undefined, undefined]);
+  });
+});
 
 describe('relabelHome', () => {
   it("names the old home on what ran there, at its generation, and nothing on what ran on the new one", () => {

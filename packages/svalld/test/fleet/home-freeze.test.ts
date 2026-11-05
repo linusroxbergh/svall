@@ -1,11 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { ApiError, emptyState, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
+import { ApiError, crewAway, emptyState, HOME_ISLAND, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
+import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { phoneOwed, readMarker, servedPhone, writeMarker } from '../../src/fleet/home-move.js';
+import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
 import { Phones } from '../../src/phones.js';
 import { resolvePaths } from '../../src/paths.js';
@@ -571,6 +573,28 @@ describe('a frozen home', () => {
 describe('a real move the API took as the freeze came', () => {
   const worlds: MoveWorld[] = [];
   afterEach(async () => { for (const w of worlds.splice(0)) await w.stop(); });
+
+  it.skipIf(!hasGit)('only a home move\'s send records a robot as sent ahead, and a drag ends that: a plain move and a drag onto mission control record nothing', async () => {
+    const w = moveWorld();
+    worlds.push(w);
+    const home = await w.start();
+    await home.placement.start('c_1', W);
+    expect(home.store.state.robots.c_1.machine).toBe(W);
+    expect(home.store.state.robots.c_1.sentAhead).toBeUndefined();
+    const deps = { store: home.store, log: silentLogger };
+    const work = home.store.state.robots.c_1.islandId;
+    home.store.update((d) => { d.islands[HOME_ISLAND] = { ...d.islands[work], id: HOME_ISLAND, kind: 'home' }; });
+    moveRobot(deps, 'c_1', HOME_ISLAND);
+    expect(crewAway(home.store.state)).toEqual([]);
+    await home.placement.start('c_1', H, { homeMove: ID });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(home.store.state.robots.c_1.sentAhead).toBeUndefined();
+    await home.placement.start('c_1', W, { homeMove: ID });
+    expect(crewAway(home.store.state).map((r) => r.id)).toEqual(['c_1']);
+    moveRobot(deps, 'c_1', work);
+    moveRobot(deps, 'c_1', HOME_ISLAND);
+    expect(crewAway(home.store.state)).toEqual([]);
+  }, 60_000);
 
   it.skipIf(!hasGit)('lands before the cut, and nothing of it changes past the freeze\'s return', async () => {
     const w = moveWorld();

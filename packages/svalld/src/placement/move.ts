@@ -152,7 +152,10 @@ export class Placement {
       const j = this.enter({
         id, robotId, from: back ? there! : this.d.me, to, phase: 'rest', generation: (c.placement?.generation ?? 0) + 1, plan: checked.plan, updatedAt: Date.now(),
       }, 'rest');
-      this.d.store.update((d) => { d.robots[robotId].moving = { id, to, phase: 'rest' }; });
+      this.d.store.update((d) => {
+        d.robots[robotId].moving = { id, to, phase: 'rest' };
+        if (o.homeMove && !back) d.robots[robotId].sentAhead = o.homeMove;
+      });
       await (back ? this.back(j) : this.out(j));
     }).then(() => id);
   }

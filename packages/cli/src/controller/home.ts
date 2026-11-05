@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, crewAway, FleetId, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
+import { AdoptAnswer, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
@@ -249,16 +249,35 @@ const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reas
 
 const CREW_BACK = 'svall fleet home crew-back';
 
+const crewFor = (state: FleetState, to: MachineId): FleetState['robots'][string][] => Object.values(state.robots).filter((r) => state.islands[r.islandId]?.kind === 'home' && r.machine !== to);
+
+/** What a person chose for what a robot of mission control is running: until then, it is not interrupted. */
+export type CrewChoice = { interruptAfterMs?: number };
+const chosen = (o: CrewChoice): CrewChoice => (o.interruptAfterMs === undefined ? {} : { interruptAfterMs: o.interruptAfterMs });
+
+// what each of mission control's robots answers a move there, so a refusal comes here, with nothing moved
+async function checkCrew(c: Client, id: HomeMoveId, to: MachineId, o: CrewChoice, again: string): Promise<void> {
+  const state = await c.call('state.get', {});
+  const refused: { reason: string; action: string }[] = [];
+  for (const r of crewFor(state, to)) {
+    const a = await c.call('robot.moveCheck', { id: r.id, machine: to, homeMove: id, ...chosen(o) });
+    if (a.ok) continue;
+    for (const f of [a.refusal, ...(a.refusal.more ?? [])]) refused.push({ reason: f.reason.startsWith(r.name) ? f.reason : `${r.name}: ${f.reason}`, action: f.action });
+  }
+  if (!refused.length) return;
+  const asks = refused.some((f) => (Object.values(INTERRUPT_ACTIONS) as string[]).includes(f.action));
+  throw new StepError(refused.map((f) => f.reason).join('; '), asks ? `${again} --interrupt-after 0, which ends what it runs` : refused[0].action);
+}
+
 // mission control's robots go first, each journaled before its move, so a retry sees which landed; the daemon opens the move
 // first, as its id is what lets them move, and only for this caller
-async function moveMission(run: Runner, c: Client, paths: Paths, id: HomeMoveId, to: MachineId, name: string): Promise<void> {
+async function moveMission(run: Runner, c: Client, paths: Paths, id: HomeMoveId, to: MachineId, name: string, o: CrewChoice): Promise<void> {
   await run.step('mission', async () => {
     await c.call('fleet.homeMove', { op: 'open', id });
-    const state = await c.call('state.get', {});
-    const crew = Object.values(state.robots).filter((r) => state.islands[r.islandId]?.kind === 'home' && r.machine !== to);
+    const crew = crewFor(await c.call('state.get', {}), to);
     driverJournal(paths, id, 'mission', { robots: crew.map((r) => r.id) });
     for (const r of crew) {
-      const moved = await c.call('robot.moveTo', { id: r.id, machine: to, homeMove: id, interruptAfterMs: 30_000 }).catch((e: Error) => {
+      const moved = await c.call('robot.moveTo', { id: r.id, machine: to, homeMove: id, ...chosen(o) }).catch((e: Error) => {
         throw new StepError(`${r.name} did not move to ${name}: ${e.message}`, `fix it, and svall fleet home set ${name} again; ${CREW_BACK} brings back the crew that moved`);
       });
       driverJournal(paths, id, 'mission.moved', { robot: r.id, move: moved.moveId });
@@ -274,7 +293,7 @@ async function offerCrew(run: Runner, home: Client): Promise<void> {
 }
 
 /** `svall fleet home crew-back`: mission control's robots a move left away from the home go back to it through the move engine; each that cannot says why. */
-export function bringCrewBack(d: MoveDeps): Promise<HostOutcome> {
+export function bringCrewBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const paths = resolvePaths(d.target.home);
     let master: SshMaster | undefined;
@@ -294,8 +313,8 @@ export function bringCrewBack(d: MoveDeps): Promise<HostOutcome> {
         await home.call('fleet.homeMove', { op: 'open', id });
         const { machine } = await home.call('fleet.home', {});
         const stuck: string[] = [];
-        for (const r of away) await home.call('robot.moveTo', { id: r.id, machine, homeMove: id, interruptAfterMs: 30_000 }).catch((e: Error) => { stuck.push(`${r.name}: ${e.message}`); });
-        if (stuck.length) throw new StepError(`these cannot come back: ${stuck.join('; ')}`, 'try again once what they name is fixed');
+        for (const r of away) await home.call('robot.moveTo', { id: r.id, machine, homeMove: id, ...chosen(o) }).catch((e: Error) => { stuck.push(`${r.name}: ${e.message}`); });
+        if (stuck.length) throw new StepError(`these cannot come back: ${stuck.join('; ')}`, `try again once what they name is fixed; ${CREW_BACK} --interrupt-after 0 ends what they run`);
         return { value: undefined, detail: `${away.map((r) => r.name).join(', ')} came back` };
       });
     } finally {
@@ -306,7 +325,7 @@ export function bringCrewBack(d: MoveDeps): Promise<HostOutcome> {
 }
 
 /** `svall fleet home set <machine>`: this home's fleet moves to the machine, and this machine becomes its worker that dials in. */
-export function moveHomeOut(machine: string, d: MoveDeps): Promise<HostOutcome> {
+export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const paths = resolvePaths(d.target.home);
     const entry = d.registry.get(machine);
@@ -330,10 +349,11 @@ export function moveHomeOut(machine: string, d: MoveDeps): Promise<HostOutcome> 
         master = await d.openMaster(ssh).catch((e: Error) => { throw new StepError(`this machine cannot log in to ${name}: ${e.message}`, `ssh ${ssh} and see what it answers`); });
         // the fleet there by the folder it answers from: its profile there need not be the one it has here
         farHome = (await remoteConnectionInfo(master, entry, { ...(farProfile(d.target) && { profile: farProfile(d.target) }) })).fleetHome;
+        await checkCrew(client, id, to, o, `svall fleet home set ${name}`);
         return { value: undefined, detail: `${c.sheet.here} robots stay here, ${c.sheet.there} on ${name}` };
       });
       driverJournal(paths, id, 'check');
-      await moveMission(run, client, paths, id, to, name);
+      await moveMission(run, client, paths, id, to, name, o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await client.call('fleet.freeze', { id, to }), detail: 'this home takes no more writes' }));
       driverJournal(paths, id, 'copy');
@@ -423,7 +443,7 @@ async function firstSnapshot(client: () => Promise<Client>, home: MachineId): Pr
 }
 
 /** `svall fleet home set local`: the fleet comes back to this machine from the home it dials; the old home joins it. */
-export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
+export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const paths = resolvePaths(d.target.home);
     if (!isWorker(paths)) return refuse(run, 'this machine is the fleet\'s home already');
@@ -443,12 +463,13 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
       await run.step('check', async () => {
         const c = await local.call('fleet.homeCheck', { to: d.me });
         if (!c.ok) throw refusalStep(c.refusal);
+        master = await d.openMaster(ssh).catch((e: Error) => { throw new StepError(`this machine cannot log in to ${name}: ${e.message}`, `ssh ${ssh} and see what it answers`); });
+        home = await d.farClient(master, entry, fleetHome, worker.fleetId);
+        await checkCrew(home, id, d.me, o, 'svall fleet home set local');
         return { value: undefined, detail: `${c.sheet.here} robots stay on ${name}, ${c.sheet.there} here` };
       });
       driverJournal(paths, id, 'check');
-      master = await d.openMaster(ssh);
-      home = await d.farClient(master, entry, fleetHome, worker.fleetId);
-      await moveMission(run, home, paths, id, d.me, 'this machine');
+      await moveMission(run, home!, paths, id, d.me, 'this machine', o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await home!.call('fleet.freeze', { id, to: d.me }), detail: `${name} takes no more writes` }));
       // from here a kill leaves what this machine holds of the move for a person to finish or call off

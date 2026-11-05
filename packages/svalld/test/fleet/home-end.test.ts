@@ -2,7 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HomeMoveId } from '@svall/protocol';
-import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines, readMarker, settleMove, stageAdopt, writeMarker } from '../../src/fleet/home-move.js';
+import { HomeFreeze } from '../../src/fleet/home-freeze.js';
+import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines, readMarker, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { ID, marker, world } from './home-world.js';
@@ -108,6 +110,36 @@ describe('the one way a move ends', () => {
     expect(readMarker(paths)).toBeUndefined();
     expect(journalLines(paths, ID).at(-1)).toMatchObject({ phase: 'released', detail: 'told' });
     expect(starts).toBe(1);
+  });
+
+  describe('on the disk, a daemon holding its lock', () => {
+    const enrol = { worker: { homeMachineId: marker().to, homeName: 'studio', fleetId: '11111111-2222-3333-4444-555555555555', token: 'b'.repeat(48) } } as never;
+
+    it('a marker already gone is one that daemon heard: nothing waits for the lock', async () => {
+      const paths = resolvePaths(makeHome());
+      const unlock = await daemonLock(paths.home);
+      await writeEnrol(paths, ID, enrol);
+      unlock?.();
+      expect(readMarker(paths)).toBeUndefined();
+    });
+
+    it('a marker that changed while it waited for the lock is left as it is', async () => {
+      const paths = marked();
+      const unlock = await daemonLock(paths.home);
+      const writing = writeEnrol(paths, ID, enrol);
+      writeMarker(paths, { ...marker(), id: OTHER });
+      unlock?.();
+      await writing;
+      expect(readMarker(paths)).toEqual({ ...marker(), id: OTHER });
+    });
+  });
+
+  it('a release under a marker with no one saying so throws, and the marker stands', async () => {
+    const paths = marked();
+    const freeze = new HomeFreeze({ paths, me: marker().from } as never, marker());
+    await expect((freeze as unknown as { release(): Promise<void> }).release()).rejects.toThrow(/only where the fleet is going/);
+    expect(readMarker(paths)?.id).toBe(ID);
+    expect(freeze.active).toBe(true);
   });
 
   it('no other code removes a marker or writes an id off', () => {

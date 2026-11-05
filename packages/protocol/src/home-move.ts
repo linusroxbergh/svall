@@ -60,8 +60,8 @@ export const HomeSheet = z.object({
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
 
-/** Mission control's robots that are not on the home: only a move of the home sends them away, and one that stopped leaves them there. */
-export const crewAway = (s: Pick<FleetState, 'robots' | 'islands'>): FleetState['robots'][string][] => Object.values(s.robots).filter((r) => s.islands[r.islandId]?.kind === 'home' && r.machine !== undefined);
+/** Mission control's robots a home move sent ahead that stopped, and left away from the home. */
+export const crewAway = (s: Pick<FleetState, 'robots' | 'islands'>): FleetState['robots'][string][] => Object.values(s.robots).filter((r) => s.islands[r.islandId]?.kind === 'home' && r.machine !== undefined && r.sentAhead !== undefined);
 
 type Relabel = {
   from: MachineId; fromName: string; fromHome?: string; to: MachineId; toName: string; toHome?: string; at: number;
@@ -76,6 +76,7 @@ type Relabel = {
 export function relabelHome(state: FleetState, o: Relabel): FleetState {
   const next = structuredClone(state);
   for (const r of Object.values(next.robots)) {
+    delete r.sentAhead;
     if (r.machine === o.to) delete r.machine;
     else if (r.machine === undefined || r.machine === o.from) {
       r.machine = o.from;

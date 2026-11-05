@@ -14,13 +14,14 @@ import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@sval
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client, withClient } from '../client.js';
 import { connectForwarded } from '../controller/connection.js';
-import { abortBack, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type MoveDeps } from '../controller/home.js';
+import { abortBack, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps } from '../controller/home.js';
 import type { HostOutcome, StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
 import type { Target } from '../target.js';
 import { interactiveSsh, stepLine } from './host.js';
+import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
 
 type Facts = { name: string; platform: string; arch: string; home: string; svallBase: string };
@@ -66,6 +67,8 @@ const readStdin = async (): Promise<string> => {
 };
 
 const adoptDeps = (t: Target): AdoptDeps => ({ paths: resolvePaths(t.home), me: machineId(), daemon: realHomeDaemon(t) });
+
+const crewChoice = (o: { interruptAfter?: string }): CrewChoice => (o.interruptAfter === undefined ? {} : { interruptAfterMs: parseDuration(o.interruptAfter) });
 
 const flowReporter = (json: boolean) => (json
   ? (e: StepEvent) => { process.stdout.write(`${JSON.stringify(e)}\n`); }
@@ -150,10 +153,11 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
   });
   home.command('set').description('move the fleet to <machine>, or back here with local: its islands, notes, settings and phone pairing; robots stay where they run')
     .argument('<machine>', 'a worker of this fleet, or local')
-    .action(async (machine: string) => {
+    .option('--interrupt-after <duration>', 'interrupt what a robot of mission control runs after this long, e.g. 30s or 0; without it, one at work stops the move before anything moves')
+    .action(async (machine: string, o: { interruptAfter?: string }) => {
       const t = target();
       const d = moveDeps(t, json());
-      const out = await (machine === 'local' ? moveHomeBack(d) : moveHomeOut(machine, d));
+      const out = await (machine === 'local' ? moveHomeBack(d, crewChoice(o)) : moveHomeOut(machine, d, crewChoice(o)));
       finishFlow(out, json(), machine === 'local' ? 'The fleet runs on this machine. Open the phone from its new QR code once.' : `The fleet runs on ${machine}. Open the phone from its new QR code once.`);
     });
   home.command('retry').description('go on with the move this machine waits on, from what stays staged').action(async () => {
@@ -169,10 +173,12 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     const m = await withClient(() => Client.connect(t.home), (c) => c.call('fleet.homeMove', { op: 'abort' }));
     printResult(m, json(), () => (m.moving ? `${m.moving.name} has not let go of it: ${m.moving.answer ?? 'no answer'}` : `the move is off, and this home takes writes again\n${crew}`));
   });
-  home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home').action(async () => {
-    const t = target();
-    finishFlow(await bringCrewBack(moveDeps(t, json())), json(), 'Mission control\'s robots are on the home.');
-  });
+  home.command('crew-back').description('bring back mission control\'s robots a move that stopped left away from the home')
+    .option('--interrupt-after <duration>', 'interrupt what they run after this long, e.g. 30s or 0; without it, one at work stays there and says so')
+    .action(async (o: { interruptAfter?: string }) => {
+      const t = target();
+      finishFlow(await bringCrewBack(moveDeps(t, json()), crewChoice(o)), json(), 'Mission control\'s robots are on the home.');
+    });
 }
 
 /** What a fleet's home runs for the fleet as a whole: taking a worker that opens the link itself. */
