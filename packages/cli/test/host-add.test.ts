@@ -71,8 +71,12 @@ describe('host add', () => {
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    // as the machine answers once nothing enrolled it: a home of its own, naming no one
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }) });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
     await d.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(step('probe').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('as its home') });
     const said = events.filter((e) => e.status !== 'start').map((e) => e.step);
     expect(said).not.toContain('enrol');
     expect(said.some((step) => step.startsWith('mirror:'))).toBe(false);

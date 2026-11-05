@@ -399,14 +399,14 @@ async function endToEnd(master: SshMaster, entry: MachineEntry, { release, anyPr
 const TMUX_PROBE = 'sock="${TMPDIR:-/tmp}/svall-probe-$$"; tmux -S "$sock" new-session -d -s svall-probe sleep 30 && tmux -S "$sock" list-windows -t svall-probe >/dev/null; r=$?; tmux -S "$sock" kill-server 2>/dev/null; rm -f "$sock"; exit $r';
 
 /** Add Machine's end-to-end probe: the daemon over its tunnel from `release`, this fleet there as a worker, and a tmux window on the PATH its units run with. */
-async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string }, d: HostDeps): Promise<Outcome<void>> {
+async function addProbe(master: SshMaster, entry: MachineEntry, o: { home: string; release: string; asHome?: boolean }, d: HostDeps): Promise<Outcome<void>> {
   await endToEnd(master, entry, { release: o.release });
-  if (!servesUs(await farHome(master, entry.record.svallBase, d, entry.id), d)) {
+  if (!o.asHome && !servesUs(await farHome(master, entry.record.svallBase, d, entry.id), d)) {
     throw new StepError(`${entry.record.name} does not serve this fleet as a worker: its fleet home there holds no worker.json naming it`);
   }
   const r = await master.run(['env', shq(`PATH=${unitPathOf(o.home, entry.record.svallBase)}`), ...sh('svall-tmux', TMUX_PROBE)], { timeoutMs: PROBE_TIMEOUT });
   if (r.code !== 0) throw new StepError(`tmux could not open a window there (exit ${r.code}): ${r.stderr.trim().slice(0, 200) || 'no output'}`);
-  return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, serves this fleet as a worker, and tmux opens and closes a window there` };
+  return { value: undefined, detail: `${entry.record.name} answers on its own ${PRIVATE} fleet, ${o.asHome ? 'as its home' : 'serves this fleet as a worker'}, and tmux opens and closes a window there` };
 }
 
 const farFlags = (fleet: HostDeps['fleet']): string[] => (fleet.profile ? ['-p', shq(fleet.profile)] : []);
@@ -670,7 +670,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       await run.step('versions', async () => versionsOutcome(versions, await d.localAgents().catch((err: Error) => err), o.ssh));
 
       const record: MachineRecord = { name: o.name, ssh: o.ssh, platform: 'linux', arch, home, svallBase: remote.svallBase };
-      await run.step('probe', () => addProbe(master, { id: machine, record }, { home, release: companion.version }, d));
+      await run.step('probe', () => addProbe(master, { id: machine, record }, { home, release: companion.version, ...(o.asHome && { asHome: true }) }, d));
       await run.step('registry', () => {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
