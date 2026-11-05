@@ -342,7 +342,7 @@ function adopt(a) {
   const here = json(svall(a, 'version', '--json').stdout);
   const there = json(ssh('.local/bin/svall', 'version', '--json').stdout);
   const manifest = {
-    id, fleetId: there.fleetId ?? json(fs.readFileSync(path.join(HOME, '.svall', 'fleet.json'), 'utf8')).id, from: here.machineId, to: there.machineId, toName: 'fresh', toHome: HOME,
+    id, fleetId: json(ssh('cat', '.svall/worker.json').stdout).fleetId, from: here.machineId, to: there.machineId, toName: 'fresh', toHome: HOME,
     record: { name: 'controller', platform: 'darwin', arch: o.arch, home: HOME, svallBase: PREFIX, dial: 'worker' }, phone: { serving: false, logins: [] }, at: Date.now(),
   };
   const packed = json(svall(a, 'fleet', 'export', id, '--manifest', JSON.stringify(manifest)).stdout);
@@ -351,6 +351,8 @@ function adopt(a) {
   check('it stages', staged?.status === 'pending' && staged.phase === 'staged', () => brief(staged));
   const took = json(ssh('.local/bin/svall', '--json', 'fleet', 'adopt', id, '--home-ssh', 'fresh').stdout);
   check('it adopts', took?.status === 'adopted', () => brief({ ...took, enrol: undefined }));
+  // what this controller's join writes last: which machine is a fleet's home is read from that fleet's worker.json
+  fs.writeFileSync(path.join(HOME, '.svall', 'worker.json'), JSON.stringify(took.enrol.worker), { mode: 0o600 });
   check('the machine is the home', json(ssh('.local/bin/svall', '--json', 'fleet', 'home').stdout)?.mine === true, 'it does not answer as the home');
   check('no worker.json', ssh('test', '!', '-e', '.svall/worker.json').code === 0, 'worker.json stays');
   check('the unit runs no --worker', !root(`systemctl --user cat ${UNITS[0]}`, { uid }).stdout.includes('--worker'), 'the unit still runs --worker');
@@ -361,8 +363,8 @@ const panes = () => root(`'${TMUX}' -S '${HOME}/.svall/tmux.sock' list-panes -a 
 
 // a robot's window on the home, whose process an upgrade leaves running
 function keeper() {
-  const made = json(ssh('.local/bin/svall', '--json', 'robot', 'new', '--island', 'home', '--cwd', '.', '--name', 'keeper', '--command', 'sleep\ 86400').stdout);
-  check('a robot on the home', made?.id, 'no robot');
+  const made = json(ssh('.local/bin/svall', '--json', 'robot', 'new', '--island', 'home', '--cwd', HOME, '--name', 'keeper', '--command', "'sleep 86400'").stdout);
+  if (!made?.id) throw new Error('no robot started on the home');
   return { id: made.id, panes: panes() };
 }
 
@@ -373,7 +375,7 @@ function upgradedHome(b, kept) {
   const steps = events.filter((e) => e.step && e.status !== 'start');
   for (const s of steps) check(`home upgrade ${s.step}`, s.status === 'ok' || s.status === 'skip' || (s.status === 'warn' && s.step === 'mirror:unchecked'), () => `${s.status}: ${s.detail ?? ''} ${s.action ?? ''}`);
   check('home upgrade result', events.at(-1)?.result === 'ready' && r.code === 0, () => brief(events.at(-1)));
-  check('it enrolled nothing', steps.find((s) => s.step === 'enrol')?.status !== 'ok', () => brief(steps.find((s) => s.step === 'enrol')));
+  check('it enrolled nothing', steps.find((s) => s.step === 'enrol')?.status === 'skip', () => brief(steps.find((s) => s.step === 'enrol')));
   runs('home upgraded', b, [o.first, b.version]);
   check('still the home', json(ssh('.local/bin/svall', '--json', 'fleet', 'home').stdout)?.mine === true, 'it does not answer as the home');
   check('still no worker.json', ssh('test', '!', '-e', '.svall/worker.json').code === 0, 'the upgrade made it a worker');

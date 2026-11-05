@@ -139,6 +139,19 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(readMarker(resolvePaths(home))).toBeUndefined();
   });
 
+  it('a daemon that does not take the outcome has it written where its next start finds it', async () => {
+    const { deps } = outDeps(happy);
+    const client = await deps.client();
+    deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => {
+      const params = p as Called['params'];
+      if (params.op === 'mark') writeMarker(resolvePaths(home), params.marker!);
+      if (params.op === 'join') return Promise.reject(new Error('it went away'));
+      return client.call(m, p);
+    }, close: () => {} } as unknown as Client);
+    expect((await moveHomeOut('studio', deps)).result).toBe('ready');
+    expect(readMarker(resolvePaths(home))?.enrol).toBeDefined();
+  });
+
   it('a driver killed right after the mark leaves the marker, and the far machine holding its archive', async () => {
     const lines: string[] = [];
     const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });

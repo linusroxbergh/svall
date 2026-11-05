@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { armHomeFailpoints, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, startDeliveries } from '../../src/fleet/home-far.js';
-import { abortAdopt, adoptDir, adoptStatus, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, readMarker, readOwed, settleMove, stageAdopt, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, installAdopt, journalLines, landed, moveInFlight, moveOutcome, owe, packFleet, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
 import { FLEET, ID, MAC, movedOut, stateOf, STUDIO, world, type Side } from './home-world.js';
 
@@ -231,6 +231,23 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['home', 'worker']);
     expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
+  });
+
+  it('an outcome written for the next start finds no marker a start has joined past, so it writes none', async () => {
+    const w = await markedBack();
+    const a = await installAdopt(w.mac.deps, BACK, w.enrolment);
+    if (a.status !== 'adopted') throw new Error(a.status);
+    w.studio.daemon.kill();
+    fs.rmSync(w.studio.paths.homeMoving);
+    await writeEnrol(w.studio.paths, BACK, a.enrol);
+    expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
+  });
+
+  it('a settle of a move this home holds no marker of says it has heard, and changes nothing', async () => {
+    const w = await markedBack();
+    fs.rmSync(w.studio.paths.homeMoving);
+    const told = await settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, { join: () => { throw new Error('joined'); }, thaw: () => { throw new Error('thawed'); }, start: () => { throw new Error('started'); } });
+    expect(told).toEqual({ status: 'done' });
   });
 
   it('a thaw with studio\'s daemon down leaves it a home that takes writes', async () => {
