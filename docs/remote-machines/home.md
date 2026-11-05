@@ -82,7 +82,7 @@ A copy removes nothing on studio but a whole item or file you unticked, while it
 The first copy has no last one: it replaces studio's same-named files, your edits there included, and those lie in studio's backup folder. It
 sends this Mac's files as they are now: what a push replaced on this Mac lies in the backup folder here, so put back what you want from there first.
 
-An untick also removes Svall's own rollback copies beside a config file (`.claude.json.bak-<ts>`, `settings.json.bak-<ts>`) that hold the key, whole, as nothing else tells what was yours in one. `mirror-backup` is never touched.
+An untick, or a ticked key that changes, also removes Svall's own rollback copies beside a config file (`.claude.json.bak-<ts>`, `settings.json.bak-<ts>`) that hold the key, whole, as nothing else tells what was yours in one. `mirror-backup` is never touched.
 
 Two Macs copying to one studio work against one history: a second Mac's first copy skips what the first sent and replaces edits made on studio since, in no backup. `svall uninstall` leaves your agent folders with the home's files in them, the keys the mirror copied, Svall's hooks and its rollback copies taken out, and names `mirror-backup`, which it keeps unless you say yes. `--purge` deletes it with the fleet.
 
