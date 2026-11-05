@@ -238,7 +238,7 @@ const farCommand = (svallBase: string, fleetHome: string, args: string[]): strin
 
 async function farAnswer(master: SshMaster, svallBase: string, fleetHome: string, args: string[], input?: string): Promise<AdoptAnswer> {
   const r = await master.run(farCommand(svallBase, fleetHome, args), { timeoutMs: STEP_MS, ...(input !== undefined && { input }) });
-  if (r.code === 255 || r.code === null) throw new SshError('unreachable', `the connection to the far machine went away: ${r.stderr.trim().slice(0, 200)}`);
+  if (r.code === 255 || r.code === null) throw new SshError('unreachable', 'the connection to the far machine went away');
   const parsed = AdoptAnswer.safeParse((() => { try { return JSON.parse(r.stdout) as unknown; } catch { return undefined; } })());
   if (!parsed.success) throw new StepError(`svall fleet ${args[1]} there exited ${r.code}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no answer'}`);
   return parsed.data;

@@ -1245,6 +1245,7 @@ const settledHomes = () => {
 const homeAt = () => (tryHome(L)?.mine ? 'local' : 'remote');
 function placeHome(where) {
   if (homeAt() !== where) setHome(L, where);
+  if (homeAt() !== where) throw new Error(`the home did not move to ${where}`);
   ctx.home = where;
 }
 
@@ -1303,20 +1304,21 @@ function homeFault(ids, dir, point, where, ending) {
 }
 
 function homeFaults(ids) {
+  const picked = (name) => !o.points || new RegExp(o.points).test(name);
   const crew = Object.values(JSON.parse(sh(L, 'svall --json status').stdout).robots).find((r) => r.name === 'crew');
   if (crew) sh(tryHome(L)?.mine ? L : R, `svall robot close ${crew.id}`, { ok: false });
   ctx.pass = sh(tryHome(L)?.mine ? L : R, 'cat ~/.svall/mobile-pass').stdout;
   ctx.push = sh(tryHome(L)?.mine ? L : R, 'cat ~/.svall/push.json', { ok: false }).stdout;
   for (const dir of ['out', 'back']) {
     POINTS[dir].forEach(([point, where], i) => {
-      if (o.points && !new RegExp(o.points).test(`${dir} ${point}`)) return;
+      if (!picked(`${dir} ${point}`)) return;
       const ending = i % 2 ? 'abort' : 'retry';
       step(`${point}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, ${where}, then ${ending}`, () => homeFault(ids, dir, point, where, ending));
     });
   }
   for (const dir of ['out', 'back']) {
-    for (const ending of ['retry', 'abort']) step(`the link drops between mark and adopt, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => linkDrop(ids, dir, ending));
-    step(`a kill inside the tar's extraction, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => tarKill(ids, dir));
+    if (picked(`${dir} link`)) for (const ending of ['retry', 'abort']) step(`the link drops between mark and adopt, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => linkDrop(ids, dir, ending));
+    if (picked(`${dir} tar`)) step(`a kill inside the tar's extraction, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => tarKill(ids, dir));
   }
   // a delayed adopt against an abort: the abort answered, the staged archive refused for good
   step('a delayed adopt against an abort', () => {
@@ -1362,12 +1364,12 @@ function tarKill(ids, dir) {
   const before = homeView();
   const taking = dir === 'out' ? R : L;
   const old = dir === 'out' ? L : R;
-  const shim = '#!/bin/sh\ncase "$1" in\n  -x) /usr/bin/tar "$@" fleet.json; rm -f /usr/local/bin/tar; kill -9 $PPID $$ ;;\n  *) exec /usr/bin/tar "$@" ;;\nesac\n';
-  sh(taking, 'cat > /usr/local/bin/tar && chmod 755 /usr/local/bin/tar', { root: true, input: shim });
+  const shim = '#!/bin/sh\ncase "$1" in\n  -x) /usr/bin/tar "$@" fleet.json; touch /tmp/tar-killed; kill -9 $PPID $$ ;;\n  *) exec /usr/bin/tar "$@" ;;\nesac\n';
+  sh(taking, 'rm -f /tmp/tar-killed; cat > /usr/local/bin/tar && chmod 755 /usr/local/bin/tar', { root: true, input: shim });
   const r = sh(L, `svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} </dev/null`, { ok: false });
-  const fired = sh(taking, 'test -e /usr/local/bin/tar', { ok: false }).code !== 0;
-  sh(taking, 'rm -f /usr/local/bin/tar', { root: true });
-  check('the tar was killed inside its extraction', fired, () => `the shim is still there: ${r.stdout.slice(-400)}`);
+  const fired = sh(taking, 'test -e /tmp/tar-killed', { ok: false }).code === 0;
+  sh(taking, 'rm -f /usr/local/bin/tar /tmp/tar-killed', { root: true });
+  check('the tar was killed inside its extraction', fired, () => `it never ran: ${r.stdout.slice(-400)}`);
   check('the driver did not go on', r.code !== 0, () => r.stdout.slice(-400));
   // nothing has been marked, so its daemon goes on as the home, and no marker stands
   for (let i = 0; i < 20 && sh(old, 'test -f ~/.svall/home-moving.json', { ok: false }).code === 0; i++) sh(L, 'sleep 1');
@@ -1387,8 +1389,9 @@ function terminalsAcross(ids) {
   for (const id of robots) sh(R, `svall robot wait ${id} --until idle --timeout 60`);
   const onTerm = (args) => sh(L, `tmux -L term ${args}`, { ok: false });
   const panes = () => sh(R, "~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock list-windows -a -F '#{session_name} #{pane_pid} #{pane_tty}'", { ok: false }).stdout;
-  const clients = () => sh(R, "~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock list-clients -F '#{session_name}'", { ok: false }).stdout.split('\n').filter(Boolean);
-  const pidsBefore = panes();
+  const clients = () => sh(R, "~/.local/share/svall/current/bin/tmux -S ~/.svall/tmux.sock list-clients -F '#{session_name}'", { ok: false }).stdout.split('\n').filter((c) => c.startsWith('v-'));
+  const pidsOf = () => new Set(panes().split('\n').filter(Boolean).map((p) => p.split(' ').slice(1).join(' ')));
+  const pidsBefore = pidsOf();
   onTerm('kill-server');
   check('the terminal starts', onTerm('new-session -d -s holder').code === 0, 'tmux');
   onTerm('set -s set-clipboard on');
@@ -1423,7 +1426,7 @@ function terminalsAcross(ids) {
   say(`   back after ${tries.length} tries: ${[...new Set(tries)].join(', ')}`);
   openAll(c);
   waitFor('every terminal comes back', () => clients().length >= 3);
-  check('the same panes, the agents never restarted', panes().split('\n').filter(Boolean).every((p) => pidsBefore.includes(p)), () => `${panes()} vs ${pidsBefore}`);
+  check('the same panes, the agents never restarted', [...pidsOf()].every((p) => pidsBefore.has(p)), () => `${panes()} vs ${[...pidsBefore].join(', ')}`);
 
   const tty = panes().split('\n').find((l) => l.includes(c.attached[0].session))?.split(' ')[2];
   check('a pane has a tty', tty?.startsWith('/dev/'), () => panes());
@@ -1499,8 +1502,9 @@ try {
   if (steps.includes(16)) step(`16. ${STEPS[16]}`, () => homeMoves(ids, fx));
   if (steps.includes(18)) step(`18. ${STEPS[18]}`, () => homeBack(ids));
   if (steps.includes(17)) homeFaults(ids);
-  if (steps.includes(19)) step(`19. ${STEPS[19]}`, () => freshJoin(ids));
   if (steps.includes(20)) step(`20. ${STEPS[20]}`, () => terminalsAcross(ids));
+  // last: its join takes remote's record from the fleet the others link
+  if (steps.includes(19)) step(`19. ${STEPS[19]}`, () => freshJoin(ids));
   say('ALL PASS');
 } catch (e) {
   say(`FAILED: ${e.message}`);
