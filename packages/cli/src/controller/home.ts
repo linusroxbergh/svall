@@ -435,7 +435,11 @@ export function moveHomeBack(d: MoveDeps): Promise<HostOutcome> {
       await run.step('probe', async () => {
         await adoptConfirm(adoption, id);
         driverJournal(paths, id, 'done');
-        return { value: undefined, detail: 'The fleet runs on this machine. Open the phone from its new QR code once.' };
+        for (const until = Date.now() + SNAPSHOT_MS; Date.now() < until; await new Promise((r) => setTimeout(r, POLL_MS))) {
+          const state = await withClient(d.client, (c) => c.call('state.get', {})).catch(() => undefined);
+          if (state?.machines?.[from]?.reachable) return { value: undefined, detail: 'The fleet runs on this machine. Open the phone from its new QR code once.' };
+        }
+        return { value: undefined, status: 'warn' as const, detail: `the fleet runs on this machine; ${name} has not linked yet`, action: `svall host doctor ${name}` };
       });
     } catch (e) {
       if (!marked) {

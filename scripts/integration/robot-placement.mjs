@@ -1268,7 +1268,11 @@ function homeFaults(ids) {
 
 // a machine set up first, then joined
 function freshJoin(ids) {
-  if (ctx.home === 'remote') homeBack(ids);
+  if (ctx.home === 'remote') homeBack(ids, false);
+  if (ctx.blocked) sh(L, `iptables -D INPUT ${blockSsh(R)}`, { root: true });
+  // a joiner dials the home, which takes its key as Add machine's ssh would
+  sh(L, 'cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys', { input: sh(R, 'cat ~/.ssh/id_ed25519.pub').stdout });
+  sh(R, `ssh-keyscan -t ed25519 ${L} 2>/dev/null >> ~/.ssh/known_hosts`);
   const r = sh(R, `SHELL=/bin/bash svall -p joined --json fleet join svall@${L} --name remote-joined </dev/null`, { ok: false });
   const steps = moveSteps(r.stdout);
   check('the join ran', r.code === 0, () => `${r.code}: ${brief(steps.filter((s) => s.status === 'fail'))} ${r.stderr.slice(0, 400)}`);
