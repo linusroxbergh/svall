@@ -299,6 +299,15 @@ test('Machines asks the fleet again after a list that failed', async () => {
   }
 });
 
+test('Phone says why a home move left the link off, beside the switch that turns it on again', async () => {
+  call.mockImplementation((m: string) => Promise.resolve(m === 'mobile.get' ? { serving: false, url: '', port: 8443, logins: [], phones: [], reason: 'Access denied' } : {}));
+  render(<SettingsCard />);
+  fireEvent.click(screen.getByTestId('settings-tab-phone'));
+  expect(await screen.findByText('Access denied')).toBeTruthy();
+  expect(screen.getByTestId('set-mobile')).toBeTruthy();
+  expect(screen.queryByTestId('set-mobile-blocked')).toBeNull();
+});
+
 test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
   try {
     act(() => {

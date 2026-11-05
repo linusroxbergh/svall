@@ -611,13 +611,15 @@ describe('a frozen home', () => {
       const { paths } = setup();
       const link = { get: () => Promise.resolve(phoneAt(false)), set: (on: boolean) => Promise.resolve(phoneAt(on)) };
       const panel = phoneWithReason(link, paths);
-      expect((await panel.get()).error).toBeUndefined();
+      expect((await panel.get()).reason).toBeUndefined();
       servedPhone(paths, ID, 'Access denied');
-      expect((await panel.get()).error).toBe('Access denied');
-      expect((await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(true)) }, paths).get()).error).toBeUndefined();
-      expect((await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(false, [], 'tailscale is down')) }, paths).get()).error).toBe('tailscale is down');
+      // apart from an error, which would leave no switch to press
+      expect([(await panel.get()).reason, (await panel.get()).error]).toEqual(['Access denied', undefined]);
+      expect((await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(true)) }, paths).get()).reason).toBeUndefined();
+      const down = await phoneWithReason({ ...link, get: () => Promise.resolve(phoneAt(false, [], 'tailscale is down')) }, paths).get();
+      expect([down.error, down.reason]).toEqual(['tailscale is down', undefined]);
       await panel.set(false);
-      expect((await panel.get()).error).toBeUndefined();
+      expect((await panel.get()).reason).toBeUndefined();
       expect(phoneOwed(paths)).toEqual([]);
     });
   });

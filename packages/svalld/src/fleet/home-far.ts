@@ -83,7 +83,8 @@ async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, se
 export const phoneWithReason = (mobile: Mobile, paths: Pick<Paths, 'homeMoves'>): Mobile => ({
   get: async () => {
     const s = await mobile.get();
-    return s.serving || s.error ? s : { ...s, error: phoneReason(paths) ?? s.error };
+    const reason = s.serving || s.error ? undefined : phoneReason(paths);
+    return reason ? { ...s, reason } : s;
   },
   set: (on) => {
     forgetPhoneReason(paths);

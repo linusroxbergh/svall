@@ -79,6 +79,8 @@ export const MobileStatus = z.object({
   pair: z.string().optional(),
   qr: z.string().optional(),
   error: z.string().optional(),
+  // why a home move's try left the link off here, until a person's own switch
+  reason: z.string().optional(),
 });
 export type MobileStatus = z.infer<typeof MobileStatus>;
 

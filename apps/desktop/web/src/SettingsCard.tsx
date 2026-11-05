@@ -38,6 +38,7 @@ function Phone() {
   const status = useApp((s) => s.mobile);
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const blocked = status?.error;
+  const said = blocked ?? status?.reason;
   useEffect(() => loadMobileStatus(deps()), []);
   return (
     <>
@@ -59,8 +60,8 @@ function Phone() {
           </>
         )}
       </div>
-      {(blocked || status?.pageMissing) && (
-        <div className="desc">{blocked ?? <b data-testid="set-mobile-nopage">{NO_PAGE}</b>}</div>
+      {(said || status?.pageMissing) && (
+        <div className="desc">{said ?? <b data-testid="set-mobile-nopage">{NO_PAGE}</b>}</div>
       )}
     </>
   );
