@@ -8,7 +8,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type MobileDeps } from '../mob
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { dropMarker, moveInFlight, writeMarker } from './home-move.js';
+import { dropMarker, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -120,7 +120,10 @@ export class HomeFreeze {
     try {
       const status = await this.d.phone.get();
       still();
-      held.served = status.serving;
+      // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut
+      const owed = phoneOwed(this.d.paths);
+      const serving = status.serving || owed.length > 0;
+      held.served = serving;
       if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'a call this home took is still running; try again in a moment');
       still();
       const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
@@ -133,13 +136,14 @@ export class HomeFreeze {
       this.d.links.hold(true);
       if (!await this.d.store.flush()) throw new ApiError('not_written', 'state.json was not written');
       still();
-      if (status.serving) {
+      if (serving) {
         writeDurable(this.d.paths.homeServed, { id }, { mode: 0o600 });
+        for (const was of owed) servedPhone(this.d.paths, was);
         await this.d.phone.set(false);
         still();
       }
       held.ready = true;
-      return { phone: { serving: status.serving, logins: status.logins } };
+      return { phone: { serving, logins: status.logins } };
     } catch (e) {
       if (this.moving === held) await this.release();
       throw e;

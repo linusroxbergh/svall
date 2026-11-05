@@ -1,9 +1,10 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, emptyState, type AdoptAnswer, type HomeFacts, type HomeMoving, type MachineId } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
-import { readMarker, writeMarker } from '../../src/fleet/home-move.js';
+import { phoneOwed, readMarker, writeMarker } from '../../src/fleet/home-move.js';
 import { resolvePaths } from '../../src/paths.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -292,6 +293,29 @@ describe('a frozen home', () => {
       const { freeze, log } = setup();
       freeze.start();
       expect(log).toEqual([]);
+    });
+  });
+
+  describe('a phone link this home still owes from taking the fleet', () => {
+    const owing = (paths: ReturnType<typeof resolvePaths>) => {
+      fs.mkdirSync(paths.homeMoves, { recursive: true });
+      fs.writeFileSync(path.join(paths.homeMoves, 'hm_earlierearl.ndjson'), `${JSON.stringify({ phase: 'adopted', at: 1, detail: 'serve' })}\n`);
+    };
+
+    it('goes with the next move as a link that served, and no tick here serves past the cut', async () => {
+      const { freeze, paths, log } = setup();
+      owing(paths);
+      expect((await freeze.freeze(ID, STUDIO, holder)).phone.serving).toBe(true);
+      expect(phoneOwed(paths)).toEqual([]);
+      expect(log.at(-1)).toBe('phone false');
+    });
+
+    it('a freeze called off turns it on here, as it was owed', async () => {
+      const { freeze, paths, log } = setup();
+      owing(paths);
+      await freeze.freeze(ID, STUDIO, holder);
+      await freeze.thaw(ID);
+      expect(log.at(-1)).toBe('phone true');
     });
   });
 
