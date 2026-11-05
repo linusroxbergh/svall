@@ -1143,7 +1143,7 @@ function faults(ids, list) {
 const homeOf = (m) => JSON.parse(sh(m, 'svall --json fleet home').stdout);
 const moveSteps = (text) => lines(text).filter((e) => e.step);
 const windows = (m) => sh(m, "tmux -S ~/.svall/tmux.sock list-windows -a -F '#{window_id} #{pane_pid}' | sort", { ok: false }).stdout;
-const FAULT = '/tmp/svall-home-fault';
+const FAULT = '~/.svall/home-fault';
 const ipOf = (m) => sh(m, `getent hosts ${m} | cut -d' ' -f1`).stdout.trim();
 const blockSsh = (from) => `-p tcp -s ${ipOf(from)} --dport 22 -j DROP`;
 
@@ -1167,14 +1167,25 @@ function homeMoves(ids, fx) {
   // nothing on remote can reach local from here on, so what links them after is local's own dial
   sh(L, `iptables -I INPUT ${blockSsh(R)}`, { root: true });
   ctx.blocked = true;
+  // mission control's robot, which goes first with the move engine, and the phone, which travels as what it was
+  const crew = JSON.parse(sh(L, 'svall --json robot new --island home --cwd ~/.svall/home --name crew --claude').stdout).id;
+  sh(L, `svall robot wait ${crew} --until idle --timeout 60`);
+  const phone = call(L, 'mobile.set', { enabled: true });
+  check('the phone serves on local', phone.serving === true, () => brief(phone));
   const before = { L: windows(L), R: windows(R), push: sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout, pass: sh(L, 'cat ~/.svall/mobile-pass').stdout };
   const robots = snap(L, true).robots.map((r) => r.id);
   const steps = setHome(L, 'remote');
   check('the steps ran in order', ['check', 'mission', 'pause', 'copy', 'mark', 'adopt', 'join', 'probe'].every((want) => steps.some((e) => e.step === want && e.status !== 'fail')), () => brief(steps));
   oneHome(R, ids);
-  check("local's windows stay", windows(L) === before.L, () => `${windows(L)} vs ${before.L}`);
-  check("remote's windows stay", windows(R) === before.R, () => `${windows(R)} vs ${before.R}`);
+  const kept = (was, is) => was.split('\n').filter(Boolean).every((w) => is.includes(w));
+  check("local's windows stay, but for the crew's", windows(L).split('\n').filter(Boolean).every((w) => before.L.includes(w)), () => `${windows(L)} vs ${before.L}`);
+  check("remote's windows stay", kept(before.R, windows(R)), () => `${windows(R)} vs ${before.R}`);
   const far = JSON.parse(sh(R, 'svall --json status').stdout);
+  check('mission control moved first and runs on the home', far.robots[crew]?.machine === undefined && far.robots[crew]?.tmux !== undefined, () => brief(far.robots[crew]));
+  const served = call(R, 'mobile.get');
+  check('remote serves the phone, under the same pass', served.serving === true && served.logins.includes('svall@integration'), () => brief({ serving: served.serving, logins: served.logins }));
+  check('one origin at a time: local no longer serves', call(L, 'home.fallback', { on: false }) !== undefined && sh(L, 'test -f ~/.tailscale-double.json', { ok: false }).code !== 0, 'local still serves');
+  check('what was staged is gone from local, keys and all', sh(L, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'an adopt folder stays');
   for (const id of robots) check(`${id} in the fleet on remote`, far.robots[id] !== undefined, () => id);
   check('a robot here runs on local', far.robots[fx.agent]?.machine === ids.local || far.robots[fx.agent]?.machine === undefined, () => brief(far.robots[fx.agent]));
   const worker = JSON.parse(sh(L, 'cat ~/.svall/worker.json').stdout);
@@ -1189,15 +1200,21 @@ function homeMoves(ids, fx) {
   ctx.home = 'remote';
 }
 
-function homeBack(ids) {
+function homeBack(ids, again = true) {
   const before = { L: windows(L), R: windows(R) };
+  // the Mac drives it, whatever else there is to reach
   const steps = setHome(L, 'local');
   check('the steps ran', steps.some((e) => e.step === 'join' && e.status === 'ok'), () => brief(steps));
   oneHome(L, ids);
-  check("local's windows stay", windows(L) === before.L, () => `${windows(L)} vs ${before.L}`);
-  check("remote's windows stay", windows(R) === before.R, () => `${windows(R)} vs ${before.R}`);
+  check("remote's windows stay, but for what came home", windows(R).split('\n').filter(Boolean).every((w) => before.R.includes(w)), () => `${windows(R)} vs ${before.R}`);
+  check("local's windows stay", before.L.split('\n').filter(Boolean).every((w) => windows(L).includes(w)), () => `${windows(L)} vs ${before.L}`);
   check('remote takes local as its home', JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout).homeMachineId === ids.local, 'remote names another');
+  check('nothing staged stays on either', sh(L, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '' && sh(R, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'an adopt folder stays');
   ctx.home = 'local';
+  if (!again) return;
+  // a move each way on the home that came back
+  reposition(ids, ctx.at === 'remote' ? 'local' : 'remote');
+  reposition(ids, ctx.at === 'remote' ? 'local' : 'remote');
 }
 
 // a process dies at each boundary; whatever is left, one home answers once a person has retried or called it off
@@ -1230,7 +1247,7 @@ function homeFault(ids, point, machine) {
   const pending = sh(R, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0 || sh(L, 'ls ~/.svall/home-moving.json', { ok: false }).code === 0;
   check(`${point}: no marker left`, !pending, 'a marker stays');
   // back to where the next begins
-  if (home === R) homeBack(ids);
+  if (home === R) homeBack(ids, false);
   else ctx.home = 'local';
 }
 

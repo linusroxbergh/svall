@@ -458,7 +458,7 @@ export function writeMarker(p: Pick<Paths, 'homeMoving' | 'homeMoves'>, m: HomeM
 }
 
 /** The fleet's files as an archive: only done moves, the running ones' journals being a machine's own. */
-export async function packFleet(p: Paths, m: HomeManifest): Promise<{ file: string; sha256: string; bytes: Buffer }> {
+export async function packFleet(p: Paths, m: HomeManifest): Promise<{ sha256: string; bytes: Buffer }> {
   const dir = adoptDir(p, m.id);
   const out = path.join(dir, 'out');
   fs.rmSync(dir, { recursive: true, force: true });
@@ -480,9 +480,10 @@ export async function packFleet(p: Paths, m: HomeManifest): Promise<{ file: stri
   const names = [...filesIn(out)];
   const file = path.join(dir, 'out.tar');
   await packTar(out, names, file);
-  fs.rmSync(out, { recursive: true, force: true });
   const bytes = fs.readFileSync(file);
-  return { file, bytes, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
+  // the archive holds the fleet's keys, and has no more use here once it is read
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { bytes, sha256: crypto.createHash('sha256').update(bytes).digest('hex') };
 }
 
 /** Whether this machine has taken the fleet in or was left by it, for a check that wants nothing under way. */

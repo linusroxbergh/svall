@@ -206,10 +206,11 @@ export function realHomeDaemon(t: Target): HomeDaemon {
 export function enrolmentFor(paths: Paths, me: MachineId, o: { ssh?: string; home: MachineRecord }): (token: string, m: HomeManifest) => Enrolment {
   return (token, m) => ({
     worker: WorkerFile.parse({
-      homeMachineId: me, fleetId: m.fleetId, token, homeName: o.home.name,
+      homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName,
       ...(o.ssh && { homeSsh: o.ssh, homeSocket: dialSocket(paths, m.from), homeSvallBase: installPrefix() }),
     }),
-    ...(o.ssh && { home: { ...o.home, ssh: o.ssh } }),
+    // by the name the fleet has known it by
+    ...(o.ssh && { home: { ...o.home, name: m.toName, ssh: o.ssh } }),
   });
 }
 

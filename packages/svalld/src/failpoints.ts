@@ -1,5 +1,7 @@
 import fs from 'node:fs';
-import { isRelease, releaseSigned } from './release.js';
+import path from 'node:path';
+import { svallHome } from './paths.js';
+import { isRelease } from './release.js';
 
 /** Every step of a robot move, the worker's outbox and the home's apply of it that a crash can fall before or after; the
  *  fault suite fails on a name here that no case crashes at. */
@@ -51,13 +53,12 @@ export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
 /** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */
 export class HomeCrash extends Error {}
 let homeArmed: ((name: HomeFailpoint) => void) | undefined;
-// the integration run names a failpoint here, on either machine, and the build no one signed dies on it, once
-const FAULT_FILE = '/tmp/svall-home-fault';
-/** A crash in a test falls here, or by the fault file in an unsigned build. */
+/** A crash in a test falls here, or in the integration run, which names a failpoint in a file in the fleet home that this process dies on once. */
 export function homePoint(name: HomeFailpoint): void {
   homeArmed?.(name);
-  if (releaseSigned() || !fs.existsSync(FAULT_FILE) || fs.readFileSync(FAULT_FILE, 'utf8').trim() !== name) return;
-  fs.rmSync(FAULT_FILE, { force: true });
+  const file = path.join(svallHome(), 'home-fault');
+  if (!fs.existsSync(file) || fs.readFileSync(file, 'utf8').trim() !== name) return;
+  fs.rmSync(file, { force: true });
   process.kill(process.pid, 'SIGKILL');
 }
 export function armHomeFailpoints(hook: (name: HomeFailpoint) => void): () => void {
