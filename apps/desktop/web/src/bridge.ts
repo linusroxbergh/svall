@@ -142,7 +142,7 @@ export type FromShell =
   | { type: 'setup.result'; step: 'plan' | 'run'; ok: boolean; json: string }
   | { type: 'folder.picked'; path: string }
   // a local action named another machine than this one, or none where this one has an id
-  | { type: 'local.unavailable'; action: string; machine: string }
+  | { type: 'local.unavailable'; machine: string }
   // the app is about to quit and waits for a quit.answer
   | { type: 'quit.ask' }
   // the quit goes ahead: the fleet stops, and the shell waits for quit.stopped

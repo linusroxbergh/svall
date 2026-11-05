@@ -1,18 +1,20 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 import { dispatch, type Ctx } from '../src/api/methods.js';
-import { checkFleetConfig, Config } from '../src/config.js';
+import { Config } from '../src/config.js';
 import { Fleet } from '../src/fleet.js';
 import { silentLogger } from '../src/log.js';
 import { fleetKeys, resolvePaths } from '../src/paths.js';
 import { resolveRepo } from '../src/links/git.js';
-import { rootIdOf, workspaceRoot } from '../src/resources/scan.js';
+import { workspaceRoot } from '../src/resources/scan.js';
 import { Store } from '../src/store.js';
 import type { Tmux } from '../src/tmux/tmux.js';
-import { startFolders } from '../src/workspace/clones.js';
+import { isFolder, startFolders } from '../src/workspace/clones.js';
+import { fleetConfigFile } from '../src/workspace/fleet-config.js';
 import { Workspace } from '../src/workspace/workspace.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -37,7 +39,7 @@ describe('where a new robot can start', () => {
     const tree = folder(root, 'app-trees/one');
     const f = state(root, [robot('c1', { cwd: plain }), robot('c2', { cwd: tree, repo: { mainRoot: main, isWorktree: true } as Robot['repo'] })]);
     const held = clone(f.defaultCwd, 'held');
-    expect(startFolders(f, () => true)).toEqual([
+    expect(startFolders(f, () => true).folders).toEqual([
       { path: main, clone: true }, { path: plain, clone: false }, { path: held, clone: true }, { path: f.defaultCwd, clone: false }, { path: f.home.cwd, clone: false },
     ]);
   });
@@ -51,7 +53,7 @@ describe('where a new robot can start', () => {
     fs.writeFileSync(path.join(f.defaultCwd, 'a-file'), '');
     fs.symlinkSync(clone(root, 'out'), path.join(f.defaultCwd, 'link-out'));
     fs.symlinkSync(path.join(root, 'nowhere'), path.join(f.defaultCwd, 'dangling'));
-    expect(startFolders(f, (c) => c.machine === undefined).map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
+    expect(startFolders(f, (c) => c.machine === undefined).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
   });
 
   it('says a folder is a clone by the robot in it or by its .git, and a file named .git counts, as a worktree\'s is', () => {
@@ -65,13 +67,32 @@ describe('where a new robot can start', () => {
       robot('c2', { cwd: below, repo: { mainRoot: path.dirname(below) } as Robot['repo'] }),
       robot('c3', { cwd: linked }),
     ]);
-    expect(startFolders(f, () => true).filter((x) => x.clone).map((x) => x.path)).toEqual([inRepo, linked, below]);
+    expect(startFolders(f, () => true).folders.filter((x) => x.clone).map((x) => x.path)).toEqual([inRepo, linked, below]);
   });
 
-  it('expands the fleet\'s folders as a robot started there would', () => {
+  it('names the fleet\'s two folders as this machine spells them, from what a new fleet\'s state holds', () => {
+    const f = emptyState();
+    expect([f.defaultCwd, f.home.cwd.slice(0, 2)]).toEqual(['~', '~/']);
+    const { folders, defaults } = startFolders(f, () => true);
+    expect(defaults).toEqual({ cwd: os.homedir(), home: path.join(os.homedir(), f.home.cwd.slice(2)) });
+    expect(folders.map((x) => x.path)).toContain(os.homedir());
+  });
+
+  it('leaves out a dot folder, however much of a clone, which a typed path still reaches', async () => {
     const root = makeHome();
-    const f = { ...state(root, []), defaultCwd: '~' };
-    expect(startFolders(f, () => true).map((x) => x.path)).toContain(process.env.HOME);
+    const f = state(root, []);
+    const hidden = clone(f.defaultCwd, '.nvm');
+    const shown = clone(f.defaultCwd, 'app');
+    expect(startFolders(f, () => true).folders.map((x) => x.path)).toEqual([shown, f.defaultCwd, f.home.cwd]);
+    expect(isFolder(hidden)).toBe(true);
+  });
+
+  it('leaves out a folder it cannot read, and the rest stand', () => {
+    const root = makeHome();
+    fs.symlinkSync(path.join(root, 'b'), path.join(root, 'a'));
+    fs.symlinkSync(path.join(root, 'a'), path.join(root, 'b'));
+    const f = state(root, [robot('c1', { cwd: path.join(root, 'a') })]);
+    expect(startFolders(f, () => true).folders.map((x) => x.path)).toEqual([f.defaultCwd, f.home.cwd]);
   });
 });
 
@@ -126,6 +147,15 @@ describe('a typed path, which the home checks before the robot starts', () => {
     expect(window).not.toHaveBeenCalled();
   });
 
+  it('says what stops it from reading a path, rather than call it no folder', async () => {
+    window.mockClear();
+    const { fleet, islandId, root } = fleetOn();
+    fs.symlinkSync(path.join(root, 'b'), path.join(root, 'a'));
+    fs.symlinkSync(path.join(root, 'a'), path.join(root, 'b'));
+    await expect(fleet.createRobot({ islandId, cwd: path.join(root, 'a') })).rejects.toMatchObject({ code: 'ELOOP' });
+    expect(window).not.toHaveBeenCalled();
+  });
+
   it('starts in a link that leads to a folder, wherever that is, as the CLI does', async () => {
     window.mockClear();
     const { fleet, islandId, root } = fleetOn();
@@ -144,8 +174,8 @@ describe('fleet.json in the editor', () => {
     const refused = () => fleetKeys(paths);
     const claude = { dir: folder(paths.home, 'claude'), json: path.join(paths.home, 'claude.json') };
     const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude), silentLogger, refused);
-    const rootId = rootIdOf(paths.home);
-    const fleetConfig = { rootId, workspace: new Workspace(() => paths.home, silentLogger, refused), check: (text: string) => checkFleetConfig(text, paths) };
+    const fleetConfig = fleetConfigFile(paths, silentLogger, refused);
+    const { rootId } = fleetConfig;
     const ctx = (kind = 'app') => ({ viewer: { kind }, store, workspace, fleetConfig }) as unknown as Ctx;
     return { paths, rootId, ctx };
   };
@@ -160,9 +190,10 @@ describe('fleet.json in the editor', () => {
 
   it('reads and writes that one file', async () => {
     const { paths, rootId, ctx } = home();
-    expect(await dispatch({ id: 1, method: 'fs.read', params: { id: rootId, path: 'fleet.json' } }, ctx())).toMatchObject({ result: { text: `{"id":"${FLEET}"}\n` } });
+    const read = await dispatch({ id: 1, method: 'fs.read', params: { id: rootId, path: 'fleet.json' } }, ctx()) as { result: { text: string; mtimeMs: number; root: string } };
+    expect(read.result.text).toBe(`{"id":"${FLEET}"}\n`);
     const text = `{"id":"${FLEET}","name":"studio"}\n`;
-    expect(await dispatch({ id: 2, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text, mtimeMs: mtime(paths.fleetConfig), root: paths.home } }, ctx())).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+    expect(await dispatch({ id: 2, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text, mtimeMs: read.result.mtimeMs, root: read.result.root } }, ctx())).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
     expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(text);
   });
 
@@ -190,6 +221,45 @@ describe('fleet.json in the editor', () => {
     expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(before);
   });
 
+  it('refuses another fleet\'s id, which would cut the window off its home, and keeps the file', async () => {
+    const { paths, rootId, ctx } = home();
+    const other = `{"id":"${crypto.randomUUID()}"}`;
+    const res = await dispatch({ id: 1, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text: other, mtimeMs: mtime(paths.fleetConfig) } }, ctx());
+    expect(res).toMatchObject({ error: { code: 'invalid', message: `fleet.json's id is this fleet's own: keep it as ${FLEET}` } });
+    expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(`{"id":"${FLEET}"}\n`);
+  });
+
+  it('repairs a file that does not parse, to any id', async () => {
+    const { paths, rootId, ctx } = home();
+    fs.writeFileSync(paths.fleetConfig, '{ broken');
+    const text = `{"id":"${crypto.randomUUID()}"}`;
+    expect(await dispatch({ id: 1, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text, mtimeMs: mtime(paths.fleetConfig) } }, ctx())).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+    expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(text);
+  });
+
+  it.each([['out of the fleet home', () => makeHome()], ['inside it', (h: string) => folder(h, 'kept')]])('reads and writes through a link %s, which stays a link', async (_name, dir) => {
+    const { paths, rootId, ctx } = home();
+    const real = path.join(dir(paths.home), 'real-fleet.json');
+    fs.writeFileSync(real, `{"id":"${FLEET}"}\n`);
+    fs.rmSync(paths.fleetConfig);
+    fs.symlinkSync(real, paths.fleetConfig);
+    const read = await dispatch({ id: 1, method: 'fs.read', params: { id: rootId, path: 'fleet.json' } }, ctx()) as { result: { text: string; mtimeMs: number; root: string } };
+    expect(read.result.text).toBe(`{"id":"${FLEET}"}\n`);
+    const text = `{"id":"${FLEET}","name":"studio"}\n`;
+    expect(await dispatch({ id: 2, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text, mtimeMs: read.result.mtimeMs, root: read.result.root } }, ctx())).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+    expect(fs.readFileSync(real, 'utf8')).toBe(text);
+    expect(fs.lstatSync(paths.fleetConfig).isSymbolicLink()).toBe(true);
+  });
+
+  it('refuses a link to a key, for a read and a write, and leaves the key', async () => {
+    const { paths, rootId, ctx } = home();
+    fs.rmSync(paths.fleetConfig);
+    fs.symlinkSync(paths.token, paths.fleetConfig);
+    expect(await dispatch({ id: 1, method: 'fs.read', params: { id: rootId, path: 'fleet.json' } }, ctx())).toMatchObject({ error: { code: 'invalid' } });
+    expect(await dispatch({ id: 2, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text: `{"id":"${FLEET}"}`, mtimeMs: mtime(paths.token) } }, ctx())).toMatchObject({ error: { code: 'invalid' } });
+    expect(fs.readFileSync(paths.token, 'utf8')).toBe('held');
+  });
+
   it.each([['no JSON', '{ nope'], ['another shape', '{"defaultCwd":7}']])('refuses %s, which a daemon could not start on, and keeps the file', async (_name, text) => {
     const { paths, rootId, ctx } = home();
     const res = await dispatch({ id: 1, method: 'fs.write', params: { id: rootId, path: 'fleet.json', text, mtimeMs: mtime(paths.fleetConfig) } }, ctx());
@@ -199,7 +269,7 @@ describe('fleet.json in the editor', () => {
 });
 
 describe('a worker away from its home', () => {
-  it('reads no repository in a folder that is not there, which is refused as outside a clone', async () => {
+  it('reads no repository in a folder that is not there, the answer its clone rule turns into words', async () => {
     expect(await resolveRepo(path.join(makeHome(), 'no-such'))).toBeUndefined();
   });
 });

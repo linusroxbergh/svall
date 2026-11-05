@@ -33,14 +33,15 @@ async function daemon(answer: (method: string, params: { cwd?: string }) => unkn
 }
 
 const notAFolder = (cwd?: string) => Object.assign(new Error(`cwd ${cwd} is not a directory`), { name: 'not_a_folder' });
+const defaults = { cwd: '/nowhere', home: '/nowhere' };
 const many = Array.from({ length: 24 }, (_, i) => ({ path: `/home/linus/code/a-rather-long-clone-name-${i}`, clone: true }));
 
 async function farHome() {
-  const home = await daemon((m, p) => (m === 'workspace.clones' ? { machine: STUDIO, folders: many }
+  const home = await daemon((m, p) => (m === 'workspace.clones' ? { machine: STUDIO, folders: many, defaults }
     : m === 'robot.create' ? (p.cwd === '/home/linus/x' ? notAFolder(p.cwd) : { id: 'c_new' }) : undefined));
   const local = await daemon((m) => (m === 'fleet.home' ? { machine: STUDIO, name: 'studio', mine: false, me: ME }
     : m === 'home.connection' ? { machine: STUDIO, name: 'studio', state: 'connected', ssh: 'linus@studio', controlSocket: '/tmp/m', port: home.port, token: 't' }
-    : m === 'workspace.clones' ? { machine: ME, folders: [{ path: '/Users/ada/app', clone: true }, { path: '/Users/ada/notes', clone: false }] } : undefined));
+    : m === 'workspace.clones' ? { machine: ME, folders: [{ path: '/Users/ada/app', clone: true }, { path: '/Users/ada/notes', clone: false }], defaults } : undefined));
   return { home, local };
 }
 

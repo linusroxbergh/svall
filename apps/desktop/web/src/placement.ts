@@ -25,7 +25,7 @@ export const myMachine = (w: Seat): string | undefined => w.via?.machine ?? w.sh
 export const robotMachine = (c: Pick<Robot, 'machine'>, w: Seat): string | undefined => c.machine ?? w.via?.home ?? w.shell?.machine;
 
 /** The machine a shelf root's files are on, by id: a worker's clone names it, and any other is the daemon's that lists it, this one's while it stands in for the home. */
-export const rootMachine = (id: string, w: Seat): string | undefined => farRootOf(id)?.machine ?? (w.via?.online ? w.via.home : myMachine(w));
+export const rootMachine = (id: string, w: Seat): string | undefined => farRootOf(id)?.machine ?? (w.via?.online && !w.via.served ? w.via.home : myMachine(w));
 
 /** The machine a shelf root's files are on, by name, when that is not this window's. */
 export const rootAway = (f: Machines, id: string, w: Seat): string | undefined => {

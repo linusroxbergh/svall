@@ -14,6 +14,7 @@ vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModu
 const { SettingsCard } = await import('../../src/SettingsCard.js');
 const { dropBuffer, getBuffer, isDirty } = await import('../../src/ide/buffers.js');
 const { saveFile } = await import('../../src/ide/files.js');
+const { deps } = await import('../../src/boot.js');
 
 beforeEach(() => {
   freshStore();
@@ -741,7 +742,7 @@ describe('Fleet config', () => {
 
   test('on a far home opens the home\'s fleet.json in the shelf\'s editor, and the Mac\'s stays shut', async () => {
     const rootId = 'r:/home/linus/.svall';
-    call.mockImplementation(((m: string) => Promise.resolve(m === 'fleet.config' ? { rootId, path: 'fleet.json' } : m === 'fs.read' ? { text: '{}', mtimeMs: 1, root: '/home/linus/.svall' } : { serving: false, logins: [], phones: [] })) as never);
+    call.mockImplementation(((m: string) => Promise.resolve(m === 'fleet.config' ? { rootId, path: 'fleet.json' } : m === 'fs.read' ? { text: '{}', mtimeMs: 1, root: '/home/linus/.svall' } : m === 'fs.write' ? { mtimeMs: 2 } : { serving: false, logins: [], phones: [] })) as never);
     act(() => { store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }); store.getState().toggleSettings(true); });
     open();
     await act(async () => { fireEvent.click(button()); });
@@ -750,6 +751,9 @@ describe('Fleet config', () => {
     expect(store.getState().resourcesOpen).toBe(true);
     expect(store.getState().settingsOpen).toBe(false);
     expect(sent.filter((m) => m.type === 'openConfig')).toEqual([]);
+    await act(async () => { await saveFile(deps(), rootId, 'fleet.json'); });
+    expect(call).toHaveBeenCalledWith('fs.write', expect.objectContaining({ id: rootId, path: 'fleet.json' }));
+    expect(store.getState().toast?.text).toBe('Saved on studio. Most of it takes effect when its daemon next starts');
   });
 
   test('a refusal is said where the button was', async () => {

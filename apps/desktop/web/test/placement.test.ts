@@ -155,6 +155,17 @@ describe('what a window reads as its own machine', () => {
     expect(rootAway(f, farRootId(VAULT, '/h/app'), {})).toBe('linus-vault');
   });
 
+  test('a window its own daemon serves reads this machine\'s roots and starts here, though the home is online', () => {
+    const served: Via = { ...far, served: true };
+    expect(rootMachine('r:/h/.claude', { via: served })).toBe(VAULT);
+    expect(rootAway(f, 'r:/h/.claude', { via: served })).toBeUndefined();
+    expect(rootMachine(farRootId(BOX, '/h/app'), { via: served })).toBe(BOX);
+    expect(startsOn(served)).toBe(VAULT);
+    expect([startsBeside({ machine: VAULT }, served), startsBeside({}, served)]).toEqual([true, false]);
+    // a robot on the home is still the home's
+    expect(robotMachine({}, { via: served })).toBe(HOME);
+  });
+
   test('a new robot starts on the home it follows, else on this machine, beside the robots there', () => {
     expect(startsOn(far)).toBe(HOME);
     expect(startsOn(apart)).toBe(VAULT);

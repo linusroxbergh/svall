@@ -26,6 +26,8 @@ vi.mock('../../src/resources/Shelf.js', () => ({ ResourcesLayer: () => null }));
 
 const { Map } = await import('../../src/map/Map.js');
 const { SideCard } = await import('../../src/SideCard.js');
+const { followLink } = await import('../../src/LinkAsk.js');
+const { cdLine } = await import('../../src/OnMachine.js');
 const { IslandCard } = await import('../../src/IslandCard.js');
 const { ConfirmClose, ConfirmDeleteIsland } = await import('../../src/Confirm.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
@@ -659,6 +661,59 @@ describe('what a robot offers by where it runs', () => {
     bridge.present = true;
     try { await act(async () => { fireEvent.click(screen.getByText('app')); }); } finally { bridge.present = false; }
     expect(shownInFinder()).toEqual([{ type: 'openFolder', path: '/Users/ada/app', machine: MAC }]);
+  });
+
+  test('cdLine quotes a folder for the far shell', () => {
+    expect(cdLine("/home/o'brien/a b")).toBe("cd '/home/o'\\''brien/a b'");
+  });
+
+  const pill = (kind: 'file' | 'folder', ref: string) => ({ kind, ref, label: '', source: 'manual' as const });
+  const follow = async (item: ReturnType<typeof pill>, robot?: string) => {
+    bridge.present = true;
+    try { act(() => followLink(item, robot, { x: 0, y: 0 })); } finally { bridge.present = false; }
+  };
+
+  test('on a Mac home a path of a robot here, or of an island, is shown in Finder, naming this machine', async () => {
+    act(() => store.getState().setShell({ home: '/h', log: [], op: false, machine: MAC }));
+    await follow(pill('folder', '/Users/ada/app'), 'c0');
+    await follow(pill('file', '/Users/ada/a.md'));
+    expect(shownInFinder()).toEqual([{ type: 'openFolder', path: '/Users/ada/app', machine: MAC }, { type: 'reveal', path: '/Users/ada/a.md', machine: MAC }]);
+    expect(store.getState().hostTerminal).toBeUndefined();
+  });
+
+  test('on a far home an island\'s path is the home\'s: a terminal there, and nothing on this Mac', async () => {
+    onFar({});
+    await follow(pill('folder', '/home/linus/app'));
+    expect(shownInFinder()).toEqual([]);
+    expect(store.getState().hostMachine).toBe('studio');
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/home/linus/app'" });
+  });
+
+  test('a file at the root goes to the root, and a path the far shell must expand is typed nowhere', async () => {
+    onFar({});
+    await follow(pill('file', '/a.md'));
+    expect(store.getState().hostTerminal).toEqual({ run: "cd '/'" });
+    act(() => { store.getState().closeHostTerminal(); store.getState().toggleHost(false); });
+    await follow(pill('folder', '~/app'));
+    expect(store.getState().hostTerminal).toEqual({});
+  });
+
+  test('a list that failed says nothing of a machine: it keeps its terminal', async () => {
+    onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'ada-laptop', reachable: true, since: 0 } });
+    act(() => store.getState().setMachines([], 'svall host list exited with code 1'));
+    await act(async () => { render(<Side />); });
+    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+  });
+
+  test('a machine missing from the list is asked for once more, and offers its terminal once it is there', async () => {
+    onFar({ machine: LAPTOP }, { [LAPTOP]: { name: 'added', reachable: true, since: 0 } });
+    act(() => store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'linus@studio', platform: 'linux' }]));
+    await act(async () => { render(<Side />); });
+    expect(screen.queryByTestId('side-finder')).toBeNull();
+    expect(sent.filter((m) => m.type === 'host.list')).toHaveLength(1);
+    act(() => store.getState().setMachines([{ name: 'added', id: LAPTOP, ssh: 'linus@added', platform: 'linux' }]));
+    expect(screen.getByTestId('side-finder').textContent).toBe('Terminal there');
+    expect(sent.filter((m) => m.type === 'host.list')).toHaveLength(1);
   });
 
   test('a path on a machine this Mac has no ssh to is said on a toast', async () => {

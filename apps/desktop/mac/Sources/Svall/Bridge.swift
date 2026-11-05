@@ -170,7 +170,7 @@ enum FromShell {
     case openFleetFailed(home: String, reason: String)
     case setupResult(step: String, ok: Bool, json: String)
     case folderPicked(path: String)
-    case localUnavailable(action: String, machine: String?)
+    case localUnavailable(machine: String?)
     case memoryHigh
 
     var json: [String: Any] {
@@ -225,7 +225,7 @@ enum FromShell {
         case .openFleetFailed(let home, let reason): return ["type": "openFleet.failed", "home": home, "reason": reason]
         case .setupResult(let step, let ok, let json): return ["type": "setup.result", "step": step, "ok": ok, "json": json]
         case .folderPicked(let path): return ["type": "folder.picked", "path": path]
-        case .localUnavailable(let action, let machine): return ["type": "local.unavailable", "action": action, "machine": machine ?? ""]
+        case .localUnavailable(let machine): return ["type": "local.unavailable", "machine": machine ?? ""]
         case .memoryHigh: return ["type": "memory.high"]
         }
     }

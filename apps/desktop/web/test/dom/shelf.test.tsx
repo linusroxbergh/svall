@@ -338,6 +338,16 @@ describe('a file of the shelf by the machine it is on', () => {
     expect(revealed()).toEqual([{ type: 'reveal', path: '/Users/ada/.claude/a.md', machine: MAC }]);
   });
 
+  test('a Mac its home dials keeps Finder on its own shelf, and a bare row still opens there', async () => {
+    act(() => store.getState().setVia({ ...far, served: true }));
+    await shelf('r:/Users/ada/.claude', '/Users/ada/.claude');
+    await open();
+    expect(screen.queryByTestId('resources-on')).toBeNull();
+    expect(finder()).toBeTruthy();
+    await pressBare();
+    expect(revealed()).toEqual([{ type: 'reveal', path: '/x/bare', machine: MAC }]);
+  });
+
   test('in fallback the root is this Mac\'s, whatever the home is', async () => {
     act(() => store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' }));
     await shelf('r:/Users/ada/.claude', '/Users/ada/.claude');

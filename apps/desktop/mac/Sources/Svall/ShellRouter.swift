@@ -14,7 +14,6 @@ final class ShellRouter {
     // a refusal may be the page's stale word for this machine, so it hears the id again
     private lazy var localActions = LocalActions(
         refuse: { [weak self] in self?.bridge.send($0); self?.sendShellInfo() },
-        openFolder: ExternalURL.openFolder, reveal: ExternalURL.reveal, openFile: ExternalURL.openFile,
         pickFolder: { [weak self] in self?.pickFolder(start: $0) })
     // one host operation at a time: the page watches this one until it ends or is cancelled
     private var hostRun: HostProcess?
@@ -229,7 +228,7 @@ final class ShellRouter {
         case .openUrl(let url):
             ExternalURL.open(url)
         case .openFolder, .reveal, .openFile, .folderPick:
-            localActions.run(msg, me: SvallHome.machineId())
+            localActions.run(msg)
         case .setupPlan:
             // the CLI may have made this machine's id, which the page then has to name
             AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.sendShellInfo(); self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }

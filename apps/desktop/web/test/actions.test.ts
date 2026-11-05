@@ -103,7 +103,7 @@ describe('newRobotTarget', () => {
     const c = ctx();
     c.store.getState().setView('board');
     c.store.getState().setFleet({ ...emptyState(), islands: { home: isl('home', 'mission control', 0, { kind: 'home' }) } });
-    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD });
+    expect(await newRobotTarget(c)).toEqual({ islandId: 'i_new', cwd: DEFAULT_CWD, made: true });
     expect(c.calls).toEqual([{ method: 'island.create', params: { name: 'island' } }]);
   });
 
@@ -320,6 +320,41 @@ describe('a crew member whose directory is gone', () => {
     // standing in, it is this Mac's folder that counts
     s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' });
     expect(await newRobotTarget({ api, store: s })).toEqual({ islandId: 'i_b', cwd: '/Users/ada/code' });
+  });
+
+  it('on a Mac its home dials, starts beside the robot here, as ever', async () => {
+    const calls: Call[] = [];
+    const s = store();
+    const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+    const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+    const f = fleet();
+    Object.assign(f.robots.c0, { machine: MAC, cwd: '/Users/ada/code' });
+    Object.assign(f.robots.c1, { cwd: '/home/linus/app' });
+    s.getState().setFleet(f);
+    s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true });
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params } as Call); return Promise.resolve({ id: 'c_new' }); } } as never;
+    await newRobotOn({ api, store: s }, 'i_b');
+    expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_b', cwd: '/Users/ada/code' }]);
+  });
+
+  it('with no island yet names the fresh one for the folder chosen, and takes it back when that is refused', async () => {
+    const calls: Call[] = [];
+    const s = createAppStore(undefined);
+    s.getState().setFleet(emptyState());
+    const refused = Object.assign(new Error('cwd /srv/app is not a directory'), { code: 'not_a_folder' });
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params } as Call); return method === 'robot.create' ? Promise.reject(refused) : Promise.resolve({ id: 'i_new' }); } } as never;
+    await expect(newNamedRobot({ api, store: s }, { name: 'a', note: '', refs: [], cwd: '/srv/app' })).rejects.toBe(refused);
+    expect(calls.map((c) => [c.method, c.params])).toEqual([
+      ['island.create', { name: 'app' }], ['robot.create', expect.objectContaining({ islandId: 'i_new', cwd: '/srv/app' })], ['island.delete', { id: 'i_new' }],
+    ]);
+  });
+
+  it('leaves an island that was there when the folder chosen is refused', async () => {
+    const calls: Call[] = [];
+    const s = store();
+    const api = { call: (method: string, params: unknown) => { calls.push({ method, params } as Call); return Promise.reject(new Error('no')); } } as never;
+    await expect(newNamedRobot({ api, store: s }, { name: 'a', note: '', refs: [], cwd: '/srv/app' })).rejects.toThrow('no');
+    expect(calls.map((c) => c.method)).toEqual(['robot.create']);
   });
 
   it('reports a mission control folder that is gone rather than start the agent somewhere else', async () => {

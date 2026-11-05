@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
-import type { MachineId } from '@svall/protocol';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { emptyState, type MachineId } from '@svall/protocol';
 import { ApiError } from '../../src/api.js';
 import type { Via } from '../../src/placement.js';
 import { call, freshStore, store } from './harness.js';
@@ -15,13 +15,14 @@ const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
 const far: Via = { machine: MAC, home: STUDIO, name: 'studio', online: true };
 const apart: Via = { machine: MAC, home: STUDIO, name: 'studio' };
 
+const DEFAULTS = { cwd: '/home/linus', home: '/home/linus/.svall/home' };
 type Folders = { path: string; clone: boolean }[];
 const FOLDERS: Folders = [{ path: '/home/linus/app', clone: true }, { path: '/home/linus/notes', clone: false }];
 
 // a daemon that answers the list, and refuses or takes the start as `create` says
 function answers(machine: MachineId, folders: Folders, create: (p: { cwd: string }) => Promise<unknown> = () => Promise.resolve({ id: 'c_new' })) {
   call.mockImplementation(((m: string, p: { cwd: string }) => {
-    if (m === 'workspace.clones') return Promise.resolve({ machine, folders });
+    if (m === 'workspace.clones') return Promise.resolve({ machine, folders, defaults: DEFAULTS });
     return m === 'robot.create' ? create(p) : Promise.resolve({});
   }) as never);
 }
@@ -194,4 +195,77 @@ test('closing it forgets the folder and the list', async () => {
   await act(async () => { store.getState().setNamingRobot(true); });
   expect(folder().value).toBe('/home/linus/app');
   expect(asked()).toBe(2);
+});
+
+describe('where the field starts, on what a new fleet\'s state holds', () => {
+  const HELD: Folders = [{ path: '/home/linus/aardvark', clone: true }, { path: DEFAULTS.cwd, clone: false }, { path: DEFAULTS.home, clone: false }];
+  const fresh = () => {
+    const f = emptyState();
+    act(() => { store.getState().setFleet({ ...f, islands: store.getState().fleet.islands }); store.getState().selectIsland(undefined); });
+    expect(f.defaultCwd).toBe('~');
+    expect(f.home.cwd.startsWith('~/')).toBe(true);
+  };
+
+  test('mission control selected: its own folder, as the home spells it', async () => {
+    fresh();
+    act(() => store.getState().selectIsland('home'));
+    answers(STUDIO, HELD);
+    await open(far);
+    expect(folder().value).toBe(DEFAULTS.home);
+    await create();
+    expect(creates()[0]).toMatchObject({ islandId: 'home', cwd: DEFAULTS.home });
+  });
+
+  test('an empty island selected: the fleet\'s default, as the home spells it', async () => {
+    fresh();
+    act(() => store.getState().selectIsland('i_e'));
+    answers(STUDIO, HELD);
+    await open(far);
+    expect(folder().value).toBe(DEFAULTS.cwd);
+  });
+
+  test('in fallback a start that is no clone gives way to the first clone listed', async () => {
+    fresh();
+    act(() => store.getState().selectIsland('i_e'));
+    answers(MAC, [{ path: '/Users/ada', clone: false }, { path: '/Users/ada/app', clone: true }]);
+    await open(apart);
+    expect(folder().value).toBe('/Users/ada/app');
+  });
+});
+
+test('on a Mac home a folder refused with an agent to start is said on the toast, as ever', async () => {
+  const words = 'cwd /tmp is not a directory';
+  call.mockImplementation(((m: string) => (m === 'robot.create' ? Promise.reject(new ApiError('not_a_folder', words)) : Promise.resolve({}))) as never);
+  act(() => { const f = store.getState().fleet; store.getState().setFleet({ ...f, newRobotStart: 'agent' }); });
+  await open();
+  await create();
+  expect(store.getState().toast?.text).toBe(words);
+  expect(store.getState().namingRobot).toBe(true);
+  expect(screen.queryByTestId('new-robot-refused')).toBeNull();
+});
+
+test('an answer from a source it has left is not listed, nor one for a dialog since closed', async () => {
+  let answer: (r: unknown) => void = () => {};
+  call.mockImplementationOnce((() => new Promise((r) => { answer = r; })) as never);
+  await open(far);
+  answers(MAC, [{ path: '/Users/ada/app', clone: true }]);
+  await act(async () => { store.getState().setVia(apart); });
+  await act(async () => { answer({ machine: STUDIO, folders: FOLDERS, defaults: DEFAULTS }); });
+  expect(shown()).toEqual(['~/app']);
+  expect(folder().value).toBe('/Users/ada/app');
+});
+
+test('a window that learns its home is elsewhere with the dialog open asks then', async () => {
+  answers(MAC, [{ path: '/Users/ada/app', clone: true }]);
+  await open();
+  expect(asked()).toBe(0);
+  await act(async () => { store.getState().setVia(apart); });
+  expect(asked()).toBe(1);
+  expect(shown()).toEqual(['~/app']);
+});
+
+test('the field takes a path as typed', async () => {
+  answers(STUDIO, FOLDERS);
+  await open(far);
+  expect([folder().getAttribute('autocapitalize'), folder().getAttribute('spellcheck')]).toEqual(['off', 'false']);
 });

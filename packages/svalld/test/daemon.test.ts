@@ -434,9 +434,9 @@ runIf('startDaemon', () => {
       const island = d.fleet.createIsland({ name: 'x' });
       const c = await d.fleet.createRobot({ islandId: island.id, cwd: fs.realpathSync(makeHome()) });
       await d.store.flush();
-      const listed = await call<{ machine: string; folders: { path: string }[] }>('workspace.clones', {});
+      const listed = await call<{ machine: string; folders: { path: string }[]; defaults: { cwd: string } }>('workspace.clones', {});
       expect(listed.result.machine).toBe(machineId());
-      expect(listed.result.folders.map((f) => f.path)).toContain(c.cwd);
+      expect(listed.result.folders.map((f) => f.path)).toEqual(expect.arrayContaining([c.cwd, listed.result.defaults.cwd]));
 
       const { result: config } = await call<{ rootId: string; path: string }>('fleet.config', {});
       expect(config).toEqual({ rootId: `r:${home}`, path: 'fleet.json' });

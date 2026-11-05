@@ -17,7 +17,8 @@ import { applyShow } from './show.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
-import { destinationName, type Via } from './placement.js';
+import type { MachineId } from '@svall/protocol';
+import { homeName, machineName, myMachine } from './placement.js';
 import { FollowApi } from './sources.js';
 import { createTerminalManager, type TerminalManager } from './terminals.js';
 
@@ -110,7 +111,9 @@ function createApp(): AppContext {
       }
       if (m.type === 'local.unavailable') {
         const s = store.getState();
-        s.showToast(m.machine ? `This Mac cannot open that: it is on ${destinationName(s.fleet, m.machine as Via['machine'], s.via)}` : 'This Mac cannot open that yet; try again');
+        // an id it names as this machine's is the page's stale word, and the shell has just told it again
+        const on = !m.machine || m.machine === myMachine(s) ? undefined : m.machine === s.via?.home ? homeName(s.fleet, s.via) : machineName(s.fleet, m.machine as MachineId);
+        s.showToast(on ? `This Mac cannot open that: it is on ${on}` : 'This Mac cannot open that yet; try again');
         return;
       }
       if (m.type === 'keys.record') { store.getState().adoptBindings(m.bindings); return; }

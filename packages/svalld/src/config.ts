@@ -236,9 +236,14 @@ export function saveMainAgent(paths: Paths, agent: AgentKind, say?: (line: strin
   saveConfig(paths, { mainAgent: agent }, say);
 }
 
-/** Refuses `text` as fleet.json when a daemon could not start on it, saying what in it is wrong. */
+/** Refuses `text` as fleet.json when a daemon could not start on it, saying what in it is wrong, or when it names another fleet: a
+ *  window then takes its home for a stranger's, which only ssh can undo. A file that does not parse can be repaired to any id. */
 export function checkFleetConfig(text: string, paths: Pick<Paths, 'fleetConfig'>): void {
-  try { parseConfig(text, paths.fleetConfig, FleetConfig); } catch (e) { throw new Invalid((e as Error).message); }
+  let next: FleetConfig;
+  try { next = parseConfig(text, paths.fleetConfig, FleetConfig); } catch (e) { throw new Invalid((e as Error).message); }
+  let held: FleetConfig;
+  try { held = readFleetConfig(paths); } catch { return; }
+  if (next.id !== held.id) throw new Invalid(`fleet.json's id is this fleet's own: keep it as ${held.id}`);
 }
 
 /** fleet.json as it stands now; an InvalidConfig says what in it is wrong. */

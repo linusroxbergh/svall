@@ -32,6 +32,7 @@ import type { FetchUsage } from '../usage/usage.js';
 import type { WorkerMutations } from '../worker/mutations.js';
 import type { Drops } from '../drops.js';
 import { startFolders } from '../workspace/clones.js';
+import type { fleetConfigFile } from '../workspace/fleet-config.js';
 import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
@@ -43,8 +44,8 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'>;
   // the home's: the one copy of a worker's agent setup it takes; a worker's: that setup, and what its first push from the home kept
   setupCopy?: SetupCopy; workerSetup?: WorkerSetup;
-  // the home's: fleet.json as a root of its own, which no other method knows
-  fleetConfig?: { rootId: string; workspace: Pick<Workspace, 'read' | 'write'>; check(text: string): void } };
+  // the home's
+  fleetConfig?: ReturnType<typeof fleetConfigFile> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
@@ -117,7 +118,7 @@ function refuseRemote({ router, store }: Pick<Ctx, 'router' | 'store'>, id: stri
 const FLEET_CONFIG = 'fleet.json';
 
 // that one file, for a desktop window: what it holds decides who reaches the phone link. Any other path under its root is an unknown root's
-function fleetConfigFile({ fleetConfig, viewer }: Pick<Ctx, 'fleetConfig' | 'viewer'>, id: string, rel: string): NonNullable<Ctx['fleetConfig']> | undefined {
+function configFor({ fleetConfig, viewer }: Pick<Ctx, 'fleetConfig' | 'viewer'>, id: string, rel: string): NonNullable<Ctx['fleetConfig']> | undefined {
   if (id !== fleetConfig?.rootId || rel !== FLEET_CONFIG) return undefined;
   if (viewer.kind === 'phone') throw new ApiError('forbidden', `${FLEET_CONFIG} is not open to a phone`);
   return fleetConfig;
@@ -280,7 +281,7 @@ const handlers: Handlers = {
   },
   'workspace.clones': (_p, { store, router, fleetHome }) => {
     if (!fleetHome) throw new ApiError('not_found', 'this daemon names no home');
-    return { machine: fleetHome().me, folders: startFolders(store.state, (c) => router?.runsHere(c) ?? c.machine === undefined) };
+    return { machine: fleetHome().me, ...startFolders(store.state, (c) => router?.runsHere(c) ?? c.machine === undefined) };
   },
   // each worker reads its own robots' usage, where their transcripts are
   'usage.get': async (_p, { usage, links }) => {
@@ -313,17 +314,13 @@ const handlers: Handlers = {
   },
   'fs.list': async (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.list', p, signal) ?? { entries: await workspace.list(p.id, p.path) },
   'fs.read': (p, ctx) => {
-    const config = fleetConfigFile(ctx, p.id, p.path);
-    if (config) return config.workspace.read(p.id, p.path);
+    const config = configFor(ctx, p.id, p.path);
+    if (config) return config.read();
     return ctx.router?.forwardRoot(p.id, 'fs.read', p, ctx.signal) ?? ctx.workspace.read(p.id, p.path);
   },
   'fs.write': (p, ctx) => {
-    const config = fleetConfigFile(ctx, p.id, p.path);
-    if (config) {
-      // a file the daemon could not start on would leave a far home out of reach of this very editor
-      config.check(p.text);
-      return config.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root);
-    }
+    const config = configFor(ctx, p.id, p.path);
+    if (config) return config.write(p.text, p.mtimeMs, p.root);
     refuseRemote(ctx, p.id, p.path);
     // a home with no agent setup yet has no folder for Claude's files until the first is saved
     if (p.mtimeMs === 0 && ctx.claude && p.id === rootIdOf(ctx.claude.dir)) fs.mkdirSync(ctx.claude.dir, { recursive: true });

@@ -49,9 +49,14 @@ test('the shell names this machine, and a local action it refuses is said on a t
   expect(store.getState().shell?.machine).toBeUndefined();
   const studio = '22222222-2222-4222-8222-222222222222';
   store.getState().setFleet({ ...store.getState().fleet, machines: { [studio as MachineId]: { name: 'studio', reachable: true, since: 0 } } });
-  receive({ type: 'local.unavailable', action: 'reveal', machine: studio });
+  receive({ type: 'local.unavailable', machine: studio });
   expect(store.getState().toast?.text).toBe('This Mac cannot open that: it is on studio');
-  receive({ type: 'local.unavailable', action: 'folder.pick', machine: '' });
+  receive({ type: 'local.unavailable', machine: '' });
+  expect(store.getState().toast?.text).toBe('This Mac cannot open that yet; try again');
+  // the page's stale word for this machine is no other machine
+  receive({ type: 'shell.info', home: '/h', log: [], op: false, ghosttyKeys: {}, machine: 'mac-id' });
+  store.getState().showToast('other');
+  receive({ type: 'local.unavailable', machine: 'mac-id' });
   expect(store.getState().toast?.text).toBe('This Mac cannot open that yet; try again');
   delete (window as unknown as { webkit?: unknown }).webkit;
 });

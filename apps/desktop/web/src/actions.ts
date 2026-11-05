@@ -223,26 +223,29 @@ export function newRobotFolder(s: AppState): string {
 }
 
 // the selected island, else the current robot's island, else the first shown one, else the first hidden one,
-// which comes back with the robot, else a fresh island
-export async function newRobotTarget(d: ActionDeps): Promise<{ islandId: string; cwd: string }> {
+// which comes back with the robot, else a fresh island, named for `folder` when the caller chose one; `made` says it is fresh
+export async function newRobotTarget(d: ActionDeps, folder?: string): Promise<{ islandId: string; cwd: string; made?: true }> {
   const s = d.store.getState();
   const { islandId: asked, start } = besideOf(s);
-  const islandId = asked || mapIslandsSorted(s.fleet)[0]?.id
-    || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id
-    || (await d.api.call('island.create', { name: islandName(start) })).id;
+  const found = asked || mapIslandsSorted(s.fleet)[0]?.id || islandsSorted(s.fleet).find((i) => i.kind !== 'home')?.id;
+  const islandId = found || (await d.api.call('island.create', { name: islandName(folder ?? start) })).id;
   const cwd = s.fleet.islands[islandId]?.kind === 'home' ? s.fleet.home.cwd : start;
-  return { islandId, cwd };
+  return { islandId, cwd, ...(!found && { made: true as const }) };
 }
 
-// the caller reports a refusal, so the dialog can stay open on one; a folder it names is the one meant, with nothing to give way to
+// the caller reports a refusal, so the dialog can stay open on one; a folder it names is the one meant, with nothing to give way
+// to, and an island made for it goes with its refusal
 export async function newNamedRobot(d: ActionDeps, p: { name: string; note: string; refs: string[]; cwd?: string }): Promise<string> {
   closeSettings(d);
-  const { islandId, cwd } = await newRobotTarget(d);
+  const { islandId, cwd, made } = await newRobotTarget(d, p.cwd);
   const f = d.store.getState().fleet;
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   const params = { islandId, cwd: p.cwd ?? cwd, ...(p.name ? { name: p.name } : {}), ...start };
-  const c = await (p.cwd !== undefined ? d.api.call('robot.create', params) : createRobot(d.api, params, f.defaultCwd));
+  const c = await (p.cwd === undefined ? createRobot(d.api, params, f.defaultCwd) : d.api.call('robot.create', params).catch((e: unknown) => {
+    if (made) d.api.call('island.delete', { id: islandId }).catch(() => {});
+    throw e;
+  }));
   if (p.note || p.refs.length) {
     // the robot already exists, so a refused path is reported rather than retried
     await d.api.call('robot.update', {

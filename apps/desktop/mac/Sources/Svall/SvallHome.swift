@@ -32,8 +32,12 @@ enum SvallHome {
 
     /// This machine's id, shared by its fleets and both builds; nil until a daemon or the CLI has made it.
     static func machineId() -> String? {
-        let dir = ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
-        return readJSON(dir + "/machine.json")?["id"] as? String
+        readJSON(configDir + "/machine.json")?["id"] as? String
+    }
+
+    /// The daemon's `configDir()`.
+    static var configDir: String {
+        ProcessInfo.processInfo.environment["SVALL_CONFIG_DIR"] ?? NSHomeDirectory() + "/.config/svall"
     }
 
     /// The fleet's portable settings, if the daemon has written them; an empty one it would refuse.

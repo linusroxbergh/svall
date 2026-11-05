@@ -397,8 +397,8 @@ export const methods = {
   'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean(), me: MachineId }) },
   // the root fs.read and fs.write reach fleet.json through, in the editor of a window on a far home; a worker holds no fleet's config
   'fleet.config': { params: z.object({}), result: z.object({ rootId: z.string(), path: z.string() }) },
-  // the folders a new robot can start in on the machine that answers: where its robots work and the clones it holds. `clone`: a worker away from its home starts only in one
-  'workspace.clones': { params: z.object({}), result: z.object({ machine: MachineId, folders: z.array(z.object({ path: z.string(), clone: z.boolean() })) }) },
+  // the folders a new robot can start in on the machine that answers: where its robots work and the clones it holds. `clone`: a worker away from its home starts only in one. `defaults`: the fleet's default and mission control folders there, as state holds them with `~`
+  'workspace.clones': { params: z.object({}), result: z.object({ machine: MachineId, folders: z.array(z.object({ path: z.string(), clone: z.boolean() })), defaults: z.object({ cwd: z.string(), home: z.string() }) }) },
   // how a window reaches the fleet's home over this daemon's ssh master: a home answers `connected` and no route. `retry`: a
   // person asks again after `auth`, `version` or a mismatch, which nothing retries by itself. Loopback only, as it hands over the home's token
   'home.connection': {

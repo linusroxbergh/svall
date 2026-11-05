@@ -10,10 +10,11 @@ export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''
 
 /** A terminal on the machine for what only it can reach, with a `cd` to `dir` typed there; a machine this Mac has no ssh to, such as another Mac, offers none. */
 export function TerminalThere({ name, dir, className = 'btn sm', testid }: { name: string; dir: string; className?: string; testid: string }) {
-  const known = useApp((s) => s.machines !== undefined);
-  const ssh = useApp((s) => s.machines?.find((m) => m.name === name)?.ssh);
-  useEffect(() => { if (!known) app.bridge.send({ type: 'host.list' }); }, [known]);
-  if (known && !ssh) return null;
+  const listed = useApp((s) => s.machines !== undefined && !s.machinesError);
+  const row = useApp((s) => s.machines?.find((m) => m.name === name));
+  // a machine added since the list was read is missing from it, so the list is asked for once more
+  useEffect(() => { if (!listed || !row) app.bridge.send({ type: 'host.list' }); }, [name]);
+  if (listed && !row?.ssh) return null;
   return <button className={className} data-testid={testid} data-tip={`A terminal on ${name} in ${dir}`} onClick={() => terminalOn(name, cdLine(dir))}>Terminal there</button>;
 }
 

@@ -185,6 +185,19 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(JSON.stringify(store.getState().via)).not.toContain(TOKEN);
   });
 
+  it('says a window is served by its own daemon only while it is: a followed home is not', async () => {
+    await following();
+    expect(store.getState().via?.served).toBeUndefined();
+    local.answer('home.connection', () => ({ machine: HOME, name: 'studio', state: 'connected' }));
+    home.drop();
+    await settle();
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(store.getState().via).toMatchObject({ online: true, served: true });
+    local.answer('home.connection', () => CONNECTED);
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio', online: true });
+  });
+
   it('asks where a robot would start for its folders, and the home alone for its config', async () => {
     await following();
     const answers = (d: Daemon) => { d.answer('workspace.clones', () => ({ machine: d === home ? HOME : ME, folders: [] })); d.answer('fleet.config', () => ({ rootId: 'r:/h', path: 'fleet.json' })); };

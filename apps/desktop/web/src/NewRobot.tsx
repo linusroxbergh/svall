@@ -6,7 +6,10 @@ import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import { useApp } from './hooks.js';
 import { shortPath } from './paths.js';
-import { homeName, startsOn } from './placement.js';
+import { homeName, startsOn, type Via } from './placement.js';
+
+// away from its home a worker starts a robot only inside a clone
+const offeredOf = (r: Result<'workspace.clones'>, via: Via) => r.folders.filter((f) => via.online || f.clone);
 
 // name is enough: Enter creates. A note and links are there when the name alone is not. A window on a home elsewhere has
 // no folder of its own to go by, so there the dialog asks for one of that machine's.
@@ -40,9 +43,12 @@ export function NewRobot() {
     app.api().call('workspace.clones', {}).then((r) => {
       if (left) return;
       setListed(r);
-      const offered = r.folders.filter((f) => via.online || f.clone).map((f) => f.path);
-      const start = newRobotFolder(app.store.getState());
-      if (!chosen.current) setCwd(offered.includes(start) ? start : offered[0] ?? '');
+      const offered = offeredOf(r, via).map((f) => f.path);
+      const s = app.store.getState();
+      const start = newRobotFolder(s);
+      // state holds the fleet's own folders as they were typed, `~` and all
+      const wanted = start === s.fleet.home.cwd ? r.defaults.home : start === s.fleet.defaultCwd ? r.defaults.cwd : start;
+      if (!chosen.current) setCwd(offered.includes(wanted) ? wanted : offered[0] ?? '');
     }, () => {});
     return () => { left = true; };
   }, [open, !via, online]);
@@ -51,8 +57,7 @@ export function NewRobot() {
   const close = () => app.store.getState().setNamingRobot(false);
   const on = via && (listed?.machine ?? startsOn(via));
   const where = via && (on === via.machine ? 'this Mac' : homeName({ machines }, via));
-  // away from its home a worker starts a robot only inside a clone
-  const folders = via && listed ? listed.folders.filter((f) => via.online || f.clone) : [];
+  const folders = via && listed ? offeredOf(listed, via) : [];
   const folder = cwd.trim();
 
   const create = async () => {
@@ -66,7 +71,7 @@ export function NewRobot() {
       close();
       showCreated(d, id);
     } catch (e) {
-      if ((e as { code?: string }).code === 'not_a_folder') setRefused(`${folder} is not a folder on ${where}`);
+      if (via && (e as { code?: string }).code === 'not_a_folder') setRefused(`${folder} is not a folder on ${where}`);
       else d.store.getState().showToast((e as Error).message);
       setBusy(false);
     }

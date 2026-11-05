@@ -152,6 +152,9 @@ test('the folder picker names this machine once the shell has, as the id can com
   next();
   fireEvent.click(screen.getByRole('button', { name: 'Choose a project…' }));
   expect(s.sent.at(-1)).toEqual({ type: 'folder.pick', start: '~/Developer', machine: 'mac-id' });
+  s.receive({ type: 'shell.info', home: '/h', log: [], op: false, ghosttyKeys: {}, machine: 'made-since' });
+  fireEvent.click(screen.getByRole('button', { name: 'Choose a project…' }));
+  expect(s.sent.at(-1)).toEqual({ type: 'folder.pick', start: '~/Developer', machine: 'made-since' });
 });
 
 test('collects main agent, project and preferences without writing until the last action', () => {

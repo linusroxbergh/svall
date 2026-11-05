@@ -9,7 +9,7 @@ import { startApi } from './api/server.js';
 import { findAgents } from './agents.js';
 import { diagnostics, macos } from './feedback.js';
 import { codexPaths } from './codex/install.js';
-import { checkFleetConfig, configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig, saveConfig } from './config.js';
+import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig, saveConfig } from './config.js';
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
@@ -50,7 +50,7 @@ import { startPusher, webPushSender, type Send } from './push/pusher.js';
 import { startRelay } from './fleet/relay.js';
 import { PushStore } from './push/store.js';
 import { readOrCreateVapid } from './push/vapid.js';
-import { repoSources, rootHere, rootIdOf, workspaceRoot } from './resources/scan.js';
+import { repoSources, rootHere, workspaceRoot } from './resources/scan.js';
 import { readOrUndefined } from './settings-file.js';
 import { installHookScripts } from './setup.js';
 import { Store } from './store.js';
@@ -67,6 +67,7 @@ import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
 import { homeScreenCall, homeTails, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
+import { fleetConfigFile } from './workspace/fleet-config.js';
 import { Workspace } from './workspace/workspace.js';
 
 export type Daemon = { port: number; token: string; store: Store; fleet: Fleet; stop(): Promise<void> };
@@ -420,7 +421,7 @@ async function start(opts: Options): Promise<Daemon> {
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
-      ...(!worker && { fleetConfig: { rootId: rootIdOf(paths.home), workspace: new Workspace(() => paths.home, log, refused), check: (text: string) => checkFleetConfig(text, paths) } }),
+      ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }),
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
