@@ -36,7 +36,7 @@ export const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
   claude: ['type', 'command', 'args', 'env', 'url', 'headers', 'oauth', 'timeout'],
   codex: [
     'command', 'args', 'cwd', 'env', 'url', 'oauth', 'enabled', 'bearer_token_env_var', 'env_vars', 'http_headers', 'env_http_headers', 'startup_timeout_sec',
-    'startup_timeout_ms', 'tool_timeout_sec', 'enabled_tools', 'disabled_tools',
+    'startup_timeout_ms', 'tool_timeout_sec', 'enabled_tools', 'disabled_tools', 'tools', 'default_tools_approval_mode',
   ],
   opencode: ['type', 'command', 'cwd', 'environment', 'url', 'headers', 'oauth', 'enabled', 'timeout'],
 };

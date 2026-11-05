@@ -1,1 +1,0 @@
-{"mcpServers":{"odd":{"type":"stdio","command":"npx","args":["-y","odd-mcp"],"env":{"K":"sk_mirrored_1234567890","MINE":"sk_mine_person_0987654321"},"sandbox":{"token":"odd_token_1234567890"}},"plain":{"command":"x","args":[]}}}

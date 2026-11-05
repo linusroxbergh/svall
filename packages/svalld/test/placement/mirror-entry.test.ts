@@ -4,7 +4,7 @@ import { parse as parseToml } from 'smol-toml';
 import { describe, expect, it } from 'vitest';
 import type { SetupRow } from '@svall/protocol';
 import { filesIn } from '../../src/placement/docs-sync.js';
-import { applyMirror } from '../../src/placement/mirror-apply.js';
+import { applyMirror, takeBackCopies } from '../../src/placement/mirror-apply.js';
 import { refuseForeign } from '../../src/placement/mirror-copy.js';
 import { carriable, mirrorPlan, packMirror } from '../../src/placement/mirror-plan.js';
 import { configReport, reportAsk, setupRows } from '../../src/placement/mirror-report.js';
@@ -238,7 +238,7 @@ describe('a server copied whole that the person edits', () => {
     ['a known shape', (o) => { delete o.sandbox; o.command = 'my-tool'; o.args = ['--profile', 'own', OWN]; }],
   ];
   for (const [what, edit] of EDITS) {
-    it(`edited with ${what}, stays byte for byte through the untick and the home's drop, with its record`, async () => {
+    it(`edited with ${what}, stays as edited through the untick and the home's drop, with its record`, async () => {
       const s = setup();
       editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
       for (const f of ODD_FIELDS) s.consent.add(f);
@@ -295,6 +295,58 @@ describe('a server copied whole that the person edits', () => {
     expect(json(s.w.claudeJson).mcpServers.odd).toEqual(ODD);
     expect(s.holding('mine and only mine').length).toBeGreaterThan(0);
     expect(s.holding(K)).toEqual([]);
+  });
+
+  for (const mode of ['mac', 'copy'] as const) {
+    it(`edited with no new string, a later tick's copy keeps the edit and leaves the key out, on a ${mode}`, async () => {
+      const s = setup(mode);
+      await s.push();
+      editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+      for (const f of ODD_FIELDS) s.consent.add(f);
+      await s.push();
+      editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 98765; });
+      s.consent.clear();
+      await s.push();
+      for (const f of ODD_FIELDS) s.consent.add(f);
+      await s.push();
+      expect(json(s.w.claudeJson).mcpServers.odd).toEqual(ODD);
+      expect(s.holding('98765').length).toBeGreaterThan(0);
+      expect(s.holding(K)).toEqual([]);
+    });
+  }
+
+  it('edited, under a server the sender now holds field by field, is named with its key and not called the target\'s own', async () => {
+    const s = setup();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = { command: 'odd', env: { T: K } }; });
+    s.consent.clear();
+    await s.push();
+    expect(read(s.w.claudeJson)).toContain(K);
+    const plan = mirrorPlan(s.home, s.consent);
+    const rows = setupRows(plan, configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') }), { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' });
+    expect(rows.find((r) => r.key === 'edited:claude:mcp:odd')).toMatchObject({ status: 'warn', action: 'remove odd on m', detail: 'odd stays as you edited it, with the key the mirror copied in it; remove it yourself' });
+    expect(rows.find((r) => r.key === 'claude:mcp:odd')?.detail).not.toContain('has its own');
+  });
+
+  it('swapped for a server holding nothing of the mirror\'s, asks no removal, and a Copy names nothing', async () => {
+    for (const mode of ['mac', 'copy'] as const) {
+      const s = setup(mode);
+      editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+      for (const f of ODD_FIELDS) s.consent.add(f);
+      await s.push();
+      editJson(s.w.claudeJson, (j) => { j.mcpServers.odd = { url: 'https://mine.test', sandbox: { on: true } }; });
+      s.consent.clear();
+      const r = await s.push();
+      expect(json(s.w.claudeJson).mcpServers.odd.url).toBe('https://mine.test');
+      expect(r.left).toBeUndefined();
+      const plan = mirrorPlan(s.home, s.consent);
+      const row = setupRows(plan, configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') }), { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === 'claude:mcp:odd');
+      expect(row?.action).not.toMatch(/^remove/);
+      expect(row?.detail).not.toContain('with the key');
+    }
   });
 
   it('edited, deleted by the person, is done with: its record goes and a tick writes it anew', async () => {
@@ -439,7 +491,7 @@ describe('a server of a shape the mirror cannot read', () => {
     expect(json(s.w.claudeJson).mcpServers.linear.timeout).toBeUndefined();
     const plan = mirrorPlan(s.home, s.consent);
     const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
-    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'edited:claude:mcp:linear')?.detail).toContain('stays as you edited it and no longer follows');
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'edited:claude:mcp:linear')?.detail).toContain('stays as it is here and no longer follows');
     editJson(s.w.claudeJson, (j) => { delete j.mcpServers.linear; });
     await s.push();
     expect(json(s.w.claudeJson).mcpServers.linear).toMatchObject({ command: 'npx', timeout: 9 });
@@ -660,6 +712,49 @@ describe('a retained entry', () => {
   });
 });
 
+describe('an override on a target that keeps', () => {
+  it('of a server it no longer holds is not written, as alone it is a config Codex refuses', async () => {
+    const s = setup();
+    put(s.homeToml, ['[mcp_servers.gh]', 'url = "https://gh.test/mcp"', ''].join('\n'));
+    put(path.join(s.w.overrides, 'codex/config.toml'), ['[mcp_servers.gh]', 'startup_timeout_sec = 9', ''].join('\n'));
+    await s.push();
+    expect(s.toml().mcp_servers.gh.startup_timeout_sec).toBe(9);
+    put(s.homeToml, 'model = "x"\n');
+    await s.push();
+    expect(s.toml().mcp_servers?.gh).toBeUndefined();
+  });
+
+  it('that names a server of its own, with a dialed worker as it always has', async () => {
+    const s = setup('dialed');
+    put(s.homeToml, 'model = "x"\n');
+    put(path.join(s.w.overrides, 'codex/config.toml'), ['[mcp_servers.only.env]', 'X = "y"', ''].join('\n'));
+    await s.push();
+    expect(s.toml().mcp_servers.only.env).toEqual({ X: 'y' });
+  });
+});
+
+describe('Codex\'s own approval of a tool', () => {
+  const TOOLS = '\n[mcp_servers.github.tools.search]\napproval_mode = "approve"\n';
+
+  it('freezes no server on a target: the sender\'s next change lands', async () => {
+    const s = setup();
+    await s.push();
+    fs.appendFileSync(s.macToml, TOOLS);
+    fs.writeFileSync(s.homeToml, read(s.homeToml).replace('github-mcp', 'github-mcp@2'));
+    await s.push();
+    expect(s.toml().mcp_servers.github.args).toContain('github-mcp@2');
+  });
+
+  it('drops no server from a target where the sender holds it, on a dialed worker too', async () => {
+    for (const mode of ['mac', 'dialed'] as const) {
+      const s = setup(mode);
+      fs.appendFileSync(s.homeToml, TOOLS);
+      await s.push();
+      expect(s.toml().mcp_servers.github).toMatchObject({ command: 'npx', tools: { search: { approval_mode: 'approve' } } });
+    }
+  });
+});
+
 describe('settings.json\'s env', () => {
   it('loses a copied variable the home no longer lists: no empty value stands in for it', async () => {
     const s = setup();
@@ -762,21 +857,30 @@ describe('a keyed file behind a link', () => {
 });
 
 describe('a link where a keyed file lay', () => {
-  it('goes alone at the untick when it leads to a file of the person\'s, and that stays', async () => {
+  it('to a file no longer the copy stays at the untick with its record, the row and an uninstall naming it', async () => {
     const s = setup();
     put(path.join(s.home.claudeDir, 'agents/keyed.md'), ['---', 'name: keyed', 'mcpServers:', '  x:', '    command: x', '    env:', `      K: ${K}`, '---', 'hi', ''].join('\n'));
     const row = mirrorPlan(s.home, s.consent, { state: readState(s.stateFile), projects: {}, platform: 'darwin' } as never).plugins.find((p) => p.key.startsWith('claude:agent:'))!;
     for (const f of row.fields) s.consent.add(`${row.key}#${f}`);
     await s.push();
     const landed = path.join(s.w.claudeDir, 'agents/keyed.md');
-    const dotfile = path.join(s.w.homedir, 'dotfiles/mine.md');
-    put(dotfile, 'my own\n');
+    const dotfile = path.join(s.w.homedir, 'dotfiles/keyed.md');
+    put(dotfile, `${read(landed)}my edit\n`);
     fs.rmSync(landed);
     fs.symlinkSync(dotfile, landed);
     s.consent.clear();
+    const r = await s.push();
+    expect(fs.lstatSync(landed).isSymbolicLink()).toBe(true);
+    expect(read(dotfile)).toContain('my edit');
+    expect(r.left).toEqual([landed]);
+    expect(Object.keys(readState(s.stateFile).keyed ?? {})).toEqual(['claude/agents/keyed.md']);
+    const plan = mirrorPlan(s.home, s.consent);
+    const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((x) => x.key === row.key)?.detail).toBe('agents/keyed.md stays as you edited it, with the key the mirror copied in it; remove it yourself');
+    expect((await takeBackCopies(s.options)).join('\n')).toContain(`left ${landed}`);
+    fs.rmSync(landed);
     await s.push();
-    expect(fs.lstatSync(landed, { throwIfNoEntry: false })).toBeUndefined();
-    expect(read(dotfile)).toBe('my own\n');
+    expect(readState(s.stateFile).keyed ?? {}).toEqual({});
   });
 
   it('to a folder stops no push', async () => {
