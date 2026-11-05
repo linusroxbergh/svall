@@ -32,10 +32,12 @@ const NOTHING: Plan = { ...PLAN, agents: [], writes: PLAN.writes.slice(2),
     { kind: 'opencode', command: 'curl -fsSL https://opencode.ai/v2/install | bash', url: 'https://opencode.ai/v2/docs/' }] };
 
 const next = (page: Page) => page.getByRole('button', { name: 'Continue', exact: true }).click();
+const here = (page: Page) => page.getByTestId('fork-here').click();
 
 test('collects choices over three screens and writes only at the end', async ({ page }) => {
   await fakeShell(page, PLAN, false, ['Trust the Codex hooks once.']);
   await page.goto('/?setup=1');
+  await here(page);
   await expect(page.getByRole('heading', { name: 'Connect your agents' })).toBeVisible();
   await page.screenshot({ path: test.info().outputPath('setup-agents.png') });
   await page.getByRole('checkbox', { name: 'Codex', exact: true }).uncheck();
@@ -64,6 +66,7 @@ test('collects choices over three screens and writes only at the end', async ({ 
 test('skips a single signed-in agent, but shows uncertain sign-in and the login action', async ({ page }) => {
   await fakeShell(page, { ...PLAN, agents: [{ ...PLAN.agents[0]!, signedIn: true }] });
   await page.goto('/?setup=1');
+  await here(page);
   await expect(page.getByRole('heading', { name: 'Choose where you work' })).toBeVisible();
   await page.getByRole('button', { name: 'Back' }).click();
   await expect(page.getByText('Signed in')).toBeVisible();
@@ -72,6 +75,7 @@ test('skips a single signed-in agent, but shows uncertain sign-in and the login 
 test('says what to install when no agent is found, and asks again', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
+  await here(page);
   await expect(page.getByText('needs the claude, codex or opencode command')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Check again' }).click();
@@ -81,6 +85,7 @@ test('says what to install when no agent is found, and asks again', async ({ pag
 test('gives each agent\'s install command to select or copy, and its other ways in the browser', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
+  await here(page);
   for (const [label, i] of [['Claude Code', NOTHING.install![0]!], ['Codex', NOTHING.install![1]!]] as const) {
     await page.getByRole('radio', { name: label }).check();
     const command = page.getByText(i.command);
@@ -98,6 +103,7 @@ test('gives each agent\'s install command to select or copy, and its other ways 
 test('gives the PATH line with the installers when their folder is not on PATH, and only there', async ({ page }) => {
   await fakeShell(page, NOTHING);
   await page.goto('/?setup=1');
+  await here(page);
   await expect(page.getByText('The installer puts the command in /u/.local/bin, which is not on your PATH')).toBeVisible();
   await expect(page.getByText('export PATH="$HOME/.local/bin:$PATH"')).toHaveCount(1);
   await page.getByRole('radio', { name: 'OpenCode' }).check();
@@ -108,6 +114,7 @@ test('gives the PATH line with the installers when their folder is not on PATH, 
 test('says an agent found only by its folder has no command, as a desktop app leaves one', async ({ page }) => {
   await fakeShell(page, { ...NOTHING, agents: [{ kind: 'claude', path: '/u/.claude', folderOnly: true }] });
   await page.goto('/?setup=1');
+  await here(page);
   await expect(page.getByText('CLI not found')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
 });
@@ -117,7 +124,20 @@ test('shows a failed first ask inline and retries it', async ({ page }) => {
   await page.goto('/?setup=1');
   await expect(page.getByText('svall: something went wrong')).toBeVisible();
   await page.getByRole('button', { name: 'Check again' }).click();
+  await here(page);
   await next(page); await next(page);
   await page.getByText('Review changes').click();
   await expect(page.getByText('/u/.claude/settings.json')).toBeVisible();
+});
+
+test('forks three ways before anything is written', async ({ page }) => {
+  await fakeShell(page, { agents: [{ kind: 'claude', path: '/usr/local/bin/claude', version: '2.0' }], projects: '~/Developer', blockers: [], shimDir: '/Users/test/.local/bin', shimOnPath: true, writes: [] } as Plan);
+  await page.goto('/?setup=1');
+  await expect(page.getByTestId('setup-fork').getByRole('button')).toHaveText(['Run the fleet on this Mac', 'Install Svall on a server and connect this Mac', 'Connect to a fleet already on a server']);
+  await page.getByTestId('fork-join').click();
+  await expect(page.getByTestId('fork-go')).toBeDisabled();
+  await page.getByTestId('fork-ssh').fill('ada@studio');
+  await expect(page.getByTestId('fork-go')).toBeEnabled();
+  await page.getByTestId('fork-back').click();
+  await expect(page.getByTestId('setup-fork')).toBeVisible();
 });
