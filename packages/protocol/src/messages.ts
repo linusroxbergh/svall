@@ -408,10 +408,10 @@ export const methods = {
   // this window is standing in for a home it cannot reach, so its changes to robots here wait on no link
   'home.fallback': { params: z.object({ on: z.boolean() }), result: z.object({}) },
   // on a worker: what a copy of this machine's agent setup to its home would ask to tick, and where a push from the home kept what it replaced here
-  'home.setup': { params: z.object({}), result: z.object({ rows: z.array(SetupRow), backup: z.string().optional() }) },
+  'home.setup': { params: z.object({}), result: z.object({ rows: z.array(SetupRow), backup: z.string().optional(), replaced: z.array(z.string()).optional(), pushFailed: z.string().optional() }) },
   'home.setupConsent': {
     params: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean() }),
-    result: z.object({ rows: z.array(SetupRow), backup: z.string().optional() }),
+    result: z.object({ rows: z.array(SetupRow), backup: z.string().optional(), replaced: z.array(z.string()).optional(), pushFailed: z.string().optional() }),
   },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'load.get': { params: z.object({}), result: LoadSnapshot },

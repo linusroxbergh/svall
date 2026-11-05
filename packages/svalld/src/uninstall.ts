@@ -251,6 +251,9 @@ export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);
 
+/** Each fleet home's folder of copies of a person's own agent files. */
+export const fleetBackups = (homedir: string): string[] => fleetHomes(homedir).map((h) => resolvePaths(h).mirrorBackup).filter((f) => fs.existsSync(f));
+
 // what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches,
 // the updater's HTTP storage and cookies, the saved window state and the defaults
 export const libraryData = (homedir: string): string[] =>

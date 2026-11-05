@@ -15,7 +15,7 @@ import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
 import { homeWord } from '../machine.js';
 import { fileSha } from './bundle.js';
-import { applyMirror, dropBlobs } from './mirror-apply.js';
+import { applyMirror, dropBlobs, type Manifest } from './mirror-apply.js';
 import { readPlugins, readServers } from './mirror-config.js';
 import { CONFIG_ITEMS, readConsent, setConsent } from './mirror-consent.js';
 import { mirrorPlan, packMirror } from './mirror-plan.js';
@@ -111,7 +111,7 @@ export class Mirror {
     const unchecked = link?.mismatch() ? `not checked: ${o.name} runs another release; upgrade it` : `not checked: ${o.name} is not reachable`;
     const r = o.robot;
     const shown = r ? forRobot(plan, { agents: r.agents, folders: r.folders.map((f) => (r.home ? relocate(f, { from: r.home, to: this.o.homedir }) : f)) }) : plan;
-    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux' });
+    return setupRows(shown, report, { machine: o.name, fleetFlag: o.fleetFlag, unchecked, overrides: this.o.overridesThere ?? '~/.svall/mirror-overrides', here: this.hereHas(), apt: facts?.platform === 'linux', mac: facts?.platform === 'darwin' });
   }
 
   /** Whether this Mac has a variable to copy to a worker: in the daemon's own environment, or the fleet's .env here. */
@@ -163,8 +163,9 @@ const parse = <T>(schema: z.ZodType<T>, raw: unknown): T => {
  * held the agent files; a blob may hold ticked keys, so none outlasts the link it came over or the daemon that took it.
  */
 export function mirrorCalls(o: MirrorHomes & {
-  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; additive?: boolean; platform?: NodeJS.Platform;
-}): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void } {
+  overrides: string; stage: string; stateFile: string; varsFile: string; envFile: string; connection: Pick<HomeConnection, 'receiveBlob'>; log: Logger; backups?: string; additive?: boolean; refuse?: (m: Manifest, files: string[]) => void; platform?: NodeJS.Platform;
+}): { calls: Record<string, (raw: unknown) => Promise<unknown>>; linkLost(): void; failed(): string | undefined } {
+  let failed: string | undefined;
   const blobs = new Map<string, { dir: string; sha256: string; got: Promise<{ sha256: string }>; applying?: true; abandon: AbortController }>();
   const drop = (id: string): void => {
     const b = blobs.get(id);
@@ -212,7 +213,11 @@ export function mirrorCalls(o: MirrorHomes & {
           done = await applyMirror(path.join(b.dir, 'blob'), { ...o, seq });
         } finally { unlock(); }
         if (done.written.length || done.removed.length) o.log.info(`mirror: ${done.written.length} files of the home's agent configuration written, ${done.removed.length} removed`);
+        failed = undefined;
         return done;
+      } catch (e) {
+        failed = (e as Error).message;
+        throw e;
       } finally {
         clearTimeout(late);
         blobs.delete(id);
@@ -228,5 +233,5 @@ export function mirrorCalls(o: MirrorHomes & {
       else drop(id);
     }
   };
-  return { calls, linkLost };
+  return { calls, linkLost, failed: () => failed };
 }

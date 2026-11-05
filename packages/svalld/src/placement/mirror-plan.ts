@@ -56,6 +56,8 @@ export type MirrorPlan = {
   /** Each plugin install whose marketplace list the Mac cannot read, whose files stay on the worker as the mirror last wrote them. */
   unreadInstalls: string[];
   keep: string[];
+  /** Each file held back until ticked, by its `to`, which a Copy takes back from the home once its sender has unticked it. */
+  unticked: string[];
   /** Each file that holds a ticked key, by its `to`, which the worker keeps for its owner alone. */
   keyed: string[];
   /** Each of those the agent needs, whose keys an uninstall takes back where they lie, each by its place, sha and bare form. */
@@ -377,7 +379,9 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const landing = (from: string): string => path.posix.join('claude', path.posix.relative(o.claudeDir, from));
   const made = (from: string, data: string, keyed = false): void => {
     const to = landing(from);
-    if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
+    // a name a login goes by stays here, what it holds carried or not
+    if (secret(from)) skipped.push(`${from} has a name kept for a key or a login`);
+    else if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
     else files.push({ from, to, mode: keyed ? 0o600 : (statOf(from)?.mode ?? 0o644) & 0o777, data });
     if (keyed) withKeys.add(to);
   };
@@ -502,7 +506,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),
     opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },
-    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], unreadInstalls, keep: carried.map((f) => f.to), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
+    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], unreadInstalls, keep: carried.map((f) => f.to),
+    unticked: pluginRows.filter((r) => !r.ticked).flatMap((r) => r.files).filter((f) => holds(o.claudeDir, f)).map(landing), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
     inPlace: inPlace.filter((f) => carried.some((c) => c.to === f.to)), skipped,
   };
 }

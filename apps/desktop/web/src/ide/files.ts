@@ -110,6 +110,8 @@ export function saveFile(d: FilesDeps, id: string, path: string, over = false): 
 async function write(d: FilesDeps, id: string, path: string, over: boolean): Promise<void> {
   const b = getBuffer(id, path);
   if (!b) return;
+  // an untouched seed is no file: an empty CLAUDE.md saved by habit would reach every worker
+  if (b.mtimeMs === 0 && !isDirty(b) && !over) return;
   // the text that goes out is the text that counts as saved; typing goes on meanwhile
   const doc = b.state.doc;
   try {
@@ -167,6 +169,8 @@ export async function checkDisk(d: FilesDeps, id: string): Promise<void> {
     try { disk = await d.api.call('fs.read', { id, path }); } catch { return; }
     // a tab opened again meanwhile holds another buffer; a check started since answers instead
     if (getBuffer(id, path) !== b || checks.get(b) !== n) return;
+    // a buffer that began as a seed learns its root from the disk
+    b.root ??= disk.root;
     // the robot may have moved to another checkout, where the same mtime is still another file;
     // back where the buffer was read, a conflict flagged while it was away no longer stands
     if (disk.mtimeMs === b.mtimeMs && disk.root === b.root) {

@@ -442,8 +442,13 @@ test('a far home\'s pane opens its files in the shelf, and one it has not as an 
     const seeded = getBuffer(CLAUDE, 'settings.json')!;
     expect([seeded.state.doc.toString(), seeded.mtimeMs, isDirty(seeded)]).toEqual(['{}\n', 0, false]);
     expect(call).not.toHaveBeenCalledWith('fs.write', expect.anything());
-    await saveFile({ api: { call: call as never }, store: store as never }, CLAUDE, 'settings.json');
-    expect(call).toHaveBeenCalledWith('fs.write', { id: CLAUDE, path: 'settings.json', text: '{}\n', mtimeMs: 0, root: undefined });
+    // an untouched seed is no file, and a typed one is
+    const files = { api: { call: call as never }, store: store as never };
+    await saveFile(files, CLAUDE, 'settings.json');
+    expect(call).not.toHaveBeenCalledWith('fs.write', expect.anything());
+    seeded.state = seeded.state.update({ changes: { from: 0, insert: ' ' } }).state;
+    await saveFile(files, CLAUDE, 'settings.json');
+    expect(call).toHaveBeenCalledWith('fs.write', { id: CLAUDE, path: 'settings.json', text: ' {}\n', mtimeMs: 0, root: undefined });
     dropBuffer(CLAUDE, 'settings.json');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
@@ -511,18 +516,16 @@ test('an item that travels whole keeps one box', async () => {
   }
 });
 
-test('an untick says its key stays on the home until the next Copy, which ends the saying, and no Copy runs by itself', async () => {
+test('a key unticked is said by the pane\'s one sentence, no Copy runs by itself, and what a tick went over is named with the folder', async () => {
   try {
     const on = { ...tickRow, tick: { ...tickRow.tick, on: true, ticked: ['env.KEY'] } };
-    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [on] }), 'home.setupConsent': () => ({ rows: [{ ...tickRow, tick: { ...tickRow.tick, ticked: [] } }] }), 'machines.copySetupFrom': () => ({ sent: 1 }) });
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [on], backup: '/b', replaced: ['linear'] }), 'home.setupConsent': () => ({ rows: [{ ...tickRow, tick: { ...tickRow.tick, ticked: [] } }], backup: '/b', replaced: ['linear'] }) });
     render(<SettingsCard />);
     show('setup');
     fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
-    expect((await screen.findByTestId('setup-stays-claude:mcp:linear')).textContent).toContain('stays on studio until the next Copy');
+    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy');
     expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
-    fireEvent.click(screen.getByTestId('setup-copy'));
-    await screen.findByTestId('setup-copied');
-    expect(screen.queryByTestId('setup-stays-claude:mcp:linear')).toBeNull();
+    expect((await screen.findByTestId('setup-replaced')).textContent).toContain('for linear: that is in this folder');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -553,6 +556,17 @@ test('Copy waits for the rows and for each tick, and stays off with the failure 
     act(() => answerRows!({ rows: [tickRow] }));
     await waitFor(() => expect(screen.queryByTestId('setup-failed')).toBeNull());
     expect(copy.disabled).toBe(false);
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a push from the home that failed here is said', async () => {
+  try {
+    farWindow({ ...SETUP, 'home.setup': () => ({ rows: [], pushFailed: 'config.toml cannot be parsed' }) });
+    render(<SettingsCard />);
+    show('setup');
+    expect((await screen.findByTestId('setup-push-failed')).textContent).toContain('studio\'s last push here did not land: config.toml cannot be parsed');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }

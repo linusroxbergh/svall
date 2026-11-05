@@ -403,7 +403,8 @@ describe('Workspace files', () => {
       await expect(ws.list('c', path.join(under, '2026-11-04')), under).rejects.toThrow('not the fleet\'s to open');
       expect(() => ws.write('c', path.join(under, '2026-11-04/new.md'), 'x', 0), under).toThrow('not the fleet\'s to open');
     }
-    if (folds) expect(fs.readdirSync(path.join(sealed, '2026-11-04'))).toEqual(['.claude.json']);
+    if (!folds) expect(() => ws.read('c', 'mirror-backup/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
+    expect(fs.readdirSync(path.join(sealed, '2026-11-04'))).toEqual(['.claude.json']);
   });
 
   it('keeps a sealed folder out by what it is when the list names it through a link', async () => {
@@ -416,6 +417,26 @@ describe('Workspace files', () => {
     expect(() => ws.read('c', 'fleet/mirror-backup/2026-11-04/.claude.json')).toThrow('not the fleet\'s to open');
     await expect(ws.list('c', 'real-fleet/mirror-backup')).rejects.toThrow('not the fleet\'s to open');
     expect((await ws.list('c', 'real-fleet')).map((e) => e.name)).toEqual([]);
+  });
+
+  it('a link to a folder or file inside the seal stays out', async () => {
+    const dir = fs.realpathSync(makeHome());
+    const sealed = path.join(dir, 'mirror-backup');
+    fs.mkdirSync(path.join(sealed, '2026-11-04'), { recursive: true });
+    fs.writeFileSync(path.join(sealed, '2026-11-04/.claude.json'), '{"key":"x"}');
+    fs.symlinkSync(path.join(sealed, '2026-11-04'), path.join(dir, 'dated'));
+    fs.symlinkSync(path.join(sealed, '2026-11-04/.claude.json'), path.join(dir, 'file.json'));
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [sealed]);
+    expect(() => ws.read('c', 'dated/.claude.json')).toThrow('not the fleet\'s to open');
+    expect(() => ws.read('c', 'file.json')).toThrow('not the fleet\'s to open');
+    await expect(ws.list('c', 'dated')).rejects.toThrow('not the fleet\'s to open');
+  });
+
+  it('a file makes no place for itself where a sealed folder is to lie, in any case on a folding volume', () => {
+    const dir = fs.realpathSync(makeHome());
+    const ws = new Workspace(() => dir, silentLogger, () => [], [], undefined, () => [path.join(dir, 'mirror-backup')]);
+    expect(() => ws.write('c', 'MIRROR-BACKUP', 'x', 0)).toThrow('not the fleet\'s to open');
+    expect(fs.readdirSync(dir)).toEqual([]);
   });
 
   it('a sealed folder not on disk yet keeps out what would lie in it, and leaves the folder it is to lie in open', () => {

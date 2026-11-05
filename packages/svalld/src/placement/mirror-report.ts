@@ -134,7 +134,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   const secrets: ConfigReport['secrets'] = {};
   const inBackup = state.backup !== undefined && fs.existsSync(state.backup.dir);
   const replaced: Record<string, boolean> = {};
-  const wasReplaced = (key: string, name: string): void => { if (inBackup && state.replaced?.includes(key)) replaced[name] = true; };
+  const wasReplaced = (key: string, name: string): void => { if (inBackup && state.replaced?.some((r) => key === r || key.startsWith(`${r.slice(0, -1)},`))) replaced[name] = true; };
   for (const k of ask.secrets) {
     // what the mirror leaves there without keys, moved as apply moves it: a server's command, args and cwd, a config
     // file's path keys, a plugin's server file not at all
@@ -192,7 +192,7 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
  * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
  * says `o.unchecked`, and a key row that its change is saved for when the machine links.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean; apt?: boolean }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean; apt?: boolean; mac?: boolean }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
   const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
@@ -297,9 +297,9 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;
-    // a Mac's machine may be a Mac too, which runs it, and is simply not sent it
-    const where = o.apt === false ? homeWord() : 'a Mac';
-    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on ${where}; not mirrored`, gap: { name: s.name, what: `runs only on ${where}` } });
+    // a Mac worker runs it too, and is simply not sent it
+    const where = o.mac ? `stays on ${homeWord()}` : 'only runs on a Mac';
+    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} ${where}; not mirrored`, gap: { name: s.name, what: o.mac ? where : 'runs only on a Mac' } });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));

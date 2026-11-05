@@ -165,7 +165,7 @@ describe('the agent configuration mirror', () => {
     const taken = farHome();
     const untick = farHome();
     const at = (h: ReturnType<typeof farHome>) => ({ ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') });
-    await applyMirror(ticked, at(taken)); takeBackCopies(at(taken));
+    await applyMirror(ticked, at(taken)); await takeBackCopies(at(taken));
     await applyMirror(ticked, at(untick)); await applyMirror(unticked, at(untick));
     const docs = (h: ReturnType<typeof farHome>) => JSON.stringify([
       json(h.claudeJson).mcpServers, (parseToml(read(path.join(h.codexDir, 'config.toml'))) as any).mcp_servers, json(path.join(h.claudeDir, 'settings.json')).env,

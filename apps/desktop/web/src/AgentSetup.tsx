@@ -58,7 +58,7 @@ export function AgentSetup() {
   const me = useApp((s) => s.via?.machine);
   // a window that follows the home over its own route; through this machine's link the files read are this machine's
   const follows = useApp((s) => !!s.via?.online && !!s.home?.master);
-  const dialed = useApp((s) => !!s.via?.online && !s.home?.master);
+  const dialed = useApp((s) => !!s.via?.online && !!s.home && !s.home.master);
   const source = useApp((s) => s.resources.find((r) => r.name === 'Claude' && r.tier === 'global'));
   const [rows, setRows] = useState<SetupRow[]>();
   const [backup, setBackup] = useState<string>();
@@ -67,20 +67,16 @@ export function AgentSetup() {
   // a consent call out, and what the last call about the ticks failed with: a copy waits until the ticks it sends are known
   const [pending, setPending] = useState(0);
   const [failed, setFailed] = useState<string>();
-  // each item and field unticked since the last copy, whose key stays on the home until the next
-  const [taken, setTaken] = useState<string[]>([]);
-  const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); setFailed(undefined); };
+  const [replaced, setReplaced] = useState<string[]>([]);
+  const [pushFailed, setPushFailed] = useState<string>();
+  const show = (r: Result<'home.setup'>) => { setRows(r.rows); setBackup(r.backup); setReplaced(r.replaced ?? []); setPushFailed(r.pushFailed); setFailed(undefined); };
   const fail = (e: Error) => setFailed(e.message);
   const load = () => { app.api().call('home.setup', {}).then(show, fail); };
   useEffect(load, []);
   useEffect(() => { if (follows) void reloadResources(deps()); }, [follows]);
   const tick = (r: SetupRow, fields: string[], on: boolean) => {
     setPending((n) => n + 1);
-    app.api().call('home.setupConsent', { item: r.tick!.item, fields, on }).then((answer) => {
-      show(answer);
-      const named = fields.map((f) => `${r.key}#${f}`);
-      setTaken((t) => (on ? t.filter((x) => !named.includes(x)) : [...new Set([...t, ...named])]));
-    }, fail).finally(() => setPending((n) => n - 1));
+    app.api().call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail).finally(() => setPending((n) => n - 1));
   };
   const copy = () => {
     setBusy(true);
@@ -88,15 +84,11 @@ export function AgentSetup() {
     app.api().call('machines.copySetupFrom', { machine: me! }).then(
       (r) => {
         setSaid({ ok: true, text: `Copied to ${home}.${r.backup ? ` What it replaced there is in ${r.backup}.` : ''}` });
-        setTaken([]);
         void reloadResources(deps());
       },
       (e: Error) => setSaid({ ok: false, text: e.message }),
     ).finally(() => setBusy(false));
   };
-  const stays = (r: SetupRow, fields: string[]) => fields.some((f) => taken.includes(`${r.key}#${f}`)) && (
-    <small data-testid={`setup-stays-${r.key}`}> stays on {home} until the next Copy</small>
-  );
   const box = (r: SetupRow, id: string, label: string, fields: string[], on: boolean) => (
     <b><input type="checkbox" data-testid={`setup-tick-${id}`} aria-label={label} checked={on} onChange={(e) => tick(r, fields, e.target.checked)} /></b>
   );
@@ -107,7 +99,7 @@ export function AgentSetup() {
     if (!t.ticked || t.fields.length < 2) {
       return (
         <div className="row" key={r.key}>
-          <span>{label} <small>{t.preview.join(', ')}</small>{stays(r, t.fields)}</span>
+          <span>{label} <small>{t.preview.join(', ')}</small></span>
           {box(r, r.key, label, t.fields, t.on)}
         </div>
       );
@@ -118,7 +110,7 @@ export function AgentSetup() {
       </div>,
       ...t.fields.map((f) => (
         <div className="row" key={`${r.key}#${f}`}>
-          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small>{stays(r, [f])}</span>
+          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small></span>
           {box(r, `${r.key}#${f}`, `${label} ${f}`, [f], t.ticked!.includes(f))}
         </div>
       )),
@@ -136,10 +128,11 @@ export function AgentSetup() {
         )}
       {!!rows?.length && (
         <>
-          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, rules, skills and agent profiles go as they are, anything written in them included. An untick takes a key back at the next Copy.</div>
+          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
           <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>
         </>
       )}
+      {pushFailed && <div className="desc" role="alert" data-testid="setup-push-failed">{home}&apos;s last push here did not land: {pushFailed}</div>}
       {failed && (
         <div className="desc" role="alert" data-testid="setup-failed">
           {failed} <button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button>
@@ -147,7 +140,7 @@ export function AgentSetup() {
       )}
       <div className="desc" data-testid="setup-copy-says">
         {backup && <>A push from {home} replaced same-named files on this Mac; they are in the folder below. Put back what you want from there first, as a Copy sends what is on this Mac now. </>}
-        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home}.
+        A Copy sends only what changed on this Mac since the last one, so a file edited on {home} since stays unless it changed here too. The first Copy has no last one: it replaces same-named files on {home}, edits there included, and keeps what it replaced in {home}&apos;s own backup folder. A Copy removes nothing on {home} but what you unticked and Svall&apos;s rollback copies that hold it. A second Mac&apos;s Copy works against the same history: it skips what the first sent and replaces edits made since.
       </div>
       <div className="opens">
         <button className="btn sm" data-testid="setup-copy" disabled={!follows || busy || rows === undefined || pending > 0 || failed !== undefined} data-tip={`One copy, now, of what is on this Mac; ${home} stays the source after it`} onClick={copy}>
@@ -158,6 +151,7 @@ export function AgentSetup() {
       {backup && (
         <div className="desc" data-testid="setup-backup">
           A push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}
+          {replaced.length > 0 && <span data-testid="setup-replaced">A tick went over what this Mac held itself for {replaced.join(', ')}: that is in this folder. </span>}
           <button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup)}>Show in Finder</button>
         </div>
       )}

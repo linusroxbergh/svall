@@ -189,7 +189,7 @@ export function world(o: {
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ platform: 'linux', ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
   const ownSetup = o.mirror && workerSetup({
-    mirror: new Mirror({ ...o.mirror.worker, consent: workerPaths.mirrorConsent, log: silentLogger, envFile: workerPaths.env }), connection, home: H, homeName: () => 'studio', stateFile: workerPaths.mirrorState,
+    mirror: new Mirror({ ...o.mirror.worker, consent: workerPaths.mirrorConsent, log: silentLogger, envFile: workerPaths.env }), connection, home: H, homeName: () => 'studio', stateFile: workerPaths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection, word: () => 'ada-mac' } });
   const workerTmux = { ...o.tmux } as Tmux;

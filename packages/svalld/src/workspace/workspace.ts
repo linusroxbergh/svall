@@ -93,7 +93,8 @@ export class Workspace {
       }
     };
     const is = (abs: string): boolean => {
-      if (sealedNames.some((s) => within(abs, s))) return true;
+      // on a folding volume a file in the sealed folder's place, in any case, would keep the folder from being made
+      if (sealedNames.some((s) => within(abs, s) || (path.basename(abs).toLowerCase() === path.basename(s).toLowerCase() && this.sameFile(path.dirname(abs), path.dirname(s))))) return true;
       if (sealedIds.size && [abs, realOf(abs) ?? abs].some(leadsThrough)) return true;
       if ([abs, realOf(abs) ?? abs].some((p) => this.isCopy(path.basename(p), refused))) return true;
       const own = idOf(abs);

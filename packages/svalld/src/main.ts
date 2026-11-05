@@ -291,7 +291,7 @@ async function start(opts: Options): Promise<Daemon> {
   // this worker's own agent setup, which its home asks for once when a person copies it there; the keys it ticks stay on this machine
   const ownSetup = connection && worker && workerSetup({
     mirror: new Mirror({ ...agentHomes, consent: paths.mirrorConsent, log, envFile: paths.env }), connection, home: worker.worker.homeMachineId,
-    homeName: () => store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, stateFile: paths.mirrorState,
+    homeName: () => store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const workerHomeWord = () => (worker ? homeWordOnWorker(store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, !!worker.worker.homeSsh) : 'this Mac');

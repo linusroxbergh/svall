@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { Command } from 'commander';
@@ -7,12 +6,12 @@ import { unitDirOf } from '@svall/svalld/linux/setup';
 import { opencodePaths } from '@svall/svalld/opencode/install';
 import { realDeps } from '@svall/svalld/mobile';
 import { LOGIN_SHELL_TIMEOUT_MS, takeLoginEnv } from '@svall/svalld/login-env';
-import { resolvePaths, userPaths } from '@svall/svalld/paths';
+import { userPaths } from '@svall/svalld/paths';
 import { PRIVATE, profileHome } from '@svall/svalld/profile';
 import { ownRuntime, type Runtime } from '@svall/svalld/runtime';
 import { cliCommand } from '@svall/svalld/setup';
 import { shq } from '@svall/svalld/text';
-import { appQuit, fleetData, fleetHomes, libraryData, purge, runUninstall } from '@svall/svalld/uninstall';
+import { appQuit, fleetBackups, fleetData, fleetHomes, libraryData, purge, runUninstall } from '@svall/svalld/uninstall';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
@@ -34,9 +33,9 @@ export async function uninstall(o: { purge: boolean }, d: UninstallDeps): Promis
   const backups = d.backups();
   const own = backups.length ? `${backups.join(', ')}, which ${backups.length === 1 ? 'holds' : 'hold'} the copies of your own agent files from before Svall replaced them,` : '';
   const yes = o.purge || (d.isTTY && /^y(es)?$/i.test((await d.prompt(
-    `also delete ${data.join(', ')}${own && `, with ${own}`}? this cannot be undone [y/N] `,
+    `also delete ${data.join(', ')}${own && `, with ${own.slice(0, -1)}`}? this cannot be undone [y/N] `,
   )).trim()));
-  if (!yes) return { done: [...done, ...(own ? [`kept ${own} for you to put back what you want; your agent folders stay as the fleet's home left them`] : [])], kept: data };
+  if (!yes) return { done: [...done, ...(own ? [`kept ${own} for you to put back what you want; your agent folders keep the home's files, with the keys it copied and Svall's hooks taken out`] : [])], kept: data };
   return { done: [...done, ...await d.purge(data), ...(own ? [`deleted ${own} with the fleet`] : [])], kept: [] };
 }
 
@@ -80,7 +79,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
           appDests: [process.env.SVALL_APP_DEST || '/Applications', path.join(os.homedir(), 'Applications')],
           fromApp: o.fromApp,
         }),
-        backups: () => fleetHomes(os.homedir()).map((h) => resolvePaths(h).mirrorBackup).filter((f) => fs.existsSync(f)),
+        backups: () => fleetBackups(os.homedir()),
         purge,
         prompt: (q) => ask(q),
         isTTY: !o.fromApp && process.stdin.isTTY === true,
