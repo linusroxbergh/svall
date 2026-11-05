@@ -42,6 +42,7 @@ function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barr
 }
 
 const holder = {};
+const OTHER = 'hm_otherother' as HomeMoveId;
 
 describe('a frozen home', () => {
   it('refuses writes and a quit, and goes on with reads, terminals and answers to its robots', async () => {
@@ -206,7 +207,6 @@ describe('a frozen home', () => {
   });
 
   describe('an answer goes with the move it is of', () => {
-    const OTHER = 'hm_otherother' as HomeMoveId;
     // move A aborted and released with an ask still out, and move B marked since
     const moved = async (late: AdoptAnswer) => {
       let reply!: (a: AdoptAnswer) => void;
@@ -509,6 +509,37 @@ describe('a frozen home', () => {
       expect(fs.existsSync(paths.homeServed)).toBe(true);
     });
 
+    it('a link an earlier freeze left off, its record standing, moves as on: after a turn back on that failed, and under a thaw a new freeze overtook', async () => {
+      const { freeze, d, paths } = setup({ serving: true });
+      let serving = true;
+      d.phone.get = () => Promise.resolve(phoneAt(serving));
+      let offFails = true;
+      d.phone.set = (on) => {
+        serving = false;
+        const error = on ? 'tailscale: not running' : offFails ? 'serve status: timed out' : undefined;
+        offFails = false;
+        return Promise.resolve(phoneAt(false, [], error));
+      };
+      await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/did not go off/);
+      expect(fs.existsSync(paths.homeServed)).toBe(true);
+      expect((await freeze.freeze(OTHER, STUDIO, holder)).phone.serving).toBe(true);
+      await freeze.thaw(OTHER);
+
+      const raced = setup({ serving: true });
+      let on = true;
+      raced.d.phone.get = () => Promise.resolve(phoneAt(on));
+      raced.d.phone.set = (to) => { on = to; return Promise.resolve(phoneAt(to)); };
+      let told: (() => void) | undefined;
+      raced.d.links.call = ((_m: MachineId, method: string) => (method === 'home.thaw' && !told ? new Promise((r) => { told = () => r({}); }) : Promise.resolve({}))) as never;
+      await raced.freeze.freeze(ID, STUDIO, holder);
+      const thawing = raced.freeze.thaw(ID);
+      await vi.waitFor(() => expect(told).toBeDefined());
+      const second = raced.freeze.freeze(OTHER, STUDIO, holder);
+      told!();
+      await thawing;
+      expect((await second).phone.serving).toBe(true);
+    });
+
     // the real link, whose every failure comes back as `error`
     const realLink = (home: string, serve: 'ok' | 'denied') => {
       fs.writeFileSync(resolvePaths(home).mobileKey, 'k'.repeat(48));
@@ -607,6 +638,17 @@ describe('a frozen home', () => {
       const { freeze } = setup();
       await freeze.freeze(ID, STUDIO, holder);
       expect(() => freeze.open('hm_otherother' as never, {})).toThrow(/already moving/);
+    });
+
+    it('opens none while another caller holds one open, as a window\'s Bring them back during a move driven from a terminal: the driver keeps its id', () => {
+      const { freeze } = setup();
+      freeze.open(ID, holder);
+      expect(() => freeze.open(OTHER, {})).toThrow(`the fleet is already moving (${ID})`);
+      expect(freeze.mayMoveCrew(ID, holder)).toBe(true);
+      freeze.open(OTHER, holder);
+      expect(freeze.mayMoveCrew(OTHER, holder)).toBe(true);
+      freeze.left(holder);
+      freeze.open(ID, {});
     });
   });
 });

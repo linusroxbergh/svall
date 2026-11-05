@@ -99,7 +99,8 @@ export class HomeFreeze {
 
   /** Opens a move for its driver, whose calls alone may move mission control's robots under its id. */
   open(id: HomeMoveId, holder: Holder): void {
-    if (this.moving) throw new ApiError('busy', `the fleet is already moving (${this.moving.id})`);
+    const held = this.moving?.id ?? (this.opened?.holder !== holder ? this.opened?.id : undefined);
+    if (held) throw new ApiError('busy', `the fleet is already moving (${held})`);
     this.opened = { id, holder };
   }
 
@@ -127,9 +128,10 @@ export class HomeFreeze {
       still();
       // a link that cannot be read must not be taken for off, as the next home would never serve it
       if (status.error) throw new ApiError('busy', `the phone link cannot be read: ${status.error}`);
-      // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut
+      // a link this home still owes counts as on: the next home takes the debt, and no tick here serves past the cut. So does one
+      // an earlier freeze turned off and could not turn back on, whose record stands
       const owed = phoneOwed(this.d.paths);
-      const serving = status.serving || owed.length > 0;
+      const serving = status.serving || owed.length > 0 || fs.existsSync(this.d.paths.homeServed);
       held.served = serving;
       if (!await this.drained(DRAIN_MS)) throw new ApiError('busy', 'a call this home took is still running; try again in a moment');
       still();
