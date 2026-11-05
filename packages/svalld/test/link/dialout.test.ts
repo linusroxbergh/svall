@@ -254,6 +254,22 @@ describe('HomeDial', () => {
     await until(() => expect(opens()).toBe(before + 1));
   });
 
+  it('a wake starts its retries over, so a wait built up while apart does not sit on a network that comes back', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'Date'] });
+    const w = await world({ homeSsh: 'refused.test' });
+    w.dial.start();
+    for (let tries = 1; tries <= 8; tries++) {
+      await until(() => expect(masters()).toHaveLength(tries));
+      if (tries < 8) w.dial.restore();
+    }
+    await gaveUp(w);
+    vi.setSystemTime(Date.now() + 10 * HEARTBEAT_MS);
+    vi.advanceTimersByTime(HEARTBEAT_MS);
+    await until(() => expect(masters()).toHaveLength(9));
+    rewrite(w, { homeSsh: 'ada@studio' });
+    await until(() => expect(w.said.at(-1)).toMatch(/^dialed/), 5000);
+  });
+
   it('never reads a dial that may come back as a refused login: it says unreachable and tries again', async () => {
     const w = await world({ homeSsh: 'refused.test' });
     w.dial.start();

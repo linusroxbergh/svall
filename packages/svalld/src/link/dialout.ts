@@ -107,6 +107,8 @@ export class HomeDial {
       return;
     }
     if (slept) {
+      // the network is likely on its way back, and the wait a long absence built up would sit on it
+      this.retryMs = FIRST_RETRY_MS;
       if (!this.waits()) this.restore(true);
       return;
     }
