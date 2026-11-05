@@ -175,12 +175,13 @@ test.each([['/u/.svall'], [undefined]])('on upgrade the default fleet (%s) wins 
   expect(m.json()).toEqual({ nextRobot: 'cmd+y' });
 });
 
-test('on upgrade a default fleet that kept the shipped keys leaves a named fleet\'s changes', async () => {
+test.each(['/u/.svall', '/u/.svall-work', '/u/.svall-new'])('on upgrade the default fleet\'s shipped keys win over a named fleet\'s declined Cmd+T, opening %s', async (home) => {
   save('/u/.svall', {});
-  save('/u/.svall-work', { nextRobot: 'cmd+y' });
+  save('/u/.svall-work', { newRobot: null });
   const m = mac();
-  await m.open('/u/.svall-new');
-  expect(m.json()).toEqual({ nextRobot: 'cmd+y' });
+  await m.open(home);
+  expect(shows('newRobot')).toBe('⌘T');
+  expect(m.json()).toEqual({});
 });
 
 test('on upgrade a Mac whose fleets all kept the shipped keys keeps them, Ghostty not asked', async () => {

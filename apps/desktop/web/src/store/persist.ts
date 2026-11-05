@@ -85,21 +85,17 @@ const isSections = (v: unknown): v is Sections =>
   typeof v === 'object' && v !== null && Object.values(v).every((x: Section) => typeof x === 'object' && x !== null
     && ['boolean', 'undefined'].includes(typeof x.shut) && (x.height === undefined || (Number.isFinite(x.height) && x.height > 0)));
 
-// the keys any fleet saved in this store, for a Mac with no record of them yet: the first of the private fleet's, this
-// fleet's and another's that changes one, else the shipped keys of a fleet that saved them. Setup's save names none,
-// which leaves the first window to ask Ghostty.
+// the keys any fleet saved in this store, for a Mac with no record of them yet: the private fleet's, this fleet's, then
+// another's. Setup's save names none, which leaves the first window to ask Ghostty.
 function savedBindings(ls: Storage, own: string): Bindings | undefined {
   const rank = (k: string) => (/@.*\/\.svall(-dev)?$/.test(k) ? 0 : k === SETTINGS_KEY ? 1 : k === own ? 2 : 3);
   const keys = Array.from({ length: ls.length }, (_, i) => ls.key(i) ?? '').filter((k) => k === SETTINGS_KEY || k.startsWith(`${SETTINGS_KEY}@`));
   const hasKeys = (v: unknown): v is { bindings: unknown } => typeof v === 'object' && v !== null && 'bindings' in v;
-  let shipped: Bindings | undefined;
   for (const k of keys.sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))) {
     const saved = readJson(ls.getItem(k), hasKeys);
-    const bindings = saved && readBindings(saved.bindings);
-    if (bindings && Object.keys(bindings).length > 0) return bindings;
-    shipped ??= bindings;
+    if (saved) return readBindings(saved.bindings);
   }
-  return shipped;
+  return undefined;
 }
 
 // every fleet's window shares one localStorage, so a fleet keeps its keys under its home and reads

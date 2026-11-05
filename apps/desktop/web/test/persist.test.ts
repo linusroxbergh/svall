@@ -50,12 +50,12 @@ describe('the keys fleets saved before the Mac had a record', () => {
     save('svall.settings@/u/.svall-z', { newRobot: 'cmd+z' });
     expect(saved('/u/.svall-z')).toEqual({ newRobot: 'cmd+z' });
   });
-  it('takes a fleet that changed a key over a private fleet that kept the shipped ones', () => {
+  it('takes a private fleet that kept the shipped keys over a fleet that changed one', () => {
     save('svall.settings@/u/.svall', {});
-    save('svall.settings@/u/.svall-work', { newRobot: 'cmd+n' });
-    expect(saved('/u/.svall-new')).toEqual({ newRobot: 'cmd+n' });
+    save('svall.settings@/u/.svall-work', { newRobot: null });
+    expect(saved('/u/.svall-work')).toEqual({});
   });
-  it('is the shipped keys when every fleet that saved kept them', () => {
+  it('is the shipped keys when the fleets that saved kept them', () => {
     save('svall.settings@/u/.svall-work', {});
     expect(saved('/u/.svall-new')).toEqual({});
   });
