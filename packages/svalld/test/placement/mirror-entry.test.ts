@@ -282,6 +282,21 @@ describe('a server copied whole that the person edits', () => {
     expect(s.holding(K)).toEqual([]);
   });
 
+  it('edited with no key and unticked, a later tick replaces it too, the file copied first', async () => {
+    const s = setup();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.note = 'mine and only mine'; });
+    s.consent.clear();
+    await s.push();
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd).toEqual(ODD);
+    expect(s.holding('mine and only mine').length).toBeGreaterThan(0);
+    expect(s.holding(K)).toEqual([]);
+  });
+
   it('edited, deleted by the person, is done with: its record goes and a tick writes it anew', async () => {
     const s = setup();
     editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
@@ -325,6 +340,22 @@ describe('a server copied whole that the person edits', () => {
     s.consent.clear();
     await s.push();
     expect(fs.existsSync(bak)).toBe(true);
+    editJson(s.w.claudeJson, (j) => { delete j.mcpServers.odd; });
+    await s.push();
+    expect(fs.existsSync(bak)).toBe(false);
+  });
+
+  it('a rollback copy holding its key in a field the mirror cannot read goes once the live one has none', async () => {
+    const s = setup();
+    const odd = { command: 'odd', sandbox: { token: K } };
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = odd; });
+    s.consent.add('claude:mcp:odd#command').add('claude:mcp:odd#sandbox');
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
+    const bak = `${s.w.claudeJson}.bak-1700000000000`;
+    fs.writeFileSync(bak, read(s.w.claudeJson));
+    s.consent.clear();
+    await s.push();
     editJson(s.w.claudeJson, (j) => { delete j.mcpServers.odd; });
     await s.push();
     expect(fs.existsSync(bak)).toBe(false);
@@ -553,6 +584,18 @@ describe('a Linux worker its home dials', () => {
     expect(json(s.w.claudeJson).mcpServers.odd.env.T).toBe(K);
   });
 
+  it('loses a whole copy it edited at the untick', async () => {
+    const s = setup('dialed');
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
+    s.consent.clear();
+    const r = await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd).toBeUndefined();
+    expect(r.left).toBeUndefined();
+  });
+
   it('is asked to set a variable its literal stands in for, as it does not keep the entry', async () => {
     const s = setup('dialed');
     await s.push();
@@ -614,6 +657,20 @@ describe('a retained entry', () => {
     await s.push();
     expect(read(s.macToml)).not.toContain(K);
     expect(s.toml().model_providers.acme.base_url).toMatch(/^https:\/\/acme\.test\/v1/);
+  });
+});
+
+describe('settings.json\'s env', () => {
+  it('loses a copied variable the home no longer lists: no empty value stands in for it', async () => {
+    const s = setup();
+    const at = path.join(s.home.claudeDir, 'settings.json');
+    const here = path.join(s.w.claudeDir, 'settings.json');
+    s.consent.add('claude:settings#env.ANTHROPIC_API_KEY');
+    await s.push();
+    expect(json(here).env.ANTHROPIC_API_KEY).toBe('sk-mac');
+    editJson(at, (j) => { delete j.env; });
+    await s.push();
+    expect(Object.hasOwn(json(here).env, 'ANTHROPIC_API_KEY')).toBe(false);
   });
 });
 
