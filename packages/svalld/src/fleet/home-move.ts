@@ -219,15 +219,24 @@ function untaken(p: Paths, state: FleetState, me: MachineId): string[] {
   return entries.filter((e) => e.seq > acked && e.kind === 'mutation' && e.data?.method !== 'robot.create').map((e) => e.data?.method ?? e.kind);
 }
 
-// a repo's notes hang off a hash of its path on the home, so each known root takes the name its path has on the new one
-function renameRepoDocs(docs: string, state: FleetState, from: string, to: string): void {
-  if (from === to) return;
-  const repos = path.join(docs, 'repos');
+// a repo's notes hang off a hash of its path on the home, so each known root takes the name its path has on the new one: the
+// folder's name on the old home to its name on the new, by the state as the old home holds it
+function repoRenames(state: FleetState, from: string, to: string): Map<string, string> {
+  const renames = new Map<string, string>();
+  if (from === to) return renames;
   for (const r of Object.values(state.robots)) {
     const root = homeRootOf(r, state.machines, from) ?? repoRootOf(r);
     if (!root) continue;
-    const [was, now] = [path.join(repos, repoSlug(root)), path.join(repos, repoSlug(relocate(root, { from, to })))];
-    if (was !== now && fs.existsSync(was) && !fs.existsSync(now)) fs.renameSync(was, now);
+    const [was, now] = [repoSlug(root), repoSlug(relocate(root, { from, to }))];
+    if (was !== now) renames.set(was, now);
+  }
+  return renames;
+}
+
+function renameRepoDocs(docs: string, renames: Map<string, string>): void {
+  const repos = path.join(docs, 'repos');
+  for (const [was, now] of renames) {
+    if (fs.existsSync(path.join(repos, was)) && !fs.existsSync(path.join(repos, now))) fs.renameSync(path.join(repos, was), path.join(repos, now));
   }
 }
 
@@ -292,7 +301,7 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
   }
   writeDurable(path.join(ready, 'state.json'), state, { mode: 0o600 });
   carryOwnDocs(d, path.join(ready, 'docs'), state);
-  renameRepoDocs(path.join(ready, 'docs'), relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome);
+  renameRepoDocs(path.join(ready, 'docs'), repoRenames(relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome));
   writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m), { mode: 0o600 });
   writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
   return ready;
@@ -729,20 +738,27 @@ const docsCut = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home
 const docsAt = (dir: string): Record<string, string> => Object.fromEntries(ownFiles(dir).map((rel) => [rel, sha256Hex(fs.readFileSync(path.join(dir, rel)))]));
 
 // what the old home's robots did between the cut and the join, as a worker's own changes over what the new home took at the cut: its
-// first tar would take any file with no record of it, and so what this writes is the cut's hash of each, none for a doc the cut lacked
-function carrySinceCut(p: Paths, id: string, kept: string): void {
+// first tar would take any file with no record of it, and so what this writes is the cut's hash of each, none for a doc the cut lacked.
+// A repo's note goes by the name the new home gave its folder, unless the cut held that name already and so none was given
+function carrySinceCut(p: Paths, id: string, kept: string, renames: Map<string, string>): void {
   let cut: Record<string, string> | undefined;
   try { cut = read(docsCut(p, id)) as Record<string, string>; } catch { return; }
+  const taken = new Set(Object.keys(cut).map((rel) => rel.split(path.sep).slice(0, 2).join(path.sep)));
+  const there = (rel: string): string => {
+    const [top, slug, ...rest] = rel.split(path.sep);
+    const now = top === 'repos' ? renames.get(slug) : undefined;
+    return now && !taken.has(path.join('repos', now)) ? path.join('repos', now, ...rest) : rel;
+  };
   const now = docsAt(kept);
   const synced: Record<string, string> = {};
   for (const [rel, sha256] of Object.entries(now)) {
     if (cut[rel] === sha256) continue;
-    const to = path.join(p.cache, 'docs', rel);
+    const to = path.join(p.cache, 'docs', there(rel));
     fs.mkdirSync(path.dirname(to), { recursive: true, mode: 0o700 });
     fs.copyFileSync(path.join(kept, rel), to);
-    if (cut[rel]) synced[rel] = cut[rel];
+    if (cut[rel]) synced[there(rel)] = cut[rel];
   }
-  for (const [rel, sha256] of Object.entries(cut)) if (!(rel in now)) synced[rel] = sha256;
+  for (const [rel, sha256] of Object.entries(cut)) if (!(rel in now)) synced[there(rel)] = sha256;
   writeDurable(p.docsSynced, synced, { mode: 0o600 });
 }
 
@@ -757,7 +773,8 @@ export function joinAsWorker(p: Paths, m: HomeMoving & { enrol: Enrolment }, reg
   const keep = `${p.state}.home-${m.id}`;
   if (!fs.existsSync(keep)) writeDurable(keep, fs.readFileSync(p.state), { mode: 0o600 });
   homePoint('join.kept');
-  const state = relabelHome(migrateState(read(keep)).state, { from: m.from, fromName: m.fromName, fromHome: m.fromHome, to: m.to, toName: m.toName, toHome: m.toHome, at: m.at, stamp: true });
+  const held = migrateState(read(keep)).state;
+  const state = relabelHome(held, { from: m.from, fromName: m.fromName, fromHome: m.fromHome, to: m.to, toName: m.toName, toHome: m.toHome, at: m.at, stamp: true });
   writeDurable(p.state, state, { mode: 0o600 });
   homePoint('join.state');
   const docs = `${p.docs}.home-${m.id}`;
@@ -765,7 +782,7 @@ export function joinAsWorker(p: Paths, m: HomeMoving & { enrol: Enrolment }, reg
   // a worker's own: what it last took of an earlier home's, and an outbox of an earlier time as a worker. The mirror's record is
   // of what a Copy wrote as well, which must not read as written by a mirror
   for (const old of [path.join(p.cache, 'docs'), p.docsSynced, p.mirrorState, p.outbox, p.acked, p.epoch, p.phoneFallbacks]) fs.rmSync(old, { recursive: true, force: true });
-  carrySinceCut(p, m.id, docs);
+  carrySinceCut(p, m.id, docs, repoRenames(held, m.fromHome, m.toHome));
   if (fs.existsSync(p.workersFile)) fs.renameSync(p.workersFile, `${p.workersFile}.home-${m.id}`);
   homePoint('join.docs');
   if (m.enrol.home) putRecord(m.to, m.enrol.home, registryDir);

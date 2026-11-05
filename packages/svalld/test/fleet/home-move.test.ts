@@ -9,7 +9,7 @@ import { InvalidConfig } from '../../src/config.js';
 import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { WorkerDocs } from '../../src/placement/docs-sync.js';
+import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
 import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, readMarker, stageAdopt, writeMarker } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
@@ -867,6 +867,46 @@ describe('the join', () => {
     const empty = fs.mkdtempSync(path.join(w.mac.paths.home, 'tar-'));
     (docs as unknown as { settle(from: string, seq: number): void }).settle(empty, 0);
     expect(fs.readFileSync(path.join(dir, 'fleet', 'late.md'), 'utf8')).toBe('written while frozen');
+  });
+
+  it.each([[false], [true]])('a repo note the old home changed, made or removed since the cut lands where the new home has its folder, after the first tar too (the new name taken at the cut: %s)', async (clash) => {
+    const w = await world();
+    await w.mac.daemon.stop();
+    const s = stateOf(w.mac);
+    s.robots.here.cwd = '/Users/ada/hproj';
+    fs.writeFileSync(w.mac.paths.state, JSON.stringify(s));
+    const [was, now] = [repoSlug('/Users/ada/hproj'), repoSlug('/home/ada/hproj')];
+    const doc = (rel: string, text: string) => { const f = path.join(w.mac.paths.docs, rel); fs.mkdirSync(path.dirname(f), { recursive: true }); fs.writeFileSync(f, text); };
+    doc(`repos/${was}/n.md`, 'at the cut');
+    doc(`repos/${was}/gone.md`, 'removed since the cut');
+    // a folder by the new name already, which the new home keeps, and so keeps the old one under its own name
+    if (clash) doc(`repos/${now}/other.md`, 'there at the cut');
+    const packed = await packFleet(w.mac.paths, w.manifest);
+    await w.mac.daemon.start();
+    doc(`repos/${was}/n.md`, 'since the cut');
+    fs.rmSync(path.join(w.mac.paths.docs, 'repos', was, 'gone.md'));
+    doc(`repos/${was}/new.md`, 'new since the cut');
+    await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
+    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    if (a.status !== 'adopted') throw new Error(a.status);
+    await w.mac.daemon.stop();
+    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    await w.mac.daemon.start();
+    const copy = path.join(w.mac.paths.cache, 'docs');
+    const events: { kind: 'docs.write' | 'docs.delete'; data: { path: string } }[] = [];
+    const docs = new WorkerDocs({ dir: copy, file: w.mac.paths.docsSynced, stage: path.join(w.mac.paths.cache, 'stage'), log: silentLogger,
+      connection: { journal: (kind: 'docs.write' | 'docs.delete', data: { path: string }) => { events.push({ kind, data }); return events.length; }, receiveBlob: () => Promise.reject(new Error('none')) } as never });
+    docs.start();
+    docs.stop();
+    const home = new HomeDocs(w.studio.paths.docs, silentLogger, () => 'mac', () => true);
+    for (const e of events) home.apply(e.kind, e.data, MAC);
+    (docs as unknown as { settle(from: string, seq: number): void }).settle(w.studio.paths.docs, events.length);
+    const repos = path.join(w.studio.paths.docs, 'repos');
+    const lands = clash ? was : now;
+    expect(fs.existsSync(path.join(repos, was))).toBe(clash);
+    expect(fs.readdirSync(path.join(repos, lands)).sort()).toEqual(['n.md', 'new.md']);
+    expect(fs.readFileSync(path.join(repos, lands, 'n.md'), 'utf8')).toBe('since the cut');
+    expect(fs.readFileSync(path.join(copy, 'repos', lands, 'new.md'), 'utf8')).toBe('new since the cut');
   });
 
   it('a kept workers.json is where Files refuses it', async () => {
