@@ -88,7 +88,7 @@ export function AgentSetup() {
           text: [
             `Copied to ${home}.`, r.backup && `What it replaced there is in ${r.backup}.`,
             r.replaced && `A tick went over what ${home} held itself for ${r.replaced.join(', ')}: that is in its backup folder.`,
-            r.left && `You unticked ${r.left.join(', ')}, edited on ${home} since, so each stays there with its key until you remove it there.`,
+            ...(r.left ?? []).map((name) => `${name} stays as you edited it, with the key the mirror copied in it; remove it yourself.`),
           ].filter(Boolean).join(' '),
         });
         void reloadResources(deps());

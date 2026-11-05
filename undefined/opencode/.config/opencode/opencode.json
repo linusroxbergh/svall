@@ -1,0 +1,1 @@
+{"mcp":{"odd":{"type":"local","command":["bash","-c","odd-run"],"environment":{"K":"sk_mirrored_1234567890","MINE":"sk_mine_person_0987654321"}}}}

@@ -36,8 +36,8 @@ export function refuseForeign(m: Manifest, files: string[]): void {
 
 /**
  * The home's side of a copy of a worker's agent setup: it takes one push from the worker `machines.copySetupFrom` named, and
- * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. It removes nothing here, and keeps
- * a copy of each file it replaces that no copy wrote.
+ * nothing of the kind from any other, past `GRANT_MS` or once that push has reached its apply. It removes nothing here but a whole
+ * item its sender unticked while still the copy, and keeps a copy of each file it replaces that no copy wrote.
  */
 export class SetupCopy {
   private grant?: { machine: MachineId; until: number; offered?: true; used?: true };
@@ -71,7 +71,10 @@ export class SetupCopy {
     try {
       return await run();
     } finally {
-      if (this.grant === mine) this.end();
+      if (this.grant === mine) {
+        this.grant = undefined;
+        this.calls.linkLost();
+      }
     }
   }
 
@@ -86,10 +89,6 @@ export class SetupCopy {
     return this.calls.calls[method](params);
   }
 
-  private end(): void {
-    this.grant = undefined;
-    this.calls.linkLost();
-  }
 }
 
 export type WorkerSetup = {

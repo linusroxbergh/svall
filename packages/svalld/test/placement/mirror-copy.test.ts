@@ -1024,7 +1024,7 @@ describe('the entry a target keeps', () => {
     expect(fs.readdirSync(day).sort()).toEqual(['x.md', 'x.md.2']);
   });
 
-  it('a whole-ticked server the person edited since is still known for its key: untick removes it, and no copy holds it', async () => {
+  it('a whole-ticked server the person edited since stays through the untick, its key in it, and no copy holds it', async () => {
     const { home, mac, backups, synced, consent, push } = target();
     const odd = { command: 'odd', env: { T: 'odd_key_secret_1234567890' }, sandbox: { on: true } };
     editJson(home.claudeJson, (j) => { j.mcpServers.odd = odd; });
@@ -1037,7 +1037,7 @@ describe('the entry a target keeps', () => {
     expect(json(mac.claudeJson).mcpServers.odd.timeout).toBe(5);
     expect(holding(backups, 'odd_key_secret')).toEqual([]);
     await consent('claude:mcp:odd', ['command', 'env', 'sandbox'], false);
-    expect(json(mac.claudeJson).mcpServers.odd).toBeUndefined();
+    expect(json(mac.claudeJson).mcpServers.odd).toEqual({ ...odd, timeout: 5 });
     expect(holding(backups, 'odd_key_secret')).toEqual([]);
   });
 

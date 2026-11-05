@@ -32,7 +32,7 @@ export type PluginInstall = { name: string; installPath: string; named?: string[
 export type Secret = { field: string; value: string };
 
 // the server fields each agent's own schema names
-const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
+export const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
   claude: ['type', 'command', 'args', 'env', 'url', 'headers', 'oauth', 'timeout'],
   codex: [
     'command', 'args', 'cwd', 'env', 'url', 'oauth', 'enabled', 'bearer_token_env_var', 'env_vars', 'http_headers', 'env_http_headers', 'startup_timeout_sec',

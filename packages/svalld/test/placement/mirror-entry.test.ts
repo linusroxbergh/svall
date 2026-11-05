@@ -231,7 +231,43 @@ describe('a server copied whole that the person edits', () => {
     expect(json(path.join(s.backups, file)).mcpServers.odd).toBeUndefined();
   });
 
-  it('stays through the untick for their key, the mirror\'s gone, and no later tick copies the mirror\'s', async () => {
+  const EDITS: [string, (o: any) => void][] = [
+    ['a number', (o) => { o.timeout = 5; }],
+    ['a string in a field the mirror cannot read', (o) => { o.sandbox.mine = OWN; }],
+    ['a key of their own', (o) => { o.env.MINE = OWN; }],
+    ['a known shape', (o) => { delete o.sandbox; o.command = 'my-tool'; o.args = ['--profile', 'own', OWN]; }],
+  ];
+  for (const [what, edit] of EDITS) {
+    it(`edited with ${what}, stays byte for byte through the untick and the home's drop, with its record`, async () => {
+      const s = setup();
+      editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+      for (const f of ODD_FIELDS) s.consent.add(f);
+      await s.push();
+      editJson(s.w.claudeJson, (j) => edit(j.mcpServers.odd));
+      const held = structuredClone(json(s.w.claudeJson).mcpServers.odd);
+      s.consent.clear();
+      const r = await s.push();
+      expect(json(s.w.claudeJson).mcpServers.odd).toEqual(held);
+      expect(r.left).toEqual(['odd']);
+      editJson(s.home.claudeJson, (j) => { delete j.mcpServers.odd; });
+      await s.push();
+      expect(json(s.w.claudeJson).mcpServers.odd).toEqual(held);
+      expect(Object.keys(readState(s.stateFile).whole ?? {})).toEqual([JSON.stringify(['.claude.json', 'mcpServers', 'odd'])]);
+    });
+  }
+
+  it('unedited, goes at the untick', async () => {
+    const s = setup();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    s.consent.clear();
+    const r = await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd).toBeUndefined();
+    expect(r.left).toBeUndefined();
+  });
+
+  it('edited and unticked, a later tick replaces it with the file copied first, the mirror\'s strings left out', async () => {
     const s = setup();
     editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
     for (const f of ODD_FIELDS) s.consent.add(f);
@@ -239,24 +275,27 @@ describe('a server copied whole that the person edits', () => {
     editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.env.MINE = OWN; });
     s.consent.clear();
     await s.push();
-    expect(json(s.w.claudeJson).mcpServers.odd.env).toEqual({ T: '', MINE: OWN });
-    expect(read(s.w.claudeJson)).not.toContain('odd_token_1234567890');
     for (const f of ODD_FIELDS) s.consent.add(f);
     await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd).toEqual(ODD);
     expect(s.holding(OWN).length).toBeGreaterThan(0);
     expect(s.holding(K)).toEqual([]);
   });
 
-  it('goes with the home\'s drop the same way', async () => {
+  it('edited, deleted by the person, is done with: its record goes and a tick writes it anew', async () => {
     const s = setup();
     editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
     for (const f of ODD_FIELDS) s.consent.add(f);
     await s.push();
-    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.env.MINE = OWN; });
-    editJson(s.home.claudeJson, (j) => { delete j.mcpServers.odd; });
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
+    s.consent.clear();
     await s.push();
-    expect(json(s.w.claudeJson).mcpServers.odd.env.MINE).toBe(OWN);
-    expect(read(s.w.claudeJson)).not.toContain(K);
+    editJson(s.w.claudeJson, (j) => { delete j.mcpServers.odd; });
+    await s.push();
+    expect(readState(s.stateFile).whole ?? {}).toEqual({});
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    expect(json(s.w.claudeJson).mcpServers.odd).toEqual(ODD);
   });
 
   it('turning per-field with an equal key stays a copy, which the untick takes', async () => {
@@ -275,7 +314,7 @@ describe('a server copied whole that the person edits', () => {
     expect(read(s.w.claudeJson)).not.toContain(K);
   });
 
-  it('a rollback copy holding it goes with the untick', async () => {
+  it('a rollback copy holding it stays while the live one holds the key, and goes once the person deletes that', async () => {
     const s = setup();
     editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
     for (const f of ODD_FIELDS) s.consent.add(f);
@@ -283,11 +322,25 @@ describe('a server copied whole that the person edits', () => {
     editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
     const bak = `${s.w.claudeJson}.bak-1700000000000`;
     fs.writeFileSync(bak, read(s.w.claudeJson));
-    await s.push();
-    expect(fs.existsSync(bak)).toBe(true);
     s.consent.clear();
     await s.push();
+    expect(fs.existsSync(bak)).toBe(true);
+    editJson(s.w.claudeJson, (j) => { delete j.mcpServers.odd; });
+    await s.push();
     expect(fs.existsSync(bak)).toBe(false);
+  });
+
+  it('a rollback copy of a person\'s own server of that name, holding no mirror key, stays', async () => {
+    const s = setup();
+    put(s.w.claudeJson, JSON.stringify({ mcpServers: { odd: { command: 'uvx', env: { MINE: OWN } } } }));
+    const bak = `${s.w.claudeJson}.bak-1700000000000`;
+    fs.writeFileSync(bak, read(s.w.claudeJson));
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = { command: 'uvx', env: { T: K }, sandbox: { on: true } }; });
+    s.consent.add('claude:mcp:odd#command').add('claude:mcp:odd#env').add('claude:mcp:odd#sandbox');
+    await s.push();
+    s.consent.clear();
+    await s.push();
+    expect(fs.existsSync(bak)).toBe(true);
   });
 
   it('on a Copy, stays while it holds more than the copy, and the apply says so', async () => {
@@ -345,24 +398,29 @@ describe('a server of a shape the mirror cannot read', () => {
     expect(s.holding(OWN).length).toBeGreaterThan(0);
   });
 
-  it('holding only strings the sender holds is still the mirror\'s: a change of the sender\'s replaces it', async () => {
+  it('any edit that leaves it so freezes it: the sender\'s change does not land, and it stays through a drop, a row says so, and deleting it brings the sender\'s back', async () => {
     const s = setup();
     await s.push();
     editJson(s.w.claudeJson, (j) => { j.mcpServers.linear.sandbox = { on: true }; });
     editJson(s.home.claudeJson, (j) => { j.mcpServers.linear.timeout = 9; });
     await s.push();
-    expect(json(s.w.claudeJson).mcpServers.linear.timeout).toBe(9);
-    expect(json(s.w.claudeJson).mcpServers.linear.sandbox).toBeUndefined();
+    expect(json(s.w.claudeJson).mcpServers.linear.sandbox).toEqual({ on: true });
+    expect(json(s.w.claudeJson).mcpServers.linear.timeout).toBeUndefined();
+    const plan = mirrorPlan(s.home, s.consent);
+    const report = configReport(reportAsk(plan), { ...s.options, overrides: s.w.overrides, envFile: path.join(s.w.homedir, '.svall/.env') });
+    expect(setupRows(plan, report, { machine: 'm', fleetFlag: '', unchecked: 'not checked', overrides: 'overrides' }).find((r) => r.key === 'edited:claude:mcp:linear')?.detail).toContain('stays as you edited it and no longer follows');
+    editJson(s.w.claudeJson, (j) => { delete j.mcpServers.linear; });
+    await s.push();
+    expect(json(s.w.claudeJson).mcpServers.linear).toMatchObject({ command: 'npx', timeout: 9 });
   });
 
-  it('holding a string the sender no longer holds stays the person\'s, unticked', async () => {
+  it('frozen, stays when the home drops it', async () => {
     const s = setup();
     await s.push();
     editJson(s.w.claudeJson, (j) => { j.mcpServers.linear.sandbox = { on: true }; });
-    editJson(s.home.claudeJson, (j) => { j.mcpServers.linear.args = ['-y', 'linear-mcp@2']; });
+    editJson(s.home.claudeJson, (j) => { delete j.mcpServers.linear; });
     await s.push();
     expect(json(s.w.claudeJson).mcpServers.linear.sandbox).toEqual({ on: true });
-    expect(json(s.w.claudeJson).mcpServers.linear.args).toEqual(['-y', 'linear-mcp']);
   });
 });
 
@@ -529,6 +587,91 @@ describe('a held value of another shape than the sender\'s', () => {
   });
 });
 
+describe('a retained entry', () => {
+  it('keeps a url it requires, in its redacted form, when the home drops the server', async () => {
+    const s = setup();
+    put(s.homeToml, ['[mcp_servers.gh]', `url = "https://gh.test/mcp?api_key=${K}"`, ''].join('\n'));
+    s.consent.add('codex:mcp:gh#url.api_key');
+    await s.push();
+    expect(read(s.macToml)).toContain(K);
+    fs.appendFileSync(s.macToml, `\n[mcp_servers.gh.http_headers]\nX-Mine = "${OWN}"\n`);
+    put(s.homeToml, 'model = "x"\n');
+    await s.push();
+    expect(read(s.macToml)).not.toContain(K);
+    expect(s.toml().mcp_servers.gh.url).toMatch(/^https:\/\/gh\.test\/mcp/);
+    expect(s.toml().mcp_servers.gh.http_headers['X-Mine']).toBe(OWN);
+  });
+
+  it('keeps a provider\'s base_url the same way', async () => {
+    const s = setup();
+    const url = `https://acme.test/v1?api_key=${K}`;
+    put(s.homeToml, ['[model_providers.acme]', 'name = "Acme"', `base_url = "${url}"`, ''].join('\n'));
+    const field = mirrorPlan(s.home).configs.find((c) => c.key === 'codex:config')!.fields.find((f) => f.includes('base_url'))!;
+    s.consent.add(`codex:config#${field}`);
+    await s.push();
+    fs.appendFileSync(s.macToml, `\n[model_providers.acme.http_headers]\nX-Mine = "${OWN}"\n`);
+    put(s.homeToml, 'model = "x"\n');
+    await s.push();
+    expect(read(s.macToml)).not.toContain(K);
+    expect(s.toml().model_providers.acme.base_url).toMatch(/^https:\/\/acme\.test\/v1/);
+  });
+});
+
+describe('a config entry\'s copy', () => {
+  it('leaves out a copied arg the person moved, beside their own key', async () => {
+    const s = setup();
+    put(s.homeToml, LISTED);
+    s.consent.add(ARG);
+    await s.push();
+    fs.writeFileSync(s.macToml, `${read(s.macToml).replace('"--verbose",', '"--new", "--verbose",')}\n[model_providers.acme.http_headers]\nX-Own = "${OWN}"\n`);
+    await s.push();
+    expect(s.holding(OWN).length).toBeGreaterThan(0);
+    expect(s.holding(K)).toEqual([]);
+  });
+
+  it('takes no copy for the same entry in another key order', async () => {
+    const s = setup();
+    await s.push();
+    const before = s.holding('');
+    editJson(s.w.claudeJson, (j) => { const { command, args, env } = j.mcpServers.linear; j.mcpServers.linear = { env, args, command }; });
+    s.consent.add('claude:mcp:linear#env.LINEAR_API_KEY');
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'lin_api_1234567890'; });
+    await s.push();
+    expect(s.holding('')).toEqual(before);
+    expect(readState(s.stateFile).replaced).toBeUndefined();
+  });
+});
+
+describe('what a table is', () => {
+  it('a section with any child that is no table stays one value on a push', async () => {
+    const s = setup();
+    const [at, here] = [path.join(s.home.claudeDir, 'settings.json'), path.join(s.w.claudeDir, 'settings.json')];
+    editJson(at, (j) => { j.sandbox = { enabled: true }; });
+    editJson(here, (j) => { j.sandbox = { enabled: false, network: { allowedDomains: ['*'] } }; });
+    await s.push();
+    expect(json(here).sandbox).toEqual({ enabled: true });
+  });
+
+  it('a section the sender holds with no table in it stays one value too', async () => {
+    const s = setup();
+    const [at, here] = [path.join(s.home.claudeDir, 'settings.json'), path.join(s.w.claudeDir, 'settings.json')];
+    editJson(at, (j) => { j.tools = { a: { on: true }, plain: 1 }; });
+    editJson(here, (j) => { j.tools = { mine: { on: true } }; });
+    await s.push();
+    expect(json(here).tools).toEqual({ a: { on: true }, plain: 1 });
+  });
+
+  it('on a Copy, every child the home holds stays, the sender\'s laid over it', async () => {
+    const s = setup('copy');
+    const [at, here] = [path.join(s.home.claudeDir, 'settings.json'), path.join(s.w.claudeDir, 'settings.json')];
+    editJson(at, (j) => { j.permissions = { allow: ['a'] }; j.sandbox = { enabled: true }; });
+    editJson(here, (j) => { j.permissions = { allow: ['b'], deny: ['keep'] }; j.sandbox = { enabled: false, network: { allowedDomains: ['x'] } }; });
+    await s.push();
+    expect(json(here).permissions).toEqual({ allow: ['a'], deny: ['keep'] });
+    expect(json(here).sandbox).toEqual({ enabled: true, network: { allowedDomains: ['x'] } });
+  });
+});
+
 describe('what a kept entry holds', () => {
   it('a TOML value JSON cannot hold stays as it was', async () => {
     const s = setup();
@@ -558,6 +701,41 @@ describe('a keyed file behind a link', () => {
     s.consent.clear();
     await s.push();
     expect(fs.existsSync(dotfile) && read(dotfile).includes(K)).toBe(false);
+  });
+});
+
+describe('a link where a keyed file lay', () => {
+  it('goes alone at the untick when it leads to a file of the person\'s, and that stays', async () => {
+    const s = setup();
+    put(path.join(s.home.claudeDir, 'agents/keyed.md'), ['---', 'name: keyed', 'mcpServers:', '  x:', '    command: x', '    env:', `      K: ${K}`, '---', 'hi', ''].join('\n'));
+    const row = mirrorPlan(s.home, s.consent, { state: readState(s.stateFile), projects: {}, platform: 'darwin' } as never).plugins.find((p) => p.key.startsWith('claude:agent:'))!;
+    for (const f of row.fields) s.consent.add(`${row.key}#${f}`);
+    await s.push();
+    const landed = path.join(s.w.claudeDir, 'agents/keyed.md');
+    const dotfile = path.join(s.w.homedir, 'dotfiles/mine.md');
+    put(dotfile, 'my own\n');
+    fs.rmSync(landed);
+    fs.symlinkSync(dotfile, landed);
+    s.consent.clear();
+    await s.push();
+    expect(fs.lstatSync(landed, { throwIfNoEntry: false })).toBeUndefined();
+    expect(read(dotfile)).toBe('my own\n');
+  });
+
+  it('to a folder stops no push', async () => {
+    const s = setup();
+    put(path.join(s.home.claudeDir, 'agents/keyed.md'), ['---', 'name: keyed', 'mcpServers:', '  x:', '    command: x', '    env:', `      K: ${K}`, '---', 'hi', ''].join('\n'));
+    const row = mirrorPlan(s.home, s.consent, { state: readState(s.stateFile), projects: {}, platform: 'darwin' } as never).plugins.find((p) => p.key.startsWith('claude:agent:'))!;
+    for (const f of row.fields) s.consent.add(`${row.key}#${f}`);
+    await s.push();
+    const landed = path.join(s.w.claudeDir, 'agents/keyed.md');
+    const dir = path.join(s.w.homedir, 'dotfiles');
+    put(path.join(dir, 'x.md'), 'my own\n');
+    fs.rmSync(landed);
+    fs.symlinkSync(dir, landed);
+    s.consent.clear();
+    await s.push();
+    expect(read(path.join(dir, 'x.md'))).toBe('my own\n');
   });
 });
 
@@ -610,6 +788,31 @@ describe('the rows of a target', () => {
     const s = setup();
     await s.push();
     expect(rowsOf(s).find((r) => r.key === 'var:REMOTE_TOKEN')).toMatchObject({ status: 'warn' });
+  });
+
+  it('ask for a variable a kept server still reads, by what it holds', async () => {
+    const s = setup();
+    put(s.w.claudeJson, JSON.stringify({ mcpServers: { remote: { type: 'http', url: 'https://remote.test/mcp', headers: { Authorization: 'Bearer ${REMOTE_TOKEN}', 'X-Own': OWN } } } }));
+    await s.push();
+    expect(rowsOf(s).find((r) => r.key === 'var:REMOTE_TOKEN')).toMatchObject({ status: 'warn' });
+  });
+
+  it('ask for none a server kept for its shape does not read', async () => {
+    const s = setup();
+    put(s.w.claudeJson, JSON.stringify({ mcpServers: { remote: { type: 'http', url: 'https://mine.test/mcp', sandbox: { on: true } } } }));
+    await s.push();
+    expect(rowsOf(s).find((r) => r.key === 'var:REMOTE_TOKEN')).toBeUndefined();
+  });
+
+  it('name a whole copy edited and unticked, and what to do', async () => {
+    const s = setup();
+    editJson(s.home.claudeJson, (j) => { j.mcpServers.odd = ODD; });
+    for (const f of ODD_FIELDS) s.consent.add(f);
+    await s.push();
+    editJson(s.w.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
+    s.consent.clear();
+    await s.push();
+    expect(rowsOf(s).find((r) => r.key === 'claude:mcp:odd')?.detail).toBe('odd stays as you edited it, with the key the mirror copied in it; remove it yourself');
   });
 
   it('offer no tick for a server in a plugin file the plan does not carry', () => {

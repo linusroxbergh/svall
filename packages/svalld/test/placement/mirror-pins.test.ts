@@ -143,7 +143,7 @@ describe('the entry', () => {
     await synced();
     editJson(mac.claudeJson, (j) => { j.mcpServers.a.sandbox = { on: true }; delete j.mcpServers.a.command; });
     await push();
-    expect(json(mac.claudeJson).mcpServers.a).toBeDefined();
+    expect(json(mac.claudeJson).mcpServers.a.sandbox).toEqual({ on: true });
   });
 
   it('E4 a tick on an entry holding another key of the person\'s, with the ticked key equal already, replaces it whole', async () => {
@@ -218,7 +218,7 @@ describe('a forged Copy', () => {
 
 describe('a rollback copy', () => {
   const STAMP = '.bak-1730000000000';
-  it('B1 a rollback copy of a whole server the person edited, holding its key, goes with the untick', async () => {
+  it('B1 a rollback copy of a whole server the person edited stays while the live one holds its key', async () => {
     const { home, mac, synced, consent } = onMac();
     const odd = { command: 'odd', sandbox: { token: 'odd_token_1234567890' } };
     editJson(home.claudeJson, (j) => { j.mcpServers.odd = odd; });
@@ -227,8 +227,8 @@ describe('a rollback copy', () => {
     editJson(mac.claudeJson, (j) => { j.mcpServers.odd.timeout = 5; });
     fs.writeFileSync(`${mac.claudeJson}${STAMP}`, read(mac.claudeJson));
     await consent('claude:mcp:odd', ['command', 'sandbox'], false);
-    expect(read(mac.claudeJson)).not.toContain('odd_token');
-    expect(fs.existsSync(`${mac.claudeJson}${STAMP}`)).toBe(false);
+    expect(read(mac.claudeJson)).toContain('odd_token');
+    expect(fs.existsSync(`${mac.claudeJson}${STAMP}`)).toBe(true);
   });
 });
 
