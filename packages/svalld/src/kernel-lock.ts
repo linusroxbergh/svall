@@ -36,6 +36,12 @@ function lockSocket(name: string): Promise<(() => void) | undefined> {
   });
 }
 
+/** The lock a fleet's daemon holds for as long as it runs, so whoever holds it knows none runs and none starts. */
+export const daemonLock = (home: string): Promise<(() => void) | undefined> => tryLock(path.join(home, 'daemon.lock'), `svall-svalld-${sha256Hex(fs.realpathSync(home))}`);
+
+/** The lock each adopt, abort and status of a home move takes, so a `not adopted` can never pass a delayed adopt. */
+export const homeMoveLock = (home: string): Promise<(() => void) | undefined> => tryLock(path.join(home, 'home-move.lock'), `svall-home-move-${sha256Hex(fs.realpathSync(home))}`);
+
 /** Holds this user's agent files for a mirror's apply or a move's trust seed, waiting while another fleet's daemon holds
  *  them, as every fleet's mirror writes the same files. Rejects once `signal` aborts before it holds them. */
 export async function lockAgentFiles(homedir: string, signal?: AbortSignal): Promise<() => void> {

@@ -106,6 +106,12 @@ export function resolvePaths(home: string = svallHome()) {
     retroSessions: path.join(home, 'retro', 'sessions.ndjson'),
     // the home's: the token it issued each worker of this fleet
     workersFile: path.join(home, 'workers.json'),
+    // the fleet is on its way to another home: what this machine asks before it starts as a home again
+    homeMoving: path.join(home, 'home-moving.json'),
+    // the outcome of a move this machine still owes a home with no route to it
+    homeDeliver: path.join(home, 'home-deliver.json'),
+    // each home move's journal, on either side of it
+    homeMoves: path.join(home, 'journal', 'home'),
   };
 }
 export type Paths = ReturnType<typeof resolvePaths>;
@@ -136,7 +142,10 @@ export const fleetHomeOfSocket = (socket: string): string => path.posix.dirname(
 export const isDialSocket = (socket: string, machine: string): boolean => socket === dialSocket({ dialSockets: path.dirname(socket) }, machine);
 
 /** The files that hold a fleet's keys, which Files never opens. */
-export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile];
+export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile, p.homeMoving, p.homeDeliver];
+
+/** Whether `p` lies in a home move's staged folder, which holds a fleet's keys under names of their own. */
+export const inStagedMove = (p: string): boolean => /(^|\/)adopt-hm_[0-9a-z]{10}(\/|$)/.test(p);
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

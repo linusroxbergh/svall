@@ -72,6 +72,8 @@ type Options = {
   mirror?: Pick<Mirror, 'push' | 'settled'>;
   /** The fleet's docs, which a worker takes once linked and after they change. */
   docs?: Pick<HomeDocs, 'push' | 'watch'>;
+  /** While the fleet moves to another home: anything from a worker but its running fields stays in its outbox, unacknowledged. */
+  held?: () => boolean;
 };
 
 /** The far `svall worker link` over this machine's ssh master to the worker. */
@@ -140,6 +142,8 @@ export class WorkerLink {
   private stopped = false;
   // the worker greeted this stream, or the last one if none has opened since
   private heard = false;
+  // an event was left in the worker's outbox while the fleet moves
+  private holding = false;
   // a docs push runs, and another is due after it
   private sendingDocs = false;
   private docsAgain = false;
@@ -216,6 +220,21 @@ export class WorkerLink {
 
   outboxDrained(): boolean {
     return this.synced && this.last === this.acked;
+  }
+
+  /** Whether all the worker has sent is applied and acknowledged, within `ms`; what a stream delivers after this is the barrier's to hold. */
+  async barrier(ms: number): Promise<boolean> {
+    for (const until = Date.now() + ms; Date.now() < until; await new Promise((r) => setTimeout(r, 50))) {
+      await this.applying;
+      if (this.outboxDrained()) return true;
+    }
+    return false;
+  }
+
+  /** The thaw of a move: a stream with held events ends, and its worker replays them on the next. */
+  released(): void {
+    if (this.holding) this.stream?.close();
+    this.holding = false;
   }
 
   start(): void {
@@ -408,6 +427,11 @@ export class WorkerLink {
   // epoch and seq it was applied at, before its ack
   private async apply(stream: LinkStream, f: Extract<LinkFrame, { t: 'inventory' | 'event' }>): Promise<void> {
     if (stream !== this.stream) return;
+    // acks are cumulative, so all that follows a held event waits with it; a stream after the thaw replays them
+    if (f.t === 'event' && (this.holding || (f.kind !== 'robot.sync' && f.seq > this.acked && this.o.held?.()))) {
+      this.holding = true;
+      return;
+    }
     try {
       if (f.t === 'inventory') {
         const inv = Inventory.parse(f);
@@ -476,6 +500,7 @@ export class WorkerLink {
     clearTimeout(this.rehello);
     this.stream = this.route = this.peer = this.odd = this.inventory = undefined;
     this.synced = false;
+    this.holding = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
     this.hook('onLost failed', () => this.o.onLost?.(this.machine));
@@ -581,6 +606,16 @@ export class HomeLinks {
     } catch (e) {
       this.o.log.error(`${dir} is not watched, so a worker that dials in links at its next try: ${(e as Error).message}`);
     }
+  }
+
+  /** Whether all `machine` has sent is in, as the first thing a move of the fleet asks; no link, none is owed. */
+  barrier(machine: MachineId, ms: number): Promise<boolean> {
+    return this.links.get(machine)?.barrier(ms) ?? Promise.resolve(true);
+  }
+
+  /** Every held event comes again, once the move is off. */
+  released(): void {
+    for (const link of this.links.values()) link.released();
   }
 
   /** The workers a call reaches now. */

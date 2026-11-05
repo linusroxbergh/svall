@@ -74,6 +74,7 @@ export class Scribe {
   // the last sweep asked for, which runs after any before it
   private sweeping?: { key: string; done: Promise<string[]> };
   private stopped = false;
+  private held = false;
   private aborter = new AbortController();
 
   // what a transcript holds at a daemon start was there for the passes before it; only what it grows by is new
@@ -91,6 +92,12 @@ export class Scribe {
   stop(): void {
     this.stopped = true;
     this.aborter.abort();
+  }
+
+  /** While the fleet moves: no pass starts, and one running ends without reaching it. */
+  hold(on: boolean): void {
+    this.held = on;
+    if (on) { this.aborter.abort(); this.aborter = new AbortController(); }
   }
 
   private now(): number {
@@ -116,7 +123,7 @@ export class Scribe {
 
   // called on every fleet poll: queue what is due, and start the next pass once the last one is done and spaced
   tick(): void {
-    if (this.stopped || this.off() || this.sweeping) return;
+    if (this.stopped || this.held || this.off() || this.sweeping) return;
     const now = this.now();
     for (const id of Object.keys(this.deps.store.state.robots)) {
       const job: Job = { kind: 'robot', id };
@@ -197,7 +204,7 @@ export class Scribe {
   }
 
   private async safe(job: Job, only?: Only, sweep?: true): Promise<string[]> {
-    if (this.stopped || this.off()) return [];
+    if (this.stopped || this.held || this.off()) return [];
     if (job.kind === 'robot') this.active.add(job.id);
     try {
       return job.kind === 'robot' ? await this.passRobot(job.id, only, sweep) : await this.passIsland(job.id);

@@ -30,6 +30,17 @@ export const registryFile = (dir: string = configDir()): string => path.join(dir
 
 export type MachineEntry = { id: MachineId; record: MachineRecord };
 
+/** Sets or, with none, takes out `id`'s record in the registry, as a home move does for the machine at its other end; the record it held. */
+export function putRecord(id: MachineId, record: MachineRecord | undefined, dir: string = configDir()): MachineRecord | undefined {
+  const entries = readRegistry(dir);
+  const held = entries.find((m) => m.id === id)?.record;
+  const clash = record && entries.find((m) => m.id !== id && m.record.name === record.name);
+  if (clash) throw new Error(`a machine named ${record.name} is already in the registry`);
+  const rest = entries.filter((m) => m.id !== id).map((m) => [m.id, m.record]);
+  writeDurable(registryFile(dir), { machines: Object.fromEntries([...rest, ...(record ? [[id, record]] : [])]) });
+  return held;
+}
+
 /** Whether the registry lists a worker: a machine reached over ssh, or one that dials in. */
 export const listsWorker = (dir?: string): boolean => readRegistry(dir).some((m) => m.record.ssh !== undefined || m.record.dial === 'worker');
 

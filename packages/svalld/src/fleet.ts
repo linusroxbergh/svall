@@ -422,6 +422,11 @@ export class Fleet extends EventEmitter<Events> {
     return endIdleAgents(this.sleep, this.seen, () => this.stopped, (id) => this.prompts.holds(id));
   }
 
+  /** While the fleet moves to another home, its scribe holds still. */
+  holdScribe(on: boolean): void {
+    this.scribe.hold(on);
+  }
+
   /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
    * tmux server goes, and nothing runs again until the next start resumes what it may, or a robot is opened. */
   async stopAll(): Promise<void> {

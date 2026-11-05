@@ -69,6 +69,11 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   // a quit stops this machine's daemon
   'fleet.stop': 'read',
   'fleet.home': 'read',
+  // a home move is this machine's to drive
+  'fleet.freeze': 'read',
+  'fleet.thaw': 'read',
+  'fleet.homeCheck': 'read',
+  'fleet.homeMove': 'read',
   'fleet.config': 'read',
   'workspace.clones': 'read',
   'home.connection': 'read',

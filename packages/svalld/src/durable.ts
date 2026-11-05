@@ -148,7 +148,7 @@ export function appendDurable(file: string, value: object): void {
 }
 
 /** Makes a rename in `dir` durable, accepting the filesystems that refuse to fsync a directory. */
-function syncDir(dir: string, stages: DurableStages = realStages): void {
+export function syncDir(dir: string, stages: DurableStages = realStages): void {
   try {
     stages.fsyncDir(dir);
   } catch (err) {

@@ -1,6 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
-import { MachineId, SystemInfo } from './machines.js';
+import { Enrolment, HomeMoveId, HomeMoving, HomeSheet } from './home-move.js';
+import { FleetId, MachineId, SystemInfo } from './machines.js';
 import { HomeState, MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { DismissReason, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
@@ -120,6 +121,7 @@ export const AGENT_UPDATE_MS = 5 * 60_000;
 const DROP_TIMEOUT_MS = 10 * 60_000;
 
 const HOME_CONNECTION_MS = 60_000;
+const FREEZE_MS = 60_000;
 
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
@@ -127,7 +129,8 @@ export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
   // a far command, its forward and a greeting through it, each with a timeout of its own
-  if (method === 'home.connection') return HOME_CONNECTION_MS;
+  if (method === 'home.connection' || method === 'fleet.homeCheck' || method === 'fleet.homeMove') return HOME_CONNECTION_MS;
+  if (method === 'fleet.freeze') return FREEZE_MS;
   if (method === 'retro.plan') return RETRO_PLAN_TIMEOUT_MS;
   // each fix may start a robot, which waits for its agent as robot.create with a run does
   if (method === 'retro.mark') return ((params as { marks?: { action?: string }[] }).marks ?? []).filter((m) => m.action === 'fix').length * RUN_TIMEOUT_MS;
@@ -165,7 +168,8 @@ export type ChangedFile = z.infer<typeof ChangedFile>;
 const RootPath = z.object({ id: z.string(), path: z.string() });
 // carry names the credential files ticked to travel; interruptAfterMs, how long a working agent has before it is interrupted;
 // ownWorktree, that a robot on a main checkout moves into a new worktree of its own at HEAD, and the checkout keeps its changes
-const MoveParams = z.object({ id: z.string(), machine: MachineId, carry: z.array(z.string()).optional(), interruptAfterMs: z.number().int().nonnegative().optional(), ownWorktree: z.boolean().optional() });
+// homeMove: the home move this one goes ahead of, the one thing that moves a mission control robot
+const MoveParams = z.object({ id: z.string(), machine: MachineId, carry: z.array(z.string()).optional(), interruptAfterMs: z.number().int().nonnegative().optional(), ownWorktree: z.boolean().optional(), homeMove: HomeMoveId.optional() });
 export const ResourceKind = z.enum(['docs', 'agentProfiles', 'instructions', 'skills', 'agents', 'commands', 'plugins', 'mcp', 'hooks', 'settings', 'autoMemory']);
 export type ResourceKind = z.infer<typeof ResourceKind>;
 // rootId and path are what fs.read takes; find is text to put the cursor on, folder what a skill's row unfolds to
@@ -394,7 +398,21 @@ export const methods = {
   // the app quitting: every terminal ends, each robot resumes at the next start or when opened, and the daemon exits once it has answered
   'fleet.stop': { params: z.object({}), result: z.object({}) },
   // the fleet's home, and whether the daemon that answers is that home
-  'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean(), me: MachineId }) },
+  'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean(), me: MachineId, fleetId: FleetId.optional() }) },
+  // a home move: this home takes no more writes, what its workers have sent is in, and the fleet's files are whole. Held by this connection until it is marked, so a driver that dies thaws it
+  'fleet.freeze': { params: z.object({ id: HomeMoveId, to: MachineId }), result: z.object({ phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }) }) },
+  'fleet.thaw': { params: z.object({ id: HomeMoveId }), result: z.object({}) },
+  // whether the fleet can move to machine `to` now, every reason it cannot with its own action
+  'fleet.homeCheck': { params: z.object({ to: MachineId }), result: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), sheet: HomeSheet }), z.object({ ok: z.literal(false), refusal: Refusal, sheet: HomeSheet.optional() })]) },
+  // a move under way as this daemon holds it: `mark` writes the marker past which it never thaws by itself, `ask` looks for the outcome now, `abort` calls the move off where that can still be done, `join` records the outcome and ends this daemon, whose next start joins
+  'fleet.homeMove': {
+    params: z.discriminatedUnion('op', [
+      z.object({ op: z.literal('status') }), z.object({ op: z.literal('ask') }), z.object({ op: z.literal('abort') }),
+      z.object({ op: z.literal('mark'), marker: HomeMoving }),
+      z.object({ op: z.literal('join'), id: HomeMoveId, enrol: Enrolment }),
+    ]),
+    result: z.object({ moving: z.object({ id: HomeMoveId, to: MachineId, name: z.string(), asks: z.boolean(), answer: z.string().optional() }).optional() }),
+  },
   // the root fs.read and fs.write reach fleet.json through, in the editor of a window on a far home; a worker holds no fleet's config
   'fleet.config': { params: z.object({}), result: z.object({ rootId: z.string(), path: z.string() }) },
   // the folders a new robot can start in on the machine that answers: where its robots work and the clones it holds. `clone`: a worker away from its home starts only in one. `defaults`: the fleet's default and mission control folders there, as state holds them with `~`

@@ -250,7 +250,7 @@ export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run:
  * Whether robot `robotId` can move from this Mac to `to`, with the sentence and action of the first check that fails
  * and the rest behind details; when all pass, the sheet of what travels and the plan the move follows.
  */
-export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number; ownWorktree?: boolean } = {}): Promise<CheckResult> {
+export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number; ownWorktree?: boolean; homeMove?: string } = {}): Promise<CheckResult> {
   const s = d.store.state;
   if (!Object.hasOwn(s.robots, robotId)) throw new NotFound(`no robot ${robotId}`);
   const c = s.robots[robotId];
@@ -268,7 +268,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (s.islands[c.islandId]?.kind === 'home') fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
+  if (s.islands[c.islandId]?.kind === 'home' && !o.homeMove) fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
 
   // 1: reachable, on this release

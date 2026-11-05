@@ -60,11 +60,18 @@ export class WorkerMutations {
   };
   // the starts the quota let through that are not journaled yet, by the params the fleet hands back to `created`
   private starting = new Set<object>();
+  // the home is moving here: nothing new goes in an outbox it would not take
+  private frozen = false;
 
   constructor(private o: {
     store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'fits' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
     me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>; homeWord: () => string;
   }) {}
+
+  /** While the fleet moves, for as long as the home's stream lasts: this worker refuses what it would journal. */
+  setFrozen(on: boolean): void {
+    this.frozen = on;
+  }
 
   /** Whether the home has acknowledged every mutation this worker has journaled; its reports change nothing it could lack. */
   drained(): boolean {
@@ -101,6 +108,7 @@ export class WorkerMutations {
   /** `inWindow`: the person asking sits at this machine's window, which calls it this Mac; anyone else knows it by name. */
   serve<M extends MethodName>(method: M, params: ParsedParams<M>, inWindow = false): Promise<Result<M>> {
     if (!Object.hasOwn(this.handlers, method)) throw new Error(`${method} is not served on a worker`);
+    if (this.frozen && method !== 'robot.seen') throw new ApiError('frozen', `the fleet is moving here from ${this.o.homeWord()}; try again once it has`);
     return (this.handlers[method as Served] as unknown as (p: ParsedParams<M>, where: string) => Promise<Result<M>>)(params, inWindow ? 'this Mac' : this.name);
   }
 

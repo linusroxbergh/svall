@@ -1,4 +1,4 @@
-import { isRelease } from './release.js';
+import { isRelease, releaseSigned } from './release.js';
 
 /** Every step of a robot move, the worker's outbox and the home's apply of it that a crash can fall before or after; the
  *  fault suite fails on a name here that no case crashes at. */
@@ -38,6 +38,27 @@ export const FAILPOINTS = [
 ] as const;
 
 export type Failpoint = (typeof FAILPOINTS)[number];
+
+/** Every operation of a home move a crash can fall before or after: each file replaced, each role change and each commit. */
+export const HOME_FAILPOINTS = [
+  'adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'adopt.committed',
+  'restore.file', 'restore.done', 'abort.recorded',
+  'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done',
+  'mark.written', 'enrol.written',
+] as const;
+export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
+/** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */
+export class HomeCrash extends Error {}
+let homeArmed: ((name: HomeFailpoint) => void) | undefined;
+/** A crash in a test falls here, or by SVALL_HOME_FAULT in a build no one signed, which dies on the spot. */
+export function homePoint(name: HomeFailpoint): void {
+  homeArmed?.(name);
+  if (process.env.SVALL_HOME_FAULT === name && !releaseSigned()) process.kill(process.pid, 'SIGKILL');
+}
+export function armHomeFailpoints(hook: (name: HomeFailpoint) => void): () => void {
+  homeArmed = hook;
+  return () => { if (homeArmed === hook) homeArmed = undefined; };
+}
 export type Edge = 'before' | 'after';
 /** `threw` is no failpoint: it tells the hook that a step ended by throwing, and so reaches no `after`. */
 export type FailpointHook = (name: Failpoint, edge: Edge | 'threw') => void;

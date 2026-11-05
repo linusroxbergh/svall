@@ -6,24 +6,17 @@ import { createLogger } from './log.js';
 import { configDir, machineId, machineIdFailure } from './machine.js';
 import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
-import { heldAsHome, isWorker } from './worker/mode.js';
+import { startsAsWorker } from './worker/mode.js';
 
 const home = svallHome();
 fs.mkdirSync(home, { recursive: true });
 const paths = resolvePaths(home);
 const log = createLogger(paths.log);
-// a Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker, but for a fleet's home
 const asWorker = (): true | undefined => {
   if (process.argv.includes('--worker')) return true;
-  if (!isWorker(paths)) return undefined;
-  // only a worker's outbox writes it, so what this holds is a worker's, even with no link yet
-  if (fs.existsSync(paths.epoch)) return true;
-  let me: string;
-  try { me = machineId(); } catch (e) { throw new InvalidConfig(machineIdFailure(e), { cause: e }); }
-  let held: string | undefined;
-  try { held = heldAsHome(paths, me); } catch (e) { throw new InvalidConfig((e as Error).message, { cause: e }); }
-  if (held) throw new InvalidConfig(`${paths.workerFile} makes this fleet home a worker, but it holds ${held} as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
-  return true;
+  return startsAsWorker(paths, () => {
+    try { return machineId(); } catch (e) { throw new InvalidConfig(machineIdFailure(e), { cause: e }); }
+  });
 };
 
 process.on('uncaughtException', (e) => log.error(`uncaught: ${e.stack ?? String(e)}`));
@@ -46,7 +39,7 @@ async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
     try {
-      return await startDaemon({ home, log, worker: asWorker() });
+      return await startDaemon({ home, log, worker: asWorker });
     } catch (e) {
       // no file here can fix that; the other build's setup restarts the agent onto its own program
       if (e instanceof OtherBuildHome) {

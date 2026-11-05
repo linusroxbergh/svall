@@ -29,7 +29,7 @@ export type Inventory = z.infer<typeof Inventory>;
 const generation = (r: Robot): number => r.placement?.generation ?? 0;
 
 // `to` with the worker-owned fields `from` holds, and without those it lacks
-function withOwned(to: Robot, from: Pick<Robot, Owned>): Robot {
+export function withOwned(to: Robot, from: Pick<Robot, Owned>): Robot {
   const next: Record<string, unknown> = { ...to };
   for (const k of WORKER_OWNED) {
     if (from[k] === undefined) delete next[k];

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { MachineId, type ParsedParams, type Robot } from '@svall/protocol';
+import { MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -13,14 +13,16 @@ import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig,
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
+import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
+import { askAcross, factsAcross, startDeliveries } from './fleet/home-far.js';
+import { homeGate } from './fleet/home-move.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
-import { sha256Hex } from './hash.js';
 import { startHookReceiver } from './hooks/receiver.js';
 import { HomeApi } from './link/home-api.js';
 import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
-import { tryLock } from './kernel-lock.js';
+import { daemonLock } from './kernel-lock.js';
 import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
@@ -90,13 +92,13 @@ const alreadyRunning = (home: string): Error => new AlreadyRunning(`svalld is al
 
 // a kernel lock, on Linux named after the home's real path
 async function lockHome(home: string): Promise<() => void> {
-  const unlock = await tryLock(path.join(home, 'daemon.lock'), `svall-svalld-${sha256Hex(fs.realpathSync(home))}`);
+  const unlock = await daemonLock(home);
   if (!unlock) throw alreadyRunning(home);
   return unlock;
 }
 
 /** `hardware`, for the reader of this machine's hardware id; `worker`, to run as a worker of the home worker.json names. */
-type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true };
+type Options = { home: string; port?: number; host?: string; log?: Logger; hardware?: HardwareReader; worker?: true | (() => true | undefined); frozen?: HomeMoving };
 
 export class OtherBuildHome extends Error {}
 
@@ -107,7 +109,11 @@ export async function startDaemon(opts: Options): Promise<Daemon> {
   if (owner && owner !== variant) throw new OtherBuildHome(`${opts.home} belongs to ${owner === 'dev' ? 'Svall Dev' : 'Svall'}, not to this build`);
   fs.mkdirSync(opts.home, { recursive: true, mode: 0o700 });
   const unlock = await lockHome(opts.home);
-  const daemon = await start(opts).catch((e: unknown) => { unlock(); throw e; });
+  const daemon = await (async () => {
+    // an install a crash cut short, or a join it was told of, is settled before anything reads the fleet home, and the role read after
+    const { frozen } = homeGate(resolvePaths(opts.home));
+    return start({ ...opts, worker: typeof opts.worker === 'function' ? opts.worker() : opts.worker, frozen });
+  })().catch((e: unknown) => { unlock(); throw e; });
   return { ...daemon, stop: async () => { await daemon.stop(); unlock(); } };
 }
 
@@ -149,7 +155,7 @@ function workerMachineId(hardware?: HardwareReader): MachineId {
   }
 }
 
-async function start(opts: Options): Promise<Daemon> {
+async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise<Daemon> {
   const paths = resolvePaths(opts.home);
   fs.chmodSync(paths.home, 0o700);
   rotateLog(paths.log);
@@ -232,6 +238,8 @@ async function start(opts: Options): Promise<Daemon> {
     // a worker runs the release, whose fleet homes are ~/.svall and ~/.svall-<name>
     overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
   });
+  // while the fleet moves, what a worker sends but its running fields stays in its outbox
+  let holding = false;
   const links = worker ? undefined : new HomeLinks({
     paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
@@ -263,6 +271,7 @@ async function start(opts: Options): Promise<Daemon> {
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
     mirror: homeMirror,
     ...(homeDocs && { docs: homeDocs }),
+    held: () => holding,
   });
   // the one copy of a worker's agent setup this home takes, when a person asks for it
   const setupCopy = links && new SetupCopy({ ...mirrorPlace, backups: paths.mirrorBackup, links });
@@ -277,6 +286,8 @@ async function start(opts: Options): Promise<Daemon> {
     // the home's viewers watch and hold terminals here only while it is linked, and the mirror it sent waits for no other link
     onLink: (live) => {
       if (live) return;
+      mutations?.setFrozen(false);
+      workerDocs?.setPaused(false);
       dial?.check();
       for (const v of farViewers?.dropAll() ?? []) { workspace.unwatchAll(v); terminals.closeAll(v); }
       workerMirror?.linkLost();
@@ -320,6 +331,12 @@ async function start(opts: Options): Promise<Daemon> {
   // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
   if (worker) calls['screen.home'] = homeScreenCall(terminals, worker.worker.homeMachineId);
+  // the home is moving here: nothing new goes in the outbox while its archive is cut
+  if (mutations && workerDocs) {
+    calls['home.freeze'] = () => { mutations.setFrozen(true); workerDocs.setPaused(true); return Promise.resolve({}); };
+    calls['home.thaw'] = () => { mutations.setFrozen(false); workerDocs.setPaused(false); return Promise.resolve({}); };
+  }
+  if (worker) calls['home.facts'] = (p) => homeFacts(paths, { paths: (p as { paths?: string[] }).paths, me, role: 'worker', fleetId: worker.worker.fleetId });
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
@@ -367,10 +384,47 @@ async function start(opts: Options): Promise<Daemon> {
   // the home's usage panel counts a worker's robots as the worker reads them
   if (connection) calls['usage.get'] = () => usage();
 
+  // what only a home runs, each off while the fleet moves and on again if it stays: set as the daemon starts
+  const held: { start(): () => void; stop?: () => void }[] = [];
+  const background = {
+    on: false,
+    pause() { if (!this.on) return; this.on = false; fleet.holdScribe(true); retro?.stop(); for (const h of held) { h.stop?.(); h.stop = undefined; } },
+    resume() { if (this.on) return; this.on = true; fleet.holdScribe(false); retro?.start(); for (const h of held) h.stop ??= h.start(); },
+  };
+  const freeze = links && new HomeFreeze({
+    paths, store, me, log,
+    links: {
+      barrier: (m, ms) => links.barrier(m, ms),
+      hold: (on) => { holding = on; if (!on) links.released(); },
+      call: (m, method, params) => links.call(m, method, params),
+    },
+    background,
+    phone: mobile,
+    ask: (marker, op) => askAcross(marker, op),
+    // the supervisor starts it again, or the app within seconds of opening; a start finishes the join
+    restart: () => { setImmediate(() => fleet.emit('stopped')); },
+  }, opts.frozen);
+  const homeChecks = async (to: MachineId) => {
+    const worker_ = worker?.worker;
+    const fleetId = readFleetConfig(paths).id;
+    const here = await homeFacts(paths, { me, role: worker ? 'worker' : 'home', fleetId });
+    const rewrites = (home: string) => configRewrites(paths, home);
+    if (worker_) {
+      // the way back: this machine takes the fleet, and the home answers over this daemon's own connection to it
+      const far = await factsAcross(dial, worker_).catch(() => undefined);
+      const toName = ownName();
+      const from = far ?? { ...here, machineId: worker_.homeMachineId };
+      return homeCheck({ state: store.state, from, to: here, toName, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), serving: false, fromIsHome: to === me });
+    }
+    const link = links?.for(to);
+    const name = store.state.machines?.[to]?.name ?? to;
+    const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, workers: workersOf(paths), rewrites: rewrites(os.homedir()), serving: mobile.served() !== undefined, fromIsHome: true });
+  };
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   const fleetHome = () => (worker
-    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me }
-    : { machine: me, name: ownName(), mine: true, me });
+    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me, fleetId: worker.worker.fleetId }
+    : { machine: me, name: ownName(), mine: true, me, fleetId: config.id });
 
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
@@ -392,22 +446,29 @@ async function start(opts: Options): Promise<Daemon> {
   const stop = () => (stopping ??= (async () => { for (const fn of teardown.splice(0).reverse()) await fn(); })());
   try {
     await fleet.start();
+    background.on = true;
     retro?.start();
     // the home holds every robot's report and the lines each is owed, wherever it runs
-    if (!worker) teardown.push(startRelay({ store, notify: (id, text) => fleet.notify(id, text), log, here: (c) => router.runsHere(c) }));
+    if (!worker) held.push({ start: () => startRelay({ store, notify: (id, text) => fleet.notify(id, text), log, here: (c) => router.runsHere(c) }) });
     // each daemon pushes for the robots that run on it; the home also for those on a worker that does not serve the phone
     if (!off.has('push')) {
-      teardown.push(startPusher({
+      held.push({ start: () => startPusher({
         store, push, send: webPushSender(vapid), log, logins: mobile.logins, served: mobile.served, contact: () => config.mobile.pushContact,
         ...(phone && { owns: (c: Robot) => phone.pushesFor(c) }),
-      }));
+      }) });
     }
+    teardown.push(() => { for (const h of held) { h.stop?.(); h.stop = undefined; } });
     if (workerPhone) {
       const send: Send = (sub, payload, subject) => { const v = workerPhone.vapid(); return v ? webPushSender(v)(sub, payload, subject) : Promise.resolve(); };
       teardown.push(startPusher({
         store, push: workerPhone, send, log, logins: () => workerPhone.logins(), served: () => workerPhone.served(), contact: () => workerPhone.contact(),
         owns: (c) => router.runsHere(c), machine: me,
       }));
+    }
+    for (const h of held) h.stop = h.start();
+    if (freeze) {
+      freeze.start();
+      teardown.push(() => freeze.stop());
     }
     if (phone) teardown.push(phone.start());
     // a running server keeps its old options if the new conf has a line this tmux rejects
@@ -421,7 +482,7 @@ async function start(opts: Options): Promise<Daemon> {
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
       ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
-      ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }),
+      ...(!worker && { fleetConfig: fleetConfigFile(paths, log, refused) }), freeze, homeChecks,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
@@ -454,6 +515,7 @@ async function start(opts: Options): Promise<Daemon> {
       teardown.push(() => dial.stop());
     }
     if (homeApi) teardown.push(() => homeApi.stop());
+    teardown.push(startDeliveries(paths, log));
     for (const tails of [screens, homeScreens]) {
       if (!tails) continue;
       tails.start();

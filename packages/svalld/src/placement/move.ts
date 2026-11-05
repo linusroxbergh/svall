@@ -71,7 +71,7 @@ function clash(a: string, b: string): boolean {
 
 const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b % 36).toString(36)).join('')}`;
 
-export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWorktree?: boolean };
+export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWorktree?: boolean; homeMove?: string };
 
 export type PlacementDeps = {
   store: Store;

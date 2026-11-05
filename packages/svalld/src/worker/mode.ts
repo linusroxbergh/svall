@@ -48,6 +48,18 @@ export function heldAsHome(paths: Paths, me: string): string | undefined {
   return held.length ? new Intl.ListFormat('en').format(held) : undefined;
 }
 
+/** A Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker, but for a fleet's home. */
+export function startsAsWorker(paths: Paths, me: () => string): true | undefined {
+  if (!isWorker(paths)) return undefined;
+  // only a worker's outbox writes it, so what this holds is a worker's, even with no link yet
+  if (fs.existsSync(paths.epoch)) return true;
+  let held: string | undefined;
+  const id = me();
+  try { held = heldAsHome(paths, id); } catch (e) { throw new InvalidConfig((e as Error).message, { cause: e }); }
+  if (held) throw new InvalidConfig(`${paths.workerFile} makes this fleet home a worker, but it holds ${held} as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
+  return true;
+}
+
 const refuse = (): Promise<never> => Promise.reject(new ApiError('not_on_worker', 'not on a worker'));
 
 /** What answers on a worker in place of the phone link and the fleets beside this one. */
