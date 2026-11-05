@@ -88,6 +88,7 @@ final class ShellRouter {
         center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
             self?.sendAppActive()
             self?.notifier.refreshPermission()
+            if let record = BindingsRecord.reread() { self?.bridge.send(record) }
         }
         center.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main) { [weak self] _ in self?.sendAppActive() }
         center.addObserver(forName: NSWindow.didMiniaturizeNotification, object: webView.window, queue: .main) { [weak self] _ in self?.sendAppActive() }
@@ -208,6 +209,8 @@ final class ShellRouter {
             keys.registered = Set(chords)
         case .keysCapture(let on):
             keys.capturing = on
+        case .keysSave(let bindings):
+            BindingsRecord.write(bindings)
         case .keysQuit(let chord):
             setQuit(chord)
         case .menuState(let chords, let state):
@@ -427,7 +430,7 @@ final class ShellRouter {
 
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
-                               ghosttyKeys: GhosttyKeybinds.userChords()))
+                               ghosttyKeys: GhosttyKeybinds.userChords(), bindings: BindingsRecord.read()))
     }
 
     private func pressed(_ event: NSEvent) {

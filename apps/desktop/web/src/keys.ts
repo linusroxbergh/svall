@@ -76,6 +76,8 @@ export type Bindings = Partial<Record<ActionId, Chord | null>>;
 export const chordFor = (id: ActionId, b: Bindings = {}): Chord | null =>
   id in b ? (b[id] ?? null) : ACTIONS[id].chord;
 
+export const sameChords = (a: Bindings, b: Bindings): boolean => actionIds().every((id) => chordFor(id, a) === chordFor(id, b));
+
 // every chord an action answers to: the aliases come along only while it sits where it shipped
 export function chordsOf(id: ActionId, b: Bindings = {}): Chord[] {
   const spec = ACTIONS[id];

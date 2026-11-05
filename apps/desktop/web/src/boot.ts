@@ -7,7 +7,7 @@ import { installDropHandlers } from './drop.js';
 import { setAppStore } from './hooks.js';
 import { dropBuffers } from './ide/buffers.js';
 import { createRepoWatch, type RepoWatch } from './ide/watch.js';
-import { installKeyHandlers } from './keyboard.js';
+import { followBindings, installKeyHandlers } from './keyboard.js';
 import { followLandings } from './landings.js';
 import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
@@ -94,15 +94,17 @@ function createApp(): AppContext {
     followQuit({ store, bridge, api: () => api });
     followMemory({ store, bridge });
     followAwake({ store, bridge });
+    followBindings({ store, bridge });
     bridge.onMessage((m) => {
       // Send Feedback… works before svalld connects, and without it
       if (m.type === 'menu.run' && m.action === 'feedback') { store.getState().toggleFeedback(true); return; }
       if (m.type === 'app.active') { store.getState().setActive(m.active); return; }
       if (m.type === 'ghostty.configErrors') { store.getState().setConfigErrors(m.errors); return; }
       if (m.type === 'shell.info') {
-        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys });
+        store.getState().setShell({ home: m.home, log: m.log, op: m.op, ghosttyKeys: m.ghosttyKeys, bindings: m.bindings });
         return;
       }
+      if (m.type === 'keys.record') { store.getState().adoptBindings(m.bindings); return; }
       if (m.type === 'update.available') { store.getState().setUpdate(m.version || undefined); return; }
       // this window is where the user stays, so the picker goes
       if (m.type === 'openFleet.failed') { store.getState().setFleetPicker(undefined); store.getState().showToast(`Could not open ${m.home}: ${m.reason}`); return; }

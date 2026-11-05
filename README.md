@@ -144,6 +144,7 @@ hooks (your own statusline stays), the launchd agents, the `svall` command and
 each fleet's phone link, and moves the app to the Trash. The settings backups
 stay. With "Also delete fleet data" ticked, it deletes `~/.svall`, the other
 fleets' homes and the app's preferences, sign-ins and caches in `~/Library` too.
+`~/.config/svall`, with this Mac's machine id, machines and keys, stays either way.
 
 `svall uninstall` does the same from a terminal, but deletes the app instead of
 moving it to the Trash, and asks before deleting it or the fleets. `--purge`
@@ -258,8 +259,9 @@ has the steps.
 
 Terminals are Ghostty surfaces and read your Ghostty config. The app takes the
 chords below and passes everything else to the terminal. Rebind or clear any of
-them under *Keyboard* in Settings. A chord your Ghostty config binds when
-Svall first launches stays with Ghostty until you claim it there.
+them under *Keyboard* in Settings. The keys are the Mac's: every fleet and both
+builds read them from `~/.config/svall/bindings.json`. A chord your Ghostty config
+binds when Svall first launches on the Mac stays with Ghostty until you claim it there.
 
 | Keys | Action | Keys | Action |
 | --- | --- | --- | --- |

@@ -15,7 +15,8 @@ export const DROP_URL = 'svall://app/__drop/';
 export type MenuState = { view: 'map' | 'board'; sides: boolean; sideCard: boolean; resources: boolean; browser: boolean; card: boolean };
 // what only the native shell can see: the fleet's home, the tail of its daemon log, installed apps
 // ghosttyKeys: the chords the user spends in their own Ghostty config, so the app can leave them alone
-export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string> };
+// bindings: this Mac's one record of the keys as its file reads, absent until there is one
+export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?: Record<string, string>; bindings?: Record<string, unknown> };
 // what macOS allows for banners: unknown until the app has asked
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
@@ -57,6 +58,7 @@ export type ToShell =
   | { type: 'keys.capture'; on: boolean }
   // the chord that quits, for the shell's menu and for a page too stuck to hear it; none leaves quitting unbound
   | { type: 'keys.quit'; chord?: string }
+  | { type: 'keys.save'; bindings: Record<string, string | null> }
   | { type: 'openUrl'; url: string }
   | { type: 'openFolder'; path: string }
   | { type: 'reveal'; path: string }
@@ -106,6 +108,8 @@ export type FromShell =
   // the registry, read again after every host operation too; `error` when it could not be read
   | { type: 'host.machines'; machines: MachineRow[]; error?: string }
   | ({ type: 'shell.info' } & ShellInfo)
+  // the Mac's record again, as this window comes to the front
+  | { type: 'keys.record'; bindings: Record<string, unknown> }
   | { type: 'key'; chord: string }
   | { type: 'term.exited'; id: string }
   | { type: 'term.failed'; id: string; reason: string }

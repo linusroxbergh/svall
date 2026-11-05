@@ -174,6 +174,14 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
   }
 }
 
+/** A change of keys reaches the Mac's record; the record itself, read back, is no change. */
+export function followBindings({ store, bridge }: Pick<Deps, 'store' | 'bridge'>): () => void {
+  return store.subscribe((s, prev) => {
+    const b = s.settings.bindings;
+    if (b !== prev.settings.bindings && b !== s.keyRecord?.bindings) bridge.send({ type: 'keys.save', bindings: { ...s.keyRecord?.others, ...b } });
+  });
+}
+
 export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => void {
   const map = () => resolve(ctx.store.getState().settings.bindings);
   // a chord pressed while settings waits for one is the answer to that, not a command

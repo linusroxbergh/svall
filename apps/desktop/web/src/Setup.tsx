@@ -5,7 +5,7 @@ import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
 import { shortPath } from './paths.js';
 import { Close } from './icons.js';
-import { DEFAULT_SETTINGS } from './settings.js';
+import { DEFAULT_SETTINGS, type Settings } from './settings.js';
 import { localAppStorage, TOUR_KEY } from './store/persist.js';
 
 export function Setup() {
@@ -73,8 +73,10 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       return;
     }
     const storage = localAppStorage(window.__svallHome);
-    const settings = storage?.getSettings() ?? DEFAULT_SETTINGS;
-    storage?.setSettings({ ...settings, notifications: { ...settings.notifications, on: notify } });
+    // with nothing saved the keys stay unnamed, for the first window to settle against Ghostty
+    const { bindings: _unnamed, ...fresh } = DEFAULT_SETTINGS;
+    const settings = storage?.getSettings() ?? fresh;
+    storage?.setSettings({ ...settings, notifications: { ...settings.notifications, on: notify } } as Settings);
     try { localStorage.setItem(TOUR_KEY, '0'); } catch { /* optional persistence */ }
     if (notify) bridge.send({ type: 'notify.enable' });
     const run = data as { warnings: string[] };

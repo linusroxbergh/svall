@@ -2,8 +2,8 @@ import type { FeedbackKind, MachineId, MobileStatus, PhoneSession } from '@svall
 import type { StateCreator } from 'zustand/vanilla';
 import type { NotifyPermission, Rect, ShellInfo } from '../bridge.js';
 import type { DropTarget } from '../drop.js';
-import { declineTaken, type ActionId } from '../keys.js';
-import { DEFAULT_SETTINGS, type Settings } from '../settings.js';
+import { declineTaken, sameChords, type ActionId } from '../keys.js';
+import { DEFAULT_SETTINGS, readRecord, type KeyRecord, type Settings } from '../settings.js';
 import type { App } from './index.js';
 import { clampSides, clampTree, DEFAULT_HALF_CARD, DEFAULT_SIDE_WIDTHS, type AppStorage, type FilesTree, type HalfCard, type Section, type Sections, type SideWidths } from './persist.js';
 
@@ -68,6 +68,8 @@ export type UiState = {
   menu?: PageMenu;
   configErrors: string[];
   shell?: ShellInfo;
+  // the Mac's record as this window last read it
+  keyRecord?: KeyRecord;
   sidebarOpen: boolean;
   // the sides ⌘⇧S hid, so the next press brings back those and no others
   hiddenSides?: { sidebar: boolean; card: boolean };
@@ -158,6 +160,7 @@ export type UiActions = {
   setPhoneRedact(qr?: string): void;
   pageFocusSettled(): void;
   setSettings(patch: Partial<Settings>): void;
+  adoptBindings(record: Record<string, unknown>): void;
   setHalfCard(size: HalfCard, persist?: boolean): void;
   setSideWidths(widths: SideWidths, persist?: boolean): void;
   toggleFilesTree(open?: boolean): void;
@@ -167,11 +170,10 @@ export type UiActions = {
 };
 
 export const createUiSlice = (storage: AppStorage | undefined, view: View): StateCreator<App, [], [], UiState & UiActions> => (set, get) => {
-  // a machine with no settings of its own has never had them in front of it: the window opens with the
-  // fleet, and closing it is what writes them and keeps the asking to that one launch
-  const firstRun = storage !== undefined && storage.getSettings() === undefined;
-  // the collision check belongs to that same launch: after it, what is written down is the user's answer
-  let checkGhosttyKeys = firstRun;
+  // the Mac's record settles this window's keys once, at the shell's first word
+  let keysSettled = false;
+  // the fleet's saved copy follows, so a seed after a lost file is never stale; a fleet that saved nothing stays so
+  const keep = (settings: Settings): Settings => { if (storage?.getSettings()) storage.setSettings(settings); return settings; };
   // the dock has one open utility at a time; leaving first-run settings still records the answer
   const toggleUtility = (which: 'usageOpen' | 'mobileOpen' | 'loadOpen' | 'feedbackOpen', open?: boolean, opts?: { keepPageFocus?: boolean }) => set((s) => {
     const next = open ?? !s[which];
@@ -281,9 +283,19 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setConfigErrors: (errors) => set({ configErrors: errors }),
     setCapturingKey: (capturingKey) => set({ capturingKey }),
     setShell: (shell) => set((s) => {
-      if (!checkGhosttyKeys || !shell.ghosttyKeys) return { shell };
-      checkGhosttyKeys = false;
-      return { shell, settings: { ...s.settings, bindings: declineTaken(shell.ghosttyKeys, s.settings.bindings) } };
+      if (keysSettled || !shell.ghosttyKeys) return { shell };
+      keysSettled = true;
+      const record = shell.bindings && readRecord(shell.bindings);
+      // no record: what a fleet saved before there was one becomes it, and a Mac with nothing saved leaves Ghostty its chords
+      const bindings = record?.bindings ?? storage?.getSavedBindings() ?? declineTaken(shell.ghosttyKeys, s.settings.bindings);
+      return { shell, keyRecord: record, settings: keep({ ...s.settings, bindings }) };
+    }),
+    // what another window changed; a damaged record leaves this window its copy, and another build's entries are taken anyway
+    adoptBindings: (v) => set((s) => {
+      const record = readRecord(v);
+      if (!keysSettled || !record) return s;
+      if (sameChords(record.bindings, s.settings.bindings)) return { keyRecord: record };
+      return { keyRecord: record, settings: keep({ ...s.settings, bindings: record.bindings }) };
     }),
     setNotifyPermission: (notifyPermission) => set({ notifyPermission }),
     setUpdate: (update) => set({ update }),

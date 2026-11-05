@@ -77,18 +77,31 @@ export const fontDelta = (zoom: number): number => Math.round((zoom - 1) * BASE_
 // that layout puts there; what has to match is the cmd/shift prefix neither side will look past
 const CHORD = /^cmd\+(shift\+)?(enter|.)$/u;
 
-function readBindings(v: unknown): Bindings {
+// bindings saved as newCharacter, nextCharacter and the like are the robot keys
+const idOf = (saved: string): string => saved.replace('Character', 'Robot');
+
+export function readBindings(v: unknown): Bindings {
   const o = (typeof v === 'object' && v !== null ? v : {}) as Record<string, unknown>;
   const out: Bindings = {};
   for (const saved of Object.keys(o)) {
-    // bindings saved as newCharacter, nextCharacter and the like are the robot keys
-    const id = saved.replace('Character', 'Robot');
+    const id = idOf(saved);
     if (!(id in ACTIONS)) continue;
     const chord = o[saved];
     if (chord === null) out[id as ActionId] = null;
     else if (typeof chord === 'string' && CHORD.test(chord)) out[id as ActionId] = chord;
   }
   return out;
+}
+
+// the Mac's record as this build reads it: its own keys, and the entries for actions only another build has, which every
+// write carries on. None when it names this build's actions and none of them parse.
+export type KeyRecord = { bindings: Bindings; others: Record<string, string | null> };
+export function readRecord(v: Record<string, unknown>): KeyRecord | undefined {
+  const known = (saved: string) => idOf(saved) in ACTIONS;
+  const bindings = readBindings(v);
+  if (Object.keys(v).some(known) && Object.keys(bindings).length === 0) return undefined;
+  const others = Object.fromEntries(Object.entries(v).filter(([k, c]) => !known(k) && (c === null || typeof c === 'string'))) as KeyRecord['others'];
+  return { bindings, others };
 }
 
 function readNotify(v: unknown): NotifySettings {

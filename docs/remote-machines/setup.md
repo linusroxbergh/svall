@@ -370,6 +370,7 @@ On the Mac:
 
 - `~/.config/svall/machine.json`, this Mac's machine id, `machines.json`, the registry, and `checks.json`, each
   machine's last check. A registry that cannot be read is moved aside to `machines.json.broken-<time>` with a
-  warning, and a command that then misses a machine names that copy.
+  warning, and a command that then misses a machine names that copy. `bindings.json` beside them holds the app's
+  keys, which every fleet on the Mac reads and no machine or home move carries.
 - In each fleet home: `workers.json`, the token each worker was issued, `mirror-consent.json`, the keys ticked for
   each machine, and `journal/moves/`, each move's journal.

@@ -21,6 +21,56 @@ const store = () => localAppStorage()!;
 beforeEach(() => { mem = new Mem(); install(mem); });
 afterEach(() => install(undefined));
 
+describe('the keys fleets saved before the Mac had a record', () => {
+  const save = (key: string, bindings: unknown) => mem.setItem(key, JSON.stringify({ zoom: 1, bindings }));
+  const saved = (home: string) => localAppStorage(home)!.getSavedBindings();
+
+  it('is none on a Mac with nothing saved', () => {
+    mem.setItem('svall.settings.other', JSON.stringify({ bindings: { newRobot: 'cmd+x' } }));
+    expect(saved('/u/.svall-new')).toBeUndefined();
+  });
+  it('is the fleet\'s own when it alone has saved', () => {
+    save('svall.settings@/u/.svall-work', { newRobot: 'cmd+n' });
+    expect(saved('/u/.svall-work')).toEqual({ newRobot: 'cmd+n' });
+  });
+  it.each(['/u/.svall', '/u/.svall-dev'])('is the private fleet\'s (%s) over a named fleet\'s, by its home or unscoped', (home) => {
+    save('svall.settings@/u/.svall-work', { newRobot: 'cmd+n' });
+    save('svall.settings', { newRobot: 'cmd+y' });
+    expect(saved('/u/.svall-work')).toEqual({ newRobot: 'cmd+y' });
+    save(`svall.settings@${home}`, { newRobot: 'cmd+u' });
+    expect(saved('/u/.svall-work')).toEqual({ newRobot: 'cmd+u' });
+  });
+  it('is the first other fleet\'s for a fleet new to a Mac that has neither', () => {
+    save('svall.settings@/u/.svall-b', { newRobot: 'cmd+b' });
+    save('svall.settings@/u/.svall-a', { newRobot: 'cmd+a' });
+    expect(saved('/u/.svall-new')).toEqual({ newRobot: 'cmd+a' });
+  });
+  it('is the fleet\'s own over another named fleet\'s', () => {
+    save('svall.settings@/u/.svall-a', { newRobot: 'cmd+a' });
+    save('svall.settings@/u/.svall-z', { newRobot: 'cmd+z' });
+    expect(saved('/u/.svall-z')).toEqual({ newRobot: 'cmd+z' });
+  });
+  it('takes a private fleet that kept the shipped keys over a fleet that changed one', () => {
+    save('svall.settings@/u/.svall', {});
+    save('svall.settings@/u/.svall-work', { newRobot: null });
+    expect(saved('/u/.svall-work')).toEqual({});
+  });
+  it('is the shipped keys when the fleets that saved kept them', () => {
+    save('svall.settings@/u/.svall-work', {});
+    expect(saved('/u/.svall-new')).toEqual({});
+  });
+  it('passes over a save that does not parse or names no keys', () => {
+    mem.setItem('svall.settings@/u/.svall', '{');
+    mem.setItem('svall.settings@/u/.svall-a', JSON.stringify({ zoom: 1 }));
+    save('svall.settings@/u/.svall-b', { newRobot: 'cmd+b' });
+    expect(saved('/u/.svall-new')).toEqual({ newRobot: 'cmd+b' });
+  });
+  it('keeps only what a binding can be', () => {
+    save('svall.settings@/u/.svall', { newRobot: 5, quit: null, gone: 'cmd+x' });
+    expect(saved('/u/.svall')).toEqual({ quit: null });
+  });
+});
+
 describe('localAppStorage', () => {
   it('writes each setting under the key the app reads it back from', () => {
     const s = store();

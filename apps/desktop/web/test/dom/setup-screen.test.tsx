@@ -5,9 +5,9 @@ import type { SetupPlan } from '@svall/protocol';
 import { afterEach, expect, test } from 'vitest';
 import { setAppStore } from '../../src/hooks.js';
 import { Setup } from '../../src/Setup.js';
-import { createAppStore } from '../../src/store/index.js';
+import { createAppStore, localAppStorage } from '../../src/store/index.js';
 
-afterEach(() => { delete window.webkit; });
+afterEach(() => { delete window.webkit; delete window.__svallHome; });
 
 test('a plan that is not the JSON asked for is shown as it came, not left on the loading line', async () => {
   window.webkit = { messageHandlers: { svall: { postMessage(json: string) {
@@ -159,4 +159,26 @@ test('collects main agent, project and preferences without writing until the las
   expect(s.sent.filter((m) => m.type === 'setup.run')).toHaveLength(0);
   fireEvent.click(screen.getByRole('button', { name: 'Set up Svall' }));
   expect(s.sent.at(-1)).toMatchObject({ type: 'setup.run', mainAgent: 'codex', firstProject: '~/Developer/storefront', scribe: false, svallPermissions: true, newRobotStart: 'agent' });
+});
+
+const finishSetup = () => {
+  const s = shell(ready);
+  s.receive({ type: 'setup.result', step: 'run', ok: true, json: JSON.stringify({ warnings: ['Trust the Codex hooks once.'] }) });
+};
+
+test('a fresh install stays a fresh install for the keys: Setup\'s save names none, and the first window asks Ghostty', () => {
+  localStorage.clear();
+  window.__svallHome = '/u/.svall';
+  finishSetup();
+  const store = createAppStore(localAppStorage('/u/.svall'));
+  store.getState().setShell({ home: '/u/.svall', log: [], op: false, ghosttyKeys: { 'cmd+t': 'new_split:right' } });
+  expect(store.getState().settings.bindings).toEqual({ newRobot: null });
+});
+
+test('Setup keeps the keys a fleet has saved', () => {
+  localStorage.clear();
+  window.__svallHome = '/u/.svall';
+  localStorage.setItem('svall.settings@/u/.svall', JSON.stringify({ bindings: { newRobot: 'cmd+n' } }));
+  finishSetup();
+  expect(localAppStorage('/u/.svall')!.getSavedBindings()).toEqual({ newRobot: 'cmd+n' });
 });
