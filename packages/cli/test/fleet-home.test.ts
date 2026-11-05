@@ -1,9 +1,11 @@
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import path from 'node:path';
 import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, INTERRUPT_ACTIONS, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
-import { installAdopt, journalLines, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, installAdopt, journalLines, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
@@ -22,7 +24,7 @@ const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0
 type Called = { method: string; params: { op?: string; marker?: HomeMoving } & Record<string, unknown> };
 
 /** This fleet's daemon as the driver sees it. */
-function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; state?: object; crewRefused?: object; abort?: object } = {}) {
+function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
   const called: Called[] = [];
   const client = {
     call: (method: string, params: Called['params']) => {
@@ -35,7 +37,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; sta
           : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: [] } });
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [MAC]: { name: 'mac', reachable: true, since: 1 } } });
-      if (method === 'fleet.freeze') return Promise.resolve({ phone: { serving: false, logins: [] } });
+      if (method === 'fleet.freeze') return Promise.resolve({ phone: o.phone ?? { serving: false, logins: [] } });
       if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
       if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
       if (method === 'fleet.homeMove' && params.op === 'abort' && o.abort) return Promise.resolve(o.abort);
@@ -280,6 +282,12 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       expect(failed()?.say).toBe('Try again once what they name is fixed');
     });
 
+    it('a robot of theirs already where the move goes is not moved again, as on a retry', async () => {
+      const { deps, called } = outDeps(happy, { state: { ...crewState(), robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', machine: STUDIO } } } });
+      await moveHomeOut('studio', deps);
+      expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
+    });
+
     it('crew-back with all of them home says so and moves nothing', async () => {
       const { deps, called } = outDeps(happy, { state: crewState() });
       expect((await bringCrewBack(deps)).result).toBe('ready');
@@ -287,6 +295,32 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
       expect(called.some((c) => c.method === 'robot.moveTo')).toBe(false);
     });
   });
+
+  it('the archive says what the freeze found of the phone, and that this machine dials its new home', async () => {
+    let staged: string | undefined;
+    const { deps } = outDeps((line, input) => { if (line.includes('--stage')) staged = input; return happy(line); }, { phone: { serving: true, logins: ['ada@tailnet'] } });
+    await moveHomeOut('studio', deps);
+    const dir = fs.mkdtempSync(path.join(home, 'tar-'));
+    fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(staged!, 'base64'));
+    execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
+    const manifest = JSON.parse(fs.readFileSync(path.join(dir, 'home-move.json'), 'utf8')) as HomeManifest;
+    expect(manifest.phone).toEqual({ serving: true, logins: ['ada@tailnet'] });
+    expect(manifest.record.dial).toBe('worker');
+    expect(manifest.record.ssh).toBeUndefined();
+  });
+
+  it('a connection that goes during the far adopt asks the far side how it stands, and goes on from its word', async () => {
+    let adopts = 0;
+    const { deps } = outDeps((line) => {
+      if (line.includes('--stage')) return answer({ status: 'pending', phase: 'staged' });
+      if (line.includes("'adopt'")) return ++adopts === 1 ? { code: 255, stdout: '' } : happy(line);
+      if (line.includes("'status'")) return answer({ status: 'adopted', enrol: ENROL as never });
+      return happy(line);
+    });
+    const out = await moveHomeOut('studio', deps);
+    expect(out.result).toBe('ready');
+    expect(adopts).toBe(1);
+  }, 20_000);
 
   it('a driver killed right after the mark leaves the marker, and the far machine holding its archive', async () => {
     const lines: string[] = [];
@@ -533,6 +567,51 @@ describe('fleet home set local', () => {
     expect(await installAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, () => { throw new Error('built'); })).toMatchObject({ status: 'not-adopted' });
     expect(w.mac.daemon.role).toBe('worker');
   }, 30_000);
+
+  it('the old home\'s marker has no route to ask: this machine tells it', async () => {
+    const { w, deps, far, master } = await workerHere();
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    const mark = far.called.find((c) => c.params.op === 'mark');
+    expect(mark?.params.marker).toBeDefined();
+    expect((mark?.params.marker as HomeMoving).ask).toBeUndefined();
+  }, 30_000);
+
+  it('a stop before the mark with mission control sent ahead says so, with the way back for it', async () => {
+    const away = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
+    const { deps } = await workerHere(() => true, { state: away, refuse: { 'fleet.freeze': new ApiError('busy', 'a worker is still catching up') } });
+    const out = await moveHomeBack(deps);
+    expect(failed()?.step).toBe('pause');
+    expect(out.actions).toContain('svall fleet home crew-back');
+  }, 30_000);
+
+  it('crew-back from a worker asks the home, and moves them to the machine the home says it is', async () => {
+    const away = { robots: { crew: { id: 'crew', name: 'crew', islandId: 'home', machine: MAC, sentAhead: 'hm_abcdefghij' } }, islands: { home: { id: 'home', kind: 'home' } }, machines: {} };
+    const { deps, far } = await workerHere(() => true, { state: away });
+    const out = await bringCrewBack(deps);
+    expect(out.result).toBe('ready');
+    const moved = far.called.find((c) => c.method === 'robot.moveTo');
+    expect(moved?.params).toMatchObject({ id: 'crew', machine: machineId() });
+  }, 30_000);
+
+  it('an abort or a retry with this daemon down starts it, as the outcome goes out from it', async () => {
+    for (const run of [(d: MoveDeps) => abortBack(d), (d: MoveDeps) => resumeHome(d)]) {
+      const { w, deps, master } = await workerHere();
+      crashAt('move.marked');
+      await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+      disarmCrash();
+      await abortAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, readOwed(w.mac.paths)!.id);
+      w.mac.daemon.kill();
+      const up = deps.client;
+      deps.client = () => (w.mac.daemon.role ? up() : Promise.reject(new Error('svalld is not running')));
+      const stop = telling(w, master);
+      await run(deps);
+      stop();
+      expect(w.mac.daemon.role).toBe('worker');
+      cleanHomes();
+    }
+  }, 60_000);
 
   it('abort with nothing owed here leaves it to the daemon', async () => {
     const { deps } = await workerHere();
