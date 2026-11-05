@@ -261,7 +261,7 @@ async function start(opts: Options): Promise<Daemon> {
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
   const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
-  const homeApi = worker && new HomeApi({ worker: () => readWorkerFile(paths), dial, linked: (): boolean => connection?.connected() ?? false });
+  const homeApi = worker && new HomeApi({ log, worker: () => readWorkerFile(paths), dial, linked: (): boolean => connection?.connected() ?? false });
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),

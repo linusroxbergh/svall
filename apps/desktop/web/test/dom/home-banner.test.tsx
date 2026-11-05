@@ -37,10 +37,10 @@ describe('the banner of a home this window cannot follow', () => {
 
   it('names a home out of reach, the age of the copy shown, and asks again for a person', () => {
     store.getState().setFleet({ ...store.getState().fleet, machines: { [HOME]: { name: 'studio', reachable: false, since: 0, snapshot: { version: 1, at: new Date('2026-11-04T10:00:00').getTime() } } } });
-    standingIn({ state: 'unreachable', detail: 'ssh: Connection refused' });
+    standingIn({ state: 'unreachable' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toContain('studio is not reachable');
-    expect(screen.getByTestId('home-detail').textContent).toContain('Connection refused');
+    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio is not reachable · showing the fleet as of .*2026.*Try again$/);
+    expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.getByTestId('home-age').textContent).toMatch(/showing the fleet as of .*2026/);
     fireEvent.click(screen.getByTestId('home-retry'));
     expect(retryHome).toHaveBeenCalledTimes(1);

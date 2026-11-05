@@ -1,5 +1,6 @@
 import WebSocket from 'ws';
 import { HelloReply, PROTOCOL_VERSION, type Result, type WorkerFile } from '@svall/protocol';
+import type { Logger } from '../log.js';
 import { fleetHomeOfSocket } from '../paths.js';
 import { releaseVersion } from '../release.js';
 import { FleetMismatch, MachineMismatch, remoteConnectionInfo } from './connection-info.js';
@@ -36,8 +37,9 @@ export class HomeApi {
   private forward?: Forward;
   private settled?: Settled;
   private asking?: Promise<Answer>;
+  private lastCause?: string;
 
-  constructor(private o: { worker: () => WorkerFile; dial?: Dial; linked: () => boolean; greets?: typeof greets }) {}
+  constructor(private o: { worker: () => WorkerFile; dial?: Dial; linked: () => boolean; greets?: typeof greets; log?: Pick<Logger, 'error'> }) {}
 
   /** One attempt at a time; asks made meanwhile take its answer. */
   answer(retry = false): Promise<Answer> {
@@ -61,7 +63,8 @@ export class HomeApi {
     const failure = dial.failure();
     if (failure) {
       await this.drop();
-      return { ...base, state: failure.kind === 'auth' || failure.kind === 'host_key' ? 'auth' : 'unreachable', detail: failure.message.trim().split('\n').at(-1) };
+      if (failure.kind === 'auth' || failure.kind === 'host_key') return { ...base, state: 'auth', detail: failure.message.trim().split('\n').at(-1) };
+      return { ...base, state: 'unreachable' };
     }
     const master = dial.master();
     if (!master) {
@@ -77,8 +80,9 @@ export class HomeApi {
       const { local } = await this.forwardTo(master, info.port);
       if (!await (this.o.greets ?? greets)(local, info.token)) {
         await this.drop();
-        return { ...base, state: 'unreachable', detail: `the API on ${worker.homeName} does not answer` };
+        return this.away(base, `the API on ${worker.homeName} does not answer`);
       }
+      this.lastCause = undefined;
       return { ...base, state: 'connected', ssh: master.destination, controlSocket: master.socket, port: local, token: info.token, release: info.release };
     } catch (e) {
       const message = (e as Error).message;
@@ -87,8 +91,15 @@ export class HomeApi {
       if (e instanceof MachineMismatch) return await this.settle(base, { state: 'unreachable', detail: message });
       if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
       await this.drop();
-      return { ...base, state: 'unreachable', detail: message };
+      return this.away(base, message);
     }
+  }
+
+  // a person is told only that the home is away, by the same words whatever the cause; the cause goes to the log, once
+  private away(base: Pick<Answer, 'machine' | 'name'>, cause: string): Answer {
+    if (cause !== this.lastCause) this.o.log?.error(`the home's API: ${cause}`);
+    this.lastCause = cause;
+    return { ...base, state: 'unreachable' };
   }
 
   private async settle(base: Pick<Answer, 'machine' | 'name'>, s: Settled): Promise<Answer> {

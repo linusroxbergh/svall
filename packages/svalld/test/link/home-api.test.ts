@@ -143,7 +143,8 @@ describe('how a window reaches a far home', () => {
     const asked: [number, string][] = [];
     const api = apiOf(dialOf(m.master), {}, false, (port, token) => { asked.push([port, token]); return Promise.resolve(up); });
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'unreachable', detail: expect.stringContaining('studio') });
+    expect(a).toMatchObject({ state: 'unreachable' });
+    expect(a).not.toHaveProperty('detail');
     expect(a).not.toHaveProperty('token');
     expect(a).not.toHaveProperty('port');
     expect(JSON.stringify(a)).not.toContain(TOKEN);
@@ -174,7 +175,9 @@ describe('how a window reaches a far home', () => {
     const api = apiOf(dialOf(m.master));
     await api.answer();
     down = true;
-    expect(await api.answer()).toMatchObject({ state: 'unreachable', detail: expect.stringContaining('svalld is not running') });
+    const away = await api.answer();
+    expect(away).toMatchObject({ state: 'unreachable' });
+    expect(away).not.toHaveProperty('detail');
     expect(m.cancels).toEqual([50_000]);
     down = false;
     expect((await api.answer()).state).toBe('connected');
@@ -185,8 +188,23 @@ describe('how a window reaches a far home', () => {
     const m = fakeMaster();
     m.forward.mockImplementationOnce(() => Promise.reject(new SshError('other', 'ssh could not forward')));
     const api = apiOf(dialOf(m.master));
-    expect(await api.answer()).toMatchObject({ state: 'unreachable', detail: expect.stringContaining('could not forward') });
+    const away = await api.answer();
+    expect(away).toMatchObject({ state: 'unreachable' });
+    expect(away).not.toHaveProperty('detail');
     expect((await api.answer()).state).toBe('connected');
+  });
+
+  it('says the same of a dial that cannot reach the home and a daemon that is down, and logs each cause once', async () => {
+    const m = fakeMaster(() => ({ code: 255, signal: null, stderr: 'ssh: connect to host svall-remote.invalid port 22: Undefined error: 0', stdout: '' }));
+    const error = vi.fn();
+    const api = new HomeApi({ worker: () => worker, dial: dialOf(m.master), linked: () => false, greets: async () => true, log: { error } });
+    const words = { machine: worker.homeMachineId, name: worker.homeName, state: 'unreachable' };
+    expect(await api.answer()).toEqual(words);
+    expect(await api.answer()).toEqual(words);
+    expect(error).toHaveBeenCalledTimes(1);
+    expect(error.mock.calls[0][0]).toContain('svall-remote.invalid');
+    const failed = new HomeApi({ worker: () => worker, dial: { master: () => undefined, failure: () => new SshError('unreachable', 'ssh: connect to host 100.117.42.24 port 22: Operation timed out'), restore: () => {} }, linked: () => false });
+    expect(await failed.answer()).toEqual(words);
   });
 
   it('says connecting while the dial has no master yet', async () => {
