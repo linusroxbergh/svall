@@ -31,7 +31,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   useEffect(() => {
     if (!lost) return;
     let left = false;
-    app.api().call('term.lastScreen', { id }).then((r) => { if (!left) setLastScreen(r.text); }, () => {});
+    app.api().call('term.lastScreen', { id }).then((r) => { if (!left) setLastScreen(r.text.replace(/\r/g, '').trimEnd()); }, () => {});
     return () => { left = true; setLastScreen(''); };
   }, [id, lost]);
   // the capture runs from the scrollback down to the screen, which is what shows
@@ -101,7 +101,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
     return (
       <div className="revive away">
         <span data-testid="terminal-unreachable">{unreachable}</span>
-        {lastScreen && <pre ref={screenRef} tabIndex={0} aria-label="Last screen the worker sent" data-testid="terminal-last-screen">{lastScreen.replace(/\r/g, '')}</pre>}
+        {lastScreen && <pre ref={screenRef} tabIndex={0} aria-label="Last screen the worker sent" data-testid="terminal-last-screen">{lastScreen}</pre>}
       </div>
     );
   }

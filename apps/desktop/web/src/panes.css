@@ -33,5 +33,6 @@
 .surface { position: absolute; inset: 0; color: var(--ink-3); display: grid; place-items: center; }
 .revive { position: absolute; inset: 0; display: grid; place-items: center; }
 /* the sentence over the last lines this Mac saw of the pane */
-.revive.away { place-content: center; gap: var(--sp-xl); padding: var(--sp-3xl); }
-.revive.away pre { margin: 0; max-width: 100%; max-height: 70vh; overflow: auto; font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-3); }
+.revive.away { place-content: center; gap: var(--sp-xl); padding: var(--sp-3xl); background: var(--surface-1); }
+.revive.away:has(pre) { place-content: stretch; grid-template-rows: auto minmax(0, 1fr); }
+.revive.away pre { place-self: stretch; margin: 0; overflow: auto; font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-3); }

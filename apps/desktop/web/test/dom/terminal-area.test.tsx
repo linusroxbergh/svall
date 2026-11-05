@@ -136,6 +136,23 @@ test('a robot on a worker out of reach says so in place of its terminal, and att
   expect(call.mock.calls).toEqual([['term.lastScreen', { id: 'c1' }]]);
 });
 
+test('the last screen ends on its last line, not on the blank rows below it, so scrolling to its end keeps the text in view', async () => {
+  call.mockResolvedValueOnce({ text: '$ make test\r\nok\r\n\r\n   \r\n\r\n', at: 1 });
+  placed(false);
+  render(<TerminalArea id="c1" />);
+  await act(async () => {});
+  expect(screen.getByTestId('terminal-last-screen').textContent).toBe('$ make test\nok');
+});
+
+test('a pane all blank shows the sentence alone', async () => {
+  call.mockResolvedValueOnce({ text: '\r\n\r\n', at: 1 });
+  placed(false);
+  render(<TerminalArea id="c1" />);
+  await act(async () => {});
+  expect(screen.getByTestId('terminal-unreachable')).toBeTruthy();
+  expect(screen.queryByTestId('terminal-last-screen')).toBeNull();
+});
+
 test('an unreachable robot shows the sentence and the last screen term.lastScreen answers, scrolled to its end', async () => {
   // capture-pane's lines, as tmux.capture joins them
   call.mockResolvedValueOnce({ text: '$ make test\r\nok', at: 1 });
