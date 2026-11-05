@@ -13,7 +13,7 @@ import { realPath } from '../paths.js';
 import { fileSha } from './bundle.js';
 import { filesIn } from './docs-sync.js';
 import { agentDoc } from './mirror-agents.js';
-import { AGENT_FIELDS, configPlace, configRedacted, configSecrets, fieldPlace, getAt, heldServer, isReferenceOnly, parseJsonc, readMirrorVars, relocatedServer, secretsOf, setAt, type Place } from './mirror-config.js';
+import { AGENT_FIELDS, configPlace, configRedacted, configSecrets, FIELD_PATHS, fieldPlace, getAt, heldServer, isReferenceOnly, parseJsonc, readMirrorVars, relocatedServer, secretsOf, setAt, type Place } from './mirror-config.js';
 import { CONFIG_ITEMS } from './mirror-consent.js';
 import { entriesOf, isList, ownEntries, parsed, withOwnEntries } from './mirror-lists.js';
 import {
@@ -437,7 +437,8 @@ export async function applyMirror(
     if (file) ownerOnly(file);
   }
   // the overrides of whole files, each over what the mirror wrote there
-  for (const { from, file } of overrides) {
+  for (const { to, from, file } of overrides) {
+    if (await editedLink(to, file)) continue;
     if (await place(batch, file, await fsp.readFile(from), fs.statSync(from).mode & 0o777)) written.push(file);
   }
 
@@ -694,9 +695,9 @@ const keyStrings = (agent: AgentKind, held: Doc): unknown[] => [
   ...Object.keys(held).filter((f) => !AGENT_FIELDS[agent].includes(f)).flatMap((f) => [...stringsIn(held[f])]),
 ];
 
-// whether `held`, at record key `rk` of a server copied whole, may hold a key copied with it; a record naming none of its strings cannot tell
+// whether `held`, at record key `rk` of a server copied whole, may hold a key copied with it, as an `sh -c` holds one in its args; a record naming none of its strings cannot tell
 export const holdsWholeKey = (agent: AgentKind, held: Doc, rk: string, state: WorkerState): boolean => state.whole?.[rk] !== undefined
-  && (state.wholeKeys?.[rk] === undefined || keyStrings(agent, held).some((v) => isCopy(state.wholeKeys?.[rk], v)));
+  && (state.wholeKeys?.[rk] === undefined || [...keyStrings(agent, held), ...stringsIn(held[FIELD_PATHS[agent].args])].some((v) => isCopy(state.wholeKeys?.[rk], v)));
 
 // each string under `v`, one by one, as a .claude.json may hold a great many
 function* stringsIn(v: unknown): Generator<string> {

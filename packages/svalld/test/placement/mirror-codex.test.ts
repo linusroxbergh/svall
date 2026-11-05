@@ -109,6 +109,20 @@ describe.skipIf(!CODEX)('real codex loads what a target keeps', () => {
     must(s, 'unticked');
     expect(read(s.toml)).not.toContain(K2);
   });
+  it('a whole sh -c server edited and unticked: stays, and loads', async () => {
+    const s = setup();
+    put(s.homeToml, ['[mcp_servers.odd]', 'command = "sh"', `args = ["-c", "tool --token ${K}"]`, ''].join('\n'));
+    for (const f of ['command', 'args']) s.consent.add(`codex:mcp:odd#${f}`);
+    await s.push();
+    must(s, 'ticked');
+    const d = parseToml(read(s.toml)) as any;
+    d.mcp_servers.odd.cwd = '/tmp';
+    put(s.toml, stringifyToml(d));
+    s.consent.clear();
+    expect((await s.push()).left).toEqual(['odd']);
+    must(s, 'unticked');
+    expect(read(s.toml)).toContain(K);
+  });
   it('MF3 a per-field server with a required url: loads when the home drops it, with a header of the person', async () => {
     const s = setup();
     put(s.homeToml, ['[mcp_servers.gh]', `url = "https://gh.test/mcp?api_key=${K}"`, ''].join('\n'));

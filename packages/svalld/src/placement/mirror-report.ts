@@ -136,6 +136,12 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     return { there: true, doc, copied: !own && sha256Hex(bytes) === state.files[to] };
   };
 
+  const edited: NonNullable<ConfigReport['edited']> = {};
+  // a keyed file that stays once no longer the copy, `link` where nothing writes through it
+  const editedFile = (to: string): 'link' | 'copy' | undefined => {
+    if (o.backups === undefined || !state.keyed?.[to] || !fileHere(to).there || fileHere(to).copied) return undefined;
+    return fs.lstatSync(path.join(o.claudeDir, to.slice('claude/'.length)), { throwIfNoEntry: false })?.isSymbolicLink() ? 'link' : 'copy';
+  };
   const secrets: ConfigReport['secrets'] = {};
   const inBackup = state.backup !== undefined && fs.existsSync(state.backup.dir);
   const replaced: Record<string, boolean> = {};
@@ -145,6 +151,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     // file's path keys, a plugin's server file not at all
     const bare = k.file !== undefined ? k.bare : k.place.length ? relocatedServer(k.bare, move) : relocated(k.bare, move);
     const file = k.file !== undefined ? fileHere(k.file) : undefined;
+    if (k.file !== undefined && editedFile(k.file) === 'link') edited[k.item] = 'link';
     for (const { field, leaf } of k.fields) {
       if (k.doc) wasReplaced(recordKey(k.doc, [...k.place, ...leaf]), fieldKey(k.item, field));
       const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
@@ -156,7 +163,6 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   }
   const whole: ConfigReport['whole'] = {};
   const ownWhole: Record<string, boolean> = {};
-  const edited: NonNullable<ConfigReport['edited']> = {};
   for (const w of ask.whole) {
     const v = w.doc ? getAt(docHere(w.doc), placedIn(w.doc, w.place, move)) : w.file !== undefined ? getAt(fileHere(w.file).doc, w.place) : undefined;
     const recorded = w.doc ? state.servers[recordKey(w.doc, w.place)] : w.file !== undefined ? state.files[w.file] : undefined;
@@ -165,11 +171,8 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && there;
     if (w.doc) wasReplaced(recordKey(w.doc, w.place), w.item);
     if (w.doc && recorded === undefined && there) ownWhole[w.item] = true;
-    // a keyed file that stays once no longer the copy
-    if (o.backups !== undefined && w.file !== undefined && state.keyed?.[w.file] && fileHere(w.file).there && !fileHere(w.file).copied) {
-      const linked = fs.lstatSync(path.join(o.claudeDir, w.file.slice('claude/'.length)), { throwIfNoEntry: false })?.isSymbolicLink();
-      edited[w.item] = linked ? 'link' : edited[w.item] ?? 'copy';
-    }
+    const edit = w.file !== undefined ? editedFile(w.file) : undefined;
+    if (edit) edited[w.item] = edit === 'link' ? edit : edited[w.item] ?? edit;
   }
   const keepsOwn: NonNullable<ConfigReport['keepsOwn']> = {};
   for (const h of o.backups === undefined ? [] : ask.held) {
@@ -222,6 +225,10 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // an unticked item whose copy the worker still holds
   const stillOn = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
     ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick, gap: { name, what: `unticked; still on ${m}` } });
+  // an item that stays as the person edited it: what the record holds cannot say a key still lies in it
+  const staysEdited = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow => ({
+    key: tick.item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with any key the mirror copied in it' },
+  });
   // the variables an unticked env key of server `s` reads on the worker: the references the mirror leaves in its place
   const reads = (s: MirroredServer, f: string): string[] => {
     const v = getAt(s.bare, [FIELD_PATHS[s.agent].env, f.slice('env.'.length)]);
@@ -231,6 +238,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
   const keyRow = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
     const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
+    if (report?.edited?.[item] === 'link') return staysEdited(tick, name);
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
@@ -254,13 +262,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => inBackup(wholeRow(item, name, fields, on), [item]);
   const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
-    // the record of a linked file holds its sha alone, so it cannot say whether the key is still there
-    if (report?.edited?.[item] === 'link') {
-      return { key: item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with any key the mirror copied in it' } };
-    }
-    if (!on && report?.edited?.[item] === 'copy') {
-      return { key: item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with the key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with the key the mirror copied in it' } };
-    }
+    if (report?.edited?.[item] === 'link' || (!on && report?.edited?.[item] === 'copy')) return staysEdited(tick, name);
     if (!on && report?.whole[item]) return report.edited?.[item] ? { key: item, status: 'skip', detail: `${name} stays as you edited it`, tick } : stillOn(tick, name);
     if (!on) {
       return {
@@ -278,8 +280,8 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
       if (!s.known || s.secretFields.length) rows.push({ key: s.key, status: 'skip', detail: `${s.name} stays on ${homeWord()}: the mirror does not carry its file`, gap: { name: s.name, what: 'not copied: the mirror does not carry its file' } });
     } else if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
     else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, s));
-    if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'copy') rows.push({ key: `edited:${s.key}`, status: 'warn', action: `remove ${s.name} on ${m}`, detail: `${s.name} stays as you edited it, with the key the mirror copied in it; remove it yourself` });
-    else if (s.known && !s.ticked.length && report?.edited?.[s.key]) rows.push({ key: `edited:${s.key}`, status: 'skip', detail: `${s.name} on ${m} stays as it is here and no longer follows ${homeWord()}; delete it on ${m} and the next push writes it anew` });
+    if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'copy') rows.push({ key: `edited:${s.key}`, status: 'warn', action: `remove ${s.name} on ${m}`, detail: `${s.name} stays as you edited it, with any key the mirror copied in it; remove it yourself` });
+    else if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'own') rows.push({ key: `edited:${s.key}`, status: 'skip', detail: `${s.name} on ${m} stays as it is here and no longer follows ${homeWord()}; delete it on ${m} and the next push writes it anew` });
   }
 
   const servers = carried(plan);

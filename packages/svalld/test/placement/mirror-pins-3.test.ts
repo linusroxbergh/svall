@@ -205,6 +205,60 @@ describe('a link to a keyed file no longer the copy', () => {
     const ask = { homedir: w.homedir, claudeDir: w.claudeDir, commands: [], vars: [], secrets: [], oauth: [], held: [], whole: [a, b].map((file) => ({ item: 'i', file, place: [], fields: [] })) };
     expect(configReport(ask, { ...w, stateFile, varsFile: path.join(w.homedir, 'vars'), backups: path.join(w.homedir, 'b'), envFile: path.join(w.homedir, '.env') } as never).edited).toEqual({ i: 'link' });
   });
+  for (const mode of ['mac', 'copy'] as const) {
+    it(`on a ${mode}, takes no whole-file override, one put there after the edit or standing from before it`, async () => {
+      const s = linked(mode);
+      await s.push();
+      fs.appendFileSync(s.dot, 'MY-EDIT\n');
+      const edited = read(s.dot);
+      const override = path.join(s.w.overrides, 'claude/agents/x.md');
+      put(override, 'OVERRIDE\n');
+      expect((await s.push()).written).not.toContain(s.landed);
+      expect(read(s.dot)).toBe(edited);
+      const b = linked(mode);
+      put(path.join(b.w.overrides, 'claude/agents/x.md'), 'OVERRIDE\n');
+      await b.push();
+      expect(read(b.dot)).toBe('OVERRIDE\n');
+      fs.appendFileSync(b.dot, 'MY-EDIT\n');
+      await b.push();
+      expect(read(b.dot)).toBe('OVERRIDE\nMY-EDIT\n');
+    });
+  }
+  it('takes an override once the link is gone', async () => {
+    const s = linked();
+    await s.push();
+    fs.appendFileSync(s.dot, 'MY-EDIT\n');
+    put(path.join(s.w.overrides, 'claude/agents/x.md'), 'OVERRIDE\n');
+    await s.push();
+    fs.rmSync(s.landed);
+    await s.push();
+    expect(read(s.landed)).toBe('OVERRIDE\n');
+    expect(read(s.dot)).toContain('MY-EDIT');
+  });
+  it('in a plugin\'s server file with a key by its field, its row says so, ticked or not, and no other row speaks for it', async () => {
+    const s = setup();
+    const acme = path.join(s.home.claudeDir, 'plugins/cache/mp/acme/1.0.0');
+    put(path.join(s.home.claudeDir, 'plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { acme: [{ scope: 'user', installPath: acme, version: '1.0.0' }] } }));
+    put(path.join(acme, '.mcp.json'), JSON.stringify({ mcpServers: { pdf: { command: 'pdf', env: { P_KEY: K } } } }));
+    const item = mirrorPlan(s.home).servers.find((x) => x.name === 'pdf')!;
+    const ticks = item.secretFields.map((f) => `${item.key}#${f}`);
+    for (const t of ticks) s.consent.add(t);
+    const landed = path.join(s.w.claudeDir, 'plugins/cache/mp/acme/1.0.0/.mcp.json');
+    const dot = path.join(s.w.homedir, 'dotfiles/mcp.json');
+    put(dot, '{}\n');
+    fs.mkdirSync(path.dirname(landed), { recursive: true });
+    fs.symlinkSync(dot, landed);
+    await s.push();
+    expect(s.rows().find((r) => r.key === item.key)?.detail).toContain('keys copied');
+    put(dot, JSON.stringify({ ...JSON.parse(read(dot)), mine: 'MY-EDIT' }));
+    const words = 'pdf stays as you edited it, with any key the mirror copied in it; remove it yourself';
+    expect(s.rows().find((r) => r.key === item.key)?.detail).toBe(words);
+    s.consent.clear();
+    await s.push();
+    expect(read(dot)).toContain(K);
+    expect(s.rows().find((r) => r.key === item.key)).toMatchObject({ status: 'warn', detail: words });
+    expect(s.rows().find((r) => r.key === `edited:${item.key}`)).toBeUndefined();
+  });
   it('whose target no longer holds the key, its row does not say it does', async () => {
     const s = linked();
     await s.push();
@@ -215,7 +269,6 @@ describe('a link to a keyed file no longer the copy', () => {
   });
 });
 
-const CMD = { command: 'gh-mcp', args: ['--v'] };
 describe('an override a target that keeps its own holds', () => {
   it('naming a command or a url, reaches the file though nothing else holds that server', async () => {
     const s = setup();
@@ -329,7 +382,7 @@ describe('a known server with every raw field ticked', () => {
 });
 
 describe('a whole copy edited since, as its row and result name it', () => {
-  const ODD = { ...CMD, extra: 1, env: { T: K } };
+  const ODD = { command: 'gh-mcp', extra: 1, env: { T: K } };
   const ticks = Object.keys(ODD).map((f) => `${ITEM}#${f}`);
   async function pushed() {
     const s = setup();
@@ -338,7 +391,7 @@ describe('a whole copy edited since, as its row and result name it', () => {
     await s.push();
     return s;
   }
-  it('with its key out and what else it copied kept, names no key', async () => {
+  it('with its key out and only its command kept, names no key', async () => {
     const s = await pushed();
     const d = parseToml(read(s.toml)) as any;
     delete d.mcp_servers.odd.env;
@@ -353,7 +406,21 @@ describe('a whole copy edited since, as its row and result name it', () => {
     fs.appendFileSync(s.toml, '\n[mcp_servers.odd.more]\non = true\n');
     s.consent.clear();
     expect((await s.push()).left).toEqual(['odd']);
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with the key the mirror copied in it');
+    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
+  });
+  it('holding a key in an sh -c, or args that could, names it', async () => {
+    const s = setup();
+    const SH = { command: 'sh', args: ['-c', `tool --token ${K}`] };
+    put(s.homeToml, tomlOf({ mcp_servers: { odd: SH } }));
+    for (const f of Object.keys(SH)) s.consent.add(`${ITEM}#${f}`);
+    await s.push();
+    const d = parseToml(read(s.toml)) as any;
+    d.mcp_servers.odd.cwd = '/tmp';
+    put(s.toml, tomlOf(d));
+    s.consent.clear();
+    expect((await s.push()).left).toEqual(['odd']);
+    expect(read(s.toml)).toContain(K);
+    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
   });
   it('under a record naming none of its strings, names the key it may hold', async () => {
     const s = await pushed();
@@ -364,6 +431,6 @@ describe('a whole copy edited since, as its row and result name it', () => {
     s.consent.clear();
     expect((await s.push()).left).toEqual(['odd']);
     expect(read(s.toml)).toContain(K);
-    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with the key the mirror copied in it');
+    expect(s.rows().find((x) => x.key === ITEM)?.detail).toContain('with any key the mirror copied in it');
   });
 });
