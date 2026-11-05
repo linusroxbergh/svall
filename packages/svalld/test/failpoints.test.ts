@@ -38,6 +38,20 @@ describe('a home move\'s fault file', () => {
     expect(fs.existsSync(file)).toBe(false);
   });
 
+  it('with a second point after the first, that one waits its turn', () => {
+    process.env.SVALL_HOME_FAULTS = '1';
+    const { file, kill } = armed();
+    fs.writeFileSync(file, 'adopt.dropped\nrestore.file\n');
+    homePoint('restore.file');
+    expect(kill).not.toHaveBeenCalled();
+    homePoint('adopt.dropped');
+    expect(kill).toHaveBeenCalledTimes(1);
+    expect(fs.readFileSync(file, 'utf8')).toBe('restore.file\n');
+    homePoint('restore.file');
+    expect(kill).toHaveBeenCalledTimes(2);
+    expect(fs.existsSync(file)).toBe(false);
+  });
+
   it('a test\'s hook falls first, with no switch', () => {
     delete process.env.SVALL_HOME_FAULTS;
     const seen: string[] = [];

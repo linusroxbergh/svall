@@ -1324,12 +1324,11 @@ function recoveryFault(ids, dir, point, after, ending) {
   placeHome(dir === 'out' ? 'local' : 'remote');
   const before = homeView();
   const taking = dir === 'out' ? R : L;
-  sh(taking, `echo ${after} > ${FAULT}`);
+  // both at once, as a driver going out asks after its kill and recovers at once
+  sh(taking, `printf '${after}\\n${point}\\n' > ${FAULT}`);
   const r = sh(L, `svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} </dev/null`, { ok: false });
-  check(`${after}: the run reached it`, sh(taking, `test -e ${FAULT}`, { ok: false }).code !== 0, () => r.stdout.slice(-400));
-  sh(taking, `echo ${point} > ${FAULT}`);
   person(ending);
-  check(`${point}: the recovery reached it`, sh(taking, `test -e ${FAULT}`, { ok: false }).code !== 0, 'the point was never reached');
+  check(`${after}, then ${point}: the run reached both`, sh(taking, `test -e ${FAULT}`, { ok: false }).code !== 0, () => `left: ${sh(taking, `cat ${FAULT}`, { ok: false }).stdout} ${r.stdout.slice(-300)}`);
   sh(taking, `rm -f ${FAULT}`);
   afterMove(point, ids, before);
 }
