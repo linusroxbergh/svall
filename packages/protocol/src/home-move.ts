@@ -41,6 +41,8 @@ export type AdoptAnswer = z.infer<typeof AdoptAnswer>;
 export const HomeManifest = z.object({
   id: HomeMoveId, fleetId: FleetId, from: MachineId, to: MachineId, toName: z.string(), toHome: MachinePath, record: MachineRecord,
   phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }), at: z.number(),
+  // the fleet's profile on the old home, which the new one reaches it as once it is a worker
+  fromProfile: z.string().optional(),
 });
 export type HomeManifest = z.infer<typeof HomeManifest>;
 

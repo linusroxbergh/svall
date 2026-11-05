@@ -22,6 +22,8 @@ import { heldAsHome, isWorker, readWorkerFile } from '@svall/svalld/worker/mode'
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { Client, withClient } from '../client.js';
 import type { Enrol } from '../commands/worker.js';
+import { PRIVATE } from '@svall/svalld/profile';
+import { workerProfile } from '@svall/svalld/placement/workers';
 import { farProfile, type Target } from '../target.js';
 import { flow, homeProbe, remoteJson, remotePaths, StepError, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
@@ -153,7 +155,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         try {
           await d.enrol({
             homeMachine: enrolled.homeMachineId, homeName: enrolled.homeName, fleetId: enrolled.fleetId, homeSsh: o.ssh, homeSocket: enrolled.socket,
-            homeSvallBase: enrolled.homeSvallBase, homePlatform: enrolled.homePlatform, homeArch: enrolled.homeArch, homePath: enrolled.homePath, takesFleetId: true,
+            homeSvallBase: enrolled.homeSvallBase, homePlatform: enrolled.homePlatform, homeArch: enrolled.homeArch, homePath: enrolled.homePath, takesFleetId: true, homeProfile: o.homeProfile ?? PRIVATE,
           }, enrolled.token);
         } catch (e) {
           throw new StepError((e as Error).message);
@@ -199,13 +201,13 @@ export function realHomeDaemon(t: Target): HomeDaemon {
 }
 
 /** What the machine taking the fleet tells the one it leaves. `ssh`: the way that machine dials this one; none where this one dials it. */
-export function enrolmentFor(paths: Paths, me: MachineId, o: { ssh?: string; home: MachineRecord }): (token: string, m: HomeManifest) => Enrolment {
+export function enrolmentFor(paths: Paths, me: MachineId, o: { ssh?: string; home: MachineRecord; profile?: string }): (token: string, m: HomeManifest) => Enrolment {
   return (token, m) => {
     const long = o.ssh && dialSocketTooLong(dialSocket(paths, m.from), m.record.platform);
     if (long) throw new Error(`${long.message}, so ${m.record.name} cannot dial into ${paths.home}; use an account whose home is ${long.over} bytes shorter`);
     return {
       worker: WorkerFile.parse({
-        homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName,
+        homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName, ...(o.profile && { homeProfile: o.profile }),
         ...(o.ssh && { homeSsh: o.ssh, homeSocket: dialSocket(paths, m.from), homeSvallBase: installPrefix() }),
       }),
       // by the name the fleet has known it by
@@ -360,7 +362,8 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
         // before anything moves: a machine this one cannot log in to stops here, with mission control where it is
         master = await d.openMaster(ssh).catch((e: Error) => { throw new StepError(`this machine cannot log in to ${name}: ${e.message}`, `ssh ${ssh} and see what it answers`); });
         // the fleet there by the folder it answers from: its profile there need not be the one it has here
-        farHome = (await remoteConnectionInfo(master, entry, { ...(farProfile(d.target) && { profile: farProfile(d.target) }) })).fleetHome;
+        const there = workerProfile(paths, to) ?? farProfile(d.target);
+        farHome = (await remoteConnectionInfo(master, entry, { ...(there && there !== PRIVATE && { profile: there }) })).fleetHome;
         await checkCrew(client, id, to, o, `svall fleet home set ${name}`);
         return { value: undefined, detail: `${c.sheet.here} robots stay here, ${c.sheet.there} on ${name}` };
       });
@@ -371,7 +374,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
         const here = d.registry.localMachine();
-        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now() };
+        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now(), ...(d.target.managed && { fromProfile: d.target.name }) };
         const { bytes, sha256 } = await packFleet(paths, manifest);
         const a = await far(['fleet', 'adopt', id, '--stage', '--sha256', sha256], bytes.toString('base64'));
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
@@ -490,7 +493,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       driverJournal(paths, id, 'copy');
       const here = d.registry.localMachine();
       await run.step('copy', async () => {
-        const manifest: HomeManifest = { id, fleetId: worker.fleetId, from, to: d.me, toName: here.name, toHome: here.home as HomeManifest['toHome'], record: { ...entry.record, ssh, dial: undefined }, phone, at: Date.now() };
+        const manifest: HomeManifest = { id, fleetId: worker.fleetId, from, to: d.me, toName: here.name, toHome: here.home as HomeManifest['toHome'], record: { ...entry.record, ssh, dial: undefined }, phone, at: Date.now(), ...(worker.homeProfile && { fromProfile: worker.homeProfile }) };
         const r = await master!.run(farCommand(svallBase, fleetHome, ['fleet', 'export', id, '--manifest', JSON.stringify(manifest)]), { timeoutMs: STEP_MS, maxOutputBytes: MAX_ARCHIVE });
         if (r.code !== 0) throw new StepError(`svall fleet export there exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
         const { sha256, archive } = z.object({ sha256: z.string(), archive: z.string() }).parse(JSON.parse(r.stdout));
@@ -530,7 +533,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
   const { paths } = adoption;
   driverJournal(paths, id, 'adopt');
   await run.step('adopt', async () => {
-    const a = await installAdopt(adoption, id, enrolmentFor(paths, d.me, { home: d.registry.localMachine() }));
+    const a = await installAdopt(adoption, id, enrolmentFor(paths, d.me, { home: d.registry.localMachine(), ...(d.target.managed && { profile: d.target.name }) }));
     if (a.status === 'adopted' || a.status === 'done') return { value: undefined, detail: 'this machine runs the fleet' };
     const said = a.status === 'pending' ? a.detail ?? a.phase : a.status;
     throw new StepError(`this machine did not take the fleet: ${said}`, a.status === 'not-adopted' ? undefined : 'svall fleet home abort, or svall fleet home retry', undefined, a.status === 'not-adopted' ? undefined : o.ends);

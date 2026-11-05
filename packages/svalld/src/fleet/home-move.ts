@@ -294,7 +294,7 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
   carryOwnDocs(d, path.join(ready, 'docs'), state);
   renameRepoDocs(path.join(ready, 'docs'), relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome);
   writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m), { mode: 0o600 });
-  writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at } }, { mode: 0o600 });
+  writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
   return ready;
 }
 

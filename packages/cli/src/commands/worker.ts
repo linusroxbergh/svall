@@ -63,7 +63,7 @@ async function readSecret(name: string): Promise<string> {
 }
 
 /** `takesFleetId`: for a fleet joining its home, which goes by the home's id from its worker.json on. */
-export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string; takesFleetId?: true };
+export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeProfile?: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string; takesFleetId?: true };
 export type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
 export const realEnrol: EnrolDeps = {
@@ -85,7 +85,7 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
   if (o.homeSsh === undefined && (o.homeSvallBase !== undefined || o.homePlatform !== undefined || o.homeArch !== undefined || o.homePath !== undefined)) throw new Error('worker.json not written: --home-svall-base, --home-platform, --home-arch and --home-path are for a worker that dials its home');
   if (o.homeSsh !== undefined && (o.homeSvallBase === undefined || o.homePlatform === undefined || o.homeArch === undefined || o.homePath === undefined)) throw new Error('worker.json not written: a worker that dials its home takes --home-svall-base, --home-platform, --home-arch and --home-path, as svall fleet enroll-worker there names them');
   const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket, homeSvallBase: o.homeSvallBase };
-  const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial });
+  const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial, ...(o.homeProfile && { homeProfile: o.homeProfile }) });
   if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
   const homeRecord = o.homeSsh === undefined ? undefined : MachineRecord.safeParse({ name: o.homeName, ssh: o.homeSsh, platform: o.homePlatform, arch: o.homeArch, home: o.homePath, svallBase: o.homeSvallBase });
   if (homeRecord && !homeRecord.success) throw new Error(`worker.json not written: ${z.prettifyError(homeRecord.error)}`);

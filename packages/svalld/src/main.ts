@@ -16,6 +16,7 @@ import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
 import { homeGate, landed, readOwed } from './fleet/home-move.js';
+import { workerProfile } from './placement/workers.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { startHookReceiver } from './hooks/receiver.js';
@@ -243,7 +244,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // while the fleet moves, what a worker sends but its running fields stays in its outbox
   let holding = false;
   const links = worker ? undefined : new HomeLinks({
-    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log }), dialIn: socketTransport({ paths }),
+    paths, store, log, release: releaseVersion(), machines: () => readRegistry(), connect: sshTransport({ profile, log, profileOf: (m) => workerProfile(paths, m) }), dialIn: socketTransport({ paths }),
     onReport: (r, machine) => { if (applyReport(store, r, machine) === 'applied') replay?.reported(r.robotId); },
     onEvent: async (kind, data, machine) => {
       if (replay && kind === 'mutation') return replay.prepare(data, machine);

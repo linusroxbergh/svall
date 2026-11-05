@@ -96,6 +96,8 @@ export const WorkerFile = z.object({
   homeSsh: SshDestination.optional(),
   homeSocket: MachinePath.regex(/^[^:]*\/w\/[0-9a-f]{12}\.sock$/, 'a socket w/<12 hex>.sock in the home\'s fleet home, with no colon, which ssh reads as a forward\'s separator').optional(),
   homeSvallBase: MachinePath.optional(),
+  // the fleet's profile on the home, where it is named apart from this one's
+  homeProfile: z.string().optional(),
 });
 export type WorkerFile = z.infer<typeof WorkerFile>;
 

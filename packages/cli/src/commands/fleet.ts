@@ -120,7 +120,7 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
         return answer(await stageAdopt(d, id, o.sha256, Buffer.from(await readStdin(), 'base64')));
       }
       const registry = MachineRegistry.load();
-      answer(await installAdopt(d, id, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() } })));
+      answer(await installAdopt(d, id, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() }, ...(t.managed && { profile: t.name }) })));
     });
   cmd.command('status').description('what this machine says of a home move; a move it never heard of it refuses for good').argument('<id>', 'the move\'s id')
     .action(async (raw: string) => answer(await adoptStatus(adoptDeps(target()), idOf(raw))));

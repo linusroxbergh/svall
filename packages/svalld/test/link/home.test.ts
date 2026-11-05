@@ -6,12 +6,14 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, emptyState } from '@svall/protocol';
-import { HomeLinks, socketTransport, type Transport } from '../../src/link/home.js';
+import { PassThrough } from 'node:stream';
+import { HomeLinks, socketTransport, sshTransport, type Transport } from '../../src/link/home.js';
+import { SshMaster } from '../../src/link/ssh.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { dialSocket, resolvePaths } from '../../src/paths.js';
-import { dropToken, issueToken } from '../../src/placement/workers.js';
+import { dropToken, issueToken, workerProfile } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -89,6 +91,31 @@ async function staleSocket(sock: string): Promise<void> {
   child.kill('SIGKILL');
   await once(child, 'exit');
 }
+
+describe('the link a home dials', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const dialed = async (profile: string, profileOf?: (m: string) => string | undefined): Promise<string[]> => {
+    let argv: string[] = [];
+    vi.spyOn(SshMaster, 'open').mockResolvedValue({ socket: '/tmp/m', stream: (a: string[]) => { argv = a; return { stream: new PassThrough(), exited: new Promise(() => {}) }; }, close: () => Promise.resolve() } as never);
+    await sshTransport({ profile, log: silentLogger, ...(profileOf && { profileOf }) })({ id: 'w1', record: { name: 'studio', ssh: 'ada@studio', svallBase: '/opt/svall' } } as never);
+    return argv;
+  };
+
+  it('asks the worker for the fleet by the name it has there, or by this one\'s where none is held', async () => {
+    expect(await dialed('mac2', () => 'private')).not.toContain('-p');
+    expect(await dialed('private', () => 'mac2')).toEqual(expect.arrayContaining(['-p', "'mac2'"]));
+    expect(await dialed('mac2', () => undefined)).toEqual(expect.arrayContaining(['-p', "'mac2'"]));
+  });
+
+  it('a token issued again keeps the name held for that worker', () => {
+    const paths = resolvePaths(makeHome());
+    issueToken(paths, W);
+    expect(workerProfile(paths, W)).toBeUndefined();
+    fs.writeFileSync(paths.workersFile, JSON.stringify({ [W]: { ...JSON.parse(fs.readFileSync(paths.workersFile, 'utf8'))[W], profile: 'private' } }));
+    issueToken(paths, W);
+    expect(workerProfile(paths, W)).toBe('private');
+  });
+});
 
 describe('a worker that dials in', () => {
   it('links over its socket in the fleet home, greeted with the token first, and gives terminals no ssh route', async () => {

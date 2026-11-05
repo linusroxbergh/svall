@@ -1585,6 +1585,28 @@ function serverFirst() {
   let seen;
   for (let i = 0; i < 60 && !seen?.reachable; i++) { if (i) sh(S, 'sleep 1'); seen = call(S, 'machines.list').machines.find((m) => m.name === 'mac2-joined'); }
   check('the server reaches it over its dial', seen?.reachable === true, () => brief(seen));
+  check('it holds the profile the fleet has on the server', worker.homeProfile === 'private', () => brief({ ...worker, token: undefined }));
+  namedApart(serverMachine);
+}
+
+// mac2 here and private on the server: the fleet comes to mac2, which reaches the server's fleet by its own name, and goes out again
+function namedApart(serverMachine) {
+  const mine = JSON.parse(sh(L, 'svall version --json').stdout).machineId;
+  const back = sh(L, 'svall -p mac2 --json fleet home set local </dev/null', { ok: false });
+  check('mac2 takes the fleet back from a server fleet named apart', back.code === 0, () => `${back.code}: ${brief(moveSteps(back.stdout).filter((e) => e.status === 'fail'))}`);
+  check('the server is its worker', JSON.parse(sh(S, 'cat ~/.svall/worker.json').stdout).homeMachineId === mine, 'it names another home');
+  const held = JSON.parse(sh(L, 'cat ~/.svall-mac2/workers.json').stdout)[serverMachine];
+  check('mac2 holds the server\'s fleet by its name there', held?.profile === 'private', () => brief({ ...held, token: undefined }));
+  // the check waits on mac2's own link to the server, which dials `worker link` under that name
+  let out;
+  for (let i = 0; i < 12; i++) {
+    out = sh(L, `svall -p mac2 --json fleet home set ${serverMachine} </dev/null`, { ok: false });
+    if (out.code === 0 || moveSteps(out.stdout).find((e) => e.status === 'fail')?.step !== 'check') break;
+    sh(L, 'sleep 10');
+  }
+  check('and sends it out again', out.code === 0, () => `${out.code}: ${brief(moveSteps(out.stdout).filter((e) => e.status === 'fail'))}`);
+  check('the server is the home again', sh(S, 'test -f ~/.svall/worker.json', { ok: false }).code !== 0, 'worker.json stands');
+  check('mac2 is its worker under that name', JSON.parse(sh(L, 'cat ~/.svall-mac2/worker.json').stdout).homeProfile === 'private', 'another profile');
 }
 
 // ---------------------------------------------------------------------------------------------- the run
@@ -1593,7 +1615,7 @@ const STEPS = {
   1: 'move the dirty robot', 2: 'move the robot on main', 3: 'worker restart', 4: 'home down during work', 5: 'fault matrix', 6: 'return through a dirty Mac worktree',
   7: 'a reviewer started while the Mac sleeps', 8: 'the scribe over a robot on the worker', 9: 'a docs conflict', 10: 'files over the link', 11: 'a delete while the worker is down',
   12: 'agent setup mirror', 13: "the user's ssh config", 14: 'a robot started on the worker comes home', 15: 'a dial-out worker',
-  16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join', 20: 'terminals across a dropped master',
+  16: 'the home moves to remote', 17: "the home move's fault matrix", 18: 'the home comes back', 19: 'a machine set up first takes a join, and a fleet named apart moves both ways', 20: 'terminals across a dropped master',
 };
 const steps = o.steps === undefined || o.steps === 'all' ? Object.keys(STEPS).map(Number) : String(o.steps).split(',').map(Number);
 if (steps.some((s) => !STEPS[s])) throw new Error(`--steps takes all or numbers from 1 to 20, not ${o.steps}`);

@@ -71,8 +71,11 @@ describe('svall fleet join', () => {
     const out = await joinHome({ ssh: 'ada@studio' }, d);
     expect(out.result).toBe('ready');
     expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'enrol', 'worker', 'snapshot']);
-    expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN, takesFleetId: true })]);
+    expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN, takesFleetId: true, homeProfile: 'private' })]);
     expect(d.far.closed()).toBe(true);
+    enrolled = [];
+    await joinHome({ ssh: 'ada@studio', homeProfile: 'team' }, deps({}));
+    expect(enrolled).toEqual([expect.objectContaining({ homeProfile: 'team' })]);
     // the token is no step's to print
     expect(JSON.stringify(events)).not.toContain(TOKEN);
   });

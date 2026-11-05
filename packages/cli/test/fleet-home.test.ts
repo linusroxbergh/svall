@@ -352,6 +352,11 @@ describe('what the machine taking the fleet tells the old home', () => {
     expect(e.home).toMatchObject({ name: 'studio', ssh: 'ada@studio' });
   });
 
+  it('names the fleet as this machine runs it, for a worker named apart', () => {
+    expect(enrolmentFor(paths('/home/ada/.svall'), STUDIO, { home: STUDIO_RECORD as never, profile: 'private' })('t'.repeat(48), m).worker.homeProfile).toBe('private');
+    expect(enrolmentFor(paths('/home/ada/.svall'), STUDIO, { home: STUDIO_RECORD as never })('t'.repeat(48), m).worker.homeProfile).toBeUndefined();
+  });
+
   it('dialed: nothing of a socket', () => {
     const e = enrolmentFor(paths('/Users/ada/.svall'), MAC, { home: STUDIO_RECORD as never })('t'.repeat(48), { ...m, from: STUDIO, record: { ...m.record, platform: 'linux' } } as never);
     expect(e.worker.homeSocket).toBeUndefined();
@@ -566,6 +571,19 @@ describe('fleet home set local', () => {
     expect(settled).toEqual(['not-adopted']);
     expect(await installAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, () => { throw new Error('built'); })).toMatchObject({ status: 'not-adopted' });
     expect(w.mac.daemon.role).toBe('worker');
+  }, 30_000);
+
+  it('the archive names the profile the fleet has on the old home, which it is reached by once a worker', async () => {
+    const { w, deps, master } = await workerHere();
+    fs.writeFileSync(w.mac.paths.workerFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(w.mac.paths.workerFile, 'utf8')), homeProfile: 'private' }));
+    const run = master.run.bind(master);
+    let manifest: HomeManifest | undefined;
+    master.run = ((argv: string[], o?: never) => { if (argv.join(' ').includes("'export'")) manifest = JSON.parse(argv.at(-1)!.replace(/^'|'$/g, '')) as HomeManifest; return run(argv, o); }) as never;
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    expect(manifest?.fromProfile).toBe('private');
+    expect(JSON.parse(fs.readFileSync(w.mac.paths.workersFile, 'utf8'))[STUDIO].profile).toBe('private');
   }, 30_000);
 
   it('the old home\'s marker has no route to ask: this machine tells it', async () => {

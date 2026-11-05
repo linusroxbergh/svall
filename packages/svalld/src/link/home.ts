@@ -77,11 +77,12 @@ type Options = {
 };
 
 /** The far `svall worker link` over this machine's ssh master to the worker. */
-export function sshTransport(o: { profile: string; log: Logger }): Transport {
-  return async ({ record }) => {
+export function sshTransport(o: { profile: string; log: Logger; profileOf?: (machine: string) => string | undefined }): Transport {
+  return async ({ id, record }) => {
     if (!record.ssh) throw new Error(`${record.name} has no ssh destination in the registry`);
     const master = await SshMaster.open({ destination: record.ssh });
-    const { stream, exited } = master.stream([shq(svallExe(record.svallBase)), 'worker', 'link', ...(o.profile === PRIVATE ? [] : ['-p', shq(o.profile)])]);
+    const profile = o.profileOf?.(id) ?? o.profile;
+    const { stream, exited } = master.stream([shq(svallExe(record.svallBase)), 'worker', 'link', ...(profile === PRIVATE ? [] : ['-p', shq(profile)])]);
     void exited.then(async (r) => {
       if (r.code !== 0 && r.stderr.trim()) o.log.error(`${record.name}: svall worker link exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
       await master.close().catch((e: Error) => o.log.error(`${record.name}: the ssh master did not close: ${e.message}`));

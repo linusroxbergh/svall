@@ -5,7 +5,8 @@ import { MachineId } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import type { Paths } from '../paths.js';
 
-const Workers = z.record(MachineId, z.object({ token: z.string().min(32), addedAt: z.number() }));
+// `profile`: the fleet's on that worker, where it is named apart from this one's
+const Workers = z.record(MachineId, z.object({ token: z.string().min(32), addedAt: z.number(), profile: z.string().optional() }));
 type Workers = z.infer<typeof Workers>;
 
 function read(paths: Paths): Workers {
@@ -26,8 +27,14 @@ function read(paths: Paths): Workers {
 /** A new token for `machine` to accept this home by, in place of any it held. */
 export function issueToken(paths: Paths, machine: MachineId): string {
   const token = crypto.randomBytes(24).toString('hex');
-  writeDurable(paths.workersFile, { ...read(paths), [machine]: { token, addedAt: Date.now() } }, { mode: 0o600 });
+  const held = read(paths);
+  writeDurable(paths.workersFile, { ...held, [machine]: { ...held[machine], token, addedAt: Date.now() } }, { mode: 0o600 });
   return token;
+}
+
+/** The fleet's profile on worker `machine`, where it is named apart from this one's. */
+export function workerProfile(paths: Paths, machine: string): string | undefined {
+  try { return read(paths)[machine as MachineId]?.profile; } catch { return undefined; }
 }
 
 export function tokenFor(paths: Paths, machine: MachineId): string | undefined {
