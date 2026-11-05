@@ -1244,8 +1244,9 @@ const POINTS = {
   ],
 };
 
-// reached only in the recovery of a kill before them: each, after which kill, ended how
-const RECOVERY = [['restore.restarting', 'adopt.dropped', 'abort'], ['restore.file', 'adopt.dropped', 'abort'], ['restore.done', 'adopt.dropped', 'retry'], ['abort.recorded', 'adopt.stopped', 'abort']];
+// reached only in the recovery of a kill before them: each, after which kill, ended how, and whether a person starts the units:
+// a daemon started by hand restores a cut install itself and needs no restart after it
+const RECOVERY = [['restore.restarting', 'adopt.dropped', 'abort', false], ['restore.file', 'adopt.dropped', 'abort'], ['restore.done', 'adopt.dropped', 'retry'], ['abort.recorded', 'adopt.stopped', 'abort']];
 
 const revive = (m) => sh(m, `systemctl --user is-active ${UNIT} || systemctl --user start ${UNIT}`, { ok: false });
 const tryHome = (m) => { try { return JSON.parse(sh(m, 'svall --json fleet home', { ok: false }).stdout); } catch { return undefined; } };
@@ -1353,14 +1354,15 @@ function homeFault(ids, dir, point, where, ending, revives = true) {
 }
 
 // a kill, then another in the recovery of what the first left
-function recoveryFault(ids, dir, point, after, ending) {
+function recoveryFault(ids, dir, point, after, ending, revives) {
   placeHome(dir === 'out' ? 'local' : 'remote');
   const before = homeView();
   const taking = dir === 'out' ? R : L;
   // both at once, as a driver going out asks after its kill and recovers at once
   sh(taking, `printf '${after}\\n${point}\\n' > ${FAULT}`);
   const r = sh(L, `svall --json fleet home set ${dir === 'out' ? 'remote' : 'local'} </dev/null`, { ok: false });
-  person(ending);
+  person(ending, revives);
+  if (!revives) for (const m of [L, R]) check(`${point}: ${m}'s unit is up with no one starting it`, sh(m, `systemctl --user is-active ${UNIT}`, { ok: false }).code === 0, () => sh(m, `systemctl --user status ${UNIT} | tail -n 5`, { ok: false }).stdout);
   check(`${after}, then ${point}: the run reached both`, sh(taking, `test -e ${FAULT}`, { ok: false }).code !== 0, () => `left: ${sh(taking, `cat ${FAULT}`, { ok: false }).stdout} ${r.stdout.slice(-300)}`);
   sh(taking, `rm -f ${FAULT}`);
   afterMove(point, ids, before, endsOn(dir, ending));
@@ -1405,8 +1407,8 @@ function homeFaults(ids) {
     });
   }
   for (const dir of ['out', 'back']) {
-    for (const [point, after, ending] of RECOVERY) {
-      if (picked(`${dir} ${point}`)) step(`${point}, past ${after}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}`, () => recoveryFault(ids, dir, point, after, ending));
+    for (const [point, after, ending, revives = true] of RECOVERY) {
+      if (picked(`${dir} ${point}`)) step(`${point}, past ${after}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}${revives ? '' : ', no unit started by hand'}`, () => recoveryFault(ids, dir, point, after, ending, revives));
     }
     if (picked(`${dir} crew`)) step(`mission control comes back from a move called off, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}`, () => crewBack(ids, dir));
   }
