@@ -55,6 +55,8 @@ export type HostDeps = {
   localAgents(): Promise<{ kind: AgentKind; version?: string }[]>;
   /** this Mac's own id, which a worker it enrols names as its home machine */
   machineId(): MachineId;
+  /** this machine's Tailscale state; rejects with why a server home cannot work from here */
+  tailnet(): Promise<unknown>;
   homedir: string;
   /** checks a release's signature against the signers this controller ships */
   verify: Verify;
@@ -120,6 +122,12 @@ export class Runner {
       ...(this.setup.length > 0 && { setup: this.setup }),
     };
   }
+}
+
+/** This machine's Tailscale, which a fleet on a server needs on both machines. */
+export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>): Promise<Outcome<void>> {
+  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
+  return { value: undefined, detail: 'connected' };
 }
 
 /** Runs a flow to its end or to its first blocker, and reports what the user is left holding. */
@@ -487,15 +495,16 @@ function listedAs(registry: MachineRegistry, id: string, o: { name: string; ssh:
 
 /**
  * Refuses, before anything is uploaded, a machine this Mac lists under another name, a fleet home there that serves
- * another Mac, and a release there newer than `version`, which installing would take back; a machine whose svall does
- * not answer has nothing to refuse yet.
+ * another Mac, or serves at all when `asHome`, and a release there newer than `version`, which installing would take
+ * back; a machine whose svall does not answer has nothing to refuse yet.
  */
-async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string; machine?: string; adding?: true }, d: HostDeps): Promise<void> {
+async function mayInstall(master: SshMaster, o: { name: string; ssh: string; svallBase: string; version: string; machine?: string; adding?: true; asHome?: boolean }, d: HostDeps): Promise<void> {
   const far = await farHome(master, o.svallBase, d, o.machine).catch((err: unknown) => { if (err instanceof StepError) return undefined; throw err; });
   if (!far) return;
   const refused = listedAs(d.registry, far.machineId, o) ?? notOurs(far, o.name, d);
   if (refused) throw refused;
-  if (o.adding && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
+  if (o.asHome && far.role === 'worker') throw new StepError(`${o.name} serves ${far.worker?.homeName ?? 'another home'} as a worker, so it cannot be a home`, `svall${d.fleet.profile ? ` -p ${d.fleet.profile}` : ''} fleet home set ${o.name} makes it this fleet's home`);
+  if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `svall host upgrade ${o.name} takes it to this Mac's release`);
   if (newerRelease(far.release, o.version)) {
     throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
   }
@@ -574,6 +583,7 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
 export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const held = await run.step('name', () => Promise.resolve(claimName(d.registry, o)));
+    if (o.asHome) await run.step('tailscale', () => tailnetHere(d));
 
     await run.step('ssh', async () => {
       const { code, stderr } = await d.interactiveSsh(o.ssh);
@@ -622,7 +632,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
 
       const companion = await run.step('release', async () => {
         const c = await companionFor(o, d, arch);
-        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version, adding: true }, d);
+        await mayInstall(master, { name: o.name, ssh: o.ssh, svallBase: remotePaths(home, c.value.version).svallBase, version: c.value.version, adding: true, asHome: o.asHome }, d);
         return c;
       });
       const remote = remotePaths(home, companion.version);

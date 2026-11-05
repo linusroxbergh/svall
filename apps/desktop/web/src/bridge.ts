@@ -98,6 +98,8 @@ export type ToShell =
   | { type: 'setup.plan' }
   | { type: 'setup.login'; agent: AgentKind }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string; mainAgent: AgentKind; firstProject?: string; scribe: boolean; svallPermissions: boolean; newRobotStart: 'agent' | 'shell' }
+  // this Mac set up to join a fleet on a server next, its agents as saved; answered as setup.run is
+  | { type: 'setup.join'; svallPermissions: boolean }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string; machine?: string }
   // keeps the Mac from idle-sleeping under this reason; none lets go

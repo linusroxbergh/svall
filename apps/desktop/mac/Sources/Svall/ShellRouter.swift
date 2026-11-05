@@ -244,17 +244,9 @@ final class ShellRouter {
             var args = ["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ","), "--projects", projects,
                         "--main-agent", mainAgent, "--scribe", scribe ? "on" : "off", "--svall-permissions", svallPermissions ? "on" : "off", "--new-robots", newRobotStart]
             if let firstProject { args += ["--first-project", firstProject] }
-            AppRuntime.run(args) { [weak self] ok, text in
-                // the home setup made did not exist when launch claimed it and named its browser store
-                if ok {
-                    _ = SvallHome.claim()
-                    let file = SvallHome.path + "/browser-store"
-                    if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
-                        try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
-                    }
-                }
-                self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
-            }
+            runSetup(args)
+        case .setupJoin(let svallPermissions):
+            runSetup(["setup", "--json", "--login-shell", "--joining", "--svall-permissions", svallPermissions ? "on" : "off"])
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
@@ -318,6 +310,20 @@ final class ShellRouter {
             window.setFrame(NSRect(x: window.frame.minX, y: window.frame.maxY - size.height, width: size.width, height: size.height), display: true)
         case .awake(let reason):
             awake.hold(reason)
+        }
+    }
+
+    private func runSetup(_ args: [String]) {
+        AppRuntime.run(args) { [weak self] ok, text in
+            // the home setup made did not exist when launch claimed it and named its browser store
+            if ok {
+                _ = SvallHome.claim()
+                let file = SvallHome.path + "/browser-store"
+                if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
+                    try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
+                }
+            }
+            self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
         }
     }
 

@@ -447,6 +447,67 @@ describe.runIf(process.platform === 'darwin')('svall setup --agents', () => {
     }
   });
 
+  describe('a first run that chose a server', () => {
+    const marker = (home: string) => path.join(home, '.svall', 'joining');
+    const plist = (home: string) => path.join(home, 'Library', 'LaunchAgents', `${LAUNCHD_LABEL}.plist`);
+    const worker = { homeMachineId: '66666666-7777-8888-9999-aaaaaaaaaaaa', fleetId: '11111111-2222-3333-4444-555555555555', token: 'a'.repeat(48), homeName: 'studio' };
+
+    it('sets up a Mac with no agent CLI, as its robots start on the server, and marks the fleet until the join lands', async () => {
+      const home = makeHome();
+      try {
+        const bin = path.join(home, 'bin');
+        fs.mkdirSync(bin);
+        fs.writeFileSync(path.join(bin, 'tmux'), '#!/bin/sh\necho tmux 3.5a\n', { mode: 0o755 });
+        fs.symlinkSync(process.execPath, path.join(bin, 'node'));
+        const env = { HOME: home, PATH: `${bin}:${DOUBLES}:/usr/bin:/bin` };
+        expect((await run(env, 'setup', '--no-launchctl')).stderr).toContain('no agent CLI');
+        expect(fs.existsSync(path.join(home, '.svall'))).toBe(false);
+        const r = await run(env, '--json', 'setup', '--no-launchctl', '--joining', '--svall-permissions', 'on');
+        expect(r.code).toBe(0);
+        expect(JSON.parse(r.stdout).warnings).toContainEqual(expect.stringContaining('no agent CLI'));
+        expect(fs.existsSync(marker(home))).toBe(true);
+        expect(fs.existsSync(plist(home))).toBe(true);
+        expect((await run(env, 'setup', '--plan', '--joining')).stderr).toContain('--joining is for a setup that writes everything');
+      } finally {
+        cleanHomes();
+      }
+    });
+
+    it('a setup to run here clears the mark, and refuses where the join made this fleet a worker before it landed', async () => {
+      const home = makeHome();
+      try {
+        const env = { HOME: home, PATH: tools(home) };
+        fs.mkdirSync(path.join(home, '.svall'));
+        fs.writeFileSync(marker(home), '');
+        fs.writeFileSync(path.join(home, '.svall', 'worker.json'), JSON.stringify(worker));
+        const refused = await run(env, 'setup', '--no-launchctl', '--agents', 'codex');
+        expect(refused.code).not.toBe(0);
+        expect(refused.stderr).toContain('this Mac joined the fleet on studio, so it runs no fleet of its own: open Svall again and connect to studio');
+        expect(fs.existsSync(plist(home))).toBe(false);
+        expect(fs.existsSync(marker(home))).toBe(true);
+        fs.rmSync(path.join(home, '.svall', 'worker.json'));
+        expect((await run(env, 'setup', '--no-launchctl', '--agents', 'codex')).code).toBe(0);
+        expect(fs.existsSync(marker(home))).toBe(false);
+      } finally {
+        cleanHomes();
+      }
+    });
+
+    it('leaves a fleet that never forked as it was: no mark, and a worker with none sets up', async () => {
+      const home = makeHome();
+      try {
+        const env = { HOME: home, PATH: tools(home) };
+        fs.mkdirSync(path.join(home, '.svall'));
+        fs.writeFileSync(path.join(home, '.svall', 'worker.json'), JSON.stringify(worker));
+        expect((await run(env, 'setup', '--no-launchctl', '--agents', 'codex')).code).toBe(0);
+        expect(fs.existsSync(plist(home))).toBe(true);
+        expect(fs.existsSync(marker(home))).toBe(false);
+      } finally {
+        cleanHomes();
+      }
+    });
+  });
+
   it('refuses a choice that leaves on no agent whose CLI is on PATH', async () => {
     const home = makeHome();
     try {

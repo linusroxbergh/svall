@@ -69,6 +69,7 @@ enum ToShell: Decodable {
     case windowSize(width: Double, height: Double)
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String, mainAgent: String, firstProject: String?, scribe: Bool, svallPermissions: Bool, newRobotStart: String)
+    case setupJoin(svallPermissions: Bool)
     case setupLogin(agent: String)
     case folderPick(start: String, machine: String?)
     case awake(reason: String?)
@@ -126,6 +127,7 @@ enum ToShell: Decodable {
         case "window.size": self = .windowSize(width: try c.decode(Double.self, forKey: .width), height: try c.decode(Double.self, forKey: .height))
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects), mainAgent: try c.decode(String.self, forKey: .mainAgent), firstProject: try c.decodeIfPresent(String.self, forKey: .firstProject), scribe: try c.decode(Bool.self, forKey: .scribe), svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions), newRobotStart: try c.decode(String.self, forKey: .newRobotStart))
+        case "setup.join": self = .setupJoin(svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions))
         case "setup.login": self = .setupLogin(agent: try c.decode(String.self, forKey: .agent))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))

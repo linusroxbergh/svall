@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
+import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
@@ -25,7 +25,7 @@ import type { Enrol } from '../commands/worker.js';
 import { PRIVATE } from '@svall/svalld/profile';
 import { workerProfile } from '@svall/svalld/placement/workers';
 import { farProfile, type Target } from '../target.js';
-import { flow, homeProbe, remoteJson, remotePaths, StepError, type HostDeps, type HostOutcome, type Runner } from './host.js';
+import { flow, homeProbe, remoteJson, remotePaths, StepError, tailnetHere, type HostDeps, type HostOutcome, type Runner } from './host.js';
 import type { MachineEntry, MachineRegistry } from './registry.js';
 import { SshError, type SshMaster } from './ssh.js';
 
@@ -52,14 +52,12 @@ const Enrolled = z.object({
 
 type JoinOptions = { ssh: string; name?: string; homeProfile?: string };
 
-export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh'> & {
+export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' | 'tailnet'> & {
   registry: MachineRegistry;
   target: Target;
   me: MachineId;
   /** where svall is installed on this machine, which the home records */
   svallBase: string;
-  /** this machine's Tailscale state; rejects with why a server home cannot work from here */
-  tailnet(): Promise<unknown>;
   /** worker.json written with `token`, and this fleet's daemon restarted as the worker of the home named */
   enrol(o: Enrol, token: string): Promise<void>;
   /** this fleet's state as its daemon holds it, undefined while none answers */
@@ -97,6 +95,8 @@ async function identifyHome(master: SshMaster, o: JoinOptions, d: Pick<JoinDeps,
     throw new StepError(`${o.ssh} runs ${far.release} on protocol ${far.protocol}, this machine protocol ${PROTOCOL_VERSION}`, far.protocol > PROTOCOL_VERSION ? 'update Svall on this machine' : `upgrade Svall on ${o.ssh}`);
   }
   if (far.role === 'worker') throw new StepError(`the fleet there is a worker of ${far.worker?.homeName ?? 'another home'}`, `join ${far.worker?.homeName ?? 'its home'} instead`);
+  const { tailscale } = await remoteJson<HomeFacts>(master, svallBase, [...farFlags(o), '--json', 'fleet', 'facts'], 'svall fleet facts');
+  if (!tailscale?.host) throw new StepError(`a fleet on a server needs Tailscale on both machines, and ${o.ssh} says: ${tailscale?.error ?? 'no name on the tailnet'}`, `ssh ${o.ssh}, then install Tailscale from https://tailscale.com/download/linux and sign in with sudo tailscale up`);
   const info = await remoteConnectionInfo(master, { id: far.machineId, record: { name: o.ssh, svallBase } }, { ...(o.homeProfile && { profile: o.homeProfile }) }).catch((e: Error) => {
     throw new StepError(e.message, e instanceof SshError && e.kind === 'daemon_down' ? `start the fleet's daemon there: ssh ${o.ssh}, then svall setup` : undefined);
   });
@@ -113,10 +113,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       const of = refuseHeld(o, d);
       return Promise.resolve({ value: of, detail: of ? `${d.target.home} serves ${of} as a worker, whose token this renews` : `${d.target.home} holds nothing a snapshot would erase` });
     });
-    await run.step('tailscale', async () => {
-      await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
-      return { value: undefined, detail: 'connected' };
-    });
+    await run.step('tailscale', () => tailnetHere(d));
     await run.step('ssh', async () => {
       const { code, stderr } = await d.interactiveSsh(o.ssh);
       if (code !== 0) throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`, `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then join again`);
@@ -150,6 +147,8 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         if (answer.fleetId !== home.fleetId || answer.homeMachineId !== home.id) throw new StepError(`${o.ssh} issued a token for another fleet or machine than it answered as`, `ssh ${o.ssh} and see which fleet runs there`);
         return { value: answer, detail: `${answer.homeName} issued this machine a token` };
       });
+      // a join run again finds the last one's snapshot, which says nothing of this one
+      const since = Date.now();
       await run.step('worker', async () => {
         // the fleet goes by its home's id from here, which `svall --host` and an upgrade compare; an empty fleet has nothing under its own
         try {
@@ -164,8 +163,11 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       });
       await run.step('snapshot', async () => {
         for (const until = Date.now() + SNAPSHOT_MS; Date.now() < until; await new Promise((r) => setTimeout(r, POLL_MS))) {
-          const state = await d.state().catch(() => undefined);
-          if ((state?.machines?.[enrolled.homeMachineId]?.snapshot?.version ?? 0) > 0) return { value: undefined, detail: `${enrolled.homeName}'s fleet is here` };
+          const snapshot = (await d.state().catch(() => undefined))?.machines?.[enrolled.homeMachineId]?.snapshot;
+          if (snapshot && snapshot.version > 0 && snapshot.at >= since) {
+            fs.rmSync(resolvePaths(d.target.home).joining, { force: true });
+            return { value: undefined, detail: `${enrolled.homeName}'s fleet is here` };
+          }
         }
         throw new StepError(`${enrolled.homeName} sent no snapshot in ${SNAPSHOT_MS / 1000} s`, `svall doctor, and svall host doctor ${enrolled.homeName}`);
       });

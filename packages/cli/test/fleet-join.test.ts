@@ -19,7 +19,7 @@ const VERSION = { release: '1.0.0', machineId: HOME_ID, protocol: PROTOCOL_VERSI
 const ENROLLED = { homeMachineId: HOME_ID, homeName: 'studio', fleetId: FLEET, socket: '/home/ada/.svall/w/abc.sock', token: TOKEN, homeSvallBase: '/home/ada/.local/share/svall', homePlatform: 'linux', homeArch: 'x64', homePath: '/home/ada' };
 const INFO = { fleetId: FLEET, machineId: HOME_ID, release: '1.0.0', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: 47800, token: 'api', fleetHome: '/home/ada/.svall' };
 
-type Far = { version?: unknown; enrolled?: unknown; enrolCode?: number; enrolStderr?: string; versionCode?: number };
+type Far = { version?: unknown; enrolled?: unknown; enrolCode?: number; enrolStderr?: string; versionCode?: number; tailscale?: { host?: string; error?: string } };
 
 function master(far: Far): { master: SshMaster; asked: string[]; closed: () => boolean } {
   const asked: string[] = [];
@@ -33,6 +33,7 @@ function master(far: Far): { master: SshMaster; asked: string[]; closed: () => b
       if (line.includes('svall-home')) return ok('/home/ada\nada\n');
       if (line.includes('version')) return far.versionCode ? Promise.resolve({ code: far.versionCode, signal: null, stdout: '', stderr: 'not found' }) : ok(far.version ?? VERSION);
       if (line.includes('connection-info')) return ok(INFO);
+      if (line.includes('fleet facts')) return ok({ machineId: HOME_ID, role: 'home', fleetId: FLEET, tailscale: far.tailscale ?? { host: 'studio.tail1234.ts.net' } });
       throw new Error(`unexpected ${line}`);
     },
     close: () => { closed = true; return Promise.resolve(); },
@@ -50,7 +51,7 @@ function deps(far: Far, o: Partial<JoinDeps> = {}): JoinDeps & { far: ReturnType
     far: made, emit: (e) => events.push(e), openMaster: () => Promise.resolve(made.master), interactiveSsh: () => Promise.resolve({ code: 0, stderr: '' }),
     registry: MachineRegistry.load(), target: { name: 'private', home, managed: false }, me: machineId(), svallBase: '/opt/svall', tailnet: () => Promise.resolve(),
     enrol: (e, token) => { enrolled.push({ ...e, token }); return Promise.resolve(); },
-    state: () => Promise.resolve({ ...emptyState(), machines: { [HOME_ID]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 7, at: 1 } } } } as FleetState),
+    state: () => Promise.resolve({ ...emptyState(), machines: { [HOME_ID]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 7, at: Date.now() } } } } as FleetState),
     ...o,
   };
 }
@@ -136,6 +137,42 @@ describe('svall fleet join', () => {
     expect(failure()?.detail).toMatch(said);
     expect(enrolled).toEqual([]);
     expect(fs.existsSync(resolvePaths(home).fleetConfig)).toBe(false);
+  });
+
+  it('refuses a home off the tailnet before it issues a token, naming what the server says', async () => {
+    const d = deps({ tailscale: { error: 'tailscale is not connected (NeedsLogin); sign in and try again' } });
+    const out = await joinHome({ ssh: 'ada@studio' }, d);
+    expect(out.stopped).toBe('home');
+    expect(failure()).toMatchObject({ detail: expect.stringContaining('ada@studio says: tailscale is not connected (NeedsLogin)'), action: expect.stringMatching(/^ssh ada@studio, then install Tailscale/) });
+    expect(d.far.asked.some((l) => l.includes('enroll-worker'))).toBe(false);
+    expect(enrolled).toEqual([]);
+  });
+
+  it('clears the mark a first run\'s server path left once the join lands, and keeps it while it has not', async () => {
+    fs.mkdirSync(home, { recursive: true });
+    const marker = resolvePaths(home).joining;
+    fs.writeFileSync(marker, '');
+    const clock = Date.now;
+    let now = clock();
+    Date.now = () => (now += 30_000);
+    try {
+      const silent = deps({}, { state: () => Promise.resolve(emptyState()) });
+      expect((await joinHome({ ssh: 'ada@studio' }, silent)).stopped).toBe('snapshot');
+    } finally { Date.now = clock; }
+    expect(fs.existsSync(marker)).toBe(true);
+    expect((await joinHome({ ssh: 'ada@studio' }, deps({}))).result).toBe('ready');
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
+  it('a join run again waits for a snapshot of its own, not the one the last left', async () => {
+    const before = Date.now() - 60_000;
+    const stale = deps({}, { state: () => Promise.resolve({ ...emptyState(), machines: { [HOME_ID]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 7, at: before } } } } as FleetState) });
+    const clock = Date.now;
+    let now = clock();
+    Date.now = () => (now += 30_000);
+    try {
+      expect((await joinHome({ ssh: 'ada@studio' }, stale)).stopped).toBe('snapshot');
+    } finally { Date.now = clock; }
   });
 
   it('refuses a far machine that is this one', async () => {

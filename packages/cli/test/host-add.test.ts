@@ -68,11 +68,11 @@ describe('host add', () => {
 
 
   it('--as-home leaves the machine a fleet of its own, enrols nothing there and offers no setup, for a join to follow', async () => {
+    // as the machine answers once nothing enrolled it: a home of its own, naming no one
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }) });
     healthy();
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    // as the machine answers once nothing enrolled it: a home of its own, naming no one
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }) });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
     await d.close();
     expect(out).toEqual({ result: 'ready', actions: [] });
@@ -132,6 +132,42 @@ describe('host add', () => {
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.detail).toBe("trift is this fleet's home, so it cannot be added as its worker");
     expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+  });
+
+  it('--as-home goes on over the fleet\'s own home, as a first run\'s join that stopped short leaves it, so Try again reaches the join', async () => {
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    await d.close();
+    expect(step('release').at(-1)?.status).toBe('ok');
+    expect(out).toEqual({ result: 'ready', actions: [] });
+  });
+
+  it('--as-home refuses a fleet there that is a worker before anything is uploaded, naming the move that makes it the home', async () => {
+    const worker = { homeMachineId: MAC, homeName: 'mac', fleetId: FLEET };
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'worker', worker }) });
+    healthy();
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ registry }));
+    expect(out.stopped).toBe('release');
+    expect(step('release').at(-1)).toMatchObject({ detail: 'trift serves mac as a worker, so it cannot be a home', action: "svall fleet home set trift makes it this fleet's home" });
+    expect(ssh.remoteCalls().some((w) => w[0] === 'sh' && w[2].includes('cat > "$1"'))).toBe(false);
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('--as-home asks for Tailscale on this Mac before any ssh; a worker\'s add does not', async () => {
+    const asked: string[] = [];
+    const off = deps({ tailnet: () => Promise.reject(new Error('tailscale not found: install it from https://tailscale.com/download and sign in')), interactiveSsh: (to) => { asked.push(to); return Promise.resolve({ code: 0, stderr: '' }); } });
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, off);
+    expect(out.stopped).toBe('tailscale');
+    expect(step('tailscale').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('needs Tailscale on both machines: tailscale not found') });
+    expect(asked).toEqual([]);
+    events.length = 0;
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, { ...off, interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) });
+    expect(step('tailscale')).toEqual([]);
   });
 
   it('uploads and enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {

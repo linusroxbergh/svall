@@ -15,8 +15,10 @@ enum SvallHome {
     private static let root = Bundle.main.object(forInfoDictionaryKey: "SvallHomeName") as? String ?? ".svall"
 
     static var path: String {
-        ProcessInfo.processInfo.environment["SVALL_HOME"] ?? NSHomeDirectory() + "/" + root
+        ProcessInfo.processInfo.environment["SVALL_HOME"] ?? privatePath
     }
+
+    static var privatePath: String { NSHomeDirectory() + "/" + root }
 
     private static func read(_ file: String) -> String? {
         (try? String(contentsOfFile: path + "/" + file, encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)

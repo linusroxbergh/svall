@@ -106,6 +106,8 @@ export function resolvePaths(home: string = svallHome()) {
     retroSessions: path.join(home, 'retro', 'sessions.ndjson'),
     // the home's: the token it issued each worker of this fleet
     workersFile: path.join(home, 'workers.json'),
+    // a first run that chose a server: the app starts no fleet here until the join lands
+    joining: path.join(home, 'joining'),
     // the fleet is on its way to another home: what this machine asks before it starts as a home again
     homeMoving: path.join(home, 'home-moving.json'),
     // the outcome of a move this machine still owes a home with no route to it

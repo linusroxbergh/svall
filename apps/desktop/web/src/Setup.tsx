@@ -70,7 +70,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       const failed = farRows.current.some((r) => r.status === 'fail');
       if (!failed && m.op === 'add') bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
       else if (!failed && m.code === 0) window.location.replace('/');
-      else { setRunning(false); setBusy(false); }
+      else { pending.current = undefined; setRunning(false); setBusy(false); }
       return;
     }
     if (m.type === 'shell.info') { machine.current = m.machine || undefined; return; }
@@ -100,6 +100,8 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     }
     const to = going.current;
     if (to && to.fork !== 'here') {
+      // the machine runs that follow are this run's too, which a recheck must not cut into
+      pending.current = 'run';
       setRunning(true);
       setBusy(true);
       bridge.send(to.fork === 'server'
@@ -149,7 +151,12 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     </Page>
   );
   if (!plan) return <div className="connect" data-testid="setup" role="status">Looking for Claude Code, Codex and OpenCode…</div>;
-  // the server paths take this Mac's agents as they are found, for the robots that move here
+  const on = plan.agents.filter((a) => !off.includes(a.kind));
+  const writes = plan.writes.filter((w) => !w.agent || !off.includes(w.agent)).map((w) => ({ ...w,
+    what: w.agent === 'claude' ? `Claude Code: hooks, status line${permissions ? ' and svall permissions' : ''}`
+      : w.agent === 'codex' ? 'Codex: hooks' : w.agent === 'opencode' ? 'OpenCode: plugin' : w.what }));
+  if (permissions && on.some((a) => a.kind === 'codex') && plan.codexRules) writes.push({ what: 'Codex: svall permissions', path: plan.codexRules });
+  // the server paths keep this Mac's agents as saved, for the robots that move here
   const farRun = (to: Fork) => {
     if (pending.current) return;
     going.current = { fork: to, ssh: ssh.trim() };
@@ -159,20 +166,21 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     setBusy(true);
     setRunning(true);
     setError(undefined);
-    const kinds = plan.agents.filter((a) => !a.folderOnly).map((a) => a.kind);
-    bridge.send({ type: 'setup.run', agents: plan.agents.map((a) => a.kind), found: plan.agents.map((a) => a.kind), projects: plan.projects, mainAgent: plan.mainAgent ?? kinds[0] ?? 'claude', firstProject: undefined, scribe: true, svallPermissions: true, newRobotStart: 'agent' });
+    bridge.send({ type: 'setup.join', svallPermissions: permissions });
   };
   if (fork !== 'here') {
     const far = fork === 'server' || fork === 'join';
     const said = farSteps?.filter((r) => r.status !== 'start');
     const failed = said?.find((r) => r.status === 'fail');
+    // a Mac that only connects runs its robots on the server, so a missing agent CLI stops only the here path
+    const blockers = plan.install ? [] : plan.blockers;
     return (
       <Page>
         <header className="setup-intro">
           <h1>{fork === 'server' ? 'Install Svall on a server' : fork === 'join' ? 'Connect to a fleet on a server' : 'Where should your fleet run?'}</h1>
           <p>{fork === 'server' ? 'The server runs your fleet all day; this Mac joins it and can sleep. Tailscale is needed on both.' : fork === 'join' ? 'This Mac joins the fleet that server runs. Tailscale is needed on both.' : 'You can change this later in Settings.'}</p>
         </header>
-        {plan.blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
+        {blockers.map((b) => <p key={b} className="setup-blocker">{b}</p>)}
         {!far && (
           <section className="setup-list" data-testid="setup-fork">
             <button type="button" className="btn pri" data-testid="fork-here" onClick={() => setFork('here')}>Run the fleet on this Mac</button>
@@ -183,30 +191,28 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         {far && (
           <fieldset className="setup-fields" disabled={running} aria-busy={busy}>
             <label><span>ssh destination</span><input {...AS_TYPED} data-testid="fork-ssh" value={ssh} placeholder="you@studio" onChange={(e) => setSsh(e.target.value)} /></label>
+            <Preference {...PERMISSIONS} value={permissions} set={setPermissions} />
           </fieldset>
         )}
+        {far && <Review writes={writes} />}
         {said && said.length > 0 && (
           <div className="setup-list" data-testid="fork-steps">
-            {said.map((r) => <p key={`${r.step}-${r.status}`} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{r.detail ?? r.step}{r.action && <small> {r.action}</small>}</p>)}
+            {said.map((r, i) => <p key={i} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{r.detail ?? r.step}{r.action && <small> {r.action}</small>}</p>)}
           </div>
         )}
         {error && <p className="setup-error" role="alert">{error}</p>}
         {far && (
           <div className="setup-acts">
-            <button type="button" className="btn pri" data-testid="fork-go" disabled={running || plan.blockers.length > 0 || !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim())} onClick={() => farRun(fork)}>{failed ? 'Try again' : fork === 'server' ? 'Install and connect' : 'Connect'}</button>
-            <button type="button" className="btn" data-testid="fork-back" disabled={running} onClick={() => { setFork(undefined); setFarSteps(undefined); going.current = undefined; }}>Back</button>
+            <button type="button" className="btn pri" data-testid="fork-go" disabled={busy || blockers.length > 0 || !/^[A-Za-z0-9][A-Za-z0-9._@:[\]-]*$/.test(ssh.trim())} onClick={() => farRun(fork)}>{failed ? 'Try again' : fork === 'server' ? 'Install and connect' : 'Connect'}</button>
+            <button type="button" className="btn" data-testid="fork-back" disabled={busy} onClick={() => { setFork(undefined); setFarSteps(undefined); going.current = undefined; }}>Back</button>
+            {blockers.length > 0 && <button type="button" className="btn" disabled={busy} onClick={check}>{busy ? 'Checking…' : 'Check again'}</button>}
           </div>
         )}
       </Page>
     );
   }
-  const on = plan.agents.filter((a) => !off.includes(a.kind));
   const runnable = on.filter((a) => !a.folderOnly);
   const agent = runnable.find((a) => a.kind === main)?.kind ?? runnable[0]?.kind ?? main;
-  const writes = plan.writes.filter((w) => !w.agent || !off.includes(w.agent)).map((w) => ({ ...w,
-    what: w.agent === 'claude' ? `Claude Code: hooks, status line${permissions ? ' and svall permissions' : ''}`
-      : w.agent === 'codex' ? 'Codex: hooks' : w.agent === 'opencode' ? 'OpenCode: plugin' : w.what }));
-  if (permissions && on.some((a) => a.kind === 'codex') && plan.codexRules) writes.push({ what: 'Codex: svall permissions', path: plan.codexRules });
   if (plan.trustPaths?.[agent]) writes.splice(1, 0, { what: `${AGENT_LABEL[agent]}: folder trust for mission control${firstProject ? ` and ${firstProject.split('/').filter(Boolean).at(-1) ?? '/'}` : ''}`, path: plan.trustPaths[agent]! });
   const pick = (which: 'projects' | 'project') => { picking.current = which; bridge.send({ type: 'folder.pick', start: projects.trim() || '~', ...(machine.current && { machine: machine.current }) }); };
   const line = `export PATH="$HOME/.local/bin:$PATH"`;
@@ -291,18 +297,12 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
             {[
               { title: 'Notify me when an agent needs me', text: 'A banner with Approve and Deny when an agent asks for permission, and one when it finishes.', value: notify, set: setNotify },
               { title: 'Automatically update robot notes', text: "When an agent finishes, Svall asks your main agent for a short summary and updates the robot’s name and note. Each update uses a little of your plan or API credit.", value: scribe, set: setScribe },
-              { title: 'Let robots run svall without asking', text: 'Robots can start, message and wait for other robots without a permission prompt.', value: permissions, set: setPermissions },
-            ].map((p) => <label className="setup-preference" key={p.title}><span><input type="checkbox" aria-label={p.title} checked={p.value} onChange={(e) => p.set(e.target.checked)} />{p.title}</span><small>{p.text}</small></label>)}
+              { ...PERMISSIONS, value: permissions, set: setPermissions },
+            ].map((p) => <Preference key={p.title} {...p} />)}
             <div className="setup-preference"><label className="setup-new">New robots start<select className="fld" aria-label="New robots start" value={newRobots} onChange={(e) => setNewRobots(e.target.value as 'agent' | 'shell')}><option value="agent">Your main agent</option><option value="shell">A shell</option></select></label><small>What ⌘T opens.</small></div>
           </div>
           {!plan.shimOnPath && !plan.pathFile && <section><p>{shortPath(plan.shimDir)} is not on your PATH; add this line to your shell profile.</p><Command bridge={bridge} text={line} /></section>}
-          <section className="setup-review">
-            <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
-            <details>
-              <summary>Review changes <span>{writes.length} locations</span></summary>
-              <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
-            </details>
-          </section>
+          <Review writes={writes} />
         </>}
       </fieldset>
       {error && <p className="setup-error" role="alert">{error}</p>}
@@ -316,6 +316,22 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
     </Page>
   );
 }
+
+const PERMISSIONS = { title: 'Let robots run svall without asking', text: 'Robots can start, message and wait for other robots without a permission prompt.' };
+
+const Preference = ({ title, text, value, set }: { title: string; text: string; value: boolean; set: (on: boolean) => void }) => (
+  <label className="setup-preference"><span><input type="checkbox" aria-label={title} checked={value} onChange={(e) => set(e.target.checked)} />{title}</span><small>{text}</small></label>
+);
+
+const Review = ({ writes }: { writes: { what: string; path: string }[] }) => (
+  <section className="setup-review">
+    <p>Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.</p>
+    <details>
+      <summary>Review changes <span>{writes.length} locations</span></summary>
+      <ul className="setup-list">{writes.map((w) => <li key={w.path} className="setup-write"><span>{w.what}</span><code>{shortPath(w.path)}</code></li>)}</ul>
+    </details>
+  </section>
+);
 
 function Command({ bridge, text }: { bridge: Bridge; text: string }) {
   const [copied, setCopied] = useState(false);

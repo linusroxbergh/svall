@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { ApiError, aside, asideLine, checksAgain, ellipsis, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
+import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
@@ -58,6 +59,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot(), signed: releaseSigned() },
     localAgents: () => withClient(() => Client.connect(), async (c) => (await c.call('system.info', {})).agentAdapters),
     machineId: () => machineId(dir),
+    tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
     homedir: os.homedir(),
     verify: sshVerify({ allowedSigners: controllerSigners() }),
     fleet: { home: fleet.home, ...(farProfile(fleet) && { profile: farProfile(fleet) }) },

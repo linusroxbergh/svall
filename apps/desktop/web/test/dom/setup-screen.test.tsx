@@ -225,7 +225,7 @@ describe('the first run forks three ways', () => {
     expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
     toSsh('ada@studio');
     fireEvent.click(screen.getByTestId('fork-go'));
-    expect(sent.at(-1)?.type).toBe('setup.run');
+    expect(sent.at(-1)?.type).toBe('setup.join');
     expect(hosts(sent)).toEqual([]);
     receive(FAR);
     expect(hosts(sent)).toEqual([['join', { name: '', ssh: 'ada@studio' }]]);
@@ -275,5 +275,112 @@ describe('the first run forks three ways', () => {
     receive({ type: 'host.step', op: 'add', event: { step: 'os', status: 'fail', detail: 'not Ubuntu' } });
     receive({ type: 'host.done', op: 'add', code: 1 });
     expect(hosts(sent)).toHaveLength(1);
+  });
+
+  test('the server paths say what setup writes, keep an agent turned off off, and send the permissions tick as left', () => {
+    const { sent } = shell({ ...ready, integrations: ['claude'] }, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    fireEvent.click(screen.getByText(/Review changes/));
+    expect(screen.getByText('Svall adds agent hooks, a background service and the svall command. The hooks only act inside Svall.')).toBeTruthy();
+    expect(screen.getByText('Claude Code: hooks, status line and svall permissions')).toBeTruthy();
+    expect(screen.queryByText('Codex: hooks')).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Let robots run svall without asking' }));
+    expect(screen.getByText('Claude Code: hooks, status line')).toBeTruthy();
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    expect(sent.at(-1)).toEqual({ type: 'setup.join', svallPermissions: false });
+    expect(sent.some((m) => m.type === 'setup.run')).toBe(false);
+  });
+
+  test('a Mac with no agent CLI takes either server path, as its robots start on the server; the here path still asks for one', () => {
+    const { sent } = shell(missing, { fork: false });
+    expect(screen.queryByText(missing.blockers[0])).toBeNull();
+    fireEvent.click(screen.getByTestId('fork-join'));
+    expect(screen.queryByText(missing.blockers[0])).toBeNull();
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    expect(sent.at(-1)?.type).toBe('setup.join');
+  });
+
+  test('a blocker of every path shows on the server paths with a way to check again', () => {
+    const shellSilent = 'Your login shell did not answer within 20 seconds, so Svall cannot see where your agent CLIs are. Check again, or run svall setup in a terminal.';
+    const { sent, reply } = shell({ ...ready, blockers: [shellSilent] }, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    expect(screen.getByText(shellSilent)).toBeTruthy();
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Check again' }));
+    expect(sent.filter((m) => m.type === 'setup.plan')).toHaveLength(2);
+    reply(ready);
+    expect(screen.queryByText(shellSilent)).toBeNull();
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
+  });
+
+  test('a recheck while the machine runs are under way asks nothing and leaves Go and Back off, so the add ends in its join', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    fireEvent.focus(window);
+    receive({ type: 'app.active', active: true });
+    expect(sent.filter((m) => m.type === 'setup.plan')).toHaveLength(1);
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('fork-back').hasAttribute('disabled')).toBe(true);
+    fireEvent.click(screen.getByTestId('fork-back'));
+    receive({ type: 'host.done', op: 'add', code: 0 });
+    expect(hosts(sent).map(([op]) => op)).toEqual(['add', 'join']);
+    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255' } });
+    receive({ type: 'host.done', op: 'join', code: 1 });
+    fireEvent.focus(window);
+    expect(sent.filter((m) => m.type === 'setup.plan')).toHaveLength(2);
+  });
+
+  test('Go and Back wait for a recheck to answer', () => {
+    const { reply } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.focus(window);
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(true);
+    expect(screen.getByTestId('fork-back').hasAttribute('disabled')).toBe(true);
+    reply();
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
+  });
+
+  test('a join that ends badly with no failed row, as one killed, stays here', () => {
+    const { receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-join'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'join', event: { step: 'enrol', status: 'ok', detail: 'studio issued this machine a token' } });
+    receive({ type: 'host.done', op: 'join', code: 143 });
+    expect(replaced).not.toHaveBeenCalled();
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
+  });
+
+  test('the end of a machine run this screen did not start, or left, does nothing', () => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    receive({ type: 'host.done', op: 'add', code: 0 });
+    receive({ type: 'host.done', op: 'join', code: 0 });
+    expect(hosts(sent)).toEqual([]);
+    expect(replaced).not.toHaveBeenCalled();
+  });
+
+  test('the add\'s rows and the join\'s show apart, though they share step names', () => {
+    const said = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    try {
+      const { receive } = shell(ready, { fork: false });
+      fireEvent.click(screen.getByTestId('fork-server'));
+      toSsh('ada@studio');
+      fireEvent.click(screen.getByTestId('fork-go'));
+      receive(FAR);
+      receive({ type: 'host.step', op: 'add', event: { step: 'ssh', status: 'ok', detail: 'ada@studio accepted an interactive login' } });
+      receive({ type: 'host.done', op: 'add', code: 0 });
+      receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'ok', detail: 'ada@studio accepted an interactive login' } });
+      expect(screen.getByTestId('fork-steps').querySelectorAll('[data-step="ssh"]')).toHaveLength(2);
+      expect(said.mock.calls.flat().join(' ')).not.toMatch(/same key/);
+    } finally { said.mockRestore(); }
   });
 });

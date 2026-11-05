@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, emptyState, type AgentAdapter, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
-import type { AgentProbe } from '../../src/sessions/registry.js';
+import { agentAdapters, agentProber, type AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
 import { hooklessGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
@@ -309,6 +309,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [c], { far: there({ version: '2.2.0' }) }));
     // a shell robot needs no agent there
     await sheet(depsOf(t, [shellIn(t)], { far: [] }));
+  });
+
+  it('check 2: a move onto a Mac that joined a server with no agent CLI is refused as any machine without the agent', async () => {
+    const t = machines();
+    const none = await agentProber({ run: () => Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })), read: () => Promise.resolve(undefined), env: {}, homedir: t.far })(true);
+    const d = depsOf(t, [shellIn(t, { agent: claude() })], { far: agentAdapters(none) });
+    d.store.state.machines![W].name = 'ada-mbp';
+    expect(await refusal(d)).toEqual({ reason: 'claude is not installed on ada-mbp', action: 'install claude on ada-mbp', run: AGENTS.claude.installCommand, details: [] });
   });
 
   it('check 3: refuses two robots in one main checkout, a main checkout mid-merge and a detached HEAD; a worktree robot does not convert', async () => {
