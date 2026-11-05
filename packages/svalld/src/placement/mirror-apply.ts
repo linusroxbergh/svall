@@ -214,11 +214,11 @@ export function docWithOverride(name: DocName, o: Homes & { overrides: string })
 }
 
 /**
- * A secret value's place in a doc: `entry` the record key of the entry it lies in; `want` the Mac's if ticked, else `bare`; `named`
- * when the place is the value itself, not a url or arg holding it; `remerged` when this merge wrote over it; `overOwn` when it may
- * replace the worker's own; `server` its Codex server.
+ * A secret value's place in a doc: `entry` the record key of the entry it lies in; `want` the Mac's if ticked, else `bare`; `ownable`
+ * when what it held may be the worker's own on a target that keeps none by the entry: the place is the value itself, not a url or arg
+ * holding it, or this merge did not write over it; `sparesOwn` when a tick stays off that; `server` its Codex server.
  */
-type Leaf = { record: string; entry: string; place: Place; want?: string; bare?: string; named: boolean; remerged: boolean; overOwn: boolean; server?: Place };
+type Leaf = { record: string; entry: string; place: Place; want?: string; bare?: string; ownable: boolean; sparesOwn?: true; server?: Place };
 
 // whether record `k` is the entry at record key `rk` or lies in it
 const under = (k: string, rk: string): boolean => k === rk || k.startsWith(`${rk.slice(0, -1)},`);
@@ -243,13 +243,13 @@ function setLeaf(doc: Doc, l: Pick<Leaf, 'place' | 'server'>, v: string | undefi
 function settle(doc: Doc, was: Doc, l: Leaf, recorded: Copied | undefined, { state, next, keeps, lost }: Applying): void {
   const pre = getAt(was, l.place);
   const copied = keeps ? mirrors(state, l.entry, pre) : isCopy(recorded, pre);
-  const own = !keeps && typeof pre === 'string' && pre !== '' && pre !== l.bare && !copied && (l.named || !l.remerged);
+  const own = !keeps && typeof pre === 'string' && pre !== '' && pre !== l.bare && !copied && l.ownable;
   const now = getAt(doc, l.place);
   const keep = (h: Copied): void => {
     next.secrets[l.record] = h;
     (next.bare ??= {})[l.record] = { ...(l.bare !== undefined && { value: l.bare }), ...(l.server && { envVar: true as const }) };
   };
-  if (l.want !== undefined && (l.overOwn || !own)) {
+  if (l.want !== undefined && !(l.sparesOwn && own)) {
     if (now !== l.want) setLeaf(doc, l, l.want);
     if (!keeps || lost || copied || pre !== l.want) keep(sha256Hex(l.want));
     return;
@@ -548,7 +548,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     for (const g of leavesOf(fields, (f) => configPlace(ticked, f))) {
       leaves.push({
         record: recordKey(d.name, g.place), entry: recordKey(d.name, entryOf(g.place, ticked)), place: g.place, want: g.fields.some((f) => config?.ticked.includes(f)) ? getAt(ticked, g.place) as string : undefined,
-        bare: getAt(bare, g.place) as string, named: g.fields.every((f) => f === g.place.join('.')), remerged: remergedKeys.has(String(g.place[0])), overOwn: true,
+        bare: getAt(bare, g.place) as string, ownable: g.fields.every((f) => f === g.place.join('.')) || !remergedKeys.has(String(g.place[0])),
       });
     }
   }
@@ -561,7 +561,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
       const going = config?.ticked.includes(f) && typeof holds === 'string' && holds !== '' && !isReferenceOnly(holds) && !isCopy(state.secrets[recordKey(d.name, ['env', k])], holds);
       if (keeps && going) overs.push({ record: recordKey(d.name, ['env', k]), places: [['env', k]] });
       leaves.push({
-        record: recordKey(d.name, ['env', k]), entry: recordKey(d.name, ['env', k]), place: ['env', k], want: config?.ticked.includes(f) ? m.settingsEnv[k] : undefined, named: true, remerged: false, overOwn: false,
+        record: recordKey(d.name, ['env', k]), entry: recordKey(d.name, ['env', k]), place: ['env', k], want: config?.ticked.includes(f) ? m.settingsEnv[k] : undefined, ownable: true, sparesOwn: true,
       });
     }
   }
@@ -600,7 +600,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
       leaves.push({
         record: recordKey(d.name, [...s.place, ...g.place]), entry: rk, place: [...at, ...g.place],
         want: ticked(g) ? getAt(entry, g.place) as string : undefined, bare: getAt(bare, g.place) as string | undefined,
-        named: !g.fields.some((f) => f.startsWith('url') || f.startsWith('args[')), remerged, overOwn: true,
+        ownable: !g.fields.some((f) => f.startsWith('url') || f.startsWith('args[')) || !remerged,
         ...(s.agent === 'codex' && g.place[0] === 'env' && { server: at }),
       });
     }
@@ -616,7 +616,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
       servers[rk] = h;
       if (state.whole?.[rk]) (next.whole ??= {})[rk] = state.whole[rk];
       if (state.wholeKeys?.[rk]) (next.wholeKeys ??= {})[rk] = state.wholeKeys[rk];
-      if (additive && named && state.whole?.[rk]) left.push(entryName(rk));
+      if (!leave && named && state.whole?.[rk]) left.push(entryName(rk));
     } else if (keeps && isDoc(holds) && (ownKeys(AGENT_OF[d.name], holds, rk, state).length || isUnread(AGENT_OF[d.name], holds, rk, state))) {
       // it stays for what the person put in it, emptied of what the mirror copied whole
       for (const p of stringPlaces(holds)) if (isCopy(state.wholeKeys?.[rk], getAt(holds, p))) setAt(doc, [...at, ...p], '');
