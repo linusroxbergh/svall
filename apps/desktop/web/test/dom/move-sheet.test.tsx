@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError, INTERRUPT_ACTIONS, UPGRADE_ACTION, WORKTREE_ACTION, type MachineId, type MoveSheet as Sheet, type Moving, type Refusal, type SetupRow } from '@svall/protocol';
 import { chr, fleet } from '../fixtures.js';
 import { call, freshStore, sent, store } from './harness.js';
@@ -86,6 +86,18 @@ test('while it checks, the sheet says what it checks', async () => {
   expect([...screen.getByTestId('move-checking').querySelectorAll('li')].map((li) => li.textContent)).toEqual([
     "linus-vault is reachable and on this Mac's release", 'Claude Code is installed, current and logged in on linus-vault', 'its branch, changes and session can travel',
   ]);
+});
+
+test.each([
+  ['another machine against the home\'s release', VAULT, undefined, "linus-vault is reachable and on studio's release"],
+  ['this Mac against the home\'s, a robot going there', '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, undefined, "this Mac is reachable and on studio's release"],
+  ['the machine a robot comes back from', HOME, '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, 'this Mac is reachable'],
+])('through a far home, the sheet checks %s', async (_, to, on, line) => {
+  act(() => store.getState().setVia({ machine: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, home: HOME, name: 'studio', online: true }));
+  if (on) act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: on }]));
+  call.mockImplementation((method: string) => (method === 'robot.moveCheck' ? new Promise(() => {}) : Promise.resolve({})));
+  await open(to);
+  expect(screen.getByTestId('move-checking').querySelector('li')!.textContent).toBe(line);
 });
 
 test("on the way back, the sheet checks that the machine it is on answers and this Mac's agent", async () => {
@@ -267,6 +279,72 @@ test('a move back names its steps where they happen: the worker packs and carrie
   await mark();
   await move.settle(new ApiError('refused', 'changes on this Mac in /Users/ada/svall since the move; stash or commit them', { phase: 'prepare', moveId: MOVE }));
   expect(lines().at(-1)).toBe('failed Land failed: changes on this Mac in /Users/ada/svall since the move; stash or commit them; ada is back on linus-vault.');
+});
+
+describe('on a window whose home is elsewhere', () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+  const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+  const standing = (machine?: MachineId) => {
+    const f = store.getState().fleet;
+    const { machine: _was, ...c0 } = f.robots.c0;
+    store.getState().setFleet({ ...f, machines: { [ME]: { name: 'ada-mac', reachable: true, since: 0 } }, robots: { ...f.robots, c0: { ...c0, ...(machine && { machine }) } } });
+    store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true });
+  };
+  const refuse = (action: string, run?: string) => {
+    answers = [{ ok: false, refusal: { reason: 'a blocker', action, details: [], ...(run && { run }) } }];
+    call.mockImplementation((method: string) => Promise.resolve(method === 'robot.moveCheck' ? answers[0] : {}));
+  };
+
+  test('a move to the home is a way back: its steps are the way back\'s, and a robot landed there reads as arrived with its answer lost', async () => {
+    standing(ME);
+    await open(STUDIO);
+    expect(screen.getByTestId('move-title').textContent).toBe('Move ada to studio');
+    const move = heldMove();
+    await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+    await mark({ id: MOVE, to: STUDIO, phase: 'prepare' });
+    expect(lines().slice(2, 5)).toEqual(['done Packed branch and session', 'done Carried to studio', 'doing Landing on studio…']);
+    await mark();
+    act(() => store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/machine' }]));
+    await move.settle(new Error('svalld connection closed'));
+    expect(screen.getByTestId('move-done')).toBeTruthy();
+    expect(lines().join('\n')).not.toContain('failed');
+    expect(call.mock.calls.some(([m]) => m === 'machines.setup')).toBe(false);
+  });
+
+  test('a move out to this Mac keeps the steps out', async () => {
+    standing();
+    await open(ME);
+    expect(screen.getByTestId('move-title').textContent).toBe('Move ada to this Mac');
+    heldMove();
+    await act(async () => fireEvent.click(screen.getByTestId('move-go')));
+    await mark({ id: MOVE, to: ME, phase: 'prepare' });
+    expect(lines().slice(2, 4)).toEqual(['done Packed branch and session', 'doing Carrying to this Mac…']);
+  });
+
+  test.each([['to this Mac', () => { standing(); return ME; }], ['from this Mac', () => { standing(ME); return STUDIO; }]] as const)('a refusal of a move %s names what to do here, and no machine called this Mac is upgraded or opened', async (_way, set) => {
+    const to = set();
+    refuse(UPGRADE_ACTION);
+    await open(to);
+    expect(screen.getByTestId('move-refusal').textContent).toContain('update Svall on this Mac');
+    expect(screen.queryByTestId('move-action')).toBeNull();
+    expect(screen.getByTestId('move-again')).toBeTruthy();
+    cleanup();
+    refuse('log in to claude here', 'claude login');
+    await open(to);
+    expect(screen.getByTestId('move-refusal').textContent).toContain('log in to claude here');
+    expect(screen.queryByTestId('move-action')).toBeNull();
+    expect(sent.some((m) => m.type === 'host.start')).toBe(false);
+  });
+
+  test('a refusal about another machine keeps its buttons, the upgrade named as that machine', async () => {
+    const W = 'cccccccc-0000-4000-8000-000000000000' as MachineId;
+    const f = store.getState().fleet;
+    store.getState().setFleet({ ...f, machines: { [W]: { name: 'w1', reachable: true, since: 0 } } });
+    store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true });
+    refuse(UPGRADE_ACTION);
+    await open(W);
+    expect(screen.getByTestId('move-action').textContent).toBe('Upgrade w1');
+  });
 });
 
 test('the focus stays in the sheet while a move runs: on its × once Move goes, then on the button the move ends with', async () => {

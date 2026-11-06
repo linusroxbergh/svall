@@ -6,6 +6,7 @@ import { readFleetConfig } from '@svall/svalld/config';
 import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { fleetHomes } from '@svall/svalld/uninstall';
+import { installPrefix } from '@svall/svalld/release';
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client } from '../client.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -26,7 +27,7 @@ type Facts = { name: string; platform: string; arch: string; home: string; svall
  * A worker that dials this home: its record in this machine's registry, which the home links by, and a new token, the
  * newest of which the home holds. Answers what that worker's `svall worker enroll` takes, the token only as JSON.
  */
-async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMachineId: MachineId; homeName: string; fleetId: string; socket: string; token: string }> {
+async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMachineId: MachineId; homeName: string; fleetId: string; socket: string; token: string; homeSvallBase: string; homePlatform: string; homeArch: string; homePath: string }> {
   const paths = resolvePaths(t.home);
   if (isWorker(paths)) throw new Error(`${t.home} is a worker's fleet home; run this on the fleet's home`);
   const fleetId = readFleetConfig(paths).id;
@@ -50,7 +51,8 @@ async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMach
   const token = issueToken(paths, machine);
   // a daemon not running links it as it starts
   await withClient(() => Client.connect(t.home), (c) => c.call('machines.refresh', {})).catch(() => undefined);
-  return { homeMachineId: registry.localId, homeName: registry.localMachine().name, fleetId, socket, token };
+  const here = registry.localMachine();
+  return { homeMachineId: registry.localId, homeName: here.name, fleetId, socket, token, homeSvallBase: installPrefix(), homePlatform: here.platform, homeArch: here.arch, homePath: here.home };
 }
 
 /** What a fleet's home runs for the fleet as a whole: taking a worker that opens the link itself. */

@@ -1,16 +1,19 @@
 import { z } from 'zod';
-import type { MachineId } from '@svall/protocol';
+import type { MachineId, Robot } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
+import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Store } from '../store.js';
+import type { TerminalHub } from '../terminals.js';
 import type { Tmux } from '../tmux/tmux.js';
 
 /** What a worker sends its home of a robot's pane after a hook: its last lines, and when they were read. */
 export const ScreenNotice = z.object({ id: z.string(), text: z.string(), at: z.number() });
 
 /**
- * On a worker: the last lines of each robot's pane here, sent home after a hook for the home to show while this worker is
- * out of its reach. At most one per robot each `everyMs`; a hook within that is read once it has passed.
+ * The last lines of each robot's pane on this machine, sent after a hook to the machine that shows them while this one is out
+ * of its reach: from a worker to its home, or from a home to the workers that dial it. At most one per robot each `everyMs`; a
+ * hook within that is read once it has passed.
  */
 export class ScreenTails {
   private sent = new Map<string, number>();
@@ -18,8 +21,8 @@ export class ScreenTails {
   private readonly onHook = (id: string) => this.hooked(id);
 
   constructor(private o: {
-    fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; connection: Pick<HomeConnection, 'notify'>; me: MachineId;
-    lines?: number; everyMs?: number;
+    fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; connection: Pick<HomeConnection, 'notify'>; runsHere: (c: Robot) => boolean;
+    lines?: number; everyMs?: number; wanted?: () => boolean;
   }) {}
 
   private get every(): number {
@@ -45,7 +48,7 @@ export class ScreenTails {
 
   private async send(id: string): Promise<void> {
     const c = this.o.store.state.robots[id];
-    if (!c?.tmux || c.machine !== this.o.me) return;
+    if (!c?.tmux || !this.o.runsHere(c) || this.o.wanted?.() === false) return;
     const at = Date.now();
     // a send longer ago than the window holds nothing back
     for (const [k, t] of this.sent) if (at - t >= this.every) this.sent.delete(k);
@@ -58,3 +61,42 @@ export class ScreenTails {
     }
   }
 }
+
+/** A home's tails, for the workers that dial it, as no other worker opens a window that shows them; none is read without one. */
+export function homeTails(o: { fleet: Pick<Fleet, 'on' | 'off'>; store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'connectedWorkers' | 'for' | 'call'> }): ScreenTails {
+  const dialIns = () => o.links.connectedWorkers().filter((m) => o.links.for(m)?.dialsIn);
+  return new ScreenTails({
+    ...o, wanted: () => dialIns().length > 0,
+    connection: { notify: (_kind, data) => { for (const m of dialIns()) o.links.call(m, 'screen.home', data).catch(() => {}); } },
+  });
+}
+
+// a link that never takes it leaves its worker with what hooks send
+const TAKE_MS = 30_000;
+
+/**
+ * A tail of each robot here to a worker that has just linked, past the limit: its hub holds nothing of a robot with no hook
+ * since, and keeps a screen only of a robot its store knows, so the tails wait until it has taken the fleet.
+ */
+export async function sendHomeTails(o: { store: Store; tmux: Pick<Tmux, 'capture'>; runsHere: (c: Robot) => boolean; links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot'> }, machine: MachineId, lines = 40): Promise<void> {
+  const link = o.links.for(machine);
+  if (!link?.dialsIn) return;
+  let timer: NodeJS.Timeout | undefined;
+  const late = new Promise<false>((resolve) => { timer = setTimeout(() => resolve(false), TAKE_MS); timer.unref(); });
+  // a snapshot too large for the link is logged where it is pushed
+  const taken = await Promise.race([o.links.pushSnapshot().then((v) => link.took(v)).then(() => true, () => false), late]);
+  clearTimeout(timer);
+  if (!taken) return;
+  await Promise.all(Object.values(o.store.state.robots).filter((c) => c.tmux && o.runsHere(c)).map(async (c) => {
+    const at = Date.now();
+    const text = (await o.tmux.capture(c.tmux!.paneId, lines).catch(() => undefined))?.toString('utf8');
+    if (text !== undefined) await o.links.call(machine, 'screen.home', { id: c.id, text, at }).catch(() => {});
+  }));
+}
+
+/** What a worker does with a screen from its home: the hub holds it for a window that loses that home. */
+export const homeScreenCall = (terminals: Pick<TerminalHub, 'sawHomeScreen'>, home: MachineId) => (p: unknown): Promise<unknown> => {
+  const s = ScreenNotice.parse(p);
+  terminals.sawHomeScreen(s.id, s.text, s.at, home);
+  return Promise.resolve({});
+};

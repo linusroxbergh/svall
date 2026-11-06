@@ -67,14 +67,14 @@ final class QuitFlow {
         return .terminateLater
     }
 
-    /// The page's answer to `.quitAsk`: the files the quit would drop, the agents it would stop mid-task, and the robots on
-    /// workers, which keep running there.
-    func answered(unsaved: [String], working: Int, placed: Int = 0) {
+    /// The page's answer to `.quitAsk`: the files the quit would drop, the agents it would stop mid-task, the robots elsewhere,
+    /// which keep running there, and the fleet's home when it is another machine, which the quit leaves alone.
+    func answered(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil) {
         guard quitAnswer != nil, !confirming, !stopping else { return }
         quitTimeout?.invalidate()
         if userQuit || !unsaved.isEmpty {
             confirming = true
-            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed)
+            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed, home: home)
             confirming = false
             guard ok else { return finishQuit(false) }
         }
@@ -130,14 +130,17 @@ final class QuitFlow {
         kill { [weak self] in self?.finishQuit(true) }
     }
 
-    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0) -> Bool {
+    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil) -> Bool {
         let busy = working == 0 ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
-        let away = placed == 0 ? ""
-            : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
+        let away = if let home {
+            placed == 0 ? " \(home) keeps running." : " \(home)'s \(placed) \(placed == 1 ? "robot keeps" : "robots keep") running."
+        } else {
+            placed == 0 ? "" : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
+        }
         let message: String, detail: String
         if unsaved.isEmpty {
             message = "Quit Svall?"
-            detail = working == 0 ? "\(placed == 0 ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
+            detail = working == 0 ? "\(placed == 0 && home == nil ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
                 : busy + " Everything picks up where it left off when you open Svall again." + away
         } else {
             message = "Quit with unsaved changes?"

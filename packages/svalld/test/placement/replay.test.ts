@@ -22,7 +22,7 @@ afterEach(async () => {
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
 const via = { ssh: 'w1', controlSocket: '/tmp/svall-501/1-abc' };
-const SLEPT = 'started on w1 while this Mac slept';
+const SLEPT = 'started on w1 while ada-mac was away';
 const kanban = (home: string) => ({ root: path.join(home, 'src', 'kanban'), mainRoot: path.join(home, 'src', 'kanban'), branch: 'kb', isWorktree: false });
 
 // a link onto w1's link.sock that loses the home's first ack of seq `lost()`, and the stream with it

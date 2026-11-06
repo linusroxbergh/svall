@@ -439,7 +439,7 @@ printf 'worker untracked
   const sessionId = robotIn(w0, id)?.agent?.sessionId;
   sh(L, 'printf "edited on the Mac\\n" >> ~/src/app-wt/b.txt');
   const refused = sh(L, `svall robot move ${id} --machine local </dev/null`, { ok: false });
-  check('refused', refused.code === 2 && refused.stderr === `refused: changes on this Mac in ${HOMES[L]}/src/app-wt since the move\n  → stash or commit them\n`,
+  check('refused', refused.code === 2 && refused.stderr === `refused: changes on ${L} in ${HOMES[L]}/src/app-wt since the move\n  → stash or commit them\n`,
     () => `exit ${refused.code}: ${JSON.stringify(refused.stderr)}`);
   check('still on worker', robotIn(snap(L), id)?.machine === ids.remote && agentsOf(snap(R), id).length === 1, 'the refused return moved it');
   // the edit is undone; what the robot left there before it moved stays as it was
@@ -464,7 +464,7 @@ printf 'worker untracked
 
 // ---------------------------------------------------------------------------------------------- apart
 
-const SLEPT = 'started on remote while this Mac slept';
+const SLEPT = 'started on remote while this Mac was away';
 const listOn = (machine) => JSON.parse(sh(machine, 'svall --json robot list').stdout);
 
 function reviewerAsleep(ids, fx) {
@@ -564,7 +564,7 @@ function docsConflict(ids, fx) {
   }
   const name = path.posix.basename(copies(l)[0]?.[0] ?? '');
   const note = robotIn(snap(L, true), id)?.note ?? '';
-  check('kanban note', note.includes(`${rel} changed on both remote and this Mac; remote's version is kept as ${name}`), () => brief(note));
+  check('kanban note', note.includes(`${rel} changed on both remote and ${L}; remote's version is kept as ${name}`), () => brief(note));
 }
 
 function filesFar(ids, fx) {
@@ -674,7 +674,7 @@ const fs = require("fs");
 const a = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 fs.rmSync(process.argv[1]);
 require("child_process").execFileSync("svall", ["worker", "enroll", "--home-machine", a.homeMachineId, "--home-name", a.homeName, "--fleet-id", a.fleetId,
-  "--home-ssh", process.argv[2], "--home-socket", a.socket], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
+  "--home-ssh", process.argv[2], "--home-socket", a.socket, "--home-svall-base", a.homeSvallBase, "--home-platform", a.homePlatform, "--home-arch", a.homeArch, "--home-path", a.homePath], { input: a.token, stdio: ["pipe", "ignore", "inherit"], env: { ...process.env, SHELL: "/bin/bash" } });
 console.log(a.socket);
 ' ~/enrol.json svall@${L}`);
     const socket = enrol.stdout.trim().split('\n').at(-1);
@@ -689,6 +689,90 @@ console.log(a.socket);
     reposition(ids, 'remote');
     const status = JSON.parse(sh(L, 'svall --json status').stdout);
     check("status shows remote's robot", status.robots[ctx.fx.faults]?.machine === ids.remote, () => brief(status.robots[ctx.fx.faults]));
+
+    // a window on remote: what its daemon says of the home, then the home's own API over the forward it makes
+    const shq = (text) => `'${text.replaceAll("'", `'\\''`)}'`;
+    const window = (m, source) => JSON.parse(sh(m, `/opt/it/node/bin/node --input-type=module -e ${shq(source)}`).stdout);
+    const opens = `
+      import fs from 'node:fs';
+      const home = process.env.HOME + '/.svall';
+      const open = (port, token) => new Promise((resolve, reject) => {
+        const ws = new WebSocket('ws://127.0.0.1:' + port);
+        const waiting = new Map();
+        let n = 1;
+        const call = (method, params = {}) => new Promise((ok) => { const id = n++; waiting.set(id, ok); ws.send(JSON.stringify({ id, method, params })); });
+        ws.onopen = () => ws.send(JSON.stringify({ token }));
+        ws.onerror = () => reject(new Error('no socket on ' + port));
+        ws.onmessage = (ev) => {
+          const m = JSON.parse(ev.data);
+          if (m.id === 0) return resolve({ call, ws, protocol: m.result.protocol });
+          if (waiting.has(m.id)) { waiting.get(m.id)(m); waiting.delete(m.id); }
+        };
+      });
+      const here = await open(fs.readFileSync(home + '/port', 'utf8').trim(), fs.readFileSync(home + '/token', 'utf8').trim());`;
+    const ask = `${opens}
+      const first = await here.call('fleet.home');
+      const a = (await here.call('home.connection', { retry: true })).result;
+      const far = a.port ? await open(a.port, a.token) : undefined;
+      const seen = far && await far.call('fleet.home');
+      const list = far && await far.call('machines.list');
+      console.log(JSON.stringify({ first: first.result, state: a.state, ssh: a.ssh, controlSocket: a.controlSocket, hasToken: !!a.token, protocol: far?.protocol, seen: seen?.result, roles: list?.result.machines.map((r) => [r.id, r.role]) }));
+      process.exit(0);`;
+    const seen = window(R, ask);
+    check('the daemon names its home and how to reach it', seen.first.mine === false && seen.first.machine === ids.local && seen.first.me === ids.remote && seen.state === 'connected' && seen.ssh === `svall@${L}` && seen.hasToken, () => brief(seen));
+    check("the home's API answers over the forward", seen.seen?.mine === true && seen.seen?.machine === ids.local, () => brief(seen));
+    check('the home lists each role', seen.roles?.[0]?.[0] === ids.local && seen.roles[0][1] === 'home' && seen.roles.some(([id, role]) => id === ids.remote && role === 'worker'), () => brief(seen));
+    check('no token in a log', !sh(R, `grep -c ${shq(JSON.parse(sh(L, 'svall connection-info --json').stdout).token)} ~/.svall/svalld.log`, { ok: false }).stdout.trim().match(/^[1-9]/), () => "the home's token is in the worker's log");
+
+    // the home's screens reach the worker's own daemon, which answers them for a window that loses the home
+    const onHome = JSON.parse(sh(L, `svall --json robot new --island ${ctx.fx.island} --cwd ~/src/app --name onhome --claude`).stdout).id;
+    sh(L, `svall robot wait ${onHome} --until idle --timeout 60`);
+    const text = 'a turn on the home';
+    turn(ids, { onhome: onHome }, 'onhome', text);
+    let screen;
+    for (let i = 0; i < 60 && !screen?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); screen = call(R, 'term.lastScreen', { id: onHome }); }
+    check("remote holds the home's last screen", screen?.text?.includes(`did: ${text}`) && screen.at > 0, () => brief(screen));
+
+    // a first start holds no screen until the home sends one as the link comes up, with no hook since
+    const restarted = linksOf()[ids.remote]?.since;
+    sh(R, `systemctl --user restart ${UNIT}`);
+    linked(ids, restarted);
+    let fresh;
+    for (let i = 0; i < 60 && !fresh?.text?.includes(`did: ${text}`); i++) { if (i) sh(L, 'sleep 0.5'); fresh = call(R, 'term.lastScreen', { id: onHome }); }
+    check('a worker just started holds the last screen', fresh?.text?.includes(`did: ${text}`), () => brief(fresh));
+
+    // a robot started on the home while the worker was away: only the snapshot tells the worker of it, and its screen has to come after
+    const beforeAway = linksOf()[ids.remote]?.since;
+    sh(R, `systemctl --user stop ${UNIT}`);
+    const whileAway = JSON.parse(sh(L, `svall --json robot new --island ${ctx.fx.island} --cwd ~/src/app --name whileaway --claude`).stdout).id;
+    sh(L, `svall robot wait ${whileAway} --until idle --timeout 60`);
+    const awayText = 'a turn while the worker was away';
+    turn(ids, { whileaway: whileAway }, 'whileaway', awayText);
+    sh(R, `systemctl --user start ${UNIT}`);
+    linked(ids, beforeAway);
+    let startedAway;
+    for (let i = 0; i < 60 && !startedAway?.text?.includes(`did: ${awayText}`); i++) { if (i) sh(L, 'sleep 0.5'); startedAway = call(R, 'term.lastScreen', { id: whileAway }); }
+    check('a worker holds the last screen of a robot started while it was away', startedAway?.text?.includes(`did: ${awayText}`), () => brief(startedAway));
+    sh(L, `svall robot close ${whileAway}`);
+    check('the worker answers its own diagnostics', call(R, 'feedback.preview').text?.length > 0, 'no diagnostics on the worker');
+
+    // the home killed with its port file left: ssh still takes the forward's connection, and only a greeting tells
+    const asked = `${opens}
+      const a = (await here.call('home.connection', { retry: true })).result;
+      console.log(JSON.stringify({ state: a.state, detail: a.detail, hasToken: !!a.token }));
+      process.exit(0);`;
+    const up = linksOf()[ids.remote]?.since;
+    sh(L, `systemctl --user kill -s KILL --kill-whom=main ${UNIT}; systemctl --user stop ${UNIT}`, { ok: false });
+    check('the port file stays behind', sh(L, 'test -f ~/.svall/port', { ok: false }).code === 0, 'the port file went with the daemon');
+    const dead = window(R, asked);
+    check('a home that does not greet reads unreachable', dead.state === 'unreachable' && !dead.hasToken, () => brief(dead));
+    const lastly = call(R, 'term.lastScreen', { id: onHome });
+    check('the last screen stands while it is away', lastly?.text?.includes(`did: ${text}`), () => brief(lastly));
+    sh(L, `systemctl --user start ${UNIT}`);
+    linked(ids, up);
+    const back = window(R, asked);
+    check('a home back reads connected', back.state === 'connected' && back.hasToken, () => brief(back));
+    sh(L, `svall robot close ${onHome}`);
 
     const dials = () => Number(sh(R, "grep -c 'dialed ' ~/.svall/svalld.log", { ok: false }).stdout.trim());
     for (const m of [R, L]) {

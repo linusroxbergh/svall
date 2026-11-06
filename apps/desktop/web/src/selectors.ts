@@ -1,6 +1,6 @@
 import { byCell, byIslandOrder, columnOf, placingOn, shownAgent, starredOf, type AgentKind, type Column, type Robot, type ContextItem, type FleetState, type Island } from '@svall/protocol';
 import { SINGLE, type Panes } from './panes.js';
-import { unreachableOf, type Via } from './placement.js';
+import { startsBeside, unreachableOf, type Via } from './placement.js';
 import type { View } from './store/ui.js';
 
 export type DisplayStatus = 'working' | 'idle' | 'blocked' | 'done' | 'shell' | 'moving' | 'unknown';
@@ -36,8 +36,8 @@ export const robotsOf = (f: FleetState, islandId: string): Robot[] => {
 // where a new robot starts when it takes another one's directory: the repo itself, never the worktree that one sits in
 export const startCwd = (c: Robot): string => (c.repo?.isWorktree ? c.repo.mainRoot : c.cwd);
 
-export const islandCwd = (f: FleetState, islandId: string): string => {
-  const first = robotsOf(f, islandId)[0];
+export const islandCwd = (f: FleetState, islandId: string, via?: Via): string => {
+  const first = robotsOf(f, islandId).find((c) => !via || startsBeside(c, via));
   return f.islands[islandId]?.kind === 'home' ? f.home.cwd : first ? startCwd(first) : f.defaultCwd;
 };
 
@@ -134,14 +134,14 @@ export const isMonitoring = (c: Robot): boolean => Boolean(c.agent?.monitors?.le
 export const subagentCount = (c: Robot): number => (c.agent?.subagents?.length ?? 0) + (c.second?.agent?.subagents?.length ?? 0);
 
 // the island wears the status of its most pressing robot
-export function islandStatus(f: FleetState, islandId: string): DisplayStatus | undefined {
-  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top, f) <= priorityOf(c, f) ? top : c), undefined);
-  return first ? statusOf(first, f) : undefined;
+export function islandStatus(f: FleetState, islandId: string, via?: Via): DisplayStatus | undefined {
+  const first = robotsOf(f, islandId).reduce<Robot | undefined>((top, c) => (top && priorityOf(top, f, via) <= priorityOf(c, f, via) ? top : c), undefined);
+  return first ? statusOf(first, f, via) : undefined;
 }
 
-export function countsByStatus(f: FleetState): Record<DisplayStatus, number> {
+export function countsByStatus(f: FleetState, via?: Via): Record<DisplayStatus, number> {
   const out = { working: 0, idle: 0, blocked: 0, done: 0, shell: 0, moving: 0, unknown: 0 };
-  for (const c of Object.values(f.robots)) out[statusOf(c, f)] += 1;
+  for (const c of Object.values(f.robots)) out[statusOf(c, f, via)] += 1;
   return out;
 }
 
@@ -167,18 +167,24 @@ export const placesOf = (f: FleetState): Map<string, string> => new Map(Object.v
 
 export const panesOf = (s: { ide: Record<string, { panes: Panes }> }, id: string | undefined): Panes => (id && s.ide[id]?.panes) || SINGLE;
 
+// the home takes an ask's answer, so a window on the Mac's copy of its fleet is not asked, and its terminals draw
+const reachesHome = (s: { via?: Via }): boolean => !s.via || !!s.via.online;
+
+export const scribeAsking = (s: { fleet: FleetState; fleetPicker?: string; via?: Via }): boolean =>
+  !!s.fleet.scribeAsk && !s.fleetPicker && reachesHome(s);
+
 // the board asks about the scribe's placing once the scribe's own ask is answered
-export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string }): boolean =>
-  s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker;
+export const placingAsking = (s: { view?: View; fleet: FleetState; fleetPicker?: string; via?: Via }): boolean =>
+  s.view === 'board' && !!s.fleet.placingAsk && !s.fleet.scribeAsk && !s.fleetPicker && reachesHome(s);
 
 // placing rides the scribe's passes, so with the scribe off nothing places robots
 export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scribeOff && !f.scribeAsk;
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState }): boolean =>
+export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState; via?: Via }): boolean =>
   s.namingRobot || s.missionPrompt || s.palette || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.deletingColumn !== undefined || s.fleetPicker !== undefined
-  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || !!s.fleet.scribeAsk || placingAsking(s);
+  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || scribeAsking(s) || placingAsking(s);
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

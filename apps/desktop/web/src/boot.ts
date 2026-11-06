@@ -12,14 +12,15 @@ import { followLandings } from './landings.js';
 import { followMenu } from './menu.js';
 import { followNotifications } from './notifications.js';
 import { followMemory, followQuit } from './quit.js';
-import { followResources } from './resources/load.js';
+import { followResources, reloadResources } from './resources/load.js';
 import { applyShow } from './show.js';
 import { applyZoom } from './settings.js';
 import { followFleet } from './store/fleet.js';
 import { createAppStore, localAppStorage, type AppStore } from './store/index.js';
+import { FollowApi } from './sources.js';
 import { createTerminalManager, type TerminalManager } from './terminals.js';
 
-type AppContext = { bridge: Bridge; store: AppStore; api(): Api; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
+type AppContext = { bridge: Bridge; store: AppStore; api(): FollowApi; manager(): TerminalManager; browser(): BrowserManager; repoWatch(): RepoWatch };
 
 // the shell names the fleet's home before the page runs, so each fleet's window keeps its own settings,
 // and says when the app was opened without naming one
@@ -28,7 +29,7 @@ declare global { interface Window { __svallHome?: string; __svallBare?: boolean;
 const endpointOf = (c: Connection) => ({ url: `ws://${c.host}:${c.port}`, token: c.token });
 
 function createApp(): AppContext {
-  let api: Api | undefined;
+  let api: FollowApi | undefined;
   let repoWatch: RepoWatch | undefined;
   let manager: TerminalManager | undefined;
   let browser: BrowserManager | undefined;
@@ -43,17 +44,19 @@ function createApp(): AppContext {
   let portlessSince: number | undefined;
 
   function start(conn: Connection): void {
-    const a = new Api(endpointOf(conn));
+    const a = new FollowApi(new Api(endpointOf(conn)), store, {
+      // the listing's root ids are the source's, and its key does not change with the source
+      onSwitch: () => { manager?.reroute(); void reloadResources({ api: a, store }); },
+      onLocalBack: () => repoWatch?.resend(),
+    });
     api = a;
     manager = createTerminalManager(a, bridge, store);
     repoWatch = createRepoWatch(a);
     browser = createBrowserManager(a, bridge, store);
     followResources({ api: a, store });
-    a.onStatus = (status) => {
-      store.getState().setStatus(status);
-      // the shell re-reads the port file, so a daemon that came back elsewhere is found
-      if (status === 'offline' || status === 'outdated') bridge.send({ type: 'connection' });
-    };
+    a.onStatus = (status) => store.getState().setStatus(status);
+    // the shell re-reads the port file, so a daemon that came back elsewhere is found
+    a.onLocalLost = () => bridge.send({ type: 'connection' });
     const fleet = followFleet(a, store);
     // one show at a time, so a file the last one opens is in before the next one moves the panes
     let shows = Promise.resolve();
@@ -91,7 +94,7 @@ function createApp(): AppContext {
   store.subscribe((s, prev) => { for (const id of Object.keys(prev.ide)) if (!s.ide[id]) dropBuffers(id); });
   if (bridge.present) {
     followNotifications({ store, bridge, api: () => api });
-    followQuit({ store, bridge, api: () => api });
+    followQuit({ store, bridge, api: () => api?.local });
     followMemory({ store, bridge });
     followAwake({ store, bridge });
     followBindings({ store, bridge });

@@ -13,6 +13,7 @@ import { relocate } from './relocate.js';
 import type { WorkerLink } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import type { Logger } from '../log.js';
+import { homeWord } from '../machine.js';
 import { fileSha } from './bundle.js';
 import { applyMirror, dropBlobs } from './mirror-apply.js';
 import { readPlugins, readServers } from './mirror-config.js';
@@ -119,7 +120,7 @@ export class Mirror {
   private async pushNow(link: Pick<WorkerLink, 'call' | 'sendBlob' | 'machine'>): Promise<{ sent: number }> {
     const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
-    for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on this Mac`);
+    for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on ${homeWord()}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-mirror-'));
     try {
       const file = path.join(dir, 'mirror.tar');

@@ -9,7 +9,7 @@ import { MachineId, OLDEST_STATE_SCHEMA_VERSION, PROTOCOL_VERSION, STATE_SCHEMA_
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { shq } from '@svall/svalld/text';
-import { addHost, rollbackHost, upgradeHost } from '../src/controller/host.js';
+import { addHost, doctorHost, rollbackHost, upgradeHost } from '../src/controller/host.js';
 import { runProcess } from '../src/controller/process.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { SshMaster } from '../src/controller/ssh.js';
@@ -44,12 +44,14 @@ describe('host upgrade', () => {
     const svall = (version: string, protocol: number, schema: number | null = STATE_SCHEMA_VERSION) => `#!/bin/sh
 base='${base}'
 now() { basename "$(readlink "$base/current")"; }
-[ "$1" = -p ] && shift 2
+fleet='${home}/.svall'
+[ -n "$SVALL_HOME" ] && fleet=$SVALL_HOME
+[ "$1" = -p ] && { fleet='${home}/.svall-'$2; shift 2; }
 case "$1" in
-  connection-info) printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
-  version) x=; for k in worker role fleetId; do [ -f '${home}/.svall/'$k ] && x="$x,\\"$k\\":$(cat '${home}/.svall/'$k)"; done
+  connection-info) [ -f '${home}/.svall/by-folder' ] && [ -z "$SVALL_HOME" ] && exit 1; printf '%s\\n' '${JSON.stringify({ fleetId: FLEET, machineId: REMOTE, release: version, protocol, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' })}' ;;
+  version) x=; for k in worker role fleetId; do [ -f "$fleet/$k" ] && x="$x,\\"$k\\":$(cat "$fleet/$k")"; done
     printf '%s%s\\n}\\n' '${JSON.stringify({ release: version, machineId: REMOTE, protocol, ...(schema !== null && { stateSchema: schema }) }, null, 2).slice(0, -2)}' "$x" ;;
-  doctor) printf '%s\\n' '${DOCTOR}' ;;
+  doctor) [ -f '${home}/.svall/by-folder' ] && [ -z "$SVALL_HOME" ] && exit 1; printf '%s\\n' '${DOCTOR}' ;;
   worker) printf '%s\\n' "$@" > '${home}/.svall/worker-args' && cat > '${home}/.svall/worker-token' ;;
   setup)
     if [ "$2" = --rollback ]; then
@@ -522,6 +524,78 @@ esac
     expect(fs.existsSync(path.join(work, 'far', '.svall', 'worker-args'))).toBe(false);
     expect(setupRows).not.toHaveBeenCalled();
     expect(events.filter((e) => e.status !== 'start').map((e) => e.step)).toEqual(['machine', 'master', 'os', 'release', 'upload', 'install', 'probe', 'enrol']);
+  });
+
+  describe('from a named fleet here, whose profile the home there does not have', () => {
+    const named = () => ({ home: fleet, profile: 'fartest' });
+    const dialing = (o: object = {}) => ({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift', homeSsh: 'trift', homeSocket: `${work}/far/.svall/w/0123456789ab.sock`, homeSvallBase: BASE, ...o });
+    const asHome = () => {
+      fs.writeFileSync(path.join(work, 'far', '.svall', 'role'), '"home"');
+      fs.writeFileSync(path.join(work, 'far', '.svall', 'fleetId'), JSON.stringify(FLEET));
+      fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify(dialing()));
+      fs.writeFileSync(path.join(work, 'far', '.svall', 'by-folder'), '');
+    };
+
+    it('upgrades the home by the folder worker.json names, and leaves it the home with no fleet enrolled', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      asHome();
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(out).toEqual({ result: 'ready', actions: [] });
+      expect(far.now()).toBe('1.2.3');
+      expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'skip', detail: "trift is this fleet's home, and its daemon runs the new release as the home" });
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+      expect(ssh.remoteCalls().some((w) => w.includes('fartest'))).toBe(false);
+      expect(ssh.remoteCalls().some((w) => w.some((a) => a.includes(`SVALL_HOME=${work}/far/.svall`)))).toBe(true);
+      expect(fs.existsSync(path.join(work, 'far', '.svall', 'worker-args'))).toBe(false);
+    });
+
+    it('enrols nothing and says why when worker.json cannot be read', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      fs.writeFileSync(resolvePaths(fleet).workerFile, '{ broken');
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(out.result).not.toBe('ready');
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    });
+
+    it('rolls a far home back and probes it by its folder', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION], ['1.2.3', PROTOCOL_VERSION]] });
+      asHome();
+      await rollbackHost('trift', {}, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(step('probe').at(-1)).toMatchObject({ status: 'ok' });
+      expect(ssh.remoteCalls().filter((w) => w.includes('connection-info')).every((w) => w.some((a) => a.includes('SVALL_HOME=')))).toBe(true);
+    });
+
+    it('finds the machine by the id worker.json holds, whichever name the registry gives it', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      asHome();
+      const out = await upgradeHost(REMOTE, { release: far.archive }, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(out).toEqual({ result: 'ready', actions: [] });
+      expect(step('machine').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining('trift at') });
+    });
+
+    it('enrols nothing on the machine worker.json names as home, though the fleet there answers as another', async () => {
+      const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+      asHome();
+      fs.writeFileSync(path.join(work, 'far', '.svall', 'fleetId'), JSON.stringify(OTHER_FLEET));
+      const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(out.result).not.toBe('ready');
+      expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('not enrolled') });
+      expect(ssh.remoteCalls().some((w) => w.includes('enroll'))).toBe(false);
+    });
+
+    it('host doctor reads the same fleet, and says it is the home', async () => {
+      const far = await farMachine({ releases: [['1.2.3', PROTOCOL_VERSION]] });
+      asHome();
+      const report = await doctorHost('trift', deps({ registry: far.registry, fleet: named() }));
+      await far.close();
+      expect(report.checks.find((c) => c.name === 'worker')).toEqual({ name: 'worker', status: 'ok', detail: 'home of this fleet' });
+      expect(ssh.remoteCalls().some((w) => w.includes('fartest'))).toBe(false);
+    });
   });
 
   it('uploads, installs and enrols nothing over a fleet home there that serves another Mac as a worker, and changes nothing there', async () => {

@@ -26,7 +26,8 @@ async function fakeDaemon() {
   wss.on('connection', (ws) => ws.on('message', (raw) => {
     const msg = JSON.parse(raw.toString()) as { id?: number; method?: string; token?: string };
     if (msg.token !== undefined) { ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } })); return; }
-    const result = msg.method === 'state.get' ? state : msg.method?.startsWith('mobile.') ? fake.status : {};
+    const me = '11111111-1111-4111-8111-111111111111';
+    const result = msg.method === 'state.get' ? state : msg.method === 'fleet.home' ? { machine: me, name: 'mac', mine: true, me } : msg.method?.startsWith('mobile.') ? fake.status : {};
     ws.send(JSON.stringify({ id: msg.id, result }));
   }));
   return fake;

@@ -30,7 +30,7 @@ import { fleetUsage, type FetchUsage } from '../../src/usage/usage.js';
 import { WorkerMutations } from '../../src/worker/mutations.js';
 import { Workspace } from '../../src/workspace/workspace.js';
 import { Outbox } from '../../src/worker/outbox.js';
-import { ScreenNotice, ScreenTails } from '../../src/worker/screens.js';
+import { homeScreenCall, ScreenNotice, ScreenTails } from '../../src/worker/screens.js';
 import { applyReport } from '../../src/worker/snapshot.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 
@@ -182,7 +182,7 @@ export function world(o: {
   const workerDropCalls = dropCalls({ connection, machine: () => 'w1', folder: { tmp: tmp.worker } });
   const farViewers = new FarViewers({ connection });
   const workerMirror = o.mirror && mirrorCalls({ ...o.mirror.worker, stage: workerPaths.cache, stateFile: workerPaths.mirrorState, varsFile: workerPaths.mirrorVars, envFile: workerPaths.env, connection, log: silentLogger });
-  const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection } });
+  const workerRouter = new Router({ store: workerStore, me: W, log: silentLogger, home: { id: H, connection, word: () => 'ada-mac' } });
   const workerTmux = { ...o.tmux } as Tmux;
   const workerDocsRoot = (c: Robot) => homeRootOf(c, workerStore.state.machines, workerStore.state.machines?.[H]?.home);
   const workerFleet = new Fleet({
@@ -192,9 +192,9 @@ export function world(o: {
     runScribe: o.scribe?.worker,
   });
   const forget = (id: string) => forgetRobot({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger }, id);
-  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget });
+  const mutations = new WorkerMutations({ store: workerStore, fleet: workerFleet, connection, outbox, me: W, paths: workerPaths, log: silentLogger, forget, homeWord: () => 'ada-mac' });
   const terminals = new TerminalHub(workerFleet, workerTmux, workerStore, silentLogger, undefined, W);
-  const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, me: W });
+  const screens = new ScreenTails({ fleet: workerFleet, store: workerStore, tmux: workerTmux, connection, runsHere: (c) => c.machine === W });
   screens.start();
   const workerUsage = usageOf(workerStore, workerRouter);
   const workerClaude = { dir: path.join(workerPaths.home, 'claude'), json: path.join(workerPaths.home, 'claude.json') };
@@ -211,12 +211,12 @@ export function world(o: {
     handlers, o.far ?? {
       ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
-      ...workerDropCalls.calls,
+      ...workerDropCalls.calls, 'screen.home': homeScreenCall(terminals, H),
     }, workerDocs?.handlers,
     workerMirror?.calls,
   );
   const workerDrops = new Drops({ dir: path.join(workerPaths.cache, 'drops'), store: workerStore, router: workerRouter, machine: () => 'w1', folder: { tmp: tmp.worker } });
-  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops });
+  const workerCtx = ctxOf(workerStore, workerFleet, workerRouter, { mutations, usage: workerUsage, workspace: workerWorkspace, terminals, drops: workerDrops, fleetHome: () => ({ machine: H, name: workerStore.state.machines?.[H]?.name ?? 'mac', mine: false, me: W }) });
 
   for (const [store, workspace] of [[homeStore, homeWorkspace], [workerStore, workerWorkspace]] as const) stops.push(store.subscribe(() => workspace.retarget()), () => workspace.close());
   stops.push(() => connection.stop(), () => links.stop(), () => workerDocs?.stop(), () => screens.stop());

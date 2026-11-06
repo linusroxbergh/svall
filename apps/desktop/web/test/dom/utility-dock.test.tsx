@@ -70,3 +70,20 @@ test('the settings button carries a dot only while an update waits and the sideb
   expect(screen.queryByTestId('settings-update')).toBeNull();
   expect(screen.getByTestId('settings-open').getAttribute('aria-label')).toBe('Settings');
 });
+
+test('a window standing in for its home has no phone tab, and an open panel goes with it, for the daemon here holds no link', async () => {
+  const via = { machine: 'aaaaaaaa-0000-4000-8000-000000000000', home: 'bbbbbbbb-0000-4000-8000-000000000000', name: 'studio' } as never;
+  act(() => store.getState().setMobile({ serving: false } as never));
+  store.getState().toggleMobile(true);
+  render(<UtilityDock />);
+  await act(async () => {});
+  expect(screen.queryByTestId('mobile-panel')).not.toBeNull();
+  expect(screen.queryByTestId('mobile-switch')).not.toBeNull();
+  act(() => store.getState().setVia(via));
+  expect(screen.queryByTestId('mobile-panel')).toBeNull();
+  expect(screen.queryByTestId('mobile-switch')).toBeNull();
+  expect(screen.queryByLabelText('Phone link off')).toBeNull();
+  // following the home, its phone link is the fleet's again
+  act(() => store.getState().setVia({ ...(via as object), online: true } as never));
+  expect(screen.queryByTestId('mobile-panel')).not.toBeNull();
+});

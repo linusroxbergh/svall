@@ -1,13 +1,17 @@
 import { ApiError, robotOfKey } from '@svall/protocol';
 import type { Api } from './api.js';
 import type { Attach, Bridge, Rect } from './bridge.js';
+import { isPlaced } from './placement.js';
 import { panesOf } from './selectors.js';
+import { SourceLeft } from './sources.js';
 import type { AppStore } from './store/index.js';
 
 export type TerminalManager = {
   show(id: string, rect: Rect, opacity?: number, takeFocus?: boolean): Promise<void>;
   move(id: string, rect: Rect): void;
   hide(id: string): void;
+  /** The page left one daemon for another: a terminal on another machine has no route it can trust, and its pane asks for one afresh. */
+  reroute(): void;
 };
 
 type Opts = { reshowDelayMs?: number };
@@ -62,6 +66,8 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     try {
       attach = await p;
     } catch (e) {
+      // asked of a daemon the page has left: the pane, if it still shows the robot, asks where it is now
+      if (e instanceof SourceLeft) { if (wanted.has(id)) return show(id, rect, opacity, wanted.get(id)); return; }
       // the window died under the attach: the robot is dormant, and Revive answers that better than a tmux error
       if (!live(id)) throw e;
       // refused, or unanswered while online: the user retries; svalld or the robot's machine away: retried
@@ -70,7 +76,10 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
       else retry.set(id, { rect, opacity });
       throw e;
     }
-    bridge.send({ type: 'term.show', id, rect, ...alpha, attach });
+    // a terminal not on this machine rides on this machine's master to the home
+    const { via, home } = state();
+    const master = via && attach.machine !== via.machine ? home?.master : undefined;
+    bridge.send({ type: 'term.show', id, rect, ...alpha, attach: master ? { ...attach, master } : attach });
     state().termOpened(id, rect);
     if (!wanted.has(id) || !inView(id)) bridge.send({ type: 'term.hide', id });
     else if (wanted.get(id)) focus(id);
@@ -133,6 +142,18 @@ export function createTerminalManager(api: Api, bridge: Bridge, store: AppStore,
     hide(id) {
       wanted.delete(id);
       if (state().terminals[id]) bridge.send({ type: 'term.hide', id });
+    },
+    reroute() {
+      attaching.clear();
+      const { via, fleet } = state();
+      for (const key of retry.keys()) {
+        const c = fleet.robots[target(key).id];
+        if (!c || isPlaced(c, via)) retry.delete(key);
+      }
+      for (const key of new Set([...Object.keys(state().terminals), ...Object.keys(state().terminalErrors)])) {
+        const c = fleet.robots[target(key).id];
+        if (!c || isPlaced(c, via)) close(key);
+      }
     },
   };
 }

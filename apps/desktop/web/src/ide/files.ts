@@ -4,8 +4,9 @@ import { pick, shows, type Surface } from '../panes.js';
 import { accountHome, basename, shortPath } from '../paths.js';
 import { panesOf } from '../selectors.js';
 import type { AppStore } from '../store/index.js';
-import { dropBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
+import { dropBuffer, editBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
 import { readsOn } from '../placement.js';
+import { Compartment, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { editorExtensions, languageFor, readOnlyExtensions } from './codemirror.js';
 import { rootIn } from '../store/ide.js';
@@ -17,6 +18,10 @@ const saveListeners = new Set<(d: FilesDeps, id: string, path: string) => void>(
 const saves = new Map<string, Promise<void>>();
 // the latest disk check started for each buffer
 const checks = new WeakMap<Buffer, number>();
+// a file on another machine is read-only, as it is edited in the robot's terminal there; a move changes which
+const access = new Compartment();
+const accessOn = (d: FilesDeps, id: string, path: string, on: string | undefined): Extension =>
+  (on ? [readOnlyExtensions(), EditorView.lineWrapping] : editorExtensions(() => { void saveFile(d, id, path); }));
 
 /** Runs after every successful write, whichever call made it — autosave, Cmd-S, or Overwrite. */
 export function onSaved(listener: (d: FilesDeps, id: string, path: string) => void): void {
@@ -26,10 +31,8 @@ export function onSaved(listener: (d: FilesDeps, id: string, path: string) => vo
 async function load(d: FilesDeps, id: string, path: string): Promise<void> {
   if (getBuffer(id, path)) return;
   const [{ text, mtimeMs, root }, lang] = await Promise.all([d.api.call('fs.read', { id, path }), languageFor(basename(path))]);
-  // a file on a worker opens read-only, as it is edited in the robot's terminal there
-  const on = readsOn(d.store.getState().fleet, id);
-  const shown = on ? [readOnlyExtensions(), EditorView.lineWrapping] : editorExtensions(() => { void saveFile(d, id, path); });
-  Object.assign(loadBuffer(id, path, text, mtimeMs, [shown, lang ?? []]), { root, on });
+  const on = readsOn(d.store.getState().fleet, id, d.store.getState().via);
+  Object.assign(loadBuffer(id, path, text, mtimeMs, [access.of(accessOn(d, id, path, on)), lang ?? []]), { root, on });
 }
 
 /** Shows the file in the editor: from its buffer when it has one, else read from svalld. One that cannot be read opens no tab and says why. */
@@ -143,10 +146,16 @@ export function closeFile(d: Pick<FilesDeps, 'store'>, id: string, path: string)
 
 /** The open files against the disk: a clean buffer follows it, a dirty one is flagged. A file that cannot be read is left as it is. */
 export async function checkDisk(d: FilesDeps, id: string): Promise<void> {
-  const open = d.store.getState().ide[id]?.open ?? [];
+  const { ide, fleet, via } = d.store.getState();
+  const open = ide[id]?.open ?? [];
+  const on = readsOn(fleet, id, via);
   await Promise.all(open.map(async (path) => {
     const b = getBuffer(id, path);
     if (!b) return;
+    if (b.on !== on) {
+      b.on = on;
+      editBuffer(id, path, { effects: access.reconfigure(accessOn(d, id, path, on)) });
+    }
     const n = (checks.get(b) ?? 0) + 1;
     checks.set(b, n);
     let disk: { text: string; mtimeMs: number; root: string };

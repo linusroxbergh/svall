@@ -18,9 +18,9 @@ final class QuitFlowTests: XCTestCase {
                  terminate: { [unowned self] in quits.append($0) })
     }
 
-    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0, placed: Int = 0) {
+    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0, placed: Int = 0, home: String? = nil) {
         XCTAssertEqual(flow.ask(confirm: true) { [unowned self] in answers.append($0) }, .terminateLater)
-        flow.answered(unsaved: unsaved, working: working, placed: placed)
+        flow.answered(unsaved: unsaved, working: working, placed: placed, home: home)
     }
 
     func testALocalFleetIsPutToSleepByThePage() {
@@ -41,6 +41,31 @@ final class QuitFlowTests: XCTestCase {
             "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. 2 robots keep running on their machines.",
             "Quit Svall? The robots on this Mac stop and pick up where they left off when you open Svall again. 1 robot keeps running on its machine.",
         ])
+    }
+
+    func testThePageNamesAFarHomeInItsAnswer() throws {
+        let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
+        guard case .quitAnswer(_, let working, let placed, let home) = try decode(#"{"type":"quit.answer","unsaved":[],"working":1,"placed":7,"home":"studio"}"#) else { return XCTFail("not a quit answer") }
+        XCTAssertEqual(working, 1)
+        XCTAssertEqual(placed, 7)
+        XCTAssertEqual(home, "studio")
+        guard case .quitAnswer(_, _, _, let none) = try decode(#"{"type":"quit.answer","unsaved":[],"working":0}"#) else { return XCTFail("not a quit answer") }
+        XCTAssertNil(none)
+    }
+
+    func testAFarHomeIsSaidToKeepRunningAndTheFleetIsStoppedByThePageAlone() {
+        quit(flow(), working: 1, placed: 7, home: "studio")
+        quit(flow(), placed: 1, home: "studio")
+        quit(flow(), home: "studio")
+        quit(flow(), unsaved: ["a.ts"], placed: 7, home: "studio")
+        XCTAssertEqual(asked, [
+            "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. studio's 7 robots keep running.",
+            "Quit Svall? The robots on this Mac stop and pick up where they left off when you open Svall again. studio's 1 robot keeps running.",
+            "Quit Svall? The robots on this Mac stop and pick up where they left off when you open Svall again. studio keeps running.",
+            "Quit with unsaved changes? a.ts has changes that were not saved. Quitting drops them. studio's 7 robots keep running.",
+        ])
+        XCTAssertEqual(kills, 0)
+        XCTAssertEqual(sent.filter { $0 == "quit.stop" }.count, 4)
     }
 
     func testAQuitTheAppStartsWhileOneWaitsLeavesThatOneToFinish() {

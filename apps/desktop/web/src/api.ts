@@ -91,6 +91,7 @@ export class Api {
   }
 
   private open(): void {
+    if (this.stopped) return;
     if (!this.held) this.onStatus('connecting');
     const ws = new this.WS(this.endpoint.url, this.endpoint.protocols);
     this.ws = ws;

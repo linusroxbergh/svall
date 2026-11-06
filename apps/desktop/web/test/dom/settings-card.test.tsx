@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
+import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
 import { bridge, call, freshStore, sent, shell, store } from './harness.js';
 
@@ -23,6 +24,15 @@ test('the Tailscale link in the phone tip opens in the default browser', () => {
   const link = screen.getByRole('link', { name: 'Tailscale' });
   expect(fireEvent.click(link)).toBe(false);
   expect(sent).toContainEqual({ type: 'openUrl', url: 'https://tailscale.com/download' });
+});
+
+test('the phone tip asks for Tailscale on the home: this Mac on the home, and by its name in a window on a worker', () => {
+  render(<SettingsCard />);
+  show('phone');
+  const tip = screen.getByRole('link', { name: 'Tailscale' }).parentElement!;
+  expect(tip.textContent).toContain('Needs Tailscale on this Mac and the phone.');
+  act(() => store.getState().setVia({ machine: '4b7a3c1e-2d5f-4e6a-9b8c-0f1e2d3c4b5a' as MachineId, home: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f' as MachineId, name: 'studio', online: true }));
+  expect(tip.textContent).toContain('Needs Tailscale on studio and the phone.');
 });
 
 test('the fleet name saves on Enter and retitles the window, and a name that will not do says why and is not sent', async () => {
@@ -255,6 +265,83 @@ test('robot motion starts on, and its switch turns the stored setting off', () =
   fireEvent.click(screen.getByTestId('set-robot-motion'));
   expect(store.getState().settings.robotMotion).toBe(false);
   expect(checked('set-robot-motion')).toBe('false');
+});
+
+test('Machines asks the fleet again after a list that failed', async () => {
+  vi.useFakeTimers();
+  try {
+    let fails = true;
+    call.mockImplementation((method: string) => {
+      if (method !== 'machines.list') return Promise.resolve({});
+      return fails ? Promise.reject(new Error('svalld connection closed')) : Promise.resolve({ machines: [
+        { id: 'bbbbbbbb-0000-4000-8000-000000000000', name: 'studio', role: 'home', reachable: true, robots: 7 },
+      ] });
+    });
+    act(() => {
+      store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(screen.queryByTestId('machine-studio')).toBeNull();
+    fails = false;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(screen.queryByTestId('machine-studio')).not.toBeNull();
+  } finally {
+    vi.useRealTimers();
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
+  try {
+    act(() => {
+      store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio' });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    expect(screen.queryByTestId('set-tab-phone')).toBeNull();
+    show('machines');
+    expect(screen.queryByTestId('machine-add')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and a far home takes no Add machine', async () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const DIAL = 'cccccccc-0000-4000-8000-000000000000';
+  const LINUX = 'dddddddd-0000-4000-8000-000000000000';
+  call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
+    { id: HOME, name: 'studio', role: 'home', platform: 'linux', reachable: true, robots: 7 },
+    { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
+    { id: DIAL, name: 'laptop', role: 'worker', platform: 'darwin', dialsIn: true, reachable: false, robots: 1 },
+    { id: LINUX, name: 'vault', role: 'worker', platform: 'linux', reachable: true, robots: 0 },
+  ] } : {}));
+  try {
+    act(() => {
+      store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'studio', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    await screen.findByTestId('machine-studio');
+    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    const rows = [...screen.getByTestId('machines').querySelectorAll('.machine')];
+    expect(rows.map((r) => r.getAttribute('data-role'))).toEqual(['home', 'worker', 'worker', 'worker']);
+    expect(screen.getByTestId('machine-studio').textContent).toContain('home · ada@studio · 7 robots');
+    expect(screen.getByTestId('machine-mac').textContent).toContain('this Mac');
+    expect(screen.getByTestId('machine-mac').textContent).toContain('worker · 3 robots');
+    expect(screen.getByTestId('machine-laptop').textContent).toContain('dials in');
+    // no route in this Mac's registry says nothing of who opens the link
+    expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
+    expect(screen.queryByTestId('machine-add')).toBeNull();
+    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
 });
 
 test('Machines lists every machine with its ssh, its release and last check, each with its own actions, and Add machine last', () => {

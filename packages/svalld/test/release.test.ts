@@ -6,7 +6,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { entriesOf, manifestDigest, signManifest, sshVerify, verifyRelease, writeManifest, type Entry } from '../../../scripts/release-manifest.mjs';
 import { allowedSigners, installRelease } from '../../../scripts/install-release.mjs';
 import { companionAssets, describeVersion, packageLicence, phonePackages, shimText, stageRelease } from '../../../scripts/release-stage.mjs';
-import { isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
+import { DEFAULT_PREFIX } from '../../../scripts/install-release.mjs';
+import { installPrefix, isRelease, mobileDistDir, releaseRoot, releaseVersion, repoRoot } from '../src/release.js';
 import { resolveTmux, servingTmux } from '../src/tmux/tmux.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
@@ -28,6 +29,15 @@ describe('release root on the repository layout', () => {
 });
 
 describe('release root on an installed release', () => {
+  it('names the folder it was installed under, whichever --prefix it took', () => {
+    process.env.SVALL_RELEASE_ROOT = '/opt/svall/releases/1.2.3';
+    expect(installPrefix()).toBe('/opt/svall');
+    process.env.SVALL_RELEASE_ROOT = '/unpacked/somewhere';
+    expect(installPrefix()).toBe(DEFAULT_PREFIX);
+    delete process.env.SVALL_RELEASE_ROOT;
+    expect(installPrefix()).toBe(DEFAULT_PREFIX);
+  });
+
   it('takes every asset directly from SVALL_RELEASE_ROOT', () => {
     const root = makeHome();
     process.env.SVALL_RELEASE_ROOT = root;

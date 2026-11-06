@@ -83,6 +83,16 @@ describe('followAwake', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(T0); });
   afterEach(() => { vi.useRealTimers(); });
 
+  it('holds this Mac awake for no phone on a far home, whose link is that home\'s', () => {
+    const { store, holds, stop } = setup(fleet());
+    store.getState().setStatus('online');
+    store.getState().setMobile(mobile([phone('a@b', T0)]));
+    expect(holds().at(-1)).toBe('1 phone connected');
+    store.getState().setVia({ machine: '11111111-1111-4111-8111-111111111111', home: '22222222-2222-4222-8222-222222222222', name: 'studio', online: true } as never);
+    expect(holds().at(-1)).toBe(null);
+    stop();
+  });
+
   function setup(f?: FleetState) {
     const store = createAppStore();
     if (f) store.getState().setFleet(f);

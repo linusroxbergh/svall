@@ -31,7 +31,8 @@ export function freshStore(make: () => AppStore = () => createAppStore()): AppSt
   return store;
 }
 
+export const retryHome = vi.fn();
 export const bootModule = () => ({
-  app: { get store() { return store; }, bridge, api: () => ({ call }), manager: () => manager, browser: () => ({ move() {} }) },
+  app: { get store() { return store; }, bridge, api: () => ({ call, retryHome }), manager: () => manager, browser: () => ({ move() {} }) },
   deps: () => ({ api: { call }, store, bridge }),
 });

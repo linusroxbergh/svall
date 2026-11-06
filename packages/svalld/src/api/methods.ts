@@ -1,10 +1,12 @@
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
-import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
+import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import { gitVersion } from '../links/git.js';
+import type { HomeApi } from '../link/home-api.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
+import { homeWord } from '../machine.js';
 import type { Mobile } from '../mobile.js';
 import type { PushStore } from '../push/store.js';
 import type { CodexPaths } from '../codex/install.js';
@@ -33,12 +35,16 @@ import { classification } from './classify.js';
 
 export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
-  phone?: PhoneFallbacks };
+  phone?: PhoneFallbacks;
+  // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
+  fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback'] satisfies MethodName[]);
+// what hands over the home's token never leaves this machine, whatever node.json's host says
+const LOOPBACK_ONLY = new Set<string>(['home.connection'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -141,12 +147,22 @@ const handlers: Handlers = {
   },
   'robot.moveTo': async (p, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, p) }),
   'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
-  'machines.list': (_p, { store }) => ({
-    machines: Object.entries(store.state.machines ?? {}).map(([id, m]) => ({
-      id: id as MachineId, name: m.name, reachable: m.reachable, release: m.release,
-      robots: Object.values(store.state.robots).filter((r) => r.machine === id).length,
-    })),
-  }),
+  // the home first, whichever machine answers; a home holds no record of itself, and a worker's copy holds the home's
+  'machines.list': (_p, { store, fleetHome, registered, router }) => {
+    const robots = Object.values(store.state.robots);
+    const home = fleetHome?.();
+    const known = registered?.();
+    const workers = Object.entries(store.state.machines ?? {}).filter(([id]) => id !== home?.machine).map(([id, m]) => ({
+      id: id as MachineId, name: m.name, role: 'worker' as const, platform: known?.get(id)?.platform, ...(known?.get(id)?.dial === 'worker' && { dialsIn: true as const }), reachable: m.reachable, release: m.release,
+      robots: robots.filter((r) => r.machine === id).length,
+    }));
+    if (!home) return { machines: workers };
+    const held = store.state.machines?.[home.machine];
+    return { machines: [{
+      id: home.machine, name: home.name, role: 'home' as const, platform: known?.get(home.machine)?.platform ?? (home.mine ? platform() : undefined),
+      reachable: home.mine || (router?.homeConnected ?? false), release: home.mine ? releaseVersion() : held?.release, robots: robots.filter((r) => r.machine === undefined || r.machine === home.machine).length,
+    }, ...workers] };
+  },
   'machines.refresh': (_p, { links }) => { links?.refresh(); return {}; },
   'machines.setup': (p, ctx) => setupOf(ctx, p.machine, p.waitMs ?? 0, p.robot, true),
   // the push goes after any under way and carries only what changed; one that fails leaves the tick saved for the next
@@ -165,7 +181,7 @@ const handlers: Handlers = {
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
     const unread = mirror.unreadFile(p.item);
-    if (unread) throw new ApiError('not_mirrored', `${unread} on this Mac cannot be read; the copy stays on ${name} until it can`);
+    if (unread) throw new ApiError('not_mirrored', `${unread} on ${homeWord()} cannot be read; the copy stays on ${name} until it can`);
     return setupOf(ctx, p.machine, 0);
   },
   'machines.updateAgents': async (p, { store, links }) => {
@@ -181,7 +197,7 @@ const handlers: Handlers = {
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
     if (!ctx.links) throw new ApiError('not_on_worker', 'not on a worker');
     const value = p.fromMac ? mirrorOf(ctx).hereValue(p.name) : p.value;
-    if (!value) throw new ApiError('invalid_params', p.fromMac ? `this Mac has no ${p.name}` : 'no value given');
+    if (!value) throw new ApiError('invalid_params', p.fromMac ? `${homeWord()} has no ${p.name}` : 'no value given');
     const fault = envValueFault(value);
     if (fault) throw new ApiError('invalid_params', fault);
     await ctx.links.call(p.machine, 'env.set', { name: p.name, value }, { timeoutMs: serverWait('machines.setVar', p) }).catch((e: Error) => {
@@ -214,6 +230,18 @@ const handlers: Handlers = {
   'fleets.start': async (p, { fleets }) => ({ home: await fleets.start(p.home) }),
   'fleet.rename': (p, { fleet }) => { fleet.renameFleet(p.name); return {}; },
   'fleet.stop': async (_p, { fleet }) => { await fleet.stopAll(); return {}; },
+  'fleet.home': (_p, { fleetHome }) => {
+    if (!fleetHome) throw new ApiError('not_found', 'this daemon names no home');
+    return fleetHome();
+  },
+  // a home is reached at the socket this window already holds
+  'home.connection': async (p, { fleetHome, homeApi }) => {
+    if (homeApi) return homeApi.answer(p.retry);
+    if (!fleetHome) throw new ApiError('not_found', 'this daemon names no home');
+    const { machine, name } = fleetHome();
+    return { machine, name, state: 'connected' };
+  },
+  'home.fallback': (p, { viewer }) => { viewer.fallback = p.on; return {}; },
   // each worker reads its own robots' usage, where their transcripts are
   'usage.get': async (_p, { usage, links }) => {
     if (!links) return usage();
@@ -294,10 +322,7 @@ const handlers: Handlers = {
     if (p.id !== undefined && !Object.hasOwn(store.state.robots, p.id)) throw new ApiError('not_found', `no robot ${p.id}`);
     return { apps: apps?.show(p) ?? 0 };
   },
-  'feedback.preview': async (_p, { diagnostics }) => {
-    if (!diagnostics) throw new ApiError('not_on_worker', 'diagnostics are the Mac\'s');
-    return { text: await diagnostics() };
-  },
+  'feedback.preview': async (_p, { diagnostics }) => ({ text: await diagnostics!() }),
 };
 
 /** What this machine is and runs, as system.info answers here and a worker answers its home. */
@@ -311,7 +336,7 @@ export async function systemInfo(o: { machineId: MachineId; agents: AgentProber;
 }
 
 // what a worker answers for a robot that runs on it, its home linked or not, so a phone there never waits on the link
-const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive']);
+const LOCAL = new Set<MethodName>(['term.open', 'term.input', 'term.resize', 'robot.answer', 'robot.revive', 'fs.write']);
 // a drop's parts are staged on the daemon they were sent to, which lands them
 const STAGED = new Set<MethodName>(['drop.part', 'robot.drop']);
 
@@ -323,6 +348,8 @@ function homeAnswers(ctx: Ctx, method: MethodName, params: unknown): boolean {
   if (LOCAL.has(method) && typeof id === 'string' && Object.hasOwn(robots, id) && ctx.router.runsHere(robots[id])) return false;
   // a terminal attaches only to this machine's tmux: no route from here reaches another's, whatever the home would answer
   if (method === 'term.attach') return false;
+  // the screens the home sent are held here, and the home takes no terminal call from a worker
+  if (method === 'term.lastScreen') return false;
   return classification[method] !== 'read' || (typeof id === 'string' && ctx.router.placedAt(id) !== undefined);
 }
 
@@ -330,11 +357,12 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   const def = Object.hasOwn(methods, req.method) ? (methods as Record<string, { params: ZodTypeAny }>)[req.method] : undefined;
   if (!def) return { id: req.id, error: { code: 'unknown_method', message: `unknown method ${req.method}` } };
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
+  if (LOOPBACK_ONLY.has(req.method) && !ctx.viewer.loopback) return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on this machine` } };
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
-    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone')) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>) };
+    if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone' || ctx.viewer.fallback === true)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>, ctx.viewer.fallback === true) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };

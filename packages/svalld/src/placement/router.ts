@@ -29,8 +29,8 @@ type Options = {
   log: Logger;
   /** On the home: its links to the workers. */
   links?: Pick<HomeLinks, 'call'>;
-  /** On a worker: the home worker.json names, and the link to it. */
-  home?: { id: MachineId; connection: Pick<HomeConnection, 'call' | 'connected'> };
+  /** On a worker: the home worker.json names, the link to it, and what its sentences call it. */
+  home?: { id: MachineId; connection: Pick<HomeConnection, 'call' | 'connected'>; word: () => string };
   /** On the home: the robots each worker's replay started, and the user folder a worker's paths are compared in. */
   replay?: Pick<Replay, 'created'>;
   homedir?: string;
@@ -52,6 +52,11 @@ export class Router {
   /** On a worker, the home it serves. */
   get homeId(): MachineId | undefined {
     return this.o.home?.id;
+  }
+
+  /** On a worker, what its sentences call its home. */
+  get homeWord(): string | undefined {
+    return this.o.home?.word();
   }
 
   /** On a worker, whether its home is linked; the home is its own. */
@@ -120,7 +125,7 @@ export class Router {
     try {
       return await home.connection.call(method, params, { timeoutMs: callMs(method, params), signal });
     } catch (e) {
-      throw e instanceof ApiError && e.code === 'not_reachable' && !home.connection.connected() ? this.unreachable() : e;
+      throw e instanceof ApiError && e.code === 'not_reachable' && !home.connection.connected() ? this.unreachable(home.word()) : e;
     }
   }
 
@@ -157,13 +162,14 @@ export class Router {
   }
 
   // the name the home's registry gives this worker, which its snapshot carries
-  private unreachable(): ApiError {
+  private unreachable(home: string): ApiError {
     const name = this.o.store.state.machines?.[this.o.me]?.name ?? os.hostname().split('.')[0];
-    return new ApiError('not_reachable', unreachableLine(name));
+    return new ApiError('not_reachable', unreachableLine(name, home));
   }
 }
 
-export const unreachableLine = (worker: string) => `${worker} cannot reach this Mac right now; try again when it is awake`;
+// a Mac that dials its workers sleeps; a home a worker dials by name is a server, which does not
+export const unreachableLine = (worker: string, home: string) => (home === 'this Mac' ? `${worker} cannot reach ${home} right now; try again when it is awake` : `${home} is not reachable`);
 
 type Handlers = Record<string, (params: unknown) => Promise<unknown>>;
 

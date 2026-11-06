@@ -7,6 +7,7 @@ import {
 } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
+import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
 import { relocate } from './relocate.js';
 import type { Classified } from './rest.js';
@@ -69,7 +70,7 @@ export type CheckDeps = {
 type Failure = Omit<Refusal, 'details'> & { details?: string[] };
 
 const releaseFailure = (name: string, theirs: string, mine: string): Failure =>
-  ({ reason: `${name} runs ${theirs}, this Mac ${mine}`, action: compareVersions(theirs, mine) === 1 ? 'update svall on this Mac' : UPGRADE_ACTION });
+  ({ reason: `${name} runs ${theirs}, ${homeWord()} ${mine}`, action: compareVersions(theirs, mine) === 1 ? `update svall on ${homeWord()}` : UPGRADE_ACTION });
 
 /** A worker's hello while it is linked, or why it is not: out of reach, or on a build whose state or link this Mac cannot read. */
 export function reach(link: Pick<WorkerLink, 'connected' | 'hello' | 'mismatch'> | undefined, name: string, release: string): { hello: WorkerHello } | { failure: Failure } {
@@ -205,7 +206,7 @@ export function converted(c: Robot, repo: Repo, slug: string): Robot {
 // "<reason>; <action>", as convert's refusals read
 const split = (message: string): Failure => {
   const at = message.indexOf('; ');
-  return at < 0 ? { reason: message, action: 'fix it on this Mac first' } : { reason: message.slice(0, at), action: message.slice(at + 2) };
+  return at < 0 ? { reason: message, action: `fix it on ${homeWord()} first` } : { reason: message.slice(0, at), action: message.slice(at + 2) };
 };
 
 const bundleFailure = (e: unknown): Failure => (e instanceof BundleTooLarge
@@ -267,7 +268,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (s.islands[c.islandId]?.kind === 'home') fail({ reason: 'mission control stays on this Mac', action: 'move a robot from another island' });
+  if (s.islands[c.islandId]?.kind === 'home') fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
 
   // 1: reachable, on this release
@@ -281,7 +282,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const local = await d.agents();
   const info = hello && await ask<SystemInfo>('system.info', {}, hello.release !== d.release);
   const agents = info?.agentAdapters ?? [];
-  if (info) for (const f of agentFailures(c, { name: 'this Mac', agents: local }, { name, agents })) fail(f);
+  if (info) for (const f of agentFailures(c, { name: homeWord(), agents: local }, { name, agents })) fail(f);
   const homes = hello && info ? homesOf(d.homedir, hello.home, local, agents) : undefined;
   let session = 0;
   try {

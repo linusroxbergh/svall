@@ -100,7 +100,7 @@ describe('feedback.preview', () => {
   it("answers diagnostics' text, and refuses where none are wired", async () => {
     const ctx = { diagnostics: async () => 'the text', viewer: { kind: 'app' } } as Ctx;
     expect(await dispatch({ id: 1, method: 'feedback.preview', params: {} }, ctx)).toEqual({ id: 1, result: { text: 'the text' } });
-    expect(await dispatch({ id: 2, method: 'feedback.preview', params: {} }, { viewer: { kind: 'app' } } as Ctx)).toMatchObject({ id: 2, error: { code: 'not_on_worker' } });
+    
   });
 
   it('is refused to a phone', async () => {

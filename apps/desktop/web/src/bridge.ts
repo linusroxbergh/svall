@@ -2,7 +2,9 @@ import type { AgentKind, ContextItem, FleetEntry, SetupRow } from '@svall/protoc
 
 export type Rect = { x: number; y: number; width: number; height: number };
 // via: for a robot placed on another machine, the ssh destination and master socket that reach it
-export type Attach = { socket: string; session: string; tmux: string; via?: { ssh: string; controlSocket: string } };
+type Hop = { ssh: string; controlSocket: string };
+// `via`, the master the fleet's home reaches a worker over; `master`, this machine's daemon's to a far home, the first hop of a terminal there
+export type Attach = { socket: string; session: string; tmux: string; machine?: string; via?: Hop; master?: Hop };
 // a terminal on another machine: an ssh to `ssh`, `type` typed at its prompt, and `forward` a port of this Mac's
 // loopback that reaches the same port there
 export type MachineTerm = { ssh: string; type?: string; forward?: number };
@@ -29,7 +31,7 @@ export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
-  name: string; id: string; ssh?: string; platform: string;
+  name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string;
   check?: { at: number; failed: number; warned: number; release?: string };
 };
 
@@ -80,7 +82,7 @@ export type ToShell =
   // `svall host list`, answered by host.machines
   | { type: 'host.list' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
-  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number }
+  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number; home?: string }
   // the fleet has stopped, or could not be asked to
   | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone

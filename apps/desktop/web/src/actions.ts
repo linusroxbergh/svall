@@ -47,7 +47,7 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
 export async function newRobotOn(d: ActionDeps, islandId: string): Promise<string | undefined> {
   closeSettings(d);
   const f = d.store.getState().fleet;
-  const dir = islandCwd(f, islandId);
+  const dir = islandCwd(f, islandId, d.store.getState().via);
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   try {

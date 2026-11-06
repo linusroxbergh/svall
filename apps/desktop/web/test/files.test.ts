@@ -455,3 +455,33 @@ describe('openPath', () => {
     expect(s().ide.c1.panes).toEqual({ left: 'files', right: 'terminal2' });
   });
 });
+
+describe('a file of a robot on a window whose home is elsewhere', () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+  const on = (machine?: MachineId) => {
+    const disk: Disk = { 'a.txt': { text: 'one', mtimeMs: 1 } };
+    const f = fakeApi(disk);
+    const store = createAppStore();
+    store.getState().setFleet({ ...fleet(), robots: { r: chr('r', 'i1', { x: 0, y: 0 }, machine ? { machine } : {}) } });
+    store.getState().setVia({ machine: ME, home: HOME, name: 'studio', online: true });
+    return { d: { api: f.api, store } as never, disk };
+  };
+  beforeEach(() => dropBuffers('r'));
+
+  it('on this Mac opens to edit, saves through fs.write, and shows no far cue', async () => {
+    const { d, disk } = on(ME);
+    await openFile(d, 'r', 'a.txt');
+    expect(getBuffer('r', 'a.txt')?.on).toBeUndefined();
+    edit('r', 'a.txt', ' two');
+    await saveFile(d, 'r', 'a.txt');
+    expect(disk['a.txt'].text).toBe('one two');
+  });
+
+  it('on the home opens read-only, naming it', async () => {
+    const { d } = on();
+    await openFile(d, 'r', 'a.txt');
+    expect(getBuffer('r', 'a.txt')?.on).toBe('studio');
+    expect(getBuffer('r', 'a.txt')?.state.facet(EditorView.editable)).toBe(false);
+  });
+});

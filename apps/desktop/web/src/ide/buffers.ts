@@ -3,7 +3,7 @@ import { EditorState, Text, type Extension, type TransactionSpec } from '@codemi
 import { EditorView } from '@codemirror/view';
 
 // diskMtimeMs is the disk's newer mtime while a conflict stands, the one Overwrite saves with;
-// root is the folder it was read under, and `on` the worker it was read from, which leaves it read-only
+// root is the folder it was read under, and `on` the machine it stands on when that is not this one, which leaves it read-only
 export type Buffer = { state: EditorState; saved: Text; mtimeMs: number; diskMtimeMs?: number; root?: string; on?: string };
 
 const buffers = new Map<string, Buffer>();

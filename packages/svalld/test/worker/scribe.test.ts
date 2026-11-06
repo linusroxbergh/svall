@@ -53,7 +53,7 @@ describe('the scribe on a placed robot', () => {
     const dir = makeHome();
     const robots = {
       c_1: resting(placed, 'c_1', dir, { name: 'golden heron' }),
-      c_2: resting(placed, 'c_2', dir, { name: 'reviewer', note: SLEPT_NOTE('w1'), noteSource: 'manual' }),
+      c_2: resting(placed, 'c_2', dir, { name: 'reviewer', note: SLEPT_NOTE('w1', 'ada-mac'), noteSource: 'manual' }),
     };
     const ran: string[] = [];
     const answers = { c_1: kb, c_2: { note: 'something else', links: [] } };
@@ -67,7 +67,7 @@ describe('the scribe on a placed robot', () => {
     await until(() => expect(asked.map((a) => a.id)).toEqual(['c_1', 'c_2']));
     await scribe.settled();
     expect(ran).toEqual(['c_1', 'c_2']);
-    expect(w.home.store.state.robots.c_2.note).toBe('started on w1 while this Mac slept');
+    expect(w.home.store.state.robots.c_2.note).toBe('started on w1 while ada-mac was away');
     // the worker wrote nothing of it: its copy is the home's
     await until(() => expect(w.worker.store.state.robots.c_1).toMatchObject({ name: 'kb', note: 'building the board' }));
   });

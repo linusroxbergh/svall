@@ -3,11 +3,12 @@ import { robotsOf, countsByStatus, DISPLAY_STATUSES, islandsSorted, isUnread, st
 
 export function FleetSummary() {
   const fleet = useApp((s) => s.fleet);
+  const via = useApp((s) => s.via);
   const width = usePanelWidth('card');
   const robots = Object.values(fleet.robots);
   const islands = islandsSorted(fleet);
-  const counts = countsByStatus(fleet);
-  const blocked = robots.filter((c) => statusOf(c, fleet) === 'blocked').length;
+  const counts = countsByStatus(fleet, via);
+  const blocked = robots.filter((c) => statusOf(c, fleet, via) === 'blocked').length;
   const unread = robots.filter(isUnread).length;
   return (
     <aside className="side" style={width} data-testid="fleet-summary">

@@ -110,3 +110,17 @@ describe('a second terminal\'s key outside the protocol', () => {
     expect(tagOf({ id: 'c_1' })).toBe('c_1');
   });
 });
+
+it('the shell hands a far home on to the quit question', () => {
+  const router = fs.readFileSync(new URL('../../mac/Sources/Svall/ShellRouter.swift', import.meta.url), 'utf8');
+  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home\)/);
+});
+
+it('the shell admits the machine id the banner upgrades by, or it answers that these are no arguments and nothing runs', () => {
+  const host = fs.readFileSync(new URL('../../mac/Sources/Svall/ControllerProcess.swift', import.meta.url), 'utf8');
+  const patterns = [...host.matchAll(/let machine(?:Name|Id)Pattern = "(.*)"/g)].map((m) => new RegExp(m[1]!.replaceAll('\\\\', '\\')));
+  expect(patterns).toHaveLength(2);
+  expect(patterns.some((r) => r.test('bbbbbbbb-0000-4000-8000-000000000000'))).toBe(true);
+  expect(patterns.some((r) => r.test('--release'))).toBe(false);
+  expect(host).toContain('args.name.allowed(by: machineIdPattern)');
+});

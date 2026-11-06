@@ -107,11 +107,13 @@ each machine's daemon and unit logs.
     own ssh to local, `svall fleet enroll-worker` there records remote as a worker that dials in and prints its token,
     which goes on stdin to `svall worker enroll --home-ssh` on remote. The link comes up over the socket sshd makes in
     local's fleet home, `srw-------`, `faults` moves to remote and `svall status` on local shows it there, and a restart
-    of remote's daemon and then of local's each relinks, local's with no new dial. With remote's dial cut and its tunnel killed, local marks remote
+    of remote's daemon and then of local's each relinks, local's with no new dial. A window's side of remote's daemon names its home, reaches its API over the forward it makes, holds the last screen of a robot on the home, and with local's daemon killed and its port file left answers unreachable, until it is back. With remote's dial cut and its tunnel killed, local marks remote
     unreachable, and links again once remote can dial. With remote's master frozen, which ssh alone feels, sshd's old
     listener still takes local's next stream, which no hello answers; within seconds of remote's next dial, local gives
     that stream up and links. With local's daemon stopped, a socket removed under remote's live master is bound again at
     its next beat, the socket a killed tunnel leaves refuses, and remote's next dial replaces it. `faults` then moves back.
+    A window's daemon side runs here too: remote's daemon names local as its home and how to reach it, local's API answers as the home over the
+    forward it makes, with each machine's role, and no log there holds local's token.
 
 Steps 1, 2, 5, 6 and 14 also check that the bare repository on remote is untouched: a move never pushes.
 

@@ -8,8 +8,9 @@ import type { Store } from './store.js';
 import type { Tmux } from './tmux/tmux.js';
 
 // a phone drives the tmux window's size; an app viewer yields to an attached desktop terminal. `login` is the tailnet
-// identity the proxy vouched for, none on an app or CLI socket; `lines` and `screenBytes` cap the screens it is sent
-export type Viewer = { kind: 'app' | 'phone'; login?: string; lines?: number; screenBytes?: number; send(ev: Event): void; backlog(): number };
+// identity the proxy vouched for, none on an app or CLI socket; `lines` and `screenBytes` cap the screens it is sent; `loopback`,
+// that its socket came from this machine; `fallback`, an app window standing in for a home it cannot reach
+export type Viewer = { kind: 'app' | 'phone'; login?: string; lines?: number; screenBytes?: number; loopback?: boolean; fallback?: boolean; send(ev: Event): void; backlog(): number };
 
 // the viewer stopped watching before the screen was ready
 class Gone extends Error {
@@ -55,15 +56,15 @@ export class TerminalHub {
   private closed = new WeakMap<Viewer, Map<string, number>>();
   // viewers whose socket held DRAIN_LIMIT unsent and has not drained to REJOIN_AT, and the terminals they missed output of
   private behind = new Map<Viewer, Set<string>>();
-  // on the home: the terminals viewers here hold on placed robots, and the last lines each robot's worker sent of its
-  // pane, kept while the robot stays placed as it was then
+  // on the home: the terminals viewers here hold on placed robots, and on either side the last lines the machine a robot
+  // runs on sent of its pane, kept while the robot stays there as it was then
   private far?: FarTerminals;
   private screens = new Map<string, Seen>();
 
   /** `here`, on a worker, its own machine id, which its terminals' attach names. */
   constructor(private fleet: Fleet, private tmux: Tmux, private store: Store, private log: Logger, private remote?: Remote, private here?: MachineId) {
     this.far = remote && new FarTerminals({ links: remote.links, router: remote.router, log });
-    if (remote) store.subscribe(() => { for (const [id, s] of this.screens) if (!this.placedAsSeen(id, s)) this.screens.delete(id); });
+    if (remote || here) store.subscribe(() => { for (const [id, s] of this.screens) if (!this.placedAsSeen(id, s)) this.screens.delete(id); });
     fleet.on('output', (id, data) => this.stream(id, { event: 'term.output', data: { id, data: data.toString('base64') } }));
     fleet.on('pause', (id) => this.resumeWhenDrained(id));
     fleet.on('continue', (id) => { this.resync(id).catch((e) => log.error(`resync ${id}: ${String(e)}`)); });
@@ -203,6 +204,12 @@ export class TerminalHub {
     if (this.remote?.router.placedAt(id) === machine) this.screens.set(id, { text, at, machine, generation: this.store.state.robots[id].placement?.generation });
   }
 
+  /** The last lines of a robot's pane on the home, as the home sends them to a worker that dials it. */
+  sawHomeScreen(id: string, text: string, at: number, machine: MachineId): void {
+    const seen = { text, at, machine };
+    if (this.placedAsSeen(id, seen)) this.screens.set(id, seen);
+  }
+
   lastScreen(id: string): { text: string; at: number } | undefined {
     const s = this.screens.get(id);
     return s && { text: s.text, at: s.at };
@@ -210,7 +217,11 @@ export class TerminalHub {
 
   // the robot still runs where the screen came from, in the same placement
   private placedAsSeen(id: string, s: Seen): boolean {
-    return this.remote?.router.placedAt(id) === s.machine && this.store.state.robots[id].placement?.generation === s.generation;
+    if (!Object.hasOwn(this.store.state.robots, id)) return false;
+    const c = this.store.state.robots[id];
+    // a worker holds only its home's, whose robots name no machine
+    if (!this.remote) return (c.machine ?? s.machine) === s.machine;
+    return this.remote.router.placedAt(id) === s.machine && c.placement?.generation === s.generation;
   }
 
   /** `machine` is out of reach: each viewer of a terminal there gets the last screen it sent, which stands until it is back. */

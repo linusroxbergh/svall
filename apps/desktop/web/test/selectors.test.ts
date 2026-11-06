@@ -207,6 +207,32 @@ describe('countsByStatus', () => {
   });
 });
 
+describe('a window standing in for a far home', () => {
+  const ME = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const via = { machine: ME, home: '22222222-2222-4222-8222-222222222222' as MachineId, name: 'studio' };
+  const standing = () => {
+    const f = fleet();
+    for (const c of Object.values(f.robots)) { c.agent = { kind: 'claude', sessionId: 's', transcriptPath: 't', status: 'blocked', lastActivityAt: 0 }; c.islandId = 'i_a'; }
+    return f;
+  };
+
+  it('reads a far robot as unknown in the counts and on its island, whatever the copy says', () => {
+    const f = standing();
+    expect(countsByStatus(f).blocked).toBe(Object.keys(f.robots).length);
+    expect(countsByStatus(f, via).blocked).toBe(0);
+    expect(countsByStatus(f, via).unknown).toBe(Object.keys(f.robots).length);
+    expect(islandStatus(f, 'i_a')).toBe('blocked');
+    expect(islandStatus(f, 'i_a', via)).toBe('unknown');
+  });
+
+  it('reads a robot on this Mac as it is, so it is the one its island wears', () => {
+    const f = standing();
+    f.robots.c1.machine = ME;
+    expect(islandStatus(f, 'i_a', via)).toBe('blocked');
+    expect(countsByStatus(f, via).blocked).toBe(1);
+  });
+});
+
 describe('home island', () => {
   it('sorts last whatever its name, and is found by kind', () => {
     const f = fleet();

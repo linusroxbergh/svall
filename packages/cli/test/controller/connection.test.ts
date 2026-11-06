@@ -1,3 +1,5 @@
+import { resolvePaths } from '@svall/svalld/paths';
+import { spawnSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -177,6 +179,8 @@ describe('remote connections', () => {
     expect((err as SshError).message).not.toContain(TOKEN);
     const forwarded = ssh.calls().filter((c) => c.includes('-O') && (c.includes('forward') || c.includes('cancel')));
     expect(forwarded.map((c) => c[c.indexOf('-O') + 1])).toEqual(['forward', 'cancel']);
+    // the attempt's master goes with it, so a retry leaves none behind
+    expect(control('exit')).toHaveLength(1);
     await new Promise((r) => wss.close(r));
   });
 
@@ -303,5 +307,20 @@ describe('svall connection-info', () => {
     expect(JSON.parse(out.join(''))).toMatchObject({ fleetId: FLEET, host: '127.0.0.1', port: 4711 });
     expect(fs.readdirSync(home).sort()).toEqual(['config.json', 'port', 'token']);
     expect(fs.readFileSync(path.join(home, 'config.json'), 'utf8')).toBe(legacy);
+  });
+});
+
+describe('a daemon that left its port file', () => {
+  it('answers no token for a pid that is gone', () => {
+    const home = makeHome();
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: FLEET }));
+    fs.writeFileSync(paths.port, '47800');
+    fs.writeFileSync(paths.token, 'held');
+    const gone = spawnSync('true').pid;
+    fs.writeFileSync(path.join(home, 'version'), `1.0.0\n${gone}\n`);
+    expect(() => localConnectionInfo(home)).toThrow(/process \d+ .* is gone/);
+    fs.writeFileSync(path.join(home, 'version'), `1.0.0\n${process.pid}\n`);
+    expect(localConnectionInfo(home).token).toBe('held');
   });
 });

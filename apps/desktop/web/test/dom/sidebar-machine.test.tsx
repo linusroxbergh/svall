@@ -28,3 +28,11 @@ test('a robot on a worker names its machine under its name, in the tree and in S
   act(() => store.getState().applyPatch([{ op: 'remove', path: '/robots/c0/machine' }]));
   expect(screen.queryByTestId('sb-machine-c0')).toBeNull();
 });
+
+test('an island wears unknown in a window standing in for its home, whatever its robots last said', () => {
+  act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: 'bbbbbbbb-0000-4000-8000-000000000000' as never, name: 'studio' }));
+  render(<Sidebar />);
+  const dots = [...document.querySelectorAll('.sdot[data-empty="false"]')].map((d) => d.getAttribute('data-status'));
+  expect(dots.length).toBeGreaterThan(0);
+  expect(new Set(dots)).toEqual(new Set(['unknown']));
+});

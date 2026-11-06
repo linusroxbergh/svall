@@ -22,7 +22,7 @@ function Item({ it, active, onEnter, onLeave, onPick, rowRef }: {
 }) {
   return (
     <div ref={rowRef} role="menuitem" className={`ctx-item menu-item${it.danger ? ' dan' : ''}`} aria-disabled={!live(it) || undefined} aria-haspopup={it.items ? 'menu' : undefined}
-      data-active={active} data-testid={`menu-${it.title.toLowerCase()}`}
+      data-active={active} data-testid={`menu-${it.title.toLowerCase()}`} data-tip={it.tip}
       onPointerEnter={onEnter} onPointerLeave={onLeave} onClick={onPick}>
       {it.title}
       {it.items && <span className="ctx-mark"><Caret dir="right" /></span>}

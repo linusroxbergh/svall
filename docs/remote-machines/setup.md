@@ -47,8 +47,8 @@ Both run the same steps and show each as it finishes. The app shows them in thes
 3. **Svall there.** The Linux release matching this Mac's own release, checked against the digest this Mac's release
    pins and against its signature, copied over ssh and installed under `~/.local/share/svall` there, and the tmux it
    brings checked. Then `svall-svalld@private.service` as a systemd user unit, its machine id, and the release it
-   answers from, and **Worker**: the machine becomes this fleet's worker, with a token this Mac issues, and the unit
-   restarts as `svalld --worker`, which accepts this Mac alone.
+   answers from, and **Worker**: the machine becomes this fleet's worker, with a token the home issues, and the unit
+   restarts as `svalld --worker`, which accepts the home alone.
 4. **Agents there.** Claude Code, Codex and OpenCode on the machine: installed, Claude Code 2.1.251 or newer, Codex
    0.156.0 or newer and OpenCode 2.0.22 or newer, logged in (for OpenCode, `opencode auth list` names a model provider),
    and with Svall's hooks in place (for OpenCode, Svall's plugin), and for Codex a sandbox that starts, as the machine's
@@ -135,8 +135,8 @@ its own `svall-svalld@work.service`.
 
 ### Your agent setup on the machine
 
-Once the machine is in this Mac's list, Svall copies your agent setup there. It copies it again each time this Mac
-links to the machine and before every move, one way, and only what changed on this Mac since the last copy:
+Once the machine is in this Mac's list, Svall copies your agent setup there. It copies it again each time the home
+links to the machine and before every move, one way, and only what changed on the home since the last copy:
 
 - **Claude Code:** `settings.json`, merged by top-level setting; `CLAUDE.md`, `skills/`, `rules/`, `agents/`, `commands/` and
   `keybindings.json`; your plugins and their marketplaces; and the MCP servers in `~/.claude.json`, yours and those of
@@ -177,10 +177,10 @@ OpenCode, the name in the server's `env_vars` for Codex), so the server reads th
 the machine, which robots there take from the fleet's `.env` (below); a key in its headers, URL or arguments is left
 out; a reference with a default keeps the reference alone. The row stays until you tick it or the machine has its own
 key: a key for that server in the overrides (below) counts, and so does the variable an `env` key reads set there with
-`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While this Mac is linked to the
+`svall worker env LINEAR_API_KEY`; the row then reads "studio has its own keys". While the home is linked to the
 machine, ticking or unticking changes the copy there at once, whatever runs there; otherwise the change is saved, and
-takes effect when studio links. An untick while this Mac cannot read the file that holds the key is saved too, and the
-copy stays on studio until this Mac can read that file again; while studio still holds a copy you unticked, the row
+takes effect when studio links. An untick while the home cannot read the file that holds the key is saved too, and the
+copy stays on studio until the home can read that file again; while studio still holds a copy you unticked, the row
 reads "still on studio; check studio again", and the list names it "unticked; still on studio". A file there that holds a ticked key is readable by your account alone. A
 server or plugin config with settings Svall cannot copy one by one, or a server that runs a shell's `-c` script, whose
 keys Svall cannot read, is a row "copy notion to studio as it is", and is copied only once ticked, its file as it is, keys included. So is a file whose keys Svall cannot leave out: a plugin's LSP config (`.lsp.json`, `lspServers` in its
@@ -265,9 +265,11 @@ two halves:
 
 1. On the home, `svall --json fleet enroll-worker <machine id> --name <name> --platform darwin --arch <arch> --home
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
-   forwards its link to. A run again issues a new token, which replaces the one before.
+   forwards its link to and where svall, its platform, its architecture and its user folder are on the home. A run again issues a new
+   token, which replaces the one before.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
-   --home-socket <socket>`, with the token on its stdin, makes it dial, and restarts its daemon as the home's worker,
+   --home-socket <socket> --home-svall-base <path> --home-platform <platform> --home-arch <arch> --home-path <path>`, with the token on its stdin, makes it
+   dial, keeps the home's record in this machine's registry for `svall host upgrade` and `host doctor`, and restarts its daemon as the home's worker,
    loading a named fleet's launchd job if it has none. The home's first snapshot replaces what a fleet holds, so it
    refuses a fleet that has robots, workers or anything on an island of its own, which a fleet opened once does until its
    first robot closes, and a worker of another fleet, whose robots the new home would close. Name a fleet never opened
@@ -284,22 +286,25 @@ at once and another fleet's when its stream next drops. The worker stays as it i
 `svall uninstall` there leaves that file, and removing it by hand is no supported way back to a home; put back after a
 start as a home, it holds the daemon back until `svall worker enroll` runs again for the same fleet. The worker's ssh
 login to the home stays until its key is removed there, which a lost Mac needs. `svall host doctor` and `svall host
-upgrade` of the home cannot run from the worker, whose registry has no record of it.
+upgrade` of the home run from the worker, which keeps the home a home; `svall host remove` of it there is refused, and
+nothing on the worker links to it as a worker.
+
+The app on such a Mac opens on the home: see [A fleet whose home is a server](home.md).
 
 The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
 
-## The phone while this Mac is off
+## The phone while the home is off
 
-A worker can serve the phone itself while this Mac is off. Tick **Phone while this Mac is off** under Machines →
-**Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies this Mac's push keys and the
-phone's devices to the machine, which is why it stays off until ticked. While this Mac's own phone link is on, the
+A worker can serve the phone itself while the home is off. Tick **Phone while this Mac is off** under Machines →
+**Check** → Your agent setup, or run `svall host consent studio phone on`. Ticking copies the home's push keys and the
+phone's devices to the machine, which is why it stays off until ticked. While the home's own phone link is on, the
 worker then serves the phone with `tailscale serve` on a free https port (443 stays with whatever already serves
-there), and the row shows the address. Unticking, or turning this Mac's phone link off, stops it. If the row says
+there), and the row shows the address. Unticking, or turning the home's phone link off, stops it. If the row says
 tailscale refused, run `sudo tailscale set --operator=$USER` on the machine and **Check** again. The phone learns the
-address the next time it opens while this Mac is on; there is nothing to pair. [What the phone does
-then](placement.md#while-this-mac-sleeps).
+address the next time it opens while the home is on; there is nothing to pair. [What the phone does
+then](placement.md#while-the-home-is-away).
 
 ## Looking after it
 
@@ -356,13 +361,13 @@ On the Linux machine, all under the account:
   plugin, when OpenCode is installed and the fleet does not turn it off.
 - `~/.local/share/svall/log`, the units' logs.
 - `~/.cache/svall`, where `svall host add` and `upgrade` upload and unpack a release.
-- `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names this Mac, the fleet and
-  the token this Mac issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
+- `~/.svall` (and `~/.svall-<name>`), each fleet's home there: `worker.json`, which names the home, the fleet and
+  the token the home issued; `.env`, the variables its robots there get, mode 600, written by `svall worker env` or
   the app's **Set on studio**;
   `cache/docs`, a copy of the fleet's notes; `cache/mirror-state.json`, what the agent setup mirror last wrote there,
   as hashes; `cache/mirror-vars.json`, the names of the variables the copied setup reads; `journal/`, what happened
-  there that this Mac has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own
-  that the agent setup this Mac copies there never replaces; and the robots' tmux server, hooks socket and
+  there that the home has not taken yet, and each move's journal; `mirror-overrides/`, settings of the machine's own
+  that the agent setup the home copies there never replaces; and the robots' tmux server, hooks socket and
   transcripts. The clones the robots work in are under the account's home, at each main checkout's
   place.
 

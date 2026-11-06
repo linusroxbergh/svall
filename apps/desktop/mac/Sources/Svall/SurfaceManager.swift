@@ -25,6 +25,10 @@ struct RemoteRoute: Equatable {
 enum ConnectionRoute: Equatable {
     case local
     case remote(RemoteRoute)
+    /// A worker of a far home: this machine's master to the home, then the home's to the worker.
+    case nested(outer: RemoteRoute, inner: RemoteRoute)
+
+    var far: Bool { self != .local }
 }
 
 /// The shell command a surface runs to attach to a robot's tmux session, here or on the machine it runs on.
@@ -33,27 +37,44 @@ enum AttachCommand {
         "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
-    static func route(_ window: ConnectionRoute, _ attach: WebAttach) -> ConnectionRoute {
-        attach.via.map { .remote(RemoteRoute(destination: $0.ssh, controlSocket: $0.controlSocket)) } ?? window
+    /// How the page says a robot is reached: this machine's tmux, the far home over this machine's master, or a worker of whichever
+    /// home over that home's. The page names a master only for a robot that is not on this machine.
+    static func route(_ attach: WebAttach) -> ConnectionRoute {
+        let hop = { (v: WebVia) in RemoteRoute(destination: v.ssh, controlSocket: v.controlSocket) }
+        switch (attach.master.map(hop), attach.via.map(hop)) {
+        case (nil, nil): return .local
+        case (let master?, nil): return .remote(master)
+        case (nil, let via?): return .remote(via)
+        case (let master?, let via?): return .nested(outer: master, inner: via)
+        }
+    }
+
+    // ssh joins the words after the destination into one line for the far login shell, which splits it again, and each hop
+    // has a shell of its own. Past sshd's MaxSessions on the master, ssh opens a login of its own, without a prompt, so a hop
+    // names its real destination; neither takes the agent, X11, forwards or RemoteCommand of the user's config.
+    // Linux ships no xterm-ghostty terminfo, and libghostty's `exec -l` would run a bare TERM= as the program, so env sets it
+    private static func ssh(_ route: RemoteRoute, _ far: String) -> String {
+        "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt -- \(quote(route.destination)) \(far)"
     }
 
     // libghostty runs the command through a shell, so each field is single-quoted; `=` matches the session's whole name.
     // nil while its master is gone: a session is attached only where the daemon says it lives
-    static func build(route: ConnectionRoute, attach: WebAttach, tmux: String,
-                      masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
+    static func build(attach: WebAttach, tmux: String, masterAnswers: (String) -> Bool = ControlSocket.answers) -> String? {
         let target = "=" + attach.session
         let session = "-S \(quote(attach.socket)) attach -t \(quote(target))"
-        switch Self.route(route, attach) {
+        // the tmux, socket and session are quoted a second time for the far shell
+        let far = "\(attach.tmux.map { quote(quote($0)) } ?? "tmux") -S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
+        switch route(attach) {
         case .local:
             return "\(quote(tmux)) \(session)"
         case .remote(let route):
             guard masterAnswers(route.controlSocket) else { return nil }
-            // ssh joins the words after the destination into one line for the far login shell, which
-            // splits it again, so the tmux, socket and session are quoted a second time for that shell
-            let far = "\(attach.tmux.map { quote(quote($0)) } ?? "tmux") -S \(quote(quote(attach.socket))) attach -t \(quote(quote(target)))"
-            // past sshd's MaxSessions on the master, ssh opens a login of its own, without a prompt; neither takes the agent, X11, forwards or RemoteCommand of the user's config.
-            // Linux ships no xterm-ghostty terminfo, and libghostty's `exec -l` would run a bare TERM= as the program, so env sets it
-            return "env TERM=xterm-256color ssh -S \(quote(route.controlSocket)) -o ControlMaster=no -o BatchMode=yes -o ForwardAgent=no -o ForwardX11=no -o ClearAllForwardings=yes -o RemoteCommand=none -tt -- \(quote(route.destination)) \(far)"
+            return ssh(route, far)
+        case .nested(let outer, let inner):
+            // the home probes its own master, which answers `via` only while its link is up, and this machine cannot reach that socket.
+            // The whole inner command is one word here, and the home's login shell runs it as it stands
+            guard masterAnswers(outer.controlSocket) else { return nil }
+            return ssh(outer, quote(ssh(inner, far)))
         }
     }
 }
@@ -147,12 +168,12 @@ final class SurfaceManager {
         }
         if let machine { return open(id: id, rect: rect, machine: machine, opacity: opacity) }
         guard let attach else { return }
-        let route = AttachCommand.route(.local, attach)
+        let route = AttachCommand.route(attach)
         // a local attach runs this Mac's tmux, decided here; a remote one runs the far tmux the page names
         let binary = SvallHome.tmuxBinary
         // a robot's own master is gone: the page asks again, and the daemon answers once its link is back
-        guard let command = AttachCommand.build(route: route, attach: attach, tmux: binary) else { return onExited(id) }
-        let program = switch route { case .remote: "ssh"; default: binary }
+        guard let command = AttachCommand.build(attach: attach, tmux: binary) else { return onExited(id) }
+        let program = route.far ? "ssh" : binary
         guard let view = make(id: id, command: command, program: program, rect: rect, opacity: opacity) else { return }
         view.onDropFiles = { [weak self, weak view] urls in
             switch Self.drop(urls, over: route) {
@@ -160,7 +181,7 @@ final class SurfaceManager {
             case .send(let urls): self?.onDrop(id, DropFiles.shared.hold(urls))
             }
         }
-        guard case .remote = route else { return }
+        guard route.far else { return }
         view.onImagePaste = { [weak self] in
             guard let self, let png = DropFiles.pastedImage(.general) else { return false }
             self.onDrop(id, [DropFiles.shared.hold(png: png)])
@@ -172,7 +193,7 @@ final class SurfaceManager {
 
     /// A drop on a terminal here types this Mac's paths, as Ghostty does; one on another machine is sent there first.
     static func drop(_ urls: [URL], over route: ConnectionRoute) -> Drop {
-        if case .remote = route { return .send(urls) }
+        if route.far { return .send(urls) }
         return .type(ShellEscape.paths(urls.map(\.path)))
     }
 

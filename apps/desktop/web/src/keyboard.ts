@@ -1,6 +1,7 @@
 import type { Deps } from './actions.js';
 import { openBeside, opensInside, type BrowserManager } from './browser.js';
 import { commitFocused } from './Field.js';
+import { frozenLine } from './placement.js';
 import { chordOf, resolve, type KeyAction } from './keys.js';
 import { isTerminal, mainLeft, showBrowser, shows, toggleBrowserRight } from './panes.js';
 import { robotsOf, firstOfNextIsland, isVeiled, neighbor, panesOf, selectedOf, STARRED } from './selectors.js';
@@ -109,6 +110,8 @@ export async function dispatchKey(action: KeyAction, ctx: KeyDeps): Promise<void
       }
       if (s.card) { store.getState().closeCard(); return; }
       if (!current) return;
+      const refusal = frozenLine(s, current);
+      if (refusal) { store.getState().showToast(refusal); return; }
       // the close key sits among the ones that walk the fleet, so a robot closed by key is confirmed first
       closeModals();
       store.getState().setClosingRobot(current);

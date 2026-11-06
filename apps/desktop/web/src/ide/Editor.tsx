@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { app, deps } from '../boot.js';
 import { Glide } from '../Glide.js';
 import { useApp } from '../hooks.js';
+import { readsOn } from '../placement.js';
 import { getBuffer, mountView, subscribeBuffer, unmountView } from './buffers.js';
 import { overwriteFile, reloadFile } from './files.js';
 
@@ -17,7 +18,7 @@ export function Editor({ id, path, takes }: { id: string; path: string; takes?: 
   const [text, setText] = useState(() => getBuffer(id, path)?.state.doc.toString() ?? '');
   const asked = useApp((s) => s.previewAsk?.id === id && s.previewAsk.path === path);
   // a worker's file is edited in the robot's terminal there
-  const on = getBuffer(id, path)?.on;
+  const on = useApp((s) => readsOn(s.fleet, id, s.via));
   const cue = on && <span className="editor-far" data-testid="editor-read-only">read-only · on {on}</span>;
   const showPreview = () => { setText(getBuffer(id, path)?.state.doc.toString() ?? ''); setPreview(true); };
 

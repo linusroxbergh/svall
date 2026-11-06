@@ -1,7 +1,7 @@
 import type { Operation } from 'fast-json-patch';
 import { z } from 'zod';
 import { MachineId, SystemInfo } from './machines.js';
-import { MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
+import { HomeState, MoveId, MoveSheet, Refusal, SetupRow } from './placement.js';
 import { DismissReason, RetroPlan, RetroReport, RetroSpan, RetroStatus } from './retro.js';
 import { AgentKind, AgentStatus, BrowserTab, Cell, Column, Robot, ContextItem, FleetState, Island, Size } from './state.js';
 
@@ -119,11 +119,15 @@ export const AGENT_UPDATE_MS = 5 * 60_000;
 // a drop crosses the link to the robot's machine in 1 MiB parts
 const DROP_TIMEOUT_MS = 10 * 60_000;
 
+const HOME_CONNECTION_MS = 60_000;
+
 // how long the daemon may hold a call before it answers, which a client adds to its own timeout
 export const serverWait = (method: MethodName, params: unknown): number => {
   if (method === 'robot.wait') return (params as { timeoutMs?: number }).timeoutMs ?? WAIT_DEFAULT_MS;
   if (method === 'robot.create' && (params as { run?: string }).run) return RUN_TIMEOUT_MS;
   if (method === 'scribe.sweep') return SWEEP_TIMEOUT_MS;
+  // a far command, its forward and a greeting through it, each with a timeout of its own
+  if (method === 'home.connection') return HOME_CONNECTION_MS;
   if (method === 'retro.plan') return RETRO_PLAN_TIMEOUT_MS;
   // each fix may start a robot, which waits for its agent as robot.create with a run does
   if (method === 'retro.mark') return ((params as { marks?: { action?: string }[] }).marks ?? []).filter((m) => m.action === 'fix').length * RUN_TIMEOUT_MS;
@@ -309,7 +313,7 @@ export const methods = {
   'robot.moveRetry': { params: z.object({ moveId: MoveId }), result: z.object({}) },
   'machines.list': {
     params: z.object({}),
-    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
+    result: z.object({ machines: z.array(z.object({ id: MachineId, name: z.string(), role: z.enum(['home', 'worker']), platform: z.enum(['darwin', 'linux']).optional(), dialsIn: z.literal(true).optional(), reachable: z.boolean(), release: z.string().optional(), robots: z.number() })) }),
   },
   // links each machine `svall host add` or `host upgrade` enrolled while the daemon ran, and tries each link that is down again now
   'machines.refresh': { params: z.object({}), result: z.object({}) },
@@ -387,6 +391,20 @@ export const methods = {
   'fleet.rename': { params: z.object({ name: z.string() }), result: z.object({}) },
   // the app quitting: every terminal ends, each robot resumes at the next start or when opened, and the daemon exits once it has answered
   'fleet.stop': { params: z.object({}), result: z.object({}) },
+  // the fleet's home, and whether the daemon that answers is that home
+  'fleet.home': { params: z.object({}), result: z.object({ machine: MachineId, name: z.string(), mine: z.boolean(), me: MachineId }) },
+  // how a window reaches the fleet's home over this daemon's ssh master: a home answers `connected` and no route. `retry`: a
+  // person asks again after `auth`, `version` or a mismatch, which nothing retries by itself. Loopback only, as it hands over the home's token
+  'home.connection': {
+    params: z.object({ retry: z.boolean().optional() }),
+    result: z.object({
+      machine: MachineId, name: z.string(), state: HomeState,
+      ssh: z.string().optional(), controlSocket: z.string().optional(), port: z.number().int().positive().optional(), token: z.string().optional(),
+      release: z.string().optional(), detail: z.string().optional(), newer: z.literal(true).optional(),
+    }),
+  },
+  // this window is standing in for a home it cannot reach, so its changes to robots here wait on no link
+  'home.fallback': { params: z.object({ on: z.boolean() }), result: z.object({}) },
   'usage.get': { params: z.object({}), result: UsageSnapshot },
   'load.get': { params: z.object({}), result: LoadSnapshot },
   'mobile.get': { params: z.object({}), result: MobileStatus },
@@ -508,4 +526,4 @@ export const LOGIN_REFUSED = 4403;
 export const UNPAIRED = 4402;
 
 // bump on any change an older app or daemon would misread; the handshake reply carries it
-export const PROTOCOL_VERSION = 40;
+export const PROTOCOL_VERSION = 41;

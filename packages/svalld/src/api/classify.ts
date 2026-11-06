@@ -67,6 +67,9 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'fleet.rename': 'mutation',
   // a quit stops this machine's daemon
   'fleet.stop': 'read',
+  'fleet.home': 'read',
+  'home.connection': 'read',
+  'home.fallback': 'read',
   'mobile.get': 'read',
   'mobile.set': 'mutation',
   'mobile.fallbacks': 'read',

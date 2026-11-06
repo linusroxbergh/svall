@@ -15,7 +15,7 @@ afterEach(async () => {
   await stopWorlds();
 });
 
-const UNREACHABLE = 'w1 cannot reach this Mac right now; try again when it is awake';
+const UNREACHABLE = 'ada-mac is not reachable';
 const git = (cwd: string, ...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=t', '-c', 'user.email=t@t', ...args], { encoding: 'utf8' });
 
 /** w1, its link to the home not started, running c_1 in a worktree of `clone`, with mission control and a tmux that records the windows it opens, the text it types and the windows it kills. */
@@ -60,7 +60,7 @@ describe('a worker serving its robots while the home is away', () => {
       for (const c of Object.values(w.worker.store.state.robots)) if (c.id !== 'c_1' && !first.some((f) => f.id === c.id)) first.push(c);
     });
     const r = await create({ name: 'reviewer' });
-    expect(r).toMatchObject({ result: { name: 'reviewer', machine: W, placement: { generation: 0 }, note: 'started on w1 while this Mac slept', noteSource: 'manual' } });
+    expect(r).toMatchObject({ result: { name: 'reviewer', machine: W, placement: { generation: 0 }, note: 'started on w1 while ada-mac was away', noteSource: 'manual' } });
     const { id } = madeIn(r);
     expect(first.map((c) => [c.id, c.machine, c.placement])).toEqual([[id, W, { generation: 0 }]]);
     expect(opened).toEqual([id]);
@@ -84,11 +84,19 @@ describe('a worker serving its robots while the home is away', () => {
 
   it('a cwd outside the clones is refused with its path; mission control is refused; the sixth create since the last ack is refused with the quota sentence', async () => {
     const { create, opened } = setup();
-    await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not inside a clone on w1; start it in one` } });
-    await expect(create({ islandId: HOME_ISLAND })).resolves.toMatchObject({ error: { message: 'mission control stays on this Mac; start it on another island' } });
+    await expect(create({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not in a clone on w1; while ada-mac is away a new robot starts in one` } });
+    await expect(create({ islandId: HOME_ISLAND })).resolves.toMatchObject({ error: { message: 'mission control stays on ada-mac; start it on another island' } });
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
-    await expect(create()).resolves.toMatchObject({ error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } });
+    await expect(create()).resolves.toMatchObject({ error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } });
     expect(opened).toHaveLength(5);
+  });
+
+  it('a window on this machine is told of this Mac, while the note goes by its name', async () => {
+    const { w, clone } = setup();
+    const inWindow = (p: Record<string, unknown> = {}) => dispatch({ id: 1, method: 'robot.create', params: { islandId: 'i_1', cwd: clone, ...p } }, { ...w.worker.ctx, viewer: { ...w.worker.ctx.viewer, fallback: true } });
+    await expect(inWindow({ cwd: os.tmpdir() })).resolves.toMatchObject({ error: { code: 'invalid', message: `${os.tmpdir()} is not in a clone on this Mac; while ada-mac is away a new robot starts in one` } });
+    for (let i = 0; i < 5; i++) expect(await inWindow()).toMatchObject({ result: { note: 'started on w1 while ada-mac was away' } });
+    await expect(inWindow()).resolves.toMatchObject({ error: { code: 'invalid', message: 'this Mac has started 5 robots since ada-mac last answered; wait for it' } });
   });
 
   it('two creates at once for the fifth place start one robot, and the other is refused with the quota sentence', async () => {
@@ -96,14 +104,14 @@ describe('a worker serving its robots while the home is away', () => {
     for (let i = 0; i < 4; i++) await create();
     const both = await Promise.all([create(), create()]);
     expect(both.filter((r) => 'result' in r)).toHaveLength(1);
-    expect(both.filter((r) => 'error' in r)).toMatchObject([{ error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } }]);
+    expect(both.filter((r) => 'error' in r)).toMatchObject([{ error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } }]);
     expect(opened).toHaveLength(5);
     expect(mutations()).toHaveLength(5);
   });
 
   it('the quota opens again once the home has acked', async () => {
     const { w, create } = setup({ home: { robots: { c_1: placed({ id: 'c_1' }) } } });
-    const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since this Mac last answered; wait for it' } };
+    const quota = { error: { code: 'invalid', message: 'w1 has started 5 robots since ada-mac last answered; wait for it' } };
     for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W } });
     expect(await create()).toMatchObject(quota);
     // the Mac wakes and acks the five over the link, then sleeps again
@@ -112,7 +120,7 @@ describe('a worker serving its robots while the home is away', () => {
     expect(Object.keys(w.home.store.state.robots).filter((id) => id !== 'c_1')).toHaveLength(5);
     w.home.links.stop();
     await until(() => { if (w.worker.connection.connected()) throw new Error('still linked'); });
-    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while this Mac slept' } });
+    for (let i = 0; i < 5; i++) expect(await create()).toMatchObject({ result: { machine: W, note: 'started on w1 while ada-mac was away' } });
     expect(await create()).toMatchObject(quota);
   });
 
@@ -169,7 +177,7 @@ describe('a worker serving its robots while the home is away', () => {
       d.robots.c_1.agent = { kind: 'claude', sessionId: 's', status: 'idle', lastActivityAt: 1 };
     });
     w.worker.tmux.screen = async () => pane('claude-empty');
-    const away = { error: { code: 'not_reachable', message: 'w1 cannot reach this Mac right now; try again when it is awake, and it keeps the report' } };
+    const away = { error: { code: 'not_reachable', message: 'ada-mac is not reachable, and it keeps the report' } };
     expect(await call('robot.send', { id: 'c_1', from: 'c_lead', text: 'review it', report: true })).toMatchObject(away);
     expect(await create({ startedBy: 'c_lead', report: true, command: 'claude', run: 'go' })).toMatchObject(away);
     expect(typed).toEqual([]);

@@ -35,6 +35,8 @@ export type PrepareDeps = {
   me: MachineId;
   /** The home's name, as worker.json gives it. */
   homeName: string;
+  /** What this worker's sentences call the home. */
+  homeWord: () => string;
   paths: Pick<Paths, 'moves'>;
   git: GitRunner;
   cloneGit?: GitRunner;
@@ -103,7 +105,7 @@ export class PrepareService {
         if (c?.machine !== this.d.me) throw new ApiError('invalid', `${c?.name ?? robotId} does not run on ${this.name}`);
         if (c.repo && branch) {
           const on = (await this.d.git(['symbolic-ref', '-q', '--short', 'HEAD'], c.repo.root)).stdout.trim();
-          if (on === branch.name && !await holdsWhole(branch.sha, 'HEAD', c.repo.root, this.d.git)) return { refusal: branchAhead('this Mac', branch.name) };
+          if (on === branch.name && !await holdsWhole(branch.sha, 'HEAD', c.repo.root, this.d.git)) return { refusal: branchAhead(this.d.homeWord(), branch.name) };
         }
         const carried = await carriedFrom(c, have, this.d.git, this.d.cli ?? cliRunner());
         if ('refusal' in carried) return carried;
@@ -233,7 +235,7 @@ export class PrepareService {
     if (j.phase !== 'commit' && j.phase !== 'activate') throw new ApiError('invalid', `move ${id} is ${j.phase} on ${this.name}`);
     const c = this.d.store.state.robots[j.robotId];
     if (c?.machine !== this.d.me || c.placement?.generation !== j.generation || c.moving?.phase === 'prepare') {
-      return { ok: false, error: `${this.name} has not taken this Mac's record of the move yet; retry` };
+      return { ok: false, error: `${this.name} has not taken ${this.d.homeWord()}'s record of the move yet; retry` };
     }
     if (j.phase === 'commit') this.save({ ...j, phase: 'activate' });
     const seeded = new Set<AgentKind>();

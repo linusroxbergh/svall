@@ -17,6 +17,7 @@ import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
 import { sha256Hex } from './hash.js';
 import { startHookReceiver } from './hooks/receiver.js';
+import { HomeApi } from './link/home-api.js';
 import { HomeDial } from './link/dialout.js';
 import { HomeLinks, socketTransport, sshTransport, UnknownEvent } from './link/home.js';
 import { tryLock } from './kernel-lock.js';
@@ -24,7 +25,7 @@ import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, listsWorker, machineId, machineIdentity, machineIdFailure, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -59,11 +60,11 @@ import { resolveTmux, servingTmux, Tmux } from './tmux/tmux.js';
 import { LoadSampler } from './load/sampler.js';
 import { readProcs } from './load/procs.js';
 import { cachedUsage, fleetUsage, usageFetcher } from './usage/usage.js';
-import { workerOptions, workerStubs, type Off } from './worker/mode.js';
+import { readWorkerFile, workerOptions, workerStubs, type Off } from './worker/mode.js';
 import { WorkerMutations } from './worker/mutations.js';
 import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
-import { ScreenNotice, ScreenTails } from './worker/screens.js';
+import { homeScreenCall, homeTails, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { Workspace } from './workspace/workspace.js';
 
@@ -122,7 +123,7 @@ function ownMachineId(log: Logger, hardware?: HardwareReader): MachineId {
     try { listed = listsWorker(); } catch { listed = true; }
     if (listed) throw new Error(machineIdFailure(e, { workers: true }), { cause: e });
     const id = MachineId.parse(crypto.randomUUID());
-    log.error(`${machineIdFailure(e)}; no worker knows this Mac, so it runs as ${id}`);
+    log.error(`${machineIdFailure(e)}; no worker knows ${homeWord()}, so it runs as ${id}`);
     return id;
   }
   const { id, hardware: seen } = identity;
@@ -249,6 +250,7 @@ async function start(opts: Options): Promise<Daemon> {
     onSynced: (machine) => {
       for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
       void phone?.sync(machine);
+      void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c) }, machine);
     },
     onLost: (machine) => terminals.lostMachine(machine),
     snapshot: () => ({ version: ++version, state: store.state, agentHomes: { claude: claude.dir, codex: codex.dir, opencode: opencode.dir }, home: os.homedir() }),
@@ -259,6 +261,7 @@ async function start(opts: Options): Promise<Daemon> {
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
   const dial = worker?.worker.homeSsh ? new HomeDial({ paths, log, me, linked: (): boolean => connection?.connected() ?? false }) : undefined;
+  const homeApi = worker && new HomeApi({ log, worker: () => readWorkerFile(paths), dial, linked: (): boolean => connection?.connected() ?? false });
   const connection = worker && outbox && new HomeConnection({
     paths, worker: worker.worker, me, store, outbox, log, release: releaseVersion(), bootId: bootId() ?? crypto.randomUUID(), handlers: calls,
     onAcked: (dropped) => mutations?.acked(dropped),
@@ -281,8 +284,9 @@ async function start(opts: Options): Promise<Daemon> {
     stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
+  const workerHomeWord = () => (worker ? homeWordOnWorker(store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, !!worker.worker.homeSsh) : 'this Mac');
   const router = new Router({
-    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection } }),
+    store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });
   const remoteWatches = links && new RemoteWatches({ links, router });
   // a worker names a clone as the home does once a snapshot has said where the home's user folder is
@@ -295,15 +299,19 @@ async function start(opts: Options): Promise<Daemon> {
   // what the CLI in a worker's panes starts there, and changes there while its home is away
   const mutations = connection && outbox && new WorkerMutations({
     store, fleet, connection, outbox, me, paths, log, forget: (id) => forgetRobot({ fleet, store, me, log }, id),
+    homeWord: workerHomeWord,
   });
   const terminals = new TerminalHub(fleet, tmux, store, log, links && { router, links }, worker && me);
   // the last lines of each robot's pane here, which the home shows while this worker is out of its reach
-  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, me });
+  const screens = connection && new ScreenTails({ fleet, store, tmux, connection, runsHere: (c) => router.runsHere(c) });
+  // and of each robot on this home, which a worker that dials in shows while this home is out of its reach
+  const homeScreens = links && homeTails({ fleet, store, tmux, links, runsHere: (c) => router.runsHere(c) });
   // what this machine's agent CLIs are: a move and system.info read them
   const agents = agentProber(realProbeDeps(paths.env));
+  if (worker) calls['screen.home'] = homeScreenCall(terminals, worker.worker.homeMachineId);
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
-      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
+      store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
   }
@@ -345,6 +353,11 @@ async function start(opts: Options): Promise<Daemon> {
   const usage = fleetUsage({ state: () => store.state, claude: cachedUsage(usageFetcher({ cwd: path.join(paths.home, 'usage'), envFile: paths.env }), USAGE_TTL_MS), runsHere: (c) => router.runsHere(c) });
   // the home's usage panel counts a worker's robots as the worker reads them
   if (connection) calls['usage.get'] = () => usage();
+
+  const registered = () => { try { return readRegistry(); } catch { return []; } };
+  const fleetHome = () => (worker
+    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me }
+    : { machine: me, name: ownName(), mine: true, me });
 
   const load = new LoadSampler({
     read: () => readProcs(fs.existsSync(paths.hookHelper) ? paths.hookHelper : undefined),
@@ -390,11 +403,12 @@ async function start(opts: Options): Promise<Daemon> {
     const listen = (at: number) => startApi({
       host: opts.host ?? config.host, port: at, token, store, fleet, fleets: off.has('fleets') ? workerStubs.fleets : fleetControl(paths.home, realFleetDeps()), terminals, workspace, usage, load: () => load.get(), mobileControl: mobile, log,
       origins: () => [...config.mobile.origins, ...workerPhone?.origins() ?? []], logins: workerPhone ? () => workerPhone.logins() : mobile.logins, key: key.get, pass, push, vapidPublicKey: vapid.publicKey, phones, claude, codex, docs: paths.docs, agentProfiles: paths.agentProfiles, systemInfo: info,
-      // diagnostics read the last minute's agent probe; a worker gives none
-      ...(!worker && { diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }) }),
+      // diagnostics read the last minute's agent probe
+      diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }),
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), fleetHome,
+      registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held
     const api = await listen(port ?? DEFAULT_PORT).catch((e: NodeJS.ErrnoException) => {
@@ -425,9 +439,11 @@ async function start(opts: Options): Promise<Daemon> {
       dial.start();
       teardown.push(() => dial.stop());
     }
-    if (screens) {
-      screens.start();
-      teardown.push(() => screens.stop());
+    if (homeApi) teardown.push(() => homeApi.stop());
+    for (const tails of [screens, homeScreens]) {
+      if (!tails) continue;
+      tails.start();
+      teardown.push(() => tails.stop());
     }
     if (workerDocs) {
       workerDocs.start();

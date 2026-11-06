@@ -563,3 +563,24 @@ test('mission control and a robot already moving offer no move', () => {
   withVault(true, { moving: { id: 'mv_0123456789', to: VAULT, phase: 'bundle' } });
   expect(moves()).toEqual([]);
 });
+
+test('a window standing in for its home offers no move, as only the home runs one; following it, it does', () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+  const f = store.getState().fleet;
+  act(() => {
+    store.getState().setFleet({ ...f, machines: { [ME]: { name: 'ada-mac', reachable: true, since: 0 } }, robots: { ...f.robots, c0: { ...f.robots.c0, machine: ME } } });
+    store.getState().setVia({ machine: ME, home: HOME, name: 'studio', online: true });
+  });
+  render(<Side />);
+  expect(moves()).toEqual(['Move to studio']);
+  act(() => store.getState().setVia({ machine: ME, home: HOME, name: 'studio' }));
+  expect(moves()).toEqual([]);
+});
+
+test('the summary counts far robots as unknown in a window standing in for its home', () => {
+  act(() => store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId, home: 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId, name: 'studio' }));
+  render(<FleetSummary />);
+  const row = [...document.querySelectorAll('.rows .row')].find((r) => r.textContent?.startsWith('unknown'));
+  expect(Number(row?.querySelector('b')?.textContent)).toBe(Object.keys(store.getState().fleet.robots).length);
+});

@@ -5,6 +5,7 @@ import { NOT_NEEDED, type AgentKind, type SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../hash.js';
+import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
 import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
@@ -276,7 +277,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const gap = { name, what: `not installed; ${users} ${one ? 'needs' : 'need'} it` };
     const need = `${users} ${one ? 'needs' : 'need'} it; tick if ${m} does not`;
     if (path.posix.isAbsolute(bin)) {
-      rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under this Mac's home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
+      rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under ${homeWord()}'s home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
     } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
   }
   for (const s of plan.macOnly) {
@@ -286,7 +287,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));
   for (const f of plan.unreadable) {
-    rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand`, gap: { name: path.basename(f), what: 'not copied: this Mac cannot read it' } });
+    rows.push({ key: `unreadable:${f}`, status: 'warn', detail: `${f} cannot be read as JSON or TOML; set it up on ${m} by hand`, gap: { name: path.basename(f), what: `not copied: ${homeWord()} cannot read it` } });
   }
   tellApart(rows, plan.servers);
   return rows;

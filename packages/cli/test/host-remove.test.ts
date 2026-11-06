@@ -4,13 +4,69 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, emptyState } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
-import { removeHost } from '../src/controller/host.js';
+import { dialingFleet, removeHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { BASE, FLEET, HOME, MAC, OTHER_FLEET, OTHER_MAC, REMOTE, SERVES, SVALL, TOKEN, deps, events, fleet, ssh, step, useHostWorld, work } from './controller/host-world.js';
 
 useHostWorld();
 
 describe('host remove', () => {
+  it.each([[{}], [{ forget: true }]])('leaves the home of a sibling fleet, %j: no far uninstall, its record kept, the fleet named', async (o) => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: HOME, svallBase: BASE });
+    registry.save();
+    const sibling = resolvePaths(path.join(work, '.svall-fartest'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    fs.writeFileSync(sibling.workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: OTHER_FLEET, token: 't'.repeat(48), homeName: 'studio' }));
+    const out = await removeHost('studio', o, deps({ registry }));
+    expect(out.result).not.toBe('ready');
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home), action: `delete ${sibling.workerFile} or that fleet first, once you no longer serve it` });
+    expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
+    expect(ssh.calls()).toEqual([]);
+    expect(MachineRegistry.load(path.join(work, 'config')).get('studio')).toBeDefined();
+  });
+
+  describe('a fleet on this account that dials the machine', () => {
+    const listed = () => {
+      const registry = MachineRegistry.load(path.join(work, 'config'));
+      registry.put(REMOTE, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: HOME, svallBase: BASE });
+      registry.save();
+      return registry;
+    };
+    const dialing = (dir: string, text: string) => {
+      const paths = resolvePaths(path.join(work, dir));
+      fs.mkdirSync(paths.home, { recursive: true });
+      fs.writeFileSync(paths.workerFile, text);
+      return paths;
+    };
+    const names = (machine: string) => JSON.stringify({ homeMachineId: machine, fleetId: OTHER_FLEET, token: 't'.repeat(48), homeName: 'studio' });
+
+    it.each(['.svall-dev', '.svall-dev-fartest', '.svall', '.svall-work'])('counts %s, as both builds share the registry', async (dir) => {
+      const { home } = dialing(dir, names(REMOTE));
+      expect(dialingFleet(REMOTE, work)).toEqual({ home });
+      expect((await removeHost('studio', {}, deps({ registry: listed() }))).result).not.toBe('ready');
+      expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(home) });
+      expect(ssh.calls()).toEqual([]);
+    });
+
+    it('reads an unreadable worker.json apart, with what to do, and it holds back any machine', async () => {
+      const broken = dialing('.svall-x', '{ not json');
+      expect(dialingFleet(REMOTE, work)).toEqual({ home: broken.home, unreadable: true });
+      expect((await removeHost('studio', { forget: true }, deps({ registry: listed() }))).result).not.toBe('ready');
+      expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: `cannot read ${broken.workerFile}, which may name studio`, action: 'fix it' });
+      expect(MachineRegistry.load(path.join(work, 'config')).get('studio')).toBeDefined();
+    });
+
+    it('names the fleet that does name it over one it cannot read, and a file naming another home holds nothing back', () => {
+      dialing('.svall-a', '{ not json');
+      const { home } = dialing('.svall-b', names(REMOTE));
+      expect(dialingFleet(REMOTE, work)).toEqual({ home });
+      fs.rmSync(path.join(work, '.svall-a'), { recursive: true });
+      expect(dialingFleet(OTHER_MAC, work)).toBeUndefined();
+    });
+  });
+
   it('drops a worker that dials in and its token here, with nothing there to reach, and has its link looked at again', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });

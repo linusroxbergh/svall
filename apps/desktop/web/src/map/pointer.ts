@@ -3,6 +3,7 @@ import type { Cell, FleetState } from '@svall/protocol';
 import { moveRobotToCell, moveIsland, newIsland, newIslandAround, resizeIsland } from '../actions.js';
 import { app, deps } from '../boot.js';
 import { commitFocused } from '../Field.js';
+import { frozenLine } from '../placement.js';
 import { homeIsland } from '../selectors.js';
 import { theme } from '../theme.js';
 import type { Anchor, Camera } from './camera.js';
@@ -63,6 +64,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     switch (intent.type) {
       // an open card is the terminal in view, so the selection moves it rather than leaving it on the robot behind
       case 'select': if (s.card) s.focus(intent.id); else s.select(intent.id); return;
+      case 'refused': s.showToast(intent.line); return;
       case 'selectIsland': s.selectIsland(intent.id); return;
       case 'deselect': s.select(undefined); s.closeCard(); return;
       case 'open': s.focus(intent.id); return;
@@ -114,7 +116,7 @@ export function useMapPointer({ host, camera, hover, place, lastPressAt, islands
     // A release may arrive without a final move event; use its exact pointer position for the grid target.
     if (ev.type === 'up' && interactions.current.drag()) interactions.current.handle({ ...event, type: 'move' }, st.fleet, st.selectedId);
     const before = ev.type === 'up' ? interactions.current.drag() : undefined;
-    let intent = interactions.current.handle(event, st.fleet, st.selectedId);
+    let intent = interactions.current.handle(event, st.fleet, st.selectedId, (id) => frozenLine(st, id));
     // mission control is drawn over the world, so land put down on it would vanish under it: the island goes back
     if (intent?.type === 'moveIsland' || intent?.type === 'resize') {
       const island = st.fleet.islands[intent.id], below = host.current && camera.belowOf(host.current);

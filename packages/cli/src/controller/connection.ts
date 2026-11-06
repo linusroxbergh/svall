@@ -1,33 +1,26 @@
 import fs from 'node:fs';
-import { z } from 'zod';
-import { FleetId, MachineId, MachineRecord, PROTOCOL_VERSION } from '@svall/protocol';
+import path from 'node:path';
+import { PROTOCOL_VERSION, type FleetId } from '@svall/protocol';
 import { peekConfig, readFleetConfig } from '@svall/svalld/config';
+import { FleetMismatch, MachineMismatch, remoteConnectionInfo, type ConnectionInfo } from '@svall/svalld/link/connection-info';
 import { machineId, versionMachineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { svalldUnitName } from '@svall/svalld/linux/setup';
-import { isProfileName, profileOf } from '@svall/svalld/profile';
+import { profileOf } from '@svall/svalld/profile';
 import { svallExe, releaseVersion } from '@svall/svalld/release';
 import { shq } from '@svall/svalld/text';
 import { Client } from '../client.js';
 import { redact } from './process.js';
 import { LOCAL, MachineRegistry, type MachineEntry } from './registry.js';
-import { classifyExit, SshError, SshMaster, type SshErrorKind } from './ssh.js';
+import { SshError, SshMaster, type SshErrorKind } from './ssh.js';
+
+export { FleetMismatch, MachineMismatch, remoteConnectionInfo };
 
 const MAX_ATTEMPTS = 5;
 const FIRST_DELAY = 1000;
 const MAX_DELAY = 16_000;
 /** The two failures a transport comes back from on its own; every other kind waits for a person. */
 const RETRIED: SshErrorKind[] = ['unreachable', 'daemon_down'];
-
-/** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host upgrade`. */
-export class FleetMismatch extends SshError {
-  constructor(message: string) { super('other', message); }
-}
-
-/** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
-export class MachineMismatch extends SshError {
-  constructor(message: string) { super('other', message); }
-}
 
 /**
  * Refuses a far machine whose `svall version --json` names another machine id than the registry, or none, and hands back
@@ -43,21 +36,15 @@ export async function identify(master: Pick<SshMaster, 'run'>, machine: MachineE
   return r.stdout;
 }
 
-/** What a companion answers about the fleet it runs: enough to reach it, and to refuse the wrong one. */
-const ConnectionInfo = z.object({
-  fleetId: FleetId,
-  machineId: MachineId,
-  release: z.string(),
-  protocol: z.number().int(),
-  host: z.string(),
-  port: z.number().int().positive(),
-  token: z.string().min(1),
-  /** where the fleet lies on the machine that answers, which a controller elsewhere cannot work out */
-  fleetHome: z.string(),
-});
-type ConnectionInfo = z.infer<typeof ConnectionInfo>;
-
 const sleep = (ms: number): Promise<void> => new Promise((r) => { setTimeout(r, ms); });
+
+const daemonPid = (home: string): number => {
+  try { return Number(fs.readFileSync(path.join(home, 'version'), 'utf8').split('\n')[1]); } catch { return 0; }
+};
+
+const alive = (pid: number): boolean => {
+  try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code !== 'ESRCH'; }
+};
 
 /** What this machine's own daemon answers about the fleet it runs. */
 export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform = process.platform): ConnectionInfo {
@@ -69,6 +56,9 @@ export function localConnectionInfo(fleetHome: string, platform: NodeJS.Platform
       : 'Start it with `svall setup` or `pnpm svalld`';
     throw new SshError('daemon_down', `svalld is not running (no ${paths.port}). ${how}.`);
   }
+  // a daemon killed leaves its port file, and whoever holds that port by now must not be offered the token
+  const pid = daemonPid(paths.home);
+  if (pid > 0 && !alive(pid)) throw new SshError('daemon_down', `svalld is not running: process ${pid} in ${paths.home}/version is gone`);
   const config = peekConfig(paths);
   return {
     fleetId: config.id,
@@ -91,43 +81,8 @@ function localFleetId(fleetHome: string): FleetId {
   }
 }
 
-/**
- * The far machine's connection description, checked against the machine meant and any fleet named before its token is
- * handed on. `anyProtocol` also takes a companion on another protocol, as one a rollback put on an older release is.
- */
-export async function remoteConnectionInfo(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean }): Promise<ConnectionInfo> {
-  const name = machine.record.name;
-  // the record and the flag are read again here, whatever wrote them, and everything that is not a
-  // literal flag is quoted for the login shell ssh hands the command line to
-  if (!MachineRecord.shape.svallBase.safeParse(machine.record.svallBase).success) {
-    throw new SshError('other', `${name}: the registry's svallBase is not an absolute path`);
-  }
-  if (o.profile !== undefined && !isProfileName(o.profile)) {
-    throw new SshError('other', `${name}: the profile ${JSON.stringify(o.profile)} is not a profile name`);
-  }
-  const exe = shq(svallExe(machine.record.svallBase));
-  const r = await master.run([exe, 'connection-info', '--json', ...(o.profile ? ['-p', shq(o.profile)] : [])]);
-  if (r.code !== 0) {
-    // an exit that is neither ssh's nor the far shell's came back from the companion
-    throw new SshError(classifyExit(r, 'daemon_down'), `${name}: svall connection-info exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
-  }
-  let info: ConnectionInfo;
-  try {
-    info = ConnectionInfo.parse(JSON.parse(r.stdout));
-  } catch {
-    // the answer may hold a token, so none of it is quoted back
-    throw new SshError('other', `${name}: svall connection-info did not answer a connection description`);
-  }
-  if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
-    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`);
-  }
-  if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
-  if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);
-  return info;
-}
-
 /** The far daemon of `machine` over a forward on `master`, which a failed connection takes back; its error holds no token. */
-export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean }) {
+export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean; fleetHome?: string }) {
   const info = await remoteConnectionInfo(master, machine, o);
   const forward = await master.forward(info.port);
   try {
@@ -163,7 +118,9 @@ export async function connectRemote(o: { registry: MachineRegistry; machine: str
   const fleetId = localFleetId(o.fleetHome);
   return withReconnect(async () => {
     const master = await SshMaster.open({ destination });
-    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile: o.profile }).catch((err: Error) => {
+    // an attempt that fails takes its master with it, so a retry does not leave one open
+    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile: o.profile }).catch(async (err: Error) => {
+      await master.close().catch(() => undefined);
       throw err instanceof SshError ? err : new SshError(/not reachable|did not accept/.test(err.message) ? 'daemon_down' : 'other', err.message);
     });
     client.via = machine.record.name;

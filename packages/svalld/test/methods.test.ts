@@ -201,7 +201,7 @@ describe.skipIf(!hasGit)('a move asked through the API', () => {
     const moved = await dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, ctx) as { result: { moveId: string } };
     expect(moved.result.moveId).toMatch(/^mv_[0-9a-z]{10}$/);
     expect(home.store.state.robots.c_1.machine).toBe(W);
-    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', reachable: true, release: '1.2.3', robots: 1 }] } });
+    expect(await dispatch({ id: 2, method: 'machines.list' }, ctx)).toEqual({ id: 2, result: { machines: [{ id: W, name: 'w1', role: 'worker', platform: undefined, reachable: true, release: '1.2.3', robots: 1 }] } });
     // a move that is done has nothing left to run on
     expect(await dispatch({ id: 3, method: 'robot.moveRetry', params: { moveId: moved.result.moveId } }, ctx)).toMatchObject({ id: 3, error: { code: 'invalid' } });
   });
@@ -572,5 +572,82 @@ describe('system.info', () => {
     expect((await info(async () => ({ user: 'linus', on: false }))).linger).toEqual({ user: 'linus', on: false });
     expect((await info(async () => { throw new Error('loginctl is not installed'); })).linger).toBeUndefined();
     expect((await info()).linger).toBeUndefined();
+  });
+});
+
+describe('a window and the fleet\'s home', () => {
+  const HOME = crypto.randomUUID() as MachineId;
+  const W = crypto.randomUUID() as MachineId;
+  const home = { machine: HOME, name: 'studio', mine: true, me: HOME };
+  const local = (viewer: object, o: object = {}) => ({ viewer: { kind: 'app', loopback: true, ...viewer }, fleetHome: () => home, ...o }) as unknown as Ctx;
+
+  it('fleet.home and home.connection answer the app alone, and home.connection only over loopback', async () => {
+    for (const method of ['fleet.home', 'home.connection', 'home.fallback']) {
+      const params = method === 'home.fallback' ? { on: true } : {};
+      expect(await dispatch({ id: 1, method, params }, local({ kind: 'phone' }))).toMatchObject({ error: { code: 'forbidden' } });
+    }
+    const answer = vi.fn(() => Promise.resolve({ machine: HOME, name: 'studio', state: 'connected', token: 'held' }));
+    expect(await dispatch({ id: 1, method: 'home.connection', params: {} }, local({ loopback: false }, { homeApi: { answer } }))).toMatchObject({ error: { code: 'forbidden' } });
+    expect(answer).not.toHaveBeenCalled();
+    expect(await dispatch({ id: 1, method: 'home.connection', params: { retry: true } }, local({}, { homeApi: { answer } }))).toMatchObject({ result: { token: 'held' } });
+    expect(answer).toHaveBeenCalledWith(true);
+  });
+
+  it('a worker answers what is its window\'s itself, and sends no window\'s call home', async () => {
+    const toHome = vi.fn(() => Promise.reject(new Error('sent home')));
+    const answer = vi.fn(() => Promise.resolve({ machine: HOME, name: 'studio', state: 'connected', token: 'held' }));
+    const router = { onWorker: true, homeConnected: true, toHome, runsHere: () => false, placedAt: () => HOME };
+    const ctx = local({}, { router, store: { state: { robots: {} } }, homeApi: { answer }, fleetHome: () => ({ ...home, mine: false }), diagnostics: () => Promise.resolve('this machine') });
+    expect(await dispatch({ id: 1, method: 'fleet.home', params: {} }, ctx)).toMatchObject({ result: { mine: false } });
+    expect(await dispatch({ id: 2, method: 'home.connection', params: {} }, ctx)).toMatchObject({ result: { token: 'held' } });
+    expect(await dispatch({ id: 3, method: 'home.fallback', params: { on: true } }, ctx)).toEqual({ id: 3, result: {} });
+    expect(await dispatch({ id: 4, method: 'feedback.preview', params: {} }, ctx)).toEqual({ id: 4, result: { text: 'this machine' } });
+    expect(toHome).not.toHaveBeenCalled();
+    expect(await dispatch({ id: 5, method: 'robot.read', params: { id: 'c_1' } }, ctx)).toMatchObject({ error: { message: 'sent home' } });
+    expect(toHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('a home answers that it is the home, with no route and no token', async () => {
+    expect(await dispatch({ id: 1, method: 'fleet.home', params: {} }, local({}))).toEqual({ id: 1, result: home });
+    expect(await dispatch({ id: 1, method: 'home.connection', params: {} }, local({}))).toEqual({ id: 1, result: { machine: HOME, name: 'studio', state: 'connected' } });
+  });
+
+  it('a window in fallback gets the treatment of a phone: its changes wait on no link', async () => {
+    const serves = vi.fn(() => false);
+    const viewer = { kind: 'app', loopback: true };
+    const ctx = { viewer, mutations: { serves }, fleet: { updateRobot: () => ({}) } } as unknown as Ctx;
+    await dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), false);
+    expect(await dispatch({ id: 2, method: 'home.fallback', params: { on: true } }, ctx)).toEqual({ id: 2, result: {} });
+    await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), true);
+    await dispatch({ id: 4, method: 'home.fallback', params: { on: false } }, ctx);
+    await dispatch({ id: 5, method: 'robot.update', params: { id: 'c_1', note: 'x' } }, ctx);
+    expect(serves).toHaveBeenLastCalledWith('robot.update', expect.anything(), false);
+  });
+
+  it('a file of a robot on this worker is written here, not refused at the home', async () => {
+    const write = vi.fn(() => ({ mtimeMs: 1 }));
+    const toHome = vi.fn(() => Promise.reject(new Error('sent home')));
+    const robots = { here: { id: 'here', machine: W }, far: { id: 'far' } };
+    const router = { onWorker: true, runsHere: (r: { machine?: string }) => r.machine === W, placedAt: () => undefined, rootPlacedAt: () => undefined, toHome };
+    const ctx = local({}, { store: { state: { robots } }, router, workspace: { write } });
+    expect(await dispatch({ id: 1, method: 'fs.write', params: { id: 'here', path: 'a', text: 'x', mtimeMs: 0 } }, ctx)).toEqual({ id: 1, result: { mtimeMs: 1 } });
+    expect(toHome).not.toHaveBeenCalled();
+    await dispatch({ id: 2, method: 'fs.write', params: { id: 'far', path: 'a', text: 'x', mtimeMs: 0 } }, ctx);
+    expect(toHome).toHaveBeenCalledTimes(1);
+  });
+
+  it('machines.list names each role and platform, the home first, whichever machine answers', async () => {
+    const machines = { [W]: { name: 'mac', reachable: true, since: 0, release: '0.21' } };
+    const robots = { a: {}, b: { machine: W }, c: { machine: HOME } };
+    const registered = () => new Map([[W, { platform: 'darwin', dial: 'worker' }]]);
+    const onHome = await dispatch({ id: 1, method: 'machines.list', params: {} }, local({}, { store: { state: { machines, robots } }, registered }));
+    expect(onHome).toMatchObject({ result: { machines: [
+      { id: HOME, name: 'studio', role: 'home', reachable: true, robots: 2 },
+      { id: W, name: 'mac', role: 'worker', platform: 'darwin', dialsIn: true, reachable: true, robots: 1 },
+    ] } });
+    const away = local({}, { store: { state: { machines: { ...machines, [HOME]: { name: 'studio', reachable: false, since: 0, release: '0.20' } }, robots } }, registered, fleetHome: () => ({ ...home, mine: false }), router: { homeConnected: false } });
+    expect(await dispatch({ id: 2, method: 'machines.list', params: {} }, away)).toMatchObject({ result: { machines: [{ id: HOME, role: 'home', reachable: false, release: '0.20' }, { id: W, role: 'worker' }] } });
   });
 });

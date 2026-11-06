@@ -5,7 +5,7 @@ import { isDialSocket, type Paths } from '../paths.js';
 import { shq } from '../text.js';
 import { readWorkerFile } from '../worker/mode.js';
 import { HEARTBEAT_MS } from './home.js';
-import { SshMaster } from './ssh.js';
+import { SshError, SshMaster } from './ssh.js';
 
 const FIRST_RETRY_MS = 1_000;
 const LAST_RETRY_MS = 60_000;
@@ -29,6 +29,7 @@ export class HomeDial {
   private retry?: NodeJS.Timeout;
   private retryMs = FIRST_RETRY_MS;
   private lastWhy?: string;
+  private failed?: SshError;
   private last = 0;
   private stopped = false;
   private readonly abort = new AbortController();
@@ -50,8 +51,14 @@ export class HomeDial {
     return this.held?.master;
   }
 
+  /** Why the last dial failed, while no dial has gone through since. */
+  failure(): SshError | undefined {
+    return this.failed;
+  }
+
   /** Makes the tunnel again: on the master while it answers, else, or with `fresh`, over a new one. */
   restore(fresh = false): void {
+    this.failed = undefined;
     this.dial(fresh);
   }
 
@@ -99,7 +106,12 @@ export class HomeDial {
       void this.stop();
       return;
     }
-    if (slept) return this.restore(true);
+    if (slept) {
+      // the network is likely on its way back, and the wait a long absence built up would sit on it
+      this.retryMs = FIRST_RETRY_MS;
+      if (!this.waits()) this.restore(true);
+      return;
+    }
     this.check();
   }
 
@@ -126,7 +138,10 @@ export class HomeDial {
     try {
       worker = readWorkerFile(this.o.paths);
     } catch (e) {
-      if (fs.existsSync(this.o.paths.workerFile)) return this.lost((e as Error).message);
+      if (fs.existsSync(this.o.paths.workerFile)) {
+        this.failed = new SshError('other', (e as Error).message);
+        return this.lost((e as Error).message);
+      }
       this.o.log.info(`${this.o.paths.workerFile} is gone, so this machine dials no home`);
       this.halt();
       return this.drop();
@@ -155,17 +170,26 @@ export class HomeDial {
       held.tunnel = { socket: homeSocket, cancel };
     } catch (e) {
       await this.drop();
+      this.failed = e instanceof SshError ? e : new SshError('other', (e as Error).message);
       return this.lost((e as Error).message);
     }
+    this.failed = undefined;
     this.retryMs = FIRST_RETRY_MS;
     this.lastWhy = undefined;
     this.o.log.info(`dialed ${worker.homeName} at ${homeSsh}`);
   }
 
+  // a key or a host key waits for a person, and a login refused every minute can get the account banned
+  private waits(): boolean {
+    return this.failed?.kind === 'auth' || this.failed?.kind === 'host_key';
+  }
+
   private lost(why: string): void {
     if (this.stopped) return;
-    if (why !== this.lastWhy) this.o.log.error(`the dial to the home failed: ${why}; trying again`);
+    const waits = this.waits();
+    if (why !== this.lastWhy) this.o.log.error(`the dial to the home failed: ${why}${waits ? '' : '; trying again'}`);
     this.lastWhy = why;
+    if (waits) return;
     this.retry = setTimeout(() => this.dial(), this.retryMs);
     this.retryMs = Math.min(this.retryMs * 2, LAST_RETRY_MS);
   }
