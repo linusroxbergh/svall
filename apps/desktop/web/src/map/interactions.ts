@@ -1,6 +1,5 @@
 import { HOME_ISLAND, MIN_SIZE, isHomeSlot, type Cell, type FleetState, type Size } from '@svall/protocol';
 import { cellOwner, robotAt, crowded } from './layout.js';
-import { frozenLine, type Via } from '../placement.js';
 import { theme } from '../theme.js';
 import type { Drag, Target } from './types.js';
 
@@ -20,7 +19,7 @@ export type Intent =
   | { type: 'moveIsland'; id: string; position: Cell }
   | { type: 'resize'; id: string; size: Size };
 
-type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string, via?: Via): Intent | undefined; drag(): Drag | undefined; cancel(): void };
+type Interactions = { handle(ev: CellEv, fleet: FleetState, selectedId?: string, refusal?: (id: string) => string | undefined): Intent | undefined; drag(): Drag | undefined; cancel(): void };
 
 const same = (a: Cell, b: Cell) => a.x === b.x && a.y === b.y;
 
@@ -88,7 +87,7 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
   };
 
   return {
-    handle(ev, fleet, selectedId, via) {
+    handle(ev, fleet, selectedId, refusal) {
       switch (ev.type) {
         case 'down': {
           const target = ev.target ?? { kind: 'water' };
@@ -109,7 +108,7 @@ export function createInteractions(opts: { dblClickMs?: number } = {}): Interact
           if (pending && (drag || !same(ev.cell, pending.cell) ||
             (pending.target.kind !== 'figure' && ev.screen && pending.screen &&
               Math.hypot(ev.screen.x - pending.screen.x, ev.screen.y - pending.screen.y) > 4))) {
-            const line = pending.target.kind === 'figure' ? frozenLine({ fleet, via }, pending.target.id) : undefined;
+            const line = pending.target.kind === 'figure' ? refusal?.(pending.target.id) : undefined;
             if (!line) startOrUpdateDrag(ev, fleet);
             else if (!pending.refused) { pending.refused = true; return { type: 'refused', line }; }
           }

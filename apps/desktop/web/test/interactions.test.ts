@@ -1,13 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import type { Cell, MachineId } from '@svall/protocol';
+import type { Cell } from '@svall/protocol';
 import { createInteractions, type CellEv } from '../src/map/interactions.js';
 import { cellOwner, islandNear } from '../src/map/layout.js';
 import { mapIslands } from '../src/selectors.js';
 import type { Target } from '../src/map/types.js';
 import { chr, fleet } from './fixtures.js';
 
-const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
-const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
 const fig = (id: string): Target => ({ kind: 'figure', id });
 const label = (islandId: string): Target => ({ kind: 'label', islandId });
 const handle = (islandId: string): Target => ({ kind: 'handle', islandId });
@@ -24,23 +22,19 @@ describe('interactions', () => {
     expect(i.handle(ev('down', 1, 1, fig('c0'), 1000), f)).toBeUndefined();
     expect(i.handle(ev('up', 1, 1, undefined, 1050), f)).toEqual({ type: 'select', id: 'c0' });
   });
-  it('a far robot on the Mac\'s copy of the fleet does not drag, says why once, and a press on it still selects', () => {
+  it('a figure the page refuses does not drag, says why once, and a press on it still selects', () => {
     const f = fleet(), i = createInteractions({ dblClickMs: 300 });
-    f.robots.c1.machine = MAC;
-    const copy = { machine: MAC, home: HOME };
-    expect(i.handle(ev('down', 1, 1, fig('c0'), 0), f, undefined, copy)).toBeUndefined();
-    expect(i.handle(ev('move', 2, 2), f, undefined, copy)).toEqual({ type: 'refused', line: expect.stringContaining('which is not reachable') });
-    expect(i.handle(ev('move', 3, 2), f, undefined, copy)).toBeUndefined();
+    const refusal = (id: string) => (id === 'c0' ? 'c0 runs on studio, which is not reachable' : undefined);
+    expect(i.handle(ev('down', 1, 1, fig('c0'), 0), f, undefined, refusal)).toBeUndefined();
+    expect(i.handle(ev('move', 2, 2), f, undefined, refusal)).toEqual({ type: 'refused', line: 'c0 runs on studio, which is not reachable' });
+    expect(i.handle(ev('move', 3, 2), f, undefined, refusal)).toBeUndefined();
     expect(i.drag()).toBeUndefined();
-    expect(i.handle(ev('up', 2, 2, undefined, 50), f, undefined, copy)).toEqual({ type: 'select', id: 'c0' });
-    i.handle(ev('down', 4, 1, fig('c1'), 1000), f, undefined, copy);
-    i.handle(ev('move', 5, 2), f, undefined, copy);
+    expect(i.handle(ev('up', 3, 2, undefined, 50), f, undefined, refusal)).toEqual({ type: 'select', id: 'c0' });
+    i.handle(ev('down', 4, 1, fig('c1'), 1000), f, undefined, refusal);
+    i.handle(ev('move', 5, 2), f, undefined, refusal);
     expect(i.drag()).toMatchObject({ kind: 'figure', id: 'c1' });
-    i.cancel();
-    i.handle(ev('down', 1, 1, fig('c0'), 2000), f, undefined, { ...copy, online: true });
-    i.handle(ev('move', 2, 2), f, undefined, { ...copy, online: true });
-    expect(i.drag()).toMatchObject({ kind: 'figure', id: 'c0' });
   });
+
   it('a click on the figure already selected opens it', () => {
     const f = fleet(), i = createInteractions({ dblClickMs: 300 });
     expect(i.handle(ev('down', 1, 1, fig('c0'), 0), f, 'c0')).toBeUndefined();

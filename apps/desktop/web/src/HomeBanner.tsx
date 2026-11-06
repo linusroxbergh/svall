@@ -8,6 +8,7 @@ import { machineNames, plainStep } from './host.js';
 function said(name: string, state: string, detail?: string): string {
   if (state === 'auth') return `this Mac cannot log in to ${name}`;
   if (state === 'version') return detail ?? `${name} runs another release than this Mac`;
+  if (state === 'mismatch') return detail ?? `${name} answers as another fleet`;
   return `${name} is not reachable`;
 }
 
@@ -26,15 +27,15 @@ export function HomeBanner() {
     if (was.current && !running) app.api().retryHome();
     was.current = running;
   }, [running]);
-  if (!home || !fallback || (home.state !== 'unreachable' && home.state !== 'auth' && home.state !== 'version')) return null;
+  if (!home || !fallback || (home.state !== 'unreachable' && home.state !== 'auth' && home.state !== 'version' && home.state !== 'mismatch')) return null;
   const { name, state, detail, newer } = home;
   const upgrades = state === 'version' && !newer;
   const failed = running ? undefined : run?.steps.filter((s) => s.status === 'fail').at(-1);
   return (
     <div className="banner warn" data-testid="home-banner" data-state={state}>
       <span>
-        {said(name, state, detail)}{newer && '; update Svall on this Mac'}
-        {state !== 'version' && detail && <small data-testid="home-detail"> {detail}</small>}
+        {said(name, state, detail)}
+        {state !== 'version' && state !== 'mismatch' && detail && <small data-testid="home-detail"> {detail}</small>}
         {failed && <small data-testid="home-upgrade-failed"> {plainStep(failed.detail ?? failed.step, machineNames(machines))}</small>}
         {copied !== undefined && <small data-testid="home-age"> · showing the fleet as of {new Date(copied).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}</small>}
       </span>

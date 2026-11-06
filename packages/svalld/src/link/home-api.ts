@@ -63,7 +63,7 @@ export class HomeApi {
     const failure = dial.failure();
     if (failure) {
       await this.drop();
-      if (failure.kind === 'auth' || failure.kind === 'host_key') return { ...base, state: 'auth', detail: failure.message.trim().split('\n').at(-1) };
+      if (failure.kind === 'auth' || failure.kind === 'host_key') return { ...base, state: 'auth', detail: `run ssh ${worker.homeSsh ?? worker.homeName} once in a terminal, then try again` };
       return { ...base, state: 'unreachable' };
     }
     const master = dial.master();
@@ -76,7 +76,11 @@ export class HomeApi {
       const info = await remoteConnectionInfo(master, { id: worker.homeMachineId, record: { name: worker.homeName, svallBase: worker.homeSvallBase } }, {
         fleetId: worker.fleetId, anyProtocol: true, fleetHome: fleetHomeOfSocket(worker.homeSocket),
       });
-      if (info.protocol !== PROTOCOL_VERSION) return await this.settle(base, { state: 'version', release: info.release, detail: `${worker.homeName} runs ${info.release}, this Mac ${releaseVersion()}`, ...(info.protocol > PROTOCOL_VERSION && { newer: true as const }) });
+      if (info.protocol !== PROTOCOL_VERSION) {
+        const newer = info.protocol > PROTOCOL_VERSION;
+        const detail = `${worker.homeName} runs ${newer ? 'a newer' : 'an older'} Svall than this Mac (${info.release}, here ${releaseVersion()}); ${newer ? 'update Svall on this Mac' : 'upgrade it to reach its robots'}`;
+        return await this.settle(base, { state: 'version', release: info.release, detail, ...(newer && { newer: true as const }) });
+      }
       const { local } = await this.forwardTo(master, info.port);
       if (!await (this.o.greets ?? greets)(local, info.token)) {
         await this.drop();
@@ -87,8 +91,8 @@ export class HomeApi {
     } catch (e) {
       const message = (e as Error).message;
       // none of these holds a token: the description is never quoted, and a forward's failure names only ports
-      if (e instanceof FleetMismatch) return await this.settle(base, { state: 'unreachable', detail: `${worker.homeName} runs another fleet, ${e.found}, not this one, ${worker.fleetId}` });
-      if (e instanceof MachineMismatch) return await this.settle(base, { state: 'unreachable', detail: message });
+      if (e instanceof FleetMismatch) return await this.settle(base, { state: 'mismatch', detail: `${worker.homeName} runs another fleet, ${e.found}, not this one, ${worker.fleetId}` });
+      if (e instanceof MachineMismatch) return await this.settle(base, { state: 'mismatch', detail: message });
       if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
       await this.drop();
       return this.away(base, message);

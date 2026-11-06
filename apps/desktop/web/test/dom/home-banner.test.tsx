@@ -47,16 +47,17 @@ describe('the banner of a home this window cannot follow', () => {
   });
 
   it('shows a mismatch in the words the daemon gives, and goes to no other home', () => {
-    standingIn({ state: 'unreachable', detail: 'studio answered with fleetId x, not y' });
+    standingIn({ state: 'mismatch', detail: 'studio runs another fleet, x, not this one, y' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-detail').textContent).toContain('answered with fleetId x');
+    expect(screen.getByTestId('home-banner').textContent).toBe('studio runs another fleet, x, not this one, yTry again');
+    expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
 
   it('names a refused login with what to do, with no upgrade to press', () => {
-    standingIn({ state: 'auth', detail: 'Permission denied (publickey); run ssh ada@studio once in a terminal, then try again' });
+    standingIn({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toContain("this Mac cannot log in to studio");
+    expect(screen.getByTestId('home-banner').textContent).toBe('this Mac cannot log in to studio run ssh ada@studio once in a terminal, then try againTry again');
     expect(screen.getByTestId('home-retry')).toBeTruthy();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
@@ -85,9 +86,9 @@ describe('the banner of a home this window cannot follow', () => {
   });
 
   it('sends a person to update this Mac when the home is ahead of it, with no upgrade to press', () => {
-    standingIn({ state: 'version', newer: true, detail: 'studio runs 0.22, this Mac 0.21' });
+    standingIn({ state: 'version', newer: true, detail: 'studio runs a newer Svall than this Mac (0.22, here 0.21); update Svall on this Mac' });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toContain('update Svall on this Mac');
+    expect(screen.getByTestId('home-banner').textContent).toBe('studio runs a newer Svall than this Mac (0.22, here 0.21); update Svall on this MacTry again');
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });
 });

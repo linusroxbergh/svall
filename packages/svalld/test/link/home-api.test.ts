@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { WebSocketServer } from 'ws';
 import { PROTOCOL_VERSION, type WorkerFile } from '@svall/protocol';
 import { greets, HomeApi } from '../../src/link/home-api.js';
+import { releaseVersion } from '../../src/release.js';
 import { classifySsh, SshError, type SshMaster } from '../../src/link/ssh.js';
 
 const HOME = crypto.randomUUID() as WorkerFile['homeMachineId'];
@@ -79,7 +80,7 @@ describe('how a window reaches a far home', () => {
     const m = fakeMaster(() => info({ protocol, release: '0.20' }));
     const api = apiOf(dialOf(m.master));
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'version', release: '0.20' });
+    expect(a).toMatchObject({ state: 'version', release: '0.20', detail: `studio runs an older Svall than this Mac (0.20, here ${releaseVersion()}); upgrade it to reach its robots` });
     expect(a).not.toHaveProperty('token');
     expect(a).not.toHaveProperty('port');
     await api.answer();
@@ -97,13 +98,15 @@ describe('how a window reaches a far home', () => {
   it('names both fleets of a mismatch, and gives no advice that would enrol the far machine', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ fleetId: other })).master)).answer();
+    expect(a.state).toBe('mismatch');
     expect(a.detail).toContain(other);
     expect(a.detail).toContain(FLEET);
     expect(a.detail).not.toContain('host upgrade');
   });
 
-  it('says newer only of a far side ahead of this one', async () => {
-    expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).toMatchObject({ state: 'version', newer: true });
+  it('says newer only of a far side ahead of this one, and sends a person to update this Mac', async () => {
+    expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION + 1, release: '0.99' })).master)).answer()).toMatchObject({ state: 'version', newer: true,
+      detail: `studio runs a newer Svall than this Mac (0.99, here ${releaseVersion()}); update Svall on this Mac` });
     expect(await apiOf(dialOf(fakeMaster(() => info({ protocol: PROTOCOL_VERSION - 1, release: '0.01' })).master)).answer()).not.toHaveProperty('newer');
   });
 
@@ -161,7 +164,7 @@ describe('how a window reaches a far home', () => {
     const m = fakeMaster(() => info(o));
     const api = apiOf(dialOf(m.master));
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'unreachable', detail: expect.stringContaining(word) });
+    expect(a).toMatchObject({ state: 'mismatch', detail: expect.stringContaining(word) });
     expect(a).not.toHaveProperty('token');
     expect(JSON.stringify(a)).not.toContain(TOKEN);
     expect(m.forward).not.toHaveBeenCalled();
@@ -211,11 +214,11 @@ describe('how a window reaches a far home', () => {
     expect((await apiOf(dialOf(undefined)).answer()).state).toBe('connecting');
   });
 
-  it('says auth for a refused login or host key, and a retry asks the dial again', async () => {
+  it('says auth for a refused login or host key with what to do and no ssh words, and a retry asks the dial again', async () => {
     for (const stderr of ['linus@studio: Permission denied (publickey).', 'Host key verification failed.']) {
-      const dial = dialOf(undefined, new SshError(classifySsh(stderr), stderr));
+      const dial = dialOf(undefined, new SshError(classifySsh(stderr), `ssh could not reach ada@studio: ${stderr}; run ssh ada@studio once in a terminal, then try again`));
       const api = apiOf(dial);
-      expect(await api.answer()).toMatchObject({ state: 'auth', detail: stderr });
+      expect(await api.answer()).toMatchObject({ state: 'auth', detail: 'run ssh ada@studio once in a terminal, then try again' });
       expect(dial.restore).not.toHaveBeenCalled();
       await api.answer(true);
       expect(dial.restore).toHaveBeenCalledTimes(1);

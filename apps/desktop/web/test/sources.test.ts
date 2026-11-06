@@ -350,26 +350,25 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(store.getState().via?.online).toBe(true);
   });
 
-  it('spaces out its asks while the home stays down, and takes a mismatch\'s sentence with no route', async () => {
+  it('takes a mismatch\'s sentence with no route, and asks again only for a person', async () => {
     worker();
-    const mismatch = { machine: HOME, name: 'studio', state: 'unreachable', detail: 'studio runs another fleet, x, not this one, y' };
+    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio runs another fleet, x, not this one, y' };
     local.answer('home.connection', () => mismatch);
     await open();
-    expect(store.getState().home).toMatchObject({ state: 'unreachable', detail: mismatch.detail });
+    expect(store.getState().home).toMatchObject({ state: 'mismatch', detail: mismatch.detail });
     expect(net.knocks).not.toContain(url(50_000));
     await vi.advanceTimersByTimeAsync(60_000);
-    expect(asks()).toBeGreaterThan(1);
-    expect(asks()).toBeLessThan(10);
+    expect(asks()).toBe(1);
   });
 
   it('goes from following to a mismatch: its socket stops, the sentence stands, and the page stays on this machine', async () => {
     await following();
-    const mismatch = { machine: HOME, name: 'studio', state: 'unreachable', detail: 'studio runs another fleet, x, not this one, y' };
+    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio runs another fleet, x, not this one, y' };
     local.answer('home.connection', () => mismatch);
     net.daemons.delete(url(50_000));
     home.drop();
     await vi.advanceTimersByTimeAsync(600);
-    expect(store.getState().home).toMatchObject({ state: 'unreachable', detail: mismatch.detail });
+    expect(store.getState().home).toMatchObject({ state: 'mismatch', detail: mismatch.detail });
     expect(store.getState().via?.online).toBeUndefined();
     const knocks = net.knocks.length;
     await vi.advanceTimersByTimeAsync(60_000);

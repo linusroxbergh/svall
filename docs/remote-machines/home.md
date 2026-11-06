@@ -63,10 +63,10 @@ starting its daemon. A wake does not.
 
 The app and the server speak one protocol, with no window between releases.
 
-- **studio runs 0.21, this Mac 0.22**, with **Upgrade studio**. It installs this Mac's release there and restarts the fleet's daemon as the
+- **studio runs an older Svall than this Mac (0.21, here 0.22); upgrade it to reach its robots**, with **Upgrade studio**. It installs this Mac's release there and restarts the fleet's daemon as the
   home, whichever name the fleet has here, and enrols nothing; robots on studio keep running through it, and the window reconnects by itself. The app never upgrades the server without
   you asking. While the two differ, the window works on this Mac's copy, and this Mac's link to studio holds off as any worker's does.
-- **studio runs 0.23, this Mac 0.22; update Svall on this Mac**: nothing passes until then.
+- **studio runs a newer Svall than this Mac (0.23, here 0.22); update Svall on this Mac**: nothing passes until then.
 
 ## This Mac asleep
 

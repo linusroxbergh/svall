@@ -15,7 +15,7 @@ import { ago, hintText } from './map/tokenText.js';
 import { terminalOn } from './MoveSheet.js';
 import { OnMachine } from './OnMachine.js';
 import { buttonTry, fieldTry, useRefusal } from './frozen.js';
-import { answers, awayLine, homeName, machineOf } from './placement.js';
+import { answers, awayLine, frozenWhy, homeName, machineOf } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -71,6 +71,8 @@ function LastActivity({ at }: { at: number }) {
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const refuse = useRefusal(id);
+  const homeState = useApp((s) => s.home?.state);
+  const readOnly = useApp((s) => { const why = frozenWhy(s, id); return why && `Read-only until ${why.once}.`; });
   const machines = useApp((s) => s.fleet.machines);
   const via = useApp((s) => s.via);
   const islands = useApp((s) => s.fleet.islands);
@@ -88,7 +90,7 @@ export function SideCard({ id }: { id: string }) {
   const status = statusOf(c, fleet, via);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
   const placed = machineOf(fleet, c, via);
-  const away = awayLine(fleet, c, via);
+  const away = awayLine(fleet, c, via, homeState);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const onHome = c.machine === undefined || c.machine === via?.home;
@@ -115,7 +117,7 @@ export function SideCard({ id }: { id: string }) {
             aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
         {placed && <MachineLine name={placed} className="side-on" testid="side-machine" />}
-        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} readOnly={!!refuse} />}
+        {placed && away && <AwayLine name={placed} line={away} running={hostRunning} readOnly={readOnly} />}
         {c.repo && (
           <div className="side-branch" data-testid="side-branch">
             <span className="mono">{c.repo.branch}</span>{c.repo.isWorktree && <span className="badge">wt</span>}
@@ -233,11 +235,11 @@ function Held({ id, n, promptId }: { id: string; n: number; promptId: string }) 
 }
 
 // why the robot's machine is out of reach, and a check of it, whose release row offers the upgrade when it is the machine's to take
-function AwayLine({ name, line, running, readOnly }: { name: string; line: string; running: boolean; readOnly: boolean }) {
+function AwayLine({ name, line, running, readOnly }: { name: string; line: string; running: boolean; readOnly?: string }) {
   const run = () => { app.store.getState().toggleHost(true, name); startHost('doctor', { name }); };
   return (
     <div className="side-away" data-testid="side-away">
-      <span>{line}{readOnly && <small data-testid="side-away-read-only">Read-only until it answers.</small>}</span>
+      <span>{line}{readOnly && <small data-testid="side-away-read-only">{readOnly}</small>}</span>
       <button className="btn sm" data-testid="side-away-run" disabled={running} data-tip="What is wrong on the machine, checked now" onClick={run}>Check {name}</button>
     </div>
   );

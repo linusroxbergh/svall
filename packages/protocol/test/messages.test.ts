@@ -190,8 +190,8 @@ describe('protocol version', () => {
     const far = { machine: UUID_A, name: 'studio', state: 'connected', ssh: 'ada@studio', controlSocket: '/tmp/m', port: 50000, token: 't', release: '0.21' };
     expect(methods['home.connection'].result.parse(far).state).toBe('connected');
     expect(methods['home.connection'].result.parse({ machine: UUID_A, name: 'studio', state: 'version', release: '0.22', detail: 'x', newer: true }).newer).toBe(true);
-    for (const state of ['connected', 'connecting', 'unreachable', 'auth', 'version']) expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state }).success).toBe(true);
-    expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state: 'mismatch' }).success).toBe(false);
+    for (const state of ['connected', 'connecting', 'unreachable', 'auth', 'version', 'mismatch']) expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state }).success).toBe(true);
+    expect(methods['home.connection'].result.safeParse({ machine: UUID_A, name: 's', state: 'lost' }).success).toBe(false);
     expect(methods['machines.list'].result.safeParse({ machines: [{ id: UUID_A, name: 's', reachable: true, robots: 1 }] }).success).toBe(false);
     expect(methods['machines.list'].result.parse({ machines: [{ id: UUID_A, name: 's', role: 'home', platform: 'linux', reachable: true, robots: 1 }] }).machines[0].platform).toBe('linux');
     expect(WorkerFile.parse({ homeMachineId: UUID_A, fleetId: UUID_A, token: 't'.repeat(32), homeName: 's', homeSvallBase: '/home/ada/.local/share/svall' }).homeSvallBase).toContain('svall');

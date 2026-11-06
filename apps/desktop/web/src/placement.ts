@@ -1,4 +1,4 @@
-import { farRootOf, type FleetState, type MachineId, type MachineLink, type Robot } from '@svall/protocol';
+import { farRootOf, type FleetState, type HomeState, type MachineId, type MachineLink, type Robot } from '@svall/protocol';
 
 type Machines = Pick<FleetState, 'machines'>;
 
@@ -58,16 +58,38 @@ export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via)
 /** Through a worker, a robot that runs on another machine, which takes none of the actions the Mac would answer. */
 export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && c.machine !== via.machine;
 
-/** What a try at changing a robot is told when it runs elsewhere and the window is on this Mac's copy of the fleet: only its home takes a change to it, and that cannot be asked. */
-export const frozenLine = (s: { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via }, id: string): string | undefined => {
+type Standing = { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via; home?: { state: HomeState } };
+
+/** Why a window on this Mac's copy of the fleet takes no change to a robot elsewhere: only its home takes one, and that cannot be asked. */
+export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; machine: string }) | undefined => {
   if (!s.via || s.via.online || !Object.hasOwn(s.fleet.robots, id)) return undefined;
   const c = s.fleet.robots[id];
-  return elsewhere(c, s.via) ? `${c.name} runs on ${machineOf(s.fleet, c, s.via)}, which is not reachable; you can change it once it answers.` : undefined;
+  if (!elsewhere(c, s.via)) return undefined;
+  const machine = machineOf(s.fleet, c, s.via)!;
+  const onHome = c.machine === undefined || c.machine === s.via.home;
+  return { robot: c.name, machine, ...apartOf(machine, onHome ? s.home?.state : undefined) };
 };
 
-/** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade. */
-export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined {
+/** What a try at changing such a robot is told. */
+export const frozenLine = (s: Standing, id: string): string | undefined => {
+  const why = frozenWhy(s, id);
+  return why && `${why.robot} runs on ${why.machine}, which ${why.which}; you can change it once ${why.once}.`;
+};
+
+// what keeps a window from its home, by what the home last answered, and what ends it
+type Apart = { line: string; which: string; once: string };
+const apartOf = (home: string, state?: HomeState): Apart => {
+  if (state === 'version') return { line: `${home} runs another version of Svall`, which: 'runs another version of Svall', once: 'both run the same' };
+  if (state === 'auth') return { line: `this Mac cannot log in to ${home}`, which: 'this Mac cannot log in to', once: 'this Mac can log in' };
+  if (state === 'mismatch') return { line: `${home} answers as another fleet`, which: 'answers as another fleet', once: 'it answers as this one' };
+  return { line: `${home} is not reachable`, which: 'is not reachable', once: 'it answers' };
+};
+
+/** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade.
+ *  On this Mac's copy of the fleet a robot on the home goes by `state`, what the home last answered. */
+export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via, state?: HomeState): string | undefined {
   const name = unreachableOf(f, c, via);
+  if (name && via && !via.online && state && (c.machine === undefined || c.machine === via.home)) return apartOf(name, state).line;
   // a phone's home is a Mac, which sleeps
   if (via && !via.online) return name && `${name} ${c.machine !== undefined || via.name ? 'is not reachable' : 'is asleep'}`;
   const mismatch = c.machine !== undefined && f.machines?.[c.machine]?.mismatch === true;

@@ -16,6 +16,7 @@ const { EditorPane } = await import('../../src/resources/EditorPane.js');
 const { boardRobotMenu, robotMenu } = await import('../../src/menus.js');
 const { dispatchKey } = await import('../../src/keyboard.js');
 const { ContextMenu } = await import('../../src/ContextMenu.js');
+const { TerminalArea } = await import('../../src/TerminalArea.js');
 
 const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
 const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
@@ -40,6 +41,7 @@ beforeEach(() => {
 const box = (testid: string) => screen.getByTestId(testid) as HTMLTextAreaElement;
 const WHY = 'c0 runs on linus-vault, which is not reachable; you can change it once it answers.';
 const told = () => { const text = store.getState().toast?.text; act(() => store.getState().clearToast()); return text; };
+const press = { clientX: 0, clientY: 0, preventDefault() {} };
 const BUTTONS = ['side-star', 'portrait-prev', 'portrait-next', 'side-agent-profile', 'side-close'];
 const writes = () => call.mock.calls.filter(([m]) => /^robot\.(update|star|close|move|place|reorder)/.test(m));
 
@@ -95,6 +97,24 @@ test.each([
   expect(store.getState().closingRobot).toBe(id);
 });
 
+test.each([
+  ['unreachable', 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.'],
+  ['version', 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.'],
+  ['auth', 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.'],
+  ['mismatch', 'linus-vault answers as another fleet', 'answers as another fleet; you can change it once it answers as this one.', 'Read-only until it answers as this one.'],
+] as const)('on the Mac\'s copy with the home %s, the card, the pane, the toast and the tip say why', async (state, line, which, readOnly) => {
+  act(() => { store.getState().setVia(COPY); store.getState().setHome({ name: 'linus-vault', state }); });
+  call.mockImplementation((method: string) => Promise.resolve(method === 'term.lastScreen' ? { text: '$ ls' } : method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
+  render(<><SideCard id="c0" /><TerminalArea id="c0" /></>);
+  await act(async () => {});
+  expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Check linus-vault`);
+  expect(screen.getByTestId('terminal-unreachable').textContent).toBe(line);
+  fireEvent.click(screen.getByTestId('side-star'));
+  expect(told()).toBe(`c0 runs on linus-vault, which ${which}`);
+  robotMenu(press, 'c0', () => {});
+  expect(store.getState().menu!.items.find((i) => i.title === 'Delete')!.tip).toBe(`c0 runs on linus-vault, which ${which}`);
+});
+
 test('the far robot\'s own field on the shelf is read-only and says why, and a Mac robot\'s is not', () => {
   act(() => store.getState().setVia(COPY));
   act(() => store.getState().showResourceField({ tier: 'robot', id: 'c0', field: 'note' }));
@@ -130,7 +150,6 @@ test('the sidebar refuses a far robot\'s drag and star in words, and lets a Mac 
   expect(screen.getByTestId('sb-robot-star-c1').getAttribute('aria-disabled')).toBeNull();
 });
 
-const press = { clientX: 0, clientY: 0, preventDefault() {} };
 const items = () => store.getState().menu!.items.map((i) => [i.title, Boolean(i.run || i.items), i.tip]);
 const ALLOWED = [['Open terminal', true, undefined], ['Rename', true, undefined], ['Unstar', true, undefined], ['Delete', true, undefined]];
 
