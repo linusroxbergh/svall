@@ -181,8 +181,18 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 43', () => {
-    expect(PROTOCOL_VERSION).toBe(43);
+  it('is 44', () => {
+    expect(PROTOCOL_VERSION).toBe(44);
+  });
+
+  it('was 43 without a home move\'s freeze, check and run, a far fleet\'s id, and the move a crew robot goes ahead of', () => {
+    expect(methods['fleet.freeze'].params.parse({ id: 'hm_0123456789', to: UUID_A }).to).toBe(UUID_A);
+    expect(methods['fleet.thaw'].params.parse({ id: 'hm_0123456789' }).id).toBe('hm_0123456789');
+    expect(methods['fleet.homeCheck'].params.parse({ to: UUID_A }).to).toBe(UUID_A);
+    expect(methods['fleet.homeMove'].params.parse({ op: 'status' }).op).toBe('status');
+    expect(methods['fleet.homeMove'].params.safeParse({ op: 'told', id: 'hm_0123456789' }).success).toBe(false);
+    expect(methods['fleet.home'].result.parse({ machine: UUID_A, name: 'studio', mine: false, me: UUID_A, fleetId: UUID_A }).fleetId).toBe(UUID_A);
+    expect(methods['robot.moveTo'].params.parse({ id: 'c_1', machine: UUID_A, homeMove: 'hm_0123456789' }).homeMove).toBe('hm_0123456789');
   });
 
   it('was 42 without the folders a new robot can start in, and the root of fleet.json', () => {
