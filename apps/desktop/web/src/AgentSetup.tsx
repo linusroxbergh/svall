@@ -139,10 +139,10 @@ export function AgentSetup() {
           <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>
         </>
       )}
-      {pushFailed && <div className="desc" role="alert" data-testid="setup-push-failed">{home}&apos;s last push here did not land: {pushFailed}</div>}
+      {pushFailed && <div className="desc" role="alert" data-testid="setup-push-failed" data-error>{home}&apos;s last push here did not land: {pushFailed}</div>}
       {failed && (
         <div className="desc" role="alert" data-testid="setup-failed">
-          {failed} <button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button>
+          <span data-error>{failed}</span> <button className="btn sm" data-testid="setup-retry" onClick={load}>Check again</button>
         </div>
       )}
       <div className="desc" data-testid="setup-copy-says">
@@ -154,7 +154,7 @@ export function AgentSetup() {
           {busy ? 'Copying…' : `Copy my agent setup from this Mac to ${home}`}
         </button>
       </div>
-      {said && <div className="desc" role="status" data-testid={said.ok ? 'setup-copied' : 'setup-copy-failed'}>{said.text}</div>}
+      {said && <div className="desc" role="status" data-testid={said.ok ? 'setup-copied' : 'setup-copy-failed'} data-error={!said.ok}>{said.text}</div>}
       {backup && (
         <div className="desc" data-testid="setup-backup">
           A push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}

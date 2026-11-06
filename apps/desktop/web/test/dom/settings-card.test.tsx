@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import fs from 'node:fs';
+import path from 'node:path';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
@@ -676,6 +678,43 @@ test('a window on a worker the home dials has no route of its own, so it reads n
     expect(screen.getByTestId('setup-away').textContent).toContain('studio reaches this Mac over its own link');
     expect((screen.getByTestId('setup-copy') as HTMLButtonElement).disabled).toBe(true);
   } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('what went wrong in the pane can be selected, and its button and a Copy that went well cannot', async () => {
+  const style = document.head.appendChild(document.createElement('style'));
+  style.textContent = fs.readFileSync(path.join(__dirname, '../../src/base.css'), 'utf8');
+  const selectable = (el: Element) => getComputedStyle(el).getPropertyValue('user-select') === 'text';
+  try {
+    let copies = 0;
+    farWindow({
+      ...SETUP,
+      'home.setup': () => ({ rows: [tickRow], pushFailed: 'config.toml cannot be parsed' }),
+      'home.setupConsent': () => { throw new Error('the consent file cannot be written'); },
+      'machines.copySetupFrom': () => {
+        if (copies++) throw new Error('studio is not reachable');
+        return { sent: 1 };
+      },
+    });
+    render(<SettingsCard />);
+    show('setup');
+    expect(selectable(await screen.findByTestId('setup-push-failed'))).toBe(true);
+
+    const copy = screen.getByTestId('setup-copy') as HTMLButtonElement;
+    fireEvent.click(copy);
+    expect(selectable(await screen.findByTestId('setup-copied'))).toBe(false);
+    await waitFor(() => expect(copy.disabled).toBe(false));
+    fireEvent.click(copy);
+    expect(selectable(await screen.findByTestId('setup-copy-failed'))).toBe(true);
+    await waitFor(() => expect(copy.disabled).toBe(false));
+
+    fireEvent.click(screen.getByTestId('setup-tick-claude:mcp:linear'));
+    const failed = await screen.findByTestId('setup-failed');
+    expect(selectable(within(failed).getByText('the consent file cannot be written'))).toBe(true);
+    expect(screen.getByTestId('setup-retry').closest('[data-error="true"]')).toBeNull();
+  } finally {
+    style.remove();
     call.mockImplementation(() => Promise.resolve({}));
   }
 });
