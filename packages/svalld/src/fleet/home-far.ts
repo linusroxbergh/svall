@@ -8,7 +8,7 @@ import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import type { Mobile } from '../mobile.js';
-import { driverKey, forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readOwed, servedPhone } from './home-move.js';
+import { driverKey, forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readMarker, readOwed, servedPhone } from './home-move.js';
 
 const ASK_MS = 30_000;
 
@@ -79,8 +79,8 @@ async function servePhones(paths: Paths, log: Pick<Logger, 'error' | 'info'>, se
   }
 }
 
-/** The link as Settings → Phone sees it: off, it says why a move's try left it so, until a person's own switch. */
-export const phoneWithReason = (mobile: Mobile, paths: Pick<Paths, 'homeMoves'>): Mobile => ({
+/** The link as Settings → Phone sees it: off, it says why a move's try left it so, until a person's own switch, which also ends what a freeze would turn back on. */
+export const phoneWithReason = (mobile: Mobile, paths: Paths): Mobile => ({
   get: async () => {
     const s = await mobile.get();
     const reason = s.serving || s.error ? undefined : phoneReason(paths);
@@ -88,6 +88,7 @@ export const phoneWithReason = (mobile: Mobile, paths: Pick<Paths, 'homeMoves'>)
   },
   set: (on) => {
     forgetPhoneReason(paths);
+    if (!readMarker(paths)) fs.rmSync(paths.homeServed, { force: true });
     return mobile.set(on);
   },
 });

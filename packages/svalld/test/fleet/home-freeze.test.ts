@@ -679,6 +679,18 @@ describe('a frozen home', () => {
       expect((await panel.get()).reason).toBeUndefined();
       expect(phoneOwed(paths)).toEqual([]);
     });
+
+    it('a person\'s own switch ends what a freeze left to turn back on, so no start or move turns it on again; under a marker it stands', async () => {
+      const { paths } = setup();
+      const panel = phoneWithReason({ get: () => Promise.resolve(phoneAt(false)), set: (on: boolean) => Promise.resolve(phoneAt(on)) }, paths);
+      fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+      putMarker(paths, marker());
+      await panel.set(false);
+      expect(fs.existsSync(paths.homeServed)).toBe(true);
+      fs.rmSync(paths.homeMoving);
+      await panel.set(false);
+      expect(fs.existsSync(paths.homeServed)).toBe(false);
+    });
   });
 
   describe('a move this caller opened', () => {
