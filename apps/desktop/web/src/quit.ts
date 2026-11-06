@@ -45,11 +45,12 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       const working = robots.filter((c) => !isPlaced(c, s.via) && statusOf(c) === 'working').length;
       const placed = robots.filter((c) => isPlaced(c, s.via)).length;
       // a move of the home that stands: elsewhere, this daemon stays up for it; here, it waits on the next start. One this window
-      // drives and has yet to mark ends with its driver; this daemon, paused for a move out, refuses the stop
+      // drives goes by its own steps: until its mark it ends with its driver, and this daemon, paused for a move out, refuses the stop
       const sheet = s.host?.op === 'home' && s.host.running ? s.homeSheet : undefined;
-      const paused = !!sheet && !sheet.back && s.host!.steps.some((x) => x.step === 'pause' && x.status === 'ok');
-      const move = s.homeMove ? (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name })
-        : sheet && { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(paused && { frozenFor: sheet.name }) };
+      const did = (step: string): boolean => !!s.host?.steps.some((x) => x.step === step && x.status === 'ok');
+      const move = sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && did('pause') && { frozenFor: sheet.name }) }
+        : sheet ? (sheet.back ? { movingHere: true as const } : { frozenFor: sheet.name })
+          : s.homeMove && (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name });
       bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
     });
   });

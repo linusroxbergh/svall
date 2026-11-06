@@ -155,23 +155,36 @@ describe('followQuit', () => {
     q.stop();
   });
 
-  it('names a move the window drives and has yet to mark, which the quit calls off: this daemon stays up once paused for a move out', async () => {
+  it('names a move the window drives by its own steps: before its mark the quit calls it off, past it the move stands', async () => {
     const q = setup();
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
     const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
     const ask = async () => { q.bridge.emit({ type: 'quit.ask' }); await vi.advanceTimersByTimeAsync(0); };
     q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
     q.store.getState().hostStarted('home', { name: 'studio' });
     await ask();
     q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
     await ask();
+    // past the mark, before this window has heard of the marker
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
+    await ask();
+    q.store.getState().hostStarted('home', { name: 'studio' });
     q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true });
+    // the way back's debt stands from its pause, before any mark
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+    await ask();
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
     await ask();
     q.store.getState().hostDone('home', 0);
+    q.store.getState().setHomeMove(undefined);
     await ask();
     expect(q.answers()).toEqual([
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
+      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0 },
     ]);
     q.stop();
