@@ -3,11 +3,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HomeDaemon } from '@svall/svalld/fleet/home-move';
-import { adoptDir, journalLines, packFleet, readMarker, writeMarker } from '@svall/svalld/fleet/home-move';
+import { adoptDir, journalLines, packFleet, readMarker } from '@svall/svalld/fleet/home-move';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { KEY, MAC, marker, world } from '../../svalld/test/fleet/home-world.js';
+import { KEY, MAC, marker, world, putMarker } from '../../svalld/test/fleet/home-world.js';
 
 const daemon = vi.hoisted(() => ({ current: undefined as unknown as HomeDaemon, starts: 0 }));
 // what each driver was handed of the crew's choice
@@ -107,7 +107,7 @@ describe('what the far machine runs for a driver', () => {
   });
 
   it('enroll-worker on a home on its way elsewhere refuses, naming where', async () => {
-    writeMarker(resolvePaths(home), marker());
+    putMarker(resolvePaths(home), marker());
     await expect(run(['enroll-worker', MAC, '--name', 'mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/opt/svall'])).rejects.toThrow(/moving to studio/);
   });
 });
@@ -135,7 +135,7 @@ describe('the driver\'s commands', () => {
 describe('fleet settle: the old home told by the machine it has no route to', () => {
   const waiting = () => {
     const { ask: _ask, ...m } = marker();
-    writeMarker(resolvePaths(home), { ...m, id: ID as never });
+    putMarker(resolvePaths(home), { ...m, id: ID as never });
   };
   const ENROL = { worker: { homeMachineId: MAC, fleetId: FAR_FLEET, token: 'x'.repeat(48), homeName: 'mac' } };
 
@@ -188,7 +188,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
   });
 
   it('a home that asks for itself is told by no one', async () => {
-    writeMarker(resolvePaths(home), { ...marker(), id: ID as never });
+    putMarker(resolvePaths(home), { ...marker(), id: ID as never });
     await expect(run(['settle', ID, '--outcome', 'not-adopted'])).rejects.toThrow(/told by no one/);
     expect(readMarker(resolvePaths(home))?.id).toBe(ID);
   });

@@ -8,7 +8,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps }
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { endMove, keyFits, moveInFlight, phoneOwed, servedPhone, writeMarker } from './home-move.js';
+import { addEnrol, createMarker, endMove, keyFits, moveInFlight, phoneOwed, servedPhone } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -184,7 +184,8 @@ export class HomeFreeze {
 
   mark(marker: HomeMoving): void {
     if (this.moving?.id !== marker.id || !this.moving.ready) throw new ApiError('not_frozen', `this home is not frozen for ${marker.id}: it stopped, and may have taken a write since`);
-    writeMarker(this.d.paths, marker);
+    if (this.marker) throw new ApiError('frozen', `this home is marked for ${this.marker.id} already`);
+    createMarker(this.d.paths, marker);
     this.marker = marker;
   }
 
@@ -210,9 +211,7 @@ export class HomeFreeze {
   }
 
   private enrolled(held: HomeMoving, enrol: Enrolment): void {
-    const m = { ...held, enrol };
-    writeMarker(this.d.paths, m);
-    this.marker = m;
+    this.marker = addEnrol(this.d.paths, held.id, enrol);
     this.d.restart();
   }
 

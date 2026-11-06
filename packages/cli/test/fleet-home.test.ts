@@ -6,11 +6,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { ApiError, INTERRUPT_ACTIONS, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, driverKey, installAdopt, journalLines, markKey, packFleet, readMarker, readOwed, writeMarker } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, driverKey, installAdopt, journalLines, markKey, packFleet, readMarker, readOwed } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD } from '../../svalld/test/fleet/home-world.js';
+import { crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD, putMarker } from '../../svalld/test/fleet/home-world.js';
 import type { Client } from '../src/client.js';
 import { homeMoveLock } from '../../svalld/src/kernel-lock.js';
 import { finishFlow } from '../src/commands/fleet.js';
@@ -156,7 +156,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const client = await deps.client();
     deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => {
       const params = p as Called['params'];
-      if (params.op === 'mark') writeMarker(resolvePaths(home), params.marker!);
+      if (params.op === 'mark') putMarker(resolvePaths(home), params.marker!);
       if (params.op === 'join') return Promise.reject(new Error('it went away'));
       return client.call(m, p);
     }, close: () => {} } as unknown as Client);
@@ -393,7 +393,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const client = await deps.client();
     deps.client = () => Promise.resolve({ ...client, call: (m: never, p: never) => {
       const params = p as Called['params'];
-      if (params.op === 'mark') writeMarker(resolvePaths(home), params.marker!);
+      if (params.op === 'mark') putMarker(resolvePaths(home), params.marker!);
       return client.call(m, p);
     }, close: () => {} } as unknown as Client);
     crashAt('move.marked');
@@ -449,7 +449,7 @@ describe('fleet home retry', () => {
   it('a marked home runs the far adopt again from what stays staged, joins and proves it', async () => {
     const lines: string[] = [];
     const { deps, started } = outDeps((line) => { lines.push(line); return answer({ status: 'adopted', enrol: ENROL as never }); });
-    writeMarker(resolvePaths(home), marker());
+    putMarker(resolvePaths(home), marker());
     const out = await resumeHome(deps);
     expect(out.result).toBe('ready');
     expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok']);
@@ -459,7 +459,7 @@ describe('fleet home retry', () => {
 
   it('a home with no route waits to be told', async () => {
     const { deps } = outDeps(() => answer({ status: 'done' }));
-    writeMarker(resolvePaths(home), marker(false));
+    putMarker(resolvePaths(home), marker(false));
     const out = await resumeHome(deps);
     expect(out.actions).toEqual(['svall fleet home retry on studio']);
   });
@@ -467,7 +467,7 @@ describe('fleet home retry', () => {
   it('a far machine that does not answer leaves this home frozen, saying so', async () => {
     const { deps } = outDeps(() => answer({ status: 'done' }));
     deps.openMaster = () => Promise.reject(new Error('ssh: connect to host studio'));
-    writeMarker(resolvePaths(home), marker());
+    putMarker(resolvePaths(home), marker());
     const out = await resumeHome(deps);
     expect(out.actions).toEqual(['svall fleet home retry once it answers; until then this home stays frozen']);
     expect(failed()).toMatchObject({ detail: 'this machine cannot log in to studio: ssh: connect to host studio', say: 'Finish the move once it answers; until then this home takes no changes' });

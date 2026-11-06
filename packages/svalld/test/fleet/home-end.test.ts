@@ -3,11 +3,11 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { HomeMoveId } from '@svall/protocol';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines, readMarker, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { ID, KEY, marker, world } from './home-world.js';
+import { ID, KEY, marker, world, putMarker } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -15,7 +15,7 @@ const OTHER = 'hm_otherother' as HomeMoveId;
 const told = (() => { const { ask: _a, ...bare } = marker(); return bare; })();
 const marked = (m = marker()) => {
   const paths = resolvePaths(makeHome());
-  writeMarker(paths, m);
+  putMarker(paths, m);
   return paths;
 };
 
@@ -24,7 +24,7 @@ describe('what a machine a move leaves says of that move', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marker());
+    putMarker(w.mac.paths, marker());
     await w.mac.daemon.start();
     expect(w.mac.daemon.role).toBe('frozen');
     return w;
@@ -39,7 +39,7 @@ describe('what a machine a move leaves says of that move', () => {
     expect(readMarker(w.mac.paths)?.id).toBe(ID);
     await w.mac.daemon.start();
     expect(w.mac.daemon.role).toBe('frozen');
-    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
     await w.mac.daemon.start();
     expect(w.mac.daemon.role).toBe('worker');
     expect(w.studio.daemon.role).toBe('home');
@@ -58,7 +58,7 @@ describe('what a machine a move leaves says of that move', () => {
     const paths = resolvePaths(makeHome());
     const d = { paths, me: marker().from, daemon: { stop: () => Promise.resolve(), start: () => Promise.resolve(), answersHome: () => Promise.resolve(false) } };
     expect((await adoptStatus(d, ID)).status).toBe('not-adopted');
-    writeMarker(paths, marker());
+    putMarker(paths, marker());
     expect(homeGate(paths).frozen?.id).toBe(ID);
     expect(readMarker(paths)?.id).toBe(ID);
   });
@@ -94,7 +94,7 @@ describe('the one way a move ends', () => {
   it('a crash between the record and the marker: the next start ends what the record says, and only that', () => {
     const paths = marked();
     endMove(paths, ID, { by: 'asked' });
-    writeMarker(paths, marker());
+    putMarker(paths, marker());
     expect(homeGate(paths)).toEqual({});
     expect(readMarker(paths)).toBeUndefined();
   });
@@ -153,7 +153,7 @@ describe('the one way a move ends', () => {
       const paths = marked();
       const unlock = await daemonLock(paths.home);
       const writing = writeEnrol(paths, ID, enrol, KEY);
-      writeMarker(paths, { ...marker(), id: OTHER });
+      putMarker(paths, { ...marker(), id: OTHER });
       unlock?.();
       await writing;
       expect(readMarker(paths)).toEqual({ ...marker(), id: OTHER });
@@ -168,8 +168,10 @@ describe('the one way a move ends', () => {
     expect(freeze.active).toBe(true);
   });
 
-  // every line that touches a marker or a home move's journal, each one named: a new one fails here until it is read and named
-  const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/];
+  // every line that touches a marker or a home move's journal, and every call that writes or ends a marker, each one named: a new
+  // one fails here until it is read and named
+  const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/,
+    /\bcreateMarker\b/, /\baddEnrol\b/, /\bwriteMarker\b/, /\bendMove\(/, /\.mark\(/];
   // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's key
   const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|\benter\(p, driverOf\(id\), 'mark'/;
   const NAMED: [RegExp, RegExp][] = [
@@ -177,11 +179,18 @@ describe('the one way a move ends', () => {
     [/svalld\/src\/bin\.ts$/, /^const stamp = /],
     [/svalld\/src\/fleet\/home-move\.ts$/, new RegExp([
       NO_END.source, /Pick<Paths, 'homeMoves'>|Pick<Paths, 'homeMoving'( \| 'homeMoves')?>/.source, /^const journalOf = |readFileSync\(journalOf\(p, id\)|appendDurable\(journalOf\(p, id\), \{ phase, /.source,
-      /readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*writeDurable\(p\.homeMoving, m, /.source, /fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/.source,
+      /readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*writeDurable\(p\.homeMoving, m, |createDurable\(p\.homeMoving, m, /.source,
+      // the marker's two writers, the outcome's write on the disk with the driver's key, and the ends that are no end of a marker
+      /^export function (createMarker|addEnrol)\(p: Pick<Paths, 'homeMoving'>, |^\s*addEnrol\(p, id, enrol\);$|endMove\(p, (other|id), \{ by: 'refused'/.source,
+      /endMove\(p, id, \{ by: 'told', key \}\)|^\s*endMove\(p, m\.id, \{ by: 'joined' \}\);$|^\s*endMove\(p, marker\.id, \{ by: 'recorded' \}\);$/.source, /fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/.source,
       // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
       /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/.source,
     ].join('|'))],
     [/svalld\/src\/fleet\/home-far\.ts$/, /^export const phoneWithReason = .*Pick<Paths, 'homeMoves'>/],
+    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, createMarker, endMove, |^\s*createMarker\(this\.d\.paths, marker\);$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
+    [/svalld\/src\/api\/methods\.ts$/, /^\s*if \(p\.op === 'mark'\) held\.mark\(p\.marker\);$|'retro\.mark': \(p, ctx\) => retroOf\(ctx\)\.mark\(p\)/],
+    // a machine's own reachability, no marker
+    [/svalld\/src\/link\/home\.ts$/, /\bthis\.mark\(\{ name: this\.name, /],
     // the robot moves' own journal, of another folder
     [/svalld\/src\/placement\/move\.ts$/, /\bthis\.enter\(|^\s*private enter\(j: MoveJournal/],
     [/svalld\/src\/placement\/prepare\.ts$/, /^\s*this\.save\(\{ \.\.\.j, phase: '(done|aborted)'/],
@@ -225,6 +234,11 @@ describe('the one way a move ends', () => {
     ['apps/desktop/web/src/HomeBanner.tsx', "  call('fs.delete', { path: '~/.svall/home-moving.json' });"],
     ['scripts/integration/robot-placement.mjs', "  sh(old, 'rm ~/.svall/home-moving.json');"],
     ['packages/cli/src/commands/fleet.ts', "  writeDurable(file, { phase: 'done' });"],
+    ['packages/svalld/src/fleet/home-freeze.ts', '    this.marker = addEnrol(this.d.paths, id, enrol), this.d.restart();'],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    endMove(this.d.paths, id, { by: 'asked' });"],
+    ['packages/svalld/src/api/methods.ts', '    if (p.op === \'remark\') held.mark({ ...p.marker, keySha256: p.mine });'],
+    ['packages/cli/src/controller/home.ts', '  createMarker(paths, { ...held, ask });'],
+    ['packages/svalld/src/fleet/home-move.ts', '  writeMarker(p, { ...held, keySha256 });'],
   ])('a line in %s that ends a move some other way fails it: %s', (file, line) => {
     expect(offenders([{ file, text: line }])).toHaveLength(1);
   });

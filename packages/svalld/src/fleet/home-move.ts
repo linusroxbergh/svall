@@ -11,7 +11,7 @@ import {
 } from '@svall/protocol';
 import { InvalidConfig } from '../config.js';
 import { repoRootOf, repoSlug } from '../docs.js';
-import { appendDurable, syncDir, writeDurable } from '../durable.js';
+import { appendDurable, createDurable, syncDir, writeDurable } from '../durable.js';
 import { HomeCrash as Crash, homePoint } from '../failpoints.js';
 import { sha256Hex } from '../hash.js';
 import { daemonLock, homeMoveLock } from '../kernel-lock.js';
@@ -590,9 +590,28 @@ export function readMarker(p: Pick<Paths, 'homeMoving'>): HomeMoving | undefined
   try { return HomeMoving.parse(JSON.parse(text)); } catch (e) { throw new InvalidConfig(`invalid ${p.homeMoving}: ${(e as Error).message}`, { cause: e }); }
 }
 
-export function writeMarker(p: Pick<Paths, 'homeMoving' | 'homeMoves'>, m: HomeMoving): void {
+/** The marker, written once: by the mark alone, never over one that stands, and with no outcome in it. */
+export function createMarker(p: Pick<Paths, 'homeMoving'>, m: HomeMoving): void {
+  if (m.enrol) throw new Error(`the mark of ${m.id} carries an outcome, which only the machine holding the fleet gives`);
+  try { createDurable(p.homeMoving, m, { mode: 0o600 }); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`a marker stands here already, of ${readMarker(p)?.id ?? 'a move'}`);
+    throw e;
+  }
+  homePoint('mark.written');
+}
+
+/** The one change a marker takes after its mark: the outcome `adopted`, once, on the marker of `id` as it stands. */
+export function addEnrol(p: Pick<Paths, 'homeMoving'>, id: string, enrol: Enrolment): HomeMoving {
+  const held = readMarker(p);
+  if (held?.id !== id) throw new Error(`this home holds no marker of ${id}`);
+  if (held.enrol) {
+    if (JSON.stringify(held.enrol) === JSON.stringify(enrol)) return held;
+    throw new Error(`the marker of ${id} holds its outcome already`);
+  }
+  const m = { ...held, enrol };
   writeDurable(p.homeMoving, m, { mode: 0o600 });
-  homePoint(m.enrol ? 'enrol.written' : 'mark.written');
+  homePoint('enrol.written');
+  return m;
 }
 
 // a daemon that ended may be about to start: its lock held, a start never meets a marker written after its join
@@ -628,7 +647,7 @@ export function keyFits(m: HomeMoving, key: string | undefined): key is string {
 /** The outcome `adopted` where this fleet's next start takes it, for a daemon that does not answer. */
 export const writeEnrol = (p: Paths, id: string, enrol: Enrolment, key: string): Promise<void> => withoutDaemon(p, id, (held) => {
   if (!keyFits(held, key)) throw new Error(`the marker of ${id} is not ended without the key of its driver`);
-  writeMarker(p, { ...held, enrol });
+  addEnrol(p, id, enrol);
 });
 
 /**

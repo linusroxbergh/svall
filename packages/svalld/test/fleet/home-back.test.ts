@@ -4,9 +4,9 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
-import { abortAdopt, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, addEnrol, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
-import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side } from './home-world.js';
+import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); vi.useRealTimers(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.back.filter((p) => !crashesFired().has(p))).toEqual([]); });
@@ -30,7 +30,7 @@ async function markedBack() {
   owe(w.mac.paths, FAR);
   const mark: HomeMoving = { id: BACK, from: STUDIO, fromName: 'studio', fromHome: '/home/ada' as never, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, at: 6, keySha256: markKey(w.mac.paths, BACK) };
   await w.studio.daemon.stop();
-  writeMarker(w.studio.paths, mark);
+  putMarker(w.studio.paths, mark);
   await w.studio.daemon.start();
   expect(w.studio.daemon.role).toBe('frozen');
   const enrolment = (token: string, m: HomeManifest): Enrolment => ({ worker: WorkerFile.parse({ homeMachineId: MAC, fleetId: m.fleetId, token, homeName: 'mac' }) });
@@ -53,7 +53,7 @@ function studioAt(studio: Side, o: { down?: () => boolean } = {}) {
         const { key, enrol } = JSON.parse(opts!.input!) as { key: string; enrol?: Enrolment };
         const told = !line.includes('not-adopted') ? { status: 'adopted' as const, enrol: enrol! } : { status: 'not-adopted' as const };
         const said = await settleMove(studio.paths, BACK, told, key, {
-          join: async (enrol) => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); writeMarker(studio.paths, { ...readMarker(studio.paths)!, enrol }); await studio.daemon.stop(); },
+          join: async (enrol) => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); addEnrol(studio.paths, BACK, enrol); await studio.daemon.stop(); },
           thaw: async () => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); fs.rmSync(studio.paths.homeMoving); await studio.daemon.start(); },
           start: () => studio.daemon.start(),
         });
@@ -284,7 +284,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     it('a marker that asks for itself is told by no one, whatever a hand runs', async () => {
       const w = await markedBack();
       await w.studio.daemon.stop();
-      writeMarker(w.studio.paths, { ...readMarker(w.studio.paths)!, ask: marker().ask });
+      putMarker(w.studio.paths, { ...readMarker(w.studio.paths)!, ask: marker().ask });
       await expect(settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, keyOf(w), { ...NOTHING, thaw: () => Promise.reject(new Error(NOT_RUNNING)) })).rejects.toThrow(/told by no one/);
       expect(readMarker(w.studio.paths)?.id).toBe(BACK);
     });

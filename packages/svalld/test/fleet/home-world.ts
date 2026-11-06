@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { emptyState, MachineId, migrateState, relabelHome, WorkerFile, type Enrolment, type FleetState, type HomeManifest, type HomeMoveId, type HomeMoving, type Island, type MobileStatus, type Robot } from '@svall/protocol';
 import { armHomeFailpoints, HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
-import { homeGate, installAdopt, packFleet, stageAdopt, writeMarker, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { homeGate, installAdopt, packFleet, stageAdopt, type AdoptDeps, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { dialSocket, resolvePaths, type Paths } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -148,10 +148,10 @@ export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
   const w = await world();
   await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
   await w.mac.daemon.stop();
-  writeMarker(w.mac.paths, marker());
+  putMarker(w.mac.paths, marker());
   const out = await installAdopt(w.studio.deps, ID, w.enrolment);
   if (out.status !== 'adopted') throw new Error(out.status);
-  writeMarker(w.mac.paths, { ...marker(), enrol: out.enrol });
+  putMarker(w.mac.paths, { ...marker(), enrol: out.enrol });
   await w.mac.daemon.start();
   if (w.mac.daemon.role !== 'worker' || w.studio.daemon.role !== 'home') throw new Error(`${w.mac.daemon.role}, ${w.studio.daemon.role}`);
   return w;
@@ -159,6 +159,9 @@ export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
 
 /** What the real link answers: never a rejection, its failures in `error`. */
 export const phoneAt = (serving: boolean, logins: string[] = [], error?: string): MobileStatus => ({ serving, url: serving ? 'https://mac.tail:8443/' : '', port: 8443, logins, phones: [], ...(error && { error }) });
+
+/** A marker as a state to start from, written over whatever stands: the code's own writes are `createMarker` and `addEnrol`. */
+export const putMarker = (p: Pick<Paths, 'homeMoving'>, m: HomeMoving): void => fs.writeFileSync(p.homeMoving, JSON.stringify(m), { mode: 0o600 });
 
 /** The key a move's driver holds, of which `marker()` holds the hash. */
 export const KEY = 'k'.repeat(43);

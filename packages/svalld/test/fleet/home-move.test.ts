@@ -10,14 +10,14 @@ import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
-import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, readMarker, stageAdopt, writeMarker } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, createMarker, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, readMarker, stageAdopt } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world } from './home-world.js';
+import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.move.filter((p) => !crashesFired().has(p))).toEqual([]); });
@@ -25,7 +25,7 @@ afterAll(() => { expect(POINTS_OF.move.filter((p) => !crashesFired().has(p))).to
 const staged = async (w: Awaited<ReturnType<typeof world>>) => {
   await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
   await w.mac.daemon.stop().catch(() => undefined);
-  writeMarker(w.mac.paths, marker());
+  putMarker(w.mac.paths, marker());
   await w.mac.daemon.start();
 };
 
@@ -774,7 +774,7 @@ describe('the join', () => {
     const { w, marked } = await adopted();
     w.mac.daemon.held!.robots.here.note = 'the last thing it flushed';
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     expect(fs.existsSync(w.mac.paths.workersFile)).toBe(true);
     await w.mac.daemon.start();
     joined(w);
@@ -793,7 +793,7 @@ describe('the join', () => {
   it.each(JOIN)('%s: a crash goes forward from what it kept, the relabel never run on its own output', async (point) => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     const fired = crashAt(point);
     await expect(w.mac.daemon.start()).rejects.toThrow(HomeCrash);
     expect(fired()).toBe(true);
@@ -817,7 +817,7 @@ describe('the join', () => {
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     await w.mac.daemon.stop();
     crashAt('mark.written');
-    expect(() => writeMarker(w.mac.paths, marker())).toThrow(HomeCrash);
+    expect(() => createMarker(w.mac.paths, marker())).toThrow(HomeCrash);
     expect(readMarker(w.mac.paths)?.id).toBe(ID);
     expect(homeGate(w.mac.paths, w.mac.registryDir).frozen?.id).toBe(ID);
   });
@@ -833,7 +833,7 @@ describe('the join', () => {
   it('a marker written back past its join changes nothing: the journal says it is over', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     await w.mac.daemon.start();
     await w.mac.daemon.stop();
     const live = stateOf(w.mac);
@@ -841,7 +841,7 @@ describe('the join', () => {
     fs.writeFileSync(w.mac.paths.state, JSON.stringify(live));
     fs.mkdirSync(path.dirname(w.mac.paths.outbox), { recursive: true });
     fs.writeFileSync(w.mac.paths.outbox, 'an outbox of today\n');
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     await w.mac.daemon.start();
     expect(stateOf(w.mac).robots.here.note).toBe('written after the join');
     expect(fs.readFileSync(w.mac.paths.outbox, 'utf8')).toBe('an outbox of today\n');
@@ -859,7 +859,7 @@ describe('the join', () => {
     const a = await installAdopt(w.studio.deps, ID, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
     await w.mac.daemon.start();
     const copy = path.join(w.mac.paths.cache, 'docs');
     expect(fs.readFileSync(path.join(copy, 'fleet', 'late.md'), 'utf8')).toBe('written while frozen');
@@ -880,7 +880,7 @@ describe('the join', () => {
     const a = await installAdopt(w.studio.deps, ID, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
     await w.mac.daemon.start();
     const journaled: Record<string, { base?: string; kind: string }> = {};
     let seq = 0;
@@ -922,7 +922,7 @@ describe('the join', () => {
     const a = await installAdopt(w.studio.deps, ID, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
+    putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
     await w.mac.daemon.start();
     const copy = path.join(w.mac.paths.cache, 'docs');
     const events: { kind: 'docs.write' | 'docs.delete'; data: { path: string } }[] = [];
@@ -944,7 +944,7 @@ describe('the join', () => {
   it('a kept workers.json is where Files refuses it', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     await w.mac.daemon.start();
     const kept = `${w.mac.paths.workersFile}.home-${ID}`;
     expect(fs.readFileSync(kept, 'utf8')).toContain('token');
@@ -954,10 +954,10 @@ describe('the join', () => {
   it('run again on what it wrote, it derives the same state', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
     const once = fs.readFileSync(w.mac.paths.state, 'utf8');
-    writeMarker(w.mac.paths, marked);
+    putMarker(w.mac.paths, marked);
     joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
     expect(fs.readFileSync(w.mac.paths.state, 'utf8')).toBe(once);
   });

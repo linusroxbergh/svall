@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -6,7 +7,7 @@ import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
-import { phoneOwed, readMarker, servedPhone, writeMarker } from '../../src/fleet/home-move.js';
+import { addEnrol, createMarker, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
 import { Phones } from '../../src/phones.js';
@@ -16,7 +17,7 @@ import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { moveWorld, type MoveWorld } from '../placement/move-world.js';
 import { H, W } from '../placement/world.js';
-import { ID, KEY, MAC, marker, phoneAt, robot, STUDIO } from './home-world.js';
+import { ID, KEY, MAC, marker, phoneAt, robot, STUDIO, putMarker } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -38,7 +39,7 @@ function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barr
     restart: () => log.push('restart'),
   };
   const frozen = o.frozen === true ? marker() : o.frozen || undefined;
-  if (frozen) writeMarker(paths, frozen);
+  if (frozen) putMarker(paths, frozen);
   return { d, log, paths, freeze: new HomeFreeze(d, frozen) };
 }
 
@@ -112,6 +113,45 @@ describe('a frozen home', () => {
     freeze.stop();
     await expect(freeze.thaw(ID)).rejects.toThrow(/only where the fleet is going/);
     expect(freeze.active).toBe(true);
+  });
+
+  it('a marker is written once: a mark under one that stands, the daemon started under it, is refused, and so is its told with the new key', async () => {
+    const { ask: _ask, ...bare } = marker();
+    const { freeze, paths } = setup({ frozen: bare });
+    const before = fs.readFileSync(paths.homeMoving);
+    const mine = 'a'.repeat(43);
+    expect(() => freeze.mark({ ...bare, keySha256: crypto.createHash('sha256').update(mine).digest('hex') })).toThrow(/marked for .* already/);
+    expect(() => freeze.mark({ ...marker(), ask: { ...marker().ask!, ssh: 'eve@elsewhere' as never } })).toThrow(/marked for .* already/);
+    await expect(freeze.told(ID, mine)).rejects.toThrow(/not ended by told/);
+    freeze.stop();
+    expect(fs.readFileSync(paths.homeMoving)).toEqual(before);
+  });
+
+  it('a mark that carries an outcome is refused, and leaves no marker', async () => {
+    const { freeze, paths } = setup();
+    await freeze.freeze(ID, STUDIO, holder);
+    expect(() => freeze.mark({ ...marker(), enrol: { worker: { homeMachineId: STUDIO, fleetId: '11111111-2222-3333-4444-555555555555', token: 'x'.repeat(48), homeName: 'studio' } } as never })).toThrow(/carries an outcome/);
+    expect(fs.existsSync(paths.homeMoving)).toBe(false);
+  });
+
+  it('a mark meets a marker written since by another hand, and leaves that one as it was', () => {
+    const paths = resolvePaths(makeHome());
+    putMarker(paths, { ...marker(), id: 'hm_otherother' as HomeMoveId });
+    const before = fs.readFileSync(paths.homeMoving);
+    expect(() => createMarker(paths, marker())).toThrow(/stands here already, of hm_otherother/);
+    expect(fs.readFileSync(paths.homeMoving)).toEqual(before);
+  });
+
+  it('the outcome goes on a marker once: the same again changes nothing, another is refused', () => {
+    const paths = resolvePaths(makeHome());
+    createMarker(paths, marker());
+    const enrol = { worker: { homeMachineId: STUDIO, fleetId: '11111111-2222-3333-4444-555555555555', token: 'x'.repeat(48), homeName: 'studio' } } as never;
+    expect(addEnrol(paths, ID, enrol).enrol).toEqual(enrol);
+    const once = fs.readFileSync(paths.homeMoving);
+    addEnrol(paths, ID, enrol);
+    expect(() => addEnrol(paths, ID, { worker: { ...(enrol as { worker: object }).worker, token: 'y'.repeat(48) } } as never)).toThrow(/holds its outcome already/);
+    expect(() => addEnrol(paths, 'hm_otherother', enrol)).toThrow(/no marker of hm_otherother/);
+    expect(fs.readFileSync(paths.homeMoving)).toEqual(once);
   });
 
   it('refuses a mark from a freeze this daemon does not hold, as after a restart that took writes', () => {

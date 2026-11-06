@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { emptyState, type AdoptAnswer, type HomeFacts, type Result } from '@svall/protocol';
 import { homeCheck, HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { writeMarker } from '../../src/fleet/home-move.js';
+import {  } from '../../src/fleet/home-move.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { MAC, marker, phoneAt, robot, STUDIO } from './home-world.js';
+import { MAC, marker, phoneAt, robot, STUDIO, putMarker } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -57,7 +57,7 @@ describe('the check names each machine for what it is', () => {
 describe('a frozen home says where the machine holding the fleet stands, apart from what it said', () => {
   const frozen = (answer: () => Promise<AdoptAnswer>) => {
     const paths = resolvePaths(makeHome());
-    writeMarker(paths, marker());
+    putMarker(paths, marker());
     return new HomeFreeze({
       paths, me: MAC, log: { error: () => {}, info: () => {} }, store: { state: emptyState(), flush: () => Promise.resolve(true) },
       links: { barrier: () => Promise.resolve(true), hold: () => {} }, background: { pause: () => {}, resume: () => {} },

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { emptyState, HOME_ISLAND, type HomeManifest, type MachineId, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
-import { abortAdopt, adoptStatus, installAdopt, journalLines, packFleet, stageAdopt, writeMarker, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptStatus, installAdopt, journalLines, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { silentLogger } from '../../src/log.js';
 import { machineId } from '../../src/machine.js';
 import { startDaemon, type Daemon } from '../../src/main.js';
@@ -13,7 +13,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
-import { crashAt, disarmCrash, FLEET, ID, KEY, MAC, marker, robot, stateOf, STUDIO, TOKEN, world } from './home-world.js';
+import { crashAt, disarmCrash, FLEET, ID, KEY, MAC, marker, robot, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -95,7 +95,7 @@ runIf('a home move through real starts', () => {
     const me = machineId();
     await d.stop();
     const mark = { ...marker(), from: me as MachineId, fromHome: '/home/ada' as never };
-    writeMarker(paths, mark);
+    putMarker(paths, mark);
 
     await d.start();
     expect(await d.ask('fleet.home')).toMatchObject({ result: { mine: true } });
@@ -105,7 +105,7 @@ runIf('a home move through real starts', () => {
     await d.stop();
 
     const enrol = { worker: { homeMachineId: STUDIO, fleetId: FLEET, token: TOKEN, homeName: 'studio' } } as never;
-    writeMarker(paths, { ...mark, enrol });
+    putMarker(paths, { ...mark, enrol });
     await d.start();
     expect(await d.ask('fleet.home')).toMatchObject({ result: { mine: false, machine: STUDIO } });
     const s = d.d!.store.state;
@@ -139,7 +139,7 @@ runIf('a home move through real starts', () => {
     const d = await firstStart(paths);
     await d.stop();
     const { ask: _ask, ...waits } = marker();
-    writeMarker(paths, waits);
+    putMarker(paths, waits);
     await d.start();
     await d.stop();
     await d.start();
