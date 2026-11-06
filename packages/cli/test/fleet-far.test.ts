@@ -17,6 +17,13 @@ vi.mock('../src/controller/home.js', async (actual) => {
   return { ...(await actual<object>()), realHomeDaemon: () => daemon.current, moveHomeOut: drive, moveHomeBack: drive, bringCrewBack: drive };
 });
 
+// a daemon that answers, while `on`: what settle hands it
+const up = vi.hoisted(() => ({ on: false, calls: [] as unknown[] }));
+vi.mock('../src/client.js', async (actual) => {
+  const real = await actual<typeof import('../src/client.js')>();
+  return { ...real, withClient: (connect: Parameters<typeof real.withClient>[0], f: Parameters<typeof real.withClient>[1]) => (up.on ? f({ call: (m: string, p: unknown) => { up.calls.push([m, p]); return Promise.resolve({}); }, close: () => {} } as never) : real.withClient(connect, f)) };
+});
+
 const { fleetCommands } = await import('../src/commands/fleet.js');
 
 const ID = 'hm_abcdefghij';
@@ -181,6 +188,17 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
     expect(readMarker(resolvePaths(home))?.enrol).toBeUndefined();
     expect(journalLines(resolvePaths(home), ID)).toEqual([]);
     expect(daemon.starts).toBe(0);
+  });
+
+  it('a daemon that answers is handed the key from stdin with the outcome', async () => {
+    waiting();
+    up.on = true;
+    up.calls = [];
+    try {
+      await run(['settle', ID, '--outcome', 'not-adopted'], JSON.stringify({ key: KEY }));
+      await run(['settle', ID, '--outcome', 'adopted'], JSON.stringify({ key: KEY, enrol: ENROL }));
+    } finally { up.on = false; }
+    expect(up.calls).toEqual([['fleet.homeMove', { op: 'told', id: ID, key: KEY }], ['fleet.homeMove', { op: 'join', id: ID, enrol: ENROL, key: KEY }]]);
   });
 
   it('is not offered in the help', () => {

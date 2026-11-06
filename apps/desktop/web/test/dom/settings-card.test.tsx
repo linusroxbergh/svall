@@ -382,6 +382,10 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     // the far home has its Check and ⋯ from this window; a worker of it is that home's to manage
     expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
     expect(screen.getByTestId('machine-mac').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+    // the home's row by the name this Mac knows it by, as its menu and sheet go
+    act(() => store.getState().setMachines([{ id: HOME, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    expect(screen.getByTestId('machine-box').textContent).toContain('home · ada@studio');
+    expect(screen.queryByTestId('machine-studio')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
