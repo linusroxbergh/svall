@@ -222,7 +222,7 @@ export async function runUninstall(o: {
   const { takeBackCopies } = await import('./placement/mirror-apply.js');
   const env = linux ? agentHomes : process.env;
   const agentFiles = { homedir: os.homedir(), claudeDir: claudePaths(env).dir, claudeJson: claudePaths(env).json, codexDir: codexPaths(env).dir, opencodeDir: opencodePaths(env).dir };
-  for (const home of o.homes) done.push(...takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
+  for (const home of o.homes) done.push(...await takeBackCopies({ ...agentFiles, stateFile: resolvePaths(home).mirrorState }));
   // a worker's phone.json holds its home's push signing key and devices
   for (const home of o.homes) {
     const { phone } = resolvePaths(home);
@@ -250,6 +250,9 @@ export const fleetHomes = (homedir: string): string[] => fs.readdirSync(homedir)
   .sort()
   .map((f) => path.join(homedir, f))
   .filter(isFleetHome);
+
+/** Each fleet home's folder of copies of a person's own agent files. */
+export const fleetBackups = (homedir: string): string[] => fleetHomes(homedir).map((h) => resolvePaths(h).mirrorBackup).filter((f) => fs.existsSync(f));
 
 // what macOS keeps by the app's bundle id rather than in a fleet home: every fleet's browser sign-ins, the caches,
 // the updater's HTTP storage and cookies, the saved window state and the defaults

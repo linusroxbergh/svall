@@ -32,11 +32,11 @@ export type PluginInstall = { name: string; installPath: string; named?: string[
 export type Secret = { field: string; value: string };
 
 // the server fields each agent's own schema names
-const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
+export const AGENT_FIELDS: Record<AgentKind, readonly string[]> = {
   claude: ['type', 'command', 'args', 'env', 'url', 'headers', 'oauth', 'timeout'],
   codex: [
     'command', 'args', 'cwd', 'env', 'url', 'oauth', 'enabled', 'bearer_token_env_var', 'env_vars', 'http_headers', 'env_http_headers', 'startup_timeout_sec',
-    'startup_timeout_ms', 'tool_timeout_sec', 'enabled_tools', 'disabled_tools',
+    'startup_timeout_ms', 'tool_timeout_sec', 'enabled_tools', 'disabled_tools', 'tools', 'default_tools_approval_mode',
   ],
   opencode: ['type', 'command', 'cwd', 'environment', 'url', 'headers', 'oauth', 'enabled', 'timeout'],
 };
@@ -777,8 +777,9 @@ export type Place = (string | number)[];
 export const getAt = (doc: unknown, place: Place): unknown =>
   place.reduce<unknown>((v, k) => (typeof v === 'object' && v !== null && Object.hasOwn(v, k) ? (v as Record<string | number, unknown>)[k] : undefined), doc);
 
-/** Makes the objects that lead to `place`; `undefined` removes what lies there, but not from an array. */
+/** Makes the objects that lead to `place`; `undefined` removes what lies there, but not from an array. A place under `__proto__` is no place. */
 export function setAt(doc: Record<string, unknown>, place: Place, v: unknown): void {
+  if (place.includes('__proto__')) return;
   let at = doc as Record<string | number, unknown>;
   for (const [i, k] of place.slice(0, -1).entries()) {
     if (typeof at[k] !== 'object' || at[k] === null) {
@@ -924,3 +925,6 @@ export const headedEntries = (doc: unknown): string[] => (isDoc(doc) && Array.is
   .flatMap((e, i) => (isDoc(e) && (at(e, ['**', 'headers']).length || at(e, ['**', 'headersHelper']).length) ? [`plugins.${typeof e.name === 'string' ? e.name : i}`] : []));
 
 export const agentServer = (name: string, raw: Doc): McpServer => toServer('claude', 'user', { name, raw, file: '', place: [] });
+
+/** The server entry `raw` a machine holds, read as the mirror reads one it carries. */
+export const heldServer = (agent: AgentKind, raw: Doc): McpServer => toServer(agent, 'user', { name: '', raw, file: '', place: [] });

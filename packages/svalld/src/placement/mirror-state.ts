@@ -27,10 +27,15 @@ const Bare = z.record(z.string(), z.object({ value: z.string().optional(), envVa
 /**
  * What the mirror last wrote on a worker, by sha256 under a file's `to` or the JSON of a doc and the keys into it; a copy an
  * apply cut short holds either of two shas. `bare` is what an untick leaves, `envVar` where a Codex server's env_vars names it.
+ * `wholeKeys` each string a server copied whole carried, so one edited since is still known for its key.
+ * `backup` the folder each file the record does not name is copied to before it is replaced; `listed` the names the mirror wrote
+ * in each plugin list, by its `to`, and in each table of a config file, by `<file>#<key>`; `replaced` each place, by its key, where
+ * a tick went over what the target held itself, whose file `backup` keeps.
  */
 export const WorkerState = z.object({
-  files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),
-  applied: z.number().int().nonnegative().optional(),
+  files: Shas, docs: z.record(z.string(), Shas), servers: Shas, secrets: Copies, whole: Copies.optional(), wholeKeys: Copies.optional(), keyed: Copies.optional(), bare: Bare.optional(),
+  applied: z.number().int().nonnegative().optional(), backup: z.object({ dir: z.string() }).optional(), listed: z.record(z.string(), z.array(z.string())).optional(),
+  replaced: z.array(z.string()).optional(),
 });
 export type WorkerState = z.infer<typeof WorkerState>;
 export type Copied = WorkerState['secrets'][string];
@@ -44,8 +49,8 @@ export const isCopy = (recorded: Copied | undefined, v: unknown): boolean => typ
 
 /** The Mac's home and its project folders, which the worker answers for. */
 export const StateAsk = z.object({ homedir: z.string(), projects: z.array(z.string()) });
-export const WorkerFacts = z.object({ state: WorkerState, projects: z.record(z.string(), z.boolean()) });
-/** The worker's record, and whether it has each project folder of the Mac's, by the Mac's path. */
+export const WorkerFacts = z.object({ state: WorkerState, projects: z.record(z.string(), z.boolean()), platform: z.string().optional() });
+/** The worker's record, whether it has each project folder of the Mac's, by the Mac's path, and what it runs on. */
 export type WorkerFacts = z.infer<typeof WorkerFacts>;
 
 export const ROOTS = { claude: 'claudeDir', codex: 'codexDir', home: 'homedir', profiles: 'agentProfiles', opencode: 'opencodeDir' } as const;
@@ -88,9 +93,9 @@ export function readState(file: string): WorkerState {
 }
 
 /** What a worker tells the home before a mirror: its record, and which of the Mac's project folders it has under its home. */
-export function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: string; homedir: string }): WorkerFacts {
+export function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: string; homedir: string; platform?: NodeJS.Platform }): WorkerFacts {
   const r = { from: ask.homedir, to: o.homedir };
-  return { state: readState(o.stateFile), projects: Object.fromEntries(ask.projects.map((p) => [p, fs.existsSync(relocate(p, r))])) };
+  return { state: readState(o.stateFile), projects: Object.fromEntries(ask.projects.map((p) => [p, fs.existsSync(relocate(p, r))])), platform: o.platform ?? process.platform };
 }
 
 /** How the mirror moves a path from the Mac's homes into this machine's: one under Claude's folder into this one's, else by home. */

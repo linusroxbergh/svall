@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import os from 'node:os';
 import { z, type ZodTypeAny } from 'zod';
 import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
@@ -17,6 +18,7 @@ import { mergeSources } from '../resources/merge.js';
 import { listsDeletable, rootHere, rootIdOf, scanResources } from '../resources/scan.js';
 import type { RemoteWatches } from '../placement/far-viewers.js';
 import type { Mirror } from '../placement/mirror.js';
+import type { SetupCopy, WorkerSetup } from '../placement/mirror-copy.js';
 import type { Placement } from '../placement/move.js';
 import { PHONE_ITEM, type PhoneFallbacks } from '../placement/phone.js';
 import { updateAgents, type Router } from '../placement/router.js';
@@ -37,12 +39,14 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
   // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
-  fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'> };
+  fleetHome?: () => Result<'fleet.home'>; registered?: () => Map<string, MachineRecord>; homeApi?: Pick<HomeApi, 'answer'>;
+  // the home's: the one copy of a worker's agent setup it takes; a worker's: that setup, and what its first push from the home kept
+  setupCopy?: SetupCopy; workerSetup?: WorkerSetup };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback'] satisfies MethodName[]);
 // what hands over the home's token never leaves this machine, whatever node.json's host says
 const LOOPBACK_ONLY = new Set<string>(['home.connection'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
@@ -73,6 +77,11 @@ const mirrorOf = ({ mirror }: Ctx): Mirror => {
   return mirror;
 };
 
+const workerSetupOf = ({ workerSetup }: Ctx): WorkerSetup => {
+  if (!workerSetup) throw new ApiError('not_found', 'the agent setup here is the fleet\'s own');
+  return workerSetup;
+};
+
 // the setup rows of `machine`, asked of its worker once the link is up or `waitMs` has passed; `recheck` tells a worker
 // that last did not serve the phone again first
 async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: string, recheck = false): Promise<{ rows: SetupRow[] }> {
@@ -89,8 +98,7 @@ async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: str
     agents: [c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined), folders: [c.cwd, c.repo?.mainRoot, c.second?.cwd].filter((f) => f !== undefined),
     ...(far && { home: far }),
   };
-  // what the mirror does not send, no row offers
-  const rows = link?.mirrored === false ? [] : await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) });
+  const rows = await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) });
   return { rows: ctx.phone && !only ? [...rows, ctx.phone.row(machine)] : rows };
 }
 
@@ -176,7 +184,7 @@ const handlers: Handlers = {
       return setupOf(ctx, p.machine, 0);
     }
     const link = ctx.links?.for(p.machine);
-    if (link?.connected() && link.mirrored) {
+    if (link?.connected()) {
       await mirror.push(link).catch((e: Error) => { throw new ApiError('not_mirrored', `the change is saved, but ${name} did not take it: ${e.message}`); });
     }
     // the worker keeps the item as the mirror last wrote it while this Mac cannot read it
@@ -191,7 +199,14 @@ const handlers: Handlers = {
     await links.call(p.machine, 'agents.update', { kinds: p.kinds }, { timeoutMs: serverWait('machines.updateAgents', p) });
     return {};
   },
-  // the value goes to the worker's .env and nowhere on this Mac; no error names it
+  'machines.copySetupFrom': async (p, ctx) => {
+    if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'a copy of an agent setup lands on the fleet\'s home');
+    if (!ctx.store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
+    const { links, setupCopy } = ctx;
+    // no push of the home's lands on the worker while it reads what it sends
+    return mirrorOf(ctx).inTurn(p.machine, () => setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) })));
+  },
+  // the value goes to the worker's .env and nowhere else on the home; no error names it
   'machines.setVar': async (p, ctx) => {
     const name = ctx.store.state.machines?.[p.machine]?.name;
     if (name === undefined) throw new ApiError('not_found', `no machine ${p.machine}`);
@@ -242,6 +257,11 @@ const handlers: Handlers = {
     return { machine, name, state: 'connected' };
   },
   'home.fallback': (p, { viewer }) => { viewer.fallback = p.on; return {}; },
+  'home.setup': (_p, ctx) => workerSetupOf(ctx).get(),
+  'home.setupConsent': (p, ctx) => {
+    workerSetupOf(ctx).consent(p.item, p.fields, p.on);
+    return workerSetupOf(ctx).get();
+  },
   // each worker reads its own robots' usage, where their transcripts are
   'usage.get': async (_p, { usage, links }) => {
     if (!links) return usage();
@@ -273,7 +293,12 @@ const handlers: Handlers = {
   },
   'fs.list': async (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.list', p, signal) ?? { entries: await workspace.list(p.id, p.path) },
   'fs.read': (p, { workspace, router, signal }) => router?.forwardRoot(p.id, 'fs.read', p, signal) ?? workspace.read(p.id, p.path),
-  'fs.write': (p, ctx) => { refuseRemote(ctx, p.id, p.path); return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root); },
+  'fs.write': (p, ctx) => {
+    refuseRemote(ctx, p.id, p.path);
+    // a home with no agent setup yet has no folder for Claude's files until the first is saved
+    if (p.mtimeMs === 0 && ctx.claude && p.id === rootIdOf(ctx.claude.dir)) fs.mkdirSync(ctx.claude.dir, { recursive: true });
+    return ctx.workspace.write(p.id, p.path, p.text, p.mtimeMs, p.root);
+  },
   'docs.create': (p, { workspace }) => workspace.create(p.id, p.path, p.text),
   'docs.rename': (p, { workspace, fleet, agentProfiles }) => {
     workspace.rename(p.id, p.path, p.to);
@@ -374,8 +399,9 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
 // what a worker sends on from a CLI in one of its panes: never the machines, the fleets beside this one or the phone link
 const FROM_WORKER = new Set(['state', 'island', 'robot', 'browser', 'scribe', 'app']);
 
-/** The result of a call a worker sends on, or its error thrown as the client would read it. */
-export async function answer(method: string, params: unknown, ctx: Ctx): Promise<unknown> {
+/** The result of a call a worker sends on, or its error thrown as the client would read it; `caller` the worker that sent it. */
+export async function answer(method: string, params: unknown, ctx: Ctx, caller: MachineId): Promise<unknown> {
+  if (ctx.setupCopy?.takes(method)) return ctx.setupCopy.take(caller, method, params);
   if (!FROM_WORKER.has(method.split('.')[0])) throw new ApiError('unauthorized', `${method} is not taken from a worker`);
   const res = await dispatch({ id: 0, method, params }, ctx);
   if ('error' in res) throw new ApiError(res.error.code, res.error.message, res.error.data);

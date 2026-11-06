@@ -93,7 +93,7 @@ describe('the agent configuration mirror', () => {
     const toml = path.join(worker.codexDir, 'config.toml');
     const settings = path.join(worker.claudeDir, 'settings.json');
     const jsonc = path.join(worker.opencodeDir, 'opencode.jsonc');
-    expect(takeBackCopies(o).sort()).toEqual([
+    expect((await takeBackCopies(o)).sort()).toEqual([
       `took 1 key the mirror copied out of ${jsonc}`, `took 1 key the mirror copied out of ${settings}`, `took 1 key the mirror copied out of ${worker.claudeJson}`,
       `took 2 keys the mirror copied out of ${toml}`, `left 1 key the mirror copied in ${worker.claudeJson}, which changed there since`,
     ].sort());
@@ -104,7 +104,7 @@ describe('the agent configuration mirror', () => {
     const codex = parseToml(read(toml)) as any;
     expect([codex.mcp_servers.github.env, codex.mcp_servers.github.env_vars, codex.model_providers.acme.http_headers]).toEqual([{}, ['GITHUB_TOKEN'], { 'X-Key': '' }]);
     expect(json(jsonc).provider.openai.options.apiKey).toBe('');
-    expect(takeBackCopies(o)).toEqual([`left 1 key the mirror copied in ${worker.claudeJson}, which changed there since`]);
+    expect(await takeBackCopies(o)).toEqual([`left 1 key the mirror copied in ${worker.claudeJson}, which changed there since`]);
   });
   it('takeBackCopies removes a server copied whole, a plugin file holding a ticked key while each is still the copy, and a blob left beside the record; it leaves one the worker changed', async () => {
     const mac = macHome();
@@ -131,7 +131,7 @@ describe('the agent configuration mirror', () => {
       .toEqual([{ command: 'odd', sandbox: { token: 'odd_token_1234567890' } }, 'tbl', true, { ACME_KEY: 'acme_1234567890abcd' }]);
     editJson(worker.claudeJson, (j) => { j.mcpServers.mine.command = 'mine-here'; });
     put(path.join(scratch, 'mirror-left/claude/.claude.json'), '{}');
-    expect(takeBackCopies(o).sort()).toEqual([
+    expect((await takeBackCopies(o)).sort()).toEqual([
       `removed 1 mirror blob left in ${scratch}`,
       `removed ${mcp}, which held keys the mirror copied`, `removed ${settings}, which held keys the mirror copied`,
       `took 1 server the mirror copied whole out of ${toml}`, `took 1 server the mirror copied whole out of ${worker.claudeJson}`,
@@ -141,7 +141,7 @@ describe('the agent configuration mirror', () => {
     expect(json(worker.claudeJson).mcpServers.mine).toEqual({ command: 'mine-here', sandbox: { token: 'mine_token_1234567890' } });
     expect((parseToml(read(toml)) as any).mcp_servers).not.toHaveProperty('tbl');
     expect([fs.existsSync(mcp), fs.existsSync(settings), fs.existsSync(path.join(scratch, 'mirror-left'))]).toEqual([false, false, false]);
-    expect(takeBackCopies(o)).toEqual([`left 1 server the mirror copied whole in ${worker.claudeJson}, which changed there since`]);
+    expect(await takeBackCopies(o)).toEqual([`left 1 server the mirror copied whole in ${worker.claudeJson}, which changed there since`]);
   });
 
   it('takeBackCopies leaves each copied value as an untick leaves it, by the kind of leaf its record keeps: a url, arg and header keep the rest, an env key its reference, in a server named env too', async () => {
@@ -165,7 +165,7 @@ describe('the agent configuration mirror', () => {
     const taken = farHome();
     const untick = farHome();
     const at = (h: ReturnType<typeof farHome>) => ({ ...h, stateFile: path.join(h.homedir, 'state.json'), varsFile: path.join(h.homedir, 'vars.json') });
-    await applyMirror(ticked, at(taken)); takeBackCopies(at(taken));
+    await applyMirror(ticked, at(taken)); await takeBackCopies(at(taken));
     await applyMirror(ticked, at(untick)); await applyMirror(unticked, at(untick));
     const docs = (h: ReturnType<typeof farHome>) => JSON.stringify([
       json(h.claudeJson).mcpServers, (parseToml(read(path.join(h.codexDir, 'config.toml'))) as any).mcp_servers, json(path.join(h.claudeDir, 'settings.json')).env,
@@ -197,7 +197,7 @@ describe('the agent configuration mirror', () => {
     expect([read(list), read(market), read(agent)].map((t) => /mh_fake|mk_fake|pg_fake/.test(t))).toEqual([true, true, true]);
     // Claude on the worker updates its list itself
     editJson(list, (j) => { j.x.lastUpdated = '2026-10-27T00:00:00.000Z'; });
-    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.endsWith(f))).sort()).toEqual([agent, list, market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
+    expect((await takeBackCopies(o)).filter((l) => [list, market, agent].some((f) => l.endsWith(f))).sort()).toEqual([agent, list, market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
     expect(json(list)).toEqual({
       mp: expect.objectContaining({ installLocation: path.join(worker.claudeDir, 'plugins/marketplaces/mp') }),
       x: { source: { ...source, headers: { Authorization: '' } }, installLocation: path.join(worker.claudeDir, 'plugins/marketplaces/x'), lastUpdated: '2026-10-27T00:00:00.000Z' },
@@ -205,7 +205,7 @@ describe('the agent configuration mirror', () => {
     expect(json(market).plugins[1].headers).toEqual({ Authorization: '' });
     expect([agentServers(read(agent)), read(agent).startsWith('---\nname: db\n'), read(agent).endsWith('---\nthe agent\n')])
       .toEqual([[['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }]], true, true]);
-    expect(takeBackCopies(o).filter((l) => [list, market, agent].some((f) => l.includes(f)))).toEqual([]);
+    expect((await takeBackCopies(o)).filter((l) => [list, market, agent].some((f) => l.includes(f)))).toEqual([]);
   });
 
   it('takeBackCopies takes a ticked key back where it alone lies now when an item added above moved it, and warns where the copy lies twice', async () => {
@@ -228,11 +228,11 @@ describe('the agent configuration mirror', () => {
       return { o, ...files };
     };
     const moved = await worker(false);
-    expect(takeBackCopies(moved.o).filter((l) => [moved.agent, moved.market].some((f) => l.includes(f))).sort())
+    expect((await takeBackCopies(moved.o)).filter((l) => [moved.agent, moved.market].some((f) => l.includes(f))).sort())
       .toEqual([moved.agent, moved.market].map((f) => `took 1 key the mirror copied out of ${f}`).sort());
     expect([/pg_fake/.test(read(moved.agent)), json(moved.market).plugins[1].headers]).toEqual([false, { Authorization: '' }]);
     const twins = await worker(true);
-    expect(takeBackCopies(twins.o).filter((l) => l.includes(twins.agent))).toEqual([`left ${twins.agent}, which holds keys the mirror copied and changed there since`]);
+    expect((await takeBackCopies(twins.o)).filter((l) => l.includes(twins.agent))).toEqual([`left ${twins.agent}, which holds keys the mirror copied and changed there since`]);
     expect(read(twins.agent)).toContain('pg_fake');
   });
 
@@ -259,11 +259,11 @@ describe('the agent configuration mirror', () => {
         list: path.join(h.claudeDir, 'plugins/known_marketplaces.json'), market: path.join(h.claudeDir, 'plugins/marketplaces/mp/.claude-plugin/marketplace.json'),
         agent: path.join(h.claudeDir, 'agents/db.md'),
       };
-      return { o, ...files, lines: () => takeBackCopies(o).filter((l) => Object.values(files).some((f) => l.includes(f))) };
+      return { o, ...files, lines: async () => (await takeBackCopies(o)).filter((l) => Object.values(files).some((f) => l.includes(f))) };
     };
     const below = await worker();
     put(below.agent, md(...pg('pg'), ...pg('twin')));
-    expect(below.lines().sort()).toEqual([
+    expect((await below.lines()).sort()).toEqual([
       `left ${below.agent}, which holds keys the mirror copied and changed there since`, ...[below.agent, below.list, below.market].map((f) => `took 1 key the mirror copied out of ${f}`),
     ].sort());
     expect(agentServers(read(below.agent))).toEqual([['pg', { command: 'npx', env: { PG_PASSWORD: '${PG_PASSWORD}' } }], ['twin', { command: 'npx', env: { PG_PASSWORD: 'pg_fake_1234567890' } }]]);
@@ -271,7 +271,7 @@ describe('the agent configuration mirror', () => {
     put(bare.agent, md(...pg('pg', '${PG_PASSWORD}')));
     editJson(bare.market, (j) => { j.plugins[0].headers.Authorization = ''; });
     editJson(bare.list, (j) => { j.x.source.headers.Authorization = 'Bearer ${MK_TOKEN}'; });
-    expect(bare.lines()).toEqual([]);
+    expect(await bare.lines()).toEqual([]);
   });
 
   it('takeBackCopies says nothing of a key the worker set itself where the user unticked the copy, nor of a record without the bare form of its value', async () => {
@@ -288,9 +288,9 @@ describe('the agent configuration mirror', () => {
     editJson(worker.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'worker-own'; });
     await apply('unticked', new Set());
     expect(json(worker.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('worker-own');
-    expect(takeBackCopies(o)).toEqual([]);
+    expect(await takeBackCopies(o)).toEqual([]);
     editJson(worker.claudeJson, (j) => { j.mcpServers.cli = { command: 'cli', args: ['--api-key='] }; });
     put(o.stateFile, JSON.stringify({ files: {}, docs: {}, servers: {}, secrets: { [JSON.stringify(['.claude.json', 'mcpServers', 'cli', 'args', 0])]: sha256Hex('--api-key=ak_fake_1234567890') } }));
-    expect(takeBackCopies(o)).toEqual([]);
+    expect(await takeBackCopies(o)).toEqual([]);
   });
 });

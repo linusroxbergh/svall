@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createRequire } from 'node:module';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, UNPAIRED, type Event, type HelloReply } from '@svall/protocol';
+import { Hello, LOGIN_REFUSED, MAX_REQUEST_BYTES, PART_BYTES, PROTOCOL_VERSION, Request, RequestPart, UNPAIRED, type Event, type HelloReply, type MachineId } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
 import type { Logger } from '../log.js';
@@ -31,7 +31,7 @@ type Opts = {
   host: string; port: number; token: string;
   store: Store; fleet: Fleet; fleets: Fleets; systemInfo: Ctx['systemInfo']; diagnostics?: Ctx['diagnostics']; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: Ctx['load']; mobileControl: Mobile; log: Logger;
   push: PushStore; vapidPublicKey: string; phones: Phones; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Ctx['links']; mutations?: WorkerMutations; retro?: Ctx['retro'];
-  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: string; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi'];
+  remoteWatches?: RemoteWatches; mirror?: Mirror; drops?: Ctx['drops']; fleetFlag?: string; phone?: Ctx['phone']; fleetHome?: Ctx['fleetHome']; registered?: Ctx['registered']; homeApi?: Ctx['homeApi']; setupCopy?: Ctx['setupCopy']; workerSetup?: Ctx['workerSetup'];
   // read on every request: the logins take this Mac's own once tailscale names it
   origins?: () => string[]; logins?: () => string[]; dist?: string; key?: () => string; pass: string; fleetName?: () => string | undefined; heartbeatMs?: number;
 };
@@ -116,7 +116,7 @@ export function identityOf(req: IncomingMessage, logins: string[] = []): string 
 }
 
 /** `answer` takes a call a worker sends on from a CLI in one of its panes, as the app's would be, for the methods a worker may send. */
-export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown): Promise<unknown> }> {
+export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<void>; answer(method: string, params: unknown, caller: MachineId): Promise<unknown> }> {
   const { host, port, token, store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobileControl, log, push, vapidPublicKey, phones, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, phone } = opts;
   const logins = opts.logins ?? (() => []);
   const origins = opts.origins ?? (() => []);
@@ -138,7 +138,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
     },
   };
   const apps: AppWindows = { show: (p) => { for (const v of pages) v.send({ event: 'app.show', data: p }); return pages.size; } };
-  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone, fleetHome: opts.fleetHome, registered: opts.registered, homeApi: opts.homeApi };
+  const base: Omit<Ctx, 'viewer' | 'signal'> = { store, fleet, fleets, systemInfo, diagnostics, terminals, workspace, usage, load, mobile, push, vapidPublicKey, claude, codex, docs, agentProfiles, router, placement, links, mutations, remoteWatches, mirror, drops, fleetFlag, retro, apps, phone, fleetHome: opts.fleetHome, registered: opts.registered, homeApi: opts.homeApi, setupCopy: opts.setupCopy, workerSetup: opts.workerSetup };
   const unwatch = [
     phones.onChange((list) => { for (const v of desktops) v.send({ event: 'mobile.phones', data: { phones: list } }); }),
   ];
@@ -317,7 +317,7 @@ export function startApi(opts: Opts): Promise<{ port: number; close(): Promise<v
       server.on('error', (e) => log.error(`api: ${String(e)}`));
       resolve({
         port: bound,
-        answer: (method, params) => answer(method, params, { ...base, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } }),
+        answer: (method, params, caller) => answer(method, params, { ...base, viewer: { kind: 'app', send: () => {}, backlog: () => 0 } }, caller),
         close: () => new Promise((r) => {
           for (const off of unwatch) off();
           clearInterval(heartbeat);

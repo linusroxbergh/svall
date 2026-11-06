@@ -34,7 +34,8 @@ import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
 import { FarViewers, RemoteWatches, ViewerNotice } from './placement/far-viewers.js';
 import { Drops, dropCalls } from './drops.js';
-import { Mirror, mirrorCalls } from './placement/mirror.js';
+import { backupsHere, Mirror, mirrorCalls } from './placement/mirror.js';
+import { SetupCopy, workerSetup } from './placement/mirror-copy.js';
 import { PhoneFallbacks } from './placement/phone.js';
 import { readMirrorVars } from './placement/mirror-config.js';
 import { PrepareService } from './placement/prepare.js';
@@ -212,15 +213,20 @@ async function start(opts: Options): Promise<Daemon> {
   store.batchWrites();
   // the home's links to its workers, or a worker's to its home, for the fleet to route through; each starts once the
   // fleet it carries is served, the API that answers what a worker sends on included, and stops before any of it
-  let answer: ((method: string, params: unknown) => Promise<unknown>) | undefined;
+  let answer: ((method: string, params: unknown, caller: MachineId) => Promise<unknown>) | undefined;
   // rises across restarts, so no worker holds a version newer than the home's next
   let version = Date.now();
   const homeDocs = worker ? undefined : new HomeDocs(paths.docs, log, (m) => store.state.machines?.[m]?.name ?? m, (id) => Object.hasOwn(store.state.robots, id));
   // what a worker did while this Mac slept, applied once each
   const replay = worker ? undefined : new Replay({ store, paths, log, synced: (m): boolean => links?.for(m)?.synced === true, homedir: os.homedir() });
   // the home's agent configuration, which each worker takes
-  const homeMirror = worker ? undefined : new Mirror({
+  const agentHomes = {
     claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir, agentProfiles: paths.agentProfiles,
+  };
+  // what a push lands in here, whichever way it comes
+  const mirrorPlace = { ...agentHomes, overrides: paths.mirrorOverrides, stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, log };
+  const homeMirror = worker ? undefined : new Mirror({
+    ...agentHomes,
     consent: paths.mirrorConsent, log, envFile: paths.env,
     // a worker runs the release, whose fleet homes are ~/.svall and ~/.svall-<name>
     overridesThere: `~/${profile === PRIVATE ? '.svall' : `.svall-${profile}`}/mirror-overrides`,
@@ -235,7 +241,7 @@ async function start(opts: Options): Promise<Daemon> {
       return conflict && { change: () => noteConflict(store, machine, conflict, os.homedir()), docs: true as const };
     },
     onInventory: (inv, machine) => router.reconcileWorker(inv, machine),
-    onCall: (method, params) => answer!(method, params),
+    onCall: (method, params, machine) => answer!(method, params, machine),
     onNotify: (kind, data, machine) => {
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
@@ -257,6 +263,8 @@ async function start(opts: Options): Promise<Daemon> {
     mirror: homeMirror,
     ...(homeDocs && { docs: homeDocs }),
   });
+  // the one copy of a worker's agent setup this home takes, when a person asks for it
+  const setupCopy = links && new SetupCopy({ ...mirrorPlace, backups: paths.mirrorBackup, links });
   const calls: Record<string, (params: unknown) => Promise<unknown>> = {};
   const outbox = worker && Outbox.open(paths, log);
   // a worker that opens the link itself: its tunnel to the home, which the home's link connects through
@@ -278,10 +286,12 @@ async function start(opts: Options): Promise<Daemon> {
   const machineName = () => store.state.machines?.[me]?.name ?? os.hostname().split('.')[0];
   const workerDrops = connection && dropCalls({ connection, machine: machineName });
   const farViewers = connection && new FarViewers({ connection });
-  const workerMirror = connection && mirrorCalls({
-    claudeDir: claudePaths().dir, codexDir: codexPaths().dir, homedir: os.homedir(), claudeJson: claudePaths().json, opencodeDir: opencodePaths().dir,
-    agentProfiles: paths.agentProfiles, overrides: paths.mirrorOverrides,
-    stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
+  const backups = worker && backupsHere(paths.mirrorBackup, worker.worker);
+  const workerMirror = connection && mirrorCalls({ ...mirrorPlace, connection, ...(backups && { backups }) });
+  // this worker's own agent setup, which its home asks for once when a person copies it there; the keys it ticks stay on this machine
+  const ownSetup = connection && worker && workerSetup({
+    mirror: new Mirror({ ...agentHomes, consent: paths.mirrorConsent, log, envFile: paths.env }), connection, home: worker.worker.homeMachineId,
+    homeName: () => store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
   const workerHomeWord = () => (worker ? homeWordOnWorker(store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, !!worker.worker.homeSsh) : 'this Mac');
@@ -293,7 +303,7 @@ async function start(opts: Options): Promise<Daemon> {
   const docsRoot = (c: Robot) => homeRootOf(c, store.state.machines, worker ? store.state.machines?.[worker.worker.homeMachineId]?.home : os.homedir());
   const fleet = new Fleet({
     store, tmux, paths, config, log, agentsFound, remote: router, repoRoot: docsRoot,
-    ...(worker && { extraKeys: () => readMirrorVars(paths.mirrorVars) }),
+    extraKeys: () => readMirrorVars(paths.mirrorVars),
     ...(connection && { report: (r: RobotSync) => connection.report(r), created: (c: Robot, p: ParsedParams<'robot.create'>) => mutations?.created(c, p) }),
   });
   // what the CLI in a worker's panes starts there, and changes there while its home is away
@@ -314,6 +324,7 @@ async function start(opts: Options): Promise<Daemon> {
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
     Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
+    if (ownSetup) calls['config.copyToHome'] = () => ownSetup.push();
   }
   const placement = links && new Placement({
     store, fleet, links, me, paths, git: hooklessGit, agents, release: releaseVersion(), homedir: os.homedir(), tmux, viewers: terminals, log,
@@ -333,7 +344,8 @@ async function start(opts: Options): Promise<Daemon> {
     ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
   // a robot's folders are on the machine it runs on
   const rootOf = rootHere((c) => router.runsHere(c));
-  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash);
+  const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash,
+    () => homes().map((h) => resolvePaths(h).mirrorBackup));
   if (farViewers) Object.assign(calls, fileCalls({ workspace, viewers: farViewers, terminals, resources: () => repoSources(store.state, claude, paths.docs, rootOf) }));
   const phones = new Phones();
   const phoneLink = (logins: () => string[]) => mobileControl(realDeps(), {
@@ -407,7 +419,7 @@ async function start(opts: Options): Promise<Daemon> {
       diagnostics: () => diagnostics({ info: () => systemInfo({ machineId: me, agents: () => agents() }), log: paths.log, home: os.homedir(), macos }),
       fleetName: () => store.state.name ?? (profile !== PRIVATE && isProfileName(profile) ? profile : undefined), router, placement, links, remoteWatches,
       mirror: homeMirror, drops: new Drops({ dir: path.join(paths.cache, 'drops'), store, router, links, machine: machineName }), fleetFlag: profile === PRIVATE ? '' : `-p ${isProfileName(profile) ? profile : shq(profile)} `,
-      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), fleetHome,
+      ...(mutations && { mutations }), ...(retro && { retro }), ...(phone && { phone }), ...(homeApi && { homeApi }), ...(setupCopy && { setupCopy }), ...(ownSetup && { workerSetup: ownSetup }), fleetHome,
       registered: () => new Map(registered().map((m) => [m.id, m.record])),
     });
     // clients find the daemon by its port file, so one that names no port takes a free one while its default is held

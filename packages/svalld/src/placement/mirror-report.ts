@@ -1,15 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { z } from 'zod';
-import { NOT_NEEDED, type AgentKind, type SetupRow } from '@svall/protocol';
+import { AgentKind, NOT_NEEDED, type SetupRow } from '@svall/protocol';
 import { isExecutable, onPath } from '../agents.js';
 import { readEnvFile } from '../claude.js';
 import { sha256Hex } from '../hash.js';
 import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
-import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, relocatedServer, VAR_REF } from './mirror-config.js';
+import { configNeeds, configPlace, configRedacted, FIELD_PATHS, fieldPlace, getAt, heldServer, needsOf, relocatedServer, VAR_REF } from './mirror-config.js';
 import { CONFIG_ITEMS, fieldKey } from './mirror-consent.js';
-import { docWithOverride } from './mirror-apply.js';
+import { docWithOverride, holdsWholeKey, isTheirs, ownKeys, under } from './mirror-apply.js';
 import type { MirroredServer, MirrorPlan } from './mirror-plan.js';
 import { DOC_NAMES, isCopy, mover, placedIn, readState, recordKey, relocated, type DocName, type MirrorHomes } from './mirror-state.js';
 
@@ -36,6 +36,8 @@ type Whole = z.infer<typeof Whole>;
 export const ReportAsk = z.object({
   homedir: z.string(), claudeDir: z.string(), commands: z.array(z.string()), vars: z.array(z.string()), secrets: z.array(Keyed), whole: z.array(Whole),
   oauth: z.array(z.object({ item: z.string(), name: z.string() })),
+  // each server in a doc, which a target may hold as its own
+  held: z.array(z.object({ item: z.string(), agent: AgentKind, doc: z.enum(DOC_NAMES), place: z.array(z.string()) })),
 });
 export type ReportAsk = z.infer<typeof ReportAsk>;
 /**
@@ -45,6 +47,10 @@ export type ReportAsk = z.infer<typeof ReportAsk>;
 export const ConfigReport = z.object({
   commands: z.record(z.string(), z.boolean()), vars: z.record(z.string(), z.boolean()), secrets: z.record(z.string(), z.enum(['copied', 'own'])),
   whole: z.record(z.string(), z.boolean()), oauth: z.record(z.string(), z.boolean()),
+  // an item the worker holds as its own, the very one ticked whole; and each field or item whose own value a tick went over, whose file its backup keeps
+  ownWhole: z.record(z.string(), z.boolean()).optional(), replaced: z.record(z.string(), z.boolean()).optional(),
+  // each server this target keeps as its own, with the variables what it holds reads; and each item edited since: holding what the mirror copied whole or not, or a link nothing writes through
+  keepsOwn: z.record(z.string(), z.array(z.string())).optional(), edited: z.record(z.string(), z.enum(['copy', 'own', 'link'])).optional(),
 });
 export type ConfigReport = z.infer<typeof ConfigReport>;
 
@@ -99,6 +105,7 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
   return {
     homedir: plan.homes.homedir, claudeDir: plan.homes.claudeDir, commands: [...new Set(carried(plan).flatMap((s) => s.runtimes))], vars: plan.vars, secrets, whole,
     oauth: carried(plan).filter((s) => s.agent === 'claude' && s.oauth).map((s) => ({ item: s.key, name: s.name })),
+    held: plan.servers.flatMap((s) => (s.doc ? [{ item: s.key, agent: s.agent, doc: s.doc, place: s.place }] : [])),
   };
 }
 
@@ -106,7 +113,7 @@ export function reportAsk(plan: MirrorPlan): ReportAsk {
  * A worker's answer to `ask`, each thing looked for where the mirror writes it here, overrides merged; a secret field counts
  * only when neither empty nor as the mirror leaves it bare.
  */
-export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string }): ConfigReport {
+export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: string; envFile: string; stateFile: string; backups?: string }): ConfigReport {
   const move = mover(ask, o);
   const env = readEnvFile(o.envFile);
   const state = readState(o.stateFile);
@@ -129,27 +136,52 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
     return { there: true, doc, copied: !own && sha256Hex(bytes) === state.files[to] };
   };
 
+  const edited: NonNullable<ConfigReport['edited']> = {};
+  // a keyed file that stays once no longer the copy, `link` where nothing writes through it
+  const editedFile = (to: string): 'link' | 'copy' | undefined => {
+    if (o.backups === undefined || !state.keyed?.[to] || !fileHere(to).there || fileHere(to).copied) return undefined;
+    return fs.lstatSync(path.join(o.claudeDir, to.slice('claude/'.length)), { throwIfNoEntry: false })?.isSymbolicLink() ? 'link' : 'copy';
+  };
   const secrets: ConfigReport['secrets'] = {};
+  const inBackup = state.backup !== undefined && fs.existsSync(state.backup.dir);
+  const replaced: Record<string, boolean> = {};
+  const wasReplaced = (key: string, name: string): void => { if (inBackup && state.replaced?.some((r) => under(key, r))) replaced[name] = true; };
   for (const k of ask.secrets) {
     // what the mirror leaves there without keys, moved as apply moves it: a server's command, args and cwd, a config
     // file's path keys, a plugin's server file not at all
     const bare = k.file !== undefined ? k.bare : k.place.length ? relocatedServer(k.bare, move) : relocated(k.bare, move);
     const file = k.file !== undefined ? fileHere(k.file) : undefined;
+    if (k.file !== undefined && editedFile(k.file) === 'link') edited[k.item] = 'link';
     for (const { field, leaf } of k.fields) {
+      if (k.doc) wasReplaced(recordKey(k.doc, [...k.place, ...leaf]), fieldKey(k.item, field));
       const value = k.doc ? getAt(docHere(k.doc), [...placedIn(k.doc, k.place, move), ...leaf]) : getAt(file?.doc, [...k.place, ...leaf]);
       if (typeof value !== 'string' || value === '' || value === getAt(bare, leaf)) continue;
-      const copied = k.doc ? isCopy(state.secrets[recordKey(k.doc, [...k.place, ...leaf])], value) : file?.copied === true;
+      const copied = k.doc ? isCopy(state.secrets[recordKey(k.doc, [...k.place, ...leaf])], value) || isCopy(state.wholeKeys?.[recordKey(k.doc, k.place)], value) : file?.copied === true;
       // a field at several places is copied while one holds the copy
       secrets[fieldKey(k.item, field)] = copied || secrets[fieldKey(k.item, field)] === 'copied' ? 'copied' : 'own';
     }
   }
   const whole: ConfigReport['whole'] = {};
+  const ownWhole: Record<string, boolean> = {};
   for (const w of ask.whole) {
     const v = w.doc ? getAt(docHere(w.doc), placedIn(w.doc, w.place, move)) : w.file !== undefined ? getAt(fileHere(w.file).doc, w.place) : undefined;
     const recorded = w.doc ? state.servers[recordKey(w.doc, w.place)] : w.file !== undefined ? state.files[w.file] : undefined;
     // a file carried whole is there once the worker has it
     const there = !w.doc && w.file !== undefined && !w.place.length ? fileHere(w.file).there : isDoc(v) && w.fields.every((f) => Object.hasOwn(v, f));
     whole[w.item] = (whole[w.item] ?? true) && recorded !== undefined && there;
+    if (w.doc) wasReplaced(recordKey(w.doc, w.place), w.item);
+    if (w.doc && recorded === undefined && there) ownWhole[w.item] = true;
+    const edit = w.file !== undefined ? editedFile(w.file) : undefined;
+    if (edit) edited[w.item] = edit === 'link' ? edit : edited[w.item] ?? edit;
+  }
+  const keepsOwn: NonNullable<ConfigReport['keepsOwn']> = {};
+  for (const h of o.backups === undefined ? [] : ask.held) {
+    const rk = recordKey(h.doc, h.place);
+    const v = getAt(docHere(h.doc), placedIn(h.doc, h.place, move));
+    if (!isDoc(v)) continue;
+    const theirs = isTheirs(h.agent, v, rk, state);
+    if (theirs) edited[h.item] = holdsWholeKey(h.agent, v, rk, state) ? 'copy' : 'own';
+    if (theirs || ownKeys(h.agent, v, rk, state).length) keepsOwn[h.item] = needsOf(heldServer(h.agent, v));
   }
   let credentials: unknown;
   try { credentials = JSON.parse(fs.readFileSync(path.join(o.claudeDir, '.credentials.json'), 'utf8')); } catch { /* no login */ }
@@ -157,7 +189,7 @@ export function configReport(ask: ReportAsk, o: MirrorHomes & { overrides: strin
   return {
     commands: Object.fromEntries(ask.commands.map((c) => [c, path.posix.isAbsolute(c) ? isExecutable(move(c)) : onPath(c, process.env.PATH ?? '') !== undefined])),
     vars: Object.fromEntries(ask.vars.map((v) => [v, Boolean(process.env[v] || env[v])])),
-    secrets, whole,
+    secrets, whole, ownWhole, replaced, keepsOwn, edited,
     oauth: Object.fromEntries(ask.oauth.map((a) => [a.item, logins.some((k) => k.startsWith(`${a.name}|`))])),
   };
 }
@@ -183,7 +215,7 @@ export function forRobot(plan: MirrorPlan, o: { agents: AgentKind[]; folders: st
  * The setup rows of the mirror to `o.machine` by `plan` and the worker's report. Without a report a row that hangs on one
  * says `o.unchecked`, and a key row that its change is saved for when the machine links.
  */
-export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean }): SetupRow[] {
+export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o: { machine: string; fleetFlag: string; unchecked: string; overrides: string; here?: (name: string) => boolean; apt?: boolean; mac?: boolean }): SetupRow[] {
   const m = o.machine;
   const rows: SetupRow[] = [];
   const saved = `${o.unchecked}; saved, and takes effect when ${m} links`;
@@ -193,6 +225,10 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // an unticked item whose copy the worker still holds
   const stillOn = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow =>
     ({ key: tick.item, status: 'warn', action: `check ${m} again`, detail: `still on ${m}; check ${m} again`, tick, gap: { name, what: `unticked; still on ${m}` } });
+  // an item that stays as the person edited it: what the record holds cannot say a key still lies in it
+  const staysEdited = (tick: NonNullable<SetupRow['tick']>, name: string): SetupRow => ({
+    key: tick.item, status: 'warn', action: `remove ${name} on ${m}`, detail: `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself`, tick, gap: { name, what: 'stays as you edited it, with any key the mirror copied in it' },
+  });
   // the variables an unticked env key of server `s` reads on the worker: the references the mirror leaves in its place
   const reads = (s: MirroredServer, f: string): string[] => {
     const v = getAt(s.bare, [FIELD_PATHS[s.agent].env, f.slice('env.'.length)]);
@@ -200,8 +236,9 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   };
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
   // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
-  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
-    const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview };
+  const keyRow = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
+    const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
+    if (report?.edited?.[item] === 'link') return staysEdited(tick, name);
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
     if (tick.on && fields.every((f) => held(f) === 'copied')) return { key: item, status: 'ok', detail: `keys copied to ${m}: ${preview.join(', ')}`, tick };
@@ -217,29 +254,41 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
       gap: { name, what: `keys not copied (${fields.filter((f) => !own(f)).join(', ')})` },
     };
   };
+  // what a tick went over stays in the machine's backup, and its row says so
+  const inBackup = (row: SetupRow, names: string[]): SetupRow => (names.some((n) => report?.replaced?.[n]) ? { ...row, detail: `${row.detail}; what ${m} held itself is in its mirror-backup` } : row);
+  const keys = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow =>
+    inBackup(keyRow(item, name, fields, ticked, preview, server), fields.map((f) => fieldKey(item, f)));
   // a server or plugin config with settings Svall cannot copy one by one, whose file travels as it is once ticked
-  const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
+  const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => inBackup(wholeRow(item, name, fields, on), [item]);
+  const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
     const tick = { item, fields, on, preview: fields };
-    if (!on && report?.whole[item]) return stillOn(tick, name);
+    if (report?.edited?.[item] === 'link' || (!on && report?.edited?.[item] === 'copy')) return staysEdited(tick, name);
+    if (!on && report?.whole[item]) return report.edited?.[item] ? { key: item, status: 'skip', detail: `${name} stays as you edited it`, tick } : stillOn(tick, name);
     if (!on) {
       return {
         key: item, status: 'warn', action: `copy ${name} to ${m} as it is`, detail: `${name} has settings Svall cannot copy one by one; tick to copy its file as it is, keys included`, tick,
         gap: { name, what: 'not copied; tick to copy it as it is' },
       };
     }
+    if (report?.ownWhole?.[item]) return { key: item, status: 'ok', detail: `${m} has its own`, tick };
     return report?.whole[item] ? { key: item, status: 'ok', detail: `copied to ${m} as it is`, tick } : notYet(tick, name);
   };
   // a server Svall cannot copy one by one has a preview naming its fields
   for (const s of plan.servers) {
-    if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
+    // a tick cannot land in a plugin's file the plan does not carry
+    if (s.file && !plan.files.some((f) => f.from === s.file)) {
+      if (!s.known || s.secretFields.length) rows.push({ key: s.key, status: 'skip', detail: `${s.name} stays on ${homeWord()}: the mirror does not carry its file`, gap: { name: s.name, what: 'not copied: the mirror does not carry its file' } });
+    } else if (!s.known) rows.push(whole(s.key, s.name, s.preview, Object.keys(s.entry).length > 0));
     else if (s.secretFields.length) rows.push(keys(s.key, s.name, s.secretFields, s.ticked, s.preview, s));
+    if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'copy') rows.push({ key: `edited:${s.key}`, status: 'warn', action: `remove ${s.name} on ${m}`, detail: `${s.name} stays as you edited it, with any key the mirror copied in it; remove it yourself` });
+    else if (s.known && !s.ticked.length && report?.edited?.[s.key] === 'own') rows.push({ key: `edited:${s.key}`, status: 'skip', detail: `${s.name} on ${m} stays as it is here and no longer follows ${homeWord()}; delete it on ${m} and the next push writes it anew` });
   }
 
   const servers = carried(plan);
   const names = (has: (s: MirroredServer) => boolean): string[] => [...new Set(servers.filter(has).map((s) => s.name))];
   for (const v of plan.vars) {
     const readers = [
-      ...names((s) => s.needs.includes(v)), ...(plan.codex && configNeeds('codex', plan.codex).includes(v) ? ['config.toml'] : []),
+      ...names((s) => s.needs.includes(v) && (report?.keepsOwn?.[s.key]?.includes(v) ?? true)), ...(plan.codex && configNeeds('codex', plan.codex).includes(v) ? ['config.toml'] : []),
       ...plan.opencode.filter((d) => configNeeds('opencode', d.doc).includes(v)).map((d) => d.file),
     ];
     if (!readers.length) continue;
@@ -278,11 +327,13 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
     const need = `${users} ${one ? 'needs' : 'need'} it; tick if ${m} does not`;
     if (path.posix.isAbsolute(bin)) {
       rows.push({ key, status: 'warn', action: `install ${name} on ${m}`, detail: `${users} ${one ? 'runs' : 'run'} ${bin}, which ${m} does not have; a path under ${homeWord()}'s home is looked for under ${m}'s. Tick if ${m} does not need it`, tick, gap });
-    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
+    } else rows.push({ key, status: 'warn', action: `install ${bin} on ${m}`, ...(o.apt !== false && Object.hasOwn(INSTALL_RUN, bin) && { run: INSTALL_RUN[bin] }), detail: need, tick, gap });
   }
   for (const s of plan.macOnly) {
     const key = `maconly:${s.agent}:${s.name}`;
-    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} only runs on a Mac; not mirrored`, gap: { name: s.name, what: 'runs only on a Mac' } });
+    // a Mac worker runs it too, and is simply not sent it
+    const where = o.mac ? `stays on ${homeWord()}` : 'only runs on a Mac';
+    if (!rows.some((r) => r.key === key)) rows.push({ key, status: 'skip', detail: `${s.name} ${where}; not mirrored`, gap: { name: s.name, what: o.mac ? where : 'runs only on a Mac' } });
   }
   for (const c of plan.configs) rows.push(keys(c.key, c.file, c.fields, c.ticked, c.preview));
   for (const p of plan.plugins) rows.push(whole(p.key, p.name, p.fields, p.ticked));

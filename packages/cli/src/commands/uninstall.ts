@@ -11,7 +11,7 @@ import { PRIVATE, profileHome } from '@svall/svalld/profile';
 import { ownRuntime, type Runtime } from '@svall/svalld/runtime';
 import { cliCommand } from '@svall/svalld/setup';
 import { shq } from '@svall/svalld/text';
-import { appQuit, fleetData, fleetHomes, libraryData, purge, runUninstall } from '@svall/svalld/uninstall';
+import { appQuit, fleetBackups, fleetData, fleetHomes, libraryData, purge, runUninstall } from '@svall/svalld/uninstall';
 import { DEFAULT_PREFIX } from '../../../../scripts/install-release.mjs';
 import { printResult } from '../format.js';
 import { ask } from '../prompt.js';
@@ -19,6 +19,8 @@ import { ask } from '../prompt.js';
 export type UninstallDeps = {
   uninstall(): Promise<string[]>;
   data(): string[];
+  /** The folders among `data` holding copies of the person's own agent files, from before a push replaced them. */
+  backups(): string[];
   purge(paths: string[]): Promise<string[]>;
   prompt(q: string): Promise<string>;
   isTTY: boolean;
@@ -28,11 +30,13 @@ export async function uninstall(o: { purge: boolean }, d: UninstallDeps): Promis
   const done = await d.uninstall();
   const data = d.data();
   if (!data.length) return { done, kept: [] };
+  const backups = d.backups();
+  const own = backups.length ? `${backups.join(', ')}, which ${backups.length === 1 ? 'holds' : 'hold'} the copies of your own agent files from before Svall replaced them,` : '';
   const yes = o.purge || (d.isTTY && /^y(es)?$/i.test((await d.prompt(
-    `also delete ${data.join(', ')}? this cannot be undone [y/N] `,
+    `also delete ${data.join(', ')}${own && `, with ${own.slice(0, -1)}`}? this cannot be undone [y/N] `,
   )).trim()));
-  if (!yes) return { done, kept: data };
-  return { done: [...done, ...await d.purge(data)], kept: [] };
+  if (!yes) return { done: [...done, ...(own ? [`kept ${own} for you to put back what you want; your agent folders keep the home's files, with the keys it copied and Svall's hooks taken out`] : [])], kept: data };
+  return { done: [...done, ...await d.purge(data), ...(own ? [`deleted ${own} with the fleet`] : [])], kept: [] };
 }
 
 // the shims are gone by now, and a `svall` left on PATH may be the other build's; a companion's release went with them
@@ -42,7 +46,7 @@ export const keptLine = (kept: string[], r: Runtime): string =>
 export function uninstallCommand(json: () => boolean, run: typeof runUninstall = runUninstall): Command {
   return new Command('uninstall')
     .description('remove what svall setup added and stop every fleet; asks before deleting the fleets and the app')
-    .option('--purge', 'also delete every fleet and the app, without asking')
+    .option('--purge', 'also delete every fleet, the copies of your own agent files in its mirror-backup with it, and the app, without asking')
     .option('--from-app', 'run by the app itself: leave it open and in place')
     .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
     .option('--no-launchctl', 'leave the daemons running, only delete the files that start them')
@@ -75,6 +79,7 @@ export function uninstallCommand(json: () => boolean, run: typeof runUninstall =
           appDests: [process.env.SVALL_APP_DEST || '/Applications', path.join(os.homedir(), 'Applications')],
           fromApp: o.fromApp,
         }),
+        backups: () => fleetBackups(os.homedir()),
         purge,
         prompt: (q) => ask(q),
         isTTY: !o.fromApp && process.stdin.isTTY === true,

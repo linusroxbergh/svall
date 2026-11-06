@@ -196,8 +196,8 @@ describe('a worker that dials in', () => {
     expect(w.worker.connected()).toBe(false);
   });
 
-  it('pushes no agent configuration to a Mac, before a move included, and one to a Linux worker', async () => {
-    for (const [platform, pushes] of [['darwin', 0], ['linux', 2]] as const) {
+  it('pushes the agent configuration to a worker on either platform, on linking and before a move', async () => {
+    for (const platform of ['darwin', 'linux'] as const) {
       const push = vi.fn(() => Promise.resolve({ sent: 0 }));
       const w = await world({ machines: () => [{ id: W, record: { ...dialing.record, platform } }], mirror: { push, settled: () => Promise.resolve() } });
       await w.tunnel();
@@ -205,7 +205,7 @@ describe('a worker that dials in', () => {
       await until(() => expect(w.links.for(W)?.synced).toBe(true));
       await w.links.pushMirror(W);
       await w.links.mirrorSettled(W);
-      expect(push).toHaveBeenCalledTimes(pushes);
+      expect(push).toHaveBeenCalledTimes(2);
       w.links.stop();
     }
   });

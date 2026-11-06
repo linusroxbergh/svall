@@ -195,7 +195,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let alert = NSAlert()
         alert.messageText = "Uninstall Svall?"
         alert.informativeText = "This stops every fleet (running agents end), removes Svall's hooks from Claude Code and Codex and its OpenCode plugin, its background service and the svall command, then moves Svall to the Trash."
-        let purge = NSButton(checkboxWithTitle: "Also delete fleet data (~/.svall…)", target: nil, action: nil)
+        let purge = NSButton(checkboxWithTitle: "Also delete fleet data (~/.svall…), with the copies of your own agent files in mirror-backup", target: nil, action: nil)
         alert.accessoryView = purge
         alert.addButton(withTitle: "Uninstall")
         alert.addButton(withTitle: "Cancel")

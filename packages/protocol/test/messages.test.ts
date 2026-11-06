@@ -181,8 +181,16 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 41', () => {
-    expect(PROTOCOL_VERSION).toBe(41);
+  it('is 42', () => {
+    expect(PROTOCOL_VERSION).toBe(42);
+  });
+
+  it('was 41 without a worker\'s copy of its agent setup, its rows and ticks, and each field\'s tick in a row', () => {
+    expect(methods['machines.copySetupFrom'].params.parse({ machine: UUID_A }).machine).toBe(UUID_A);
+    expect(methods['machines.copySetupFrom'].result.parse({ sent: 2, backup: '/b' }).backup).toBe('/b');
+    expect(methods['home.setupConsent'].params.parse({ item: 'claude:mcp:a', fields: ['env.A'], on: false }).on).toBe(false);
+    const row = { key: 'claude:mcp:a', status: 'warn', detail: 'x', tick: { item: 'claude:mcp:a', fields: ['env.A', 'env.B'], on: false, preview: [], ticked: ['env.A'] } };
+    expect(methods['home.setup'].result.parse({ rows: [row], backup: '/b' }).rows[0].tick?.ticked).toEqual(['env.A']);
   });
 
   it('was 41 with the fleet\'s home, how a window reaches it, and each machine\'s role', () => {

@@ -56,6 +56,8 @@ export type MirrorPlan = {
   /** Each plugin install whose marketplace list the Mac cannot read, whose files stay on the worker as the mirror last wrote them. */
   unreadInstalls: string[];
   keep: string[];
+  /** Each file held back until ticked, by its `to`, which a Copy takes back from the home once its sender has unticked it. */
+  unticked: string[];
   /** Each file that holds a ticked key, by its `to`, which the worker keeps for its owner alone. */
   keyed: string[];
   /** Each of those the agent needs, whose keys an uninstall takes back where they lie, each by its place, sha and bare form. */
@@ -75,6 +77,19 @@ const SECRET_FILES = ['.docker/config.json', 'gh/hosts.yml'];
 const secret = (file: string): boolean => {
   const lower = file.toLowerCase();
   return SECRET.some((re) => re.test(path.basename(file))) || SECRET_DIRS.some((d) => lower.includes(`${path.sep}${d}${path.sep}`)) || SECRET_FILES.some((f) => lower.endsWith(`${path.sep}${f}`));
+};
+// what each home takes of a mirror, as the plan below walks it
+const CARRIED: Record<Root, (rel: string) => boolean> = {
+  claude: (r) => r === 'CLAUDE.md' || r === 'keybindings.json' || ['skills', 'rules', 'agents', 'commands', 'plugins'].some((t) => r.startsWith(`${t}/`)),
+  codex: (r) => r === 'AGENTS.md',
+  home: (r) => r.startsWith('.agents/skills/'),
+  opencode: (r) => r === 'AGENTS.md' || OPENCODE_TREES.some((t) => r.startsWith(`${t}/`)),
+  profiles: () => true,
+};
+/** Whether `to` is a file a plan could carry. */
+export const carriable = (to: string): boolean => {
+  const [root, ...rest] = to.split('/');
+  return Object.hasOwn(CARRIED, root) && rest.length > 0 && !rest.includes('..') && !rest.includes('') && CARRIED[root as Root](rest.join('/')) && !secret(`/${to}`);
 };
 const without = (doc: Doc, keys: readonly string[]): Doc => Object.fromEntries(Object.entries(doc).filter(([k]) => !keys.includes(k)));
 
@@ -143,12 +158,16 @@ function configDoc(file: string, parse: (source: string) => unknown, unreadable:
 const withoutLogins = (v: unknown): unknown =>
   typeof v === 'string' ? withoutCredentials(v) : Array.isArray(v) ? v.map(withoutLogins) : isDoc(v) ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, withoutLogins(x)])) : v;
 
+/** A known server with every raw field ticked, as ticking it whole left it, which stands for a tick of each of its keys until the item's first change. */
+export const tickedWhole = (s: McpServer, consent: ReadonlySet<string>): boolean =>
+  s.known && Object.keys(s.raw).length > 0 && tickedFields(consent, itemKey(s), Object.keys(s.raw)).length === Object.keys(s.raw).length;
+
 /** A server as the mirror carries it, by what `consent` ticks: one whose fields it does not know whole or not at all. */
 function mirrored(s: McpServer, consent: ReadonlySet<string>): MirroredServer {
   const key = itemKey(s);
   const secrets = s.known ? secretsOf(s) : [];
   const secretFields = [...new Set(secrets.map((f) => f.field))];
-  const ticked = tickedFields(consent, key, s.known ? secretFields : Object.keys(s.raw));
+  const ticked = tickedWhole(s, consent) ? secretFields : tickedFields(consent, key, s.known ? secretFields : Object.keys(s.raw));
   const entry = s.known ? redacted(s, new Set(ticked)) : ticked.length === Object.keys(s.raw).length ? structuredClone(s.raw) : {};
   const plugin = typeof s.scope === 'object' && 'plugin' in s.scope;
   const doc: DocName | undefined = plugin ? undefined : s.agent === 'claude' ? '.claude.json' : s.agent === 'codex' ? 'config.toml' : (path.basename(s.file ?? '') as DocName);
@@ -364,7 +383,9 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const landing = (from: string): string => path.posix.join('claude', path.posix.relative(o.claudeDir, from));
   const made = (from: string, data: string, keyed = false): void => {
     const to = landing(from);
-    if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
+    // a name a login goes by stays here, what it holds carried or not
+    if (secret(from)) skipped.push(`${from} has a name kept for a key or a login`);
+    else if (Buffer.byteLength(data) > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
     else files.push({ from, to, mode: keyed ? 0o600 : (statOf(from)?.mode ?? 0o644) & 0o777, data });
     if (keyed) withKeys.add(to);
   };
@@ -489,7 +510,8 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),
     opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },
-    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], unreadInstalls, keep: carried.map((f) => f.to), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
+    vars: [...new Set(vars)].sort(), unreadable: [...new Set(unreadable)], unreadInstalls, keep: carried.map((f) => f.to),
+    unticked: pluginRows.filter((r) => !r.ticked).flatMap((r) => r.files).filter((f) => holds(o.claudeDir, f)).map(landing).filter(carriable), keyed: carried.filter((f) => withKeys.has(f.to)).map((f) => f.to),
     inPlace: inPlace.filter((f) => carried.some((c) => c.to === f.to)), skipped,
   };
 }

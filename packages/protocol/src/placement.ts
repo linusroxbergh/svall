@@ -106,7 +106,7 @@ export type WorkerFile = z.infer<typeof WorkerFile>;
  */
 export const SetupRow = z.object({
   key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(),
-  forward: z.number().int().optional(), tick: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()) }).optional(),
+  forward: z.number().int().optional(), tick: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()), ticked: z.array(z.string()).optional() }).optional(),
   gap: z.object({ name: z.string(), what: z.string() }).optional(), here: z.literal(true).optional(),
 });
 export type SetupRow = z.infer<typeof SetupRow>;

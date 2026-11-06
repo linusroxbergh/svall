@@ -127,6 +127,7 @@ const MIRROR_LABEL: [RegExp, (...m: string[]) => string][] = [
   [/^claude:plugin:(.+?):mcp:(.+?)(?:@\/.*)?$/, (plugin, name) => `${name} (plugin ${plugin.split('@')[0]})`],
   [/^(\w+):mcp:(.+?)(?:@\/.*)?$/, (agent, name) => `${AGENT_LABEL[agent] ?? agent} MCP ${name}`],
   [/^oauth:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} login`],
+  [/^edited:.*?:mcp:(.+?)(?:@\/.*)?$/, (name) => `${name} as it stands`],
   [/^(?:var|runtime|unreadable):(.+)$/, (name) => name],
   [/^maconly:\w+:(.+)$/, (name) => name],
   [/^claude:plugin:(.+)$/, (plugin) => `plugin ${plugin}`],

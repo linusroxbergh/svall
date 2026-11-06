@@ -38,12 +38,19 @@ function writeAll(file: string, all: Record<string, string[]>): void {
   writeDurable(file, all, { mode: 0o600 });
 }
 
-/** Ticks each of `fields` of `item` for `machine`, or, `on` false, unticks every field of it. */
-export function setConsent(file: string, machine: MachineId, item: string, fields: string[], on: boolean): void {
+/** Ticks each of `fields` of `item` for `machine`, or, `on` false, unticks every field of it, or with `exact` those `fields`. */
+export function setConsent(file: string, machine: MachineId, item: string, fields: string[], on: boolean, exact = false): void {
   const all = readAll(file);
-  const keys = (all[machine] ?? []).filter((k) => on || !k.startsWith(`${item}#`));
+  const keys = (all[machine] ?? []).filter((k) => on || !k.startsWith(`${item}#`) || (exact && !fields.includes(k.slice(item.length + 1))));
   if (on) for (const f of fields) if (!keys.includes(fieldKey(item, f))) keys.push(fieldKey(item, f));
   all[machine] = keys;
+  writeAll(file, all);
+}
+
+/** The ticks of `item` for `machine` become `fields`, whatever it held. */
+export function replaceConsent(file: string, machine: MachineId, item: string, fields: string[]): void {
+  const all = readAll(file);
+  all[machine] = [...(all[machine] ?? []).filter((k) => !k.startsWith(`${item}#`)), ...fields.map((f) => fieldKey(item, f))];
   writeAll(file, all);
 }
 
