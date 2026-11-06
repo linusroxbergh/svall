@@ -159,7 +159,7 @@ export function AgentSetup() {
         <div className="desc" data-testid="setup-backup">
           A push from {home} kept what it replaced on this Mac in <code>{backup}</code>.{' '}
           {replaced.length > 0 && <span data-testid="setup-replaced">A tick went over what this Mac held itself for {replaced.join(', ')}: that is in this folder. </span>}
-          <button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup)}>Show in Finder</button>
+          <button className="btn sm" data-testid="setup-backup-show" onClick={() => openFolder(app.bridge, backup, me)}>Show in Finder</button>
         </div>
       )}
     </>

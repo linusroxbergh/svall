@@ -1,5 +1,6 @@
 import { getBuffer, key, replaceText } from '../ide/buffers.js';
-import { closeFile, openFile } from '../ide/files.js';
+import { closeFile, onSaved, openFile } from '../ide/files.js';
+import { homeName } from '../placement.js';
 import { flushDoc } from './autosave.js';
 import { reloadResources, type ResourcesDeps } from './load.js';
 import { docSlug } from './model.js';
@@ -16,6 +17,26 @@ const refuse = (d: ResourcesDeps, text: string): false => { d.store.getState().s
 // the docs this session made, until the editor lets go of each; only such a doc left blank is thrown away
 const fresh = new Set<string>();
 export const isFresh = (rootId: string, path: string): boolean => fresh.has(key(rootId, path));
+
+// the fleet.json last opened here, whose save says what nothing in the file can
+let configFile: string | undefined;
+onSaved((d, id, path) => {
+  const { fleet, via } = d.store.getState();
+  if (key(id, path) === configFile && via) d.store.getState().showToast(`Saved on ${homeName(fleet, via)}. Most of it takes effect when its daemon next starts`, 'ok');
+});
+
+/** The home's fleet.json in the shelf's editor: the Mac's text editor cannot reach it. */
+export async function openFleetConfig(d: ResourcesDeps): Promise<void> {
+  try {
+    const { rootId, path } = await d.api.call('fleet.config', {});
+    configFile = key(rootId, path);
+    if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false);
+    d.store.getState().toggleResources(true);
+    await openFile(d, rootId, path);
+  } catch (e) {
+    d.store.getState().showToast((e as Error).message);
+  }
+}
 
 /** Writes <slug>.md under the root and opens it. A taken or empty name is said, and nothing is written. */
 export async function createDoc(d: ResourcesDeps, rootId: string, typed: string): Promise<boolean> {

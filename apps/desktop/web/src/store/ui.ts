@@ -37,6 +37,8 @@ export type UiState = {
   sideCardOpen: boolean;
   sideCardCollapsed: boolean;
   namingRobot: boolean;
+  // the board column New Robot places the robot in, when asked from one other than the first
+  namingColumn?: string;
   missionPrompt: boolean;
   palette: boolean;
   closingRobot?: string;
@@ -112,7 +114,7 @@ export type UiActions = {
   closeCard(): void;
   toggleCardSize(): void;
   toggleSideCard(open?: boolean): void;
-  setNamingRobot(open: boolean): void;
+  setNamingRobot(open: boolean, column?: string): void;
   setMissionPrompt(open: boolean): void;
   setPalette(open: boolean): void;
   setClosingRobot(id?: string): void;
@@ -249,7 +251,7 @@ export const createUiSlice = (storage: AppStorage | undefined, view: View): Stat
     setStarredRow: (id) => set({ starredRow: id }),
     closeCard: () => set({ card: undefined }),
     toggleCardSize: () => set((s) => ({ cardSize: s.cardSize === 'half' ? 'full' : 'half' })),
-    setNamingRobot: (open) => set({ namingRobot: open }),
+    setNamingRobot: (open, column) => set({ namingRobot: open, namingColumn: column }),
     setMissionPrompt: (open) => set({ missionPrompt: open }),
     setPalette: (open) => set({ palette: open }),
     setClosingRobot: (id) => set({ closingRobot: id }),

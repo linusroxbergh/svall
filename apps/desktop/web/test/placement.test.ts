@@ -1,7 +1,7 @@
 import { describe, expect, it, test } from 'vitest';
 import { farRootId } from '@svall/protocol';
 import type { MachineId } from '@svall/protocol';
-import { awayLine, destinationName, elsewhere, homeName, isPlaced, machineOf, unreachableOf, type Via, readsOn } from '../src/placement.js';
+import { awayLine, destinationName, elsewhere, homeName, isPlaced, machineOf, myMachine, robotMachine, rootAway, rootMachine, startsBeside, startsOn, unreachableOf, type Via, readsOn } from '../src/placement.js';
 import { statusOf } from '../src/selectors.js';
 import { chr } from './fixtures.js';
 
@@ -115,5 +115,61 @@ describe('a window on a worker', () => {
     const phone: Via = { machine: W, home: HOME };
     expect(awayLine({ machines: { [HOME]: { name: 'ada-mac', reachable: true, since: 0 } } }, { machine: undefined }, phone)).toBe('ada-mac is asleep');
     expect(homeName({}, phone)).toBe('the Mac');
+  });
+});
+
+describe('what a window reads as its own machine', () => {
+  const f = { machines: { [VAULT]: { name: 'linus-vault', reachable: true, since: 0 } } };
+  const far: Via = { machine: VAULT, home: HOME, name: 'studio', online: true };
+  const apart: Via = { machine: VAULT, home: HOME, name: 'studio' };
+  const shell = { machine: BOX };
+
+  test('this window\'s machine is its daemon\'s word on a far home, and its shell\'s on any other', () => {
+    expect(myMachine({ via: far, shell })).toBe(VAULT);
+    expect(myMachine({ shell })).toBe(BOX);
+    expect(myMachine({})).toBeUndefined();
+  });
+
+  test('a robot that names no machine runs on the home, which is this machine for a window with no other', () => {
+    expect(robotMachine({}, { via: far, shell })).toBe(HOME);
+    expect(robotMachine({}, { via: apart, shell })).toBe(HOME);
+    expect(robotMachine({}, { shell })).toBe(BOX);
+    expect(robotMachine({ machine: VAULT }, { via: far, shell })).toBe(VAULT);
+    expect(robotMachine({ machine: VAULT }, { shell })).toBe(VAULT);
+  });
+
+  test('a shelf root is on the home while the window follows it, and on this machine while it stands in', () => {
+    expect(rootMachine('r:/h/.claude', { via: far })).toBe(HOME);
+    expect(rootMachine('r:/h/.claude', { via: apart })).toBe(VAULT);
+    expect(rootMachine('r:/h/.claude', { shell })).toBe(BOX);
+    expect(rootMachine(farRootId(BOX, '/h/app'), { via: far })).toBe(BOX);
+  });
+
+  test('a shelf root elsewhere goes by name, and one here by none', () => {
+    expect(rootAway(f, 'r:/h/.claude', { via: far })).toBe('studio');
+    expect(rootAway(f, 'r:/h/.claude', { via: apart })).toBeUndefined();
+    expect(rootAway(f, 'r:/h/.claude', { shell })).toBeUndefined();
+    expect(rootAway(f, 'r:/h/.claude', {})).toBeUndefined();
+    expect(rootAway(f, farRootId(VAULT, '/h/app'), { via: far })).toBeUndefined();
+    expect(rootAway(f, farRootId(VAULT, '/h/app'), { shell })).toBe('linus-vault');
+    expect(rootAway(f, farRootId(VAULT, '/h/app'), {})).toBe('linus-vault');
+  });
+
+  test('a window its own daemon serves reads this machine\'s roots and starts here, though the home is online', () => {
+    const served: Via = { ...far, served: true };
+    expect(rootMachine('r:/h/.claude', { via: served })).toBe(VAULT);
+    expect(rootAway(f, 'r:/h/.claude', { via: served })).toBeUndefined();
+    expect(rootMachine(farRootId(BOX, '/h/app'), { via: served })).toBe(BOX);
+    expect(startsOn(served)).toBe(VAULT);
+    expect([startsBeside({ machine: VAULT }, served), startsBeside({}, served)]).toEqual([true, false]);
+    // a robot on the home is still the home's
+    expect(robotMachine({}, { via: served })).toBe(HOME);
+  });
+
+  test('a new robot starts on the home it follows, else on this machine, beside the robots there', () => {
+    expect(startsOn(far)).toBe(HOME);
+    expect(startsOn(apart)).toBe(VAULT);
+    expect([startsBeside({}, far), startsBeside({ machine: HOME }, far), startsBeside({ machine: VAULT }, far)]).toEqual([true, true, false]);
+    expect([startsBeside({}, apart), startsBeside({ machine: VAULT }, apart)]).toEqual([false, true]);
   });
 });

@@ -11,6 +11,10 @@ final class ShellRouter {
     private let browsers: BrowserManager
     private let keys = KeyMonitor()
     private let notifier = Notifier()
+    // a refusal may be the page's stale word for this machine, so it hears the id again
+    private lazy var localActions = LocalActions(
+        refuse: { [weak self] in self?.bridge.send($0); self?.sendShellInfo() },
+        pickFolder: { [weak self] in self?.pickFolder(start: $0) })
     // one host operation at a time: the page watches this one until it ends or is cancelled
     private var hostRun: HostProcess?
     // `svall host list` for the Machines pane, and whether it was asked for again while it ran
@@ -223,28 +227,11 @@ final class ShellRouter {
             quitFlow.stopped(ok: ok)
         case .openUrl(let url):
             ExternalURL.open(url)
-        case .openFolder(let path):
-            ExternalURL.openFolder(path)
-        case .reveal(let path):
-            ExternalURL.reveal(path)
-        case .openFile(let path):
-            ExternalURL.openFile(path)
+        case .openFolder, .reveal, .openFile, .folderPick:
+            localActions.run(msg)
         case .setupPlan:
-            AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
-        case .folderPick(let start):
-            let panel = NSOpenPanel()
-            panel.canChooseFiles = false
-            panel.canChooseDirectories = true
-            panel.canCreateDirectories = true
-            panel.prompt = "Choose"
-            // a suggested folder setup has yet to make opens on the folder it would go in
-            var dir = URL(fileURLWithPath: (start as NSString).expandingTildeInPath)
-            if !FileManager.default.fileExists(atPath: dir.path) { dir = dir.deletingLastPathComponent() }
-            panel.directoryURL = dir
-            panel.begin { [weak self] response in
-                guard response == .OK, let url = panel.url else { return }
-                self?.bridge.send(.folderPicked(path: (url.path as NSString).abbreviatingWithTildeInPath))
-            }
+            // the CLI may have made this machine's id, which the page then has to name
+            AppRuntime.run(["setup", "--plan", "--login-shell"]) { [weak self] ok, text in self?.sendShellInfo(); self?.bridge.send(.setupResult(step: "plan", ok: ok, json: text)) }
         case .setupLogin(let agent):
             guard let command = ["claude": "claude auth login", "codex": "codex login", "opencode": "opencode auth login"][agent] else { return }
             DispatchQueue.global(qos: .userInitiated).async {
@@ -416,6 +403,7 @@ final class ShellRouter {
         guard portWatch != nil else { return }
         if let connection = SvallHome.connection() {
             stopPortWatch()
+            sendShellInfo()
             return bridge.send(.connection(connection))
         }
         // svalld makes the file before it writes the port into it, which stirs nothing in the home
@@ -430,7 +418,23 @@ final class ShellRouter {
 
     private func sendShellInfo() {
         bridge.send(.shellInfo(home: SvallHome.path, log: SvallHome.logTail(), op: OnePassword.path != nil,
-                               ghosttyKeys: GhosttyKeybinds.userChords(), bindings: BindingsRecord.read()))
+                               ghosttyKeys: GhosttyKeybinds.userChords(), bindings: BindingsRecord.read(), machine: SvallHome.machineId()))
+    }
+
+    private func pickFolder(start: String) {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Choose"
+        // a suggested folder setup has yet to make opens on the folder it would go in
+        var dir = URL(fileURLWithPath: (start as NSString).expandingTildeInPath)
+        if !FileManager.default.fileExists(atPath: dir.path) { dir = dir.deletingLastPathComponent() }
+        panel.directoryURL = dir
+        panel.begin { [weak self] response in
+            guard response == .OK, let url = panel.url else { return }
+            self?.bridge.send(.folderPicked(path: (url.path as NSString).abbreviatingWithTildeInPath))
+        }
     }
 
     private func pressed(_ event: NSEvent) {

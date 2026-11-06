@@ -11,6 +11,7 @@ import { MachineLine } from './indicators.js';
 import { keyTip, type ActionId } from './keys.js';
 import { closeSide, isTerminal, kindOf, pick, shows, snapRatio, split, type Kind, type Panes, type Side, type Surface } from './panes.js';
 import { awayLine, machineOf } from './placement.js';
+import { TerminalThere } from './OnMachine.js';
 import { panesOf, slotStatus } from './selectors.js';
 import { TerminalArea } from './TerminalArea.js';
 
@@ -83,7 +84,12 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
           : <button className="btn sm psplit" data-testid="pane-split" data-tip="Split in two" onClick={() => set(split(panes))}><Split />Split</button>}
         {(side === 'right' || !two) && trail}
       </div>
-      {on && <MachineLine name={on} className="pon" testid={`pane-${side}-machine`} />}
+      {on && (
+        <div className="pon">
+          <MachineLine name={on} className="" testid={`pane-${side}-machine`} />
+          <TerminalThere name={on} dir={c.cwd} className="pon-there" testid={`pane-${side}-terminal-there`} />
+        </div>
+      )}
       <div className="pbody">{body(surface, side)}</div>
     </div>
   );

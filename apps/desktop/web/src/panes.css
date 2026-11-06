@@ -18,7 +18,7 @@
 .phead .ticon, .phead .tx { padding: 0 var(--sp-lg); }
 .pbody { position: relative; flex: 1; min-height: 0; }
 /* a robot on a worker: under each head, the machine it runs on */
-.pon { flex: none; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-bottom: 1px solid var(--line-soft);
+.pon { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-sm); padding: var(--sp-xs) var(--sp-lg); border-bottom: 1px solid var(--line-soft);
   background: color-mix(in srgb, var(--away) 14%, var(--surface-2)); font-size: var(--text-sm); }
 .pon b { font-weight: var(--w-semibold); }
 /* the panes' grip takes room of its own: a terminal is drawn over the page, so a grip lying over its edge would sit under it */
@@ -36,3 +36,4 @@
 .revive.away { place-content: center; gap: var(--sp-xl); padding: var(--sp-3xl); background: var(--surface-1); }
 .revive.away:has(pre) { place-content: stretch; grid-template-rows: auto minmax(0, 1fr); }
 .revive.away pre { place-self: stretch; margin: 0; overflow: auto; font: var(--text-sm)/var(--lh) var(--mono); color: var(--ink-3); }
+.pon-there { flex: none; padding: 0; border: 0; background: none; color: var(--away); font: inherit; cursor: pointer; text-decoration: underline; }

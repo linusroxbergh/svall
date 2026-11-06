@@ -6,6 +6,18 @@ import { terminalOn } from './MoveSheet.js';
 import { Section } from './Section.js';
 import { VarField } from './VarField.js';
 
+export const cdLine = (dir: string): string => `cd '${dir.replaceAll("'", "'\\''")}'`;
+
+/** A terminal on the machine for what only it can reach, with a `cd` to `dir` typed there; a machine this Mac has no ssh to, such as another Mac, offers none. */
+export function TerminalThere({ name, dir, className = 'btn sm', testid }: { name: string; dir: string; className?: string; testid: string }) {
+  const listed = useApp((s) => s.machines !== undefined && !s.machinesError);
+  const row = useApp((s) => s.machines?.find((m) => m.name === name));
+  // a machine added since the list was read is missing from it, so the list is asked for once more
+  useEffect(() => { if (!listed || !row) app.bridge.send({ type: 'host.list' }); }, [name]);
+  if (listed && !row?.ssh) return null;
+  return <button className={className} data-testid={testid} data-tip={`A terminal on ${name} in ${dir}`} onClick={() => terminalOn(name, cdLine(dir))}>Terminal there</button>;
+}
+
 /**
  * What of a placed robot's agent setup will not work on its machine, each with its one way on: copy its keys, a terminal
  * there, or what to do; what runs only on a Mac, or you ticked as not needed there, in one line under them.

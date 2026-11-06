@@ -5,7 +5,7 @@ import { accountHome, basename, shortPath } from '../paths.js';
 import { panesOf } from '../selectors.js';
 import type { AppStore } from '../store/index.js';
 import { dropBuffer, editBuffer, getBuffer, isDirty, key, loadBuffer, markSaved, replaceText, select, type Buffer } from './buffers.js';
-import { readsOn } from '../placement.js';
+import { machineOf, readsOn, robotMachine } from '../placement.js';
 import { Compartment, type Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { editorExtensions, languageFor, readOnlyExtensions } from './codemirror.js';
@@ -72,7 +72,10 @@ export async function openPath(d: FilesDeps & { bridge: Pick<Bridge, 'present' |
     const s = d.store.getState();
     if (code === 'binary' || code === 'too_large') {
       s.reveal(id, path);
-      if (d.bridge.present) d.bridge.send({ type: 'openFile', path: abs });
+      const on = machineOf(s.fleet, c, s.via);
+      const machine = robotMachine(c, s);
+      if (on) s.showToast(`${shortPath(abs)} is on ${on}, and the editor cannot show it`);
+      else if (d.bridge.present) d.bridge.send({ type: 'openFile', path: abs, ...(machine && { machine }) });
     } else if (code === 'not_found' && await d.api.call('fs.list', { id, path }).then(() => true, () => false)) s.reveal(id, path, true);
     else s.showToast(code === 'not_found' ? `${shortPath(abs)} is not there` : (e as Error).message);
     return;

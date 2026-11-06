@@ -15,8 +15,27 @@ export const destinationName = (f: Machines, to: MachineId, via?: Via): string =
  */
 export const isPlaced = (c: Pick<Robot, 'machine'>, via?: Via): boolean => (via ? c.machine !== via.machine : c.machine !== undefined);
 
+// what a window knows of the machines: its daemon's word on a far home, its shell's on any other
+type Seat = { via?: Via; shell?: { machine?: string } };
+
+/** This window's machine, by id. */
+export const myMachine = (w: Seat): string | undefined => w.via?.machine ?? w.shell?.machine;
+
+/** The machine a robot runs on, by id: one that names none runs on the home. */
+export const robotMachine = (c: Pick<Robot, 'machine'>, w: Seat): string | undefined => c.machine ?? w.via?.home ?? w.shell?.machine;
+
+/** The machine a shelf root's files are on, by id: a worker's clone names it, and any other is the daemon's that lists it, this one's while it stands in for the home. */
+export const rootMachine = (id: string, w: Seat): string | undefined => farRootOf(id)?.machine ?? (w.via?.online && !w.via.served ? w.via.home : myMachine(w));
+
+/** The machine a shelf root's files are on, by name, when that is not this window's. */
+export const rootAway = (f: Machines, id: string, w: Seat): string | undefined => {
+  const on = rootMachine(id, w);
+  if (on === myMachine(w)) return undefined;
+  return on === w.via?.home ? homeName(f, w.via!) : machineName(f, on as MachineId);
+};
+
 /** The machine a new robot starts on: the home the window follows, else this one, which also serves a window its home dials. */
-const startsOn = (via: Via): MachineId => (via.online && !via.served ? via.home : via.machine);
+export const startsOn = (via: Via): MachineId => (via.online && !via.served ? via.home : via.machine);
 
 /** Whether a robot works on the machine a new one starts on, so that its folder is there. */
 export const startsBeside = (c: Pick<Robot, 'machine'>, via: Via): boolean => (c.machine ?? via.home) === startsOn(via);

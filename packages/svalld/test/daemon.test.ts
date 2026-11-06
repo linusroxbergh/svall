@@ -415,6 +415,69 @@ runIf('startDaemon', () => {
     }
   });
 
+  it('on a real first start lists where a robot can start, opens fleet.json alone through its root, and refuses a typed path that is no folder', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const d = await start({ home, port: 0, log: silentLogger });
+    let running = d;
+    const paths = resolvePaths(home);
+    const ws = new WebSocket(`ws://127.0.0.1:${d.port}`);
+    let next = 1;
+    const call = <R = unknown>(method: string, params: unknown) => new Promise<{ result: R; error?: { code: string; message: string } }>((resolve) => {
+      const id = next++;
+      const take = (raw: WebSocket.RawData) => { const m = JSON.parse(raw.toString()) as { id?: number }; if (m.id === id) { ws.off('message', take); resolve(m as never); } };
+      ws.on('message', take);
+      ws.send(JSON.stringify({ id, method, params }));
+    });
+    try {
+      await new Promise((r) => ws.once('open', r));
+      ws.send(JSON.stringify({ token: d.token }));
+      const island = d.fleet.createIsland({ name: 'x' });
+      const c = await d.fleet.createRobot({ islandId: island.id, cwd: fs.realpathSync(makeHome()) });
+      await d.store.flush();
+      const listed = await call<{ machine: string; folders: { path: string }[]; defaults: { cwd: string } }>('workspace.clones', {});
+      expect(listed.result.machine).toBe(machineId());
+      expect(listed.result.folders.map((f) => f.path)).toEqual(expect.arrayContaining([c.cwd, listed.result.defaults.cwd]));
+
+      const { result: config } = await call<{ rootId: string; path: string }>('fleet.config', {});
+      expect(config).toEqual({ rootId: `r:${home}`, path: 'fleet.json' });
+      const read = await call<{ text: string; mtimeMs: number; root: string }>('fs.read', { id: config.rootId, path: config.path });
+      expect(JSON.parse(read.result.text)).toMatchObject({ id: expect.any(String) });
+      expect(fs.existsSync(paths.state)).toBe(true);
+      const unknownRoot = { error: { code: 'not_found', message: `no robot ${config.rootId}` } };
+      expect(await call('fs.read', { id: config.rootId, path: 'state.json' })).toMatchObject(unknownRoot);
+      expect(await call('fs.read', { id: config.rootId, path: paths.state })).toMatchObject(unknownRoot);
+      expect(await call('fs.list', { id: config.rootId, path: '' })).toMatchObject(unknownRoot);
+      expect(await call('fs.write', { id: config.rootId, path: config.path, text: '{ nope', mtimeMs: read.result.mtimeMs, root: read.result.root })).toMatchObject({ error: { code: 'invalid' } });
+      expect(fs.readFileSync(paths.fleetConfig, 'utf8')).toBe(read.result.text);
+      const text = `${JSON.stringify({ ...JSON.parse(read.result.text), defaultCwd: os.tmpdir() }, null, 2)}\n`;
+      expect(await call('fs.write', { id: config.rootId, path: config.path, text, mtimeMs: read.result.mtimeMs, root: read.result.root })).toMatchObject({ result: { mtimeMs: expect.any(Number) } });
+
+      // a link to a key is refused as the key is, by what this start handed the root
+      const aside = `${paths.fleetConfig}.aside`;
+      fs.renameSync(paths.fleetConfig, aside);
+      fs.symlinkSync(paths.token, paths.fleetConfig);
+      expect(await call('fs.read', { id: config.rootId, path: config.path })).toMatchObject({ error: { code: 'invalid' } });
+      fs.rmSync(paths.fleetConfig);
+      fs.renameSync(aside, paths.fleetConfig);
+
+      const robots = Object.keys(d.store.state.robots).length;
+      for (const cwd of [path.join(home, 'no-such'), paths.fleetConfig, path.join(paths.fleetConfig, 'under'), 'relative/path']) {
+        expect(await call('robot.create', { islandId: island.id, cwd })).toMatchObject({ error: { code: 'not_a_folder' } });
+      }
+      expect(Object.keys(d.store.state.robots)).toHaveLength(robots);
+
+      // what the editor saved is what the next start runs on
+      ws.close();
+      await d.stop();
+      running = await start({ home, port: 0, log: silentLogger });
+      expect(running.store.state.defaultCwd).toBe(os.tmpdir());
+    } finally {
+      ws.close();
+      await running.stop();
+    }
+  });
+
   it('refuses to start with an install hint when tmux is not on PATH', async () => {
     const home = makeHome();
     const saved = process.env.PATH;

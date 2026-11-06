@@ -9,7 +9,7 @@ import { Tree } from '../ide/Tree.js';
 import { followLink } from '../LinkAsk.js';
 import { LinkIcon } from '../map/LinkIcon.js';
 import { shortPath } from '../paths.js';
-import { machineName } from '../placement.js';
+import { machineName, rootAway } from '../placement.js';
 import { createDoc, deleteDoc, deleteResource, renameDoc } from './docs.js';
 import { chooseResource } from './choose.js';
 import { openedItself } from './keys.js';
@@ -70,11 +70,11 @@ function CardRow({ kind, item }: { kind: Kind; item: CardItem }) {
   );
 }
 
-// a worker's clone, `far` the worker's name, is read there: its rows are neither shown in Finder nor deleted from here, and
-// one with no file of its own does nothing
-function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: string }) {
+// a worker's clone, `far` the worker's name, is read there, and its rows are not deleted from here. A root on another machine,
+// `away` its name, is not shown in Finder, so a row of it with no file of its own does nothing
+function FileRow({ kind, item, rootId, far, away }: { kind: Kind; item: ResourceItem; rootId?: string; far?: string; away?: string }) {
   const o = item.open;
-  const idle = far !== undefined && !o;
+  const idle = away !== undefined && !o;
   const dirty = useApp((s) => (o ? s.ide[o.rootId]?.dirty ?? NONE : NONE));
   const chosen = useChosen(item.id);
   const [renaming, setRenaming] = useState(false);
@@ -85,10 +85,10 @@ function FileRow({ kind, item, far }: { kind: Kind; item: ResourceItem; far?: st
     <>
       <div className="res-row" data-doc={isDoc}>
         <button className="res-item list-row" data-testid={`resources-item-${kind}-${item.name}`} data-active={chosen} data-dirty={unsaved} data-off={item.off ?? false} data-opens={opensItself(item)}
-          aria-disabled={idle || undefined} data-tip={idle ? `${item.reveal} (on ${far})` : o || far ? item.reveal : `${item.reveal} (opens in Finder)`}
-          onClick={() => { void chooseResource(deps(), item, far !== undefined); }}>
+          aria-disabled={idle || undefined} data-tip={idle ? `${item.reveal} (on ${away})` : o || away ? item.reveal : `${item.reveal} (opens in Finder)`}
+          onClick={() => { void chooseResource(deps(), item, rootId); }}>
           <b>
-            {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && !far && <em>Finder</em>}
+            {item.name}{unsaved && <i className="res-unsaved" aria-label="unsaved" />}{item.off && <em>off</em>}{!o && !away && <em>Finder</em>}
             {item.tag && <em className="res-tag" data-testid={`resources-tag-${kind}-${item.name}`}>{item.tag}</em>}
             {badge && <em className="res-bdg" data-kind={badge} data-testid={`resources-badge-${kind}-${item.name}`}>{badge}</em>}
           </b>
@@ -170,6 +170,7 @@ export function List() {
   const groups = visible(source, what, query);
   const farAt = source && farRootOf(source.rootId);
   const far = farAt ? machineName(fleet, farAt.machine) : undefined;
+  const away = useApp((s) => source && rootAway(s.fleet, source.rootId, s));
   // a new agent profile is made where the list shows them; a new doc wherever else docs show
   const profile = what === 'agentProfiles' || source?.tier === 'profiles';
   const addTo = profile ? source?.agentProfiles : what === 'all' || what === 'docs' ? source?.docs : undefined;
@@ -199,7 +200,7 @@ export function List() {
                     {badge && <em className="res-bdg" data-kind={badge} data-testid={`resources-kind-badge-${g.kind}`}>{badge}</em>}
                     <span className="n">{g.items.length}</span>
                   </h4>
-                  {g.items.map((i) => (isCard(i) ? <CardRow key={i.id} kind={g.kind} item={i} /> : <FileRow key={i.id} kind={g.kind} item={i} far={far} />))}
+                  {g.items.map((i) => (isCard(i) ? <CardRow key={i.id} kind={g.kind} item={i} /> : <FileRow key={i.id} kind={g.kind} item={i} rootId={source?.rootId} far={far} away={away} />))}
                 </section>
               );
             })}

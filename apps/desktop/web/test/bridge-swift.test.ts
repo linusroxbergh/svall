@@ -6,6 +6,7 @@ import { actionIds } from '../src/keys.js';
 // the shell decodes and encodes each message by hand, so a name changed on one side alone only shows up here
 const ts = fs.readFileSync(new URL('../src/bridge.ts', import.meta.url), 'utf8');
 const swift = fs.readFileSync(new URL('../../mac/Sources/Svall/Bridge.swift', import.meta.url), 'utf8');
+const router = fs.readFileSync(new URL('../../mac/Sources/Svall/ShellRouter.swift', import.meta.url), 'utf8');
 
 type Messages = Record<string, string[]>;
 const sorted = (m: Messages): Messages => Object.fromEntries(Object.entries(m).map(([k, v]) => [k, [...v].sort()]));
@@ -66,8 +67,16 @@ describe('bridge between the page and the shell', () => {
     expect([...keys].sort()).toEqual([...new Set(['type', ...fields])].sort());
   });
 
-  it('the shell info carries the home, its log, 1Password, the Ghostty chords and the Mac\'s bindings', () => {
-    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['bindings', 'ghosttyKeys', 'home', 'log', 'op']);
+  it('the router hands each local action to the guard on its own id reader, and tells the page this machine again where the id can have changed', () => {
+    expect(router).toMatch(/case \.openFolder, \.reveal, \.openFile, \.folderPick:\s+localActions\.run\(msg\)/);
+    expect(router).not.toMatch(/ExternalURL\.(openFolder|reveal|openFile)\(/);
+    expect(router).toMatch(/LocalActions\(\s*refuse: \{ \[weak self\] in self\?\.bridge\.send\(\$0\); self\?\.sendShellInfo\(\) \},\s*pickFolder: \{[^}]*\}\)/);
+    expect(router).toMatch(/"--plan", "--login-shell"\]\) \{ \[weak self\] ok, text in self\?\.sendShellInfo\(\);/);
+    expect(router).toMatch(/stopPortWatch\(\)\s+sendShellInfo\(\)\s+return bridge\.send\(\.connection\(connection\)\)/);
+  });
+
+  it('the shell info carries the home, its log, 1Password, the Ghostty chords, the Mac\'s bindings and this machine\'s id', () => {
+    expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['bindings', 'ghosttyKeys', 'home', 'log', 'machine', 'op']);
   });
 });
 

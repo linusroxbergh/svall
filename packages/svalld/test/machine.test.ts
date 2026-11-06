@@ -178,3 +178,16 @@ describe('readRegistry', () => {
     expect(() => readRegistry(dir)).toThrow(path.join(dir, 'machines.json'));
   });
 });
+
+describe('the app\'s shell', () => {
+  it('reads this machine\'s id from the folder the daemon writes it in', () => {
+    const saved = process.env.SVALL_CONFIG_DIR;
+    delete process.env.SVALL_CONFIG_DIR;
+    try {
+      const swift = fs.readFileSync(new URL('../../../apps/desktop/mac/Sources/Svall/SvallHome.swift', import.meta.url), 'utf8');
+      expect(swift).toContain(`NSHomeDirectory() + "/${path.relative(os.homedir(), configDir())}"`);
+    } finally {
+      if (saved !== undefined) process.env.SVALL_CONFIG_DIR = saved;
+    }
+  });
+});

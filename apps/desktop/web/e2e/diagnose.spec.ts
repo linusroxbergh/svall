@@ -6,7 +6,7 @@ import { theme } from '../src/theme.js';
 test('the connect screen names the daemon log and shows its last lines', async ({ page }) => {
   const { sent } = await nativeShell(page, {
     port: 0, token: '',
-    info: { type: 'shell.info', home: '/tmp/fleet-x', log: ['2026-09-14T10:00:00Z error svalld failed to start: listen EADDRINUSE'], op: false },
+    info: { type: 'shell.info', home: '/tmp/fleet-x', machine: 'this-mac', log: ['2026-09-14T10:00:00Z error svalld failed to start: listen EADDRINUSE'], op: false },
   });
   await page.clock.install();
   await page.goto('/');
@@ -15,7 +15,7 @@ test('the connect screen names the daemon log and shows its last lines', async (
   await expect(screen).toContainText('/tmp/fleet-x/svalld.log');
   await expect(screen.getByTestId('connect-log')).toContainText('EADDRINUSE');
   await screen.getByTestId('connect-log-reveal').click();
-  expect((await sent()).filter((m) => m.type === 'reveal')).toEqual([{ type: 'reveal', path: '/tmp/fleet-x/svalld.log' }]);
+  expect((await sent()).filter((m) => m.type === 'reveal')).toEqual([{ type: 'reveal', path: '/tmp/fleet-x/svalld.log', machine: 'this-mac' }]);
 });
 
 test('the connect screen asks for svall setup while the daemon has never logged', async ({ page }) => {

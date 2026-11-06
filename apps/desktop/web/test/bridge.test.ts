@@ -67,14 +67,15 @@ describe('bridge', () => {
   it('opens an item by kind: folders through openFolder, files through reveal, links through openUrl', () => {
     const postMessage = vi.fn();
     const b = createBridge({ webkit: { messageHandlers: { svall: { postMessage } } } } as unknown as Window);
-    openItem(b, { kind: 'folder', ref: '/a', label: '', source: 'manual' });
-    openItem(b, { kind: 'file', ref: '/a/x.md', label: '', source: 'manual' });
-    openItem(b, { kind: 'pr', ref: 'https://gh/1', label: '', source: 'auto' });
+    openItem(b, { kind: 'folder', ref: '/a', label: '', source: 'manual' }, 'me');
+    openItem(b, { kind: 'file', ref: '/a/x.md', label: '', source: 'manual' }, 'me');
+    openItem(b, { kind: 'pr', ref: 'https://gh/1', label: '', source: 'auto' }, 'me');
+    openItem(b, { kind: 'folder', ref: '/a', label: '', source: 'manual' }, undefined);
     expect(postMessage.mock.calls.map(([j]) => JSON.parse(j))).toEqual([
-      { type: 'openFolder', path: '/a' }, { type: 'reveal', path: '/a/x.md' }, { type: 'openUrl', url: 'https://gh/1' },
+      { type: 'openFolder', path: '/a', machine: 'me' }, { type: 'reveal', path: '/a/x.md', machine: 'me' }, { type: 'openUrl', url: 'https://gh/1' }, { type: 'openFolder', path: '/a' },
     ]);
-    revealFile(b, 'relative');
-    expect(postMessage).toHaveBeenCalledTimes(3);
+    revealFile(b, 'relative', 'me');
+    expect(postMessage).toHaveBeenCalledTimes(4);
   });
   it('reads the browser-mode connection from the URL', () => {
     expect(connectionFromUrl('?port=47800&token=abc')).toEqual({ host: '127.0.0.1', port: 47800, token: 'abc' });

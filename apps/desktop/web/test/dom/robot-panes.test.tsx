@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import { fleet } from '../fixtures.js';
@@ -71,4 +71,19 @@ test('a robot on this Mac keeps its Files and Changes panes', () => {
   render(<RobotPanes id="c0" />);
   expect(screen.getByTestId('pane-left-files')).toBeTruthy();
   expect(screen.getByTestId('pane-left-changes')).toBeTruthy();
+});
+
+test('a robot elsewhere offers a terminal there from each pane\'s line, and one here offers none', async () => {
+  const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
+  const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
+  act(() => { store.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true }); store.getState().setPanes('c0', { left: 'terminal', right: 'files' }); });
+  const { rerender } = render(<RobotPanes id="c0" />);
+  expect(screen.getByTestId('pane-left-machine').textContent).toBe('Runs on studio');
+  fireEvent.click(screen.getByTestId('pane-right-terminal-there'));
+  expect(store.getState().hostTerminal).toEqual({ run: "cd '/tmp'" });
+  expect(store.getState().hostMachine).toBe('studio');
+  act(() => store.getState().applyPatch([{ op: 'add', path: '/robots/c0/machine', value: MAC }]));
+  rerender(<RobotPanes id="c0" />);
+  expect(screen.queryByTestId('pane-left-machine')).toBeNull();
+  expect(screen.queryByTestId('pane-left-terminal-there')).toBeNull();
 });

@@ -162,6 +162,7 @@ export class FollowApi extends Api {
     const stuck = !!route && !this.homeOnline && this.failedOpens >= OPENS;
     this.store.getState().setHome({ name, state: stuck ? 'unreachable' : route && !this.homeOnline ? 'connecting' : state, ...(stuck ? { detail: this.stuckDetail(name) } : detail && { detail }), ...(newer && { newer }), ...(release && { release }), ...(master && { master }) });
     if (route) {
+      this.setServed(false);
       this.follow(route, token!);
       return;
     }

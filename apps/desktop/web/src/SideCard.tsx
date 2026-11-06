@@ -12,10 +12,9 @@ import { MachineLine } from './indicators.js';
 import { Info } from './Info.js';
 import { keyTip } from './keys.js';
 import { ago, hintText } from './map/tokenText.js';
-import { terminalOn } from './MoveSheet.js';
-import { OnMachine } from './OnMachine.js';
+import { OnMachine, TerminalThere } from './OnMachine.js';
 import { buttonTry, fieldTry, useRefusal } from './frozen.js';
-import { answers, awayLine, frozenWhy, homeName, machineOf } from './placement.js';
+import { answers, awayLine, frozenWhy, homeName, machineOf, robotMachine } from './placement.js';
 import { figureOf, figureUrl, stepFigure } from './portraits.js';
 import { usePromptHistory } from './promptHistory.js';
 import { DocsList } from './resources/DocsList.js';
@@ -76,6 +75,7 @@ export function SideCard({ id }: { id: string }) {
   const readOnly = useApp((s) => { const why = frozenWhy(s, id); return why && `Read-only until ${why.once}.`; });
   const machines = useApp((s) => s.fleet.machines);
   const via = useApp((s) => s.via);
+  const shell = useApp((s) => s.shell);
   const islands = useApp((s) => s.fleet.islands);
   const fleet = { machines, islands };
   const hover = useApp((s) => s.dropHover?.kind === 'robot' && s.dropHover.id === id);
@@ -176,6 +176,7 @@ export function SideCard({ id }: { id: string }) {
             )}
             <LastActivity at={c.agent ? lastActive(c.agent) : c.shell.lastOutputAt} />
             {failed && <div className="row" data-testid="side-resume-error"><span>resume failed</span><b data-error>{failed}</b></div>}
+            {placed && <div className="row" data-testid="side-dev-server"><span>dev server</span><b>stays on {placed}; forward its port by hand to open it here</b></div>}
           </div>
         </Section>
       </div>
@@ -189,12 +190,9 @@ export function SideCard({ id }: { id: string }) {
               ))}
           </div>
         )}
-        {placed ? (
-          <button className="btn sm" data-testid="side-finder" data-tip={`A terminal on ${placed} in ${c.cwd}`}
-            onClick={() => terminalOn(placed, `cd '${c.cwd.replaceAll("'", "'\\''")}'`)}>Terminal there</button>
-        ) : (
+        {placed ? <TerminalThere name={placed} dir={c.cwd} testid="side-finder" /> : (
           <button className="btn sm" data-testid="side-finder" data-tip={`Reveal ${c.cwd} in Finder`}
-            onClick={() => openFolder(app.bridge, c.cwd)}>Finder</button>
+            onClick={() => openFolder(app.bridge, c.cwd, robotMachine(c, { via, shell }))}>Finder</button>
         )}
         <ResourcesButton root={c.repo?.mainRoot ?? c.cwd} machine={c.machine} testid="side-resources" />
         <button className="btn sm pri" data-testid="side-open" onClick={() => app.store.getState().focus(id)}>Open terminal</button>

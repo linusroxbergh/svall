@@ -181,8 +181,16 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 42', () => {
-    expect(PROTOCOL_VERSION).toBe(42);
+  it('is 43', () => {
+    expect(PROTOCOL_VERSION).toBe(43);
+  });
+
+  it('was 42 without the folders a new robot can start in, and the root of fleet.json', () => {
+    const folders = [{ path: '/home/ada/app', clone: true }];
+    const defaults = { cwd: '/home/ada', home: '/home/ada/.svall/home' };
+    expect(methods['workspace.clones'].result.parse({ machine: UUID_A, folders, defaults })).toEqual({ machine: UUID_A, folders, defaults });
+    expect(methods['workspace.clones'].result.safeParse({ folders }).success).toBe(false);
+    expect(methods['fleet.config'].result.parse({ rootId: 'r:/home/ada/.svall', path: 'fleet.json' }).path).toBe('fleet.json');
   });
 
   it('was 41 without a worker\'s copy of its agent setup, its rows and ticks, and each field\'s tick in a row', () => {
