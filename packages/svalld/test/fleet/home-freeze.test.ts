@@ -158,6 +158,7 @@ describe('a frozen home', () => {
   it('the outcome goes on a marker once: the same again changes nothing, another is refused', () => {
     const paths = resolvePaths(makeHome());
     createMarker(paths, marker());
+    expect(fs.statSync(paths.homeMoving).mode & 0o777).toBe(0o600);
     const enrol = { worker: { homeMachineId: STUDIO, fleetId: '11111111-2222-3333-4444-555555555555', token: 'x'.repeat(48), homeName: 'studio' } } as never;
     expect(addEnrol(paths, ID, enrol).enrol).toEqual(enrol);
     const once = fs.readFileSync(paths.homeMoving);

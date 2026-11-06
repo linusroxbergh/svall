@@ -173,8 +173,9 @@ describe('followQuit', () => {
     await ask();
     q.store.getState().hostStarted('home', { name: 'studio' });
     q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true });
-    // the way back's debt stands from its pause, before any mark
+    // the way back's debt stands from its pause, before any mark; this Mac, a worker, is not what pauses
     q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+    q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
     await ask();
     q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
     await ask();

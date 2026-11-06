@@ -19,7 +19,7 @@ import type { HostOutcome, StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
 import { printResult } from '../format.js';
-import type { Target } from '../target.js';
+import { farProfile, type Target } from '../target.js';
 import { interactiveSsh, stepLine } from './host.js';
 import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
@@ -87,7 +87,7 @@ function moveDeps(t: Target, json: boolean): MoveDeps {
   return {
     emit: flowReporter(json), openMaster: (destination) => SshMaster.open({ destination }), registry: MachineRegistry.load(), target: t, me: machineId(), daemon: realHomeDaemon(t),
     client: () => Client.connect(t.home),
-    farClient: async (master, entry, fleetHome, fleetId) => (await connectForwarded(master, entry, { fleetId: FleetId.parse(fleetId), fleetHome })).client,
+    farClient: async (master, entry, fleetHome, fleetId) => (await connectForwarded(master, entry, { fleetId: FleetId.parse(fleetId), fleetHome, here: { profile: farProfile(t) } })).client,
   };
 }
 
