@@ -79,8 +79,8 @@ export const MachineLink = z.object({
 });
 export type MachineLink = z.infer<typeof MachineLink>;
 
-/** How a window stands with the fleet's home: `auth` and `version` wait for a person, as does a mismatch, which `detail` names. */
-export const HomeState = z.enum(['connected', 'connecting', 'unreachable', 'auth', 'version', 'mismatch']);
+/** How a window stands with the fleet's home: `auth` and `version` wait for a person, as do another fleet (`mismatch`) and another machine (`machine`), which `detail` names. */
+export const HomeState = z.enum(['connected', 'connecting', 'unreachable', 'auth', 'version', 'mismatch', 'machine']);
 export type HomeState = z.infer<typeof HomeState>;
 
 /** The robot fields only the machine running the robot writes. */

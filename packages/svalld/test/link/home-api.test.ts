@@ -156,13 +156,13 @@ describe('how a window reaches a far home', () => {
   });
 
   it.each([
-    ['another fleet', { fleetId: crypto.randomUUID() }, `${FLEET.slice(0, 8)}… here`],
-    ['another machine', { machineId: crypto.randomUUID() }, 'machineId'],
-  ])('shows %s, never takes it for the home, and asks nothing again by itself', async (_what, o, word) => {
+    ['another fleet', { fleetId: crypto.randomUUID() }, 'mismatch', `${FLEET.slice(0, 8)}… here`],
+    ['another machine', { machineId: crypto.randomUUID() }, 'machine', 'machineId'],
+  ])('shows %s, never takes it for the home, and asks nothing again by itself', async (_what, o, state, word) => {
     const m = fakeMaster(() => info(o));
     const api = apiOf(dialOf(m.master));
     const a = await api.answer();
-    expect(a).toMatchObject({ state: 'mismatch', detail: expect.stringContaining(word) });
+    expect(a).toMatchObject({ state, detail: expect.stringContaining(word) });
     expect(a).not.toHaveProperty('token');
     expect(JSON.stringify(a)).not.toContain(TOKEN);
     expect(m.forward).not.toHaveBeenCalled();

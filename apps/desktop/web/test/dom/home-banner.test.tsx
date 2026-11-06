@@ -46,10 +46,13 @@ describe('the banner of a home this window cannot follow', () => {
     expect(retryHome).toHaveBeenCalledTimes(1);
   });
 
-  it('shows a mismatch in the words the daemon gives, and goes to no other home', () => {
-    standingIn({ state: 'mismatch', detail: 'studio holds a different fleet than this Mac expects (x… there, y… here)' });
+  it.each([
+    ['another fleet', 'mismatch', 'studio holds a different fleet than this Mac expects (x… there, y… here)'],
+    ['another machine', 'machine', 'studio answered with machineId x, not y'],
+  ] as const)('shows %s in the words the daemon gives, and goes to no other home', (_what, state, detail) => {
+    standingIn({ state, detail });
     render(<HomeBanner />);
-    expect(screen.getByTestId('home-banner').textContent).toBe('studio holds a different fleet than this Mac expects (x… there, y… here)Try again');
+    expect(screen.getByTestId('home-banner').textContent).toBe(`${detail}Try again`);
     expect(screen.queryByTestId('home-detail')).toBeNull();
     expect(screen.queryByTestId('home-upgrade')).toBeNull();
   });

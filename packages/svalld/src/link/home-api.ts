@@ -92,7 +92,7 @@ export class HomeApi {
       const message = (e as Error).message;
       // none of these holds a token: the description is never quoted, and a forward's failure names only ports
       if (e instanceof FleetMismatch) return await this.settle(base, { state: 'mismatch', detail: `${worker.homeName} holds a different fleet than this Mac expects (${e.found.slice(0, 8)}… there, ${worker.fleetId.slice(0, 8)}… here)` });
-      if (e instanceof MachineMismatch) return await this.settle(base, { state: 'mismatch', detail: message });
+      if (e instanceof MachineMismatch) return await this.settle(base, { state: 'machine', detail: message });
       if (e instanceof SshError && e.kind === 'version') return await this.settle(base, { state: 'version', detail: message });
       await this.drop();
       return this.away(base, message);

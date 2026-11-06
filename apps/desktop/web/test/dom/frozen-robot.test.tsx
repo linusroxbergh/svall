@@ -102,6 +102,7 @@ test.each([
   ['version', 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.'],
   ['auth', 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.'],
   ['mismatch', 'linus-vault holds a different fleet', 'holds a different fleet; you can change it once it holds the fleet this Mac expects.', 'Read-only until it holds the fleet this Mac expects.'],
+  ['machine', 'linus-vault is a different machine than this Mac expects', 'is a different machine than this Mac expects; you can change it once it is the machine this Mac expects.', 'Read-only until it is the machine this Mac expects.'],
 ] as const)('on the Mac\'s copy with the home %s, the card, the pane, the toast and the tip say why', async (state, line, which, readOnly) => {
   act(() => { store.getState().setVia(COPY); store.getState().setHome({ name: 'linus-vault', state }); });
   call.mockImplementation((method: string) => Promise.resolve(method === 'term.lastScreen' ? { text: '$ ls' } : method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
