@@ -11,6 +11,7 @@ import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
 import { Phones } from '../../src/phones.js';
 import { resolvePaths } from '../../src/paths.js';
+import { Store } from '../../src/store.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { moveWorld, type MoveWorld } from '../placement/move-world.js';
@@ -291,6 +292,22 @@ describe('a frozen home', () => {
     open(false);
     await expect(first).rejects.toThrow();
     expect(freeze.active).toBe(true);
+    expect(freeze.refusal('robot.update')?.code).toBe('frozen');
+  });
+
+  it('a freeze begun while the worker hears of a thaw keeps all of it: nothing resumes, and the phone stays off', async () => {
+    let told!: () => void;
+    const { d, log, paths } = setup({ serving: true });
+    const freeze = new HomeFreeze({ ...d, links: { ...d.links, call: (_m: MachineId, method: string) => { log.push(method); return (method === 'home.thaw' ? new Promise((r) => { told = () => r({}); }) : Promise.resolve({})) as never; } } });
+    await freeze.freeze(ID, STUDIO, holder);
+    const thawing = freeze.thaw(ID);
+    await vi.waitFor(() => expect(told).toBeDefined());
+    await freeze.freeze(OTHER, STUDIO, holder);
+    const since = log.length;
+    told();
+    await thawing;
+    expect(log.slice(since)).toEqual([]);
+    expect(fs.existsSync(paths.homeServed)).toBe(true);
     expect(freeze.refusal('robot.update')?.code).toBe('frozen');
   });
 
@@ -680,6 +697,18 @@ describe('a real move the API took as the freeze came', () => {
     moveRobot(deps, 'c_1', HOME_ISLAND);
     expect(crewAway(home.store.state)).toEqual([]);
   }, 60_000);
+
+  it('a drag onto a slot of mission control ends a robot\'s being sent ahead, as one onto the island does', () => {
+    const store = Store.load(path.join(makeHome(), 'state.json'), () => {});
+    store.update((d) => {
+      d.islands[HOME_ISLAND] = { id: HOME_ISLAND, kind: 'home', name: 'mission control', description: '', instructions: '', context: [], position: { x: 0, y: 0 }, size: { w: 8, h: 4 }, seed: 7 } as never;
+      d.robots.c_1 = { ...robot('c_1', STUDIO), islandId: HOME_ISLAND, cell: { x: 1, y: 1 }, sentAhead: ID };
+    });
+    expect(crewAway(store.state).map((r) => r.id)).toEqual(['c_1']);
+    moveRobot({ store, log: silentLogger }, 'c_1', HOME_ISLAND, { x: 4, y: 1 });
+    expect(store.state.robots.c_1.cell).toEqual({ x: 4, y: 1 });
+    expect(crewAway(store.state)).toEqual([]);
+  });
 
   it.skipIf(!hasGit)('lands before the cut, and nothing of it changes past the freeze\'s return', async () => {
     const w = moveWorld();

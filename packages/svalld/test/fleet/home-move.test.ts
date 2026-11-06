@@ -185,6 +185,38 @@ describe('staging', () => {
     expect(w.studio.daemon.role).toBe('worker');
   });
 
+  it('a rename that fails as the files go in puts back each it had set aside, and the worker is what it was', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const before = fs.readFileSync(w.studio.paths.fleetConfig, 'utf8');
+    const real = fs.renameSync;
+    let failed = false;
+    // fleet.json is in by then, and state.json aside
+    const spy = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+      if (!failed && String(to) === w.studio.paths.state && String(from).includes(`${path.sep}ready${path.sep}`)) { failed = true; throw Object.assign(new Error('EIO: the disk said no'), { code: 'EIO' }); }
+      real(from, to);
+    });
+    const a = await installAdopt(w.studio.deps, ID, w.enrolment).finally(() => spy.mockRestore());
+    expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: expect.stringContaining('EIO') });
+    expect(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).toBe(before);
+    expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+    expect(w.studio.daemon.role).toBe('worker');
+  });
+
+  it('an archive that comes again after a rollback leaves it rolled back, and the retry keeps the token the first try issued', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    w.studio.daemon.noAnswer = true;
+    const first = await installAdopt(w.studio.deps, ID, w.enrolment);
+    expect(first).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    const token = (JSON.parse(fs.readFileSync(path.join(adoptDir(w.studio.paths, ID), 'enrol.json'), 'utf8')) as { worker: { token: string } }).worker.token;
+    expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toEqual({ status: 'pending', phase: 'rolledback' });
+    w.studio.daemon.noAnswer = false;
+    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    expect(a.status === 'adopted' && a.enrol.worker.token).toBe(token);
+  });
+
   it('holds what it staged under a name Files refuses', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);

@@ -10,7 +10,12 @@ import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { KEY, MAC, marker, world } from '../../svalld/test/fleet/home-world.js';
 
 const daemon = vi.hoisted(() => ({ current: undefined as unknown as HomeDaemon, starts: 0 }));
-vi.mock('../src/controller/home.js', async (actual) => ({ ...(await actual<object>()), realHomeDaemon: () => daemon.current }));
+// what each driver was handed of the crew's choice
+const driven = vi.hoisted(() => [] as unknown[][]);
+vi.mock('../src/controller/home.js', async (actual) => {
+  const drive = (...args: unknown[]) => { driven.push(args); return Promise.resolve({ result: 'ready', actions: [] }); };
+  return { ...(await actual<object>()), realHomeDaemon: () => daemon.current, moveHomeOut: drive, moveHomeBack: drive, bringCrewBack: drive };
+});
 
 const { fleetCommands } = await import('../src/commands/fleet.js');
 
@@ -104,6 +109,26 @@ describe('what the far machine runs for a driver', () => {
   it('enroll-worker on a home on its way elsewhere refuses, naming where', async () => {
     writeMarker(resolvePaths(home), marker());
     await expect(run(['enroll-worker', MAC, '--name', 'mac', '--platform', 'darwin', '--arch', 'arm64', '--home', '/Users/ada', '--svall-base', '/opt/svall'])).rejects.toThrow(/moving to studio/);
+  });
+});
+
+describe('the driver\'s commands', () => {
+  beforeEach(() => { driven.length = 0; });
+
+  it('home set and crew-back interrupt nothing unless --interrupt-after says when', async () => {
+    await run(['home', 'set', 'studio']);
+    await run(['home', 'set', 'local']);
+    await run(['home', 'crew-back']);
+    expect(driven.map((args) => args.at(-1))).toEqual([{}, {}, {}]);
+    await run(['home', 'set', 'studio', '--interrupt-after', '0']);
+    await run(['home', 'crew-back', '--interrupt-after', '24h']);
+    expect(driven.slice(3).map((args) => args.at(-1))).toEqual([{ interruptAfterMs: 0 }, { interruptAfterMs: 24 * 3_600_000 }]);
+  });
+
+  it('--interrupt-after past 24h is refused before anything moves', async () => {
+    await expect(run(['home', 'set', 'studio', '--interrupt-after', '25h'])).rejects.toThrow('--interrupt-after takes at most 24h, not 25h');
+    await expect(run(['home', 'crew-back', '--interrupt-after', '25h'])).rejects.toThrow(/at most 24h/);
+    expect(driven).toEqual([]);
   });
 });
 

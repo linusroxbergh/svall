@@ -334,6 +334,58 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(adopts).toBe(1);
   }, 20_000);
 
+  it('asks again while the far side says its adopt still runs, and goes on from the word that ends it', async () => {
+    let statuses = 0;
+    const { deps } = outDeps((line) => {
+      if (line.includes('--stage')) return answer({ status: 'pending', phase: 'staged' });
+      if (line.includes("'adopt'")) return { code: 255, stdout: '' };
+      if (line.includes("'status'")) return answer(++statuses === 1 ? { status: 'pending', phase: 'running', detail: 'another step of this move runs there' } : { status: 'adopted', enrol: ENROL as never });
+      return happy(line);
+    });
+    const out = await moveHomeOut('studio', deps);
+    expect(out.result).toBe('ready');
+    expect(statuses).toBe(2);
+  }, 20_000);
+
+  it('the mark says how this home asks the machine it went to: its ssh, its install, and the folder its fleet answered from', async () => {
+    const { deps, called } = outDeps(happy);
+    expect((await moveHomeOut('studio', deps)).result).toBe('ready');
+    const mark = called.find((c) => c.params.op === 'mark')?.params.marker;
+    expect(mark?.ask).toEqual({ ssh: STUDIO_RECORD.ssh, svallBase: STUDIO_RECORD.svallBase, fleetHome: FAR_INFO(STUDIO).fleetHome });
+  });
+
+  describe('a fleet named apart from its name on the far machine', () => {
+    // `work` here, and `studio2` on studio as workers.json holds it
+    const apart = () => {
+      const lines: string[] = [];
+      let staged: string | undefined;
+      const out = outDeps((line, input) => { if (line.includes('--stage')) staged = input; return happy(line); });
+      out.deps.target = { name: 'work', home, managed: true };
+      fs.writeFileSync(resolvePaths(home).workersFile, JSON.stringify({ [STUDIO]: { token: 't'.repeat(48), addedAt: 1, profile: 'studio2' } }));
+      const open = out.deps.openMaster;
+      out.deps.openMaster = async (destination) => {
+        const m = await open(destination);
+        return { ...m, run: (argv: string[], o?: never) => { lines.push(argv.join(' ')); return m.run(argv, o); } } as unknown as SshMaster;
+      };
+      return { ...out, lines, staged: () => staged };
+    };
+
+    it('reaches the fleet there by the profile workers.json holds for it', async () => {
+      const { deps, lines } = apart();
+      expect((await moveHomeOut('studio', deps)).result).toBe('ready');
+      expect(lines.filter((l) => l.includes('connection-info'))).toEqual([expect.stringMatching(/ -p 'studio2'$/)]);
+    });
+
+    it('the archive names the profile the fleet has here, which the new home reaches this machine by', async () => {
+      const { deps, staged } = apart();
+      await moveHomeOut('studio', deps);
+      const dir = fs.mkdtempSync(path.join(home, 'tar-'));
+      fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(staged()!, 'base64'));
+      execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
+      expect((JSON.parse(fs.readFileSync(path.join(dir, 'home-move.json'), 'utf8')) as HomeManifest).fromProfile).toBe('work');
+    });
+  });
+
   it('a driver killed right after the mark leaves the marker, and the far machine holding its archive', async () => {
     const lines: string[] = [];
     const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });
@@ -597,6 +649,18 @@ describe('fleet home set local', () => {
     stop();
     expect(manifest?.fromProfile).toBe('private');
     expect(JSON.parse(fs.readFileSync(w.mac.paths.workersFile, 'utf8'))[STUDIO].profile).toBe('private');
+  }, 30_000);
+
+  it('the old home is told the profile the fleet has here, which it reaches its new home by', async () => {
+    const { w, deps, master } = await workerHere();
+    deps.target = { ...deps.target, name: 'work', managed: true };
+    const run = master.run.bind(master);
+    let told: { enrol?: { worker: { homeProfile?: string } } } | undefined;
+    master.run = ((argv: string[], o?: { input?: string }) => { if (argv.join(' ').includes("'settle'")) told = JSON.parse(o!.input!); return run(argv, o as never); }) as never;
+    const stop = telling(w, master);
+    expect((await moveHomeBack(deps)).result).toBe('ready');
+    stop();
+    expect(told?.enrol?.worker.homeProfile).toBe('work');
   }, 30_000);
 
   it('the old home\'s marker has no route to ask: this machine tells it', async () => {

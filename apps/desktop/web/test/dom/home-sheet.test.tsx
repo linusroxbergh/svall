@@ -306,6 +306,15 @@ describe('a move nothing is driving', () => {
     expect(screen.getByTestId('home-move-failed').textContent).toBe(' studio has not let go of it: staged. Call it off again once it answers, or finish the move');
   });
 
+  it('while Abort runs, neither button takes a press', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });
+    render(<HomeMoveBanner />);
+    fireEvent.click(await screen.findByTestId('home-move-abort'));
+    expect((screen.getByTestId('home-move-retry') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByTestId('home-move-abort') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('the sheet\'s own run that failed past the mark says why alone, as its Close words were for the sheet', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, phase: 'rolledback' } } });
