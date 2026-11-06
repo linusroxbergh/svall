@@ -36,8 +36,52 @@ it('a new robot button starts beside a robot on the machine it starts on: the ho
   expect(await started('i_b')).toBe('/Users/ada/here');
   c.store.getState().setVia({ machine: MAC, home: HOME });
   expect(await started('i_b')).toBe('/Users/ada/here');
-  // no robot here to stand beside, so the fleet's own folder is asked for, and this Mac says what it wants
-  expect(await started('i_a')).toBe('/home/ada/projects');
+});
+
+describe('the + beside an island with no robot folder beside it', () => {
+  const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
+  const HOME = 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId;
+  const started = (c: ReturnType<typeof ctx>) => c.calls.filter((k) => k.method === 'robot.create');
+
+  it.each([
+    ['following a far home, with only a robot on this Mac there', { machine: MAC, home: HOME, online: true as const }, 'i_b', MAC],
+    ['on a far home, on an island with no robot', { machine: MAC, home: HOME, online: true as const }, 'i_e', undefined],
+    ['standing in for its home, with only the home\'s robot there', { machine: MAC, home: HOME }, 'i_a', undefined],
+    ['on a Mac its home dials, with only the home\'s robot there', { machine: MAC, home: HOME, online: true as const, served: true as const }, 'i_a', undefined],
+  ])('%s, asks for the folder and starts nothing', async (_, via, island, machine) => {
+    const c = ctx();
+    const f = fleet();
+    f.defaultCwd = '/Users/ada/projects';
+    if (machine) for (const id of ['c0', 'c1']) f.robots[id] = { ...f.robots[id], cwd: '/Users/ada/here', machine };
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia(via);
+    expect(await newRobotOn(c, island, 'k_review')).toBeUndefined();
+    expect(started(c)).toEqual([]);
+    const s = c.store.getState();
+    expect([s.namingRobot, s.selectedIslandId, s.namingColumn]).toEqual([true, island, 'k_review']);
+  });
+
+  it('on a Mac home starts in the fleet\'s default as ever, with no dialog', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.defaultCwd = '/Users/ada/projects';
+    c.store.getState().setFleet(f);
+    await newRobotOn(c, 'i_e');
+    expect(started(c).map((k) => k.params)).toEqual([expect.objectContaining({ islandId: 'i_e', cwd: '/Users/ada/projects' })]);
+    expect(c.store.getState().namingRobot).toBe(false);
+  });
+
+  it('on mission control\'s island keeps its own folder, which the home has', async () => {
+    const c = ctx();
+    const f = fleet();
+    f.home.cwd = '/home/ada/.svall/home';
+    f.islands.home = isl('home', 'mission control', 0, { kind: 'home' });
+    c.store.getState().setFleet(f);
+    c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
+    await newRobotOn(c, 'home');
+    expect(started(c).map((k) => k.params)).toEqual([expect.objectContaining({ islandId: 'home', cwd: '/home/ada/.svall/home' })]);
+    expect(c.store.getState().namingRobot).toBe(false);
+  });
 });
 
 it('new robot buttons use the chosen main agent and keep shell defaults for existing fleets', async () => {
@@ -320,21 +364,6 @@ describe('a crew member whose directory is gone', () => {
     // standing in, it is this Mac's folder that counts
     s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio' });
     expect(await newRobotTarget({ api, store: s })).toEqual({ islandId: 'i_b', cwd: '/Users/ada/code' });
-  });
-
-  it('on a Mac its home dials, starts beside the robot here, as ever', async () => {
-    const calls: Call[] = [];
-    const s = store();
-    const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
-    const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
-    const f = fleet();
-    Object.assign(f.robots.c0, { machine: MAC, cwd: '/Users/ada/code' });
-    Object.assign(f.robots.c1, { cwd: '/home/linus/app' });
-    s.getState().setFleet(f);
-    s.getState().setVia({ machine: MAC, home: STUDIO, name: 'studio', online: true, served: true });
-    const api = { call: (method: string, params: unknown) => { calls.push({ method, params } as Call); return Promise.resolve({ id: 'c_new' }); } } as never;
-    await newRobotOn({ api, store: s }, 'i_b');
-    expect(calls.map((c) => c.params)).toEqual([{ islandId: 'i_b', cwd: '/Users/ada/code' }]);
   });
 
   it('with no island yet names the fresh one for the folder chosen, and takes it back when that is refused', async () => {

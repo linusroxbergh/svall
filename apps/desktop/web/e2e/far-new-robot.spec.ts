@@ -89,6 +89,27 @@ test('a window on a far home starts a robot in one of the home\'s folders, its l
   }
 });
 
+test('the + beside an island with no robot there asks for the folder before anything starts, and the robot goes to the column asked from', async ({ page }) => {
+  const { home, local } = await farHome();
+  try {
+    await open(page, local.port);
+    await expect.poll(() => home.calls.some((c) => c.method === 'state.get')).toBe(true);
+    const column = fleet.columns[1]!.id;
+    await page.getByTestId(`col-new-${column}`).click();
+    await expect(page.getByTestId('new-robot-where')).toHaveText('Folder on studio');
+    expect(home.made()).toEqual([]);
+    await page.getByTestId('new-robot-pick-/home/linus/code/a-rather-long-clone-name-1').click();
+    await page.getByTestId('new-robot-create').click();
+    await expect(page.getByTestId('new-robot')).toBeHidden();
+    expect(home.made()).toEqual(['/home/linus/code/a-rather-long-clone-name-1']);
+    expect(local.made()).toEqual([]);
+    await expect.poll(() => home.calls.filter((c) => c.method === 'robot.place').map((c) => c.params)).toEqual([{ id: 'c_new', columnId: column }]);
+  } finally {
+    await home.close();
+    await local.close();
+  }
+});
+
 test('when the home goes the open dialog lists this Mac\'s clones, and says whose they are', async ({ page }) => {
   const { home, local } = await farHome();
   try {

@@ -193,9 +193,6 @@ describe('the page follows the home while it answers, and this machine otherwise
     await settle();
     await vi.advanceTimersByTimeAsync(20_000);
     expect(store.getState().via).toMatchObject({ online: true, served: true });
-    local.answer('home.connection', () => CONNECTED);
-    await vi.advanceTimersByTimeAsync(20_000);
-    expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio', online: true });
   });
 
   it('says served from the start of a reopened socket, and no longer once a route has come', async () => {

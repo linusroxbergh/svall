@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { ROBOT_NOTE_MAX, type Result } from '@svall/protocol';
-import { newNamedRobot, newRobotFolder, showCreated } from './actions.js';
+import { newNamedRobot, newRobotFolder, placeRobot, showCreated } from './actions.js';
 import { app, deps } from './boot.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
@@ -68,8 +68,10 @@ export function NewRobot() {
     const refs = links.split('\n').map((u) => u.trim()).filter(Boolean);
     try {
       const id = await newNamedRobot(d, { name: name.trim(), note: note.trim(), refs, ...(via && { cwd: folder }) });
+      const column = d.store.getState().namingColumn;
       close();
       showCreated(d, id);
+      if (column) await placeRobot(d, id, column);
     } catch (e) {
       if (via && (e as { code?: string }).code === 'not_a_folder') setRefused(`${folder} is not a folder on ${where}`);
       else d.store.getState().showToast((e as Error).message);

@@ -9,6 +9,8 @@ import { call, freshStore, store } from './harness.js';
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
 const { NewRobot } = await import('../../src/NewRobot.js');
+const { newRobotOn } = await import('../../src/actions.js');
+const { deps } = await import('../../src/boot.js');
 
 const MAC = '11111111-1111-4111-8111-111111111111' as MachineId;
 const STUDIO = '22222222-2222-4222-8222-222222222222' as MachineId;
@@ -60,6 +62,19 @@ test('on a Mac home a folder gone gives way to the fleet\'s default, as ever', a
   await open();
   await create();
   expect(creates().map((p) => p.cwd)).toEqual(['/tmp', store.getState().fleet.defaultCwd]);
+  expect(store.getState().namingRobot).toBe(false);
+});
+
+test('the + beside an island with no robot there opens the dialog, and the robot starts on that island, in its column', async () => {
+  answers(STUDIO, FOLDERS);
+  act(() => { store.getState().select('c0'); store.getState().setVia(far); store.getState().setFleet({ ...store.getState().fleet, robots: {} }); });
+  await act(async () => { await newRobotOn(deps(), 'i_e', 'k_review'); render(<NewRobot />); });
+  expect(creates()).toEqual([]);
+  expect(screen.getByTestId('new-robot-where').textContent).toBe('Folder on studio');
+  fireEvent.click(screen.getByTestId('new-robot-pick-/home/linus/notes'));
+  await create();
+  expect(creates()).toEqual([expect.objectContaining({ islandId: 'i_e', cwd: '/home/linus/notes' })]);
+  expect(call.mock.calls.filter(([m]) => m === 'robot.place').map(([, p]) => p)).toEqual([{ id: 'c_new', columnId: 'k_review' }]);
   expect(store.getState().namingRobot).toBe(false);
 });
 

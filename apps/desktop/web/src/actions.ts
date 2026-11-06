@@ -44,11 +44,18 @@ function warnUnfound(d: ActionDeps, command: string): boolean {
   return unfound;
 }
 
-// the new robot's id, or nothing when the fleet refused, the reason already on a toast
-export async function newRobotOn(d: ActionDeps, islandId: string): Promise<string | undefined> {
+// the new robot's id, or nothing when the fleet refused, the reason already on a toast, or when New Robot asks first:
+// a window off its home with no robot beside has no folder to go by, as the fleet's default may not be on that machine
+export async function newRobotOn(d: ActionDeps, islandId: string, column?: string): Promise<string | undefined> {
   closeSettings(d);
-  const f = d.store.getState().fleet;
-  const dir = islandCwd(f, islandId, d.store.getState().via);
+  const s = d.store.getState();
+  const { fleet: f, via } = s;
+  if (via && f.islands[islandId]?.kind !== 'home' && !robotsOf(f, islandId).some((c) => startsBeside(c, via))) {
+    s.selectIsland(islandId);
+    s.setNamingRobot(true, column);
+    return undefined;
+  }
+  const dir = islandCwd(f, islandId, via);
   const start = startOf(f, islandId);
   if (start.command) warnUnfound(d, start.command);
   try {

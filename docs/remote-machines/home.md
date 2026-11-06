@@ -17,7 +17,8 @@ Mission control runs on the home and has no move button.
 **New robot** asks for a folder, since the window's own mean nothing on studio. It lists the folders on studio where its robots work, the
 clones in its default folder, dot folders aside, and the fleet's default and mission control folders, and takes any path there; `~` is studio's. studio checks
 a typed path before the robot starts: "/home/linus/x is not a folder on studio". A link to a folder counts, as it does for
-`svall robot new --cwd`. A Mac home has no such field: a new robot starts beside the robot or island you selected.
+`svall robot new --cwd`. The **+** beside an island starts in the folder of a robot working on studio there, and with none opens **New robot** for
+that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
 too, as "dials in". What a machine does for you from there, and adding another, is for a home on this Mac.

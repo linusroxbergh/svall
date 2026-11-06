@@ -233,8 +233,9 @@ export function Board() {
   // a new robot lands in the first column, so one asked for elsewhere is placed there by hand
   const newIn = async (column: string) => {
     try {
-      const id = await newRobotOn(deps(), island ?? (await newRobotTarget(deps())).islandId);
-      if (id && column !== app.store.getState().fleet.columns[0]?.id) await placeRobot(deps(), id, column);
+      const other = column !== app.store.getState().fleet.columns[0]?.id ? column : undefined;
+      const id = await newRobotOn(deps(), island ?? (await newRobotTarget(deps())).islandId, other);
+      if (id && other) await placeRobot(deps(), id, other);
     } catch (e) {
       app.store.getState().showToast((e as Error).message);
     }
