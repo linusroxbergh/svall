@@ -121,15 +121,20 @@ each machine's daemon and unit logs.
     local's dial. Mission control's robot goes first with the move engine, then `svall fleet home set remote`: both
     machines keep their tmux windows, one daemon answers as the home and the other as its worker, the phone serves from
     remote under the same pass and logins and local's link is off, a push subscription and the pass came along, local
-    keeps its old state and docs, and nothing staged stays on either machine.
+    keeps its old state and docs, and nothing staged stays on either machine. The agent setup follows the home: what a
+    Copy wrote on local before it left is copied before the first push takes it, a change on remote lands on local with
+    that copy standing and a file only local has staying, a Copy from local lands on remote, which keeps what it
+    replaced, and a seed of a home that holds a setup is refused.
 17. **The home move's fault matrix**, below.
-18. **The home comes back.** `svall fleet home set local` from local: remote is a worker again with its robots, then a
-    robot moves each way on the home that came back.
+18. **The home comes back.** `svall fleet home set local` from local: remote is a worker again with its robots, a change
+    on local lands on remote, a Copy from remote lands on local, which keeps what it replaced, then a robot moves each
+    way on the home that came back.
 19. **A machine set up first takes a join.** `svall -p joined fleet join` on remote makes a fleet never opened a worker
     of the home on local, under the home's fleet id, ending on its first snapshot; a fleet that holds anything is
     refused. Then a third machine of no fleet, `<prefix>-server`: `svall -p mac2 host add --as-home` from local leaves it a
     home and enrols no one, `svall -p mac2 fleet join` makes local's empty fleet its worker, and the server reaches it over
-    that dial.
+    that dial. A server as a real setup leaves it holds no agent setup: the join says so and copies nothing, the server
+    pushes nothing over local, and a seed through the Copy lands, after which it holds one.
 20. **Terminals across a dropped master.** A window on local holds three terminals attached to robots on the home on
     remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
     master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its

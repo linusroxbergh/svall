@@ -1184,6 +1184,11 @@ function homeMoves(ids, fx) {
   check('a push subscription to carry', sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout.includes('push.example'), 'push.json holds none');
   const before = { L: windows(L), R: windows(R), push: sh(L, 'cat ~/.svall/push.json', { ok: false }).stdout, pass: sh(L, 'cat ~/.svall/mobile-pass').stdout };
   const robots = snap(L, true).robots.map((r) => r.id);
+  // a Copy this home takes before it leaves: its record must not read as a push's on the first it takes as a worker
+  sh(L, 'mkdir -p ~/.claude/rules && echo only here > ~/.claude/rules/it-only-here.md');
+  putRule(R, 'copied onto the old home');
+  const taken = windowCall(L, 'machines.copySetupFrom', { machine: ids.remote });
+  check('the home takes a copy before it moves', !taken.error && readRule(L) === 'copied onto the old home\n', () => `${brief(taken)} ${readRule(L)}`);
   const steps = setHome(L, 'remote');
   check('the steps ran in order', ['check', 'mission', 'pause', 'copy', 'mark', 'adopt', 'join', 'probe'].every((want) => steps.some((e) => e.step === want && e.status !== 'fail')), () => brief(steps));
   oneHome(R, ids);
@@ -1210,6 +1215,41 @@ function homeMoves(ids, fx) {
   for (let i = 0; i < 120 && !seen?.reachable; i++) { if (i) sh(R, 'sleep 1'); seen = call(R, 'machines.list').machines.find((m) => m.id === ids.local); }
   check('the new home reaches local, with its robots', seen?.reachable === true && seen.robots > 0, () => brief(seen));
   ctx.home = 'remote';
+  movedSetup(ids);
+}
+
+const kept = (m, home = '~/.svall') => sh(m, `cat ${home}/mirror-backup/*/.claude/rules/it-dial.md`, { ok: false }).stdout;
+// a person's press, as a window sends it: a tick answers once its push is applied, which waits for a link a move's end closed
+const pushed = (home, worker) => waitOn(`${worker} takes a push`, () => !windowCall(home, 'machines.consent', { machine: worker, item: 'it:none', fields: [], on: false }).error);
+
+// the new home is the source and a change there lands on this machine, past a copy of what it held; the Copy goes on its own
+function movedSetup(ids) {
+  waitOn('the first push lands on local', () => kept(L).includes('copied onto the old home'));
+  check('what a Copy wrote on the old home is copied before a push takes it', kept(L).includes('copied onto the old home'), () => kept(L));
+  putRule(R, 'changed on the new home');
+  pushed(R, ids.local);
+  check('a change on the new home lands on local', readRule(L) === 'changed on the new home\n', () => readRule(L));
+  check('and the copy kept stands', kept(L).includes('copied onto the old home'), () => kept(L));
+  check('a file only local has stays', sh(L, 'cat ~/.claude/rules/it-only-here.md', { ok: false }).stdout === 'only here\n', 'it went');
+
+  putRule(L, 'copied from local');
+  const copied = windowCall(R, 'machines.copySetupFrom', { machine: ids.local });
+  check('the one-shot copy lands on the new home', !copied.error && readRule(R) === 'copied from local\n', () => `${brief(copied)} ${readRule(R)}`);
+  check('which keeps what it replaced', kept(R).includes('changed on the new home'), () => kept(R));
+  const seeded = windowCall(R, 'machines.copySetupFrom', { machine: ids.local, seed: true });
+  check('a home that holds a setup is never seeded', seeded.error?.code === 'refused', () => brief(seeded));
+}
+
+// the same on the home that came back, whose worker it dials
+function cameBackSetup(ids) {
+  putRule(L, 'changed on the home that came back');
+  pushed(L, ids.remote);
+  check('a change on the home that came back lands on remote', readRule(R) === 'changed on the home that came back\n', () => readRule(R));
+  putRule(R, 'copied from remote');
+  const copied = windowCall(L, 'machines.copySetupFrom', { machine: ids.remote });
+  check('the one-shot copy lands on the home that came back', !copied.error && readRule(L) === 'copied from remote\n', () => `${brief(copied)} ${readRule(L)}`);
+  check('which keeps what it replaced, by a record of its own', kept(L).includes('changed on the home that came back'), () => kept(L));
+  for (const m of [L, R]) sh(m, `rm -f ${RULE} ~/.claude/rules/it-only-here.md`);
 }
 
 function homeBack(ids, again = true) {
@@ -1224,6 +1264,7 @@ function homeBack(ids, again = true) {
   check('nothing staged stays on either', sh(L, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '' && sh(R, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'an adopt folder stays');
   ctx.home = 'local';
   if (!again) return;
+  cameBackSetup(ids);
   // a move each way on the home that came back
   reposition(ids, ctx.at === 'remote' ? 'local' : 'remote');
   reposition(ids, ctx.at === 'remote' ? 'local' : 'remote');
@@ -1556,6 +1597,7 @@ function freshJoin(ids) {
   const steps = moveSteps(r.stdout);
   check('the join ran', r.code === 0, () => `${r.code}: ${brief(steps.filter((s) => s.status === 'fail'))} ${r.stderr.slice(0, 400)}`);
   check('it ended on its snapshot', steps.some((e) => e.step === 'snapshot' && e.status === 'ok'), () => brief(steps));
+  check('a home that holds a setup is offered none', steps.some((e) => e.step === 'seed' && e.status === 'ok' && /of its own|no agent setup here/.test(e.detail ?? '')), () => brief(steps.filter((e) => e.step === 'seed')));
   const worker = JSON.parse(sh(R, 'cat ~/.svall-joined/worker.json').stdout);
   check('it names the home and the fleet', worker.homeMachineId === ids.local && worker.fleetId === ids.fleet, () => brief({ ...worker, token: undefined }));
   check('it goes by the fleet\'s id', JSON.parse(sh(R, 'cat ~/.svall-joined/fleet.json').stdout).id === ids.fleet, 'another id');
@@ -1578,6 +1620,10 @@ function serverFirst() {
   check('the server is no worker', sh(S, 'test -f ~/.svall/worker.json', { ok: false }).code !== 0, 'worker.json stands');
   const server = JSON.parse(sh(S, 'cat ~/.svall/fleet.json').stdout).id;
   const serverMachine = JSON.parse(sh(S, 'svall version --json').stdout).machineId;
+  // nothing of a person's on a server as a real setup leaves it, so its first push goes over nothing here
+  check('a server set up first holds no agent setup', call(S, 'machines.holdsSetup').holds === false, 'it holds one');
+  putRule(L, 'from the joining machine');
+  const settingsBefore = sh(L, 'cat ~/.claude/settings.json', { ok: false }).stdout;
   const join = sh(L, `SHELL=/bin/bash svall -p mac2 --json fleet join svall@${S} --name mac2-joined </dev/null`, { ok: false });
   const joined = moveSteps(join.stdout);
   check('this machine joined it', join.code === 0 && joined.some((e) => e.step === 'snapshot' && e.status === 'ok'), () => `${join.code}: ${brief(joined.filter((e) => e.status === 'fail'))} ${join.stderr.slice(0, 400)}`);
@@ -1588,6 +1634,13 @@ function serverFirst() {
   for (let i = 0; i < 60 && !seen?.reachable; i++) { if (i) sh(S, 'sleep 1'); seen = call(S, 'machines.list').machines.find((m) => m.name === 'mac2-joined'); }
   check('the server reaches it over its dial', seen?.reachable === true, () => brief(seen));
   check('it holds the profile the fleet has on the server', worker.homeProfile === 'private', () => brief({ ...worker, token: undefined }));
+  check('the join says the server has no setup yet, and copies nothing by itself', joined.some((e) => e.step === 'seed' && e.status === 'warn') && sh(S, `cat ${RULE}`, { ok: false }).code !== 0, () => brief(joined.filter((e) => e.step === 'seed')));
+  check('the server pushes nothing over this machine before its seed', sh(L, 'cat ~/.claude/settings.json', { ok: false }).stdout === settingsBefore && readRule(L) === 'from the joining machine\n' && sh(L, 'ls ~/.svall-mac2/mirror-backup', { ok: false }).stdout === '', 'it wrote here');
+  const me = JSON.parse(sh(L, 'svall version --json').stdout).machineId;
+  const seed = call(S, 'machines.copySetupFrom', { machine: me, seed: true });
+  check('the seed goes through the Copy', seed.sent > 0 && readRule(S) === 'from the joining machine\n', () => `${brief(seed)} ${readRule(S)}`);
+  check('and the server holds a setup from there', call(S, 'machines.holdsSetup').holds === true, 'it holds none');
+  sh(L, `rm -f ${RULE}`);
   namedApart(serverMachine);
 }
 
