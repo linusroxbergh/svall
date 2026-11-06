@@ -148,8 +148,8 @@ export const isDialSocket = (socket: string, machine: string): boolean => socket
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile, p.homeMoving, p.homeDeliver];
 
-/** Whether `p` lies in a home move's staged folder or is its kept workers.json, which hold a fleet's keys under names of their own. */
-export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|workers\.json\.home-hm_[0-9a-z]{10}$)/i.test(p);
+/** Whether `p` lies in a home move's staged folder, or is its kept workers.json or its driver's journal, which hold a fleet's keys under names of their own. */
+export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|workers\.json\.home-hm_[0-9a-z]{10}$|hm_[0-9a-z]{10}\.driver\.ndjson$)/i.test(p);
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

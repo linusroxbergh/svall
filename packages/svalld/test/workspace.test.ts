@@ -4,7 +4,9 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '@svall/protocol';
+import { markKey } from '../src/fleet/home-move.js';
 import { silentLogger } from '../src/log.js';
+import { resolvePaths } from '../src/paths.js';
 import type { Viewer } from '../src/terminals.js';
 import { git } from '../src/workspace/git.js';
 import { Workspace } from '../src/workspace/workspace.js';
@@ -202,6 +204,21 @@ describe('Workspace files', () => {
     expect((await ws.list('c', outside)).map((e) => e.name)).toEqual(['alias']);
     expect(await codeOf(() => ws.file('c', path.join(dir, 'a.txt'), 'head'))).toBe('invalid');
     expect(fs.existsSync(path.join(dir, '.git/hooks/pre-commit'))).toBe(false);
+  });
+
+  it('keeps a home move\'s driver journal, which holds its key, out of reach under any case, and its own alone', async () => {
+    const dir = repo();
+    const fleet = makeHome();
+    const paths = resolvePaths(fleet);
+    markKey(paths, 'hm_abcdefghij');
+    const journal = path.join(paths.homeMoves, 'hm_abcdefghij.driver.ndjson');
+    expect(fs.statSync(journal).mode & 0o777).toBe(0o600);
+    const ws = workspace({ c: dir });
+    expect(await codeOf(() => ws.read('c', journal))).toBe('invalid');
+    expect(await codeOf(() => ws.read('c', journal.replace('hm_abcdefghij.driver', 'HM_ABCDEFGHIJ.DRIVER')))).toBe('invalid');
+    expect(await codeOf(() => ws.write('c', journal, 'x', 0))).toBe('invalid');
+    fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{}\n');
+    expect(ws.read('c', path.join(paths.homeMoves, 'hm_abcdefghij.ndjson')).text).toBe('{}\n');
   });
 
   it('lists a repository outside the root without running the command its config names', async () => {
