@@ -412,6 +412,23 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(statuses.at(-1)).toBe('online');
   });
 
+  it('a home that closed each socket and then answers on another protocol says only that, also when a person asks again', async () => {
+    worker();
+    const held = net.daemons.get(url(50_000))!;
+    net.daemons.delete(url(50_000));
+    await open();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(store.getState().home).toMatchObject({ state: 'unreachable', detail: 'the API on studio answers, and closes this window\'s socket' });
+    held.protocol = PROTOCOL_VERSION + 1;
+    net.daemons.set(url(50_000), held);
+    await vi.advanceTimersByTimeAsync(60_000);
+    const found = { name: 'studio', state: 'version', release: '0.21', master: { ssh: 'ada@studio', controlSocket: '/tmp/m' } };
+    expect(store.getState().home).toEqual(found);
+    api.retryHome();
+    await settle();
+    expect(store.getState().home).toEqual(found);
+  });
+
   it('a home that closes a wrong token is asked for the right one, with no word of a refused login', async () => {
     home.token = 'another';
     worker();

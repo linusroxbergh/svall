@@ -221,8 +221,8 @@ export class FollowApi extends Api {
     if (!was && s !== 'outdated') this.failedOpens++;
     const stuck = this.failedOpens >= OPENS;
     const home = this.store.getState().home!;
-    // another protocol: no retry changes it; a wrong token closes as any other socket, and the next ask brings the right one
-    this.store.getState().setHome({ ...home, state: s === 'outdated' ? 'version' : stuck ? 'unreachable' : 'connecting', ...(stuck && { detail: this.stuckDetail(home.name) }) });
+    // another protocol: no retry changes it, and no earlier socket's trouble says why; a wrong token closes as any other socket, and the next ask brings the right one
+    this.store.getState().setHome({ ...home, state: s === 'outdated' ? 'version' : stuck ? 'unreachable' : 'connecting', ...(s === 'outdated' ? { detail: undefined } : stuck && { detail: this.stuckDetail(home.name) }) });
     // this socket's retry would offer the token to whatever holds the port once the forward has gone, so only an answer opens another
     this.dropHome();
     if (s !== 'outdated' && this.localStatus === 'online') this.askSoon();
