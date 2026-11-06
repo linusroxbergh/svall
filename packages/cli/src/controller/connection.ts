@@ -83,7 +83,7 @@ function localFleetId(fleetHome: string): FleetId {
 }
 
 /** The far daemon of `machine` over a forward on `master`, which a failed connection takes back; its error holds no token. */
-export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean; fleetHome?: string }) {
+export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: Parameters<typeof remoteConnectionInfo>[2]) {
   const info = await remoteConnectionInfo(master, machine, o);
   const forward = await master.forward(info.port);
   try {
@@ -123,7 +123,7 @@ export async function connectRemote(o: { registry: MachineRegistry; machine: str
   return withReconnect(async () => {
     const master = await SshMaster.open({ destination });
     // an attempt that fails takes its master with it, so a retry does not leave one open
-    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile }).catch(async (err: Error) => {
+    const { client, forward } = await connectForwarded(master, machine, { fleetId, profile, here: { profile: o.profile } }).catch(async (err: Error) => {
       await master.close().catch(() => undefined);
       throw err instanceof SshError ? err : new SshError(/not reachable|did not accept/.test(err.message) ? 'daemon_down' : 'other', err.message);
     });
