@@ -49,7 +49,8 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       const sheet = s.host?.op === 'home' && s.host.running ? s.homeSheet : undefined;
       const did = (step: string): boolean => !!s.host?.steps.some((x) => x.step === step && x.status === 'ok');
       const move = sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && did('pause') && { frozenFor: sheet.name }) }
-        : sheet ? (sheet.back ? { movingHere: true as const } : { frozenFor: sheet.name })
+        // past its join this Mac's daemon is a worker, which stops as any does
+        : sheet ? (sheet.back ? { movingHere: true as const } : did('join') ? undefined : { frozenFor: sheet.name })
           : s.homeMove && (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name });
       bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
     });

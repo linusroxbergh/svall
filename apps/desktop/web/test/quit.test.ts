@@ -169,6 +169,8 @@ describe('followQuit', () => {
     // past the mark, before this window has heard of the marker
     q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
     await ask();
+    q.store.getState().hostStep('home', { step: 'join', status: 'ok' });
+    await ask();
     q.store.getState().hostStarted('home', { name: 'studio' });
     q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true });
     // the way back's debt stands from its pause, before any mark
@@ -183,6 +185,7 @@ describe('followQuit', () => {
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0 },
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
       { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0 },

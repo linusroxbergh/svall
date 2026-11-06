@@ -8,7 +8,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps }
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { installPrefix, releaseVersion } from '../release.js';
-import { addEnrol, createMarker, endMove, keyFits, moveInFlight, phoneOwed, servedPhone } from './home-move.js';
+import { addEnrol, createMarker, endMove, keyFits, moveInFlight, phoneOwed, readMarker, servedPhone } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -23,6 +23,8 @@ const CLOCK_SKEW_MS = 5 * 60_000;
 const MIN_FREE_KB = 100 * 1024;
 
 type Holder = object;
+
+const markerOf = (p: Paths): HomeMoving | undefined => { try { return readMarker(p); } catch { return undefined; } };
 
 export type FreezeDeps = {
   paths: Paths; store: { state: FleetState; flush(): Promise<boolean> }; me: MachineId; log: Pick<Logger, 'error' | 'info'>;
@@ -185,7 +187,11 @@ export class HomeFreeze {
   mark(marker: HomeMoving): void {
     if (this.moving?.id !== marker.id || !this.moving.ready) throw new ApiError('not_frozen', `this home is not frozen for ${marker.id}: it stopped, and may have taken a write since`);
     if (this.marker) throw new ApiError('frozen', `this home is marked for ${this.marker.id} already`);
-    createMarker(this.d.paths, marker);
+    try { createMarker(this.d.paths, marker); } catch (e) {
+      // one the call linked into place before it failed stands, and holds this home as one it wrote
+      if (markerOf(this.d.paths)?.keySha256 === marker.keySha256) this.marker = marker;
+      throw e;
+    }
     this.marker = marker;
   }
 

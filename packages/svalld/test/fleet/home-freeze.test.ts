@@ -8,6 +8,7 @@ import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { addEnrol, createMarker, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
+import { realStages } from '../../src/durable.js';
 import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
 import { Phones } from '../../src/phones.js';
@@ -125,6 +126,18 @@ describe('a frozen home', () => {
     await expect(freeze.told(ID, mine)).rejects.toThrow(/not ended by told/);
     freeze.stop();
     expect(fs.readFileSync(paths.homeMoving)).toEqual(before);
+  });
+
+  it('a mark whose folder sync fails after the marker went into place holds it: no thaw, no write', async () => {
+    const { freeze, paths } = setup();
+    await freeze.freeze(ID, STUDIO, holder);
+    vi.spyOn(realStages, 'fsyncDir').mockImplementationOnce(() => { throw Object.assign(new Error('EIO: i/o error, fsync'), { code: 'EIO' }); });
+    expect(() => freeze.mark(marker())).toThrow(/EIO/);
+    expect(readMarker(paths)?.id).toBe(ID);
+    expect(freeze.status().moving?.id).toBe(ID);
+    await expect(freeze.thaw(ID)).rejects.toThrow(/only where the fleet is going/);
+    expect(freeze.refusal('robot.update')).toBeDefined();
+    freeze.stop();
   });
 
   it('a mark that carries an outcome is refused, and leaves no marker', async () => {

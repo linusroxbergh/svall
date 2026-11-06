@@ -171,7 +171,7 @@ describe('the one way a move ends', () => {
   // every line that touches a marker or a home move's journal, and every call that writes or ends a marker, each one named: a new
   // one fails here until it is read and named
   const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/,
-    /\bcreateMarker\b/, /\baddEnrol\b/, /\bwriteMarker\b/, /\bendMove\(/, /\.mark\(/];
+    /\bcreateMarker\b/, /\baddEnrol\b/, /\bwriteMarker\b/, /\bendMove\b/, /\.mark\s*\(/];
   // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's key
   const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|\benter\(p, driverOf\(id\), 'mark'/;
   const NAMED: [RegExp, RegExp][] = [
@@ -186,8 +186,7 @@ describe('the one way a move ends', () => {
       // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
       /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/.source,
     ].join('|'))],
-    [/svalld\/src\/fleet\/home-far\.ts$/, /^export const phoneWithReason = .*Pick<Paths, 'homeMoves'>/],
-    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, createMarker, endMove, |^\s*createMarker\(this\.d\.paths, marker\);$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
+    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, createMarker, endMove, |^\s*try \{ createMarker\(this\.d\.paths, marker\); \} catch \(e\) \{$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
     [/svalld\/src\/api\/methods\.ts$/, /^\s*if \(p\.op === 'mark'\) held\.mark\(p\.marker\);$|'retro\.mark': \(p, ctx\) => retroOf\(ctx\)\.mark\(p\)/],
     // a machine's own reachability, no marker
     [/svalld\/src\/link\/home\.ts$/, /\bthis\.mark\(\{ name: this\.name, /],
@@ -239,6 +238,8 @@ describe('the one way a move ends', () => {
     ['packages/svalld/src/api/methods.ts', '    if (p.op === \'remark\') held.mark({ ...p.marker, keySha256: p.mine });'],
     ['packages/cli/src/controller/home.ts', '  createMarker(paths, { ...held, ask });'],
     ['packages/svalld/src/fleet/home-move.ts', '  writeMarker(p, { ...held, keySha256 });'],
+    ['packages/svalld/src/fleet/home-freeze.ts', "import { endMove as settled } from './home-move.js';"],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    endMove (this.d.paths, id, { by: 'asked' });"],
   ])('a line in %s that ends a move some other way fails it: %s', (file, line) => {
     expect(offenders([{ file, text: line }])).toHaveLength(1);
   });
