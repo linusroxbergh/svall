@@ -59,8 +59,8 @@ export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via)
 /** Through a worker, a robot that runs on another machine, which takes none of the actions the Mac would answer. */
 export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && c.machine !== via.machine;
 
-// what the home last answered: a version gap names the home's release
-type Answered = { state: HomeState; release?: string };
+// what the home last answered: a version gap names the home's release; with none, a detail is the daemon saying why it cannot run there
+type Answered = { state: HomeState; release?: string; detail?: string };
 type Standing = { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via; home?: Answered };
 
 /** Why a window on this Mac's copy of the fleet takes no change to a robot elsewhere: only its home takes one, and that cannot be asked. */
@@ -84,7 +84,7 @@ export const frozenLine = (s: Standing, id: string): string | undefined => {
 type Apart = { line: string; which: string; once: string };
 const apartOf = (home: string, answer?: Answered): Apart => {
   const state = answer?.state;
-  if (state === 'version' && !answer?.release) return { line: `${home} cannot run this Mac's Svall`, which: 'cannot run this Mac\'s Svall', once: 'it runs this Mac\'s Svall' };
+  if (state === 'version' && !answer?.release && answer?.detail) return { line: `${home} cannot run this Mac's Svall`, which: 'cannot run this Mac\'s Svall', once: 'it runs this Mac\'s Svall' };
   if (state === 'version') return { line: `${home} runs another version of Svall`, which: 'runs another version of Svall', once: 'both run the same' };
   if (state === 'auth') return { line: `this Mac cannot log in to ${home}`, which: 'this Mac cannot log in to', once: 'this Mac can log in' };
   if (state === 'mismatch') return { line: `${home} holds a different fleet`, which: 'holds a different fleet', once: 'it holds the fleet this Mac expects' };

@@ -101,7 +101,8 @@ test.each([
 const STATES: [Record<string, string>, string, string, string, string][] = [
   [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'unreachable'],
   [{ state: 'version', release: '0.27.0' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
-  [{ state: 'version' }, 'linus-vault cannot run this Mac\'s Svall', 'cannot run this Mac\'s Svall; you can change it once it runs this Mac\'s Svall.', 'Read-only until it runs this Mac\'s Svall.', 'read-only'],
+  [{ state: 'version', detail: 'linus-vault answered with protocol 7, not 8' }, 'linus-vault cannot run this Mac\'s Svall', 'cannot run this Mac\'s Svall; you can change it once it runs this Mac\'s Svall.', 'Read-only until it runs this Mac\'s Svall.', 'read-only'],
+  [{ state: 'version' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
   [{ state: 'auth' }, 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.', 'read-only'],
   [{ state: 'mismatch' }, 'linus-vault holds a different fleet', 'holds a different fleet; you can change it once it holds the fleet this Mac expects.', 'Read-only until it holds the fleet this Mac expects.', 'read-only'],
   [{ state: 'machine' }, 'linus-vault is a different machine than this Mac expects', 'is a different machine than this Mac expects; you can change it once it is the machine this Mac expects.', 'Read-only until it is the machine this Mac expects.', 'read-only'],
