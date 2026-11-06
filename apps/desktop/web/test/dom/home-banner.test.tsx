@@ -78,6 +78,12 @@ describe('the banner of a home this window cannot follow', () => {
     await waitFor(() => expect(retryHome).toHaveBeenCalledTimes(1));
   });
 
+  it('says a version the page found itself in the card\'s words', () => {
+    standingIn({ state: 'version' });
+    render(<HomeBanner />);
+    expect(screen.getByTestId('home-banner').textContent).toMatch(/^studio runs another version of Svall/);
+  });
+
   it('says an upgrade failed in its own words, and leaves the button', async () => {
     standingIn({ state: 'version', detail: 'studio runs 0.20, this Mac 0.21' });
     render(<HomeBanner />);

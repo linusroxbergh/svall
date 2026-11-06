@@ -150,7 +150,7 @@ textarea { overflow-x: hidden; }
 /* a button gives under the press; only these, so the buttons on the map's cards stay put */
 .btn, .hact { transition: background var(--dur) var(--ease), scale var(--dur-fast) var(--ease-out); }
 :is(.btn, .hact):active:not(:disabled, [aria-disabled="true"]) { scale: .97; }
-:where(button, .btn, .fld):is(:disabled, [aria-disabled="true"]) { opacity: var(--disabled); cursor: default; }
+:where(button, .btn, .fld):disabled, :where(.btn, .fld, .ib)[aria-disabled="true"] { opacity: var(--disabled); cursor: default; }
 /* a text field: boxed on its panel's ground, its border lit while it holds the caret */
 .fld { box-sizing: border-box; width: 100%; padding: var(--sp-sm) var(--sp-lg); border: 1px solid var(--line); border-radius: var(--r-sm);
   background: var(--fill-1); color: var(--ink); font: inherit; font-size: var(--text-md); transition: border-color var(--dur) var(--ease); }

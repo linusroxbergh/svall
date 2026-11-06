@@ -25,7 +25,7 @@ import { HomeConnection } from './link/worker.js';
 import { lingerState, realRun } from './linux/service.js';
 import { hooklessGit } from './links/git.js';
 import { createLogger, rotateLog, type Logger } from './log.js';
-import { configDir, homeWord, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
+import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
 import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
@@ -284,8 +284,7 @@ async function start(opts: Options): Promise<Daemon> {
     stage: paths.cache, stateFile: paths.mirrorState, varsFile: paths.mirrorVars, envFile: paths.env, connection, log,
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  // what this worker's sentences call its home: by name once it dials it, as a home that dials its workers is a Mac
-  const workerHomeWord = () => (worker?.worker.homeSsh ? store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName : 'this Mac');
+  const workerHomeWord = () => (worker ? homeWordOnWorker(store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, !!worker.worker.homeSsh) : 'this Mac');
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });

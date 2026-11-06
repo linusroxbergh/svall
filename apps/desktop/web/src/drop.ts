@@ -2,7 +2,7 @@ import { DROP_MAX, DROP_PART, robotOfKey, type ContextItem, type FleetState } fr
 import type { Api } from './api.js';
 import { DROP_URL, type Bridge, type DropFile } from './bridge.js';
 import { encode } from './mobile/term.js';
-import { awayLine, destinationName, type Via } from './placement.js';
+import { awayLine, destinationName, frozenLine, type Via } from './placement.js';
 import type { AppStore } from './store/index.js';
 
 export type DropTarget = { kind: 'island' | 'robot'; id: string; after?: boolean };
@@ -77,12 +77,16 @@ const readPart = async (f: DropFile, at: number): Promise<Uint8Array> => {
 
 export function installDropHandlers(o: { bridge: Bridge; store: AppStore; api(): Api | undefined; doc?: Document }): void {
   const doc = o.doc ?? document;
+  // a robot this window cannot change takes no files, and a drop on it says why
+  const frozen = (t?: DropTarget) => (t?.kind === 'robot' ? frozenLine(o.store.getState(), t.id) : undefined);
   o.bridge.onMessage((m) => {
-    if (m.type === 'drag.over') o.store.getState().setDropHover(dropTargetAt(doc, m.x, m.y));
+    if (m.type === 'drag.over') { const t = dropTargetAt(doc, m.x, m.y); o.store.getState().setDropHover(frozen(t) ? undefined : t); }
     else if (m.type === 'drag.exit') o.store.getState().setDropHover(undefined);
     else if (m.type === 'drag.drop') {
       o.store.getState().setDropHover(undefined);
       const target = dropTargetAt(doc, m.x, m.y);
+      const refused = frozen(target);
+      if (refused) { o.store.getState().showToast(refused); return; }
       const api = o.api();
       if (target && m.paths.length && api) appendItems(api, o.store.getState().fleet, target, m.paths, (msg) => o.store.getState().showToast(msg));
     } else if (m.type === 'term.drop') {

@@ -7,7 +7,7 @@ import { machineNames, plainStep } from './host.js';
 // the window's words for a home it does not follow, each with what a person can do about it
 function said(name: string, state: string, detail?: string): string {
   if (state === 'auth') return `this Mac cannot log in to ${name}`;
-  if (state === 'version') return detail ?? `${name} runs another release than this Mac`;
+  if (state === 'version') return detail ?? `${name} runs another version of Svall`;
   if (state === 'mismatch') return detail ?? `${name} holds a different fleet than this Mac expects`;
   if (state === 'machine') return detail ?? `${name} is a different machine than this Mac expects`;
   return `${name} is not reachable`;

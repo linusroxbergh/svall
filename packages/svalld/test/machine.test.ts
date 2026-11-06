@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { daemonPath } from '../src/launchd.js';
-import { configDir, copiedRemedy, hardwareId, homeWord, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
+import { configDir, copiedRemedy, hardwareId, homeWord, homeWordOnWorker, machineId, machineIdentity, machineIdFailure, mintMachineId, readRegistry, rebindMachine } from '../src/machine.js';
 import { cleanHomes, makeHome } from './helpers.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); delete process.env.SVALL_CONFIG_DIR; cleanHomes(); });
@@ -89,6 +89,13 @@ describe('what a home calls its own machine', () => {
     expect(homeWord('linux')).toBe('studio');
     fs.writeFileSync(path.join(dir, 'machines.json'), '{ machines');
     expect(homeWord('linux')).toBe(hostname);
+  });
+
+  it('a worker calls its home by name, but a server its Mac home dials calls that Mac this Mac', () => {
+    expect(homeWordOnWorker('ada-mac', false, 'linux')).toBe('this Mac');
+    expect(homeWordOnWorker('studio', true, 'darwin')).toBe('studio');
+    // a Mac worker is this Mac itself, so the Mac that dials it goes by name
+    expect(homeWordOnWorker('ada-mac', false, 'darwin')).toBe('ada-mac');
   });
 });
 

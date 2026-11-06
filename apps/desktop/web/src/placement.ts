@@ -15,8 +15,8 @@ export const destinationName = (f: Machines, to: MachineId, via?: Via): string =
  */
 export const isPlaced = (c: Pick<Robot, 'machine'>, via?: Via): boolean => (via ? c.machine !== via.machine : c.machine !== undefined);
 
-/** The machine a new robot starts on: the home the window follows, else this one. */
-export const startsOn = (via: Via): MachineId => (via.online ? via.home : via.machine);
+/** The machine a new robot starts on: the home the window follows, else this one, which also serves a window its home dials. */
+const startsOn = (via: Via): MachineId => (via.online && !via.served ? via.home : via.machine);
 
 /** Whether a robot works on the machine a new one starts on, so that its folder is there. */
 export const startsBeside = (c: Pick<Robot, 'machine'>, via: Via): boolean => (c.machine ?? via.home) === startsOn(via);
@@ -40,9 +40,10 @@ export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string, 
 /**
  * A page on a worker: a phone that reaches the fleet through it while the home does not answer, or a window on a worker's
  * own machine. `machine` is that worker, `home` the home it stands in for; a window names the home, and says `online` while
- * it follows the home itself, when each machine's link reads as the home tells it.
+ * it follows the home itself, when each machine's link reads as the home tells it, and `served` while this machine's daemon
+ * serves it for a home that dials this Mac.
  */
-export type Via = { machine: MachineId; home: MachineId; name?: string; online?: true };
+export type Via = { machine: MachineId; home: MachineId; name?: string; online?: true; served?: true };
 
 /** The home as the fleet names it, as a window was told, or by what it is. */
 export const homeName = (f: Machines, via: Via): string => f.machines?.[via.home]?.name ?? via.name ?? 'the Mac';
@@ -58,27 +59,32 @@ export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via)
 /** Through a worker, a robot that runs on another machine, which takes none of the actions the Mac would answer. */
 export const elsewhere = (c: Pick<Robot, 'machine'>, via?: Via): boolean => !!via && c.machine !== via.machine;
 
-type Standing = { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via; home?: { state: HomeState } };
+// what the home last answered: a version gap names the home's release
+type Answered = { state: HomeState; release?: string };
+type Standing = { fleet: Pick<FleetState, 'robots' | 'machines'>; via?: Via; home?: Answered };
 
 /** Why a window on this Mac's copy of the fleet takes no change to a robot elsewhere: only its home takes one, and that cannot be asked. */
-export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; machine: string }) | undefined => {
+export const frozenWhy = (s: Standing, id: string): (Apart & { robot: string; machine: string; through?: string }) | undefined => {
   if (!s.via || s.via.online || !Object.hasOwn(s.fleet.robots, id)) return undefined;
   const c = s.fleet.robots[id];
   if (!elsewhere(c, s.via)) return undefined;
   const machine = machineOf(s.fleet, c, s.via)!;
-  const onHome = c.machine === undefined || c.machine === s.via.home;
-  return { robot: c.name, machine, ...apartOf(machine, onHome ? s.home?.state : undefined) };
+  // a robot on another machine waits on the home, which this Mac reaches it through
+  const through = c.machine === undefined || c.machine === s.via.home ? undefined : homeName(s.fleet, s.via);
+  return { robot: c.name, machine, ...(through && { through }), ...apartOf(through ?? machine, s.home) };
 };
 
 /** What a try at changing such a robot is told. */
 export const frozenLine = (s: Standing, id: string): string | undefined => {
   const why = frozenWhy(s, id);
-  return why && `${why.robot} runs on ${why.machine}, which ${why.which}; you can change it once ${why.once}.`;
+  return why && `${why.robot} runs on ${why.machine}${why.through ? `, reached through ${why.through}` : ''}, which ${why.which}; you can change it once ${why.once}.`;
 };
 
 // what keeps a window from its home, by what the home last answered, and what ends it
 type Apart = { line: string; which: string; once: string };
-const apartOf = (home: string, state?: HomeState): Apart => {
+const apartOf = (home: string, answer?: Answered): Apart => {
+  const state = answer?.state;
+  if (state === 'version' && !answer?.release) return { line: `${home} cannot run this Mac's Svall`, which: 'cannot run this Mac\'s Svall', once: 'it runs this Mac\'s Svall' };
   if (state === 'version') return { line: `${home} runs another version of Svall`, which: 'runs another version of Svall', once: 'both run the same' };
   if (state === 'auth') return { line: `this Mac cannot log in to ${home}`, which: 'this Mac cannot log in to', once: 'this Mac can log in' };
   if (state === 'mismatch') return { line: `${home} holds a different fleet`, which: 'holds a different fleet', once: 'it holds the fleet this Mac expects' };
@@ -87,10 +93,10 @@ const apartOf = (home: string, state?: HomeState): Apart => {
 };
 
 /** What a robot's terminal and files say in their place while the home has lost its worker: a link in mismatch names the upgrade.
- *  On this Mac's copy of the fleet a robot on the home goes by `state`, what the home last answered. */
-export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via, state?: HomeState): string | undefined {
+ *  On this Mac's copy of the fleet a robot elsewhere goes by `home`, what the home last answered. */
+export function awayLine(f: Machines, c: Pick<Robot, 'machine'>, via?: Via, home?: Answered): string | undefined {
   const name = unreachableOf(f, c, via);
-  if (name && via && !via.online && state && (c.machine === undefined || c.machine === via.home)) return apartOf(name, state).line;
+  if (name && via && !via.online && home) return apartOf(homeName(f, via), home).line;
   // a phone's home is a Mac, which sleeps
   if (via && !via.online) return name && `${name} ${c.machine !== undefined || via.name ? 'is not reachable' : 'is asleep'}`;
   const mismatch = c.machine !== undefined && f.machines?.[c.machine]?.mismatch === true;

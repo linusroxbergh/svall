@@ -32,12 +32,12 @@ export function RobotPanes({ id, opacity, lead, trail }: Props) {
   const bindings = useApp((s) => s.settings.bindings);
   const machines = useApp((s) => s.fleet.machines);
   const via = useApp((s) => s.via);
-  const homeState = useApp((s) => s.home?.state);
+  const home = useApp((s) => s.home);
   const host = useRef<HTMLDivElement>(null);
   if (!c) return null;
   const two = panes.right !== undefined;
   // the files of a robot on a worker are read there, so they wait while it is out of reach
-  const away = awayLine({ machines }, c, via, homeState);
+  const away = awayLine({ machines }, c, via, home);
   const on = machineOf({ machines }, c, via);
 
   const set = (next: Panes) => {

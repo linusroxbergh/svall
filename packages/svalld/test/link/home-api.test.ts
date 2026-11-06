@@ -95,6 +95,12 @@ describe('how a window reaches a far home', () => {
     expect(a.state).toBe('version');
   });
 
+  it('names both machines of one that answers as another, in a person\'s words', async () => {
+    const other = crypto.randomUUID();
+    const a = await apiOf(dialOf(fakeMaster(() => info({ machineId: other })).master)).answer();
+    expect(a).toMatchObject({ state: 'machine', detail: `studio is a different machine than this Mac expects (${other.slice(0, 8)}… there, ${HOME.slice(0, 8)}… here)` });
+  });
+
   it('names both fleets of a mismatch, and gives no advice that would enrol the far machine', async () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ fleetId: other })).master)).answer();
@@ -157,7 +163,7 @@ describe('how a window reaches a far home', () => {
 
   it.each([
     ['another fleet', { fleetId: crypto.randomUUID() }, 'mismatch', `${FLEET.slice(0, 8)}… here`],
-    ['another machine', { machineId: crypto.randomUUID() }, 'machine', 'machineId'],
+    ['another machine', { machineId: crypto.randomUUID() }, 'machine', `${HOME.slice(0, 8)}… here`],
   ])('shows %s, never takes it for the home, and asks nothing again by itself', async (_what, o, state, word) => {
     const m = fakeMaster(() => info(o));
     const api = apiOf(dialOf(m.master));
@@ -196,7 +202,8 @@ describe('how a window reaches a far home', () => {
   });
 
   it('says the same of a dial that cannot reach the home and a daemon that is down, and logs each cause once', async () => {
-    const m = fakeMaster(() => ({ code: 255, signal: null, stderr: 'ssh: connect to host svall-remote.invalid port 22: Undefined error: 0', stdout: '' }));
+    let down = true;
+    const m = fakeMaster(() => (down ? { code: 255, signal: null, stderr: 'ssh: connect to host svall-remote.invalid port 22: Undefined error: 0', stdout: '' } : info()));
     const error = vi.fn();
     const api = new HomeApi({ worker: () => worker, dial: dialOf(m.master), linked: () => false, greets: async () => true, log: { error } });
     const words = { machine: worker.homeMachineId, name: worker.homeName, state: 'unreachable' };
@@ -204,6 +211,12 @@ describe('how a window reaches a far home', () => {
     expect(await api.answer()).toEqual(words);
     expect(error).toHaveBeenCalledTimes(1);
     expect(error.mock.calls[0][0]).toContain('svall-remote.invalid');
+    // the same cause after the home answered in between is a new outage, logged again
+    down = false;
+    expect((await api.answer()).state).toBe('connected');
+    down = true;
+    expect(await api.answer()).toEqual(words);
+    expect(error).toHaveBeenCalledTimes(2);
     const failed = new HomeApi({ worker: () => worker, dial: { master: () => undefined, failure: () => new SshError('unreachable', 'ssh: connect to host 100.117.42.24 port 22: Operation timed out'), restore: () => {} }, linked: () => false });
     expect(await failed.answer()).toEqual(words);
   });

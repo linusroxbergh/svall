@@ -12,7 +12,7 @@ export class FleetMismatch extends SshError {
 
 /** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
 export class MachineMismatch extends SshError {
-  constructor(message: string) { super('other', message); }
+  constructor(message: string, readonly found?: MachineId) { super('other', message); }
 }
 
 /** What a companion answers about the fleet it runs: enough to reach it, and to refuse the wrong one. */
@@ -63,7 +63,7 @@ export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machi
   if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
     throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`, info.fleetId);
   }
-  if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`);
+  if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`, info.machineId);
   if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);
   return info;
 }

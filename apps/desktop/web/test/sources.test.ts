@@ -391,6 +391,13 @@ describe('the page follows the home while it answers, and this machine otherwise
     expect(store.getState().via?.online).toBe(true);
   });
 
+  it('keeps the release a version answer names, which the card\'s words go by', async () => {
+    worker();
+    local.answer('home.connection', () => ({ machine: HOME, name: 'studio', state: 'version', release: '0.20', detail: 'studio runs an older Svall than this Mac (0.20, here 0.21); upgrade it to reach its robots' }));
+    await open();
+    expect(store.getState().home).toMatchObject({ state: 'version', release: '0.20' });
+  });
+
   it('stops knocking on a home on another protocol, stays on this machine, and a person asks again', async () => {
     home.protocol = PROTOCOL_VERSION + 1;
     worker();
@@ -607,7 +614,7 @@ describe('the page follows the home while it answers, and this machine otherwise
       worker();
       local.answer('home.connection', dialed('connected'));
       await open();
-      expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio', online: true });
+      expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio', online: true, served: true });
       expect(store.getState().home?.state).toBe('connected');
       expect(local.said('home.fallback').at(-1)).toEqual({ on: false });
       await api.call('robot.update', { id: 'there', note: 'x' });
@@ -630,7 +637,7 @@ describe('the page follows the home while it answers, and this machine otherwise
       await open();
       local.answer('home.connection', dialed('unreachable'));
       await vi.advanceTimersByTimeAsync(16_000);
-      expect(store.getState().via?.online).toBeUndefined();
+      expect(store.getState().via).toEqual({ machine: ME, home: HOME, name: 'studio' });
       expect(store.getState().home?.state).toBe('unreachable');
       expect(local.said('home.fallback').at(-1)).toEqual({ on: true });
       local.answer('home.connection', dialed('connected'));

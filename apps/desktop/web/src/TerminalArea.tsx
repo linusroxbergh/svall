@@ -23,7 +23,7 @@ export function TerminalArea({ id, opacity, second, aside }: { id: string; opaci
   const veiled = useApp(isVeiled);
   // a robot between machines, or on a worker the home cannot reach, has no terminal to show here
   const movingTo = useApp((s) => { const m = s.fleet.robots[id]?.moving; return m && destinationName(s.fleet, m.to, s.via); });
-  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via, s.home?.state); });
+  const unreachable = useApp((s) => { const r = s.fleet.robots[id]; return r && awayLine(s.fleet, r, s.via, s.home); });
   const away = !!movingTo || !!unreachable;
   // the last lines this Mac saw of the robot's pane there, asked once each time its worker is lost
   const lost = !!unreachable && !second;

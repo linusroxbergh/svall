@@ -31,6 +31,9 @@ it('a new robot button starts beside a robot on the machine it starts on: the ho
   expect(await started('i_b')).toBe('/home/ada/far');
   c.store.getState().setVia({ machine: MAC, home: HOME, online: true });
   expect(await started('i_b')).toBe('/home/ada/far');
+  // a home that dials this Mac has the daemon here serve the window, so a new robot starts here
+  c.store.getState().setVia({ machine: MAC, home: HOME, online: true, served: true });
+  expect(await started('i_b')).toBe('/Users/ada/here');
   c.store.getState().setVia({ machine: MAC, home: HOME });
   expect(await started('i_b')).toBe('/Users/ada/here');
   // no robot here to stand beside, so the fleet's own folder is asked for, and this Mac says what it wants

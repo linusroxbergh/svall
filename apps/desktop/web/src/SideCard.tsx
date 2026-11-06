@@ -71,7 +71,8 @@ function LastActivity({ at }: { at: number }) {
 export function SideCard({ id }: { id: string }) {
   const c = useApp((s) => s.fleet.robots[id]);
   const refuse = useRefusal(id);
-  const homeState = useApp((s) => s.home?.state);
+  const home = useApp((s) => s.home);
+  const homeState = home?.state;
   const readOnly = useApp((s) => { const why = frozenWhy(s, id); return why && `Read-only until ${why.once}.`; });
   const machines = useApp((s) => s.fleet.machines);
   const via = useApp((s) => s.via);
@@ -90,7 +91,7 @@ export function SideCard({ id }: { id: string }) {
   const status = statusOf(c, fleet, via);
   // a robot on a worker: its folder buttons act there or step aside, and it moves back here
   const placed = machineOf(fleet, c, via);
-  const away = awayLine(fleet, c, via, homeState);
+  const away = awayLine(fleet, c, via, home);
   const cwd = placed ? `${placed}:${c.cwd}` : c.cwd;
   // one on a worker moves back from wherever on the map it stands
   const onHome = c.machine === undefined || c.machine === via?.home;
@@ -106,7 +107,7 @@ export function SideCard({ id }: { id: string }) {
   return (
     <aside className="side" style={width} data-testid="side-card" data-drop={`robot:${id}`} data-drop-hover={hover}>
       <div className="kicker" style={{ color: accent }}>
-        <i className="sdot" data-status={status} />{status === 'unknown' ? 'unreachable' : status}{isUnread(c) ? ' · unread' : ''}
+        <i className="sdot" data-status={status} />{status !== 'unknown' ? status : readOnly && homeState && homeState !== 'unreachable' && homeState !== 'connecting' ? 'read-only' : 'unreachable'}{isUnread(c) ? ' · unread' : ''}
       </div>
       <div className="side-id">
         <div className="side-head">
@@ -125,7 +126,7 @@ export function SideCard({ id }: { id: string }) {
         )}
         {c.hint && <div className="side-hint" data-testid="side-hint">{hintText(c)}</div>}
         {by && <div className="side-by" data-testid="side-started-by">started by <RobotLink c={{ id: c.startedBy!, name: by }} /></div>}
-        {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} />}
+        {c.relayed?.held && <Held id={id} n={c.relayed.n} promptId={c.relayed.held} refuse={refuse} />}
       </div>
       <div className="side-secs">
         {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
@@ -155,7 +156,8 @@ export function SideCard({ id }: { id: string }) {
         <Section name="robot.details" title="Details">
           <div className="rows">
             <div className="row"><span>island</span>
-              <b><select className="fld inline" aria-label="Island" value={c.islandId} data-testid="side-island" onChange={(e) => save({ islandId: e.target.value })}>
+              <b><select className="fld inline" aria-label="Island" value={c.islandId} data-testid="side-island" aria-disabled={refuse && true}
+                onMouseDownCapture={refuse && ((e) => { e.preventDefault(); refuse(); })} onChange={(e) => (refuse ? refuse() : save({ islandId: e.target.value }))}>
                 {islandsSorted(fleet).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
               </select></b>
             </div>
@@ -220,15 +222,15 @@ function StartedRow({ id, machines }: { id: string; machines: FleetState['machin
 }
 
 // robot messages waiting on the user, past the run of them a loop between robots would make
-function Held({ id, n, promptId }: { id: string; n: number; promptId: string }) {
+function Held({ id, n, promptId, refuse }: { id: string; n: number; promptId: string; refuse?: () => void }) {
   const answer = (a: 'approve' | 'deny') => app.api().call('robot.answer', { id, answer: a, promptId })
     .catch((e: Error) => app.store.getState().showToast(e.message, 'error'));
   return (
     <div className="side-away" data-testid="side-held">
       <span>{n} robot messages since your last prompt; the next waits on you</span>
       <span className="side-held-acts">
-        <button className="btn sm" data-testid="side-held-let" onClick={() => void answer('approve')}>Let in</button>
-        <button className="btn sm" data-testid="side-held-drop" onClick={() => void answer('deny')}>Drop</button>
+        <button className="btn sm" data-testid="side-held-let" {...buttonTry(refuse)} onClick={() => void answer('approve')}>Let in</button>
+        <button className="btn sm" data-testid="side-held-drop" {...buttonTry(refuse)} onClick={() => void answer('deny')}>Drop</button>
       </span>
     </div>
   );

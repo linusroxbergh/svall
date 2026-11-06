@@ -63,6 +63,30 @@ test('a drag whose release the map never heard ends when the map loses the point
   expect(methods()).toEqual([]);
 });
 
+test('on the Mac\'s copy a far robot\'s figure stays put and says why, and a robot on this Mac moves', async () => {
+  const MAC = 'a1b2c3d4-0000-4000-8000-000000000001' as MachineId;
+  const f = store.getState().fleet;
+  store.getState().setFleet({ ...f, robots: { ...f.robots, c1: { ...f.robots.c1, machine: MAC } } });
+  store.getState().setVia({ machine: MAC, home: 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId, name: 'linus-vault' });
+  render(<Map />);
+  await act(async () => {});
+  const map = screen.getByTestId('map');
+  const drag = (id: string) => act(() => {
+    fireEvent.pointerDown(screen.getByTestId(`token-${id}`), { pointerId: 1, clientX: 0, clientY: 0 });
+    fireEvent.pointerMove(map, { pointerId: 1, clientX: 400, clientY: 400 });
+    fireEvent.pointerUp(map, { pointerId: 1, clientX: 400, clientY: 400 });
+  });
+  const moves = () => methods().filter((m) => m === 'robot.move' || m === 'island.create');
+  drag('c0');
+  expect(store.getState().toast?.text).toBe('c0 runs on linus-vault, which is not reachable; you can change it once it answers.');
+  expect(moves()).toEqual([]);
+  act(() => store.getState().clearToast());
+  drag('c1');
+  await act(async () => {});
+  expect(moves().length).toBeGreaterThan(0);
+  expect(store.getState().toast).toBeUndefined();
+});
+
 test('a press on an island whose release the map never heard lets the camera go when the map loses the pointer', async () => {
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
   Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });

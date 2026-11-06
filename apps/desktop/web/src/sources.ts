@@ -115,7 +115,7 @@ export class FollowApi extends Api {
         // a daemon enrolled meanwhile under another home leaves nothing to follow of the old one
         if (this.store.getState().via?.home !== h.machine) this.dropHome();
         this.store.getState().setHome({ ...this.store.getState().home, name: h.name, state: this.homeOnline ? 'connected' : 'connecting' });
-        this.store.getState().setVia({ machine: h.me, home: h.machine, name: h.name, ...((this.homeOnline || this.served) && { online: true as const }) });
+        this.store.getState().setVia({ machine: h.me, home: h.machine, name: h.name, ...((this.homeOnline || this.served) && { online: true as const }), ...(this.served && { served: true as const }) });
       } else {
         this.home?.stop();
         this.home = undefined;
@@ -156,11 +156,11 @@ export class FollowApi extends Api {
       return;
     }
     if (!this.far) return;
-    const { token, port, ssh, controlSocket, state, name, detail, newer } = a;
+    const { token, port, ssh, controlSocket, state, name, detail, newer, release } = a;
     const master = ssh && controlSocket ? { ssh, controlSocket } : undefined;
     const route = state === 'connected' && port && token ? endpoint(port) : undefined;
     const stuck = !!route && !this.homeOnline && this.failedOpens >= OPENS;
-    this.store.getState().setHome({ name, state: stuck ? 'unreachable' : route && !this.homeOnline ? 'connecting' : state, ...(stuck ? { detail: this.stuckDetail(name) } : detail && { detail }), ...(newer && { newer }), ...(master && { master }) });
+    this.store.getState().setHome({ name, state: stuck ? 'unreachable' : route && !this.homeOnline ? 'connecting' : state, ...(stuck ? { detail: this.stuckDetail(name) } : detail && { detail }), ...(newer && { newer }), ...(release && { release }), ...(master && { master }) });
     if (route) {
       this.follow(route, token!);
       return;
@@ -193,7 +193,7 @@ export class FollowApi extends Api {
   private announce(): void {
     const { via } = this.store.getState();
     const online = this.served || (!!this.home && this.active === this.home);
-    if (via) this.store.getState().setVia({ machine: via.machine, home: via.home, name: via.name, ...(online && { online }) });
+    if (via) this.store.getState().setVia({ machine: via.machine, home: via.home, name: via.name, ...(online && { online }), ...(this.served && { served: true as const }) });
     this.local.call('home.fallback', { on: !online }).catch(() => {});
   }
 

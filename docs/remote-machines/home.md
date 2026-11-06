@@ -33,8 +33,8 @@ No terminal starts while the first connection is down; it opens once the connect
 
 ## When studio does not answer
 
-The window goes on, on this Mac's own copy of the fleet, with a banner: **studio is not reachable**, the reason, and the time of the
-copy it shows.
+The window goes on, on this Mac's own copy of the fleet, with a banner: **studio is not reachable** and the time of the copy it
+shows; the cause is in svalld's log.
 
 - Robots on this Mac are live, with their terminals.
 - A robot on studio shows unknown, with the last screen studio sent. A robot on any other machine shows unknown.

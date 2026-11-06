@@ -97,23 +97,69 @@ test.each([
   expect(store.getState().closingRobot).toBe(id);
 });
 
-test.each([
-  ['unreachable', 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.'],
-  ['version', 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.'],
-  ['auth', 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.'],
-  ['mismatch', 'linus-vault holds a different fleet', 'holds a different fleet; you can change it once it holds the fleet this Mac expects.', 'Read-only until it holds the fleet this Mac expects.'],
-  ['machine', 'linus-vault is a different machine than this Mac expects', 'is a different machine than this Mac expects; you can change it once it is the machine this Mac expects.', 'Read-only until it is the machine this Mac expects.'],
-] as const)('on the Mac\'s copy with the home %s, the card, the pane, the toast and the tip say why', async (state, line, which, readOnly) => {
-  act(() => { store.getState().setVia(COPY); store.getState().setHome({ name: 'linus-vault', state }); });
-  call.mockImplementation((method: string) => Promise.resolve(method === 'term.lastScreen' ? { text: '$ ls' } : method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
-  render(<><SideCard id="c0" /><TerminalArea id="c0" /></>);
+// what the home answered; the words of the card, pane, toast and tip; the card's read-only line; its kicker
+const STATES: [Record<string, string>, string, string, string, string][] = [
+  [{ state: 'unreachable' }, 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.', 'unreachable'],
+  [{ state: 'version', release: '0.27.0' }, 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.', 'read-only'],
+  [{ state: 'version' }, 'linus-vault cannot run this Mac\'s Svall', 'cannot run this Mac\'s Svall; you can change it once it runs this Mac\'s Svall.', 'Read-only until it runs this Mac\'s Svall.', 'read-only'],
+  [{ state: 'auth' }, 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.', 'read-only'],
+  [{ state: 'mismatch' }, 'linus-vault holds a different fleet', 'holds a different fleet; you can change it once it holds the fleet this Mac expects.', 'Read-only until it holds the fleet this Mac expects.', 'read-only'],
+  [{ state: 'machine' }, 'linus-vault is a different machine than this Mac expects', 'is a different machine than this Mac expects; you can change it once it is the machine this Mac expects.', 'Read-only until it is the machine this Mac expects.', 'read-only'],
+];
+const GPU = 'a1b2c3d4-0000-4000-8000-000000000003' as MachineId;
+
+// c0 runs on the home; c2 on a third machine, which this Mac reaches through the home and so waits on it
+test.each(STATES.flatMap((row) => [['c0', 'linus-vault', 'linus-vault', ...row], ['c2', 'gpu-box, reached through linus-vault', 'gpu-box', ...row]]))(
+  'on the Mac\'s copy %s, on %s, which is %s, says why with the home %o on the card, the pane, the toast and the tip', async (id, on, machine, home, line, which, readOnly, kicker) => {
+    const f = store.getState().fleet;
+    act(() => {
+      store.getState().setFleet({ ...f, machines: { ...f.machines, [GPU]: { name: 'gpu-box', reachable: true, since: 0 } }, robots: { ...f.robots, c2: { ...f.robots.c2, machine: GPU } } });
+      store.getState().setVia(COPY);
+      store.getState().setHome({ name: 'linus-vault', ...(home as { state: 'unreachable' }) });
+    });
+    const answers: Record<string, unknown> = { 'term.lastScreen': { text: '$ ls' }, 'robot.prompts': { prompts: [] }, 'resources.get': { sources: [] }, 'machines.setup': { rows: [] } };
+    call.mockImplementation((method: string) => Promise.resolve(answers[method] ?? {}));
+    render(<><SideCard id={id} /><TerminalArea id={id} /></>);
+    await act(async () => {});
+    expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Check ${machine}`);
+    expect(document.querySelector('.kicker')!.textContent).toBe(kicker);
+    expect(screen.getByTestId('terminal-unreachable').textContent).toBe(line);
+    fireEvent.click(screen.getByTestId('side-star'));
+    expect(told()).toBe(`${id} runs on ${on}, which ${which}`);
+    robotMenu(press, id, () => {});
+    expect(store.getState().menu!.items.find((i) => i.title === 'Delete')!.tip).toBe(`${id} runs on ${on}, which ${which}`);
+  });
+
+test('a far robot\'s island and held message take no change on the Mac\'s copy and say why, and a Mac robot\'s do', async () => {
+  const f = store.getState().fleet;
+  const held = { n: 3, held: 'p_1' };
+  act(() => {
+    store.getState().setFleet({ ...f, robots: { ...f.robots, c0: { ...f.robots.c0, relayed: held }, c1: { ...f.robots.c1, relayed: held } } });
+    store.getState().setVia(COPY);
+  });
+  const { unmount } = render(<SideCard id="c0" />);
   await act(async () => {});
-  expect(screen.getByTestId('side-away').textContent).toBe(`${line}${readOnly}Check linus-vault`);
-  expect(screen.getByTestId('terminal-unreachable').textContent).toBe(line);
-  fireEvent.click(screen.getByTestId('side-star'));
-  expect(told()).toBe(`c0 runs on linus-vault, which ${which}`);
-  robotMenu(press, 'c0', () => {});
-  expect(store.getState().menu!.items.find((i) => i.title === 'Delete')!.tip).toBe(`c0 runs on linus-vault, which ${which}`);
+  const island = screen.getByTestId('side-island');
+  expect(island.getAttribute('aria-disabled')).toBe('true');
+  fireEvent.mouseDown(island);
+  expect(told()).toBe(WHY);
+  fireEvent.change(island, { target: { value: 'i_a' } });
+  expect(told()).toBe(WHY);
+  for (const t of ['side-held-let', 'side-held-drop']) {
+    expect(screen.getByTestId(t).getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(screen.getByTestId(t));
+    expect(told()).toBe(WHY);
+  }
+  expect(call.mock.calls.filter(([m]) => m === 'robot.update' || m === 'robot.answer')).toEqual([]);
+  unmount();
+  render(<SideCard id="c1" />);
+  await act(async () => {});
+  expect(screen.getByTestId('side-island').getAttribute('aria-disabled')).toBeNull();
+  fireEvent.change(screen.getByTestId('side-island'), { target: { value: 'i_a' } });
+  fireEvent.click(screen.getByTestId('side-held-let'));
+  expect(call).toHaveBeenCalledWith('robot.update', { id: 'c1', islandId: 'i_a' });
+  expect(call).toHaveBeenCalledWith('robot.answer', { id: 'c1', answer: 'approve', promptId: 'p_1' });
+  expect(told()).toBeUndefined();
 });
 
 test('the far robot\'s own field on the shelf is read-only and says why, and a Mac robot\'s is not', () => {
