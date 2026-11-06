@@ -81,7 +81,7 @@ type Apart = { line: string; which: string; once: string };
 const apartOf = (home: string, state?: HomeState): Apart => {
   if (state === 'version') return { line: `${home} runs another version of Svall`, which: 'runs another version of Svall', once: 'both run the same' };
   if (state === 'auth') return { line: `this Mac cannot log in to ${home}`, which: 'this Mac cannot log in to', once: 'this Mac can log in' };
-  if (state === 'mismatch') return { line: `${home} answers as another fleet`, which: 'answers as another fleet', once: 'it answers as this one' };
+  if (state === 'mismatch') return { line: `${home} holds a different fleet`, which: 'holds a different fleet', once: 'it holds the fleet this Mac expects' };
   return { line: `${home} is not reachable`, which: 'is not reachable', once: 'it answers' };
 };
 

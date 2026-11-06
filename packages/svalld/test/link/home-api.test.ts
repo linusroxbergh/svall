@@ -99,9 +99,7 @@ describe('how a window reaches a far home', () => {
     const other = crypto.randomUUID();
     const a = await apiOf(dialOf(fakeMaster(() => info({ fleetId: other })).master)).answer();
     expect(a.state).toBe('mismatch');
-    expect(a.detail).toContain(other);
-    expect(a.detail).toContain(FLEET);
-    expect(a.detail).not.toContain('host upgrade');
+    expect(a.detail).toBe(`studio holds a different fleet than this Mac expects (${other.slice(0, 8)}… there, ${FLEET.slice(0, 8)}… here)`);
   });
 
   it('says newer only of a far side ahead of this one, and sends a person to update this Mac', async () => {
@@ -158,7 +156,7 @@ describe('how a window reaches a far home', () => {
   });
 
   it.each([
-    ['another fleet', { fleetId: crypto.randomUUID() }, FLEET],
+    ['another fleet', { fleetId: crypto.randomUUID() }, `${FLEET.slice(0, 8)}… here`],
     ['another machine', { machineId: crypto.randomUUID() }, 'machineId'],
   ])('shows %s, never takes it for the home, and asks nothing again by itself', async (_what, o, word) => {
     const m = fakeMaster(() => info(o));

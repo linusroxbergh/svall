@@ -352,7 +352,7 @@ describe('the page follows the home while it answers, and this machine otherwise
 
   it('takes a mismatch\'s sentence with no route, and asks again only for a person', async () => {
     worker();
-    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio runs another fleet, x, not this one, y' };
+    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio holds a different fleet than this Mac expects (x… there, y… here)' };
     local.answer('home.connection', () => mismatch);
     await open();
     expect(store.getState().home).toMatchObject({ state: 'mismatch', detail: mismatch.detail });
@@ -363,7 +363,7 @@ describe('the page follows the home while it answers, and this machine otherwise
 
   it('goes from following to a mismatch: its socket stops, the sentence stands, and the page stays on this machine', async () => {
     await following();
-    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio runs another fleet, x, not this one, y' };
+    const mismatch = { machine: HOME, name: 'studio', state: 'mismatch', detail: 'studio holds a different fleet than this Mac expects (x… there, y… here)' };
     local.answer('home.connection', () => mismatch);
     net.daemons.delete(url(50_000));
     home.drop();

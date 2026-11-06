@@ -8,7 +8,7 @@ import { machineNames, plainStep } from './host.js';
 function said(name: string, state: string, detail?: string): string {
   if (state === 'auth') return `this Mac cannot log in to ${name}`;
   if (state === 'version') return detail ?? `${name} runs another release than this Mac`;
-  if (state === 'mismatch') return detail ?? `${name} answers as another fleet`;
+  if (state === 'mismatch') return detail ?? `${name} holds a different fleet than this Mac expects`;
   return `${name} is not reachable`;
 }
 

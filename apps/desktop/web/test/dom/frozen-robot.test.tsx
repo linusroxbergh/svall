@@ -101,7 +101,7 @@ test.each([
   ['unreachable', 'linus-vault is not reachable', 'is not reachable; you can change it once it answers.', 'Read-only until it answers.'],
   ['version', 'linus-vault runs another version of Svall', 'runs another version of Svall; you can change it once both run the same.', 'Read-only until both run the same.'],
   ['auth', 'this Mac cannot log in to linus-vault', 'this Mac cannot log in to; you can change it once this Mac can log in.', 'Read-only until this Mac can log in.'],
-  ['mismatch', 'linus-vault answers as another fleet', 'answers as another fleet; you can change it once it answers as this one.', 'Read-only until it answers as this one.'],
+  ['mismatch', 'linus-vault holds a different fleet', 'holds a different fleet; you can change it once it holds the fleet this Mac expects.', 'Read-only until it holds the fleet this Mac expects.'],
 ] as const)('on the Mac\'s copy with the home %s, the card, the pane, the toast and the tip say why', async (state, line, which, readOnly) => {
   act(() => { store.getState().setVia(COPY); store.getState().setHome({ name: 'linus-vault', state }); });
   call.mockImplementation((method: string) => Promise.resolve(method === 'term.lastScreen' ? { text: '$ ls' } : method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] } : {}));
