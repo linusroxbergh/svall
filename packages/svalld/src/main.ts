@@ -31,7 +31,7 @@ import { createLogger, rotateLog, type Logger } from './log.js';
 import { configDir, homeWord, homeWordOnWorker, listsWorker, machineId, machineIdentity, machineIdFailure, ownName, readRegistry, rebindMachine, type HardwareReader } from './machine.js';
 import { mobileControl, phoneKey, realDeps, watchServed } from './mobile.js';
 import { installOpencodePlugin, opencodePaths } from './opencode/install.js';
-import { claudePaths, fleetKeys, resolvePaths } from './paths.js';
+import { claudePaths, fleetRefused, resolvePaths } from './paths.js';
 import { Phones } from './phones.js';
 import { Placement } from './placement/move.js';
 import { HomeDocs, WorkerDocs, noteConflict } from './placement/docs-sync.js';
@@ -365,7 +365,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const homes = () => fleetHomes(paths.home);
   const refused = () => [claude.json, path.join(claude.dir, '.credentials.json'), path.join(codex.dir, 'auth.json'),
     path.join(opencode.data, 'auth.json'), path.join(opencode.data, 'mcp-auth.json'),
-    ...homes().flatMap((h) => fleetKeys(resolvePaths(h)))];
+    ...homes().flatMap((h) => fleetRefused(resolvePaths(h)))];
   // a robot's folders are on the machine it runs on
   const rootOf = rootHere((c) => router.runsHere(c));
   const workspace = new Workspace((id) => workspaceRoot(id, store.state, claude, codex, paths.docs, paths.agentProfiles, (c) => router.runsHere(c), rootOf, docsRoot), log, refused, [paths.docs, paths.agentProfiles], paths.trash,

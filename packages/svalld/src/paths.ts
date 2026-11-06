@@ -148,6 +148,13 @@ export const isDialSocket = (socket: string, machine: string): boolean => socket
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile, p.homeMoving, p.homeDeliver];
 
+/** What Files never opens of a fleet home, each by its identity: its keys, its journals whole, and what a home move staged or kept. */
+export function fleetRefused(p: Paths): string[] {
+  let names: string[] = [];
+  try { names = fs.readdirSync(p.home); } catch { /* no fleet home yet */ }
+  return [...fleetKeys(p), path.join(p.home, 'journal'), ...names.filter((n) => inStagedMove(n)).map((n) => path.join(p.home, n))];
+}
+
 /** Whether `p` lies in a home move's staged folder, or is its kept workers.json or its driver's journal, which hold a fleet's keys under names of their own. */
 export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|workers\.json\.home-hm_[0-9a-z]{10}$|hm_[0-9a-z]{10}\.driver\.ndjson$)/i.test(p);
 

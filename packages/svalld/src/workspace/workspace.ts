@@ -82,10 +82,11 @@ export class Workspace {
   private refusal(): { refused: string[]; is: (abs: string) => boolean } {
     const refused = this.refused();
     const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
-    // a sealed folder on disk goes by its identity, against each folder that leads to the path, as spelled and where it really
+    // a sealed or refused folder on disk goes by its identity, against each folder that leads to the path, as spelled and where it really
     // is; one not on disk yet is matched as it is spelled, as `realOf` would answer the folder it is to lie in
     const sealedNames = this.sealed();
-    const sealedIds = new Set(sealedNames.map(idOf).filter((i) => i !== undefined));
+    const isFolder = (p: string): boolean => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+    const sealedIds = new Set([...sealedNames, ...refused.filter(isFolder)].map(idOf).filter((i) => i !== undefined));
     const leadsThrough = (p: string): boolean => {
       for (let at = p; ; at = path.dirname(at)) {
         const id = idOf(at);

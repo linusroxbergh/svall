@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '@svall/protocol';
 import { markKey } from '../src/fleet/home-move.js';
 import { silentLogger } from '../src/log.js';
-import { resolvePaths } from '../src/paths.js';
+import { fleetRefused, resolvePaths } from '../src/paths.js';
 import type { Viewer } from '../src/terminals.js';
 import { git } from '../src/workspace/git.js';
 import { Workspace } from '../src/workspace/workspace.js';
@@ -219,6 +219,48 @@ describe('Workspace files', () => {
     expect(await codeOf(() => ws.write('c', journal, 'x', 0))).toBe('invalid');
     fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{}\n');
     expect(ws.read('c', path.join(paths.homeMoves, 'hm_abcdefghij.ndjson')).text).toBe('{}\n');
+  });
+
+  describe('a fleet home\'s journals, whose lines a move\'s end reads, and what a move staged', () => {
+    const fleetWorkspace = () => {
+      const dir = repo();
+      const paths = resolvePaths(path.join(makeHome(), 'fleets'));
+      fs.mkdirSync(paths.homeMoves, { recursive: true });
+      fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{"phase":"staged","at":1}\n');
+      markKey(paths, 'hm_abcdefghij');
+      fs.writeFileSync(`${paths.workersFile}.home-hm_abcdefghij`, '{}');
+      return { paths, ws: new Workspace(() => dir, silentLogger, () => fleetRefused(paths)) };
+    };
+
+    it('refuses every read and write under journal/, a new line or file included, and through a link', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const journal = path.join(paths.homeMoves, 'hm_abcdefghij.ndjson');
+      expect(await codeOf(() => ws.read('c', journal))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', journal, '{"phase":"released","at":2}\n', fs.statSync(journal).mtimeMs))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', path.join(paths.homeMoves, 'hm_otherother.ndjson'), '{"phase":"done","at":2}\n', 0))).toBe('invalid');
+      const alias = path.join(makeHome(), 'alias');
+      fs.symlinkSync(path.join(paths.home, 'journal'), alias);
+      expect(await codeOf(() => ws.read('c', path.join(alias, 'home', 'hm_abcdefghij.ndjson')))).toBe('invalid');
+      expect(fs.readFileSync(journal, 'utf8')).toBe('{"phase":"staged","at":1}\n');
+      expect(fs.existsSync(path.join(paths.homeMoves, 'hm_otherother.ndjson'))).toBe(false);
+      expect(await codeOf(() => ws.read('c', `${paths.workersFile}.home-hm_abcdefghij`))).toBe('invalid');
+    });
+
+    // APFS as a Mac formats it folds case, and more than ASCII's: what a spelling opens is what is refused
+    const folds = (() => { const d = makeHome(); fs.writeFileSync(path.join(d, 'case'), ''); return fs.existsSync(path.join(d, 'CASE')); })();
+    it.skipIf(!folds)('on a folding volume, refuses a spelling the volume folds onto journal/, ASCII or not, for a read and a write', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const driver = path.join(paths.homeMoves, 'hm_abcdefghij.driver.ndjson');
+      for (const spelled of [driver.replace('/journal/', '/JOURNAL/'), driver.replace(/ndjson$/, 'ndjſon'), driver.replace('/fleets/', '/fleetſ/')]) {
+        if (!fs.existsSync(spelled)) continue;
+        expect(await codeOf(() => ws.read('c', spelled)), spelled).toBe('invalid');
+        expect(await codeOf(() => ws.write('c', spelled, 'x', fs.statSync(spelled).mtimeMs)), spelled).toBe('invalid');
+      }
+      const kept = `${paths.workersFile}.home-hm_abcdefghij`.replace(/workers\.json/, 'workerſ.json');
+      if (fs.existsSync(kept)) expect(await codeOf(() => ws.read('c', kept))).toBe('invalid');
+      expect(fs.existsSync(driver.replace('/journal/', '/JOURNAL/'))).toBe(true);
+      expect(fs.readFileSync(driver, 'utf8')).toContain('"phase":"mark"');
+    });
   });
 
   it('lists a repository outside the root without running the command its config names', async () => {
