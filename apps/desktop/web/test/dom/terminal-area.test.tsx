@@ -129,6 +129,7 @@ const placed = (reachable: boolean, more: Partial<Robot> = {}) => {
 
 test('a robot on a worker out of reach says so in place of its terminal, and attaches or wakes nothing', () => {
   placed(false);
+  call.mockResolvedValueOnce({ text: '', at: 0 });
   render(<TerminalArea id="c1" />);
   act(() => { vi.advanceTimersByTime(5000); });
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault is not reachable');
@@ -177,6 +178,7 @@ test('a robot on a worker linked on another build names the upgrade in place of 
   f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0, mismatch: true } };
   Object.assign(f.robots.c1, { machine: VAULT });
   act(() => store.getState().setFleet(f));
+  call.mockResolvedValueOnce({ text: '', at: 0 });
   render(<TerminalArea id="c1" />);
   expect(screen.getByTestId('terminal-unreachable').textContent).toBe('linus-vault runs a different build; upgrade it under Machines');
 });
