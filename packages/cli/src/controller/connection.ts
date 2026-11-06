@@ -83,7 +83,7 @@ function localFleetId(fleetHome: string): FleetId {
 }
 
 /** The far daemon of `machine` over a forward on `master`, which a failed connection takes back; its error holds no token. */
-export async function connectForwarded(master: SshMaster, machine: MachineEntry, o: Parameters<typeof remoteConnectionInfo>[2]) {
+export async function connectForwarded(master: SshMaster, machine: Parameters<typeof remoteConnectionInfo>[1], o: Parameters<typeof remoteConnectionInfo>[2]) {
   const info = await remoteConnectionInfo(master, machine, o);
   const forward = await master.forward(info.port);
   try {

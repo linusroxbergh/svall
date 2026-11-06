@@ -52,6 +52,38 @@ function HomeFiles({ id, skills }: { id: string; skills: number }) {
   );
 }
 
+/** What of this machine's agent setup holds a key, each with its box, as Add machine asks it: nothing goes unticked. */
+export function SetupTicks({ rows, tick }: { rows: SetupRow[]; tick: (r: SetupRow, fields: string[], on: boolean) => void }) {
+  const box = (r: SetupRow, id: string, label: string, fields: string[], on: boolean) => (
+    <b><input type="checkbox" data-testid={`setup-tick-${id}`} aria-label={label} checked={on} onChange={(e) => tick(r, fields, e.target.checked)} /></b>
+  );
+  const row = (r: SetupRow) => {
+    const t = r.tick!;
+    const label = stepLabel(`mirror:${r.key}`);
+    // a key row with several fields has a box each; what travels whole has one
+    if (!t.ticked || t.fields.length < 2) {
+      return (
+        <div className="row" key={r.key}>
+          <span>{label} <small>{t.preview.join(', ')}</small></span>
+          {box(r, r.key, label, t.fields, t.on)}
+        </div>
+      );
+    }
+    return [
+      <div className="row" key={r.key}>
+        <span>{label}{t.ticked.length > 0 && !t.on && <small data-testid={`setup-partial-${r.key}`}> partly ticked: {t.ticked.length} of {t.fields.length} keys go</small>}</span>
+      </div>,
+      ...t.fields.map((f) => (
+        <div className="row" key={`${r.key}#${f}`}>
+          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small></span>
+          {box(r, `${r.key}#${f}`, `${label} ${f}`, [f], t.ticked!.includes(f))}
+        </div>
+      )),
+    ];
+  };
+  return <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>;
+}
+
 /** A window on a worker: the agent setup lives on the fleet's home, whose files open here, and this machine's own goes there only when copied. */
 export function AgentSetup() {
   const home = useApp((s) => (s.via ? homeName(s.fleet, s.via) : ''));
@@ -96,33 +128,6 @@ export function AgentSetup() {
       (e: Error) => setSaid({ ok: false, text: e.message }),
     ).finally(() => setBusy(false));
   };
-  const box = (r: SetupRow, id: string, label: string, fields: string[], on: boolean) => (
-    <b><input type="checkbox" data-testid={`setup-tick-${id}`} aria-label={label} checked={on} onChange={(e) => tick(r, fields, e.target.checked)} /></b>
-  );
-  const row = (r: SetupRow) => {
-    const t = r.tick!;
-    const label = stepLabel(`mirror:${r.key}`);
-    // a key row with several fields has a box each; what travels whole has one
-    if (!t.ticked || t.fields.length < 2) {
-      return (
-        <div className="row" key={r.key}>
-          <span>{label} <small>{t.preview.join(', ')}</small></span>
-          {box(r, r.key, label, t.fields, t.on)}
-        </div>
-      );
-    }
-    return [
-      <div className="row" key={r.key}>
-        <span>{label}{t.ticked.length > 0 && !t.on && <small data-testid={`setup-partial-${r.key}`}> partly ticked: {t.ticked.length} of {t.fields.length} keys go</small>}</span>
-      </div>,
-      ...t.fields.map((f) => (
-        <div className="row" key={`${r.key}#${f}`}>
-          <span><small>{t.preview.filter((p) => p.startsWith(`${f} `)).join(', ') || f}</small></span>
-          {box(r, `${r.key}#${f}`, `${label} ${f}`, [f], t.ticked!.includes(f))}
-        </div>
-      )),
-    ];
-  };
   return (
     <>
       <div className="desc" data-testid="setup-lives">Your agent setup lives on {home}. Every worker takes it from there, this Mac included.</div>
@@ -136,7 +141,7 @@ export function AgentSetup() {
       {!!rows?.length && (
         <>
           <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
-          <div className="rows" data-testid="setup-rows">{rows.map(row)}</div>
+          <SetupTicks rows={rows} tick={tick} />
         </>
       )}
       {pushFailed && <div className="desc" role="alert" data-testid="setup-push-failed" data-error>{home}&apos;s last push here did not land: {pushFailed}</div>}

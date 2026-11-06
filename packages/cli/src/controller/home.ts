@@ -62,7 +62,34 @@ export type JoinDeps = Pick<HostDeps, 'emit' | 'openMaster' | 'interactiveSsh' |
   enrol(o: Enrol, token: string): Promise<void>;
   /** this fleet's state as its daemon holds it, undefined while none answers */
   state(): Promise<FleetState | undefined>;
+  /** whether to copy this machine's agent setup to the home; none where no person can be asked, whose window offers it */
+  ask?: SeedAsk;
+  /** the daemon here, and the home's over `master` */
+  seedClients(master: SshMaster, home: { id: MachineId; fleetId: FleetId; svallBase: string; ssh: string }): Promise<{ here: SeedClient; far: SeedClient; close(): Promise<void> }>;
 };
+
+type SeedClient = Pick<Client, 'call'>;
+/** `go` whether to copy at all; `key` whether to send one ticked key row, by what it asks. */
+export type SeedAsk = { go(name: string): Promise<boolean>; key(said: string, preview: string[]): Promise<boolean> };
+
+/**
+ * A home with no agent setup yet takes this machine's first, through the one Copy there is, with what each key row asks of a person; a home
+ * that holds one is left as it is. What this comes to is a step's outcome: the join stands whatever it says.
+ */
+export async function seedHome(o: { here: SeedClient; far: SeedClient; me: MachineId; name: string; ask?: SeedAsk }): Promise<{ value: undefined; status?: 'warn'; detail: string }> {
+  if ((await o.far.call('machines.holdsSetup', {})).holds) return { value: undefined, detail: `${o.name} holds an agent setup of its own, which this machine takes from there` };
+  if (!(await o.here.call('machines.holdsSetup', {})).holds) return { value: undefined, detail: 'no agent setup here to copy' };
+  if (!o.ask) return { value: undefined, status: 'warn', detail: `${o.name} has no agent setup yet; Svall's window offers to copy this machine's there` };
+  if (!await o.ask.go(o.name)) return { value: undefined, detail: `${o.name} stays without an agent setup; Settings → Agent setup copies this machine's whenever you want` };
+  const { rows } = await o.here.call('home.setup', {});
+  for (const r of rows) {
+    const t = r.tick!;
+    if (t.on || !await o.ask.key(r.action ?? r.detail ?? r.key, t.preview)) continue;
+    await o.here.call('home.setupConsent', { item: t.item, fields: t.fields, on: true });
+  }
+  const { sent, backup } = await o.far.call('machines.copySetupFrom', { machine: o.me, seed: true });
+  return { value: undefined, detail: `${sent} files of this machine's agent setup copied to ${o.name}${backup ? `; what it replaced there is in ${backup}` : ''}` };
+}
 
 /** What this fleet holds that the home's first snapshot would erase, as the refusal that stops a join before any write. */
 function refuseHeld(o: JoinOptions, d: Pick<JoinDeps, 'target' | 'me'>): string {
@@ -152,6 +179,8 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       await run.step('worker', async () => {
         // the fleet goes by its home's id from here, which `svall --host` and an upgrade compare; an empty fleet has nothing under its own
         try {
+          // a fleet that was a home keeps no record of what a Copy wrote here, which the first push must not read as its own
+          if (!served) fs.rmSync(resolvePaths(d.target.home).mirrorState, { force: true });
           await d.enrol({
             homeMachine: enrolled.homeMachineId, homeName: enrolled.homeName, fleetId: enrolled.fleetId, homeSsh: o.ssh, homeSocket: enrolled.socket,
             homeSvallBase: enrolled.homeSvallBase, homePlatform: enrolled.homePlatform, homeArch: enrolled.homeArch, homePath: enrolled.homePath, takesFleetId: true, homeProfile: o.homeProfile ?? PRIVATE,
@@ -170,6 +199,19 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
           }
         }
         throw new StepError(`${enrolled.homeName} sent no snapshot in ${SNAPSHOT_MS / 1000} s`, `svall doctor, and svall host doctor ${enrolled.homeName}`);
+      });
+      await run.step('seed', async () => {
+        const name = enrolled.homeName;
+        try {
+          const { here, far, close } = await d.seedClients(master, { id: enrolled.homeMachineId, fleetId: enrolled.fleetId, svallBase: home.svallBase, ssh: o.ssh });
+          try {
+            return await seedHome({ here, far, me: d.me, name, ...(d.ask && { ask: d.ask }) });
+          } finally {
+            await close().catch(() => undefined);
+          }
+        } catch (e) {
+          return { value: undefined, status: 'warn' as const, detail: `this machine's agent setup was not copied to ${name}: ${(e as Error).message}; Settings → Agent setup copies it from there` };
+        }
       });
     } finally {
       await master.close().catch(() => undefined);

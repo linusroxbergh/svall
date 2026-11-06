@@ -19,6 +19,8 @@ export type HostState = {
   homeSheet?: HomeSheetAsk;
   // a move of the fleet's home that stands, as this Mac's daemon last said
   homeMove?: Result<'fleet.homeMove'>['moving'];
+  // a far home with no agent setup yet is offered this Mac's
+  seedAsk?: true;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
   hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
@@ -40,6 +42,7 @@ export type HostActions = {
   hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
   setHomeSheet(ask?: HomeSheetAsk): void;
+  setSeedAsk(on: boolean): void;
   setHomeMove(moving?: Result<'fleet.homeMove'>['moving']): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
@@ -65,6 +68,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   setHomeSheet: (homeSheet) => set({ homeSheet }),
+  setSeedAsk: (on) => set({ seedAsk: on ? true : undefined }),
   setHomeMove: (homeMove) => set({ homeMove }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),

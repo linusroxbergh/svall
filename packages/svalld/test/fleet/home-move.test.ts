@@ -126,6 +126,20 @@ describe('staging', () => {
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record.ssh).toBe('ada@mac');
   });
 
+  it('leaves the mirror\'s record of what pushes wrote here behind, which a Copy must not read as its own, and a rollback puts it back', async () => {
+    const w = await world();
+    const record = JSON.stringify({ files: { 'claude/CLAUDE.md': 'a'.repeat(64) }, docs: {}, servers: {}, secrets: {}, listed: { 'claude/plugins/installed_plugins.json': ['acme'] }, applied: 3 });
+    fs.mkdirSync(path.dirname(w.studio.paths.mirrorState), { recursive: true });
+    fs.writeFileSync(w.studio.paths.mirrorState, record);
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    w.studio.daemon.noAnswer = true;
+    await installAdopt(w.studio.deps, ID, w.enrolment);
+    expect(fs.readFileSync(w.studio.paths.mirrorState, 'utf8')).toBe(record);
+    w.studio.daemon.noAnswer = false;
+    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect(fs.existsSync(w.studio.paths.mirrorState)).toBe(false);
+  });
+
   it('takes a record no other fleet shares: it goes the new way, and a rollback puts it back', async () => {
     const w = await world();
     const record = { name: 'mac', ssh: 'ada@mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/opt/svall' } as never;

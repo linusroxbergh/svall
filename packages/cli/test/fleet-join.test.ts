@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type FleetState } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { issueToken } from '@svall/svalld/placement/workers';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { joinHome, type JoinDeps } from '../src/controller/home.js';
+import type { Client } from '../src/client.js';
+import { joinHome, seedHome, type JoinDeps, type SeedAsk } from '../src/controller/home.js';
 import type { StepEvent } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import type { SshMaster } from '../src/controller/ssh.js';
@@ -45,6 +46,8 @@ let home: string;
 let events: StepEvent[];
 let enrolled: unknown[];
 
+const holding = (holds: boolean) => ({ call: () => Promise.resolve({ holds }) }) as unknown as Pick<Client, 'call'>;
+
 function deps(far: Far, o: Partial<JoinDeps> = {}): JoinDeps & { far: ReturnType<typeof master> } {
   const made = master(far);
   return {
@@ -52,6 +55,7 @@ function deps(far: Far, o: Partial<JoinDeps> = {}): JoinDeps & { far: ReturnType
     registry: MachineRegistry.load(), target: { name: 'private', home, managed: false }, me: machineId(), svallBase: '/opt/svall', tailnet: () => Promise.resolve(),
     enrol: (e, token) => { enrolled.push({ ...e, token }); return Promise.resolve(); },
     state: () => Promise.resolve({ ...emptyState(), machines: { [HOME_ID]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 7, at: Date.now() } } } } as FleetState),
+    seedClients: () => Promise.resolve({ here: holding(false), far: holding(true), close: () => Promise.resolve() }),
     ...o,
   };
 }
@@ -71,7 +75,7 @@ describe('svall fleet join', () => {
     const d = deps({});
     const out = await joinHome({ ssh: 'ada@studio' }, d);
     expect(out.result).toBe('ready');
-    expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'enrol', 'worker', 'snapshot']);
+    expect(events.filter((e) => e.status === 'ok').map((e) => e.step)).toEqual(['fleet', 'tailscale', 'ssh', 'master', 'home', 'enrol', 'worker', 'snapshot', 'seed']);
     expect(enrolled).toEqual([expect.objectContaining({ homeMachine: HOME_ID, homeName: 'studio', fleetId: FLEET, homeSsh: 'ada@studio', homeSocket: ENROLLED.socket, homePath: '/home/ada', token: TOKEN, takesFleetId: true, homeProfile: 'private' })]);
     expect(d.far.closed()).toBe(true);
     enrolled = [];
@@ -173,6 +177,87 @@ describe('svall fleet join', () => {
     try {
       expect((await joinHome({ ssh: 'ada@studio' }, stale)).stopped).toBe('snapshot');
     } finally { Date.now = clock; }
+  });
+
+  it('forgets a record of what a Copy wrote here as a home, and keeps a worker\'s across a join run again', async () => {
+    const { mirrorState } = resolvePaths(home);
+    fs.mkdirSync(path.dirname(mirrorState), { recursive: true });
+    fs.writeFileSync(mirrorState, '{"files":{}}');
+    const far: Far = {};
+    expect((await joinHome({ ssh: 'ada@studio' }, deps(far))).result).toBe('ready');
+    expect(fs.existsSync(mirrorState)).toBe(false);
+
+    fs.writeFileSync(mirrorState, '{"files":{}}');
+    fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify({ homeMachineId: HOME_ID, homeName: 'studio', fleetId: FLEET, token: TOKEN }));
+    expect((await joinHome({ ssh: 'ada@studio' }, deps(far))).result).toBe('ready');
+    expect(fs.existsSync(mirrorState)).toBe(true);
+  });
+
+  describe('the seed', () => {
+    const ROWS = { rows: [
+      { key: 'claude:mcp:a', status: 'warn', detail: 'a key', action: 'copy the key', tick: { item: 'claude:mcp:a', fields: ['env.A'], on: false, preview: ['env.A ****'] } },
+      { key: 'claude:mcp:b', status: 'ok', detail: 'a key', tick: { item: 'claude:mcp:b', fields: ['env.B'], on: true, preview: ['env.B ****'] } },
+      { key: 'claude:mcp:c', status: 'warn', detail: 'a key', action: 'copy this key too', tick: { item: 'claude:mcp:c', fields: ['env.C'], on: false, preview: ['env.C ****'] } },
+    ] };
+    type Asked = [string, unknown];
+    const client = (asked: Asked[], answers: Record<string, unknown>) => ({ call: (m: string, p: unknown) => { asked.push([m, p]); return Object.hasOwn(answers, m) ? Promise.resolve(answers[m]) : Promise.reject(new Error(`${m} not answered`)); } }) as unknown as Pick<Client, 'call'>;
+    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said === 'copy the key') };
+    const run = (o: { far: boolean; here: boolean; ask?: SeedAsk; copied?: unknown }) => {
+      const [farCalls, hereCalls]: [Asked[], Asked[]] = [[], []];
+      const out = seedHome({
+        here: client(hereCalls, { 'machines.holdsSetup': { holds: o.here }, 'home.setup': ROWS, 'home.setupConsent': ROWS }),
+        far: client(farCalls, { 'machines.holdsSetup': { holds: o.far }, 'machines.copySetupFrom': o.copied ?? { sent: 4 } }),
+        me: 'm' as never, name: 'studio', ...(o.ask && { ask: o.ask }),
+      });
+      return { out, farCalls, hereCalls };
+    };
+    const copied = (calls: Asked[]) => calls.filter(([m]) => m === 'machines.copySetupFrom');
+
+    it('leaves a home that holds a setup as it is, and asks no one', async () => {
+      const go = vi.fn(() => Promise.resolve(true));
+      const { out, farCalls } = run({ far: true, here: true, ask: { ...yes, go } });
+      expect((await out).detail).toContain('holds an agent setup of its own');
+      expect(copied(farCalls)).toEqual([]);
+      expect(go).not.toHaveBeenCalled();
+    });
+
+    it('has nothing to send from a machine with no setup', async () => {
+      const { out, farCalls } = run({ far: false, here: false, ask: yes });
+      expect((await out).status).toBeUndefined();
+      expect(copied(farCalls)).toEqual([]);
+    });
+
+    it('with no person to ask copies nothing and says a window offers it, which stops no first run', async () => {
+      const { out, farCalls } = run({ far: false, here: true });
+      expect(await out).toMatchObject({ status: 'warn', detail: expect.stringContaining('studio has no agent setup yet') as string });
+      expect(copied(farCalls)).toEqual([]);
+    });
+
+    it('sends the one Copy, as a seed, after the key rows a person ticked; none else goes', async () => {
+      const { out, farCalls, hereCalls } = run({ far: false, here: true, ask: yes });
+      expect((await out).detail).toContain('4 files');
+      expect(hereCalls.filter(([m]) => m === 'home.setupConsent')).toEqual([['home.setupConsent', { item: 'claude:mcp:a', fields: ['env.A'], on: true }]]);
+      expect(copied(farCalls)).toEqual([['machines.copySetupFrom', { machine: 'm', seed: true }]]);
+    });
+
+    it('copies nothing on a person\'s no', async () => {
+      const { out, farCalls } = run({ far: false, here: true, ask: { ...yes, go: () => Promise.resolve(false) } });
+      expect((await out).detail).toContain('stays without an agent setup');
+      expect(copied(farCalls)).toEqual([]);
+    });
+
+    it('a seed that fails leaves the join standing, and says where to copy it from', async () => {
+      const failing = (): Promise<never> => Promise.reject(new Error('the forward closed'));
+      const out = await joinHome({ ssh: 'ada@studio' }, deps({}, { seedClients: failing }));
+      expect(out.result).toBe('ready');
+      expect(events.find((e) => e.step === 'seed' && e.status === 'warn')).toMatchObject({ detail: expect.stringMatching(/the forward closed.*Agent setup/) as string });
+    });
+
+    it('comes after the first snapshot', async () => {
+      await joinHome({ ssh: 'ada@studio' }, deps({}));
+      const order = events.filter((e) => e.status !== 'start').map((e) => e.step);
+      expect(order.indexOf('seed')).toBeGreaterThan(order.indexOf('snapshot'));
+    });
   });
 
   it('refuses a far machine that is this one', async () => {

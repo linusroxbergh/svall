@@ -53,7 +53,7 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'machines.holdsSetup', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
 // what hands over the home's token never leaves this machine, whatever node.json's host says
 const LOOPBACK_ONLY = new Set<string>(['home.connection', 'fleet.homeMove', 'fleet.freeze', 'fleet.thaw'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
@@ -224,9 +224,14 @@ const handlers: Handlers = {
     if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'a copy of an agent setup lands on the fleet\'s home');
     if (!ctx.store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     const { links, setupCopy } = ctx;
+    const mirror = mirrorOf(ctx);
     // no push of the home's lands on the worker while it reads what it sends
-    return mirrorOf(ctx).inTurn(p.machine, () => setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) })));
+    return mirror.inTurn(p.machine, () => {
+      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', 'this home holds an agent setup of its own, which is never seeded');
+      return setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) }));
+    });
   },
+  'machines.holdsSetup': (_p, ctx) => ({ holds: ctx.workerSetup ? ctx.workerSetup.holds() : mirrorOf(ctx).holdsSetup() }),
   // the value goes to the worker's .env and nowhere else on the home; no error names it
   'machines.setVar': async (p, ctx) => {
     const name = ctx.store.state.machines?.[p.machine]?.name;

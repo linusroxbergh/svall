@@ -95,6 +95,7 @@ export type WorkerSetup = {
   get(): Promise<{ rows: SetupRow[]; backup?: string; replaced?: string[]; pushFailed?: string }>;
   consent(item: string, fields: string[], on: boolean): void;
   push(): Promise<Pushed>;
+  holds(): boolean;
 };
 
 /** A worker's own agent setup, as its window sees it: the ticks it holds for its home, and the push of it the home asks for. */
@@ -112,5 +113,6 @@ export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection
     },
     consent: (item, fields, on) => o.mirror.consent(o.home, item, fields, on, true),
     push: () => o.mirror.push(link),
+    holds: () => o.mirror.holdsSetup(),
   };
 }

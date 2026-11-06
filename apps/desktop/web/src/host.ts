@@ -117,7 +117,7 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', enrol: 'Worker', claude: 'Claude Code',
+  service: 'Services', identity: 'Installed release', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
   systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',

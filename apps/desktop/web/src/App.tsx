@@ -18,6 +18,7 @@ import { LinkAsk } from './LinkAsk.js';
 import { Map } from './map/Map.js';
 import { MissionPrompt } from './MissionPrompt.js';
 import { HomeSheet } from './HomeSheet.js';
+import { SeedSheet } from './SeedSheet.js';
 import { MoveSheet } from './MoveSheet.js';
 import { NewRobot } from './NewRobot.js';
 import { PlacingAsk, ScribeAsk } from './ScribeAsk.js';
@@ -120,6 +121,7 @@ function Screen() {
       <ConfirmDeleteIsland />
       <MoveSheet />
       <HomeSheet />
+      <SeedSheet />
       <ConfirmDeleteColumn />
       <ScribeAsk />
       <PlacingAsk />

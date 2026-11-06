@@ -40,6 +40,7 @@ export const classification: Record<MethodName, 'read' | 'mutation' | 'terminal'
   'machines.updateAgents': 'mutation',
   'machines.setVar': 'mutation',
   'machines.copySetupFrom': 'mutation',
+  'machines.holdsSetup': 'read',
   'column.add': 'mutation',
   'column.rename': 'mutation',
   'column.reorder': 'mutation',

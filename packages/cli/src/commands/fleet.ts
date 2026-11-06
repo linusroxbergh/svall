@@ -1,4 +1,5 @@
 import os from 'node:os';
+import readline from 'node:readline';
 import { Command } from 'commander';
 import { z } from 'zod';
 import { Enrolment, FleetId, HomeManifest, HomeMoveId, MachineId, MachineRecord, type AdoptAnswer } from '@svall/protocol';
@@ -14,7 +15,7 @@ import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@sval
 import { isWorker } from '@svall/svalld/worker/mode';
 import { Client, withClient } from '../client.js';
 import { connectForwarded } from '../controller/connection.js';
-import { abortHome, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps } from '../controller/home.js';
+import { abortHome, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps, type SeedAsk } from '../controller/home.js';
 import type { HostOutcome, StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { SshMaster } from '../controller/ssh.js';
@@ -25,6 +26,17 @@ import { parseDuration } from './parse.js';
 import { enrollHere, realEnrol } from './worker.js';
 
 type Facts = { name: string; platform: string; arch: string; home: string; svallBase: string };
+
+const askSeed = (): SeedAsk => {
+  const ask = async (q: string): Promise<string> => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    try { return await new Promise((resolve) => { rl.question(q, resolve); }); } finally { rl.close(); }
+  };
+  return {
+    go: async (name) => /^(y|yes)?$/i.test((await ask(`${name} has no agent setup yet. Copy this machine's there first? [Y/n] `)).trim()),
+    key: async (said, preview) => /^y(es)?$/i.test((await ask(`${said}? ${preview.join(', ')} [y/N] `)).trim()),
+  };
+};
 
 /**
  * A worker that dials this home: its record in this machine's registry, which the home links by, and a new token, the
@@ -216,6 +228,17 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
         tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
         enrol: (e, token) => enrollHere(t, e, { ...realEnrol, token: () => Promise.resolve(token), out: (line) => { if (!json()) process.stdout.write(`${line}\n`); } }),
         state: () => withClient(() => Client.connect(t.home), (c) => c.call('state.get', {})),
+        ...(!json() && process.stdin.isTTY && process.stdout.isTTY && { ask: askSeed() }),
+        seedClients: async (master, home) => {
+          const here = await Client.connect(t.home);
+          try {
+            const { client: far, forward } = await connectForwarded(master, { id: home.id, record: { name: home.ssh, svallBase: home.svallBase } }, { fleetId: home.fleetId, ...(o.homeProfile && { profile: o.homeProfile }) });
+            return { here, far, close: async () => { here.close(); far.close(); await forward.cancel(); } };
+          } catch (e) {
+            here.close();
+            throw e;
+          }
+        },
       });
       if (json()) process.stdout.write(`${JSON.stringify(out)}\n`);
       else process.stdout.write(`${out.result === 'ready' ? 'This fleet runs on the server now, and this machine is its worker.' : out.actions.join('\n')}\n`);

@@ -18,7 +18,7 @@ import { fileSha } from './bundle.js';
 import { applyMirror, dropBlobs, type Manifest } from './mirror-apply.js';
 import { readPlugins, readServers, secretsOf } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, readConsent, replaceConsent, setConsent } from './mirror-consent.js';
-import { mirrorPlan, packMirror, tickedWhole } from './mirror-plan.js';
+import { holdsSetup, mirrorPlan, packMirror, tickedWhole } from './mirror-plan.js';
 import { ConfigReport, configReport, forRobot, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
 import { configState, OPENCODE_FILES, readState, StateAsk, WorkerFacts, type MirrorHomes } from './mirror-state.js';
 import { unpack } from './move-steps.js';
@@ -64,6 +64,11 @@ export class Mirror {
   /** Resolves once every push to `machine` begun so far has ended, applied or not. */
   settled(machine: MachineId): Promise<unknown> {
     return this.chains.get(machine) ?? Promise.resolve();
+  }
+
+  /** Whether this machine holds an agent setup of a person's making. */
+  holdsSetup(): boolean {
+    return holdsSetup(mirrorPlan(this.o));
   }
 
   /** Ticks `fields` of `item` for `machine`, or, `on` false, unticks every field of it, or with `exact` those `fields`. */
@@ -136,6 +141,8 @@ export class Mirror {
   private async pushNow(link: MirrorLink): Promise<Pushed> {
     const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
+    // a source with no setup yet has nothing of its own to give, and what `svall setup` left here must not go over what a target holds ahead of a seed
+    if (facts.keeps && facts.state.applied === undefined && !holdsSetup(plan)) return { sent: 0 };
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on ${homeWord()}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-mirror-'));
     try {

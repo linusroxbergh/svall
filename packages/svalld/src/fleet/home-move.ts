@@ -30,8 +30,8 @@ const exec = promisify(execFile);
 
 /** What the fleet carries to its new home: never node.json, the token, .env, tmux, the hooks, the cache or the outbox. */
 const CARRIED = ['fleet.json', 'state.json', 'docs', 'agent-profiles', 'push.json', 'vapid.json', 'mobile-pass', 'mobile-key', 'mirror-consent.json', 'retro', 'journal/moves'] as const;
-/** What a worker's fleet home holds that no home does; each goes aside with the files it replaces, and comes back with them. */
-const WORKER_ONLY = ['worker.json', 'phone.json', 'phone-fallbacks.json', 'journal/epoch'] as const;
+/** What a worker's fleet home holds that no home does; each goes aside with the files it replaces, and comes back with them. The mirror's record names what a push wrote, which a Copy must not read as its own. */
+const WORKER_ONLY = ['worker.json', 'phone.json', 'phone-fallbacks.json', 'journal/epoch', 'cache/mirror-state.json'] as const;
 const INSTALLED = [...CARRIED, 'workers.json'] as const;
 const MANIFEST = 'home-move.json';
 // how long a stopped daemon has to let go of its lock
@@ -325,7 +325,7 @@ function syncFolders(p: Paths, dir: string): void {
 function installFiles(p: Paths, id: HomeMoveId): void {
   const dir = adoptDir(p, id);
   const [ready, original] = [path.join(dir, 'ready'), path.join(dir, 'original')];
-  fs.mkdirSync(path.join(original, 'journal'), { recursive: true, mode: 0o700 });
+  for (const under of ['journal', 'cache']) fs.mkdirSync(path.join(original, under), { recursive: true, mode: 0o700 });
   fs.mkdirSync(path.join(p.home, 'journal'), { recursive: true });
   for (const name of INSTALLED) {
     const [from, at] = [path.join(ready, name), inHome(p, name)];
@@ -343,7 +343,7 @@ function installFiles(p: Paths, id: HomeMoveId): void {
 function restoreOriginal(p: Paths, id: string): void {
   const dir = adoptDir(p, id);
   const [original, thrown] = [path.join(dir, 'original'), path.join(dir, `thrown-${Date.now()}`)];
-  fs.mkdirSync(path.join(thrown, 'journal'), { recursive: true, mode: 0o700 });
+  for (const under of ['journal', 'cache']) fs.mkdirSync(path.join(thrown, under), { recursive: true, mode: 0o700 });
   for (const name of [...INSTALLED, ...WORKER_ONLY]) {
     const [kept, none, at] = [path.join(original, name), heldNone(original, name), inHome(p, name)];
     // neither: this name was not reached, or is back already

@@ -277,6 +277,17 @@ function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; 
  * What the agent configuration mirror carries to a worker: every agent's instructions, skills, plugins, settings and MCP servers
  * but the Mac-only ones, a project's only where the worker has it. A key travels only where ticked; logins never do.
  */
+// what `svall setup` leaves on every machine: the agent profiles a fleet starts with, and Svall's own permission rules
+const leftBySetup = (to: string): boolean => to.startsWith('profiles/') || to === 'codex/rules/svall.rules';
+const svallAllows = (v: unknown): boolean => isDoc(v) && Object.keys(v).every((k) => k === 'allow') && Array.isArray(v.allow) && v.allow.every((r) => typeof r === 'string' && /^Bash\(svall [^)]*:\*\)$/.test(r));
+
+/** Whether what a plan carries is an agent setup of a person's making. Anything unsure of counts, as a home that holds one is never seeded. */
+export function holdsSetup(p: MirrorPlan): boolean {
+  const { permissions, ...settings } = p.settings;
+  return p.files.some((f) => !leftBySetup(f.to)) || p.servers.length > 0 || p.plugins.length > 0 || p.configs.length > 0 || Object.keys(settings).length > 0 || (permissions !== undefined && !svallAllows(permissions))
+    || Object.keys(p.settingsEnv).length > 0 || Object.keys(p.codex ?? {}).length > 0 || p.opencode.some((d) => Object.keys(d.doc).length > 0) || p.unreadable.length > 0;
+}
+
 export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Set(), facts?: WorkerFacts): MirrorPlan {
   const files: MirrorPlan['files'] = [];
   const skipped: string[] = [];
