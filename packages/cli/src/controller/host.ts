@@ -126,7 +126,7 @@ export class Runner {
 
 /** This machine's Tailscale, which a fleet on a server needs on both machines. */
 export async function tailnetHere(d: Pick<HostDeps, 'tailnet'>): Promise<Outcome<void>> {
-  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines, and this Mac says: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
+  await d.tailnet().catch((e: Error) => { throw new StepError(`a fleet on a server needs Tailscale on both machines, and this machine says: ${e.message}`, 'install Tailscale from https://tailscale.com/download and sign in'); });
   return { value: undefined, detail: 'connected' };
 }
 
@@ -633,7 +633,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (remote.home !== plain) {
           throw new StepError(`${remote.home} is ${remote.user}'s home there, which names ${plain} another way`, `make ${plain} the account's home on ${o.ssh}, then add the machine again`);
         }
-        const tooLong = socketTooLong(path.posix.join(profileHome(profileOn(held?.id, d) ?? PRIVATE, remote.home), 'hooks.sock'), 'linux');
+        const tooLong = socketTooLong(path.posix.join(profileHome(o.asHome ? PRIVATE : profileOn(held?.id, d) ?? PRIVATE, remote.home), 'hooks.sock'), 'linux');
         if (tooLong) {
           throw new StepError(tooLong.message, `use an account on ${o.ssh} whose home path is at most ${Buffer.byteLength(remote.home) - tooLong.over} bytes`);
         }

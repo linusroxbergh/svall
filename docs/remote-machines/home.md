@@ -21,7 +21,8 @@ a typed path before the robot starts: "/home/linus/x is not a folder on studio".
 that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
-too, as "dials in". Each machine's ⋯ holds what it does for you, whichever machine is the home, and Add machine adds another.
+too, as "dials in". With the home on this Mac, each machine's ⋯ holds what it does for you, and Add machine adds another. A
+window on a far home has ⋯ on the home's row alone, and no Add machine: its workers are that home's to add and remove.
 
 ## What opens on this Mac
 
@@ -144,7 +145,7 @@ A move carries the fleet's islands, notes, settings, phone pairing and push keys
 tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. The check
 names one at work before anything moves, with **Interrupt it now** ticked, as a robot's move sheet does: what it runs is
 interrupted at once as it moves. Untick it and the move does not start while that robot is at work. From a terminal,
-`svall fleet home set` refuses one at work unless `--interrupt-after 0` is given. The move pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
+`svall fleet home set` refuses one at work unless `--interrupt-after` says when to interrupt it, 0 at once. The move pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
 window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
 once from its new QR code: it stays paired and pushes keep arriving. The new home turns its phone link on within seconds of
 taking the fleet, if the old one served; if Tailscale refuses it there, the move stands, and Settings → Phone says why.

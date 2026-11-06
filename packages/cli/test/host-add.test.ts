@@ -185,7 +185,7 @@ describe('host add', () => {
     const off = deps({ tailnet: () => Promise.reject(new Error('tailscale not found: install it from https://tailscale.com/download and sign in')), interactiveSsh: (to) => { asked.push(to); return Promise.resolve({ code: 0, stderr: '' }); } });
     const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, off);
     expect(out.stopped).toBe('tailscale');
-    expect(step('tailscale').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('needs Tailscale on both machines, and this Mac says: tailscale not found') });
+    expect(step('tailscale').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('needs Tailscale on both machines, and this machine says: tailscale not found') });
     expect(asked).toEqual([]);
     events.length = 0;
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, { ...off, interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) });
