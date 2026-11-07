@@ -63,11 +63,20 @@ export function companionAsset(releaseRoot: string, platform: string): { url: st
   return { url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
 }
 
-/** The companions this release publishes on the network, for a home of the same release that has only its own; none for a build that carries them relative to itself. */
-export function companionPins(releaseRoot: string): { release: string; unsignedBuild: boolean; companions: Record<string, { url: string; sha256: string }> } | undefined {
-  const manifest = readManifest(releaseRoot) as { version?: unknown; unsigned?: unknown; companions?: Record<string, { url?: unknown; sha256?: unknown }> } | undefined;
-  const companions = Object.entries(manifest?.companions ?? {}).flatMap(([k, c]) => (typeof c.url === 'string' && typeof c.sha256 === 'string' && /^https?:/.test(c.url) ? [[k, { url: c.url, sha256: c.sha256 }] as const] : []));
-  return companions.length ? { release: String(manifest!.version), unsignedBuild: manifest!.unsigned === true, companions: Object.fromEntries(companions) } : undefined;
+const NO_COMPANION = /^this build publishes no companion for (linux-[a-z0-9]+);/;
+
+export const noCompanion = (platform: string): string => `this build publishes no companion for ${platform}; name one with --release <archive>`;
+
+/** The platform a far run's step says it has no companion for: what a relay can answer with the archive it carries. */
+export const wantedCompanion = (step: { step?: unknown; status?: unknown; detail?: unknown }): string | undefined =>
+  (step.step === 'release' && step.status === 'fail' && typeof step.detail === 'string' ? NO_COMPANION.exec(step.detail)?.[1] : undefined);
+
+/** The archive this release holds for `platform` on this machine; none for one it names only on the network, as nothing is downloaded for a home. */
+export function carriedCompanion(releaseRoot: string, platform: string): string | undefined {
+  const asset = companionAsset(releaseRoot, platform);
+  if (!asset?.url.startsWith('file:')) return undefined;
+  const file = fileURLToPath(asset.url);
+  return fs.existsSync(file) ? file : undefined;
 }
 
 /** This machine's own installed release as a companion for `platform`, signed sums and all; none for another platform, or for a checkout. */
@@ -78,8 +87,10 @@ export function ownCompanion(releaseRoot: string, platform: string, dir: string)
   fs.mkdirSync(dir, { recursive: true });
   const archive = path.join(dir, `svall-own-${path.basename(releaseRoot)}-${platform}.tar.gz`);
   const part = `${archive}.part-${process.pid}`;
-  execFileSync('tar', ['-czf', part, '-C', path.dirname(releases), `releases/${path.basename(releaseRoot)}`], { timeout: TAR_TIMEOUT });
-  fs.renameSync(part, archive);
+  try {
+    execFileSync('tar', ['-czf', part, '-C', path.dirname(releases), `releases/${path.basename(releaseRoot)}`], { timeout: TAR_TIMEOUT });
+    fs.renameSync(part, archive);
+  } finally { fs.rmSync(part, { force: true }); }
   return { archive, unsignedBuild: manifest.unsigned === true };
 }
 
@@ -113,14 +124,14 @@ export async function downloadCompanion(o: { url: string; sha256: string; dir: s
   return dest;
 }
 
-async function remote(master: SshMaster, argv: string[], what: string, timeoutMs: number): Promise<string> {
+async function remote(master: Pick<SshMaster, 'run'>, argv: string[], what: string, timeoutMs: number): Promise<string> {
   const r = await master.run(argv, { timeoutMs });
   if (r.code !== 0) throw new SshError(r.code === 255 ? 'unreachable' : 'other', `${what} exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
   return r.stdout;
 }
 
 /** Streams the archive onto the far machine. The far shell is handed one word for the path. */
-export async function uploadArchive(master: SshMaster, o: { archive: string; remote: string }): Promise<void> {
+export async function uploadArchive(master: Pick<SshMaster, 'run'>, o: { archive: string; remote: string }): Promise<void> {
   const dir = path.posix.dirname(o.remote);
   await remote(master, ['mkdir', '-p', shq(dir)], `mkdir -p ${dir}`, TAR_TIMEOUT);
   const data = fs.readFileSync(o.archive);

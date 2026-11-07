@@ -7,6 +7,7 @@ import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
 import { addHost } from '../src/controller/host.js';
+import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
 import {
@@ -212,24 +213,14 @@ describe('host add', () => {
     expect(step('ssh').at(-1)!.run).toBeUndefined();
   });
 
-  it('takes a machine of another architecture from the signed pin the Mac hands it, of the same release only', async () => {
+  it('has nothing for a machine of another architecture but what the relay names, and fetches nothing', async () => {
     healthy();
-    const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const bytes = fs.readFileSync(archive());
-    const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-    const companions = { 'linux-arm64': { url: 'https://example.test/svall-companion.tar.gz', sha256 } };
-    const fetched: string[] = [];
-    const fetch = (url: string) => { fetched.push(url); return Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer) }); };
-    const stale = await addHost({ name: 'trift', ssh: 'trift.test', pins: { release: '9.9.9', unsignedBuild: false, companions } }, deps({ fetch }));
-    expect(stale.stopped).toBe('release');
+    const fetch = vi.fn();
+    const out = await addHost({ name: 'trift', ssh: 'trift.test' }, deps({ fetch: fetch as never }));
+    expect(out.stopped).toBe('release');
     expect(step('release').at(-1)).toMatchObject({ detail: 'this build publishes no companion for linux-arm64; name one with --release <archive>' });
-    expect(fetched).toEqual([]);
-    events.length = 0;
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', pins: { release: '1.2.3', unsignedBuild: false, companions } }, deps({ fetch }));
-    await d.close();
-    expect(step('release').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining(companions['linux-arm64'].url) });
-    expect(out.result).toBe('ready');
+    expect(wantedCompanion(step('release').at(-1)!)).toBe('linux-arm64');
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it('uploads and enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {

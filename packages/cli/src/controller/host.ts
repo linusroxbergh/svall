@@ -6,6 +6,7 @@ import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { homeWord } from '@svall/svalld/machine';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
+import { readMarker } from '@svall/svalld/fleet/home-move';
 import { enrolLock } from '@svall/svalld/kernel-lock';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
@@ -19,7 +20,7 @@ import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import type { Check } from '../checks-view.js';
 import { connectForwarded, identify, MachineMismatch } from './connection.js';
 import {
-  bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion, ownCompanion,
+  bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion, noCompanion, ownCompanion,
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
@@ -72,10 +73,7 @@ export type HostDeps = {
   consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
 };
 
-/** The companions of the Mac's signed release, handed to a home of the same release for a machine of another architecture. */
-export type CompanionPins = { release: string; unsignedBuild: boolean; companions: Record<string, { url: string; sha256: string }> };
-
-export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; pins?: CompanionPins };
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
@@ -476,6 +474,21 @@ function farHome(master: SshMaster, svallBase: string, d: HostDeps, machine?: st
   return remoteJson<RemoteVersion>(master, svallBase, [...flags, 'version', '--json'], 'svall version --json', env);
 }
 
+/** The machine that holds this fleet, where this one no longer does or is leaving it: only the home takes or removes a worker. */
+function homeElsewhere(d: HostDeps): string | undefined {
+  const paths = resolvePaths(d.fleet.home);
+  try { return isWorker(paths) ? readWorkerFile(paths).homeName : readMarker(paths)?.toName; } catch { return 'another machine'; }
+}
+
+// a worker's own fleet.json may go by an id of its own
+function fleetHere(d: HostDeps): string {
+  const paths = resolvePaths(d.fleet.home);
+  if (isWorker(paths)) { try { return readWorkerFile(paths).fleetId; } catch { /* the config says */ } }
+  return readFleet(paths.fleetConfig).id;
+}
+
+const elsewhereStep = (name: string, home: string, action?: string): StepError => new StepError(`${name} is a worker of this fleet, whose home is ${home}: only that machine takes or removes it`, action ?? `on ${home}, run this again`);
+
 const servesUs = (v: RemoteVersion, d: HostDeps): boolean =>
   v.worker?.homeMachineId === d.machineId() && v.worker.fleetId === readFleet(resolvePaths(d.fleet.home).fleetConfig).id;
 
@@ -486,12 +499,14 @@ function homeOfUs(v: RemoteVersion, d: HostDeps): boolean {
 
 /** Why the fleet home there is not this fleet's to enrol: it serves another Mac as a worker. */
 function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undefined {
+  if (!v.worker) return undefined;
   // a worker of this fleet names the home it had until the fleet moved, and the fleet's home takes it from there
-  if (v.worker && v.worker.homeMachineId !== d.machineId() && v.worker.fleetId !== readFleet(resolvePaths(d.fleet.home).fleetConfig).id) {
-    const home = v.worker.homeName || v.worker.homeMachineId;
-    return new StepError(`${name} already serves ${home} as a worker; remove it from that Mac first`, `on ${home}, run svall host remove ${name}`);
-  }
-  return undefined;
+  const ours = v.worker.fleetId === fleetHere(d);
+  const elsewhere = ours && !servedHome(v.machineId, d) ? homeElsewhere(d) : undefined;
+  if (elsewhere) return elsewhereStep(name, elsewhere);
+  if (ours || v.worker.homeMachineId === d.machineId()) return undefined;
+  const home = v.worker.homeName || v.worker.homeMachineId;
+  return new StepError(`${name} already serves ${home} as a worker; remove it from that Mac first`, `on ${home}, run svall host remove ${name}`);
 }
 
 // a development build's release ends in git describe's count of commits past its tag, which semver ranks below the tag
@@ -544,6 +559,8 @@ async function claimUnits(master: SshMaster, o: { name: string; machine: Machine
 
 /** The machine made a worker of this fleet: a new token here, the far `svall worker enroll` with it, which restarts the fleet there with --worker. */
 async function enrol(master: SshMaster, o: { name: string; machine: MachineId; svallBase: string; off: string }, d: HostDeps): Promise<Outcome<void>> {
+  const elsewhere = homeElsewhere(d);
+  if (elsewhere) throw elsewhereStep(o.name, elsewhere);
   const paths = resolvePaths(d.fleet.home);
   const fleetId = readFleet(paths.fleetConfig).id;
   const { name: home, platform: homePlatform } = d.registry.localMachine();
@@ -568,10 +585,9 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   let allowUnsigned = Boolean(o.allowUnsigned);
   if (!archive) {
     const platform = `linux-${arch}`;
-    const pin = o.pins?.release === d.controller.release ? o.pins.companions[platform] : undefined;
-    const asset = companionAsset(d.controller.releaseRoot, platform) ?? (pin && { ...pin, unsignedBuild: o.pins!.unsignedBuild });
+    const asset = companionAsset(d.controller.releaseRoot, platform);
     const own = asset ? undefined : ownCompanion(d.controller.releaseRoot, platform, companionCache(d.homedir));
-    if (!asset && !own) throw new StepError(`this build publishes no companion for ${platform}; name one with --release <archive>`);
+    if (!asset && !own) throw new StepError(noCompanion(platform));
     archive = asset ? await downloadCompanion({ ...asset, dir: companionCache(d.homedir), fetch: d.fetch }) : own!.archive;
     from = asset ? asset.url : `${homeWord()}'s own release`;
     // an unsigned development build pins the companion it was built with by digest, and that pin is
@@ -902,7 +918,7 @@ const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f 
  * `svall host upgrade`: the new release installed by its own setup, as the old one's may not speak its protocol, then a
  * probe that puts the old one back if it does not answer; a machine not yet this fleet's worker then becomes one.
  */
-export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean; pins?: CompanionPins }, d: HostDeps): Promise<HostOutcome> {
+export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, asked); servedHome(out.value.id, d); return Promise.resolve(out); });
     const name = entry.record.name;
@@ -1109,16 +1125,26 @@ async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Pr
   const unread = (why: string) => new StepError(`${why}, so whether ${name} serves another Mac is not known, and svall uninstall there stops every fleet on it`, forget);
   const out = await probe(master, sh('svall-workers', WORKERS, home), 'the worker.json files there').catch((err: Error) => { throw unread(err.message); });
   const others = new Set<string>();
+  const here = fleetHere(d);
+  const elsewhere = homeElsewhere(d);
   for (const line of out.split('\n').filter(Boolean)) {
     const at = line.indexOf('\t');
     let worker: Pick<WorkerFile, 'homeMachineId' | 'homeName' | 'fleetId'>;
     // the file holds that fleet's token, so what fails to parse is never quoted
     try { worker = ServedBy.parse(JSON.parse(line.slice(at + 1))); } catch { throw unread(`${path.posix.join(home, line.slice(0, at), 'worker.json')} cannot be read`); }
-    if (worker.homeMachineId !== d.machineId() && worker.fleetId !== readFleet(resolvePaths(d.fleet.home).fleetConfig).id) others.add(worker.homeName || worker.homeMachineId);
+    if (worker.fleetId === here && elsewhere) throw elsewhereStep(name, elsewhere, forget);
+    if (worker.homeMachineId !== d.machineId() && worker.fleetId !== here) others.add(worker.homeName || worker.homeMachineId);
   }
   if (others.size) {
     throw new StepError(`${name} also serves ${[...others].join(' and ')} as a worker: svall uninstall there would stop ${others.size === 1 ? 'that fleet' : 'those fleets'} too`, forget);
   }
+}
+
+// a move's re-enrol sends the token under this lock, so one taken back here cannot arrive there afterwards
+async function dropLocked(paths: ReturnType<typeof resolvePaths>, machine: MachineId): Promise<void> {
+  const unlock = fs.existsSync(paths.home) ? await enrolLock(paths.home) : () => undefined;
+  if (!unlock) throw new StepError('this home is enrolling a worker already', 'try again in a moment');
+  try { dropToken(paths, machine); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ } finally { unlock(); }
 }
 
 /**
@@ -1165,7 +1191,7 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
         // nothing there ends the link of a worker that dials in, so its token goes in every fleet, and with it the link; one this
         // fleet dials keeps no profile for a later add, and a sibling that dials it too keeps its own, which that add would not renew
         if (ssh && home !== d.fleet.home) continue;
-        try { dropToken(resolvePaths(home), entry.id); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ }
+        await dropLocked(resolvePaths(home), entry.id);
       }
       d.registry.remove(entry.id);
       d.registry.save();
