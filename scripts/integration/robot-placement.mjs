@@ -1224,7 +1224,8 @@ function homeMoves(ids, fx) {
   movedSetup(ids);
 }
 
-const kept = (m, home = '~/.svall') => sh(m, `cat ${home}/mirror-backup/*/.claude/rules/it-dial.md`, { ok: false }).stdout;
+// every copy kept of the rule, an earlier step's among them, as a second of one name goes beside the first
+const kept = (m) => sh(m, 'cat ~/.svall/mirror-backup/*/.claude/rules/it-dial.md*', { ok: false }).stdout;
 // a person's press, as a window sends it: a tick answers once its push is applied, which waits for a link a move's end closed
 const pushed = (home, worker) => waitOn(`${worker} takes a push`, () => !windowCall(home, 'machines.consent', { machine: worker, item: 'it:none', fields: [], on: false }).error);
 
