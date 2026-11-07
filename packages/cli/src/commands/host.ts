@@ -281,10 +281,12 @@ async function runFlow(
 }
 
 /** Calls `stop` once the Mac this run is for has gone: a relayed run lasts no longer than the connection that follows it. */
-export function endsWithConnection(stdin: NodeJS.ReadableStream, stop: () => void): void {
+export function endsWithConnection(stdin: NodeJS.ReadableStream & { unref?(): void }, stop: () => void): void {
   stdin.once('end', stop);
   stdin.once('close', stop);
   stdin.resume();
+  // a run that has finished still exits
+  stdin.unref?.();
 }
 
 const parsedPins = (pins?: string): { pins?: CompanionPins } => (pins ? { pins: JSON.parse(pins) as CompanionPins } : {});

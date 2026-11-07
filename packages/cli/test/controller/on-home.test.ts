@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { resolvePaths } from '@svall/svalld/paths';
 import { endsWithConnection } from '../../src/commands/host.js';
 import { farHomeOf, relay, relayFor } from '../../src/controller/on-home.js';
@@ -105,6 +105,12 @@ describe('a host command on a fleet whose home is far', () => {
     stdin.end();
     await new Promise((r) => { setTimeout(r, 5); });
     expect(stopped).toBeGreaterThan(0);
+  });
+
+  it('watching the connection does not keep a finished run alive', () => {
+    const stdin = Object.assign(new PassThrough(), { unref: vi.fn() });
+    endsWithConnection(stdin, () => {});
+    expect(stdin.unref).toHaveBeenCalled();
   });
 
   it('a home that cannot be reached is a failed step too, and no throw', async () => {
