@@ -8,6 +8,7 @@ import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
 import { abortAdopt, driverAdoptKey, driverKey, installAdopt, journalLines, markKey, mintAdoptKey, packFleet, readMarker, readOwed } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
+import { issueToken } from '@svall/svalld/placement/workers';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
 import { ADOPT_KEY, crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD, putMarker } from '../../svalld/test/fleet/home-world.js';
@@ -101,7 +102,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps, called, started } = outDeps(happy);
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
@@ -120,10 +121,48 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 30_000));
     try {
       const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [BOX]: { name: 'box', reachable: false, since: 1 } } } });
+      deps.registry.put(BOX as never, { ...STUDIO_RECORD, name: 'box', ssh: 'ada@box' } as never);
+      deps.registry.save();
+      issueToken(resolvePaths(home), BOX as never);
       const out = await moveHomeOut('studio', deps);
       expect(out.stopped).toBeUndefined();
-      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('box has not joined studio yet') });
+      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: 'box has not joined studio yet; its row under Machines says why' });
     } finally { clock.mockRestore(); }
+  });
+
+  it('a worker the move did not carry, as one removed once that the fleet still names, is not waited for', async () => {
+    const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [crypto.randomUUID()]: { name: 'gone', reachable: false, since: 1 } } } });
+    await moveHomeOut('studio', deps);
+    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'skip' });
+  });
+
+  it('a fleet it cannot read is not a fleet whose workers have joined', async () => {
+    const BOX = crypto.randomUUID();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 30_000));
+    try {
+      const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [BOX]: { name: 'box-unread', reachable: true, since: 1 } } } });
+      deps.registry.put(BOX as never, { ...STUDIO_RECORD, name: 'box-unread', ssh: 'ada@box-unread' } as never);
+      deps.registry.save();
+      issueToken(resolvePaths(home), BOX as never);
+      const fails = deps.client;
+      let calls = 0;
+      deps.client = async () => {
+        const c = await fails();
+        return { ...c, close: () => c.close(), call: (m: string, p: unknown) => (m === 'state.get' && events.some((e) => e.step === 'probe' && e.status === 'ok') && calls++ >= 0 ? Promise.reject(new Error('down')) : (c.call as (m: string, p: unknown) => Promise<unknown>)(m, p)) } as never;
+      };
+      await moveHomeOut('studio', deps);
+      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('did not say') });
+    } finally { clock.mockRestore(); }
+  });
+
+  it('a workers.json it cannot read stops the copy, with nothing sent', async () => {
+    const { deps } = outDeps(happy);
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(resolvePaths(home).workersFile, '{ torn');
+    const out = await moveHomeOut('studio', deps);
+    expect(out.result).toBe('actions');
+    expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('cannot be read') });
   });
 
   it('a check that refuses freezes nothing, and says what to do', async () => {
@@ -535,7 +574,7 @@ describe('fleet home retry', () => {
     mintAdoptKey(resolvePaths(home), 'hm_abcdefghij');
     const out = await resumeHome(deps);
     expect(out.result).toBe('ready');
-    expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(lines.filter((l) => /'fleet' 'adopt' 'hm_abcdefghij' '--home-ssh' 'ada@studio'/.test(l))).toHaveLength(1);
     // the key its driver's journal holds, on stdin
     expect(inputs).toEqual([driverAdoptKey(resolvePaths(home), 'hm_abcdefghij')]);
@@ -686,7 +725,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     const out = await moveHomeBack(deps);
     stop();
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(out.result).toBe('ready');
     expect(order).toContain('fleet.homeMove:mark owed');
     expect(settled).toEqual(['adopted']);
@@ -796,7 +835,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     expect((await resumeHome(deps)).result).toBe('ready');
     stop();
-    expect(ran()).toEqual(['check:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     expect(settled).toEqual(['adopted']);
     expect(w.mac.daemon.role).toBe('home');
   }, 30_000);

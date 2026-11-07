@@ -4,11 +4,11 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import type { FleetState, HomeFacts, HomeWorker, MachineId, MachineRecord } from '@svall/protocol';
 import { homeCheck } from '../../src/fleet/home-freeze.js';
 import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fleet/home-workers.js';
-import { enter, owedWorkers } from '../../src/fleet/home-move.js';
+import { createMarker, enter, owedWorkers, readMarker } from '../../src/fleet/home-move.js';
 import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
 import { resolvePaths } from '../../src/paths.js';
-import { issueToken, tokenFor } from '../../src/placement/workers.js';
+import { dropToken, issueToken, tokenFor } from '../../src/placement/workers.js';
 import { silentLogger } from '../../src/log.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { crashAt, crashesFired, disarmCrash, POINTS_OF } from './home-world.js';
@@ -24,11 +24,12 @@ const ID = 'hm_abcdefghij' as never;
 const record: MachineRecord = { name: 'box', ssh: 'ada@box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' };
 const worker: HomeWorker = { id: W, record, profile: 'private' };
 
-// a master that answers `svall version --json`, or fails as ssh does
-const masterOf = (version: object | string, enroll: { code: number; stderr?: string } = { code: 0 }) => {
+// a master that answers each command by its own result: `svall version --json` by what it is handed, and the enrol as ssh would
+const masterOf = (version: object | string, enroll: { code: number | null; signal?: string | null; stderr?: string } = { code: 0 }) => {
   const runs: { argv: string[]; input?: unknown }[] = [];
   return {
     runs,
+    enrols: () => runs.filter((r) => r.argv.includes('enroll')),
     master: {
       run: (argv: string[], o: { input?: unknown } = {}) => {
         runs.push({ argv, input: o.input });
@@ -71,13 +72,32 @@ describe('what the machine that would take the fleet finds of a worker', () => {
     expect((await reach(open, [{ id: OTHER, record: { ...record, ssh: 'ada@elsewhere' } }]))[W]).toMatchObject({ ok: false, kind: 'name' });
     expect(asked).toEqual([]);
   });
+
+  it('a route it holds with no ssh refuses, with no login, as nothing would reach it afterwards either', async () => {
+    const open = vi.fn();
+    const { ssh: _, ...noRoute } = record;
+    expect((await reach(open, [{ id: W, record: noRoute }]))[W]).toMatchObject({ ok: false, kind: 'other', why: expect.stringContaining('no ssh route') });
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('asks by the record it holds, of the fleet under its profile there', async () => {
+    const m = masterOf(serving());
+    const r = await reachWorkers([{ ...worker, profile: 'work' }], { fleetId: FLEET, release: '1.2.3', held: [{ id: W, record: { ...record, svallBase: '/opt/svall' } }], open: () => Promise.resolve(m.master) as never });
+    expect(r[W]).toMatchObject({ ok: true });
+    expect(m.runs[0].argv).toEqual(["'/opt/svall/current/bin/svall'", '-p', "'work'", 'version', '--json']);
+  });
+
+  it('reads the answer past what a login shell says first', async () => {
+    expect((await reach(() => Promise.resolve(masterOf(`welcome to box\n${JSON.stringify(serving(), null, 2)}`).master)))[W]).toEqual({ ok: true, ssh: 'ada@box' });
+  });
 });
 
 describe('the check of a move with another worker', () => {
-  const facts = (machineId: MachineId): HomeFacts => ({ machineId, role: 'home', release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {} } as never);
+  const facts = (machineId: MachineId): HomeFacts => ({ machineId, role: 'home', release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, workers: [W] } as never);
   const state = { robots: {}, islands: {}, machines: { [W]: { name: 'box', reachable: true, since: 0 } } } as unknown as FleetState;
-  const check = (o: { reach?: Record<string, unknown>; linked?: boolean }) => homeCheck({
-    state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: true, synced: true, workers: [W], rewrites: [], fromIsHome: true, reach: (o.reach ?? {}) as never, linkedTo: () => o.linked ?? true,
+  const check = (o: { reach?: Record<string, unknown> | null; linked?: boolean; back?: string; farSsh?: string }) => homeCheck({
+    state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true, reach: (o.reach === undefined ? {} : o.reach) as never, linkedTo: () => o.linked ?? true,
+    ...(o.back && { back: o.back }), ...(o.farSsh && { farSsh: o.farSsh }),
   });
 
   it('a Linux worker the new home reaches passes, and goes with the fleet', () => {
@@ -101,7 +121,61 @@ describe('the check of a move with another worker', () => {
 
   it.each(['auth', 'host_key'])('a refused login (%s) is refused whether or not it is linked, with the line that fixes it', (kind) => {
     const r = check({ reach: { [W]: { ok: false, kind, why: 'refused', ssh: 'ada@box' } }, linked: false });
-    expect(r).toMatchObject({ ok: false, refusal: { reason: expect.stringContaining('studio cannot log in to box'), run: expect.stringContaining("ssh-copy-id 'ada@box'") } });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: expect.stringContaining('studio cannot log in to box'), action: expect.stringContaining("ssh-copy-id 'ada@box'") } });
+  });
+
+  it('a home the machine could not be asked about says so once, with no word of removing a worker', () => {
+    const r = check({ reach: null });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio could not be asked whether it reaches the other workers', action: 'try again in a moment' } });
+    expect(JSON.stringify(r)).not.toContain('remove box');
+  });
+
+  it('a machine not linked is what refuses, and says nothing of a worker it was not asked about', () => {
+    const r = homeCheck({ state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: false, synced: true, rewrites: [], fromIsHome: true, reach: null });
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio is not reachable' } });
+    expect(JSON.stringify(r)).not.toContain('box');
+  });
+
+  it.each([
+    ['machine', 'ada@box reaches another machine than box'],
+    ['fleet', 'box does not serve this fleet'],
+    ['name', 'another machine goes by box there'],
+    ['other', 'svall version exited 1'],
+  ])('a worker answering wrongly as %s is refused in those words, linked or not', (kind, why) => {
+    for (const linked of [true, false]) {
+      expect(check({ reach: { [W]: { ok: false, kind, why, ssh: 'ada@box' } }, linked })).toMatchObject({ ok: false, refusal: { reason: `box: ${why}`, action: 'fix it, or remove it first' } });
+    }
+  });
+
+  describe('the words of a login that fails', () => {
+    const refused = { [W]: { ok: false, kind: 'auth', why: 'refused', ssh: 'ada@box' } };
+
+    it('on the way out, name the far machine in words and its route in the line', () => {
+      const r = check({ reach: refused, farSsh: 'ada@studio.tail' });
+      if (r.ok) throw new Error('passed');
+      expect(r.refusal.action).toContain("on studio, run test -f ~/.ssh/id_ed25519");
+      expect(r.refusal.action).toContain("ssh ada@studio.tail cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'");
+    });
+
+    it('on the way back, hand on this machine\'s own key over the home that reaches the worker, naming no machine as ssh would not', () => {
+      const r = check({ reach: refused, back: 'studio', farSsh: 'ada@studio.tail' });
+      if (r.ok) throw new Error('passed');
+      expect(r.refusal.action).toContain('on this machine, run');
+      expect(r.refusal.action).toContain(`cat ~/.ssh/id_ed25519.pub | ssh ada@studio.tail "ssh ada@box 'cat >> .ssh/authorized_keys'"`);
+      expect(r.refusal.action).not.toContain('ssh this machine');
+    });
+
+    it('with no route known, name no line that could not run', () => {
+      const r = check({ reach: refused });
+      if (r.ok) throw new Error('passed');
+      expect(r.refusal.action).not.toContain('ssh studio');
+      expect(r.refusal.action).toContain("studio's ~/.ssh/id_ed25519.pub");
+    });
+
+    it('a worker this machine cannot reach names who can', () => {
+      const r = check({ reach: { [W]: { ok: false, kind: 'unreachable', why: 'No route', ssh: 'ada@box' } }, linked: true, back: 'studio' });
+      expect(r).toMatchObject({ ok: false, refusal: { reason: 'this machine cannot reach box, which studio reaches: No route' } });
+    });
   });
 
   it('one on another release is refused, with the upgrade', () => {
@@ -117,9 +191,9 @@ describe('the workers a new home owes an enrolment', () => {
     issueToken(p, W);
     return p;
   };
-  const run = (p: ReturnType<typeof resolvePaths>, open: (d: string) => Promise<unknown>, more: { refresh?: () => void } = {}) => {
+  const run = (p: ReturnType<typeof resolvePaths>, open: (d: string) => Promise<unknown>, more: { refresh?: () => void; frozen?: () => boolean; records?: () => { id: MachineId; record: MachineRecord }[]; log?: typeof silentLogger } = {}) => {
     const refresh = more.refresh ?? vi.fn();
-    return startRejoins({ paths: p, me: ME, name: () => 'studio', platform: 'linux', fleetId: () => FLEET, log: silentLogger, open: open as never, records: () => [{ id: W, record }], refresh, firstMs: 1, lastMs: 4 });
+    return startRejoins({ paths: p, me: ME, name: () => 'studio', platform: 'linux', fleetId: () => FLEET, log: more.log ?? silentLogger, open: open as never, records: more.records ?? (() => [{ id: W, record }]), refresh, frozen: more.frozen ?? (() => false), firstMs: 1, lastMs: 4 });
   };
   const settled = (ms = 40) => new Promise((r) => { setTimeout(r, ms); });
 
@@ -144,10 +218,163 @@ describe('the workers a new home owes an enrolment', () => {
     const s = run(p, () => Promise.resolve(m.master), { refresh });
     await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
     s.stop();
-    const { argv, input } = m.runs[0];
+    const [{ argv, input }] = m.enrols();
     expect(input).toBe(tokenFor(p, W));
     expect(argv.join(' ')).not.toContain(tokenFor(p, W)!);
-    expect(argv).toEqual(expect.arrayContaining(['worker', 'enroll', '--home-platform', "'linux'", '--home-name', "'studio'"]));
+    expect(argv).toEqual(["'/home/ada/.local/share/svall/current/bin/svall'", 'worker', 'enroll', '--home-machine', `'${ME}'`, '--home-name', "'studio'", '--fleet-id', `'${FLEET}'`, '--home-platform', "'linux'"]);
+  });
+
+  it('asks who answers on the same master before the token goes, and a fleet under a profile there by that profile each time', async () => {
+    const p = setup('adopted');
+    const held = JSON.parse(fs.readFileSync(p.workersFile, 'utf8')) as Record<string, object>;
+    fs.writeFileSync(p.workersFile, JSON.stringify({ ...held, [W]: { ...held[W], profile: 'work' } }));
+    const m = masterOf(serving());
+    const opened = vi.fn(() => Promise.resolve(m.master));
+    const refresh = vi.fn();
+    const s = run(p, opened, { refresh });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    s.stop();
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(m.runs.map((r) => r.argv.slice(1, 5))).toEqual([['-p', "'work'", 'version', '--json'], ['-p', "'work'", 'worker', 'enroll']]);
+    expect(m.runs[0].input).toBeUndefined();
+  });
+
+  it.each([
+    ['another machine', () => serving({ machineId: OTHER }), 'ada@box reaches another machine than box'],
+    ['a worker of another fleet', () => serving({ fleetId: crypto.randomUUID() }), 'box does not serve this fleet'],
+    ['a fleet home', () => ({ machineId: W, release: '1.2.3', role: 'home', fleetId: crypto.randomUUID() }), 'box does not serve this fleet'],
+  ])('%s gets no token, says why, and is not tried again until a person asks', async (_what, answer, why) => {
+    const p = setup('adopted');
+    const m = masterOf(answer());
+    const open = vi.fn(() => Promise.resolve(m.master));
+    const s = run(p, open);
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBe(why));
+    await settled();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(m.enrols()).toEqual([]);
+    expect(m.runs.every((r) => r.input === undefined)).toBe(true);
+    s.again();
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    s.stop();
+    expect(Object.keys(owedWorkers(p))).toEqual([W]);
+  });
+
+  it.each([
+    ['a marker stands', (p: ReturnType<typeof resolvePaths>) => { createMarker(p, { id: 'hm_abcdefghik' as never, fleetId: FLEET as never, from: ME, fromName: 'studio', fromHome: '/home/ada' as never, to: OTHER, toName: 'second', toHome: '/home/ada' as never, at: 1, keySha256: 'a'.repeat(64) }); expect(readMarker(p)).toBeDefined(); return () => false; }],
+    ['the freeze holds', () => () => true],
+  ])('a home enrols no one while %s', async (_what, leave) => {
+    const p = setup('adopted');
+    const frozen = leave(p);
+    const open = vi.fn();
+    const s = run(p, open, { frozen });
+    await settled();
+    s.stop();
+    expect(open).not.toHaveBeenCalled();
+    expect(Object.keys(owedWorkers(p))).toEqual([W]);
+  });
+
+  it('a freeze that ends lets the home go on', async () => {
+    const p = setup('adopted');
+    let frozen = true;
+    const m = masterOf(serving());
+    const refresh = vi.fn();
+    const s = run(p, () => Promise.resolve(m.master), { frozen: () => frozen, refresh });
+    await settled();
+    expect(m.runs).toEqual([]);
+    frozen = false;
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    s.stop();
+  });
+
+  it('a registry that reads empty ends no debt, with the token still held', async () => {
+    const p = setup('adopted');
+    const open = vi.fn();
+    const s = run(p, open, { records: () => [] });
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toContain('no ssh route'));
+    await settled();
+    s.stop();
+    expect(Object.keys(owedWorkers(p))).toEqual([W]);
+    expect(open).not.toHaveBeenCalled();
+    expect(tokenFor(p, W)).toBeDefined();
+  });
+
+  it('an enrol that exits non-zero is no enrolment: it stays owed, says why, and is tried again', async () => {
+    const p = setup('adopted');
+    const m = masterOf(serving(), { code: 1, stderr: 'svall: worker.json not written: no\n' });
+    const refresh = vi.fn();
+    const s = run(p, () => Promise.resolve(m.master), { refresh });
+    await vi.waitFor(() => expect(m.enrols().length).toBeGreaterThan(1));
+    s.stop();
+    expect(refresh).not.toHaveBeenCalled();
+    expect(owedWorkers(p)[W]?.why).toBe('svall worker enroll exited 1: worker.json not written: no');
+  });
+
+  it('a cause that comes back goes in the log once, and a new one goes in too', async () => {
+    const p = setup('adopted');
+    const error = vi.fn();
+    let said = 'No route to host';
+    const open = vi.fn(() => Promise.reject(new SshError('unreachable', said)));
+    const s = run(p, open, { log: { ...silentLogger, error } });
+    await vi.waitFor(() => expect(open.mock.calls.length).toBeGreaterThan(3));
+    expect(error).toHaveBeenCalledTimes(1);
+    said = 'Connection timed out';
+    await vi.waitFor(() => expect(error).toHaveBeenCalledTimes(2));
+    s.stop();
+  });
+
+  it.each([
+    ['auth', 'Permission denied (publickey)'],
+    ['host_key', 'Host key verification failed'],
+  ])('a login refused as %s says the fix on the row, at a login and at the enrol', async (kind, said) => {
+    const p = setup('adopted');
+    const s = run(p, () => Promise.reject(new SshError(kind as never, said)));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toContain(said));
+    s.stop();
+    expect(owedWorkers(p)[W]?.why).toContain("on studio, run test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'");
+    const q = setup('adopted');
+    const m = masterOf(serving(), { code: 255, stderr: `${said}\n` });
+    const again = run(q, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(owedWorkers(q)[W]?.why).toContain('ssh-copy-id'));
+    await settled();
+    again.stop();
+    expect(m.enrols()).toHaveLength(1);
+  });
+
+  it('a worker forgotten while its login stays refused is owed nothing from the next round', async () => {
+    const p = setup('adopted');
+    const open = vi.fn(() => Promise.reject(new SshError('auth', 'refused')));
+    const s = run(p, open);
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    dropToken(p, W);
+    await vi.waitFor(() => expect(owedWorkers(p)).toEqual({}));
+    s.stop();
+    expect(open).toHaveBeenCalledTimes(1);
+  });
+
+  it('a token taken back after the login, while the lock waits, is never sent', async () => {
+    const p = setup('adopted');
+    const hold = await enrolLock(p.home);
+    const m = masterOf(serving());
+    const s = run(p, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(m.runs.length).toBeGreaterThan(0));
+    dropToken(p, W);
+    hold?.();
+    await vi.waitFor(() => expect(owedWorkers(p)).toEqual({}));
+    s.stop();
+    expect(m.enrols()).toEqual([]);
+  });
+
+  it('holds the lock only around the token, so a person\'s add does not wait on a login', async () => {
+    const p = setup('adopted');
+    let answer!: (m: unknown) => void;
+    const open = vi.fn(() => new Promise((r) => { answer = r; }));
+    const s = run(p, open);
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+    const held = await enrolLock(p.home);
+    expect(held).toBeDefined();
+    held?.();
+    s.stop();
+    answer(masterOf(serving()).master);
   });
 
   it('an enrolment under way takes the worker\'s lock and leaves a move\'s free, as the old home landing goes by that one', async () => {
@@ -156,7 +383,7 @@ describe('the workers a new home owes an enrolment', () => {
     const enrolling = new Promise<void>((r) => { done = r; });
     const m = masterOf(serving());
     const run_ = m.master.run;
-    m.master.run = async (argv: string[], o: { input?: unknown } = {}) => { await enrolling; return run_(argv, o); };
+    m.master.run = async (argv: string[], o: { input?: unknown } = {}) => { if (argv.includes('enroll')) await enrolling; return run_(argv, o); };
     const refresh = vi.fn();
     const s = run(p, () => Promise.resolve(m.master), { refresh });
     await vi.waitFor(async () => {
@@ -176,7 +403,7 @@ describe('the workers a new home owes an enrolment', () => {
     const p = setup('adopted');
     const m = masterOf({ ...serving(), worker: { homeMachineId: ME, homeName: 'studio', fleetId: FLEET } });
     const s = run(p, () => Promise.resolve(m.master));
-    await vi.waitFor(() => expect(m.runs.some((r) => r.argv.includes('enroll'))).toBe(true));
+    await vi.waitFor(() => expect(m.enrols().length).toBeGreaterThan(0));
     s.stop();
     expect(Object.keys(owedWorkers(p))).toEqual([W]);
     settleOwed(p, W);
@@ -230,7 +457,7 @@ describe('the workers a new home owes an enrolment', () => {
     const next = run(p, () => Promise.resolve(m.master), { refresh });
     await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
     next.stop();
-    expect(m.runs.filter((r) => r.argv.includes('enroll')).at(-1)?.input).toBe(tokenFor(p, W));
+    expect(m.enrols().at(-1)?.input).toBe(tokenFor(p, W));
   });
 
   it('rejoin.done: a kill as the entry ends leaves nothing owed', () => {
@@ -242,7 +469,7 @@ describe('the workers a new home owes an enrolment', () => {
     expect(owedWorkers(p)).toEqual({});
   });
 
-  it('a machine no longer listed or holding no token is owed nothing', async () => {
+  it('a machine whose token a person took back is owed nothing', async () => {
     const p = resolvePaths(makeHome());
     enter(p, ID, 'adopted');
     writeOwed(p, ID, [W]);

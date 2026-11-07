@@ -44,7 +44,7 @@ describe('a move that carries another worker', () => {
     const w = await world({ workers: [box] });
     await staged(w);
     if (o.answers === false) w.studio.daemon.answersHome = () => Promise.resolve(false);
-    const answer = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const answer = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     return { w, answer };
   };
 
@@ -52,7 +52,7 @@ describe('a move that carries another worker', () => {
     const fired = crashAt('adopt.started');
     const w = await world({ workers: [box] });
     await staged(w);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     expect(fired()).toBe(true);
     expect(tokenFor(w.studio.paths, BOX)).toMatch(/^[0-9a-f]{48}$/);
     expect(readRegistry(w.studio.deps.registryDir).find((m) => m.id === BOX)?.record).toEqual(box.record);
@@ -69,7 +69,7 @@ describe('a move that carries another worker', () => {
     await staged(w);
     w.studio.daemon.answersHome = () => Promise.resolve(false);
     putRecord(BOX, { ...box.record, ssh: 'ada@box.tail' }, w.studio.deps.registryDir);
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(readRegistry(w.studio.deps.registryDir).find((m) => m.id === BOX)?.record.ssh).toBe('ada@box.tail');
   });
 
@@ -90,7 +90,7 @@ describe('a move that carries another worker', () => {
     await staged(w);
     const unpacked = path.join(adoptDir(w.studio.paths, ID), 'incoming', 'state.json');
     fs.writeFileSync(unpacked, JSON.stringify(state));
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(JSON.parse(fs.readFileSync(w.studio.paths.state, 'utf8')).machines[BOX].reachable).toBe(false);
   });
 });

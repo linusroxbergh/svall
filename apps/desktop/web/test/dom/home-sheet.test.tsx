@@ -39,6 +39,26 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-go').textContent).toBe('Make it the home');
   });
 
+  it('a move that carried no other worker shows no row for them, before or after', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) {
+      step(s, 'ok');
+      expect(screen.getByTestId('home-steps').textContent).not.toContain('The other workers join');
+    }
+    step('workers', 'skip');
+    expect(screen.getByTestId('home-steps').textContent).not.toContain('The other workers join');
+  });
+
+  it('a move that carried one shows its row as it waits, and what it found', async () => {
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    step('workers', 'start');
+    expect(screen.getByTestId('home-steps').textContent).toContain('The other workers join');
+    step('workers', 'warn', { detail: 'box has not joined studio yet; its row under Machines says why' });
+    expect(screen.getByTestId('home-steps').textContent).toContain('box has not joined studio yet');
+  });
+
   it('names a worker that does not answer, which joins the new home when it does', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, waits: [{ id: 'cccccccc-0000-4000-8000-000000000000', name: 'box' }] } } });
     await open();

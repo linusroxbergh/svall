@@ -1,17 +1,17 @@
-import { z } from 'zod';
-import type { FleetId, HomeReach, HomeWorker, MachineId } from '@svall/protocol';
+import type { FleetId, HomeReach, HomeWorker, MachineId, MachineRecord } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { homePoint } from '../failpoints.js';
 import { enrolLock } from '../kernel-lock.js';
+import { farFleet, FleetMismatch, MachineMismatch } from '../link/connection-info.js';
 import { classifyExit, SshError, SshMaster } from '../link/ssh.js';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
 import type { Paths } from '../paths.js';
-import { enrollArgv, tokenFor, workerProfile } from '../placement/workers.js';
+import { enrollArgv, noLoginFix, tokenFor, workerProfile } from '../placement/workers.js';
 import { PRIVATE } from '../profile.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
-import { owedWorkers, readWorkersOwed } from './home-move.js';
+import { owedWorkers, readMarker, readWorkersOwed } from './home-move.js';
 
 type Far = Pick<SshMaster, 'run' | 'close'>;
 const openMaster = (destination: string): Promise<Far> => SshMaster.open({ destination });
@@ -23,32 +23,32 @@ const ENROL_MS = 120_000;
 // how long a link has to greet with the token just enrolled, before that worker is enrolled again
 const GREET_MS = 60_000;
 
-const Version = z.object({ machineId: z.string(), release: z.string(), worker: z.object({ fleetId: z.string() }).optional() });
-
-const farKind = (e: unknown): HomeReach['kind'] => {
+const farKind = (e: unknown): NonNullable<HomeReach['kind']> => {
+  if (e instanceof MachineMismatch) return 'machine';
+  if (e instanceof FleetMismatch) return 'fleet';
   const kind = e instanceof SshError ? e.kind : undefined;
   return kind === 'auth' || kind === 'host_key' || kind === 'unreachable' ? kind : 'other';
 };
 
+// what asks a person, and is not tried again by itself
+const STOPS = ['auth', 'host_key', 'machine', 'fleet'];
+
+const svallOn = (record: MachineRecord, profile?: string): string[] => [shq(svallExe(record.svallBase)), ...(profile && profile !== PRIVATE ? ['-p', shq(profile)] : [])];
+
 async function reachOne(w: HomeWorker, o: { fleetId: string; release: string; held: MachineEntry[]; open: (destination: string) => Promise<Far> }): Promise<HomeReach> {
-  const ssh = o.held.find((h) => h.id === w.id)?.record.ssh ?? w.record.ssh ?? '';
+  const record = o.held.find((h) => h.id === w.id)?.record ?? w.record;
+  const ssh = record.ssh ?? '';
   const name = w.record.name;
   if (o.held.some((h) => h.id !== w.id && h.record.name === name)) return { ok: false, ssh, kind: 'name', why: `another machine goes by ${name} there` };
+  if (!ssh) return { ok: false, ssh, kind: 'other', why: `there is no ssh route to ${name} there` };
   let master: Far;
   try { master = await o.open(ssh); } catch (e) { return { ok: false, ssh, kind: farKind(e), why: (e as Error).message }; }
   try {
-    const flags = w.profile && w.profile !== PRIVATE ? ['-p', shq(w.profile)] : [];
-    const r = await master.run([shq(svallExe(w.record.svallBase)), ...flags, 'version', '--json'], { timeoutMs: PROBE_MS });
-    if (r.code !== 0) {
-      const kind = classifyExit(r, 'other');
-      return { ok: false, ssh, kind: kind === 'auth' || kind === 'host_key' || kind === 'unreachable' ? kind : 'other', why: `svall version exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 200) || 'no output'}` };
-    }
-    let v: z.infer<typeof Version>;
-    try { v = Version.parse(JSON.parse(r.stdout)); } catch { return { ok: false, ssh, kind: 'other', why: 'svall version --json did not answer what it should' }; }
-    if (v.machineId !== w.id) return { ok: false, ssh, kind: 'machine', why: `${ssh} reaches another machine` };
-    if (v.worker?.fleetId !== o.fleetId) return { ok: false, ssh, kind: 'fleet', why: `${name} does not serve this fleet` };
+    const v = await farFleet(master, { svall: svallOn(record, w.profile), name, ssh, machine: w.id, fleetId: o.fleetId, as: 'worker', timeoutMs: PROBE_MS });
     if (v.release !== o.release) return { ok: false, ssh, kind: 'release', why: `it runs ${v.release}, and the fleet ${o.release}` };
     return { ok: true, ssh };
+  } catch (e) {
+    return { ok: false, ssh, kind: farKind(e), why: (e as Error).message };
   } finally { await master.close().catch(() => undefined); }
 }
 
@@ -80,45 +80,60 @@ export type Rejoins = { stop(): void; again(): void };
 
 /**
  * Enrols each worker a move left this home owing, once the move stands, over this machine's own ssh and with the token
- * workers.json holds, until its link greets with it. A refused login is not tried again by itself: a daemon's start or `again` does.
+ * workers.json holds, until its link greets with it. Anything but the machine and fleet it was gets no token. A refused login,
+ * or one of those, is not tried again by itself: a daemon's start or `again` does. A home on its way out enrols no one.
  */
 export function startRejoins(o: {
   paths: Paths; me: MachineId; name: () => string; platform: string; fleetId: () => FleetId | string; log: Pick<Logger, 'error' | 'info'>; records: () => MachineEntry[]; refresh: () => void;
-  open?: (destination: string) => Promise<Far>; firstMs?: number; lastMs?: number;
+  frozen: () => boolean; open?: (destination: string) => Promise<Far>; firstMs?: number; lastMs?: number;
 }): Rejoins {
   const first = o.firstMs ?? FIRST_MS;
   const last = o.lastMs ?? LAST_MS;
   const open = o.open ?? openMaster;
   const refused = new Set<string>();
   const enrolled = new Map<string, number>();
+  const said = new Map<string, string>();
   let timer: NodeJS.Timeout | undefined;
   let ms = first;
   let stopped = false;
   let running = false;
 
-  const failed = (machine: string, why: string): void => {
+  // a cause goes on the row and in the log once, however often it comes back
+  const failed = (machine: string, why: string): false => {
+    if (said.get(machine) === why) return false;
+    said.set(machine, why);
     changeOwed(o.paths, machine, { why });
     o.log.error(`${machine} has not joined this home yet: ${why}`);
+    return false;
   };
 
-  async function enrol(machine: MachineId, token: string, entry: MachineEntry): Promise<boolean> {
+  const notTaken = (machine: string, kind: string, why: string, ssh: string): false => {
+    if (STOPS.includes(kind)) refused.add(machine);
+    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${why}; ${noLoginFix(o.name(), ssh)}` : why);
+  };
+
+  async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {
+    const ssh = entry.record.ssh!;
+    const profile = workerProfile(o.paths, machine);
     let master: Far;
-    try { master = await open(entry.record.ssh!); } catch (e) {
-      if (farKind(e) === 'auth' || farKind(e) === 'host_key') refused.add(machine);
-      failed(machine, (e as Error).message);
-      return false;
-    }
+    try { master = await open(ssh); } catch (e) { return notTaken(machine, farKind(e), (e as Error).message, ssh); }
     try {
-      homePoint('rejoin.enrolling');
-      const r = await master.run(enrollArgv({ svallBase: entry.record.svallBase, profile: profileFlag(o.paths, machine), home: o.me, homeName: o.name(), fleetId: String(o.fleetId()), homePlatform: o.platform }), { input: token, timeoutMs: ENROL_MS });
-      if (r.code !== 0) {
-        const kind = classifyExit(r, 'other');
-        if (kind === 'auth' || kind === 'host_key') refused.add(machine);
-        failed(machine, `svall worker enroll exited ${r.code ?? r.signal}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 300) || 'no output'}`);
-        return false;
-      }
+      try {
+        await farFleet(master, { svall: svallOn(entry.record, profile), name: entry.record.name, ssh, machine, fleetId: String(o.fleetId()), as: 'worker', timeoutMs: PROBE_MS });
+      } catch (e) { return notTaken(machine, farKind(e), (e as Error).message, ssh); }
+      // the token goes under the lock a person's enrol and a forget hold too, so it is the one that stands when it arrives
+      const unlock = await enrolLock(o.paths.home);
+      if (!unlock) return false;
+      try {
+        const token = tokenFor(o.paths, machine);
+        if (!token) { settleOwed(o.paths, machine); return true; }
+        homePoint('rejoin.enrolling');
+        const r = await master.run(enrollArgv({ svallBase: entry.record.svallBase, profile: profile === PRIVATE ? undefined : profile, home: o.me, homeName: o.name(), fleetId: String(o.fleetId()), homePlatform: o.platform }), { input: token, timeoutMs: ENROL_MS });
+        if (r.code !== 0) return notTaken(machine, classifyExit(r, 'other'), `svall worker enroll exited ${r.code ?? r.signal}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 300) || 'no output'}`, ssh);
+      } finally { unlock(); }
       homePoint('rejoin.enrolled');
       enrolled.set(machine, Date.now());
+      said.delete(machine);
       changeOwed(o.paths, machine, {});
       o.refresh();
       return true;
@@ -128,16 +143,14 @@ export function startRejoins(o: {
   const round = async (): Promise<boolean> => {
     let fine = true;
     for (const machine of Object.keys(owedWorkers(o.paths)) as MachineId[]) {
-      if (stopped) break;
+      if (stopped || o.frozen() || readMarker(o.paths)) break;
+      // only a person's remove takes a token back
+      if (!tokenFor(o.paths, machine)) { settleOwed(o.paths, machine); continue; }
       if (refused.has(machine)) continue;
       if (Date.now() - (enrolled.get(machine) ?? -Infinity) < GREET_MS) { fine = false; continue; }
       const entry = o.records().find((r) => r.id === machine);
-      const token = tokenFor(o.paths, machine);
-      // removed from the fleet since: a person took it back
-      if (!token || !entry?.record.ssh) { settleOwed(o.paths, machine); continue; }
-      const unlock = await enrolLock(o.paths.home);
-      if (!unlock) { fine = false; continue; }
-      try { fine = await enrol(machine, tokenFor(o.paths, machine) ?? token, entry) && fine; } finally { unlock(); }
+      if (!entry?.record.ssh) { fine = failed(machine, 'this home has no ssh route to it; svall host upgrade it, or svall host remove it --forget'); continue; }
+      fine = await enrol(machine, entry) && fine;
     }
     return fine;
   };
@@ -170,8 +183,3 @@ export function startRejoins(o: {
     },
   };
 }
-
-const profileFlag = (p: Paths, machine: string): string | undefined => {
-  const held = workerProfile(p, machine);
-  return held === PRIVATE ? undefined : held;
-};

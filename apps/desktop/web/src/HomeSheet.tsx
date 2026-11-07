@@ -145,7 +145,8 @@ export function HomeSheet() {
               const row = at(step);
               const now = !row ? 'todo' : row.status === 'start' ? 'doing' : row.status === 'fail' ? 'failed' : row.status === 'warn' ? 'warned' : 'done';
               if (failed && now === 'todo') return null;
-              if (row?.status === 'skip') return null;
+              // a move that carried no other worker shows none of this row
+              if (row?.status === 'skip' || (!row && step === 'workers')) return null;
               const said = now === 'failed' || now === 'warned' ? row : undefined;
               const todo = said && (said.say ?? said.action);
               return (

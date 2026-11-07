@@ -518,10 +518,10 @@ function refuseLeaving(p: Paths, id: HomeMoveId): void {
   if (readMarker(p)?.id === id) throw new Error(`this home is what move ${id} leaves, so it cannot say how that ended; svall fleet home abort calls it off, once the machine holding the fleet says it was not taken`);
 }
 
-/** The workers a move would carry from this home: those it reaches over ssh on Linux, as nothing can log in to any other. */
-export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): HomeWorker[] {
+/** The workers a move would carry from this home: those it reaches over ssh on Linux, as nothing can log in to any other; undefined where it cannot read which it holds. */
+export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): HomeWorker[] | undefined {
   let held: string[];
-  try { held = workerIds(p); } catch { return []; }
+  try { held = workerIds(p); } catch { return undefined; }
   return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
 }
 

@@ -10,7 +10,7 @@ import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
 import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
-import { keyLine, listedWorkerIds, noLoginFix } from '../placement/workers.js';
+import { listedWorkerIds, noLoginFix } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
 const STILL = new Set<MethodName>(['term.open', 'term.attach', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
@@ -358,8 +358,18 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig' | 'home'>, fromHome:
 /** `back`: the name of the home the fleet leaves for this machine, on the way back. `platformOf`: a machine's platform, as this machine's registry has it. */
 type HomeCheckInput = {
   state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean; platformOf?: (id: string) => string | undefined;
-  /** What the machine that would take the fleet found of each worker the move can carry; `linkedTo`: whether this home's link to one is up. */
-  reach?: Record<string, HomeReach>; linkedTo?: (machine: string) => boolean;
+  /** What the machine that would take the fleet found of each worker the move can carry, null where it could not be asked; `linkedTo`: whether this home's link to one is up. */
+  reach?: Record<string, HomeReach> | null; linkedTo?: (machine: string) => boolean;
+  /** How this machine's terminal reaches the home the fleet would leave, on the way back, or the machine taking it, on the way out. */
+  farSsh?: string;
+};
+
+const AUTHORIZED = `'cat >> .ssh/authorized_keys'`;
+
+// from the machine that reaches both: on the way out it asks the far machine for its key, on the way back it sends its own over the home
+const publicHalf = (i: Pick<HomeCheckInput, 'back' | 'farSsh'>, ssh: string): string | undefined => {
+  if (!i.farSsh) return undefined;
+  return i.back ? `cat ~/.ssh/id_ed25519.pub | ssh ${i.farSsh} "ssh ${ssh} ${AUTHORIZED}"` : `ssh ${i.farSsh} cat .ssh/id_ed25519.pub | ssh ${ssh} ${AUTHORIZED}`;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
@@ -368,7 +378,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const far = i.back ?? toName;
   const [there, here] = i.back ? [from, to] : [to, from];
   const goesTo = i.back ? 'this machine' : toName;
-  const failed: { reason: string; action: string; run?: string }[] = [];
+  const failed: { reason: string; action: string }[] = [];
   const waits: NonNullable<HomeSheet['waits']> = [];
   const fail = (reason: string, action: string): void => { failed.push({ reason, action }); };
   const robots = Object.values(state.robots);
@@ -379,7 +389,9 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
   if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
-  for (const m of others) {
+  // a linked machine could not be asked: nothing is known of any worker yet, so nothing is said of one
+  if (i.reach === null) { if (others.length && i.linked) fail(`${goesTo} could not be asked whether it reaches the other workers`, 'try again in a moment'); }
+  else for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     const r = i.reach?.[m];
     // nothing can log in to it, so nothing can tell it of a new home
@@ -389,8 +401,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
       fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
     } else if (r.ok) continue;
     else if (r.kind === 'unreachable' && !i.linkedTo?.(m)) waits.push({ id: m as MachineId, name });
-    else if (r.kind === 'auth' || r.kind === 'host_key') failed.push({ reason: `${goesTo} cannot log in to ${name}: ${r.why}`, action: noLoginFix(goesTo, r.ssh), run: keyLine(r.ssh) });
-    else if (r.kind === 'unreachable') fail(`${goesTo} cannot reach ${name}, which this home reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${goesTo}`);
+    else if (r.kind === 'auth' || r.kind === 'host_key') fail(`${goesTo} cannot log in to ${name}: ${r.why}`, noLoginFix(goesTo, r.ssh, publicHalf(i, r.ssh)));
+    else if (r.kind === 'unreachable') fail(`${goesTo} cannot reach ${name}, which ${i.back ?? 'this home'} reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${goesTo}`);
     else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first');
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');

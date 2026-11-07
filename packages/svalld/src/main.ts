@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
-import { HomeWorker, MachineId, type HomeFacts, type HomeMoving, type HomeReach, type ParsedParams, type Robot } from '@svall/protocol';
+import { HomeReach, HomeWorker, MachineId, type HomeFacts, type HomeMoving, type ParsedParams, type Robot } from '@svall/protocol';
 import { installCodexHooks, readCodexHooks } from './agent-hooks.js';
 import { systemInfo } from './api/methods.js';
 import { startApi } from './api/server.js';
@@ -353,8 +353,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     calls['home.thaw'] = () => { mutations.setFrozen(false); workerDocs.setPaused(false); return Promise.resolve({}); };
   }
   if (worker) calls['home.facts'] = (p) => homeFacts(paths, { paths: (p as { paths?: string[] }).paths, me, role: 'worker', fleetId: worker.worker.fleetId });
-  // the home asks before a move here: this daemon is what would dial each of its workers afterwards
-  if (worker) calls['home.reach'] = (p) => reachWorkers(z.array(HomeWorker).parse(p), { fleetId: worker.worker.fleetId, release: releaseVersion(), held: registered() });
+  // the home asks before a move here: this daemon is what would dial each of its workers afterwards. A worker that dials out is never asked: it probes in its own process
+  if (worker && !worker.worker.homeSsh) calls['home.reach'] = (p) => reachWorkers(z.array(HomeWorker).parse(p), { fleetId: worker.worker.fleetId, release: releaseVersion(), held: registered() });
   if (connection && worker && workerDocs && farViewers && workerMirror && workerDrops) {
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, get homeName() { return homeLabel(); }, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
@@ -437,16 +437,18 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
       const back = homeLabel();
-      const reach = await reachWorkers((far?.carried ?? []).filter((w) => w.id !== me), { fleetId, release: here.release, held: registered() });
-      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf, reach, linkedTo: (m) => store.state.machines?.[m as MachineId]?.reachable === true });
+      const reach = far ? await reachWorkers((far.carried ?? []).filter((w) => w.id !== me), { fleetId: worker_.fleetId, release: here.release, held: registered() }) : null;
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf, reach, linkedTo: (m) => store.state.machines?.[m as MachineId]?.reachable === true, ...(worker_.homeSsh && { farSsh: worker_.homeSsh }) });
     }
     const here = await homeFacts(paths, { me, role: 'home', fleetId });
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);
-    const carried = carriedWorkers(paths, registered(), profile).filter((w) => w.id !== to);
-    const reach = carried.length && far ? await links!.call<Record<string, HomeReach>>(to, 'home.reach', carried, { timeoutMs: REACH_MS }).catch(() => undefined) : undefined;
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf, ...(reach && { reach }), linkedTo: (m) => links?.for(m as MachineId)?.connected() ?? false });
+    // homeCheck refuses a workers.json that cannot be read
+    const carried = (carriedWorkers(paths, registered(), profile) ?? []).filter((w) => w.id !== to);
+    const reach = !far ? null : !carried.length ? {} : await links!.call<unknown>(to, 'home.reach', carried, { timeoutMs: REACH_MS }).then((r) => z.record(z.string(), HomeReach).parse(r), () => null);
+    const farSsh = registered().find((m) => m.id === to)?.record.ssh;
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf, reach, linkedTo: (m) => links?.for(m as MachineId)?.connected() ?? false, ...(farSsh && { farSsh }) });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {
@@ -563,7 +565,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     if (links && placement) {
       links.start();
       teardown.push(() => links.stop(), () => placement.stop());
-      rejoins = startRejoins({ paths, me, name: ownName, platform: process.platform, fleetId: () => readFleetConfig(paths).id, log, records: registered, refresh: () => links.refresh() });
+      rejoins = startRejoins({ paths, me, name: ownName, platform: process.platform, fleetId: () => readFleetConfig(paths).id, log, records: registered, refresh: () => links.refresh(), frozen: () => freeze?.active ?? false });
       teardown.push(() => rejoins?.stop());
       // a move a stop left unfinished: undone before its commit, run on after it; one whose worker is down waits for it
       await placement.recoverMoves().catch((e: Error) => log.error(`moves: ${e.message}`));

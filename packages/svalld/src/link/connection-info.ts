@@ -7,7 +7,7 @@ import { classifyExit, SshError, type SshMaster } from './ssh.js';
 
 /** A companion that runs another fleet under the profile asked: no retry changes that, only `svall host upgrade`. */
 export class FleetMismatch extends SshError {
-  constructor(message: string, readonly found: FleetId) { super('other', message); }
+  constructor(message: string, readonly found: string) { super('other', message); }
 }
 
 /** A far machine that answers as another than the registry names, as an ssh alias that now leads elsewhere does. */
@@ -30,6 +30,24 @@ export const ConnectionInfo = z.object({
 export type ConnectionInfo = z.infer<typeof ConnectionInfo>;
 
 type Far = { id: MachineId; record: Pick<MachineRecord, 'name' | 'svallBase'> & { ssh?: string } };
+
+const FarFleet = z.object({ machineId: z.string(), release: z.string(), role: z.enum(['home', 'worker']).optional(), fleetId: z.string().optional(), worker: z.object({ fleetId: z.string() }).optional() });
+
+/**
+ * What a relay and a re-enrol each read on their own master before anything of the fleet goes: the machine must be `machine`,
+ * and the folder `svall` names there its `as` of `fleetId`. `svall`: the command that names that folder there, quoted.
+ */
+export async function farFleet(master: Pick<SshMaster, 'run'>, o: { svall: string[]; name: string; ssh: string; machine: string; fleetId: string; as: 'home' | 'worker'; timeoutMs?: number }): Promise<{ release: string }> {
+  const r = await master.run([...o.svall, 'version', '--json'], { ...(o.timeoutMs !== undefined && { timeoutMs: o.timeoutMs }) });
+  if (r.code !== 0) throw new SshError(classifyExit(r, 'other'), `svall version exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 200) || 'no output'}`);
+  let v: z.infer<typeof FarFleet>;
+  // past whatever a login shell says first
+  try { v = FarFleet.parse(JSON.parse(r.stdout.slice(r.stdout.search(/^\{/m)))); } catch { throw new SshError('other', `svall version --json did not answer what it should`); }
+  if (v.machineId !== o.machine) throw new MachineMismatch(`${o.ssh} reaches another machine than ${o.name}`, v.machineId as MachineId);
+  const serves = o.as === 'home' ? (v.role === 'home' ? v.fleetId : undefined) : v.worker?.fleetId;
+  if (serves !== o.fleetId) throw new FleetMismatch(o.as === 'home' ? `${o.name} is not this fleet's home` : `${o.name} does not serve this fleet`, serves ?? 'none');
+  return { release: v.release };
+}
 
 /**
  * The far machine's connection description, checked against the machine meant and any fleet named before its token is

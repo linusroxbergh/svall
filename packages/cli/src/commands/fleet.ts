@@ -124,7 +124,7 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     const paths = resolvePaths(t.home);
     const worker = isWorker(paths);
     // the fleet this folder holds: a worker's own fleet.json may go by an id of its own
-    printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: worker ? readWorkerFile(paths).fleetId : readFleetConfig(paths).id, ...(!worker && { carried: carriedWorkers(paths, MachineRegistry.load().list(), t.name) }) }), json());
+    printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: worker ? readWorkerFile(paths).fleetId : readFleetConfig(paths).id, ...(!worker && { carried: carriedWorkers(paths, MachineRegistry.load().list(), t.name) ?? [] }) }), json());
   });
   // the driver runs it over ssh, the install with its key on stdin once the old home is marked; nothing a person types takes the fleet
   cmd.command('adopt', { hidden: true }).description('take the fleet from the home it leaves: --stage reads its archive from stdin; alone, reads the key of the move\'s driver from stdin, then stops, installs and starts this machine as its home')
@@ -159,7 +159,9 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
       if (m.id !== idOf(raw)) throw new Error('the manifest is of another move');
       const t = target();
       const paths = resolvePaths(t.home);
-      const { bytes, sha256 } = await packFleet(paths, { ...m, workers: carriedWorkers(paths, MachineRegistry.load().list(), t.name).filter((w) => w.id !== m.to) });
+      const workers = carriedWorkers(paths, MachineRegistry.load().list(), t.name);
+      if (!workers) throw new Error(`${paths.workersFile} cannot be read, so which workers this move carries is not known; fix it, then try again`);
+      const { bytes, sha256 } = await packFleet(paths, { ...m, workers: workers.filter((w) => w.id !== m.to) });
       printResult({ sha256, archive: bytes.toString('base64') }, true);
     });
   // the machine that took the fleet tells the old home over ssh, with its driver's key on stdin; nothing a person types ends the wait

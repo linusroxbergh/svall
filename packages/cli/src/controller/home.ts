@@ -7,7 +7,7 @@ import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId,
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, adoptDir, carriedWorkers, driverAdoptKey, driverKey, enter, installAdopt, markKey, MAX_ARCHIVE, mintAdoptKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type Asker, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptDir, carriedWorkers, driverAdoptKey, driverKey, enter, installAdopt, journalLines, markKey, MAX_ARCHIVE, mintAdoptKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type Asker, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -322,6 +322,12 @@ const CLOSE_TO_END = 'Close to finish the move or call it off';
 const AGAIN_OR_OFF = 'Finish the move again, or call it off';
 const isInterrupt = (action: string): boolean => (Object.values(INTERRUPT_ACTIONS) as string[]).includes(action);
 
+const CARRIED = 'carried';
+// what the move's copy wrote down it carried, as the worker list has gone aside by the time a retry asks
+const carriedBy = (paths: Paths, id: string): string[] => {
+  try { return z.object({ workers: z.array(z.string()) }).parse(JSON.parse(journalLines(paths, `${id}.driver`).find((r) => r.phase === CARRIED)?.detail ?? '')).workers; } catch { return []; }
+};
+
 const crewFor = (state: FleetState, to: MachineId): FleetState['robots'][string][] => Object.values(state.robots).filter((r) => state.islands[r.islandId]?.kind === 'home' && r.machine !== to);
 
 /** What a person chose for what a robot of mission control is running: until then, it is not interrupted. */
@@ -445,7 +451,10 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
         const here = d.registry.localMachine();
-        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }), workers: carriedWorkers(paths, d.registry.list(), d.target.name).filter((w) => w.id !== to) };
+        const carried = carriedWorkers(paths, d.registry.list(), d.target.name);
+        if (!carried) throw new StepError(`${paths.workersFile} cannot be read, so which workers this move carries is not known`, `fix ${paths.workersFile}`);
+        driverJournal(paths, id, CARRIED, { workers: carried.filter((w) => w.id !== to).map((w) => w.id) });
+        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }), workers: carried.filter((w) => w.id !== to) };
         const { bytes, sha256 } = await packFleet(paths, manifest);
         const a = await far(['fleet', 'adopt', id, '--stage', '--sha256', sha256], bytes.toString('base64'));
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
@@ -514,21 +523,23 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
     driverJournal(paths, id, 'done');
     return { value: undefined, detail: `The fleet runs on ${o.name}. Open the phone from its new QR code once.` };
   });
-  await workersJoin(run, d, [o.to, d.me], o.name);
+  await workersJoin(run, d, carriedBy(paths, id), o.name);
 }
 
-// the fleet has moved whatever this finds: a worker still out is its new home's to keep trying, and its row says why
-async function workersJoin(run: Runner, d: Pick<MoveDeps, 'client' | 'me'>, apart: MachineId[], home: string): Promise<void> {
-  const others = async () => Object.entries((await withClient(d.client, (c) => c.call('state.get', {})).catch(() => undefined))?.machines ?? {}).filter(([m]) => !apart.includes(m as MachineId));
-  if (!(await others()).length) return;
+// the fleet has moved whatever this finds: a worker still out is its new home's, and its row says why. A move that carried none has nothing to wait for
+async function workersJoin(run: Runner, d: Pick<MoveDeps, 'client'>, carried: string[], home: string): Promise<void> {
   await run.step('workers', async () => {
-    let out: string[] = [];
-    for (const until = Date.now() + WORKERS_MS; Date.now() < until; await new Promise((r) => setTimeout(r, POLL_MS))) {
-      out = (await others()).filter(([, l]) => !l.reachable).map(([, l]) => l.name);
-      if (!out.length) break;
-    }
-    return out.length
-      ? { value: undefined, status: 'warn' as const, detail: `${out.join(', ')} has not joined ${home} yet, which keeps trying; its row under Machines says why` }
+    if (!carried.length) return { value: undefined, status: 'skip' as const, detail: 'this move carried no other worker' };
+    // what the fleet says of each, and none where that cannot be read
+    const out = async () => {
+      const machines = (await withClient(d.client, (c) => c.call('state.get', {})).catch(() => undefined))?.machines;
+      return machines && carried.flatMap((m) => (machines[m as MachineId]?.reachable ? [] : [machines[m as MachineId]?.name ?? m]));
+    };
+    let left = await out();
+    for (const until = Date.now() + WORKERS_MS; (left === undefined || left.length > 0) && Date.now() < until; left = await out()) await new Promise((r) => setTimeout(r, POLL_MS));
+    if (left === undefined) return { value: undefined, status: 'warn' as const, detail: `the fleet did not say whether the other workers have joined ${home}; their rows under Machines say` };
+    return left.length
+      ? { value: undefined, status: 'warn' as const, detail: `${left.join(', ')} has not joined ${home} yet; its row under Machines says why` }
       : { value: undefined, detail: `every other worker runs under ${home}` };
   });
 }
@@ -635,6 +646,9 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
 
 // this machine's install, the old home told by this machine's daemon, and that home's link: the end of the way back, on its first run and on a retry
 async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: HomeMoveId, o: { from: MachineId; name: string; ends: string }): Promise<void> {
+  // ahead of the old home's landing, which takes the manifest
+  let carried: string[] = [];
+  try { carried = (readManifest(adoption.paths, id).workers ?? []).map((w) => w.id); } catch { /* one that cannot be read has nothing to wait for */ }
   const { paths } = adoption;
   driverJournal(paths, id, 'adopt');
   await run.step('adopt', async () => {
@@ -656,7 +670,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
     }
     return { value: undefined, status: 'warn' as const, detail: `the fleet runs on this machine; ${o.name} has not linked yet`, action: svallOf(d.target, `host doctor ${o.name}`), say: `Check ${o.name} under Machines` };
   });
-  await workersJoin(run, d, [o.from, d.me], 'this machine');
+  await workersJoin(run, d, carried, 'this machine');
 }
 
 // whether this machine's daemon has told the old home what it owes it
