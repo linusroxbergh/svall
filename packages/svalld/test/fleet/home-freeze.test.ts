@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, crewAway, emptyState, HOME_ISLAND, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
 import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { moveRobot } from '../../src/arrange.js';
-import { configRewrites, homeCheck, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
+import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { addEnrol, createMarker, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
@@ -18,7 +18,7 @@ import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { moveWorld, type MoveWorld } from '../placement/move-world.js';
 import { H, W } from '../placement/world.js';
-import { ID, KEY, MAC, marker, phoneAt, robot, STUDIO, putMarker } from './home-world.js';
+import { FLEET, ID, KEY, MAC, marker, phoneAt, robot, STUDIO, putMarker } from './home-world.js';
 
 afterEach(cleanHomes);
 
@@ -796,10 +796,10 @@ describe('a real move the API took as the freeze came', () => {
   }, 60_000);
 });
 
-const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, role: 'home', release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, home: '/Users/ada', svallBase: '/opt', fleetHome: '/x', tailscale: { host: 'h' }, ...o } as HomeFacts);
+const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, role: 'home', release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, home: '/Users/ada', svallBase: '/opt', fleetHome: '/x', tailscale: { host: 'h' }, workers: [STUDIO], ...o } as HomeFacts);
 
 describe('the check', () => {
-  const input = (o = {}) => ({ state: { ...emptyState(), robots: { here: robot('here'), placed: robot('placed', STUDIO) } }, from: facts({}), to: facts({ machineId: STUDIO, home: '/home/ada' as never }), toName: 'studio', linked: true, synced: true, workers: [STUDIO], rewrites: [], fromIsHome: true, ...o });
+  const input = (o = {}) => ({ state: { ...emptyState(), robots: { here: robot('here'), placed: robot('placed', STUDIO) } }, from: facts({}), to: facts({ machineId: STUDIO, home: '/home/ada' as never }), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true, ...o });
 
   it('passes a linked worker on this release, counting who stays where', () => {
     const r = homeCheck(input());
@@ -808,9 +808,20 @@ describe('the check', () => {
   });
 
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {
-    const r = homeCheck(input({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }));
+    const r = homeCheck(input({ from: facts({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }) }));
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.refusal.action).toMatch(/add it again from studio/);
+  });
+
+  it('counts an absent workers.json as no worker, and refuses on one it cannot read', async () => {
+    const paths = resolvePaths(makeHome());
+    const said = () => homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
+    expect((await said()).workers).toEqual([]);
+    fs.writeFileSync(paths.workersFile, '{"cut short');
+    const { workers } = await said();
+    expect(workers).toBeUndefined();
+    const r = homeCheck(input({ from: { ...facts({ fleetHome: '/x' as never }), workers } }));
+    expect(r).toMatchObject({ ok: false, refusal: { reason: 'this machine cannot read which workers this fleet has', action: 'fix /x/workers.json' } });
   });
 
   it('lists every reason at once', () => {

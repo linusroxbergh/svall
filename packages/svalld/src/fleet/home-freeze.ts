@@ -278,11 +278,12 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   } catch (e) { tailscale = { error: (e as Error).message }; }
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
+  const workers = workersOf(p);
   return {
     machineId: o.me, role: o.role, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
     clock: Date.now(), ...(freeKb !== undefined && { freeKb }), home: os.homedir() as HomeFacts['home'], svallBase: installPrefix() as HomeFacts['svallBase'], fleetHome: p.home as HomeFacts['fleetHome'],
     ...(moveInFlight(p) && { moving: moveInFlight(p) }), tailscale,
-    ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }),
+    ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }), ...(workers && { workers }),
   };
 }
 
@@ -296,7 +297,7 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
 
 /** `back`: the name of the home the fleet leaves for this machine, on the way back. */
 type HomeCheckInput = {
-  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; workers: string[]; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
+  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
@@ -313,7 +314,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   else if (!i.synced) fail(`${far} is still catching up`, 'try again in a moment');
   if (from.release !== to.release || from.protocol !== to.protocol || from.stateSchema !== to.stateSchema) fail(`${far} runs ${there.release}, this machine ${here.release}`, 'upgrade it under Machines');
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
-  const others = i.workers.filter((m) => m !== to.machineId && m !== from.machineId);
+  if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
+  const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     fail(`${name} is a worker of this fleet too`, `remove ${name} first, and add it again from ${goesTo}`);
@@ -336,6 +338,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   return { ok: false, refusal, sheet };
 }
 
-export const workersOf = (p: Paths): string[] => {
-  try { return workerIds(p); } catch { return []; }
+/** The machines this fleet holds a token for, none where it has no workers.json; undefined where it cannot read one, which refuses a move. */
+export const workersOf = (p: Paths): string[] | undefined => {
+  try { return workerIds(p); } catch { return undefined; }
 };

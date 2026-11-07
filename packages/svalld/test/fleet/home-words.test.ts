@@ -14,12 +14,17 @@ const blockers = (r: Result<'fleet.homeCheck'>): [string, string][] => (r.ok ? [
 describe('the check names each machine for what it is', () => {
   // the way back, asked on this machine: the fleet comes from studio, the home it leaves, to this machine, which goes by ada-mac
   const back = (o = {}) => homeCheck({
-    state: { ...emptyState(), robots: { here: robot('here', STUDIO) } }, from: facts({ machineId: STUDIO, home: '/home/ada' as never }), to: facts({}), toName: 'ada-mac', back: 'studio',
-    linked: true, synced: true, workers: [], rewrites: [], fromIsHome: true, ...o,
+    state: { ...emptyState(), robots: { here: robot('here', STUDIO) } }, from: facts({ machineId: STUDIO, home: '/home/ada' as never, workers: [] }), to: facts({}), toName: 'ada-mac', back: 'studio',
+    linked: true, synced: true, rewrites: [], fromIsHome: true, ...o,
+  });
+
+  it('on the way back, a workers.json the home cannot read is studio\'s to fix', () => {
+    const r = back({ from: facts({ machineId: STUDIO, home: '/home/ada' as never, fleetHome: '/home/ada/.svall' as never }) });
+    expect(blockers(r)).toEqual([['studio cannot read which workers this fleet has', 'fix /home/ada/.svall/workers.json']]);
   });
 
   it('on the way back, what is the old home\'s it says of studio', () => {
-    const r = back({ linked: false, from: facts({ machineId: STUDIO, release: '0.21', clock: 1e9, tailscale: { error: 'logged out' } }), to: facts({ release: '0.22' }) });
+    const r = back({ linked: false, from: facts({ machineId: STUDIO, release: '0.21', clock: 1e9, tailscale: { error: 'logged out' }, workers: [] }), to: facts({ release: '0.22' }) });
     expect(blockers(r)).toEqual([
       ['studio is not reachable', 'try again when it is awake'],
       ['studio runs 0.21, this machine 0.22', 'upgrade it under Machines'],
@@ -29,7 +34,7 @@ describe('the check names each machine for what it is', () => {
   });
 
   it('on the way back, what is this machine\'s it says of this machine, a worker besides included', () => {
-    const r = back({ synced: false, to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { error: 'not running' } }), workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] });
+    const r = back({ synced: false, from: facts({ machineId: STUDIO, home: '/home/ada' as never, workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] }), to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { error: 'not running' } }) });
     expect(blockers(r)).toEqual([
       ['studio is still catching up', 'try again in a moment'],
       ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'remove 99999999-7777-8888-9999-aaaaaaaaaaaa first, and add it again from this machine'],
@@ -41,8 +46,8 @@ describe('the check names each machine for what it is', () => {
 
   it('on the way out, studio is where the fleet goes', () => {
     const r = homeCheck({
-      state: emptyState(), from: facts({ release: '0.22', tailscale: { error: 'not running' } }), to: facts({ machineId: STUDIO, release: '0.21', freeKb: 10, tailscale: { error: 'logged out' } }), toName: 'studio',
-      linked: false, synced: true, workers: [STUDIO], rewrites: [], fromIsHome: true,
+      state: emptyState(), from: facts({ release: '0.22', tailscale: { error: 'not running' }, workers: [STUDIO] }), to: facts({ machineId: STUDIO, release: '0.21', freeKb: 10, tailscale: { error: 'logged out' } }), toName: 'studio',
+      linked: false, synced: true, rewrites: [], fromIsHome: true,
     });
     expect(blockers(r)).toEqual([
       ['studio is not reachable', 'try again when it is awake'],

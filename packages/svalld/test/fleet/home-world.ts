@@ -150,10 +150,12 @@ export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; 
 }
 
 /** The fleet moved out for real: studio its home, the Mac a worker of it that took the join at a start. */
-export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
+export async function movedOut(before?: (w: Awaited<ReturnType<typeof world>>) => void | Promise<void>): Promise<Awaited<ReturnType<typeof world>>> {
   const w = await world();
-  await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+  await before?.(w);
   await w.mac.daemon.stop();
+  const archive = before ? await packFleet(w.mac.paths, w.manifest) : w.archive;
+  await stageAdopt(w.studio.deps, ID, archive.sha256, archive.bytes);
   putMarker(w.mac.paths, marker());
   const out = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
   if (out.status !== 'adopted') throw new Error(out.status);

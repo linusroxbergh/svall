@@ -1134,7 +1134,9 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
     await run.step('registry', async () => {
       for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) {
         clearConsent(resolvePaths(home).mirrorConsent, entry.id);
-        // nothing there ends the link of a worker that dials in, so its token goes, and with it the link; one this home dials keeps no profile for a later add
+        // nothing there ends the link of a worker that dials in, so its token goes in every fleet, and with it the link; one this
+        // fleet dials keeps no profile for a later add, and a sibling that dials it too keeps its own, which that add would not renew
+        if (ssh && home !== d.fleet.home) continue;
         try { dropToken(resolvePaths(home), entry.id); } catch { /* a fleet whose workers.json cannot be read links nothing by it */ }
       }
       d.registry.remove(entry.id);

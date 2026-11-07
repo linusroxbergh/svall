@@ -50,12 +50,12 @@ export const HomeManifest = z.object({
 });
 export type HomeManifest = z.infer<typeof HomeManifest>;
 
-/** What a machine says of itself to a home move's check, none of it secret. */
+/** What a machine says of itself to a home move's check, none of it secret; `workers` those its fleet holds a token for, none said where it cannot read them. */
 export const HomeFacts = z.object({
   machineId: MachineId, role: z.enum(['home', 'worker']), fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
   clock: z.number(), freeKb: z.number().optional(), home: MachinePath, svallBase: MachinePath, fleetHome: MachinePath, moving: z.string().optional(),
   tailscale: z.object({ host: z.string().optional(), error: z.string().optional() }),
-  paths: z.record(z.string(), z.boolean()).optional(),
+  paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(),
 });
 export type HomeFacts = z.infer<typeof HomeFacts>;
 

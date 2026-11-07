@@ -13,7 +13,7 @@ import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig,
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
-import { configRewrites, homeCheck, homeFacts, HomeFreeze, workersOf } from './fleet/home-freeze.js';
+import { configRewrites, homeCheck, homeFacts, HomeFreeze } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
 import { homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
 import { workerProfile } from './placement/workers.js';
@@ -424,12 +424,12 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
       const back = store.state.machines?.[worker_.homeMachineId]?.name ?? worker_.homeName;
-      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), workers: Object.keys(store.state.machines ?? {}).filter((m) => m !== me && m !== worker_.homeMachineId), rewrites: rewrites(from.home), fromIsHome: to === me });
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), rewrites: rewrites(from.home), fromIsHome: to === me });
     }
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, workers: workersOf(paths), rewrites: rewrites(os.homedir()), fromIsHome: true });
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, rewrites: rewrites(os.homedir()), fromIsHome: true });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear
   const homeWaits = () => {

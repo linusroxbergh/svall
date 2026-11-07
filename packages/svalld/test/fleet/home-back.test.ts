@@ -4,8 +4,10 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
+import { homeCheck, homeFacts } from '../../src/fleet/home-freeze.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { readConsent, setConsent } from '../../src/placement/mirror-consent.js';
+import { dropToken, issueToken } from '../../src/placement/workers.js';
 import { cleanHomes } from '../helpers.js';
 import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
@@ -19,9 +21,9 @@ const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local
  * The fleet moved out to studio and back from it as far as studio's mark: studio's daemon frozen under a marker with no way to ask, the
  * outcome owed by the Mac, and the archive staged there.
  */
-async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => void) {
-  const w = await movedOut();
-  before?.(w);
+async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => void | Promise<void>, beforeOut?: Parameters<typeof movedOut>[0]) {
+  const w = await movedOut(beforeOut);
+  await before?.(w);
 
   // as studio holds it at its freeze, with what it took of its worker's robots
   await w.studio.daemon.stop();
@@ -443,6 +445,31 @@ describe('the phone link a move owes', () => {
     stop();
     vi.useRealTimers();
     expect(phoneOwed(w.studio.paths)).toEqual([ID]);
+  });
+});
+
+describe('a worker a person removed before the move', () => {
+  const SECOND = '99999999-7777-8888-9999-aaaaaaaaaaaa' as MachineId;
+  const facts = async (s: Side, me: MachineId, role: 'home' | 'worker') => ({ ...await homeFacts(s.paths, { me, role, fleetId: FLEET, tailscale: {} as never }), tailscale: { host: 'h' } });
+  const refusal = { ok: false, refusal: { reason: 'second is a worker of this fleet too' } };
+
+  it('stops neither way once its token has gone, though the fleet still holds its name; a token still held refuses', async () => {
+    const w = await markedBack(async (m) => {
+      const back = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.studio, STUDIO, 'home'), to: await facts(m.mac, MAC, 'worker'), toName: 'mac', back: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true });
+      expect(m.mac.daemon.held!.machines?.[SECOND]?.name).toBe('second');
+      expect(await back()).toMatchObject({ ok: true });
+      issueToken(m.studio.paths, SECOND);
+      expect(await back()).toMatchObject(refusal);
+      dropToken(m.studio.paths, SECOND);
+    }, async (m) => {
+      const out = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.mac, MAC, 'home'), to: await facts(m.studio, STUDIO, 'worker'), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true });
+      m.mac.daemon.held!.machines = { ...m.mac.daemon.held!.machines, [SECOND]: { name: 'second', reachable: false, since: 1 } };
+      issueToken(m.mac.paths, SECOND);
+      expect(await out()).toMatchObject(refusal);
+      dropToken(m.mac.paths, SECOND);
+      expect(await out()).toMatchObject({ ok: true });
+    });
+    expect(await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'adopted' });
   });
 });
 

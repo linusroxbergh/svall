@@ -154,6 +154,20 @@ describe('host remove', () => {
     }
   });
 
+  it('leaves a sibling fleet its own token for a machine this fleet dials, on remove and on --forget', async () => {
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    const theirs = issueToken(sibling, REMOTE);
+    for (const forget of [false, true]) {
+      issueToken(resolvePaths(fleet), REMOTE);
+      ssh.reply(['uninstall'], { stdout: 'removed\n' });
+      expect((await removeHost('trift', { forget }, deps({ registry: registered('trift.test') }))).result).toBe('ready');
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+      expect(tokenFor(sibling, REMOTE)).toBe(theirs);
+    }
+  });
+
   it("clears the machine's consent in every fleet home here, on remove and on --forget", async () => {
     const second = path.join(work, '.svall-other');
     fs.mkdirSync(second, { recursive: true });
