@@ -1067,7 +1067,8 @@ describe('the entry a target keeps', () => {
   });
 
   it('a push that fails here is told by home.setup, until one lands', async () => {
-    const { mac, w, synced, push } = target();
+    const { home, mac, w, synced, push } = target();
+    put(path.join(home.claudeDir, 'rules/from-home.md'), 'the home\'s\n');
     await synced();
     put(path.join(mac.claudeDir, 'settings.json'), 'not json');
     await push();
@@ -1079,7 +1080,8 @@ describe('the entry a target keeps', () => {
   });
 
   it('a temp a killed write left beside a config file goes at the next apply and at uninstall', async () => {
-    const { mac, w, synced, push } = target();
+    const { home, mac, w, synced, push } = target();
+    put(path.join(home.claudeDir, 'rules/from-home.md'), 'the home\'s\n');
     await synced();
     const temp = (n: number) => `${realPath(mac.claudeJson)}.durable-${n}-0000000${n}.tmp`;
     fs.writeFileSync(temp(1), KEY);
