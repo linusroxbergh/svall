@@ -5,6 +5,7 @@ import type { FleetState, HomeFacts, HomeWorker, MachineId, MachineRecord } from
 import { homeCheck } from '../../src/fleet/home-freeze.js';
 import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fleet/home-workers.js';
 import { enter, owedWorkers } from '../../src/fleet/home-move.js';
+import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
 import { resolvePaths } from '../../src/paths.js';
 import { issueToken, tokenFor } from '../../src/placement/workers.js';
@@ -147,6 +148,28 @@ describe('the workers a new home owes an enrolment', () => {
     expect(input).toBe(tokenFor(p, W));
     expect(argv.join(' ')).not.toContain(tokenFor(p, W)!);
     expect(argv).toEqual(expect.arrayContaining(['worker', 'enroll', '--home-platform', "'linux'", '--home-name', "'studio'"]));
+  });
+
+  it('an enrolment under way takes the worker\'s lock and leaves a move\'s free, as the old home landing goes by that one', async () => {
+    const p = setup('adopted');
+    let done!: () => void;
+    const enrolling = new Promise<void>((r) => { done = r; });
+    const m = masterOf(serving());
+    const run_ = m.master.run;
+    m.master.run = async (argv: string[], o: { input?: unknown } = {}) => { await enrolling; return run_(argv, o); };
+    const refresh = vi.fn();
+    const s = run(p, () => Promise.resolve(m.master), { refresh });
+    await vi.waitFor(async () => {
+      const held = await enrolLock(p.home);
+      held?.();
+      expect(held).toBeUndefined();
+    });
+    const move = await homeMoveLock(p.home);
+    expect(move).toBeDefined();
+    move?.();
+    done();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    s.stop();
   });
 
   it('an entry ends only on a greeting with the fresh token, never on a worker whose file names this home', async () => {

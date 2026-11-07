@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { FleetId, HomeReach, HomeWorker, MachineId } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { homePoint } from '../failpoints.js';
-import { homeMoveLock } from '../kernel-lock.js';
+import { enrolLock } from '../kernel-lock.js';
 import { classifyExit, SshError, SshMaster } from '../link/ssh.js';
 import type { Logger } from '../log.js';
 import type { MachineEntry } from '../machine.js';
@@ -135,7 +135,7 @@ export function startRejoins(o: {
       const token = tokenFor(o.paths, machine);
       // removed from the fleet since: a person took it back
       if (!token || !entry?.record.ssh) { settleOwed(o.paths, machine); continue; }
-      const unlock = await homeMoveLock(o.paths.home);
+      const unlock = await enrolLock(o.paths.home);
       if (!unlock) { fine = false; continue; }
       try { fine = await enrol(machine, tokenFor(o.paths, machine) ?? token, entry) && fine; } finally { unlock(); }
     }
