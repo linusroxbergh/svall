@@ -7,7 +7,7 @@ import { adoptDir, journalLines, packFleet, readMarker } from '@svall/svalld/fle
 import { machineId } from '@svall/svalld/machine';
 import { resolvePaths } from '@svall/svalld/paths';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { KEY, MAC, marker, world, putMarker } from '../../svalld/test/fleet/home-world.js';
+import { ADOPT_KEY, FLEET, KEY, MAC, marker, STUDIO, world, putMarker } from '../../svalld/test/fleet/home-world.js';
 
 const daemon = vi.hoisted(() => ({ current: undefined as unknown as HomeDaemon, starts: 0 }));
 // what each driver was handed of the crew's choice
@@ -55,15 +55,45 @@ async function stagedHere() {
   const w = await world();
   await w.mac.daemon.stop();
   const me = machineId();
-  const packed = await packFleet(w.mac.paths, { ...w.manifest, id: ID as never, to: me });
+  // by a name of its own, as this machine's registry may hold 'mac'
+  const packed = await packFleet(w.mac.paths, { ...w.manifest, id: ID as never, to: me, record: { ...w.manifest.record, name: 'the-old-home' } });
   await run(['adopt', ID, '--stage', '--sha256', packed.sha256], packed.bytes.toString('base64'));
   return { w, packed };
 }
 
 describe('what the far machine runs for a driver', () => {
-  it('status: an id never heard of is refused for good, and says so', async () => {
-    expect(await run(['status', ID])).toEqual({ status: 'not-adopted' });
+  const ASKED = ['--asker', MAC, '--fleet', FLEET];
+  const serving = () => fs.writeFileSync(resolvePaths(home).workerFile, JSON.stringify({ homeMachineId: MAC, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'mac' }));
+
+  it('status: an id never heard of, from the home this folder serves, is refused for good, and says so', async () => {
+    serving();
+    expect(await run(['status', ID, ...ASKED])).toEqual({ status: 'not-adopted' });
     expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).toBe('aborted');
+  });
+
+  it.each(['status', 'abort'])('%s by no home named, or by one this folder does not serve, answers pending and writes nothing', async (op) => {
+    expect(await run([op, ID])).toMatchObject({ status: 'pending', phase: 'unknown' });
+    expect(await run([op, ID, ...ASKED])).toMatchObject({ status: 'pending', phase: 'unknown' });
+    serving();
+    expect(await run([op, ID, '--asker', STUDIO, '--fleet', FLEET])).toMatchObject({ status: 'pending', phase: 'unknown' });
+    expect(fs.existsSync(resolvePaths(home).homeMoves)).toBe(false);
+  });
+
+  it.each(['status', 'abort'])('%s in a folder that is not there makes none', async (op) => {
+    home = path.join(makeHome(), 'gone');
+    expect(await run([op, ID, ...ASKED])).toMatchObject({ status: 'pending', phase: 'unknown' });
+    expect(fs.existsSync(home)).toBe(false);
+  });
+
+  it('facts names the fleet a worker serves, whatever its own fleet.json holds, and a folder with none fails', async () => {
+    const OWN = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
+    fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: OWN }));
+    serving();
+    expect(await run(['facts'])).toMatchObject({ role: 'worker', fleetId: FLEET });
+    fs.rmSync(resolvePaths(home).workerFile);
+    expect(await run(['facts'])).toMatchObject({ role: 'home', fleetId: OWN });
+    fs.rmSync(resolvePaths(home).fleetConfig);
+    await expect(run(['facts'])).rejects.toThrow();
   });
 
   it('adopt --stage takes the archive from stdin, checked against its sha256', async () => {
@@ -89,17 +119,38 @@ describe('what the far machine runs for a driver', () => {
     expect(await run(['adopt', ID])).toMatchObject({ status: 'not-adopted' });
   });
 
-  it('adopt with the old home\'s dial installs and starts, and an answer that never comes rolls back', async () => {
+  it('adopt with the old home\'s dial and its driver\'s key on stdin installs and starts, and an answer that never comes rolls back', async () => {
     await stagedHere();
-    expect(await run(['adopt', ID, '--home-ssh', 'ada@studio'])).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    expect(await run(['adopt', ID, '--home-ssh', 'ada@studio'], `${ADOPT_KEY}\n`)).toMatchObject({ status: 'pending', phase: 'rolledback' });
     expect(daemon.starts).toBeGreaterThanOrEqual(1);
     daemon.current.answersHome = () => Promise.resolve(true);
-    const a = await run(['adopt', ID, '--home-ssh', 'ada@studio']) as { status: string; enrol: { worker: { homeSsh: string; token: string }; home: { ssh: string } } };
+    const a = await run(['adopt', ID, '--home-ssh', 'ada@studio'], ADOPT_KEY) as { status: string; enrol: { worker: { homeSsh: string; token: string }; home: { ssh: string } } };
     expect(a.status).toBe('adopted');
     expect(a.enrol.worker.homeSsh).toBe('ada@studio');
     expect(a.enrol.home.ssh).toBe('ada@studio');
     // what the old home was told is what workers.json holds
     expect(JSON.parse(fs.readFileSync(resolvePaths(home).workersFile, 'utf8'))[MAC].token).toBe(a.enrol.worker.token);
+  });
+
+  describe('adopt typed by hand on a staged machine', () => {
+    it.each([
+      ['at a terminal', '', true], ['with nothing piped', '', false], ['with a wrong key', 'typed by hand', false], ['with a key cut short', ADOPT_KEY.slice(0, 20), false], ['with what is no key at all', '{"key":"not json', false],
+    ])('%s installs nothing, and no message holds what stdin held or the key', async (_how, stdin, tty) => {
+      await stagedHere();
+      const stop = vi.spyOn(daemon.current, 'stop');
+      const said = await run(['adopt', ID, '--home-ssh', 'ada@studio'], stdin, { tty }).then(() => 'answered', (e: Error) => e.message);
+      expect(said).toMatch(/only the driver of .* installs it/);
+      const out = `${said}${printed.join('')}`;
+      if (stdin) expect(out).not.toContain(stdin);
+      expect(out).not.toContain(ADOPT_KEY);
+      expect(stop).not.toHaveBeenCalled();
+      expect(daemon.starts).toBe(0);
+      expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).toBe('staged');
+    });
+
+    it('is not offered in the help', () => {
+      expect(fleetCommands(() => ({ name: 'private', home, managed: false }), () => true).helpInformation()).not.toMatch(/adopt/);
+    });
   });
 
   it('export prints the archive and its sha256, and refuses a manifest of another move', async () => {
@@ -144,7 +195,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
     const { ask: _ask, ...m } = marker();
     putMarker(resolvePaths(home), { ...m, id: ID as never });
   };
-  const ENROL = { worker: { homeMachineId: MAC, fleetId: FAR_FLEET, token: 'x'.repeat(48), homeName: 'mac' } };
+  const ENROL = { worker: { homeMachineId: marker().to, fleetId: FLEET, token: 'x'.repeat(48), homeName: 'studio' } };
 
   it('not-adopted with no daemon there ends the marker and starts it', async () => {
     waiting();
@@ -157,7 +208,7 @@ describe('fleet settle: the old home told by the machine it has no route to', ()
   it('adopted with no daemon there writes the enrolment for its next start, and no thaw', async () => {
     waiting();
     expect(await run(['settle', ID, '--outcome', 'adopted'], JSON.stringify({ key: KEY, enrol: ENROL }))).toEqual({ status: 'adopted' });
-    expect(readMarker(resolvePaths(home))?.enrol?.worker.homeMachineId).toBe(MAC);
+    expect(readMarker(resolvePaths(home))?.enrol?.worker.homeMachineId).toBe(marker().to);
     expect(journalLines(resolvePaths(home), ID).at(-1)?.phase).not.toBe('aborted');
     expect(daemon.starts).toBe(1);
   });

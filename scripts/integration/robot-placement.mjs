@@ -1473,8 +1473,10 @@ function homeFaults(ids) {
   step('a delayed adopt against an abort', () => {
     placeHome('local');
     const id = 'hm_delayedabc';
-    const answered = JSON.parse(sh(R, `svall --json fleet status ${id}`).stdout);
-    check('an id never heard of is refused', answered.status === 'not-adopted', () => brief(answered));
+    const nameless = JSON.parse(sh(R, `svall --json fleet status ${id}`).stdout);
+    check('an id never heard of, asked by no home named, waits and writes nothing', nameless.status === 'pending' && sh(R, `test -e ~/.svall/journal/home/${id}.ndjson`, { ok: false }).code !== 0, () => brief(nameless));
+    const answered = JSON.parse(sh(R, `svall --json fleet status ${id} --asker ${ids.local} --fleet ${ids.fleet}`).stdout);
+    check('an id never heard of is refused to the home this machine serves', answered.status === 'not-adopted', () => brief(answered));
     const late = JSON.parse(sh(R, `svall --json fleet adopt ${id}`).stdout);
     check('the adopt that comes late is refused', late.status === 'not-adopted', () => brief(late));
     oneHome(L, ids);

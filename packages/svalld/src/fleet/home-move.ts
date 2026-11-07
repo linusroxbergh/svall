@@ -86,7 +86,6 @@ const pending = (phase: string, detail?: string): AdoptAnswer => ({ status: 'pen
 
 // one at a time for a fleet home: what finds another under way answers `pending`, and nothing thaws on that
 async function serialized(p: Paths, what: () => Promise<AdoptAnswer>): Promise<AdoptAnswer> {
-  fs.mkdirSync(p.home, { recursive: true });
   const unlock = await homeMoveLock(p.home);
   if (!unlock) return pending('running', 'another step of this move runs there');
   try { return await what(); } finally { unlock(); }
@@ -156,7 +155,9 @@ function refuseShared(d: AdoptDeps, m: HomeManifest): void {
  */
 export function stageAdopt(d: AdoptDeps, id: HomeMoveId, sha256: string, archive: Buffer): Promise<AdoptAnswer> {
   const p = d.paths;
+  fs.mkdirSync(p.home, { recursive: true });
   return serialized(p, async () => {
+    refuseLeaving(p, id);
     const at = lastPhase(p, id);
     if (at === 'aborted') return notAdopted('this move was called off here');
     if (at === 'done') return { status: 'done' };
@@ -390,18 +391,21 @@ function restoreRecord(d: Pick<AdoptDeps, 'paths' | 'registryDir'>, id: HomeMove
 
 /**
  * The move's commit on the machine that takes the fleet: stop, install, start, and adopted only once the running daemon's own
- * API has answered as the home. Runs from the staged input as often as it takes.
+ * API has answered as the home. Runs from the staged input as often as it takes, and only with the key of the move's driver.
  */
-export function installAdopt(d: AdoptDeps, id: HomeMoveId, enrolment: (token: string, m: HomeManifest) => Enrolment): Promise<AdoptAnswer> {
+export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefined, enrolment: (token: string, m: HomeManifest) => Enrolment): Promise<AdoptAnswer> {
   const p = d.paths;
   return serialized(p, async () => {
-    if (lastPhase(p, id) === 'installing') await recoverInstall(d, id);
-    const at = lastPhase(p, id);
-    if (at === 'aborted') return notAdopted('this move was called off here');
-    if (at === 'done') return { status: 'done' };
-    if (at === 'adopted') return adopted(p, id);
-    if (at === undefined || at === 'staging') return pending('staging', 'this move has no archive here yet');
+    refuseLeaving(p, id);
+    const was = lastPhase(p, id);
+    if (was === 'aborted') return notAdopted('this move was called off here');
+    if (was === 'done') return { status: 'done' };
+    if (was === undefined || was === 'staging') return pending('staging', 'this move has no archive here yet');
     const manifest = readManifest(p, id);
+    if (!hashFits(manifest.adoptKeySha256, key)) throw new Error(`only the driver of ${id} installs it, once the old home is marked, with a key it alone holds; svall fleet home retry finishes the move on the machine that started it`);
+    if (was === 'installing') await recoverInstall(d, id);
+    const at = lastPhase(p, id);
+    if (at === 'adopted') return adopted(p, id);
     if (at !== 'installed') {
       enter(p, id, 'stopping');
       await d.daemon.stop();
@@ -477,14 +481,42 @@ function refuseLeaving(p: Paths, id: HomeMoveId): void {
   if (readMarker(p)?.id === id) throw new Error(`this home is what move ${id} leaves, so it cannot say how that ended; svall fleet home abort calls it off, once the machine holding the fleet says it was not taken`);
 }
 
-/**
- * What the machine taking the fleet says of move `id`. An id it has never heard of it refuses for good before it says so, so
- * a delayed adopt cannot come after; anything staged or running answers `pending`.
- */
-export function adoptStatus(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
-  const p = d.paths;
-  return serialized(p, async () => {
+/** The old home that asks how a move ended, and the fleet it asks of. */
+export type Asker = { machine: MachineId; fleetId: string };
+
+const NOT_SERVED = 'this folder does not serve the home that asks as a worker of its fleet';
+const servesAsker = (p: Paths, asker: Asker | undefined): boolean => {
+  if (!asker) return false;
+  try {
+    const w = WorkerFile.parse(read(p.workerFile));
+    return w.homeMachineId === asker.machine && w.fleetId === asker.fleetId;
+  } catch { return false; }
+};
+
+// a marker stands only after a machine answered `staged`, so a `not-adopted` takes proof: this folder holds the fleet and still serves the asker
+function unproven(p: Paths, id: string, asker: Asker | undefined): AdoptAnswer | undefined {
+  const at = lastPhase(p, id);
+  if (at !== undefined && at !== 'aborted' && at !== 'released') return undefined;
+  if (at === undefined && present(adoptDir(p, id))) return pending('unknown', 'this folder holds what the move staged, and no journal of it');
+  return servesAsker(p, asker) ? undefined : pending('unknown', NOT_SERVED);
+}
+
+// a status or an abort. An answer with no proof comes ahead of the lock, as it leaves nothing here, the lock's file included
+async function answering(p: Paths, id: HomeMoveId, asker: Asker | undefined, what: () => Promise<AdoptAnswer>): Promise<AdoptAnswer> {
+  const refused = (): AdoptAnswer | undefined => {
     refuseLeaving(p, id);
+    return unproven(p, id, asker);
+  };
+  return refused() ?? serialized(p, () => { const held = refused(); return held ? Promise.resolve(held) : what(); });
+}
+
+/**
+ * What the machine taking the fleet says of move `id`, to `asker`. An id it has never heard of it refuses for good before it says
+ * so, so a delayed adopt cannot come after; anything staged or running, or no proof, answers `pending`.
+ */
+export function adoptStatus(d: AdoptDeps, id: HomeMoveId, asker?: Asker): Promise<AdoptAnswer> {
+  const p = d.paths;
+  return answering(p, id, asker, async () => {
     const at = lastPhase(p, id);
     if (at === undefined) {
       endMove(p, id, { by: 'refused', detail: 'asked before any archive came' });
@@ -513,11 +545,10 @@ export function adoptStatus(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> 
   });
 }
 
-/** Calls move `id` off, for good, unless it has already gone through; only what comes back `not-adopted` lets the old home thaw. */
-export function abortAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
+/** Calls move `id` off for `asker`, for good, unless it has already gone through; only what comes back `not-adopted` lets the old home thaw. */
+export function abortAdopt(d: AdoptDeps, id: HomeMoveId, asker?: Asker): Promise<AdoptAnswer> {
   const p = d.paths;
-  return serialized(p, async () => {
-    refuseLeaving(p, id);
+  return answering(p, id, asker, async () => {
     const at = lastPhase(p, id);
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
@@ -526,6 +557,8 @@ export function abortAdopt(d: AdoptDeps, id: HomeMoveId): Promise<AdoptAnswer> {
     if (at === 'installing' || at === 'installed') await rollback(d, id, readManifest(p, id));
     // the daemon comes back before the record, so a crash between leaves a status to start it
     if (at === 'stopping') await d.daemon.start().catch(() => undefined);
+    // a rollback has put worker.json back, so only now does this folder say whom it serves
+    if (asker && !servesAsker(p, asker)) return pending('unknown', NOT_SERVED);
     if (at !== 'aborted' && at !== 'released') {
       endMove(p, id, { by: 'refused' });
       homePoint('abort.recorded');
@@ -600,10 +633,14 @@ export function createMarker(p: Pick<Paths, 'homeMoving'>, m: HomeMoving): void 
   homePoint('mark.written');
 }
 
+/** Whether an outcome names the machine and the fleet this marker was written for. */
+export const enrolFits = (m: HomeMoving, enrol: Enrolment): boolean => enrol.worker.homeMachineId === m.to && enrol.worker.fleetId === m.fleetId;
+
 /** The one change a marker takes after its mark: the outcome `adopted`, once, on the marker of `id` as it stands. */
 export function addEnrol(p: Pick<Paths, 'homeMoving'>, id: string, enrol: Enrolment): HomeMoving {
   const held = readMarker(p);
   if (held?.id !== id) throw new Error(`this home holds no marker of ${id}`);
+  if (!enrolFits(held, enrol)) throw new Error(`the outcome of ${id} names another machine or fleet than its marker`);
   if (held.enrol) {
     if (JSON.stringify(held.enrol) === JSON.stringify(enrol)) return held;
     throw new Error(`the marker of ${id} holds its outcome already`);
@@ -627,22 +664,33 @@ async function withoutDaemon(p: Paths, id: string, what: (held: HomeMoving) => v
 
 const driverOf = (id: string): string => `${id}.driver`;
 
-/** A new key for the move `id`, in its driver's journal: the marker holds its hash, and only an outcome carrying it ends that marker. */
-export function markKey(p: Pick<Paths, 'homeMoves'>, id: string): string {
+// a new key in the driver's journal, under what it is for: only its hash leaves
+function mintKey(p: Pick<Paths, 'homeMoves'>, id: string, use: 'mark' | 'adopt-key'): string {
   const key = crypto.randomBytes(32).toString('base64url');
-  enter(p, driverOf(id), 'mark', JSON.stringify({ key }));
+  enter(p, driverOf(id), use, JSON.stringify({ key }));
   return sha256Hex(key);
 }
 
-/** The key the driver of `id` wrote before its mark; none, and no machine was marked for it. */
-export const driverKey = (p: Pick<Paths, 'homeMoves'>, id: string): string | undefined => journalLines(p, driverOf(id)).flatMap((l) => {
-  try { return l.phase === 'mark' && l.detail ? [z.object({ key: z.string() }).parse(JSON.parse(l.detail)).key] : []; } catch { return []; }
+const keyIn = (p: Pick<Paths, 'homeMoves'>, id: string, use: 'mark' | 'adopt-key'): string | undefined => journalLines(p, driverOf(id)).flatMap((l) => {
+  try { return l.phase === use && l.detail ? [z.object({ key: z.string() }).parse(JSON.parse(l.detail)).key] : []; } catch { return []; }
 }).at(-1);
 
+const hashFits = (sha: string, key: string | undefined): key is string => key !== undefined && crypto.timingSafeEqual(Buffer.from(sha256Hex(key)), Buffer.from(sha));
+
+/** A new key for the move `id`, in its driver's journal: the marker holds its hash, and only an outcome carrying it ends that marker. */
+export const markKey = (p: Pick<Paths, 'homeMoves'>, id: string): string => mintKey(p, id, 'mark');
+
+/** The key the driver of `id` wrote before its mark; none, and no machine was marked for it. */
+export const driverKey = (p: Pick<Paths, 'homeMoves'>, id: string): string | undefined => keyIn(p, id, 'mark');
+
+/** A new key for the install of move `id`, in its driver's journal before the copy: the manifest holds its hash, and the driver sends it only after the mark. */
+export const mintAdoptKey = (p: Pick<Paths, 'homeMoves'>, id: string): string => mintKey(p, id, 'adopt-key');
+
+/** The key the machine taking the fleet installs move `id` with. */
+export const driverAdoptKey = (p: Pick<Paths, 'homeMoves'>, id: string): string | undefined => keyIn(p, id, 'adopt-key');
+
 /** Whether `key` is the one the driver of the marker's move holds. */
-export function keyFits(m: HomeMoving, key: string | undefined): key is string {
-  return key !== undefined && crypto.timingSafeEqual(Buffer.from(sha256Hex(key)), Buffer.from(m.keySha256));
-}
+export const keyFits = (m: HomeMoving, key: string | undefined): key is string => hashFits(m.keySha256, key);
 
 /** The outcome `adopted` where this fleet's next start takes it, for a daemon that does not answer. */
 export const writeEnrol = (p: Paths, id: string, enrol: Enrolment, key: string): Promise<void> => withoutDaemon(p, id, (held) => {

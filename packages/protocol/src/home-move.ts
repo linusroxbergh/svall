@@ -7,8 +7,8 @@ import type { FleetState } from './state.js';
 export const HomeMoveId = z.string().regex(/^hm_[0-9a-z]{10}$/);
 export type HomeMoveId = z.infer<typeof HomeMoveId>;
 
-/** How the machine taking the fleet reaches the old home, which has no route to it: on disk from before that home's mark until it has heard how the move ended. */
-export const HomeDelivery = z.object({ id: HomeMoveId, ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath });
+/** How the machine taking the fleet reaches the old home, which has no route to it: on disk from before that home's mark until it has heard how the move ended. `from`, `fleetId`: what that home must answer as before any key goes to it. */
+export const HomeDelivery = z.object({ id: HomeMoveId, ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath, from: MachineId, fleetId: FleetId });
 export type HomeDelivery = z.infer<typeof HomeDelivery>;
 
 /** What makes the old home a worker of the new one: its worker.json, and the new home's record for its registry, none for a home it dials nothing to. */
@@ -19,9 +19,10 @@ export type Enrolment = z.infer<typeof Enrolment>;
  * home-moving.json on the machine the fleet leaves: this daemon may no longer start as a home that takes writes. `ask`: how it
  * learns the outcome itself; none where the new home has the only route, and delivers it. `enrol`: the outcome was `adopted`,
  * which the next start of this daemon finishes. `keySha256`: of the key only the move's driver holds, which every outcome sent here carries.
+ * `to`, `fleetId`: all this home believes; any other machine or fleet that answers reads as no answer.
  */
 export const HomeMoving = z.object({
-  id: HomeMoveId, from: MachineId, fromName: z.string(), fromHome: MachinePath, to: MachineId, toName: z.string(), toHome: MachinePath, at: z.number(),
+  id: HomeMoveId, fleetId: FleetId, from: MachineId, fromName: z.string(), fromHome: MachinePath, to: MachineId, toName: z.string(), toHome: MachinePath, at: z.number(),
   keySha256: z.string().regex(/^[0-9a-f]{64}$/),
   ask: z.object({ ssh: SshDestination, svallBase: MachinePath, fleetHome: MachinePath }).optional(),
   enrol: Enrolment.optional(),
@@ -44,6 +45,8 @@ export const HomeManifest = z.object({
   phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }), at: z.number(),
   // the fleet's profile on the old home, which the new one reaches it as once it is a worker
   fromProfile: z.string().optional(),
+  // of the key only the move's driver holds, sent once the old home is marked: without it this machine installs nothing
+  adoptKeySha256: z.string().regex(/^[0-9a-f]{64}$/),
 });
 export type HomeManifest = z.infer<typeof HomeManifest>;
 

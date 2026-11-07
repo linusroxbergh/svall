@@ -7,7 +7,7 @@ import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId,
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, adoptDir, driverKey, enter, installAdopt, markKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptDir, driverAdoptKey, driverKey, enter, installAdopt, markKey, mintAdoptKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type Asker, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -278,6 +278,10 @@ export type MoveDeps = Pick<HostDeps, 'emit' | 'openMaster'> & {
 
 const driverJournal = (paths: Paths, id: string, phase: string, data?: object): void => enter(paths, `${id}.driver`, phase, data && JSON.stringify(data));
 
+// who asks a far machine how a move ended, which only the home it still serves can be told `not-adopted` by
+const askedBy = (asker: Asker): string[] => ['--asker', asker.machine, '--fleet', asker.fleetId];
+const oldHome = (owed: HomeDelivery): Asker => ({ machine: owed.from, fleetId: owed.fleetId });
+
 const farCommand = (svallBase: string, fleetHome: string, args: string[]): string[] => ['env', shq(`SVALL_HOME=${fleetHome}`), shq(svallExe(svallBase)), '--json', ...args.map(shq)];
 
 async function farAnswer(master: SshMaster, svallBase: string, fleetHome: string, args: string[], input?: string): Promise<AdoptAnswer> {
@@ -394,6 +398,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
     const toHome = entry.record.home;
     const id = newHomeMoveId() as HomeMoveId;
     const fleetId = readFleetConfig(paths).id;
+    const asking = askedBy({ machine: d.me, fleetId });
     const client = await d.client();
     let marked = false;
     let master: SshMaster | undefined;
@@ -415,10 +420,11 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       await moveMission(run, client, paths, id, to, name, name, o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await client.call('fleet.freeze', { id, to }), detail: 'this home takes no more writes' }));
+      const adoptKeySha256 = mintAdoptKey(paths, id);
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
         const here = d.registry.localMachine();
-        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now(), ...(d.target.managed && { fromProfile: d.target.name }) };
+        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, at: Date.now(), adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }) };
         const { bytes, sha256 } = await packFleet(paths, manifest);
         const a = await far(['fleet', 'adopt', id, '--stage', '--sha256', sha256], bytes.toString('base64'));
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
@@ -428,19 +434,19 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       await run.step('mark', async () => {
         const here = d.registry.localMachine();
         await client.call('fleet.homeMove', { op: 'mark', marker: {
-          id, from: d.me, fromName: here.name, fromHome: here.home as HomeMoving['fromHome'], to, toName: name, toHome: toHome as HomeMoving['toHome'], at: Date.now(), keySha256,
+          id, fleetId, from: d.me, fromName: here.name, fromHome: here.home as HomeMoving['fromHome'], to, toName: name, toHome: toHome as HomeMoving['toHome'], at: Date.now(), keySha256,
           ask: { ssh, svallBase: entry.record.svallBase as never, fleetHome: farHome as never },
         } });
         marked = true;
         return { value: undefined, detail: 'this home starts as a home again only if the move is called off' };
       });
       homePoint('move.marked');
-      await finishOut(run, d, client, paths, id, { to, name, ssh, ends: CLOSE_TO_END }, far);
+      await finishOut(run, d, client, paths, id, { to, name, ssh, asking, ends: CLOSE_TO_END }, far);
     } catch (e) {
       // before the marker nothing can be adopted, so this home thaws whatever the far side heard; from the marker on, only that side's answer does
       if (!marked) {
         await client.call('fleet.thaw', { id }).catch(() => undefined);
-        if (master) await far(['fleet', 'abort', id]).catch(() => undefined);
+        if (master) await far(['fleet', 'abort', id, ...asking]).catch(() => undefined);
         fs.rmSync(adoptDir(paths, id), { recursive: true, force: true });
         driverJournal(paths, id, 'aborted');
         await offerCrew(run, client).catch(() => undefined);
@@ -455,10 +461,13 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
 
 // the far machine's adopt, this home's join and the first snapshot that proves it: the end of a move, on its first run and on a
 // retry. `ends`: what a window says of a move left standing
-async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths, id: HomeMoveId, o: { to: MachineId; name: string; ssh: string; ends: string }, far: (args: string[], input?: string) => Promise<AdoptAnswer>): Promise<void> {
+async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths, id: HomeMoveId, o: { to: MachineId; name: string; ssh: string; asking: string[]; ends: string }, far: (args: string[], input?: string) => Promise<AdoptAnswer>): Promise<void> {
   driverJournal(paths, id, 'adopt');
   const enrol = await run.step('adopt', async () => {
-    const answer = await far(['fleet', 'adopt', id, '--home-ssh', o.ssh]).catch(async (e: Error) => settleAcross(far, id, e, o.ends));
+    const key = driverAdoptKey(paths, id);
+    if (!key) throw new StepError(`this machine's journal holds no key of ${id}, so ${o.name} cannot take the fleet`, 'svall fleet home abort', undefined, o.ends);
+    // the key on stdin, and only now that this home is marked
+    const answer = await far(['fleet', 'adopt', id, '--home-ssh', o.ssh], key).catch(async (e: Error) => settleAcross(far, id, o.asking, e, o.ends));
     if (answer.status === 'adopted') return { value: answer.enrol, detail: `${o.name} runs the fleet` };
     // a start of this daemon took the outcome first, and has joined
     if (answer.status === 'done') return { value: undefined, detail: `${o.name} runs the fleet` };
@@ -484,12 +493,12 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
 }
 
 // the far side's word, after a connection that went away during its adopt
-async function settleAcross(far: (args: string[]) => Promise<AdoptAnswer>, id: string, first: Error, ends: string): Promise<AdoptAnswer> {
+async function settleAcross(far: (args: string[]) => Promise<AdoptAnswer>, id: string, asking: string[], first: Error, ends: string): Promise<AdoptAnswer> {
   let last = first;
   for (let n = 0; n < SETTLE_TRIES; n++) {
     await new Promise((r) => setTimeout(r, 2000 * (n + 1)));
     try {
-      const a = await far(['fleet', 'status', id]);
+      const a = await far(['fleet', 'status', id, ...asking]);
       if (a.status !== 'pending' || a.phase !== 'running') return a;
     } catch (e) { last = e as Error; }
   }
@@ -520,7 +529,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
     let home: Client | undefined;
     let marked = false;
     const adoption: AdoptDeps = { paths, me: d.me, daemon: d.daemon };
-    const delivery: HomeDelivery = { id, ssh, svallBase: svallBase as never, fleetHome: fleetHome as never };
+    const delivery: HomeDelivery = { id, ssh, svallBase: svallBase as never, fleetHome: fleetHome as never, from, fleetId: worker.fleetId };
     try {
       await run.step('check', async () => {
         const c = await local.call('fleet.homeCheck', { to: d.me });
@@ -536,10 +545,11 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       const { phone } = await run.step('pause', async () => ({ value: await home!.call('fleet.freeze', { id, to: d.me }), detail: `${name} takes no more writes` }));
       // from here a kill leaves what this machine holds of the move for a person to finish or call off
       owe(paths, delivery);
+      const adoptKeySha256 = mintAdoptKey(paths, id);
       driverJournal(paths, id, 'copy');
       const here = d.registry.localMachine();
       await run.step('copy', async () => {
-        const manifest: HomeManifest = { id, fleetId: worker.fleetId, from, to: d.me, toName: here.name, toHome: here.home as HomeManifest['toHome'], record: { ...entry.record, ssh, dial: undefined }, phone, at: Date.now(), ...(worker.homeProfile && { fromProfile: worker.homeProfile }) };
+        const manifest: HomeManifest = { id, fleetId: worker.fleetId, from, to: d.me, toName: here.name, toHome: here.home as HomeManifest['toHome'], record: { ...entry.record, ssh, dial: undefined }, phone, at: Date.now(), adoptKeySha256, ...(worker.homeProfile && { fromProfile: worker.homeProfile }) };
         const r = await master!.run(farCommand(svallBase, fleetHome, ['fleet', 'export', id, '--manifest', JSON.stringify(manifest)]), { timeoutMs: STEP_MS, maxOutputBytes: MAX_ARCHIVE });
         if (r.code !== 0) throw new StepError(`svall fleet export there exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
         const { sha256, archive } = z.object({ sha256: z.string(), archive: z.string() }).parse(JSON.parse(r.stdout));
@@ -550,7 +560,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       const keySha256 = markKey(paths, id);
       await run.step('mark', async () => {
         await home!.call('fleet.homeMove', { op: 'mark', marker: {
-          id, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(), keySha256,
+          id, fleetId: worker.fleetId, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(), keySha256,
         } });
         marked = true;
         return { value: undefined, detail: `${name} stays frozen until this machine tells it how the move ended` };
@@ -561,7 +571,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       // an abort is what the old home is told, if it has heard of this move at all
       if (!marked && !(e instanceof HomeCrash)) {
         await home?.call('fleet.thaw', { id }).catch(() => undefined);
-        await abortAdopt(adoption, id).catch(() => undefined);
+        await abortAdopt(adoption, id, oldHome(delivery)).catch(() => undefined);
         driverJournal(paths, id, 'aborted');
         if (home) await offerCrew(run, home).catch(() => undefined);
       }
@@ -579,7 +589,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
   const { paths } = adoption;
   driverJournal(paths, id, 'adopt');
   await run.step('adopt', async () => {
-    const a = await installAdopt(adoption, id, enrolmentFor(paths, d.me, { home: d.registry.localMachine(), ...(d.target.managed && { profile: d.target.name }) }));
+    const a = await installAdopt(adoption, id, driverAdoptKey(paths, id), enrolmentFor(paths, d.me, { home: d.registry.localMachine(), ...(d.target.managed && { profile: d.target.name }) }));
     if (a.status === 'adopted' || a.status === 'done') return { value: undefined, detail: 'this machine runs the fleet' };
     const said = a.status === 'pending' ? a.detail ?? a.phase : a.status;
     throw new StepError(`this machine did not take the fleet: ${said}`, a.status === 'not-adopted' ? undefined : 'svall fleet home abort, or svall fleet home retry', undefined, a.status === 'not-adopted' ? undefined : o.ends);
@@ -636,7 +646,7 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
         } finally { await master.close().catch(() => undefined); }
       });
       if (!staged || !marked) {
-        await abortAdopt(adoption, owed.id);
+        await abortAdopt(adoption, owed.id, oldHome(owed));
         await told(paths);
         return refuse(run, 'the old home is not frozen for this move and goes on as the home', 'svall fleet home set local to start again', 'Bring the fleet back again from Machines');
       }
@@ -653,7 +663,7 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
       return refuse(run, `this machine cannot log in to ${name}: ${e.message}`, 'svall fleet home retry once it answers; until then this home stays frozen', 'Finish the move once it answers; until then this home takes no changes');
     });
     try {
-      await finishOut(run, d, client, paths, id, { to, name, ssh: ask.ssh, ends: AGAIN_OR_OFF }, (args, input) => farAnswer(master, ask.svallBase, ask.fleetHome, args, input));
+      await finishOut(run, d, client, paths, id, { to, name, ssh: ask.ssh, asking: askedBy({ machine: marker.from, fleetId: marker.fleetId }), ends: AGAIN_OR_OFF }, (args, input) => farAnswer(master, ask.svallBase, ask.fleetHome, args, input));
     } finally {
       client.close();
       await master.close().catch(() => undefined);
@@ -666,7 +676,7 @@ export async function abortBack(d: Pick<MoveDeps, 'client' | 'daemon' | 'me' | '
   const paths = resolvePaths(d.target.home);
   const owed = readOwed(paths);
   if (!owed) return undefined;
-  const a = await abortAdopt({ paths, me: d.me, daemon: d.daemon }, owed.id);
+  const a = await abortAdopt({ paths, me: d.me, daemon: d.daemon }, owed.id, oldHome(owed));
   if (a.status === 'pending') return { status: a.status, told: false, said: a.detail ?? a.phase };
   await daemonClient(d).then((c) => c.close());
   return { status: a.status, told: await told(paths) };

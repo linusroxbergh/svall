@@ -6,13 +6,13 @@ import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { cleanHomes } from '../helpers.js';
-import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
+import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); vi.useRealTimers(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.back.filter((p) => !crashesFired().has(p))).toEqual([]); });
 
 const BACK = 'hm_backbackba' as HomeMoveId;
-const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never };
+const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never, from: STUDIO, fleetId: FLEET as never };
 
 /**
  * The fleet moved out to studio and back from it as far as studio's mark: studio's daemon frozen under a marker with no way to ask, the
@@ -23,12 +23,12 @@ async function markedBack() {
 
   // as studio holds it at its freeze, with what it took of its worker's robots
   await w.studio.daemon.stop();
-  const manifest: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, at: 6 };
+  const manifest: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, at: 6, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(w.studio.paths, manifest);
   await w.studio.daemon.start();
   await stageAdopt(w.mac.deps, BACK, packed.sha256, packed.bytes);
   owe(w.mac.paths, FAR);
-  const mark: HomeMoving = { id: BACK, from: STUDIO, fromName: 'studio', fromHome: '/home/ada' as never, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, at: 6, keySha256: markKey(w.mac.paths, BACK) };
+  const mark: HomeMoving = { id: BACK, fleetId: FLEET as never, from: STUDIO, fromName: 'studio', fromHome: '/home/ada' as never, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, at: 6, keySha256: markKey(w.mac.paths, BACK) };
   await w.studio.daemon.stop();
   putMarker(w.studio.paths, mark);
   await w.studio.daemon.start();
@@ -38,18 +38,21 @@ async function markedBack() {
 }
 
 const NOT_RUNNING = 'svalld is not running (no port): it runs while Svall is open on this fleet';
+const ASKER_BACK = { machine: STUDIO, fleetId: FLEET };
+const STUDIO_FACTS = { machineId: STUDIO, role: 'home', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {} };
 
 /** The old home's side of what a delivery runs there, on the real settle, over a master that fails as told. */
-function studioAt(studio: Side, o: { down?: () => boolean } = {}) {
+function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object } = {}) {
   let delivered = 0;
   const sent: { argv: string; input: string }[] = [];
   const open = () => {
     if (o.down?.()) return Promise.reject(new Error('ssh: connect to host studio'));
     return Promise.resolve({
       run: async (argv: string[], opts?: { input?: string }) => {
-        delivered++;
         const line = argv.join(' ');
         sent.push({ argv: line, input: opts?.input ?? '' });
+        if (line.includes("'facts'")) return { code: 0, signal: null, stdout: JSON.stringify(o.answersAs ?? STUDIO_FACTS), stderr: '' };
+        delivered++;
         const { key, enrol } = JSON.parse(opts!.input!) as { key: string; enrol?: Enrolment };
         const told = !line.includes('not-adopted') ? { status: 'adopted' as const, enrol: enrol! } : { status: 'not-adopted' as const };
         const said = await settleMove(studio.paths, BACK, told, key, {
@@ -81,13 +84,14 @@ describe('the way back: the outcome is owed before the old home is marked', () =
 
   it('adopted: studio hears from this machine, joins on its next start, and only one daemon ever took writes', async () => {
     const w = await markedBack();
-    const a = await installAdopt(w.mac.deps, BACK, w.enrolment);
+    const a = await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     expect(a.status).toBe('adopted');
     expect(roles(w)).toEqual(['home', 'frozen']);
     const far = studioAt(w.studio);
     expect(await deliverOwed(w.mac.paths, far.open)).toBe('told');
-    // the driver's key on stdin alone
-    expect(far.sent.map((c) => [c.argv.includes(keyOf(w)), JSON.parse(c.input).key === keyOf(w)])).toEqual([[false, true]]);
+    // the old home's own word first, then the driver's key on stdin alone
+    expect(far.sent[0]).toEqual({ argv: expect.stringContaining("'fleet' 'facts'"), input: '' });
+    expect(far.sent.slice(1).map((c) => [c.argv.includes(keyOf(w)), JSON.parse(c.input).key === keyOf(w)])).toEqual([[false, true]]);
     expect(roles(w)).toEqual(['home', 'worker']);
     expect(fs.existsSync(w.mac.paths.homeDeliver)).toBe(false);
     expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
@@ -98,9 +102,24 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     expect(w.studio.daemon.held!.robots.here.machine).toBeUndefined();
   });
 
+  it.each([
+    ['another machine', { ...STUDIO_FACTS, machineId: MAC }],
+    ['another fleet', { ...STUDIO_FACTS, fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }],
+    ['no fleet', { ...STUDIO_FACTS, fleetId: undefined }],
+  ])('%s answering at the old home\'s ssh reads as no answer: its key does not go, the outcome stays owed, and it stays frozen', async (_who, answersAs) => {
+    const w = await markedBack();
+    await abortAdopt(w.mac.deps, BACK, ASKER_BACK);
+    const far = studioAt(w.studio, { answersAs });
+    await expect(deliverOwed(w.mac.paths, far.open)).rejects.toThrow(/another machine or fleet/);
+    expect(far.sent.map((c) => c.input)).toEqual(['']);
+    expect(far.delivered()).toBe(0);
+    expect(readOwed(w.mac.paths)?.id).toBe(BACK);
+    expect(w.studio.daemon.role).toBe('frozen');
+  });
+
   it('an old home that cannot be reached leaves the outcome owed, and a later try tells it', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     let down = true;
     const far = studioAt(w.studio, { down: () => down });
     await expect(deliverOwed(w.mac.paths, far.open)).rejects.toThrow(/connect to host/);
@@ -113,7 +132,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
 
   it('a settle that fails there leaves the outcome owed, whatever it printed', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     const open = () => Promise.resolve({ run: () => Promise.resolve({ code: 1, signal: null, stdout: JSON.stringify({ status: 'done' }), stderr: 'svall: it did not take' }), close: () => Promise.resolve() });
     await expect(deliverOwed(w.mac.paths, open as never)).rejects.toThrow(/it did not take/);
     expect(readOwed(w.mac.paths)?.id).toBe(BACK);
@@ -121,7 +140,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
 
   it('a daemon that runs tells what it comes to owe after it started, and keeps trying a machine that does not answer', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     fs.rmSync(w.mac.paths.homeDeliver);
     let down = true;
     const far = studioAt(w.studio, { down: () => down });
@@ -145,7 +164,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
 
   it('a crash after it was told tells it again, and that changes nothing', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     const far = studioAt(w.studio);
     const fired = crashAt('deliver.told');
     await expect(deliverOwed(w.mac.paths, far.open)).rejects.toThrow(HomeCrash);
@@ -172,7 +191,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
   const killed = async (point: HomeFailpoint) => {
     const w = await markedBack();
     const fired = crashAt(point);
-    await expect(installAdopt(w.mac.deps, BACK, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     expect(fired()).toBe(true);
     w.mac.daemon.kill();
     return w;
@@ -184,7 +203,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(readOwed(w.mac.paths)?.id).toBe(BACK);
     await w.mac.daemon.start();
     expect(homes(w).length).toBeLessThanOrEqual(1);
-    expect(await installAdopt(w.mac.deps, BACK, w.enrolment)).toMatchObject({ status: 'adopted' });
+    expect(await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'adopted' });
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['home', 'worker']);
     expect(w.mac.daemon.held!.robots.here.machine).toBeUndefined();
@@ -202,7 +221,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     expect(roles(w)).toEqual(['worker', 'home']);
     expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
     expect(stateOf(w.mac).robots.here.machine).toBe(MAC);
-    expect(await installAdopt(w.mac.deps, BACK, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
   });
 
   it('adopt.committed: the move has gone through, so a delivery says so and an abort cannot take it back', async () => {
@@ -223,7 +242,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
   it.each(['enrol.written', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done'] as HomeFailpoint[])('%s: a kill in studio\'s own join goes forward from what it kept', async (point) => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     const far = studioAt(w.studio);
     const fired = crashAt(point);
     await expect(deliverOwed(w.mac.paths, far.open)).rejects.toThrow(HomeCrash);
@@ -237,7 +256,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
   it('with studio\'s daemon down: an outcome written for its next start, with no marker left to meet its join', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     w.studio.daemon.kill();
     expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
     expect(roles(w)).toEqual(['home', 'worker']);
@@ -246,7 +265,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
   it('an outcome written for the next start finds no marker a start has joined past, so it writes none', async () => {
     const w = await markedBack();
-    const a = await installAdopt(w.mac.deps, BACK, w.enrolment);
+    const a = await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     w.studio.daemon.kill();
     fs.rmSync(w.studio.paths.homeMoving);
@@ -291,7 +310,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
     it('an overlapping settle a start joined past says nothing was refused, and writes no marker back', async () => {
       const w = await markedBack();
-      const a = await installAdopt(w.mac.deps, BACK, w.enrolment);
+      const a = await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
       if (a.status !== 'adopted') throw new Error(a.status);
       let joined = 0;
       const told = await settleMove(w.studio.paths, BACK, a, keyOf(w), {
@@ -324,13 +343,21 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 });
 
 describe('whether the old home still holds this move', () => {
-  const FAR_OWED = { id: BACK, ssh: 'ada@studio', svallBase: '/home/ada/.local/share/svall', fleetHome: '/home/ada/.svall' } as never;
-  const facts = (moving?: string) => ({ run: () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, role: 'home', release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, ...(moving && { moving }) }) }) }) as never;
+  const FAR_OWED = { id: BACK, ssh: 'ada@studio', svallBase: '/home/ada/.local/share/svall', fleetHome: '/home/ada/.svall', from: STUDIO, fleetId: FLEET } as never;
+  const facts = (moving?: string) => ({ run: () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, role: 'home', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, ...(moving && { moving }) }) }) }) as never;
 
   it('only its own mark says so: another move\'s is none', async () => {
     expect(await markedThere(facts(BACK), FAR_OWED)).toBe(true);
     expect(await markedThere(facts('hm_otherother'), FAR_OWED)).toBe(false);
     expect(await markedThere(facts(), FAR_OWED)).toBe(false);
+  });
+
+  it.each([
+    ['another machine', { machineId: MAC }],
+    ['another fleet', { fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }],
+  ])('%s holding this move\'s id is no answer at all, and so no word that it is not marked', async (_who, other) => {
+    const run = () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ ...STUDIO_FACTS, moving: BACK, ...other }) });
+    await expect(markedThere({ run } as never, FAR_OWED)).rejects.toThrow(/another machine or fleet/);
   });
 });
 
@@ -357,7 +384,7 @@ describe('the phone link a move owes', () => {
   it.each(['adopt.installed', 'adopt.started', 'adopt.committed'] as HomeFailpoint[])('%s: a commit reached by a status still owes it, and the home turns it on once', async (point) => {
     const w = await serving();
     crashAt(point);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     await w.studio.daemon.start();
     expect((await adoptStatus(w.studio.deps, ID)).status).toBe('adopted');
@@ -372,7 +399,7 @@ describe('the phone link a move owes', () => {
 
   it('a `tailscale serve` that hangs keeps no old home waiting: the outcome goes out, and the link is tried once', async () => {
     const w = await markedBack();
-    expect((await installAdopt(w.mac.deps, BACK, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     enter(w.mac.paths, BACK, 'adopted', 'serve');
     let tries = 0;
     vi.useFakeTimers();
@@ -391,13 +418,13 @@ describe('the phone link a move owes', () => {
     const quiet = await packFleet(w.mac.paths, { ...w.manifest, id: BACK, phone: { serving: false, logins: [] } });
     const again = await world();
     await stageAdopt(again.studio.deps, BACK, quiet.sha256, quiet.bytes);
-    expect((await installAdopt(again.studio.deps, BACK, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(again.studio.deps, BACK, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     expect(phoneOwed(again.studio.paths)).toEqual([]);
   });
 
   it('a link refused here is said and journaled, and the move stands', async () => {
     const w = await serving();
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     const log = await tick(w.studio.paths, () => Promise.resolve({ error: 'Access denied: serve config denied' }));
     expect(log.some((l) => /Access denied/.test(l))).toBe(true);
     expect(journalLines(w.studio.paths, ID).at(-1)).toMatchObject({ phase: 'served', detail: 'Access denied: serve config denied' });
@@ -407,7 +434,7 @@ describe('the phone link a move owes', () => {
 
   it('a daemon with nothing to serve with, a worker\'s, leaves it owed', async () => {
     const w = await serving();
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     vi.useFakeTimers();
     const stop = startDeliveries(w.studio.paths, { error: () => {}, info: () => {} });
     await vi.advanceTimersByTimeAsync(5_100);
@@ -420,7 +447,7 @@ describe('the phone link a move owes', () => {
 describe('what stays behind', () => {
   it('the old home linking with its new token clears what its move staged, and a link of another machine does not', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     await landed(w.mac.deps, MAC);
     expect(fs.existsSync(adoptDir(w.mac.paths, BACK))).toBe(true);
     await landed(w.mac.deps, STUDIO);
@@ -430,7 +457,7 @@ describe('what stays behind', () => {
 
   it('a link before the delivery was cleared leaves nothing to tell', async () => {
     const w = await markedBack();
-    await installAdopt(w.mac.deps, BACK, w.enrolment);
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
     await landed(w.mac.deps, STUDIO);
     expect(await deliverOwed(w.mac.paths, () => { throw new Error('dialed'); })).toBe('told');
     expect(readOwed(w.mac.paths)).toBeUndefined();
@@ -444,10 +471,10 @@ describe('what stays behind', () => {
     expect(fs.existsSync(adoptDir(w.studio.paths, old))).toBe(true);
     expect((await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes))).toMatchObject({ status: 'pending', phase: 'staged' });
     expect(fs.existsSync(adoptDir(w.studio.paths, old))).toBe(false);
-    expect(await installAdopt(w.studio.deps, old, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, old, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
 
     crashAt('adopt.dropped');
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     const late = 'hm_laterlater' as HomeMoveId;
     expect(await stageAdopt(w.studio.deps, late, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'busy' });

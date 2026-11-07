@@ -5,14 +5,14 @@ import { z } from 'zod';
 import { Enrolment, FleetId, HomeManifest, HomeMoveId, MachineId, MachineRecord, type AdoptAnswer } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { homeFacts } from '@svall/svalld/fleet/home-freeze';
-import { abortAdopt, adoptStatus, installAdopt, packFleet, readMarker, settleMove, stageAdopt, type AdoptDeps } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptStatus, installAdopt, packFleet, readMarker, settleMove, stageAdopt, type AdoptDeps, type Asker } from '@svall/svalld/fleet/home-move';
 import { dialSocket, dialSocketTooLong, resolvePaths } from '@svall/svalld/paths';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { fleetHomes } from '@svall/svalld/uninstall';
 import { installPrefix } from '@svall/svalld/release';
 import { machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
-import { isWorker } from '@svall/svalld/worker/mode';
+import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { Client, withClient } from '../client.js';
 import { connectForwarded } from '../controller/connection.js';
 import { abortHome, bringCrewBack, enrolmentFor, joinHome, moveHomeBack, moveHomeOut, realHomeDaemon, resumeHome, type CrewChoice, type MoveDeps, type SeedAsk } from '../controller/home.js';
@@ -122,9 +122,11 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     const t = target();
     const paths = resolvePaths(t.home);
     const worker = isWorker(paths);
-    printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: readFleetConfig(paths).id }), json());
+    // the fleet this folder holds: a worker's own fleet.json may go by an id of its own
+    printResult(await homeFacts(paths, { me: machineId(), role: worker ? 'worker' : 'home', fleetId: worker ? readWorkerFile(paths).fleetId : readFleetConfig(paths).id }), json());
   });
-  cmd.command('adopt').description('take the fleet from the home it leaves: --stage reads its archive from stdin; alone, stops, installs and starts this machine as its home')
+  // the driver runs it over ssh, the install with its key on stdin once the old home is marked; nothing a person types takes the fleet
+  cmd.command('adopt', { hidden: true }).description('take the fleet from the home it leaves: --stage reads its archive from stdin; alone, reads the key of the move\'s driver from stdin, then stops, installs and starts this machine as its home')
     .argument('<id>', 'the move\'s id')
     .option('--stage', 'stage the archive on stdin, in base64')
     .option('--sha256 <sha>', 'the archive\'s sha256')
@@ -140,13 +142,16 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
         if (!o.sha256) throw new Error('--stage takes --sha256');
         return answer(await stageAdopt(d, id, o.sha256, Buffer.from(await readStdin(), 'base64')));
       }
+      const key = process.stdin.isTTY ? undefined : (await readStdin()).trim();
       const registry = MachineRegistry.load();
-      answer(await installAdopt(d, id, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() }, ...(t.managed && { profile: t.name }) })));
+      answer(await installAdopt(d, id, key, enrolmentFor(d.paths, d.me, { ...(o.homeSsh && { ssh: o.homeSsh }), home: { ...registry.localMachine(), svallBase: installPrefix() }, ...(t.managed && { profile: t.name }) })));
     });
-  cmd.command('status').description('what this machine says of a home move; a move it never heard of it refuses for good').argument('<id>', 'the move\'s id')
-    .action(async (raw: string) => answer(await adoptStatus(adoptDeps(target()), idOf(raw))));
-  cmd.command('abort').description('call a home move off here, for good, unless it has gone through').argument('<id>', 'the move\'s id')
-    .action(async (raw: string) => answer(await abortAdopt(adoptDeps(target()), idOf(raw))));
+  const asks = (c: Command): Command => c.argument('<id>', 'the move\'s id').option('--asker <machine-id>', 'the home that asks, which only its worker can tell the move was not taken').option('--fleet <fleet-id>', 'the fleet it asks of');
+  const askerOf = (o: { asker?: string; fleet?: string }): Asker | undefined => (o.asker && o.fleet ? { machine: MachineId.parse(o.asker), fleetId: FleetId.parse(o.fleet) } : undefined);
+  asks(cmd.command('status').description('what this machine says of a home move; to the home it serves, a move it never heard of it refuses for good'))
+    .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await adoptStatus(adoptDeps(target()), idOf(raw), askerOf(o))));
+  asks(cmd.command('abort').description('call a home move off here, for good, unless it has gone through'))
+    .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await abortAdopt(adoptDeps(target()), idOf(raw), askerOf(o))));
   cmd.command('export').description('the fleet\'s archive as JSON, in base64, for the machine it moves to').argument('<id>', 'the move\'s id')
     .requiredOption('--manifest <json>', 'what the archive says of itself')
     .action(async (raw: string, o: { manifest: string }) => {

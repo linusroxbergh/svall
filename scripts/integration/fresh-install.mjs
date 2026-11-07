@@ -341,15 +341,20 @@ function adopt(a) {
   fs.writeFileSync(path.join(HOME, '.svall', 'state.json'), worker.stdout, { mode: 0o600 });
   const here = json(svall(a, 'version', '--json').stdout);
   const there = json(ssh('.local/bin/svall', 'version', '--json').stdout);
+  // what a driver mints before its copy, and sends on stdin only past its mark
+  const key = crypto.randomBytes(32).toString('base64url');
   const manifest = {
     id, fleetId: json(ssh('cat', '.svall/worker.json').stdout).fleetId, from: here.machineId, to: there.machineId, toName: 'fresh', toHome: HOME,
     record: { name: 'controller', platform: 'darwin', arch: o.arch, home: HOME, svallBase: PREFIX, dial: 'worker' }, phone: { serving: false, logins: [] }, at: Date.now(),
+    adoptKeySha256: crypto.createHash('sha256').update(key).digest('hex'),
   };
   const packed = json(svall(a, 'fleet', 'export', id, '--manifest', JSON.stringify(manifest)).stdout);
   check('the fleet packs', packed?.sha256 && packed.archive, 'no archive');
   const staged = json(sshIn(packed.archive, '.local/bin/svall', '--json', 'fleet', 'adopt', id, '--stage', '--sha256', packed.sha256).stdout);
   check('it stages', staged?.status === 'pending' && staged.phase === 'staged', () => brief(staged));
-  const took = json(ssh('.local/bin/svall', '--json', 'fleet', 'adopt', id, '--home-ssh', 'fresh').stdout);
+  const typed = sshIn('', '.local/bin/svall', '--json', 'fleet', 'adopt', id, '--home-ssh', 'fresh');
+  check('with no key it installs nothing', typed.code !== 0 && json(ssh('.local/bin/svall', '--json', 'fleet', 'facts').stdout)?.role === 'worker', () => typed.stderr);
+  const took = json(sshIn(key, '.local/bin/svall', '--json', 'fleet', 'adopt', id, '--home-ssh', 'fresh').stdout);
   check('it adopts', took?.status === 'adopted', () => brief({ ...took, enrol: undefined }));
   // what this controller's join writes last: which machine is a fleet's home is read from that fleet's worker.json
   fs.writeFileSync(path.join(HOME, '.svall', 'worker.json'), JSON.stringify(took.enrol.worker), { mode: 0o600 });

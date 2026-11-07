@@ -6,11 +6,11 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vites
 import { ApiError, INTERRUPT_ACTIONS, PROTOCOL_VERSION, type AdoptAnswer, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { HomeCrash } from '@svall/svalld/failpoints';
 import { deliverOwed, startDeliveries } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, driverKey, installAdopt, journalLines, markKey, packFleet, readMarker, readOwed } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, driverAdoptKey, driverKey, installAdopt, journalLines, markKey, mintAdoptKey, packFleet, readMarker, readOwed } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { machineId } from '@svall/svalld/machine';
 import { cleanHomes, makeHome } from '@svall/svalld/test-helpers';
-import { crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD, putMarker } from '../../svalld/test/fleet/home-world.js';
+import { ADOPT_KEY, crashAt, crashesFired, disarmCrash, MAC, movedOut, POINTS_OF, STUDIO, STUDIO_RECORD, putMarker } from '../../svalld/test/fleet/home-world.js';
 import type { Client } from '../src/client.js';
 import { homeMoveLock } from '../../svalld/src/kernel-lock.js';
 import { finishFlow } from '../src/commands/fleet.js';
@@ -114,13 +114,35 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(called.some((c) => c.method === 'fleet.freeze')).toBe(false);
   });
 
-  it('a failed stage thaws this home and calls it off there', async () => {
+  it('a failed stage thaws this home and calls it off there, saying which home asks, and no install key goes', async () => {
     const lines: string[] = [];
     const { deps, called } = outDeps((line) => { lines.push(line); return line.includes('--stage') ? { code: 1, stdout: '', stderr: 'svall: no room' } : answer({ status: 'not-adopted' }); });
     await moveHomeOut('studio', deps);
     expect(failed()).toMatchObject({ step: 'copy' });
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(true);
-    expect(lines.some((l) => /'fleet' 'abort'/.test(l))).toBe(true);
+    expect(lines.some((l) => l.includes(`'fleet' 'abort'`) && l.includes(`'--asker' '${machineId()}' '--fleet' '${FLEET}'`))).toBe(true);
+    expect(lines.some((l) => l.includes('--home-ssh'))).toBe(false);
+  });
+
+  it('the install key is minted before the copy, its hash in the manifest, and goes on stdin alone, only past the mark', async () => {
+    const sent: { line: string; input?: string; marked: boolean }[] = [];
+    const out = outDeps((line, input) => { sent.push({ line, input, marked: out.called.some((c) => c.params.op === 'mark') }); return happy(line); });
+    expect((await moveHomeOut('studio', out.deps)).result).toBe('ready');
+    const { id } = out.called.find((c) => c.params.op === 'mark')!.params.marker!;
+    const key = driverAdoptKey(resolvePaths(home), id)!;
+    const phases = journalLines(resolvePaths(home), `${id}.driver`).map((l) => l.phase);
+    expect(phases.indexOf('adopt-key')).toBeGreaterThan(-1);
+    expect(phases.indexOf('adopt-key')).toBeLessThan(phases.indexOf('copy'));
+    expect(key).not.toBe(driverKey(resolvePaths(home), id));
+    const dir = fs.mkdtempSync(path.join(home, 'tar-'));
+    fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(sent.find((s) => s.line.includes('--stage'))!.input!, 'base64'));
+    execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
+    expect((JSON.parse(fs.readFileSync(path.join(dir, 'home-move.json'), 'utf8')) as HomeManifest).adoptKeySha256).toBe(crypto.createHash('sha256').update(key).digest('hex'));
+    const install = sent.find((s) => s.line.includes('--home-ssh'))!;
+    expect(install).toMatchObject({ input: key, marked: true });
+    expect(sent.filter((s) => s.line.includes(key) || (s !== install && s.input?.includes(key)))).toEqual([]);
+    expect(JSON.stringify(events)).not.toContain(key);
+    expect(JSON.stringify(out.called)).not.toContain(key);
   });
 
   it('an adopt that comes back pending after the mark leaves it frozen, and points at retry and abort', async () => {
@@ -323,15 +345,17 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
 
   it('a connection that goes during the far adopt asks the far side how it stands, and goes on from its word', async () => {
     let adopts = 0;
+    let asked = '';
     const { deps } = outDeps((line) => {
       if (line.includes('--stage')) return answer({ status: 'pending', phase: 'staged' });
       if (line.includes("'adopt'")) return ++adopts === 1 ? { code: 255, stdout: '' } : happy(line);
-      if (line.includes("'status'")) return answer({ status: 'adopted', enrol: ENROL as never });
+      if (line.includes("'status'")) { asked = line; return answer({ status: 'adopted', enrol: ENROL as never }); }
       return happy(line);
     });
     const out = await moveHomeOut('studio', deps);
     expect(out.result).toBe('ready');
     expect(adopts).toBe(1);
+    expect(asked).toContain(`'--asker' '${machineId()}' '--fleet' '${FLEET}'`);
   }, 20_000);
 
   it('asks again while the far side says its adopt still runs, and goes on from the word that ends it', async () => {
@@ -435,7 +459,7 @@ describe('what the machine taking the fleet tells the old home', () => {
 
 describe('fleet home retry', () => {
   const marker = (ask = true): HomeMoving => ({
-    id: 'hm_abcdefghij' as HomeMoveId, from: machineId(), fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: markKey(resolvePaths(home), 'hm_abcdefghij'),
+    id: 'hm_abcdefghij' as HomeMoveId, fleetId: FLEET as never, from: machineId(), fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: markKey(resolvePaths(home), 'hm_abcdefghij'),
     ...(ask && { ask: { ssh: 'ada@studio' as never, svallBase: '/opt' as never, fleetHome: '/home/ada/.svall' as never } }),
   });
 
@@ -448,13 +472,30 @@ describe('fleet home retry', () => {
 
   it('a marked home runs the far adopt again from what stays staged, joins and proves it', async () => {
     const lines: string[] = [];
-    const { deps, started } = outDeps((line) => { lines.push(line); return answer({ status: 'adopted', enrol: ENROL as never }); });
+    const inputs: (string | undefined)[] = [];
+    const { deps, started } = outDeps((line, input) => { lines.push(line); inputs.push(input); return answer({ status: 'adopted', enrol: ENROL as never }); });
     putMarker(resolvePaths(home), marker());
+    mintAdoptKey(resolvePaths(home), 'hm_abcdefghij');
     const out = await resumeHome(deps);
     expect(out.result).toBe('ready');
     expect(ran()).toEqual(['adopt:ok', 'join:ok', 'probe:ok']);
     expect(lines.filter((l) => /'fleet' 'adopt' 'hm_abcdefghij' '--home-ssh' 'ada@studio'/.test(l))).toHaveLength(1);
+    // the key its driver's journal holds, on stdin
+    expect(inputs).toEqual([driverAdoptKey(resolvePaths(home), 'hm_abcdefghij')]);
+    expect(inputs[0]).toBeTruthy();
     expect(started()).toBe(1);
+  });
+
+  it('a journal that holds no key sends the far machine nothing to install with, and leaves the abort', async () => {
+    const lines: string[] = [];
+    const { deps, started } = outDeps((line) => { lines.push(line); return answer({ status: 'adopted', enrol: ENROL as never }); });
+    putMarker(resolvePaths(home), marker());
+    const out = await resumeHome(deps);
+    expect(failed()).toMatchObject({ step: 'adopt', detail: expect.stringContaining('holds no key') });
+    expect(out.actions).toEqual(['svall fleet home abort']);
+    expect(lines.filter((l) => l.includes('--home-ssh'))).toEqual([]);
+    expect(started()).toBe(0);
+    expect(readMarker(resolvePaths(home))?.id).toBe('hm_abcdefghij');
   });
 
   it('a home with no route waits to be told', async () => {
@@ -499,7 +540,7 @@ describe('fleet home set local', () => {
           return ok({ sha256, archive: bytes.toString('base64') });
         }
         if (line.includes("'settle'")) { settled.push(line.includes('not-adopted') ? 'not-adopted' : 'adopted'); return ok({ status: 'done' }); }
-        if (line.includes("'facts'")) return ok({ machineId: STUDIO, role: 'home', release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
+        if (line.includes("'facts'")) return ok({ machineId: STUDIO, role: 'home', fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
         throw new Error(`unexpected ${line}`);
       },
       close: () => Promise.resolve(),
@@ -534,6 +575,23 @@ describe('fleet home set local', () => {
     expect(settled).toEqual(['adopted']);
     expect(readOwed(w.mac.paths)).toBeUndefined();
     expect(w.mac.daemon.role).toBe('home');
+  }, 30_000);
+
+  it('the manifest it sends the old home holds only the install key\'s hash, and this machine installs from its driver\'s journal', async () => {
+    const { w, deps, master } = await workerHere();
+    const run = master.run.bind(master);
+    const lines: string[] = [];
+    master.run = ((argv: string[], o?: never) => { lines.push(argv.join(' ')); return run(argv, o); }) as never;
+    const stop = telling(w, master);
+    expect((await moveHomeBack(deps)).result).toBe('ready');
+    stop();
+    const exported = lines.find((l) => l.includes("'export'"))!;
+    const manifest = JSON.parse(exported.slice(exported.indexOf('{'), exported.lastIndexOf('}') + 1)) as HomeManifest;
+    const id = manifest.id;
+    const key = driverAdoptKey(w.mac.paths, id)!;
+    expect(manifest.adoptKeySha256).toBe(crypto.createHash('sha256').update(key).digest('hex'));
+    expect(lines.filter((l) => l.includes(key))).toEqual([]);
+    expect(JSON.stringify(events)).not.toContain(key);
   }, 30_000);
 
   it('a mark that fails calls the move off here, thaws, and the old home is told if it heard', async () => {
@@ -583,6 +641,9 @@ describe('fleet home set local', () => {
     const id = readOwed(w.mac.paths)!.id;
     frozen = false;
     events = [];
+    // nor does a person's word here, whose old home thawed with its driver gone
+    await expect(installAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, undefined, () => { throw new Error('built'); })).rejects.toThrow(/only the driver/);
+    expect(w.mac.daemon.role).toBe('worker');
     const stop = telling(w, master);
     const out = await resumeHome(deps);
     stop();
@@ -610,6 +671,27 @@ describe('fleet home set local', () => {
     expect(settled).toEqual([]);
   }, 30_000);
 
+  it('a driver killed before its archive came: abort refuses the move for good, as the old home holds no mark to tell', async () => {
+    const { w, deps, settled, master } = await workerHere();
+    crashAt('deliver.owed');
+    await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+    const id = readOwed(w.mac.paths)!.id;
+    const stop = telling(w, master);
+    expect(await abortBack(deps)).toEqual({ status: 'not-adopted', told: true });
+    stop();
+    expect(journalLines(w.mac.paths, id).map((l) => l.phase)).toEqual(['aborted']);
+    expect(settled).toEqual([]);
+  }, 30_000);
+
+  it('an export that fails refuses the move here for good, and what comes late is refused', async () => {
+    const { w, deps, master } = await workerHere();
+    const run = master.run.bind(master);
+    master.run = ((argv: string[], o?: never) => (argv.join(' ').includes("'export'") ? Promise.resolve({ code: 1, signal: null, stdout: '', stderr: 'svall: no room' }) : run(argv, o))) as never;
+    await moveHomeBack(deps);
+    expect(failed()?.step).toBe('copy');
+    expect(journalLines(w.mac.paths, readOwed(w.mac.paths)!.id).map((l) => l.phase)).toEqual(['aborted']);
+  }, 30_000);
+
   it('a retry with the old home out of reach changes nothing here', async () => {
     const { w, deps } = await workerHere();
     crashAt('move.marked');
@@ -624,6 +706,24 @@ describe('fleet home set local', () => {
     expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('staged');
   }, 30_000);
 
+  it('a retry finding another machine or fleet at the old home\'s ssh calls nothing off, and this machine takes nothing', async () => {
+    const { w, deps, master } = await workerHere();
+    crashAt('move.marked');
+    await expect(moveHomeBack(deps)).rejects.toThrow(HomeCrash);
+    const id = readOwed(w.mac.paths)!.id;
+    const run = master.run.bind(master);
+    master.run = ((argv: string[], o?: never) => {
+      if (!argv.join(' ').includes("'facts'")) return run(argv, o);
+      return Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: MAC, role: 'home', fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/x', svallBase: '/opt', fleetHome: '/x/.svall', tailscale: {} }) });
+    }) as never;
+    events = [];
+    expect((await resumeHome(deps)).result).toBe('actions');
+    expect(failed()).toMatchObject({ step: 'check', detail: expect.stringContaining('another machine or fleet') });
+    expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('staged');
+    expect(readOwed(w.mac.paths)?.id).toBe(id);
+    expect(w.mac.daemon.role).toBe('worker');
+  }, 30_000);
+
   it('a driver killed after the mark: abort refuses the move for good, and the old home hears', async () => {
     const { w, deps, far, settled, master } = await workerHere();
     crashAt('move.marked');
@@ -634,7 +734,7 @@ describe('fleet home set local', () => {
     expect(await abortBack(deps)).toEqual({ status: 'not-adopted', told: true });
     stop();
     expect(settled).toEqual(['not-adopted']);
-    expect(await installAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, () => { throw new Error('built'); })).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, ADOPT_KEY, () => { throw new Error('built'); })).toMatchObject({ status: 'not-adopted' });
     expect(w.mac.daemon.role).toBe('worker');
   }, 30_000);
 

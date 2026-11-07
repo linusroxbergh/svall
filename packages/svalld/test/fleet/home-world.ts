@@ -86,6 +86,12 @@ const side = (me: MachineId): Side => {
   return { paths, daemon, registryDir, deps: { paths, me, daemon, registryDir } };
 };
 
+/** The key a move's driver installs with, of which every manifest here holds the hash. */
+export const ADOPT_KEY = 'a'.repeat(43);
+export const ADOPT_SHA = crypto.createHash('sha256').update(ADOPT_KEY).digest('hex');
+/** The old home as it asks the machine it marked for. */
+export const ASKER = { machine: MAC, fleetId: FLEET };
+
 export const MAC_RECORD = { name: 'mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/opt/svall', dial: 'worker' } as const;
 export const STUDIO_RECORD = { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as const;
 
@@ -133,7 +139,7 @@ export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; 
   await mac.daemon.start();
   await studio.daemon.start();
   await mac.daemon.stop();
-  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, record: MAC_RECORD as never, phone: { serving: true, logins: ['ada@tailnet'] }, at: 5 };
+  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, record: MAC_RECORD as never, phone: { serving: true, logins: ['ada@tailnet'] }, at: 5, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(mac.paths, manifest);
   await mac.daemon.start();
   const enrolment = (token: string, m: HomeManifest): Enrolment => ({
@@ -149,7 +155,7 @@ export async function movedOut(): Promise<Awaited<ReturnType<typeof world>>> {
   await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
   await w.mac.daemon.stop();
   putMarker(w.mac.paths, marker());
-  const out = await installAdopt(w.studio.deps, ID, w.enrolment);
+  const out = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
   if (out.status !== 'adopted') throw new Error(out.status);
   putMarker(w.mac.paths, { ...marker(), enrol: out.enrol });
   await w.mac.daemon.start();
@@ -166,7 +172,7 @@ export const putMarker = (p: Pick<Paths, 'homeMoving'>, m: HomeMoving): void => 
 /** The key a move's driver holds, of which `marker()` holds the hash. */
 export const KEY = 'k'.repeat(43);
 export const marker = (): HomeMoving => ({
-  id: ID, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: crypto.createHash('sha256').update(KEY).digest('hex'),
+  id: ID, fleetId: FLEET as never, from: MAC, fromName: 'mac', fromHome: '/Users/ada' as never, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, at: 5, keySha256: crypto.createHash('sha256').update(KEY).digest('hex'),
   ask: { ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never },
 });
 

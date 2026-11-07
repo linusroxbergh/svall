@@ -22,6 +22,7 @@ const WAIT_MS = 5000;
 // where the machine holding the fleet says the move stands, for a person who has not followed it
 const STANDS: Record<string, (name: string) => string> = {
   unreachable: (n) => `${n} does not answer; the move waits until it does.`,
+  unknown: (n) => `${n} cannot say how the move went; the move waits until it can.`,
   staging: (n) => `${n} has not received the fleet's files yet.`,
   staged: (n) => `${n} holds the fleet's files and has not taken over.`,
   installed: (n) => `${n} has the fleet's files in place and is starting as its home.`,

@@ -295,6 +295,13 @@ describe('a move nothing is driving', () => {
     expect(said.getAttribute('data-tip')).toBe('ssh: connect to host studio port 22: Connection refused');
   });
 
+  it('a machine that cannot say how the move went reads as a sentence, the move waiting', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'this folder does not serve the home that asks as a worker of its fleet', phase: 'unknown' } } });
+    render(<HomeMoveBanner />);
+    expect((await screen.findByTestId('home-move-answer')).textContent).toBe(' studio cannot say how the move went; the move waits until it can.');
+  });
+
   it('a press that fails says why and what to do in the window, and Abort says it is at work', async () => {
     online();
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } } });

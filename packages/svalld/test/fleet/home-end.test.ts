@@ -1,17 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
-import type { HomeMoveId } from '@svall/protocol';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { WorkerFile, type AdoptAnswer, type HomeMoveId, type HomeMoving } from '@svall/protocol';
+import { askAcross } from '../../src/fleet/home-far.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { abortAdopt, adoptStatus, endMove, homeGate, installAdopt, journalLines, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
+import { abortAdopt, addEnrol, adoptDir, adoptStatus, endMove, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { ID, KEY, marker, world, putMarker } from './home-world.js';
+import { ADOPT_KEY, ASKER, FLEET, ID, KEY, MAC, marker, STUDIO, world, putMarker } from './home-world.js';
 
 afterEach(cleanHomes);
 
 const OTHER = 'hm_otherother' as HomeMoveId;
+type AskOp = 'status' | 'abort';
 const told = (() => { const { ask: _a, ...bare } = marker(); return bare; })();
 const marked = (m = marker()) => {
   const paths = resolvePaths(makeHome());
@@ -32,7 +34,7 @@ describe('what a machine a move leaves says of that move', () => {
 
   it.each([['status', adoptStatus], ['abort', abortAdopt]] as const)('svall fleet %s on it refuses, naming fleet home abort, writes nothing, and the new home having committed it joins', async (_op, command) => {
     const w = await frozenMac();
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await expect(command(w.mac.deps, ID)).rejects.toThrow(/svall fleet home abort/);
     expect(journalLines(w.mac.paths, ID)).toEqual([]);
@@ -45,22 +47,271 @@ describe('what a machine a move leaves says of that move', () => {
     expect(w.studio.daemon.role).toBe('home');
   });
 
-  it('asked of another id it answers as ever, and the marker stands', async () => {
+  it('asked of another id it says nothing for good, as a home serves no one, and the marker stands', async () => {
     const paths = marked();
     const d = { paths, me: marker().from, daemon: { stop: () => Promise.resolve(), start: () => Promise.resolve(), answersHome: () => Promise.resolve(false) } };
-    expect((await adoptStatus(d, OTHER)).status).toBe('not-adopted');
-    expect((await abortAdopt(d, OTHER)).status).toBe('not-adopted');
+    expect(await adoptStatus(d, OTHER, ASKER)).toMatchObject({ status: 'pending', phase: 'unknown' });
+    expect(await abortAdopt(d, OTHER, ASKER)).toMatchObject({ status: 'pending', phase: 'unknown' });
     expect(readMarker(paths)?.id).toBe(ID);
     expect(homeGate(paths).frozen?.id).toBe(ID);
   });
 
-  it('its own refusal of the id from before the mark ends nothing: a start stays frozen', async () => {
+  it('its own refusal of the id from before the mark ends nothing: a start stays frozen', () => {
     const paths = resolvePaths(makeHome());
-    const d = { paths, me: marker().from, daemon: { stop: () => Promise.resolve(), start: () => Promise.resolve(), answersHome: () => Promise.resolve(false) } };
-    expect((await adoptStatus(d, ID)).status).toBe('not-adopted');
+    endMove(paths, ID, { by: 'refused' });
     putMarker(paths, marker());
     expect(homeGate(paths).frozen?.id).toBe(ID);
     expect(readMarker(paths)?.id).toBe(ID);
+  });
+});
+
+describe('a not-adopted takes proof: this folder holds the fleet and still serves the home that asks', () => {
+  const NO_PROOF = { status: 'pending', phase: 'unknown' };
+  const BOTH = [['status', adoptStatus], ['abort', abortAdopt]] as const;
+  const tree = (dir: string): string[] => (fs.readdirSync(dir, { recursive: true }) as string[]).sort();
+  const adoptedThere = async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    await w.mac.daemon.stop();
+    putMarker(w.mac.paths, marker());
+    await w.mac.daemon.start();
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+    return w;
+  };
+  // the marked home's own daemon, asking there as it does
+  const thawsOn = async (w: Awaited<ReturnType<typeof world>>, there: typeof w.studio.deps) => {
+    const freeze = new HomeFreeze({ paths: w.mac.paths, me: MAC, ask: (m: HomeMoving, op: AskOp) => (op === 'status' ? adoptStatus(there, m.id, ASKER) : abortAdopt(there, m.id, ASKER)) } as never, marker());
+    await freeze.settle('status');
+    await freeze.settle('abort');
+    freeze.stop();
+    return { active: freeze.active, marker: readMarker(w.mac.paths)?.id };
+  };
+
+  it.each(BOTH)('%s of an id never heard of, from the home it serves: refused for good, and what comes late is refused', async (_op, ask) => {
+    const w = await world();
+    expect(await ask(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+    expect(journalLines(w.studio.paths, ID).map((l) => l.phase)).toEqual(['aborted']);
+    expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await ask(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+  });
+
+  it.each(BOTH)('%s on a machine now home, its journal and staged folder lost: pending, nothing written, and the old home stays frozen', async (_op, ask) => {
+    const w = await adoptedThere();
+    fs.rmSync(w.studio.paths.homeMoves, { recursive: true });
+    fs.rmSync(adoptDir(w.studio.paths, ID), { recursive: true });
+    const before = tree(w.studio.paths.home);
+    expect(await ask(w.studio.deps, ID, ASKER)).toMatchObject(NO_PROOF);
+    expect(tree(w.studio.paths.home)).toEqual(before);
+    expect(w.studio.daemon.role).toBe('home');
+    expect(await thawsOn(w, w.studio.deps)).toEqual({ active: true, marker: ID });
+  });
+
+  it.each(BOTH)('%s beside adopt-<id> with its journal lost: pending, and what was staged stays, on a worker too', async (_op, ask) => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    fs.rmSync(w.studio.paths.homeMoves, { recursive: true });
+    const before = tree(w.studio.paths.home);
+    expect(await ask(w.studio.deps, ID, ASKER)).toMatchObject(NO_PROOF);
+    expect(tree(w.studio.paths.home)).toEqual(before);
+  });
+
+  it.each(BOTH)('%s of a folder renamed away after the commit: pending, with no folder made', async (_op, ask) => {
+    const w = await adoptedThere();
+    const asked = w.studio.paths.home;
+    fs.renameSync(asked, `${asked}-renamed`);
+    expect(await ask(w.studio.deps, ID, ASKER)).toMatchObject(NO_PROOF);
+    expect(fs.existsSync(asked)).toBe(false);
+    expect(await thawsOn(w, w.studio.deps)).toEqual({ active: true, marker: ID });
+    expect(fs.existsSync(asked)).toBe(false);
+  });
+
+  it.each([
+    ['of another fleet', { fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }],
+    ['of another home', { homeMachineId: 'aaaaaaaa-1111-4222-8333-444444444444' }],
+  ])('a folder that is a worker %s: pending, and nothing written', async (_of, other) => {
+    const w = await world();
+    fs.writeFileSync(w.studio.paths.workerFile, JSON.stringify({ homeMachineId: MAC, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'mac', ...other }));
+    const before = tree(w.studio.paths.home);
+    for (const [, ask] of BOTH) expect(await ask(w.studio.deps, ID, ASKER)).toMatchObject(NO_PROOF);
+    expect(tree(w.studio.paths.home)).toEqual(before);
+  });
+
+  it.each(BOTH)('%s with no home named: pending, and nothing written', async (_op, ask) => {
+    const w = await world();
+    const before = tree(w.studio.paths.home);
+    expect(await ask(w.studio.deps, ID)).toMatchObject(NO_PROOF);
+    expect(tree(w.studio.paths.home)).toEqual(before);
+  });
+
+  it.each(BOTH)('%s of an id refused here earlier, on a machine that serves that home no longer: pending, until it does again', async (_op, ask) => {
+    const w = await world();
+    expect(await abortAdopt(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+    const worker = fs.readFileSync(w.studio.paths.workerFile);
+    fs.rmSync(w.studio.paths.workerFile);
+    expect(await ask(w.studio.deps, ID, ASKER)).toMatchObject(NO_PROOF);
+    fs.writeFileSync(w.studio.paths.workerFile, worker);
+    expect(await ask(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+  });
+
+  it('a staged id is called off for the home it came from, for a person with no home named, and for no other home', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    expect(await abortAdopt(w.studio.deps, ID, { ...ASKER, machine: STUDIO })).toMatchObject(NO_PROOF);
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('staged');
+    expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(true);
+    expect(await abortAdopt(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+    expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(false);
+    expect(await abortAdopt(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+  });
+});
+
+describe('a marked home believes only the machine it marked for', () => {
+  const FACTS = { machineId: STUDIO, role: 'worker', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {} };
+  const ANOTHER_FLEET = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
+  const ENROL = { worker: WorkerFile.parse({ homeMachineId: STUDIO, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'studio' }) };
+  const farAt = (facts: object | undefined, said: AdoptAnswer = { status: 'not-adopted' }) => {
+    const lines: string[] = [];
+    let opened = 0;
+    const open = () => {
+      opened++;
+      return Promise.resolve({
+        run: (argv: string[]) => {
+          const line = argv.join(' ');
+          lines.push(line);
+          const out = line.includes("'facts'") ? facts : said;
+          return Promise.resolve(out ? { code: 0, signal: null, stderr: '', stdout: JSON.stringify(out) } : { code: 1, signal: null, stderr: 'svall: no fleet here', stdout: '' });
+        },
+        close: () => Promise.resolve(),
+      });
+    };
+    return { open: open as never, lines, opened: () => opened };
+  };
+  const freezeAt = (paths: ReturnType<typeof marked>, far: ReturnType<typeof farAt>) => new HomeFreeze({ paths, me: MAC, restart: () => {}, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
+
+  it('reads the far fleet\'s word for itself on the connection it asks over, and says who asks', async () => {
+    const far = farAt(FACTS);
+    expect(await askAcross(marker(), 'abort', far.open)).toEqual({ status: 'not-adopted' });
+    expect(far.opened()).toBe(1);
+    expect(far.lines).toEqual([expect.stringMatching(/'fleet' 'facts'$/), expect.stringMatching(new RegExp(`'fleet' 'abort' '${ID}' '--asker' '${MAC}' '--fleet' '${FLEET}'$`))]);
+  });
+
+  it.each([
+    ['another machine', { ...FACTS, machineId: MAC }],
+    ['another fleet', { ...FACTS, fleetId: ANOTHER_FLEET }],
+    ['a folder with no fleet id', { ...FACTS, fleetId: undefined }],
+    ['a folder that holds no fleet', undefined],
+  ])('%s answering reads as unreachable: no status is asked, and the marker stands', async (_who, facts) => {
+    const paths = marked();
+    const far = farAt(facts);
+    const freeze = freezeAt(paths, far);
+    await freeze.settle('status');
+    await freeze.settle('abort');
+    freeze.stop();
+    expect(far.lines.filter((l) => !l.includes("'facts'"))).toEqual([]);
+    expect(freeze.active).toBe(true);
+    expect(freeze.status().moving?.phase).toBe('unreachable');
+    expect(readMarker(paths)).toEqual(marker());
+  });
+
+  it.each([
+    ['another machine', { ...ENROL.worker, homeMachineId: MAC }],
+    ['another fleet', { ...ENROL.worker, fleetId: ANOTHER_FLEET }],
+  ])('an adopted naming %s reads as unreachable, and goes on no marker', async (_who, worker) => {
+    const paths = marked();
+    const far = farAt(FACTS, { status: 'adopted', enrol: { worker } as never });
+    const restart = vi.fn();
+    const freeze = new HomeFreeze({ paths, me: MAC, restart, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
+    await freeze.settle('status');
+    freeze.stop();
+    expect(freeze.status().moving?.phase).toBe('unreachable');
+    expect(readMarker(paths)).toEqual(marker());
+    expect(restart).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['another machine', { ...ENROL.worker, homeMachineId: MAC }],
+    ['another fleet', { ...ENROL.worker, fleetId: ANOTHER_FLEET }],
+  ])('an enrol naming %s is refused however it comes, the driver\'s key or no, and the marker stands', async (_who, worker) => {
+    const paths = marked();
+    const enrol = { worker } as never;
+    expect(() => addEnrol(paths, ID, enrol)).toThrow(/another machine or fleet/);
+    await expect(writeEnrol(paths, ID, enrol, KEY)).rejects.toThrow(/another machine or fleet/);
+    const restart = vi.fn();
+    const freeze = new HomeFreeze({ paths, me: MAC, restart } as never, marker());
+    expect(() => freeze.join(ID, enrol, KEY)).toThrow(/another machine or fleet/);
+    expect(restart).not.toHaveBeenCalled();
+    expect(readMarker(paths)).toEqual(marker());
+  });
+
+  it('the machine and fleet it marked for go on as ever', async () => {
+    const paths = marked();
+    const far = farAt(FACTS, { status: 'adopted', enrol: ENROL });
+    const restart = vi.fn();
+    const freeze = new HomeFreeze({ paths, me: MAC, restart, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
+    await freeze.settle('status');
+    freeze.stop();
+    expect(restart).toHaveBeenCalledOnce();
+    expect(readMarker(paths)?.enrol).toEqual(ENROL);
+  });
+});
+
+describe('a staged machine installs only with the key of the move\'s driver', () => {
+  const noKeyIn = (message: string, ...keys: (string | undefined)[]) => { for (const k of keys) if (k) expect(message).not.toContain(k); };
+
+  it.each([
+    ['no key', undefined], ['an empty one', ''], ['one typed by hand', 'typed by hand'], ['one cut short', ADOPT_KEY.slice(0, 20)], ['the settle key', KEY],
+  ])('%s, its driver dead before its mark and the old home thawed: refused, and the fleet has one home', async (_what, key) => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const stop = vi.spyOn(w.studio.daemon, 'stop');
+    const said = await installAdopt(w.studio.deps, ID, key, w.enrolment).then(() => 'installed', (e: Error) => e.message);
+    expect(said).toMatch(/only the driver of .* installs it/);
+    noKeyIn(said, key);
+    expect(stop).not.toHaveBeenCalled();
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('staged');
+    expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+    expect(readMarker(w.mac.paths)).toBeUndefined();
+    expect([w.mac.daemon.role, w.studio.daemon.role]).toEqual(['home', 'worker']);
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+  });
+
+  it('past the commit, no key reads the enrolment that holds the token', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
+    if (a.status !== 'adopted') throw new Error(a.status);
+    await expect(installAdopt(w.studio.deps, ID, 'typed by hand', w.enrolment)).rejects.toThrow(/only the driver/);
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toEqual(a);
+  });
+
+  it('an install cut short recovers only with the key too', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const was = fs.readFileSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), 'utf8');
+    fs.appendFileSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), `${JSON.stringify({ phase: 'installing', at: 1 })}\n`);
+    await expect(installAdopt(w.studio.deps, ID, undefined, w.enrolment)).rejects.toThrow(/only the driver/);
+    expect(fs.readFileSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), 'utf8')).toBe(`${was}${JSON.stringify({ phase: 'installing', at: 1 })}\n`);
+  });
+
+  it('an archive whose manifest holds no hash is refused at the stage', async () => {
+    const w = await world();
+    await w.mac.daemon.stop();
+    const { adoptKeySha256: _h, ...bare } = w.manifest;
+    const packed = await packFleet(w.mac.paths, bare as never);
+    await expect(stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes)).rejects.toThrow(/adoptKeySha256/);
+  });
+
+  it.each([
+    ['stage', (w: Awaited<ReturnType<typeof world>>) => stageAdopt(w.mac.deps, ID, w.archive.sha256, w.archive.bytes)],
+    ['install', (w: Awaited<ReturnType<typeof world>>) => installAdopt(w.mac.deps, ID, ADOPT_KEY, w.enrolment)],
+  ])('a %s on the machine the move leaves refuses, naming fleet home abort, and writes nothing', async (_what, run) => {
+    const w = await world();
+    await w.mac.daemon.stop();
+    putMarker(w.mac.paths, marker());
+    await expect(run(w)).rejects.toThrow(/svall fleet home abort/);
+    expect(journalLines(w.mac.paths, ID)).toEqual([]);
+    expect(readMarker(w.mac.paths)).toEqual(marker());
   });
 });
 
@@ -114,7 +365,7 @@ describe('the one way a move ends', () => {
   });
 
   describe('a settle without the key of the move\'s driver, as one typed by hand', () => {
-    const enrol = { worker: { homeMachineId: marker().from, homeName: 'mac', fleetId: '11111111-2222-3333-4444-555555555555', token: 'b'.repeat(48) } } as never;
+    const enrol = { worker: { homeMachineId: marker().to, homeName: 'studio', fleetId: '11111111-2222-3333-4444-555555555555', token: 'b'.repeat(48) } } as never;
     it.each([
       ['not-adopted', 'up', { status: 'not-adopted' }], ['not-adopted', 'down', { status: 'not-adopted' }],
       ['adopted', 'up', { status: 'adopted', enrol }], ['adopted', 'down', { status: 'adopted', enrol }],
@@ -172,8 +423,8 @@ describe('the one way a move ends', () => {
   // one fails here until it is read and named
   const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/,
     /\bcreateMarker\b/, /\baddEnrol\b/, /\bwriteMarker\b/, /\bendMove\b/, /\.mark\s*\(/];
-  // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's key
-  const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|\benter\(p, driverOf\(id\), 'mark'/;
+  // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's two keys
+  const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|^\s*enter\(p, driverOf\(id\), use, JSON\.stringify\(\{ key \}\)\);$/;
   const NAMED: [RegExp, RegExp][] = [
     [/svalld\/src\/paths\.ts$/, /^\s*(homeMoving|homeMoves): path\.join\(home, |^export const fleetKeys = /],
     [/svalld\/src\/bin\.ts$/, /^const stamp = /],
@@ -225,6 +476,8 @@ describe('the one way a move ends', () => {
     ['packages/svalld/src/fleet/home-move.ts', "  enter(p, id, 'done');"],
     ['packages/svalld/src/fleet/home-move.ts', '  enter(p, id, DONE);'],
     ['packages/svalld/src/fleet/home-move.ts', '  enter(p, id, `released`);'],
+    ['packages/svalld/src/fleet/home-move.ts', "  enter(p, driverOf(id), 'done', JSON.stringify({ key }));"],
+    ['packages/svalld/src/fleet/home-move.ts', '  enter(p, driverOf(id), use, JSON.stringify({ key })); enter(p, id, DONE);'],
     ['packages/svalld/src/fleet/home-move.ts', '  enter('],
     ['packages/svalld/src/fleet/home-freeze.ts', '  const { homeMoving: marker } = this.d.paths;'],
     ['packages/svalld/src/fleet/home-freeze.ts', "  fs.rmSync(this.d.paths['homeMoving']);"],

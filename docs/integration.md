@@ -193,8 +193,8 @@ the run never reached fails it. The kills come from a `home-fault` file in the f
 - **A kill inside the tar's extraction**, each way: a `tar` standing in on that machine unpacks one file, then kills itself
   and the `svall` that ran it. Nothing is marked, so the old home goes on as the home. A driver that died with its tar
   leaves the half unpacked folder, which a retry calls off on finding the old home never frozen.
-- **A delayed adopt against an abort.** A status on an id never heard of refuses it for good, and the adopt that comes
-  later is refused.
+- **A delayed adopt against an abort.** A status on an id never heard of, from no home named, waits and writes nothing. From
+  the home the machine serves it refuses the id for good, and the adopt that comes later is refused.
 - **Afterwards**: exactly one daemon answers as the home and the other names it; every window on either machine stands;
   no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`; the home holds the
   fleet's `push.json` and pass; and the home's phone link alone serves.
@@ -300,8 +300,9 @@ JSON of the rollback and of each `host doctor`, a `.machine.json` per stage with
    restarts, setup itself finds the fleet's daemon answering from that release, and step 4's checks pass against the
    first release. `host doctor` from the first release's controller agrees.
 7. **Made home by adopt.** The far half of a home move on the machine as a worker: `svall fleet export` on the controller,
-   which runs no daemon, then `svall fleet adopt --stage` and `svall fleet adopt` over ssh. The machine answers as the
-   fleet's home, with no `worker.json` and no `--worker` in its unit.
+   which runs no daemon, with the hash of a key in its manifest, then `svall fleet adopt --stage` over ssh. `svall fleet adopt`
+   with no key on stdin installs nothing; with the key the machine answers as the fleet's home, with no `worker.json` and no
+   `--worker` in its unit.
 8. **`svall host upgrade` of that home** to the second release: the machine stays the home, enrolled as nothing, runs
    that release, and a robot started there keeps its window and its process.
 

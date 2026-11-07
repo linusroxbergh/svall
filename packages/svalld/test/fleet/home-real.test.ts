@@ -13,7 +13,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { cleanHomes, hasTmux, makeHome, waitFor } from '../helpers.js';
-import { crashAt, disarmCrash, FLEET, ID, KEY, MAC, marker, robot, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
+import { ADOPT_KEY, crashAt, disarmCrash, FLEET, ID, KEY, MAC, marker, robot, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
 const runIf = hasTmux() ? describe : describe.skip;
 
@@ -176,7 +176,7 @@ runIf('a home move through real starts', () => {
 
   it('the machine taking the fleet: its running daemon answers as the home, on the fleet relabelled, with nothing left of a worker', async () => {
     const { w, paths, daemon, deps, me } = await taking();
-    const a = await installAdopt(deps, ID, w.enrolment);
+    const a = await installAdopt(deps, ID, ADOPT_KEY, w.enrolment);
     expect(a.status).toBe('adopted');
     expect(await daemon.ask('fleet.home')).toMatchObject({ result: { mine: true, machine: me, fleetId: FLEET } });
     const s = daemon.d!.store.state;
@@ -194,7 +194,7 @@ runIf('a home move through real starts', () => {
     const fleetBefore = fs.readFileSync(paths.fleetConfig, 'utf8');
     daemon.noAnswer = true;
     crashAt('restore.file', n);
-    await expect(installAdopt(deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     daemon.noAnswer = false;
     const a = await adoptStatus(deps, ID);
     expect(a).toMatchObject({ status: 'pending', phase: 'rolledback' });
@@ -207,11 +207,11 @@ runIf('a home move through real starts', () => {
   it('a crash after the stop, called off: the worker comes back up, and the move stays off', async () => {
     const { w, daemon, deps } = await taking();
     crashAt('adopt.stopped');
-    await expect(installAdopt(deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     expect(daemon.d).toBeUndefined();
     expect(await abortAdopt(deps, ID)).toEqual({ status: 'not-adopted' });
     expect(await daemon.ask('fleet.home')).toMatchObject({ result: { mine: false } });
-    expect(await installAdopt(deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
   }, 120_000);
 
   it('a home owed the phone tries it once its daemon runs, and journals what came of it', async () => {
@@ -227,7 +227,7 @@ runIf('a home move through real starts', () => {
 
   it('a worker owes the old home what its status names, and is asked for nothing else', async () => {
     const { paths, daemon } = await taking();
-    fs.writeFileSync(paths.homeDeliver, JSON.stringify({ id: ID, ssh: 'ada@nowhere', svallBase: '/x', fleetHome: '/y' }));
+    fs.writeFileSync(paths.homeDeliver, JSON.stringify({ id: ID, ssh: 'ada@nowhere', svallBase: '/x', fleetHome: '/y', from: MAC, fleetId: FLEET }));
     expect(await daemon.ask('fleet.homeMove', { op: 'status' })).toMatchObject({ result: { moving: { id: ID, asks: false } } });
     expect(await daemon.ask('fleet.homeMove', { op: 'abort' })).toMatchObject({ error: { code: 'not_on_worker' } });
     fs.rmSync(paths.homeDeliver);

@@ -17,7 +17,7 @@ import { issueToken } from '../../src/placement/workers.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
+import { ADOPT_KEY, ASKER, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.move.filter((p) => !crashesFired().has(p))).toEqual([]); });
@@ -74,12 +74,12 @@ describe('staging', () => {
       const { w, dir } = await killedTar();
       expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
       expect(JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).id).not.toBe(FLEET);
-      expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'pending', phase: 'staging' });
+      expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'staging' });
       expect(w.studio.daemon.role).toBe('worker');
       expect(inStagedMove(path.join(dir, 'unpacked', 'fleet.json'))).toBe(true);
       expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'staged' });
       expect(fs.existsSync(path.join(dir, 'unpacked'))).toBe(false);
-      expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     });
 
     it('called off, what was half unpacked goes with it, and a retry is refused', async () => {
@@ -133,10 +133,10 @@ describe('staging', () => {
     fs.writeFileSync(w.studio.paths.mirrorState, record);
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     w.studio.daemon.noAnswer = true;
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(fs.readFileSync(w.studio.paths.mirrorState, 'utf8')).toBe(record);
     w.studio.daemon.noAnswer = false;
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     expect(fs.existsSync(w.studio.paths.mirrorState)).toBe(false);
   });
 
@@ -146,10 +146,10 @@ describe('staging', () => {
     putRecord(MAC, record, w.studio.registryDir);
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     w.studio.daemon.noAnswer = true;
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record.ssh).toBe('ada@mac');
     w.studio.daemon.noAnswer = false;
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record).toMatchObject({ dial: 'worker' });
   });
 
@@ -157,7 +157,7 @@ describe('staging', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     crashAt('adopt.file');
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     disarmCrash();
     w.studio.daemon.kill();
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'pending', phase: 'installing' });
@@ -171,7 +171,7 @@ describe('staging', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     crashAt(point);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     disarmCrash();
     w.studio.daemon.kill();
     const later = 'hm_laterlater' as never;
@@ -190,7 +190,7 @@ describe('staging', () => {
       if (String(from).includes(`${path.sep}ready${path.sep}`) && --left === 0) throw Object.assign(new Error('EIO: the disk said no'), { code: 'EIO' });
       real(from, to);
     });
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment).finally(() => spy.mockRestore());
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment).finally(() => spy.mockRestore());
     expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: expect.stringContaining('EIO') });
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
     expect(stateOf(w.studio).robots.placed.machine).toBe(STUDIO);
@@ -210,7 +210,7 @@ describe('staging', () => {
       if (!failed && String(to) === w.studio.paths.state && String(from).includes(`${path.sep}ready${path.sep}`)) { failed = true; throw Object.assign(new Error('EIO: the disk said no'), { code: 'EIO' }); }
       real(from, to);
     });
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment).finally(() => spy.mockRestore());
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment).finally(() => spy.mockRestore());
     expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: expect.stringContaining('EIO') });
     expect(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).toBe(before);
     expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
@@ -222,12 +222,12 @@ describe('staging', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     w.studio.daemon.noAnswer = true;
-    const first = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const first = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(first).toMatchObject({ status: 'pending', phase: 'rolledback' });
     const token = (JSON.parse(fs.readFileSync(path.join(adoptDir(w.studio.paths, ID), 'enrol.json'), 'utf8')) as { worker: { token: string } }).worker.token;
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toEqual({ status: 'pending', phase: 'rolledback' });
     w.studio.daemon.noAnswer = false;
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a.status === 'adopted' && a.enrol.worker.token).toBe(token);
   });
 
@@ -246,18 +246,18 @@ describe('staging', () => {
 describe('a not adopted is final', () => {
   it('a status on an id never heard of records the abort first, and the adopt that comes late is refused', async () => {
     const w = await world();
-    expect(await adoptStatus(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+    expect(await adoptStatus(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
     expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('aborted');
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
     expect(w.studio.daemon.role).toBe('worker');
   });
 
   it('a crash right after the abort is recorded still refuses, the answer never having gone out', async () => {
     const w = await world();
     crashAt('abort.recorded');
-    await expect(adoptStatus(w.studio.deps, ID)).rejects.toThrow(HomeCrash);
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    await expect(adoptStatus(w.studio.deps, ID, ASKER)).rejects.toThrow(HomeCrash);
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
   });
 
   it('a crash at the record through an abort still refuses, and a status takes the keys away, as no second abort comes', async () => {
@@ -266,7 +266,7 @@ describe('a not adopted is final', () => {
     crashAt('abort.recorded');
     await expect(abortAdopt(w.studio.deps, ID)).rejects.toThrow(HomeCrash);
     expect(fs.existsSync(path.join(adoptDir(w.studio.paths, ID), 'in.tar'))).toBe(true);
-    expect(await adoptStatus(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
+    expect(await adoptStatus(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
     expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(false);
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
   });
@@ -277,14 +277,14 @@ describe('a not adopted is final', () => {
     expect(await adoptStatus(w.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'staged' });
     expect(await abortAdopt(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
     expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(false);
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
   });
 
   it('abort and status while another step holds the move answer pending, and an abort after the commit says adopted', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
-    const running = installAdopt(w.studio.deps, ID, w.enrolment);
+    const running = installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(await adoptStatus(w.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'running' });
     expect(await abortAdopt(w.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'running' });
     expect((await running).status).toBe('adopted');
@@ -298,7 +298,7 @@ describe('adopting', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     w.studio.daemon.held!.robots.placed.note = 'written by the worker at its last flush';
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a.status).toBe('adopted');
     expect(w.studio.daemon.role).toBe('home');
     expect(w.studio.daemon.held!.robots.here.machine).toBe(MAC);
@@ -311,7 +311,7 @@ describe('adopting', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     w.studio.daemon.held!.robots.born = robot('born', STUDIO, 0);
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     const { robots } = w.studio.daemon.held!;
     expect(robots.placed.unread).toBe(true);
     expect(robots.born.machine).toBeUndefined();
@@ -320,7 +320,7 @@ describe('adopting', () => {
   it('takes the old home\'s record into its registry, its token into workers.json, and its logins as what they were', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record).toMatchObject({ name: 'mac', dial: 'worker' });
     const workers = JSON.parse(fs.readFileSync(w.studio.paths.workersFile, 'utf8')) as Record<string, { token: string }>;
@@ -334,7 +334,7 @@ describe('adopting', () => {
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     const before = fs.readFileSync(w.studio.paths.fleetConfig, 'utf8');
     w.studio.daemon.noAnswer = true;
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'rolledback' });
     expect(w.studio.daemon.role).toBe('worker');
     expect(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).toBe(before);
     expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
@@ -342,7 +342,7 @@ describe('adopting', () => {
     expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)).toBeUndefined();
     // and a retry runs from what stayed staged, with the same token
     w.studio.daemon.noAnswer = false;
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a.status).toBe('adopted');
     expect(w.studio.daemon.held!.robots.placed.machine).toBeUndefined();
     expect(w.studio.daemon.held!.robots.here.machine).toBe(MAC);
@@ -352,7 +352,7 @@ describe('adopting', () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     fs.appendFileSync(w.studio.paths.outbox, `${JSON.stringify({ seq: 5, kind: 'mutation', data: { method: 'robot.update' } })}\n`);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a).toMatchObject({ status: 'pending', phase: 'rolledback' });
     expect(a.status === 'pending' && a.detail).toMatch(/robot\.update/);
     expect(w.studio.daemon.role).toBe('worker');
@@ -364,12 +364,12 @@ describe('adopting', () => {
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     await w.studio.daemon.stop();
     w.studio.daemon.startFails = 'the unit would not start';
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: 'the unit would not start' });
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
     expect(w.studio.daemon.role).toBeUndefined();
     delete w.studio.daemon.startFails;
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     expect(w.studio.daemon.role).toBe('home');
   });
 
@@ -382,7 +382,7 @@ describe('adopting', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(Date.now());
     const later = setInterval(() => vi.setSystemTime(Date.now() + 30_000), 20);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     clearInterval(later);
     vi.useRealTimers();
     w.studio.daemon.stop = held;
@@ -400,7 +400,7 @@ describe('adopting', () => {
     for (const never of ['token', '.env', 'node.json', 'cache/mirror-state.json', 'journal/outbox.ndjson', 'journal/acked', 'workers.json']) expect(names).not.toContain(never);
     for (const goes of ['fleet.json', 'state.json', 'push.json', 'mobile-pass', 'docs/fleet/note.md']) expect(names).toContain(goes);
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(fs.existsSync(w.studio.paths.env)).toBe(false);
   });
 
@@ -450,7 +450,7 @@ describe('adopting', () => {
     };
     const adopt = async (w: Awaited<ReturnType<typeof world>>) => {
       await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
-      expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     };
 
     it('a doc only the worker changed goes in over the archive\'s', async () => {
@@ -499,7 +499,7 @@ describe('adopting', () => {
       await w.mac.daemon.start();
       workerDoc(w, `repos/${repoSlug('/Users/ada/proj')}/mine.md`, 'written on the worker');
       await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
-      expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
       const repos = path.join(w.studio.paths.docs, 'repos');
       expect(fs.readFileSync(path.join(repos, repoSlug('/home/ada/proj'), 'n.md'), 'utf8')).toBe('/Users/ada/proj');
       expect(fs.readFileSync(path.join(repos, repoSlug('/home/ada/proj'), 'mine.md'), 'utf8')).toBe('written on the worker');
@@ -511,7 +511,7 @@ describe('adopting', () => {
   it('clears what it staged only once both sides have landed', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
-    await installAdopt(w.studio.deps, ID, w.enrolment);
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(true);
     expect((await confirmAdopt(w.studio.deps, ID)).status).toBe('done');
     expect(fs.existsSync(adoptDir(w.studio.paths, ID))).toBe(false);
@@ -528,7 +528,7 @@ describe('a crash at each boundary of the adopt', () => {
     const w = await world();
     await staged(w);
     const fired = crashAt(point, n);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     expect(fired()).toBe(true);
     w.studio.daemon.kill();
     return w;
@@ -545,7 +545,7 @@ describe('a crash at each boundary of the adopt', () => {
     const w = await crashed(point);
     await w.studio.daemon.start();
     expect(homes(w).filter((h) => h === 'mac')).toEqual([]);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(a.status).toBe('adopted');
     expect(w.studio.daemon.role).toBe('home');
     expect(w.studio.daemon.held!.robots.here.machine).toBe(MAC);
@@ -563,7 +563,7 @@ describe('a crash at each boundary of the adopt', () => {
     expect(JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).id).not.toBe(FLEET);
     expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
     expect(fs.readFileSync(w.studio.paths.epoch, 'utf8')).toBe('e1\n');
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
     expect(w.studio.daemon.role === 'home').toBe(false);
   });
 
@@ -590,7 +590,7 @@ describe('a crash at each boundary of the adopt', () => {
     await w.studio.daemon.start();
     w.studio.daemon.held!.robots.here.note = 'written after the start';
     w.studio.daemon.startFails = 'enableUnit failed';
-    expect((await installAdopt(w.studio.deps, ID, w.enrolment)).status).toBe('adopted');
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     expect(w.studio.daemon.held!.robots.here.note).toBe('written after the start');
   });
 
@@ -599,7 +599,7 @@ describe('a crash at each boundary of the adopt', () => {
     await staged(forAbort);
     forAbort.studio.daemon.noAnswer = true;
     crashAt('restore.restarting');
-    await expect(installAdopt(forAbort.studio.deps, ID, forAbort.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(forAbort.studio.deps, ID, ADOPT_KEY, forAbort.enrolment)).rejects.toThrow(HomeCrash);
     disarmCrash();
     forAbort.studio.daemon.kill();
     expect(journalLines(forAbort.studio.paths, ID).at(-1)?.phase).toBe('stopping');
@@ -610,7 +610,7 @@ describe('a crash at each boundary of the adopt', () => {
     await staged(forStatus);
     forStatus.studio.daemon.noAnswer = true;
     crashAt('restore.restarting');
-    await expect(installAdopt(forStatus.studio.deps, ID, forStatus.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(forStatus.studio.deps, ID, ADOPT_KEY, forStatus.enrolment)).rejects.toThrow(HomeCrash);
     disarmCrash();
     forStatus.studio.daemon.kill();
     expect(await adoptStatus(forStatus.studio.deps, ID)).toMatchObject({ status: 'pending', phase: 'rolledback' });
@@ -639,7 +639,7 @@ describe('a crash at each boundary of the adopt', () => {
     const w = await world();
     await staged(w);
     crashAt('adopt.started');
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     crashAt('adopt.committed');
     await expect(adoptStatus(w.studio.deps, ID)).rejects.toThrow(HomeCrash);
@@ -651,7 +651,7 @@ describe('a crash at each boundary of the adopt', () => {
   it('a retry with no start over a half install restores first, so what it keeps aside stays the worker\'s', async () => {
     const w = await crashed('adopt.file', 5);
     crashAt('adopt.file', 2);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     expect(await abortAdopt(w.studio.deps, ID)).toEqual({ status: 'not-adopted' });
     expect(JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).id).not.toBe(FLEET);
@@ -669,7 +669,7 @@ describe('a crash at each boundary of the adopt', () => {
       const before = sha(w.studio.paths.state);
       w.studio.daemon.noAnswer = true;
       const fell = crashAt(point, n);
-      await installAdopt(w.studio.deps, ID, w.enrolment).catch((e: unknown) => { if (!(e instanceof HomeCrash)) throw e; });
+      await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment).catch((e: unknown) => { if (!(e instanceof HomeCrash)) throw e; });
       disarmCrash();
       w.studio.daemon.kill();
       w.studio.daemon.noAnswer = false;
@@ -749,7 +749,7 @@ describe('a crash at each boundary of the adopt', () => {
       const w = await world();
       await staged(w);
       const fell = crashAt('adopt.file', n);
-      const a = await installAdopt(w.studio.deps, ID, w.enrolment).catch((e: unknown) => { if (!(e instanceof HomeCrash)) throw e; return undefined; });
+      const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment).catch((e: unknown) => { if (!(e instanceof HomeCrash)) throw e; return undefined; });
       disarmCrash();
       if (!fell()) { expect(a?.status).toBe('adopted'); return false; }
       w.studio.daemon.kill();
@@ -767,7 +767,7 @@ describe('the join', () => {
   const adopted = async () => {
     const w = await world();
     await staged(w);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     return { w, marked: { ...marker(), enrol: a.enrol } as HomeMoving };
   };
@@ -870,7 +870,7 @@ describe('the join', () => {
     const dotfiles = makeHome();
     fs.writeFileSync(path.join(dotfiles, 'id_rsa'), 'PRIVATE KEY BYTES');
     fs.symlinkSync(dotfiles, path.join(w.mac.paths.docs, 'linked'));
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
     putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
@@ -891,7 +891,7 @@ describe('the join', () => {
     fs.writeFileSync(path.join(w.mac.paths.docs, 'fleet', 'late.md'), 'written while frozen');
     fs.writeFileSync(path.join(w.mac.paths.docs, 'repos', 'x', 'note.md'), 'changed while frozen');
     fs.rmSync(path.join(w.mac.paths.docs, 'fleet', 'note.md'));
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
     putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
@@ -933,7 +933,7 @@ describe('the join', () => {
     fs.rmSync(path.join(w.mac.paths.docs, 'repos', was, 'gone.md'));
     doc(`repos/${was}/new.md`, 'new since the cut');
     await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
-    const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+    const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     if (a.status !== 'adopted') throw new Error(a.status);
     await w.mac.daemon.stop();
     putMarker(w.mac.paths, { ...marker(), enrol: a.enrol });
@@ -985,7 +985,7 @@ describe('two homes are impossible', () => {
       paths: w.mac.paths, store: { state: w.mac.daemon.held!, flush: () => Promise.resolve(true) }, me: MAC, log: silentLogger,
       links: { barrier: () => Promise.resolve(true), hold: () => {} }, background: { pause: () => {}, resume: () => {} },
       phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) },
-      ask: () => adoptStatus(w.studio.deps, ID), restart: () => { restarted = true; },
+      ask: () => adoptStatus(w.studio.deps, ID, ASKER), restart: () => { restarted = true; },
     }, readMarker(w.mac.paths));
     return { freeze, restarted: () => restarted };
   };
@@ -996,7 +996,7 @@ describe('two homes are impossible', () => {
     const w = await world();
     await staged(w);
     crashAt(point);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     const { freeze, restarted } = asking(w);
     expect(writers(w, freeze)).toBe(0);
@@ -1008,7 +1008,7 @@ describe('two homes are impossible', () => {
     freeze.stop();
     // what a crash leaves is called off, or goes through, by the retry its driver offers
     if (!restarted()) {
-      const a = await installAdopt(w.studio.deps, ID, w.enrolment);
+      const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
       expect(a.status).toBe('adopted');
       await freeze.settle('status');
       expect(restarted()).toBe(true);
@@ -1024,7 +1024,7 @@ describe('two homes are impossible', () => {
     const w = await world();
     await staged(w);
     crashAt(point);
-    await expect(installAdopt(w.studio.deps, ID, w.enrolment)).rejects.toThrow(HomeCrash);
+    await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
     w.studio.daemon.kill();
     const { freeze } = asking(w);
     w.studio.daemon.noAnswer = true;
@@ -1034,7 +1034,7 @@ describe('two homes are impossible', () => {
     expect(freeze.active).toBe(false);
     expect(readMarker(w.mac.paths)).toBeUndefined();
     expect(w.studio.daemon.role).not.toBe('home');
-    expect(await installAdopt(w.studio.deps, ID, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
     expect(writers(w, freeze)).toBe(1);
   });
 });

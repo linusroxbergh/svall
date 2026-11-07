@@ -173,8 +173,10 @@ A move that stops leaves mission control's robots that went ahead where they wen
 (`svall fleet home crew-back`), and says which cannot return and why. A robot you placed on mission control yourself is no such
 robot, and stays where it runs.
 
-Going out, the Mac asks the server how the move ended. Coming back, the server has no route to the Mac, so a server left frozen
-waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends the wait.
+Going out, the Mac asks the server how the move ended, and believes only the machine and the fleet it marked for: a folder
+renamed there, or an ssh name that now leads elsewhere, reads as no answer. Coming back, the server has no route to the Mac, so a
+server left frozen waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends
+the wait. A Mac whose server was wiped or reinstalled waits the same way, as what answers there is no longer the machine it marked for: see Limitations.
 
 Quit during a move ends the window. A Mac frozen for a move out keeps its daemon up, as the move has to end; a Mac the fleet is
 coming back to stops as a worker does, and the old home waits until Svall opens again. A quit while the window drives a move it
@@ -188,6 +190,7 @@ written after the copy goes to the new home, and one the new home changed too is
 
 - A move refuses with a second worker of either kind, and Linux workers of a server home come later.
 - A marked server whose Mac never comes back stays frozen.
+- A marked Mac whose server was wiped or reinstalled stays frozen. If that server is gone for good, stop the Mac's daemon and remove `home-moving.json` from its fleet home by hand, and it starts as the home. Do this only then: while the server holds the fleet, it makes two homes.
 - Svall Dev carries no companion, so **Upgrade** there needs one named by hand: `svall-dev host upgrade studio --release <archive> --allow-unsigned`.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.

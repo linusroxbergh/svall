@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { z } from 'zod';
-import { AdoptAnswer, HomeFacts, type HomeDelivery, type HomeMoving, type WorkerFile } from '@svall/protocol';
+import { AdoptAnswer, HomeFacts, type HomeDelivery, type HomeMoving, type MachineId, type WorkerFile } from '@svall/protocol';
 import { homePoint } from '../failpoints.js';
 import type { Logger } from '../log.js';
 import { SshMaster } from '../link/ssh.js';
@@ -8,7 +8,7 @@ import { fleetHomeOfSocket, type Paths } from '../paths.js';
 import { svallExe } from '../release.js';
 import { shq } from '../text.js';
 import type { Mobile } from '../mobile.js';
-import { driverKey, forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readMarker, readOwed, servedPhone } from './home-move.js';
+import { driverKey, enrolFits, forgetPhoneReason, moveOutcome, phoneOwed, phoneReason, readMarker, readOwed, servedPhone } from './home-move.js';
 
 const ASK_MS = 30_000;
 
@@ -21,12 +21,25 @@ async function farJson<T>(master: Pick<SshMaster, 'run'>, svallBase: string, fle
   try { return schema.parse(JSON.parse(r.stdout)); } catch { throw new Error(`${what} did not answer what it should`); }
 }
 
-/** What the machine that holds the fleet says of the move this marker names, over a connection of this call's own. */
-export async function askAcross(marker: HomeMoving, op: 'status' | 'abort'): Promise<AdoptAnswer> {
+// the far fleet in its own words on this connection: any machine or fleet but the one meant reads as no answer
+async function factsOf(master: Pick<SshMaster, 'run'>, at: { ssh: string; svallBase: string; fleetHome: string }, want: { machine: MachineId; fleetId: string }): Promise<HomeFacts> {
+  const there = await farJson(master, at.svallBase, at.fleetHome, ['fleet', 'facts'], HomeFacts, 'svall fleet facts');
+  if (there.machineId !== want.machine || there.fleetId !== want.fleetId) throw new Error(`${at.ssh} answers as another machine or fleet than this move's`);
+  return there;
+}
+
+type Open = (destination: string) => Promise<Pick<SshMaster, 'run' | 'close'>>;
+const openMaster: Open = (destination) => SshMaster.open({ destination });
+
+/** What the machine that holds the fleet says of the move this marker names, over a connection of this call's own, once it has answered as the machine marked for. */
+export async function askAcross(marker: HomeMoving, op: 'status' | 'abort', open: Open = openMaster): Promise<AdoptAnswer> {
   if (!marker.ask) throw new Error('this home has no route to where the fleet went');
-  const master = await SshMaster.open({ destination: marker.ask.ssh });
+  const master = await open(marker.ask.ssh);
   try {
-    return await farJson(master, marker.ask.svallBase, marker.ask.fleetHome, ['fleet', op, marker.id], AdoptAnswer, `svall fleet ${op}`);
+    await factsOf(master, marker.ask, { machine: marker.to, fleetId: marker.fleetId });
+    const said = await farJson(master, marker.ask.svallBase, marker.ask.fleetHome, ['fleet', op, marker.id, '--asker', marker.from, '--fleet', marker.fleetId], AdoptAnswer, `svall fleet ${op}`);
+    if (said.status === 'adopted' && !enrolFits(marker, said.enrol)) throw new Error(`${marker.ask.ssh} says another machine or fleet took this move`);
+    return said;
   } finally { await master.close().catch(() => undefined); }
 }
 
@@ -39,7 +52,7 @@ export async function factsAcross(dial: { master(): SshMaster | undefined } | un
 
 /** Whether the old home still holds its mark of this move: only a marked home stays frozen, so only then may this machine go on and take the fleet. */
 export async function markedThere(master: Pick<SshMaster, 'run'>, owed: HomeDelivery): Promise<boolean> {
-  return (await farJson(master, owed.svallBase, owed.fleetHome, ['fleet', 'facts'], HomeFacts, 'svall fleet facts')).moving === owed.id;
+  return (await factsOf(master, owed, { machine: owed.from, fleetId: owed.fleetId })).moving === owed.id;
 }
 
 const Settled = z.object({ status: z.string() });
@@ -48,7 +61,7 @@ const LAST_MS = 5 * 60_000;
 const SETTLE_MS = 120_000;
 
 /** Tells the old home how its move ended, once this machine's journal says: it has no route here, so it waits frozen for this. */
-export async function deliverOwed(paths: Paths, open: (destination: string) => Promise<Pick<SshMaster, 'run' | 'close'>> = (destination) => SshMaster.open({ destination })): Promise<'nothing' | 'waiting' | 'told'> {
+export async function deliverOwed(paths: Paths, open: Open = openMaster): Promise<'nothing' | 'waiting' | 'told'> {
   const owed = readOwed(paths);
   if (!owed) return 'nothing';
   const said = moveOutcome(paths, owed.id);
@@ -58,6 +71,7 @@ export async function deliverOwed(paths: Paths, open: (destination: string) => P
   if (said.status !== 'done' && key) {
     const master = await open(owed.ssh);
     try {
+      await factsOf(master, owed, { machine: owed.from, fleetId: owed.fleetId });
       // the key on stdin, as an argv is seen by every account there
       const input = JSON.stringify({ key, ...(said.status === 'adopted' && { enrol: said.enrol }) });
       const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, input });
