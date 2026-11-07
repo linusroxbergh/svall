@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
-import { freshStore, store } from './harness.js';
+import { bridge, freshStore, store } from './harness.js';
 import { isVeiled } from '../../src/selectors.js';
 
 const here = vi.hoisted(() => vi.fn());
@@ -14,6 +14,7 @@ vi.mock('../../src/boot.js', async () => {
 vi.mock('../../src/resources/load.js', () => ({ reloadResources: () => Promise.resolve() }));
 
 const { SeedSheet } = await import('../../src/SeedSheet.js');
+const { installKeyHandlers } = await import('../../src/keyboard.js');
 
 const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
 const HOME = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
@@ -83,6 +84,39 @@ describe('the first copy of an agent setup onto a far home', () => {
     render(<SeedSheet />);
     await new Promise((r) => { setTimeout(r, 0); });
     expect(here).not.toHaveBeenCalled();
+  });
+
+  it.each([['in the sheet', true], ['that has left it', false]])('answers Esc as Not now, with the focus %s: what lies behind stays, nothing is copied, and it is not asked again', async (_where, inside) => {
+    const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
+    try {
+      following();
+      store.getState().toggleSettings(true);
+      render(<SeedSheet />);
+      await screen.findByTestId('setup-tick-claude:mcp:a');
+      expect(screen.getByTestId('seed-sheet').contains(document.activeElement)).toBe(true);
+      if (!inside) (document.activeElement as HTMLElement).blur();
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      expect(store.getState().seedAsk).toBeUndefined();
+      expect(store.getState().settingsOpen).toBe(true);
+      expect(copies()).toEqual([]);
+      expect(localStorage.getItem('svall.seedAsked@/u/.svall-a')).toBe('1');
+    } finally { off(); }
+  });
+
+  it('holds through Esc while its Copy runs', async () => {
+    const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
+    try {
+      following();
+      let landed: (v: { sent: number }) => void = () => {};
+      there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : new Promise((r) => { landed = r; })));
+      render(<SeedSheet />);
+      await screen.findByTestId('setup-tick-claude:mcp:a');
+      fireEvent.click(screen.getByTestId('seed-copy'));
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      expect(screen.getByTestId('seed-sheet')).toBeTruthy();
+      landed({ sent: 1 });
+      await waitFor(() => expect(screen.queryByTestId('seed-sheet')).toBeNull());
+    } finally { off(); }
   });
 
   it('stays, saying why, when the home refuses or the copy fails', async () => {

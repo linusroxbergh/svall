@@ -18,7 +18,7 @@ import { fileSha } from './bundle.js';
 import { applyMirror, dropBlobs, type Manifest } from './mirror-apply.js';
 import { readPlugins, readServers, secretsOf } from './mirror-config.js';
 import { CONFIG_ITEMS, itemKey, readConsent, replaceConsent, setConsent } from './mirror-consent.js';
-import { holdsSetup, mirrorPlan, packMirror, tickedWhole } from './mirror-plan.js';
+import { holdsSetup, mirrorPlan, packMirror, readyToPush, tickedWhole } from './mirror-plan.js';
 import { ConfigReport, configReport, forRobot, ReportAsk, reportAsk, setupRows } from './mirror-report.js';
 import { configState, OPENCODE_FILES, readState, StateAsk, WorkerFacts, type MirrorHomes } from './mirror-state.js';
 import { unpack } from './move-steps.js';
@@ -30,8 +30,8 @@ const Offer = z.object({ id: z.string(), sha256: Sha256 });
 const EnvSet = z.object({ name: z.string().regex(VAR_NAME), value: z.string().min(1).max(4096) });
 const Apply = z.object({ id: z.string(), seq: z.number().int().positive() });
 
-/** What a push needs of the link to the machine it writes: a home's to a worker, or a worker's to its home. */
-export type MirrorLink = { machine: MachineId; call: WorkerLink['call']; sendBlob(id: string, file: string): Promise<void> };
+/** What a push needs of the link to the machine it writes: a home's to a worker, or, `copy`, a worker's to its home as a person asks. */
+export type MirrorLink = { machine: MachineId; call: WorkerLink['call']; sendBlob(id: string, file: string): Promise<void>; copy?: true };
 export type Pushed = { sent: number; backup?: string; replaced?: string[]; left?: string[] };
 
 /** Where a push onto this machine keeps what it replaces of a person's own: a Mac, or a machine that dials its home, holds one. It is asked of the machine itself, as the record a home keeps of it says what was typed at its enrolment. */
@@ -142,7 +142,7 @@ export class Mirror {
     const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
     // a source with no setup yet has nothing of its own to give, and what `svall setup` left here must not go over what a target holds ahead of a seed
-    if (facts.keeps && facts.state.applied === undefined && !holdsSetup(plan)) return { sent: 0 };
+    if (facts.keeps && facts.state.applied === undefined && !(link.copy ? holdsSetup(plan) : readyToPush(plan))) return { sent: 0 };
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on ${homeWord()}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-mirror-'));
     try {

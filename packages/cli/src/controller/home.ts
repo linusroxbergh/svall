@@ -82,10 +82,11 @@ export async function seedHome(o: { here: SeedClient; far: SeedClient; me: Machi
   if (!o.ask) return { value: undefined, status: 'warn', detail: `${o.name} has no agent setup yet; Svall's window offers to copy this machine's there` };
   if (!await o.ask.go(o.name)) return { value: undefined, detail: `${o.name} stays without an agent setup; Settings → Agent setup copies this machine's whenever you want` };
   const { rows } = await o.here.call('home.setup', {});
+  // a tick stored earlier is asked too, and a no takes it back, as what the Copy sends is what stands ticked as it reads
   for (const r of rows) {
     const t = r.tick!;
-    if (t.on || !await o.ask.key(r.action ?? r.detail ?? r.key, t.preview)) continue;
-    await o.here.call('home.setupConsent', { item: t.item, fields: t.fields, on: true });
+    const yes = await o.ask.key(r.action ?? r.detail ?? r.key, t.preview);
+    if (yes !== t.on || (!yes && t.ticked?.length)) await o.here.call('home.setupConsent', { item: t.item, fields: t.fields, on: yes });
   }
   const { sent, backup } = await o.far.call('machines.copySetupFrom', { machine: o.me, seed: true });
   return { value: undefined, detail: `${sent} files of this machine's agent setup copied to ${o.name}${backup ? `; what it replaced there is in ${backup}` : ''}` };

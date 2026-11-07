@@ -6,6 +6,12 @@ import type { App } from './index.js';
 
 export type HostConfirm = { name: string; forget: boolean };
 
+const seedAsked = (home: string): string => `svall.seedAsked@${home}`;
+/** Whether this fleet's window has had its answer to the first copy of an agent setup. */
+export const seedAnswered = (home: string): boolean => {
+  try { return localStorage.getItem(seedAsked(home)) !== null; } catch { return false; }
+};
+
 // the machines panel: what the shell's helpers report
 export type HostState = {
   // the host operation the machines panel is watching, and the panel itself
@@ -43,11 +49,13 @@ export type HostActions = {
   confirmHost(ask?: HostConfirm): void;
   setHomeSheet(ask?: HomeSheetAsk): void;
   setSeedAsk(on: boolean): void;
+  // the sheet goes, not to be asked again in this fleet
+  answerSeed(): void;
   setHomeMove(moving?: Result<'fleet.homeMove'>['moving']): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
 
-export const createHostSlice: StateCreator<App, [], [], HostState & HostActions> = (set) => ({
+export const createHostSlice: StateCreator<App, [], [], HostState & HostActions> = (set, get) => ({
   host: undefined,
   hostOpen: false,
   hostMachine: undefined,
@@ -69,6 +77,11 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   setHomeSheet: (homeSheet) => set({ homeSheet }),
   setSeedAsk: (on) => set({ seedAsk: on ? true : undefined }),
+  answerSeed: () => {
+    const home = get().shell?.home;
+    try { if (home) localStorage.setItem(seedAsked(home), '1'); } catch { /* it asks once more */ }
+    set({ seedAsk: undefined });
+  },
   setHomeMove: (homeMove) => set({ homeMove }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),

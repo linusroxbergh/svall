@@ -1,19 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Result, SetupRow } from '@svall/protocol';
 import { SetupTicks } from './AgentSetup.js';
 import { app, deps } from './boot.js';
-import { useApp } from './hooks.js';
+import { dialogKeys, useApp } from './hooks.js';
 import { homeName } from './placement.js';
 import { reloadResources } from './resources/load.js';
 import { CloseX } from './CloseX.js';
-
-const asked = (home: string): string => `svall.seedAsked@${home}`;
-const answered = (home: string): boolean => {
-  try { return localStorage.getItem(asked(home)) !== null; } catch { return false; }
-};
-const answer = (home: string): void => {
-  try { localStorage.setItem(asked(home), '1'); } catch { /* it asks once more */ }
-};
+import { seedAnswered } from './store/host.js';
 
 /** A window that reaches a far home with no agent setup yet, on a Mac that holds one: this Mac's goes there first, with what each key asks, or not at all. */
 export function SeedSheet() {
@@ -26,10 +19,12 @@ export function SeedSheet() {
   const [pending, setPending] = useState(0);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState<string>();
+  const shut = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const show = (r: Result<'home.setup'>) => { setRows(r.rows); setFailed(undefined); };
   const fail = (e: Error) => setFailed(e.message);
   useEffect(() => {
-    if (!follows || !fleetHome || answered(fleetHome)) return;
+    if (!follows || !fleetHome || seedAnswered(fleetHome)) return;
     let left = false;
     const here = app.api().local ?? app.api();
     void Promise.all([here.call('machines.holdsSetup', {}), app.api().call('machines.holdsSetup', {})]).then(([mine, there]) => {
@@ -39,11 +34,10 @@ export function SeedSheet() {
     }, () => {});
     return () => { left = true; };
   }, [follows, fleetHome]);
+  // the focus stays in the sheet, whose Esc answers as Not now
+  useEffect(() => { if (open && !panel.current?.contains(document.activeElement)) (shut.current ?? panel.current)?.focus(); });
   if (!open) return null;
-  const close = () => {
-    if (fleetHome) answer(fleetHome);
-    app.store.getState().setSeedAsk(false);
-  };
+  const close = () => { app.store.getState().answerSeed(); };
   const tick = (r: SetupRow, fields: string[], on: boolean) => {
     setPending((n) => n + 1);
     (app.api().local ?? app.api()).call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail).finally(() => setPending((n) => n - 1));
@@ -58,8 +52,8 @@ export function SeedSheet() {
   };
   return (
     <div className="modal-back" data-testid="seed-sheet">
-      <div className="modal dialog" role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()}>
-        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span><CloseX onClose={close} testid="seed-close" /></div>
+      <div className="modal dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(() => { if (!busy) close(); })}>
+        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span><CloseX ref={shut} onClose={close} testid="seed-close" /></div>
         <div className="desc" data-testid="seed-says">
           Your agent setup lives on the fleet's home, and every worker takes it from there, this Mac included. Copy this Mac's to {home} first, or start {home} from nothing. Keys in config files stay on this Mac unless you tick them.
         </div>

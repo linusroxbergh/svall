@@ -201,7 +201,7 @@ describe('svall fleet join', () => {
     ] };
     type Asked = [string, unknown];
     const client = (asked: Asked[], answers: Record<string, unknown>) => ({ call: (m: string, p: unknown) => { asked.push([m, p]); return Object.hasOwn(answers, m) ? Promise.resolve(answers[m]) : Promise.reject(new Error(`${m} not answered`)); } }) as unknown as Pick<Client, 'call'>;
-    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said === 'copy the key') };
+    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said !== 'copy this key too') };
     const run = (o: { far: boolean; here: boolean; ask?: SeedAsk; copied?: unknown }) => {
       const [farCalls, hereCalls]: [Asked[], Asked[]] = [[], []];
       const out = seedHome({
@@ -238,6 +238,28 @@ describe('svall fleet join', () => {
       expect((await out).detail).toContain('4 files');
       expect(hereCalls.filter(([m]) => m === 'home.setupConsent')).toEqual([['home.setupConsent', { item: 'claude:mcp:a', fields: ['env.A'], on: true }]]);
       expect(copied(farCalls)).toEqual([['machines.copySetupFrom', { machine: 'm', seed: true }]]);
+    });
+
+    it('asks each row a tick stands on too, and a no takes that tick back before the Copy, a part of a row\'s included', async () => {
+      const rows = { rows: [
+        { key: 'claude:mcp:whole', status: 'ok', detail: 'whole', tick: { item: 'claude:mcp:whole', fields: ['env.W'], on: true, preview: ['env.W ****'], ticked: ['env.W'] } },
+        { key: 'claude:mcp:part', status: 'warn', detail: 'part', tick: { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false, preview: ['env.A ****', 'env.B ****'], ticked: ['env.A'] } },
+        { key: 'claude:mcp:kept', status: 'ok', detail: 'kept', tick: { item: 'claude:mcp:kept', fields: ['env.K'], on: true, preview: ['env.K ****'], ticked: ['env.K'] } },
+        { key: 'claude:mcp:none', status: 'warn', detail: 'none', tick: { item: 'claude:mcp:none', fields: ['env.N'], on: false, preview: ['env.N ****'], ticked: [] } },
+      ] };
+      const order: Asked[] = [];
+      const asked: string[] = [];
+      await seedHome({
+        here: client(order, { 'machines.holdsSetup': { holds: true }, 'home.setup': rows, 'home.setupConsent': rows }),
+        far: client(order, { 'machines.holdsSetup': { holds: false }, 'machines.copySetupFrom': { sent: 1 } }),
+        me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said) => { asked.push(said); return Promise.resolve(said === 'kept'); } },
+      });
+      expect(asked).toEqual(['whole', 'part', 'kept', 'none']);
+      expect(order.filter(([m]) => m === 'home.setupConsent' || m === 'machines.copySetupFrom')).toEqual([
+        ['home.setupConsent', { item: 'claude:mcp:whole', fields: ['env.W'], on: false }],
+        ['home.setupConsent', { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false }],
+        ['machines.copySetupFrom', { machine: 'm', seed: true }],
+      ]);
     });
 
     it('copies nothing on a person\'s no', async () => {

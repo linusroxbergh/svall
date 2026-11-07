@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving } from '@svall/protocol';
+import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
+import { readConsent, setConsent } from '../../src/placement/mirror-consent.js';
 import { cleanHomes } from '../helpers.js';
 import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
@@ -18,8 +19,9 @@ const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local
  * The fleet moved out to studio and back from it as far as studio's mark: studio's daemon frozen under a marker with no way to ask, the
  * outcome owed by the Mac, and the archive staged there.
  */
-async function markedBack() {
+async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => void) {
   const w = await movedOut();
+  before?.(w);
 
   // as studio holds it at its freeze, with what it took of its worker's robots
   await w.studio.daemon.stop();
@@ -441,6 +443,60 @@ describe('the phone link a move owes', () => {
     stop();
     vi.useRealTimers();
     expect(phoneOwed(w.studio.paths)).toEqual([ID]);
+  });
+});
+
+describe('whose ticks stand on the machine the fleet comes to', () => {
+  const ITEM = 'claude:mcp:linear';
+  const OTHER = '99999999-7777-8888-9999-aaaaaaaaaaaa' as MachineId;
+  const ticks = (file: string, machine: MachineId) => [...readConsent(file, machine)];
+
+  it('going out: the home\'s for the machine that takes the fleet go, that machine\'s for it stand, and another worker\'s are carried', async () => {
+    const w = await world();
+    setConsent(w.mac.paths.mirrorConsent, STUDIO, ITEM, ['env.K'], true);
+    setConsent(w.mac.paths.mirrorConsent, OTHER, ITEM, ['env.O'], true);
+    setConsent(w.studio.paths.mirrorConsent, MAC, ITEM, ['env.MINE'], true);
+    await w.mac.daemon.stop();
+    const packed = await packFleet(w.mac.paths, w.manifest);
+    await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
+    putMarker(w.mac.paths, marker());
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'adopted' });
+    expect(ticks(w.studio.paths.mirrorConsent, STUDIO)).toEqual([]);
+    expect(ticks(w.studio.paths.mirrorConsent, MAC)).toEqual([`${ITEM}#env.MINE`]);
+    expect(ticks(w.studio.paths.mirrorConsent, OTHER)).toEqual([`${ITEM}#env.O`]);
+  });
+
+  it('coming back: an untick this machine made as a worker stands, and no tick of the old home\'s comes back with the fleet', async () => {
+    const w = await markedBack((m) => {
+      // the Mac's file as the way out left it, which its window's untick then changes; what studio holds as it left, a tick of the Mac's among it
+      setConsent(m.mac.paths.mirrorConsent, STUDIO, ITEM, ['env.K', 'env.L'], true);
+      setConsent(m.mac.paths.mirrorConsent, STUDIO, ITEM, ['env.K'], false, true);
+      setConsent(m.studio.paths.mirrorConsent, STUDIO, ITEM, ['env.K'], true);
+      setConsent(m.studio.paths.mirrorConsent, MAC, ITEM, ['env.S'], true);
+    });
+    expect(await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'adopted' });
+    expect(ticks(w.mac.paths.mirrorConsent, MAC)).toEqual([]);
+    expect(ticks(w.mac.paths.mirrorConsent, STUDIO)).toEqual([`${ITEM}#env.L`]);
+  });
+
+  it('a tick left under the old home\'s own id goes, where the machine taking the fleet held none for it', async () => {
+    const w = await world();
+    setConsent(w.mac.paths.mirrorConsent, MAC, ITEM, ['env.STALE'], true);
+    await w.mac.daemon.stop();
+    const packed = await packFleet(w.mac.paths, w.manifest);
+    await stageAdopt(w.studio.deps, ID, packed.sha256, packed.bytes);
+    putMarker(w.mac.paths, marker());
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
+    expect(ticks(w.studio.paths.mirrorConsent, MAC)).toEqual([]);
+  });
+
+  it('a fleet with no ticks stays with no file of them', async () => {
+    const w = await world();
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    await w.mac.daemon.stop();
+    putMarker(w.mac.paths, marker());
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
+    expect(fs.existsSync(w.studio.paths.mirrorConsent)).toBe(false);
   });
 });
 

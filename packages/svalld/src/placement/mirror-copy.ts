@@ -100,7 +100,7 @@ export type WorkerSetup = {
 
 /** A worker's own agent setup, as its window sees it: the ticks it holds for its home, and the push of it the home asks for. */
 export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection, 'call' | 'sendBlob'>; home: MachineId; homeName: () => string; stateFile: string; pushFailed?: () => string | undefined }): WorkerSetup {
-  const link: MirrorLink = { machine: o.home, call: (method, params, c) => o.connection.call(method, params, c), sendBlob: (id, file) => o.connection.sendBlob(id, file) };
+  const link: MirrorLink = { machine: o.home, copy: true, call: (method, params, c) => o.connection.call(method, params, c), sendBlob: (id, file) => o.connection.sendBlob(id, file) };
   return {
     // what the rows ask is what leaves this machine, which the home has no say in
     get: async () => {

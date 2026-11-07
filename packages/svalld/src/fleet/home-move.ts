@@ -19,6 +19,7 @@ import { silentLogger } from '../log.js';
 import { putRecord, readRegistry } from '../machine.js';
 import { filesIn, HomeDocs } from '../placement/docs-sync.js';
 import { packTar, ustarFits } from '../placement/bundle.js';
+import { carriedConsent } from '../placement/mirror-consent.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
 import { tokenFor } from '../placement/workers.js';
@@ -311,6 +312,7 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
   renameRepoDocs(path.join(ready, 'docs'), repoRenames(relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome));
   writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m), { mode: 0o600 });
   writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
+  carriedConsent(path.join(ready, 'mirror-consent.json'), p.mirrorConsent, d.me, m.from);
   return ready;
 }
 

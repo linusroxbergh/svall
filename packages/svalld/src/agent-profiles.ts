@@ -45,6 +45,11 @@ export function listAgentProfiles(dir: string): AgentProfileRead[] {
     .sort((a, b) => a.localeCompare(b)).map((n) => readAgentProfile(dir, n));
 }
 
+/** Whether `file` holds the bytes of the profile a fleet starts with at `rel`. */
+export function isStarterProfile(rel: string, file: string, from = BUNDLED): boolean {
+  try { return fs.readFileSync(path.join(from, rel)).equals(fs.readFileSync(file)); } catch { return false; }
+}
+
 /** A fleet's first profiles, copied in only while its folder is not there, so one the user deletes stays deleted. */
 export function seedAgentProfiles(dir: string, from = BUNDLED): boolean {
   if (fs.existsSync(dir)) return false;

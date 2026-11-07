@@ -496,7 +496,7 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   const { m, state, next, move, additive, keeps, lost } = applying;
   // where a tick goes over what the target held itself, and the places that tell whether it did
   const overs: { record: string; place: Place }[] = [];
-  // a whole server copied and edited since, which stays
+  // what stays with a key in it: a whole server copied and edited since, or on a Copy an entry holding one no Copy wrote
   const left: string[] = [];
   const doc: Doc = current ?? structuredClone(d.empty ?? {});
   const before = JSON.stringify(doc);
@@ -597,7 +597,10 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
     carried.push({ place: s.place, at, bare, codex: s.agent === 'codex' });
     // the very one ticked whole, or an entry of the target's own the sender's unticked: it stays whole, the mirror's no longer
     if (keeps && !lost && isDoc(holds) && state.servers[rk] === undefined && whole && serverSha(holds) === whole) continue;
-    if (!s.ticked.length && (own.length || theirs)) continue;
+    if (!s.ticked.length && (own.length || theirs)) {
+      if (additive && own.length) left.push(entryName(rk));
+      continue;
+    }
     if (own.length || theirs) overs.push({ record: rk, place: at });
     servers[rk] = sha(bare);
     if (whole) {
@@ -634,7 +637,12 @@ function applyDoc(d: DocSpec, current: Doc | undefined, override: Doc | undefine
   }
   Object.assign(next.servers, servers);
 
-  for (const l of leaves) settle(doc, was, l, state.secrets[l.record], applying);
+  for (const l of leaves) {
+    settle(doc, was, l, state.secrets[l.record], applying);
+    const pre = getAt(was, l.place);
+    const stays = typeof pre === 'string' && pre !== '' && pre !== l.bare && getAt(doc, l.place) === pre && !isReferenceOnly(pre) && !mirrors(state, l.entry, pre);
+    if (additive && l.want === undefined && stays && !left.includes(entryName(l.entry))) left.push(entryName(l.entry));
+  }
   // a value copied where the Mac now holds no secret is emptied as that place stands bare, while it is still the copy; a Copy
   // keeps the record of one its sender no longer lists
   const lists = (k: string): boolean => leaves.some((l) => l.record === k) || m.servers.some((x) => x.doc === d.name && under(k, recordKey(d.name, x.place)));

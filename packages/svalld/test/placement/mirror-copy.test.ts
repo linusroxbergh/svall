@@ -1305,7 +1305,7 @@ function copyOf() {
   const w = world({ mirror: { home, worker: { ...mac, backups: path.join(mac.homedir, '.svall/mirror-backup') } } });
   return {
     home, mac, w,
-    ask: () => call<{ sent: number; backup?: string }>(w.home.ctx, 'machines.copySetupFrom', { machine: W }),
+    ask: () => call<{ sent: number; backup?: string; left?: string[] }>(w.home.ctx, 'machines.copySetupFrom', { machine: W }),
     // the home is synced a moment before the worker has read its first ack, until when the worker's calls answer not_reachable
     linked: async () => {
       await w.link();
@@ -1426,6 +1426,45 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     // and it stays through the next, whose record kept them
     await ask();
     expect(read(path.join(home.claudeDir, 'rules/only-a.md'))).toBe('from A, edited on the home since\n');
+  });
+
+  describe('a key the home holds that no Copy wrote, as one a push left there before the fleet moved', () => {
+    const ITEM = 'claude:mcp:linear';
+    const FIELD = 'env.LINEAR_API_KEY';
+    const held = (home: { claudeJson: string }) => json(home.claudeJson).mcpServers.linear.env;
+
+    it('stays through an untick, and the Copy names it', async () => {
+      const { home, w, ask, linked } = copyOf();
+      put(home.claudeJson, JSON.stringify({ mcpServers: { linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: KEY } } } }));
+      await linked();
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: true });
+      expect((await ask()).left).toBeUndefined();
+      expect(held(home)).toEqual({ LINEAR_API_KEY: KEY });
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: false });
+      expect((await ask()).left).toEqual(['linear']);
+      expect(held(home)).toEqual({ LINEAR_API_KEY: KEY });
+    });
+
+    it('in its settings or a config table is named too', async () => {
+      const { home, ask, linked } = copyOf();
+      editJson(path.join(home.claudeDir, 'settings.json'), (j) => { j.env.ANTHROPIC_API_KEY = 'sk-held-1234567890'; });
+      put(path.join(home.codexDir, 'config.toml'), ['[model_providers.acme]', 'name = "Acme"', 'http_headers = { "X-Key" = "held_key_1234567890" }', ''].join('\n'));
+      await linked();
+      expect((await ask()).left).toEqual(expect.arrayContaining(['env.ANTHROPIC_API_KEY', 'model_providers.acme']));
+      expect(json(path.join(home.claudeDir, 'settings.json')).env.ANTHROPIC_API_KEY).toBe('sk-held-1234567890');
+      expect(parseToml(read(path.join(home.codexDir, 'config.toml')))).toMatchObject({ model_providers: { acme: { http_headers: { 'X-Key': 'held_key_1234567890' } } } });
+    });
+
+    it('a key a Copy wrote goes back at the untick, and nothing is named', async () => {
+      const { home, w, ask, linked } = copyOf();
+      await linked();
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: true });
+      await ask();
+      expect(held(home)).toEqual({ LINEAR_API_KEY: KEY });
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: false });
+      expect((await ask()).left).toBeUndefined();
+      expect(held(home)).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    });
   });
 
   it('an untick of a whole item takes it back at the next Copy while it is still the copy; a sender dropping it does not', async () => {
