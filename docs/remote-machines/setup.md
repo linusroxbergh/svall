@@ -310,11 +310,11 @@ often stops at "studio cannot log in to ada@box". **Open terminal** opens one on
 test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'
 ```
 
-Answer its prompts, then add the machine again. If `box` takes keys alone, send the key's public half from the Mac's Terminal: `ssh studio cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'`. A
-terminal for `box` itself opens on studio too, with an `ssh` to it typed, and a sign-in that waits on a port forwards it on both hops.
+Answer its prompts, then add the machine again. If `box` takes keys alone, add studio's `~/.ssh/id_ed25519.pub` to its `.ssh/authorized_keys` by hand. From a Mac that logs in to both: `ssh ada@studio cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'`. Every
+terminal for `box` itself opens on studio too, with an `ssh` to it typed, and a sign-in that waits on a port forwards it on both hops. Each run first checks that the home answers as the machine and the fleet this fleet's `worker.json` names, and stops on the `relay` step if not.
 
-The home installs its own release on a machine of its own architecture, keeping its signature. For another architecture it downloads the archive this Mac's release pins, of the same release, and checks its digest and
-signature; a run by hand on the server has no such pin, and is told to name one with `--release`. Svall Dev pins nothing, and takes `--release` for that too. A run ends when its connection does: Stop, quitting the app or a dropped link leave what a Stop always left, and adding again goes on from there.
+The home installs its own release on a machine of its own architecture, keeping its signature. For another architecture the Mac copies the signed archive it carries to the home over its own connection and names it with `--release`, for the same release only; the home checks its
+signature and removes the copy as the run ends. Nothing is downloaded. A CLI that carries none, as Svall Dev or a tarball's, and a run by hand on the server are told to name one with `--release`, a path on the home. Stop or quitting the app ends the run there, and leaves what a Stop always left. A link that drops with no word, as a Mac whose lid closes, may leave the run to finish on the server. Adding again goes on from either.
 
 The worker's `worker.json` names the home and its platform, so it calls a Linux home by name.
 

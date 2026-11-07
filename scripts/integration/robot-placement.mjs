@@ -1889,8 +1889,17 @@ function workerFromHome(ids) {
   boxFollows('added', ids);
   const doctor = sh(L, 'svall --json host doctor box --steps </dev/null', { ok: false });
   check('a check of it runs there', carriedSteps(doctor).some((e) => e.step === 'worker' && e.status === 'ok' && /runs this fleet's robots/.test(e.detail)), () => brief(carriedSteps(doctor).filter((e) => e.step === 'worker' || e.status === 'fail')));
-  const up = sh(L, `svall --json host upgrade box --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null`, { ok: false });
+  // an archive a relay leaves where the far run removes it, as one the Mac carries for another architecture
+  const carried = sh(R, 'echo "$HOME/.svall/cache/carried/copied.tar.gz"').stdout.trim();
+  sh(R, `mkdir -p "$(dirname ${carried})" && cp /opt/it/svall-companion-*.tar.gz ${carried}`);
+  const up = sh(L, `svall --json host upgrade box --release ${carried} --allow-unsigned </dev/null`, { ok: false });
   check('an upgrade of it runs there', !carriedSteps(up).some((e) => e.status === 'fail'), () => brief(carriedSteps(up).filter((e) => e.status === 'fail')));
+  check('and the far run removes the archive left for it', sh(R, `test -e ${carried}`, { ok: false }).code !== 0, 'it stays');
+  // a home that answers as no home of this fleet takes no run, as a window on the same route says mismatch
+  sh(L, `cp -p ~/.svall/worker.json /tmp/it-worker.json && sed -i 's/"fleetId": *"[^"]*"/"fleetId":"00000000-0000-4000-8000-000000000000"/' ~/.svall/worker.json`);
+  const other = sh(L, 'svall --json host doctor box --steps </dev/null', { ok: false });
+  sh(L, 'cp -p /tmp/it-worker.json ~/.svall/worker.json');
+  check('a relay to another fleet runs nothing there', other.code !== 0 && carriedSteps(other).some((e) => e.step === 'relay' && /not this fleet's home/.test(e.detail ?? '')) && !carriedSteps(other).some((e) => e.step === 'worker'), () => brief(carriedSteps(other)));
   // a run the window loses goes with its connection, in place of running on with no one to hear it
   sh(L, `(svall --json host upgrade box --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null >/dev/null 2>&1 & echo $! > /tmp/it-relay)`);
   let far = false;
@@ -1928,6 +1937,12 @@ function moveWithWorker(ids) {
     check(`${label}: its robot stays there`, call(target === 'local' ? L : R, 'state.get').robots[ids.onbox]?.machine === ids.box, 'it moved');
   };
   moves('local', 'the way back');
+  // the machine the fleet left holds box's route and, stale, its old token, and takes and removes nothing by them
+  const named = boxFile();
+  const upgrade = sh(R, 'svall --json host upgrade box --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null', { ok: false });
+  check('the old home takes no worker by an upgrade', upgrade.code !== 0 && carriedSteps(upgrade).some((e) => e.status === 'fail' && /only that machine takes or removes it/.test(e.detail ?? '')), () => brief(carriedSteps(upgrade)));
+  check('nor removes one', sh(R, 'svall --json host remove box </dev/null', { ok: false }).code !== 0, 'it removed it');
+  check('box goes on as it was', boxFile().homeMachineId === named.homeMachineId && boxFile().token === named.token && sh(B, 'test -e ~/.local/share/svall/current', { ok: false }).code === 0, 'it changed');
   const was = heldToken(L, ids.box);
   placeHome('local');
   moves('remote', 'the way out');

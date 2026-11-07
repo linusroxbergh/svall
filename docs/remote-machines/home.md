@@ -65,7 +65,7 @@ The window goes on, on this Mac's own copy of the fleet, with a banner: **studio
 shows; the cause is in svalld's log.
 
 - Robots on this Mac are live, with their terminals.
-- A robot on studio or on a Linux worker of studio shows unknown, with the last screen studio last sent or passed on. A robot on another Mac shows unknown.
+- A robot on studio or on any other worker of studio shows unknown, with the last screen studio last sent or passed on.
 - A change to a robot on this Mac, or a new island, is kept here and reaches studio once it answers, as in
   [While the home is away](placement.md#while-the-home-is-away). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
@@ -173,9 +173,9 @@ A Linux worker goes with the fleet, and its robots and tmux are not touched. Bef
 the move if that login is refused, if the worker runs another release or if another machine there goes by its name, and if it cannot reach a worker this home is still linked to. The check
 names the fix for that machine. A worker that does not answer and is not linked does not stop the move: the sheet says "box does not answer; it joins studio when it does".
 
-Nothing changes on a worker until the move has gone through. The new home then gives each a new token over ssh, restarts its daemon, and goes on until its link greets with that token. What the worker wrote while out of reach
-reaches the new home when it links. A worker that has not joined yet shows it on its row with the last reason, and its robots read as unknown. A worker that does not answer is tried again, less and less often, up to every five minutes. A refused login
-is tried again when the new home's daemon starts, on **Check** and on `svall host upgrade`, once you have fixed it. Neither ever undoes the move. A worker that will never come back goes with `svall host remove <name> --forget`.
+Nothing changes on a worker until the move has gone through. The new home then checks that each answers as the machine and fleet it was, gives it a new token over ssh, restarts its daemon, and goes on until its link greets with that token. What the worker wrote while out of reach
+reaches the new home when it links. A worker that has not joined yet shows it on its row with the last reason, and its robots read as unknown. Most failures are tried again, less and less often, up to every five minutes. A refused login or host key, or a route that now reaches another machine or fleet,
+is tried again when the new home's daemon starts, on **Check** and on `svall host upgrade`, once you have fixed it. None of these ever undoes the move. A worker that will never come back goes with `svall host remove <name> --forget`. A machine the fleet has left, or is leaving, takes and removes no worker: `svall host` there names the home that does.
 
 ### When a move stops
 
