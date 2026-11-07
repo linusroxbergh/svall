@@ -7,7 +7,7 @@ import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId,
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
-import { abortAdopt, adoptDir, driverAdoptKey, driverKey, enter, installAdopt, markKey, MAX_ARCHIVE, mintAdoptKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type Asker, type HomeDaemon } from '@svall/svalld/fleet/home-move';
+import { abortAdopt, adoptDir, carriedWorkers, driverAdoptKey, driverKey, enter, installAdopt, markKey, MAX_ARCHIVE, mintAdoptKey, moveOutcome, oldHomeName, owe, packFleet, readManifest, readMarker, readOwed, stageAdopt, writeEnrol, type AdoptDeps, type Asker, type HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { newHomeMoveId } from '@svall/svalld/ids';
 import { kickstart } from '@svall/svalld/launchd';
 import { remoteConnectionInfo } from '@svall/svalld/link/connection-info';
@@ -37,6 +37,7 @@ const ENROLL_TIMEOUT = 30_000;
 const SNAPSHOT_MS = 90_000;
 // a command for this fleet, by the -p that names it
 const svallOf = (t: Target, args: string): string => { const p = farProfile(t); return `svall ${p ? `-p ${p} ` : ''}${args}`; };
+const WORKERS_MS = 60_000;
 const POLL_MS = 500;
 
 /** What `svall version --json` says of the fleet home there. */
@@ -444,7 +445,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
         const here = d.registry.localMachine();
-        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }) };
+        const manifest: HomeManifest = { id, fleetId, from: d.me, to, toName: name, toHome: toHome as HomeManifest['toHome'], record: { ...here, svallBase: installPrefix(), dial: 'worker' }, phone, adoptKeySha256, ...(d.target.managed && { fromProfile: d.target.name }), workers: carriedWorkers(paths, d.registry.list(), d.target.name).filter((w) => w.id !== to) };
         const { bytes, sha256 } = await packFleet(paths, manifest);
         const a = await far(['fleet', 'adopt', id, '--stage', '--sha256', sha256], bytes.toString('base64'));
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
@@ -512,6 +513,23 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
     if (!state) throw new StepError(`${o.name} sent this machine no snapshot in ${SNAPSHOT_MS / 1000} s`, 'svall doctor; this machine\'s robots are safe and keep running', undefined, 'this machine\'s robots are safe and keep running; Check under Machines says what is wrong');
     driverJournal(paths, id, 'done');
     return { value: undefined, detail: `The fleet runs on ${o.name}. Open the phone from its new QR code once.` };
+  });
+  await workersJoin(run, d, [o.to, d.me], o.name);
+}
+
+// the fleet has moved whatever this finds: a worker still out is its new home's to keep trying, and its row says why
+async function workersJoin(run: Runner, d: Pick<MoveDeps, 'client' | 'me'>, apart: MachineId[], home: string): Promise<void> {
+  const others = async () => Object.entries((await withClient(d.client, (c) => c.call('state.get', {})).catch(() => undefined))?.machines ?? {}).filter(([m]) => !apart.includes(m as MachineId));
+  if (!(await others()).length) return;
+  await run.step('workers', async () => {
+    let out: string[] = [];
+    for (const until = Date.now() + WORKERS_MS; Date.now() < until; await new Promise((r) => setTimeout(r, POLL_MS))) {
+      out = (await others()).filter(([, l]) => !l.reachable).map(([, l]) => l.name);
+      if (!out.length) break;
+    }
+    return out.length
+      ? { value: undefined, status: 'warn' as const, detail: `${out.join(', ')} has not joined ${home} yet, which keeps trying; its row under Machines says why` }
+      : { value: undefined, detail: `every other worker runs under ${home}` };
   });
 }
 
@@ -638,6 +656,7 @@ async function finishBack(run: Runner, d: MoveDeps, adoption: AdoptDeps, id: Hom
     }
     return { value: undefined, status: 'warn' as const, detail: `the fleet runs on this machine; ${o.name} has not linked yet`, action: svallOf(d.target, `host doctor ${o.name}`), say: `Check ${o.name} under Machines` };
   });
+  await workersJoin(run, d, [o.from, d.me], 'this machine');
 }
 
 // whether this machine's daemon has told the old home what it owes it

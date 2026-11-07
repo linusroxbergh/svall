@@ -6,6 +6,7 @@ import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
 import { homeWord } from '@svall/svalld/machine';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
+import { homeMoveLock } from '@svall/svalld/kernel-lock';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
 import { dropToken, enrollArgv, issueToken, keyLine, noLoginFix, workerProfile } from '@svall/svalld/placement/workers';
@@ -546,8 +547,14 @@ async function enrol(master: SshMaster, o: { name: string; machine: MachineId; s
   const paths = resolvePaths(d.fleet.home);
   const fleetId = readFleet(paths.fleetConfig).id;
   const { name: home, platform: homePlatform } = d.registry.localMachine();
-  const token = issueToken(paths, o.machine);
-  const r = await master.run(enrollArgv({ svallBase: o.svallBase, profile: profileOn(o.machine, d), home: d.machineId(), homeName: home, fleetId, homePlatform }), { input: token, timeoutMs: ENROL_TIMEOUT });
+  // the daemon may be enrolling it too, for a move, and one token must end up on both sides
+  const unlock = await homeMoveLock(paths.home);
+  if (!unlock) throw new StepError('a move of the fleet, or an enrolment of a worker, runs here', 'try again in a moment');
+  let r: Awaited<ReturnType<SshMaster['run']>>;
+  try {
+    const token = issueToken(paths, o.machine);
+    r = await master.run(enrollArgv({ svallBase: o.svallBase, profile: profileOn(o.machine, d), home: d.machineId(), homeName: home, fleetId, homePlatform }), { input: token, timeoutMs: ENROL_TIMEOUT });
+  } finally { unlock(); }
   if (r.code !== 0) throw new StepError(`svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
   const last = r.stdout.trim().split('\n').at(-1);
   return { value: undefined, detail: `${o.name} serves this fleet as a worker of ${home}${last ? `; ${last}` : ''}${o.off}` };

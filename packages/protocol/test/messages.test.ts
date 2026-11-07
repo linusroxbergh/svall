@@ -181,8 +181,8 @@ describe('term.input', () => {
 });
 
 describe('protocol version', () => {
-  it('is 44', () => {
-    expect(PROTOCOL_VERSION).toBe(44);
+  it('is 45', () => {
+    expect(PROTOCOL_VERSION).toBe(45);
   });
 
   it('was 43 without a home move\'s freeze, check and run, a far fleet\'s id, and the move a crew robot goes ahead of', () => {

@@ -37,7 +37,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
           ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
           : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [] } });
       }
-      if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [MAC]: { name: 'mac', reachable: true, since: 1 } } });
+      if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [machineId()]: { name: 'mac', reachable: true, since: 1 } } });
       if (method === 'fleet.freeze') return Promise.resolve({ phone: o.phone ?? { serving: false, logins: [] } });
       if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
       if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
@@ -112,6 +112,18 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
       .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
+  });
+
+  it('names a worker that has not joined the new home, and the move stands', async () => {
+    const BOX = crypto.randomUUID();
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => (now += 30_000));
+    try {
+      const { deps } = outDeps(happy, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [BOX]: { name: 'box', reachable: false, since: 1 } } } });
+      const out = await moveHomeOut('studio', deps);
+      expect(out.stopped).toBeUndefined();
+      expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: expect.stringContaining('box has not joined studio yet') });
+    } finally { clock.mockRestore(); }
   });
 
   it('a check that refuses freezes nothing, and says what to do', async () => {

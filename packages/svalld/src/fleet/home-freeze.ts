@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
+import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, UPGRADE_ACTION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeReach, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
 import type { Logger } from '../log.js';
@@ -10,7 +10,7 @@ import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
 import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
-import { listedWorkerIds } from '../placement/workers.js';
+import { keyLine, listedWorkerIds, noLoginFix } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
 const STILL = new Set<MethodName>(['term.open', 'term.attach', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
@@ -33,7 +33,7 @@ const markerOf = (p: Paths): HomeMoving | undefined => { try { return readMarker
 export type FreezeDeps = {
   paths: Paths; store: { state: FleetState; flush(): Promise<boolean> }; me: MachineId; log: Pick<Logger, 'error' | 'info'>;
   /** the link to `machine`, with what a barrier needs of it */
-  links: { barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'>; hold(on: boolean): void; call<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
+  links: { barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'>; hold(on: boolean): void; quiet?(): Promise<void>; call<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
   /** the scribe, the pusher, the relay and the retro, which only a home runs and which a frozen one holds still */
   background: { pause(): void; resume(): void };
   phone: Mobile;
@@ -160,6 +160,9 @@ export class HomeFreeze {
       if (!caught) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
       still();
       this.d.links.hold(true);
+      // an event some worker's link is applying as the hold starts would be acked after the cut
+      await this.d.links.quiet?.();
+      still();
       if (!await this.d.store.flush()) throw new ApiError('not_written', 'state.json was not written');
       still();
       if (serving) {
@@ -315,7 +318,7 @@ export class HomeFreeze {
 }
 
 /** What this machine says of itself to a home move's check. `paths`: whether each of these exists here. */
-export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; role: 'home' | 'worker'; fleetId?: string; tailscale?: MobileDeps }): Promise<HomeFacts> {
+export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; role: 'home' | 'worker'; fleetId?: string; tailscale?: MobileDeps; carried?: HomeFacts['carried'] }): Promise<HomeFacts> {
   let tailscale: HomeFacts['tailscale'];
   try {
     const m = o.tailscale ?? realDeps();
@@ -333,6 +336,7 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
     ...(moveInFlight(p) && { moving: moveInFlight(p) }), tailscale,
     ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }), ...(workers && { workers }),
     ...(o.role === 'home' && { rewrites: configRewrites(p, os.homedir()) }),
+    ...(o.carried && { carried: o.carried }),
   };
 }
 
@@ -354,6 +358,8 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig' | 'home'>, fromHome:
 /** `back`: the name of the home the fleet leaves for this machine, on the way back. `platformOf`: a machine's platform, as this machine's registry has it. */
 type HomeCheckInput = {
   state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean; platformOf?: (id: string) => string | undefined;
+  /** What the machine that would take the fleet found of each worker the move can carry; `linkedTo`: whether this home's link to one is up. */
+  reach?: Record<string, HomeReach>; linkedTo?: (machine: string) => boolean;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
@@ -363,6 +369,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const [there, here] = i.back ? [from, to] : [to, from];
   const goesTo = i.back ? 'this machine' : toName;
   const failed: { reason: string; action: string; run?: string }[] = [];
+  const waits: NonNullable<HomeSheet['waits']> = [];
   const fail = (reason: string, action: string): void => { failed.push({ reason, action }); };
   const robots = Object.values(state.robots);
   if (!i.fromIsHome) fail('this daemon is not the fleet\'s home', 'run this where the fleet\'s home is');
@@ -374,9 +381,17 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
-    const platform = i.platformOf?.(m);
-    const again = platform === 'linux' ? `add it again from ${goesTo}` : platform === 'darwin' ? 'run svall fleet join on it' : `add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`;
-    fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
+    const r = i.reach?.[m];
+    // nothing can log in to it, so nothing can tell it of a new home
+    if (!r) {
+      const platform = i.platformOf?.(m);
+      const again = platform === 'linux' ? `add it again from ${goesTo}` : platform === 'darwin' ? 'run svall fleet join on it' : `add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`;
+      fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
+    } else if (r.ok) continue;
+    else if (r.kind === 'unreachable' && !i.linkedTo?.(m)) waits.push({ id: m as MachineId, name });
+    else if (r.kind === 'auth' || r.kind === 'host_key') failed.push({ reason: `${goesTo} cannot log in to ${name}: ${r.why}`, action: noLoginFix(goesTo, r.ssh), run: keyLine(r.ssh) });
+    else if (r.kind === 'unreachable') fail(`${goesTo} cannot reach ${name}, which this home reaches: ${r.why}`, `check Tailscale on both machines, then ssh ${r.ssh} from ${goesTo}`);
+    else fail(`${name}: ${r.why}`, r.kind === 'release' ? UPGRADE_ACTION : 'fix it, or remove it first');
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');
   // on the way back, the leaving home's facts are its own only once it answers
@@ -399,6 +414,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     there: robots.filter((r) => r.machine === to.machineId).length,
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),
     rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })).filter((r) => !r.kept || r.lacks),
+    ...(waits.length && { waits }),
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;

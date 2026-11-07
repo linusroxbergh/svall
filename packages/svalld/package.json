@@ -38,6 +38,7 @@
     "./profile": "./src/profile.ts",
     "./runtime": "./src/runtime.ts",
     "./fleets": "./src/fleets.ts",
+    "./kernel-lock": "./src/kernel-lock.ts",
     "./release": "./src/release.ts",
     "./text": "./src/text.ts",
     "./retro/render": "./src/retro/render.ts",

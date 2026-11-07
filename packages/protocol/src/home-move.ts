@@ -39,6 +39,14 @@ export const AdoptAnswer = z.discriminatedUnion('status', [
 ]);
 export type AdoptAnswer = z.infer<typeof AdoptAnswer>;
 
+/** A worker a home move carries: its record, and the fleet's profile on it. */
+export const HomeWorker = z.object({ id: MachineId, record: MachineRecord, profile: z.string().optional() });
+export type HomeWorker = z.infer<typeof HomeWorker>;
+
+/** What the machine that would take the fleet finds of a worker, over its own ssh: `ssh`, the route it took. */
+export const HomeReach = z.object({ ok: z.boolean(), ssh: z.string(), kind: z.enum(['auth', 'host_key', 'unreachable', 'release', 'machine', 'fleet', 'name', 'other']).optional(), why: z.string().optional() });
+export type HomeReach = z.infer<typeof HomeReach>;
+
 /** What the fleet's archive says of itself. `phone`: whether its link served, and who it let through, as `mobile.logins` empty means a login only that machine has. */
 export const HomeManifest = z.object({
   id: HomeMoveId, fleetId: FleetId, from: MachineId, to: MachineId, toName: z.string(), toHome: MachinePath, record: MachineRecord,
@@ -49,6 +57,8 @@ export const HomeManifest = z.object({
   fromFleetHome: MachinePath.optional(),
   // of the key only the move's driver holds, sent once the old home is marked: without it this machine installs nothing
   adoptKeySha256: z.string().regex(/^[0-9a-f]{64}$/),
+  // the other workers the new home re-enrols once it has taken the fleet
+  workers: z.array(HomeWorker).optional(),
 });
 export type HomeManifest = z.infer<typeof HomeManifest>;
 
@@ -65,6 +75,8 @@ export const HomeFacts = z.object({
   clock: z.number(), freeKb: z.number().optional(), fleetKb: z.number().optional(), fleetHome: MachinePath, moving: z.string().optional(),
   tailscale: z.object({ host: z.string().optional(), error: z.string().optional(), stopped: z.literal(true).optional() }),
   paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(), rewrites: z.array(HomeRewrite).optional(),
+  // on a home: the workers a move would carry, as what takes the fleet comes back has no registry of its own for them
+  carried: z.array(HomeWorker).optional(),
 });
 export type HomeFacts = z.infer<typeof HomeFacts>;
 
@@ -72,6 +84,8 @@ export type HomeFacts = z.infer<typeof HomeFacts>;
 export const HomeSheet = z.object({
   here: z.number().int(), there: z.number().int(), mission: z.array(z.object({ id: z.string(), name: z.string() })),
   rewrites: z.array(HomeRewrite),
+  // the workers that do not answer: each joins the new home when it does
+  waits: z.array(z.object({ id: MachineId, name: z.string() })).optional(),
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
 

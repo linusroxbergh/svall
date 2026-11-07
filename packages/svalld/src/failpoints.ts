@@ -47,7 +47,7 @@ export const HOME_FAILPOINTS = [
   'adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'restore.restarting', 'adopt.committed',
   'restore.file', 'restore.done', 'abort.recorded',
   'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done',
-  'mark.written', 'enrol.written', 'move.paused', 'move.copied', 'move.marked', 'move.joined', 'deliver.owed', 'deliver.told',
+  'mark.written', 'enrol.written', 'move.paused', 'move.copied', 'move.marked', 'move.joined', 'deliver.owed', 'deliver.told', 'rejoin.enrolling', 'rejoin.enrolled', 'rejoin.done',
 ] as const;
 export type HomeFailpoint = (typeof HOME_FAILPOINTS)[number];
 /** What a test throws at a home move's failpoint, as a crash there: no catch of the move's takes it for a failure to undo. */

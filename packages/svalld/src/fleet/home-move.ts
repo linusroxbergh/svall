@@ -6,8 +6,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import {
-  AdoptAnswer, Enrolment, HomeDelivery, HomeManifest, HomeMoving, MachineRecord, migrateState, relabelHome, WorkerFile,
-  type FleetState, type HomeMoveId, type MachineId,
+  AdoptAnswer, Enrolment, HomeDelivery, HomeManifest, HomeMoving, MachineId, MachineRecord, migrateState, relabelHome, WorkerFile,
+  type FleetState, type HomeMoveId, type HomeWorker,
 } from '@svall/protocol';
 import { InvalidConfig } from '../config.js';
 import { repoRootOf, repoSlug } from '../docs.js';
@@ -16,14 +16,14 @@ import { HomeCrash as Crash, homePoint } from '../failpoints.js';
 import { sha256Hex } from '../hash.js';
 import { daemonLock, homeMoveLock } from '../kernel-lock.js';
 import { silentLogger } from '../log.js';
-import { putRecord, readRegistry } from '../machine.js';
+import { putRecord, readRegistry, type MachineEntry } from '../machine.js';
 import { filesIn, HomeDocs } from '../placement/docs-sync.js';
 import { packTar, ustarFits } from '../placement/bundle.js';
 import { carriedConsent } from '../placement/mirror-consent.js';
 import { keysOnly, readState } from '../placement/mirror-state.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
-import { tokenFor } from '../placement/workers.js';
+import { tokenFor, workerIds, workerProfile } from '../placement/workers.js';
 import { expandHome, resolvePaths, type Paths } from '../paths.js';
 import { clean } from '../path-tools.js';
 import { fleetHomes } from '../uninstall.js';
@@ -35,7 +35,7 @@ const exec = promisify(execFile);
 const CARRIED = ['fleet.json', 'state.json', 'docs', 'agent-profiles', 'push.json', 'vapid.json', 'mobile-pass', 'mobile-key', 'mirror-consent.json', 'retro', 'journal/moves'] as const;
 /** What a worker's fleet home holds that no home does; each goes aside with the files it replaces, and comes back with them. The mirror's record names what a push wrote, which a Copy must not read as its own, past the keys it copied. */
 const WORKER_ONLY = ['worker.json', 'phone.json', 'phone-fallbacks.json', 'journal/epoch', 'cache/mirror-state.json'] as const;
-const INSTALLED = [...CARRIED, 'workers.json'] as const;
+const INSTALLED = [...CARRIED, 'workers.json', 'workers-owed.json'] as const;
 const MANIFEST = 'home-move.json';
 /** What a way back's export may answer over ssh: the archive in base64, in JSON. */
 export const MAX_ARCHIVE = 256 * 1024 * 1024;
@@ -114,6 +114,10 @@ const HELD_RECORD = 'held-record.json';
 // what the registry here said of the old home before the move wrote its record
 const heldRecordOf = (p: Paths, id: string): MachineRecord | undefined => {
   try { return MachineRecord.safeParse((read(path.join(adoptDir(p, id), HELD_RECORD)) as { heldRecord?: unknown }).heldRecord).data; } catch { return undefined; }
+};
+
+const addedWorkersOf = (p: Paths, id: string): MachineId[] => {
+  try { return z.array(MachineId).parse((read(path.join(adoptDir(p, id), HELD_RECORD)) as { added?: unknown }).added ?? []); } catch { return []; }
 };
 
 const enrolFile = (p: Paths, id: string): string => path.join(adoptDir(p, id), 'enrol.json');
@@ -317,11 +321,16 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
     const ours = state.robots[r.id];
     state.robots[r.id] = ours ? withOwned(ours, r) : (() => { const { machine: _m, ...rest } = r; return rest as typeof r; })();
   }
+  // none of them has heard yet, and the home says so until each links
+  const others = (m.workers ?? []).filter((w) => state.machines?.[w.id]);
+  for (const w of others) state.machines![w.id] = { ...state.machines![w.id], reachable: false, since: at };
   writeDurable(path.join(ready, 'state.json'), state, { mode: 0o600 });
   carryOwnDocs(d, path.join(ready, 'docs'), state);
   renameRepoDocs(path.join(ready, 'docs'), repoRenames(relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome));
   writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m, p.home), { mode: 0o600 });
-  writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
+  const fresh = Object.fromEntries((m.workers ?? []).map((w) => [w.id, { token: crypto.randomBytes(24).toString('hex'), addedAt: at, ...(w.profile && { profile: w.profile }) }]));
+  writeDurable(path.join(ready, 'workers.json'), { ...fresh, [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
+  if (m.workers?.length) writeDurable(path.join(ready, 'workers-owed.json'), { id, workers: Object.fromEntries(m.workers.map((w) => [w.id, {}])) }, { mode: 0o600 });
   carriedConsent(path.join(ready, 'mirror-consent.json'), p.mirrorConsent, d.me, m.from);
   return ready;
 }
@@ -411,7 +420,10 @@ async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<A
 function restoreRecord(d: Pick<AdoptDeps, 'paths' | 'registryDir'>, id: HomeMoveId, m: HomeManifest): void {
   const file = path.join(adoptDir(d.paths, id), HELD_RECORD);
   if (!fs.existsSync(file)) return;
-  try { putRecord(m.from, heldRecordOf(d.paths, id), d.registryDir); } catch { return; }
+  try {
+    putRecord(m.from, heldRecordOf(d.paths, id), d.registryDir);
+    for (const w of addedWorkersOf(d.paths, id)) putRecord(w, undefined, d.registryDir);
+  } catch { return; }
   fs.rmSync(file, { force: true });
 }
 
@@ -447,8 +459,15 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefin
         homePoint('adopt.installing');
         installFiles(p, id);
         const file = path.join(adoptDir(p, id), HELD_RECORD);
-        if (!fs.existsSync(file)) writeDurable(file, { heldRecord: readRegistry(d.registryDir).find((m) => m.id === manifest.from)?.record ?? null }, { mode: 0o600 });
+        if (!fs.existsSync(file)) {
+          const listed = readRegistry(d.registryDir);
+          // a route this machine holds already is the one it reaches that worker by
+          const added = (manifest.workers ?? []).filter((w) => !listed.some((e) => e.id === w.id)).map((w) => w.id);
+          writeDurable(file, { heldRecord: listed.find((m) => m.id === manifest.from)?.record ?? null, added }, { mode: 0o600 });
+        }
+        const added = addedWorkersOf(p, id);
         putRecord(manifest.from, manifest.record, d.registryDir);
+        for (const w of manifest.workers ?? []) if (added.includes(w.id)) putRecord(w.id, w.record, d.registryDir);
         homePoint('adopt.registry');
         enter(p, id, 'installed');
         homePoint('adopt.installed');
@@ -497,6 +516,28 @@ async function recoverInstall(d: AdoptDeps, id: HomeMoveId): Promise<void> {
 // a machine a move leaves hears how it ended from where the fleet went, and what it says of the move itself would read as that
 function refuseLeaving(p: Paths, id: HomeMoveId): void {
   if (readMarker(p)?.id === id) throw new Error(`this home is what move ${id} leaves, so it cannot say how that ended; svall fleet home abort calls it off, once the machine holding the fleet says it was not taken`);
+}
+
+/** The workers a move would carry from this home: those it reaches over ssh on Linux, as nothing can log in to any other. */
+export function carriedWorkers(p: Paths, entries: MachineEntry[], own: string): HomeWorker[] {
+  let held: string[];
+  try { held = workerIds(p); } catch { return []; }
+  return entries.filter((e) => held.includes(e.id) && e.record.ssh && e.record.platform === 'linux').map((e) => ({ id: e.id, record: e.record, profile: workerProfile(p, e.id) ?? own }));
+}
+
+const WorkersOwed = z.object({ id: z.string(), workers: z.record(z.string(), z.object({ why: z.string().optional() })) });
+export type WorkersOwed = z.infer<typeof WorkersOwed>;
+
+export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | undefined => {
+  try { return WorkersOwed.parse(JSON.parse(fs.readFileSync(p.workersOwed, 'utf8'))); } catch { return undefined; }
+};
+
+/** The workers this home owes an enrolment, and why the last try failed: none until the move stands, as a home that has started can still roll back. */
+export function owedWorkers(p: Paths): WorkersOwed['workers'] {
+  const owed = readWorkersOwed(p);
+  if (!owed) return {};
+  const at = lastPhase(p, owed.id);
+  return at === 'adopted' || at === 'done' ? owed.workers : {};
 }
 
 /** The old home that asks how a move ended, and the fleet it asks of. */

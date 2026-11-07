@@ -39,6 +39,12 @@ describe('the sheet of a home move', () => {
     expect(screen.getByTestId('home-go').textContent).toBe('Make it the home');
   });
 
+  it('names a worker that does not answer, which joins the new home when it does', async () => {
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, waits: [{ id: 'cccccccc-0000-4000-8000-000000000000', name: 'box' }] } } });
+    await open();
+    expect(screen.getByTestId('home-waits').textContent).toBe('box does not answer; it joins studio when it does.');
+  });
+
   it('names mission control\'s robots, and each path it rewrites', async () => {
     answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, mission: [{ id: 'c_a', name: 'crew' }, { id: 'c_b', name: 'crew2' }], rewrites: [{ key: 'defaultCwd', to: '~/code' }] } } });
     await open();

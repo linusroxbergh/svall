@@ -474,6 +474,20 @@ describe('a frozen home', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it('the cut waits on what any worker\'s link was applying as the hold began', async () => {
+    const { d } = setup();
+    let done!: () => void;
+    const order: string[] = [];
+    const quiet = new Promise<void>((r) => { done = r; });
+    const flush = d.store.flush.bind(d.store);
+    const freeze = new HomeFreeze({ ...d, store: Object.assign(Object.create(d.store) as typeof d.store, { flush: () => { order.push('flush'); return flush(); } }), links: { ...d.links, hold: (on) => { if (on) order.push('hold'); }, quiet: () => { order.push('quiet'); return quiet; } } });
+    const going = freeze.freeze(ID, STUDIO, holder);
+    await vi.waitFor(() => expect(order).toEqual(['hold', 'quiet']));
+    done();
+    await going;
+    expect(order).toEqual(['hold', 'quiet', 'flush']);
+  });
+
   it('a freeze that fails after its driver left leaves a freeze begun since', async () => {
     const { d, log } = setup();
     let open!: (ok: boolean) => void;
@@ -951,7 +965,7 @@ describe('the check', () => {
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {
     const r = homeCheck(input({ from: facts({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }) }));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.refusal.action).toMatch(/add it again from studio/);
+    if (!r.ok) expect(r.refusal.action).toMatch(/svall fleet join from it/);
   });
 
   it('gives a second worker only the way back its platform takes, and both where this machine has no record of it', () => {
