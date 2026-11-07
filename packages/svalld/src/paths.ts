@@ -148,15 +148,15 @@ export const isDialSocket = (socket: string, machine: string): boolean => socket
 /** The files that hold a fleet's keys, which Files never opens. */
 export const fleetKeys = (p: Paths): string[] => [p.token, p.mobileKey, p.mobilePass, p.env, p.vapid, p.push, p.phone, p.phoneFallbacks, p.workerFile, p.workersFile, p.homeMoving, p.homeDeliver];
 
-/** What Files never opens of a fleet home, each by its identity: its keys, its journals whole, and what a home move staged or kept. */
+/** What Files never opens of a fleet home, each by its identity: its keys, its journals whole, and what a home move staged or a join trusts. */
 export function fleetRefused(p: Paths): string[] {
   let names: string[] = [];
   try { names = fs.readdirSync(p.home); } catch { /* no fleet home yet */ }
   return [...fleetKeys(p), path.join(p.home, 'journal'), ...names.filter((n) => inStagedMove(n)).map((n) => path.join(p.home, n))];
 }
 
-/** Whether `p` lies in a home move's staged folder, or is its kept workers.json or its driver's journal, which hold a fleet's keys under names of their own. */
-export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|workers\.json\.home-hm_[0-9a-z]{10}$|hm_[0-9a-z]{10}\.driver\.ndjson$)/i.test(p);
+/** Whether `p` lies in a home move's staged folder, or is its kept workers.json or state.json, its docs' cut or its driver's journal, under names of their own, as a folding volume would take them. */
+export const inStagedMove = (p: string): boolean => /(^|\/)(adopt-hm_[0-9a-z]{10}(\/|$)|(workers|state)\.json\.home-hm_[0-9a-z]{10}$|docs-cut-hm_[0-9a-z]{10}\.json$|hm_[0-9a-z]{10}\.driver\.ndjson$)/i.test(p.normalize('NFKC'));
 
 /** `p` with its links resolved, or as it is when it cannot be. */
 export const realPath = (p: string): string => {

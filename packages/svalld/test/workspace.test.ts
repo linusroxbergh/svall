@@ -229,7 +229,7 @@ describe('Workspace files', () => {
       fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{"phase":"staged","at":1}\n');
       markKey(paths, 'hm_abcdefghij');
       fs.writeFileSync(`${paths.workersFile}.home-hm_abcdefghij`, '{}');
-      return { paths, ws: new Workspace(() => dir, silentLogger, () => fleetRefused(paths)) };
+      return { paths, ws: new Workspace(() => dir, silentLogger, () => fleetRefused(paths), [], path.join(makeHome(), 'trash')) };
     };
 
     it('refuses every read and write under journal/, a new line or file included, and through a link', async () => {
@@ -260,6 +260,55 @@ describe('Workspace files', () => {
       if (fs.existsSync(kept)) expect(await codeOf(() => ws.read('c', kept))).toBe('invalid');
       expect(fs.existsSync(driver.replace('/journal/', '/JOURNAL/'))).toBe(true);
       expect(fs.readFileSync(driver, 'utf8')).toContain('"phase":"mark"');
+    });
+
+    const namesOf = (paths: ReturnType<typeof resolvePaths>) => fs.readdirSync(paths.home).sort();
+    it.skipIf(!folds).each([
+      ['home-moving.jſon'], ['home-moving.json'], ['HOME-MOVING.JSON'], ['home-deliver.jſon'], ['worker.jſon'], ['workerſ.json'], ['phone.jſon'], ['mobile-Key'.replace('K', '\u212A')], ['to\u212Aen'],
+      ['state.json.home-hm_abcdefghik'.replace('state', 'ſtate')], ['docs-cut-hm_abcdefghik.jſon'], ['adopt-hm_abcdefghi\u212A/incoming/token'], ['workerſ.json.home-hm_abcdefghi\u212A'],
+    ])('on a folding volume, creates none of %s, a spelling of what a fleet home keeps out of Files, that is not on disk', async (name) => {
+      const { paths, ws } = fleetWorkspace();
+      const before = namesOf(paths);
+      expect(await codeOf(() => ws.write('c', path.join(paths.home, name), '{}', 0)), name).toBe('invalid');
+      expect(namesOf(paths)).toEqual(before);
+    });
+
+    it.skipIf(!folds)('on a folding volume, refuses a copy of a refused dotfile under a spelling it folds, and a file in a sealed folder\'s place', async () => {
+      const dir = repo();
+      const sealed = path.join(dir, 'sealed');
+      fs.writeFileSync(path.join(dir, '.claude.json.backup'), 'a key');
+      const ws = new Workspace(() => dir, silentLogger, () => [path.join(dir, '.claude.json'), path.join(dir, 'ſecret')], [], undefined, () => [sealed]);
+      expect(await codeOf(() => ws.read('c', '.claude.jſon.backup'))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', 'ſealed', 'x', 0))).toBe('invalid');
+      expect(fs.existsSync(sealed)).toBe(false);
+      expect(await codeOf(() => ws.write('c', 'secret', 'x', 0))).toBe('invalid');
+      expect(fs.existsSync(path.join(dir, 'secret'))).toBe(false);
+    });
+
+    it.each(['homeMoving', 'homeDeliver'] as const)('refuses a read, a write and a delete of %s, on disk and not', async (file) => {
+      const { paths, ws } = fleetWorkspace();
+      const at = paths[file];
+      const asks = {
+        read: () => ws.read('c', at),
+        write: () => ws.write('c', at, '{}', fs.existsSync(at) ? fs.statSync(at).mtimeMs : 0),
+        delete: () => ws.setAside('c', at),
+      };
+      for (const [what, ask] of Object.entries(asks)) expect(await codeOf(ask), `${what}, not on disk`).toBe('invalid');
+      expect(fs.existsSync(at)).toBe(false);
+      fs.writeFileSync(at, 'stands');
+      for (const [what, ask] of Object.entries(asks)) expect(await codeOf(ask), `${what}, on disk`).toBe('invalid');
+      expect(fs.readFileSync(at, 'utf8')).toBe('stands');
+    });
+
+    it.each(['state.json.home-hm_abcdefghij', 'docs-cut-hm_abcdefghij.json'])('refuses %s, which a join trusts, on disk and not', async (name) => {
+      const { paths, ws } = fleetWorkspace();
+      const at = path.join(paths.home, name);
+      expect(await codeOf(() => ws.write('c', at, '{}', 0))).toBe('invalid');
+      expect(fs.existsSync(at)).toBe(false);
+      fs.writeFileSync(at, 'stands');
+      expect(await codeOf(() => ws.read('c', at))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', at, '{}', fs.statSync(at).mtimeMs))).toBe('invalid');
+      expect(fs.readFileSync(at, 'utf8')).toBe('stands');
     });
   });
 

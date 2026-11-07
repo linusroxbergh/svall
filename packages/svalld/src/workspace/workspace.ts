@@ -50,6 +50,9 @@ function move(from: string, to: string): void {
   fs.rmSync(from, { recursive: true });
 }
 
+// a name as a folding volume takes it: any case, and past ASCII's, as ſ onto s and K onto k
+const folded = (name: string): string => name.normalize('NFKC').toLowerCase();
+
 // what another name, case or link of a file shares with it
 const idOf = (p: string): string | undefined => {
   try { const s = fs.statSync(p, { throwIfNoEntry: false }); return s && `${s.dev}:${s.ino}`; } catch { return undefined; }
@@ -73,12 +76,12 @@ export class Workspace {
   // a copy of a refused dotfile keeps its name in front: .claude.json.backup, backups/.claude.json.backup.<ts>.
   // A plain name like auth.json or .env is too common for that: a repository's auth.json.example or .env.local is its own
   private isCopy(name: string, refused: string[]): boolean {
-    const n = name.toLowerCase();
-    return refused.some((r) => { const b = path.basename(r).toLowerCase(); return b.startsWith('.') && path.extname(b) !== '' && n.startsWith(`${b}.`); });
+    const n = folded(name);
+    return refused.some((r) => { const b = folded(path.basename(r)); return b.startsWith('.') && path.extname(b) !== '' && n.startsWith(`${b}.`); });
   }
 
   // the refused paths once a call, each on disk by its identity; one not on disk yet is matched by its folder and
-  // its name in any case, since a folding volume would create it under another spelling
+  // its name as a folding volume would take it, since one would create it under another spelling
   private refusal(): { refused: string[]; is: (abs: string) => boolean } {
     const refused = this.refused();
     const ids = new Set(refused.map(idOf).filter((i) => i !== undefined));
@@ -96,13 +99,13 @@ export class Workspace {
     };
     const is = (abs: string): boolean => {
       // on a folding volume a file in the sealed folder's place, in any case, would keep the folder from being made
-      if (sealedNames.some((s) => within(abs, s) || (path.basename(abs).toLowerCase() === path.basename(s).toLowerCase() && this.sameFile(path.dirname(abs), path.dirname(s))))) return true;
+      if (sealedNames.some((s) => within(abs, s) || (folded(path.basename(abs)) === folded(path.basename(s)) && this.sameFile(path.dirname(abs), path.dirname(s))))) return true;
       if (sealedIds.size && [abs, realOf(abs) ?? abs].some(leadsThrough)) return true;
       if ([abs, realOf(abs) ?? abs].some((p) => inStagedMove(p) || this.isCopy(path.basename(p), refused))) return true;
       const own = idOf(abs);
       if (own !== undefined) return ids.has(own);
-      const name = path.basename(abs).toLowerCase();
-      return refused.some((r) => path.basename(r).toLowerCase() === name && this.sameFile(path.dirname(abs), path.dirname(r)));
+      const name = folded(path.basename(abs));
+      return refused.some((r) => folded(path.basename(r)) === name && this.sameFile(path.dirname(abs), path.dirname(r)));
     };
     return { refused, is };
   }

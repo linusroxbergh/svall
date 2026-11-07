@@ -381,6 +381,10 @@ runIf('startDaemon', () => {
     fs.writeFileSync(path.join(home, '.env'), 'ANTHROPIC_API_KEY=secret');
     fs.writeFileSync(path.join(home, 'worker.json'), '{"token":"secret"}');
     fs.writeFileSync(path.join(home, 'workers.json'), '{"m":{"token":"secret"}}');
+    fs.mkdirSync(path.join(home, 'journal/home'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'journal/home/hm_abcdefghij.ndjson'), '{"phase":"staged","at":1}\n');
+    fs.mkdirSync(path.join(home, 'adopt-hm_abcdefghij/incoming'), { recursive: true });
+    fs.writeFileSync(path.join(home, 'adopt-hm_abcdefghij/incoming/fleet.json'), '{}');
     const claudeDir = path.join(os.homedir(), '.claude');
     fs.mkdirSync(claudeDir, { recursive: true });
     fs.writeFileSync(path.join(claudeDir, '.credentials.json'), '{"secret":1}');
@@ -389,6 +393,8 @@ runIf('startDaemon', () => {
     const later = path.join(os.homedir(), '.svall-later');
     fs.mkdirSync(later, { recursive: true });
     fs.writeFileSync(path.join(later, 'token'), 'secret');
+    fs.mkdirSync(path.join(later, 'journal/home'), { recursive: true });
+    fs.writeFileSync(path.join(later, 'journal/home/hm_abcdefghij.ndjson'), '{"phase":"staged","at":1}\n');
     const ws = new WebSocket(`ws://127.0.0.1:${d.port}`);
     let next = 1;
     const call = (method: string, params: unknown) => new Promise<{ result?: unknown; error?: { code: string } }>((resolve) => {
@@ -401,7 +407,10 @@ runIf('startDaemon', () => {
       await new Promise((r) => ws.once('open', r));
       ws.send(JSON.stringify({ token: d.token }));
       const c = await d.fleet.createRobot({ islandId: d.fleet.createIsland({ name: 'x' }).id, cwd: os.homedir() });
-      for (const p of ['.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-files/worker.json', '.svall-files/workers.json', '.svall-later/token']) {
+      for (const p of [
+        '.svall-files/token', '.svall-files/mobile-key', '.svall-files/vapid.json', '.svall-files/.env', '.svall-files/worker.json', '.svall-files/workers.json', '.svall-later/token',
+        '.svall-files/journal/home/hm_abcdefghij.ndjson', '.svall-files/adopt-hm_abcdefghij/incoming/fleet.json', '.svall-later/journal/home/hm_abcdefghij.ndjson',
+      ]) {
         expect(await call('fs.read', { id: c.id, path: p })).toMatchObject({ error: { code: 'invalid' } });
       }
       for (const p of ['.svall-files/fleet.json', '.svall-files/node.json']) {
