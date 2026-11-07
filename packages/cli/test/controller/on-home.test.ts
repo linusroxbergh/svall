@@ -107,6 +107,20 @@ describe('a host command on a fleet whose home is far', () => {
     expect(stopped).toBeGreaterThan(0);
   });
 
+  it('a stream that closes early, as ssh\'s stdin does once the far command has ended, leaves the far exit code to say', async () => {
+    const open = () => Promise.resolve({
+      stream: () => {
+        const stream = new PassThrough();
+        setImmediate(() => { stream.write('{"step":"os","status":"ok"}\n'); setImmediate(() => stream.destroy(new Error('Premature close'))); });
+        return { stream, exited: Promise.resolve({ code: 0, signal: null, stderr: '' }) };
+      },
+      close: () => Promise.resolve(),
+    });
+    const out: string[] = [];
+    expect(await relay(home, ['host', 'list'], { open: open as never, line: (l) => out.push(l) })).toBe(0);
+    expect(out).toEqual(['{"step":"os","status":"ok"}']);
+  });
+
   it('watching the connection does not keep a finished run alive', () => {
     const stdin = Object.assign(new PassThrough(), { unref: vi.fn() });
     endsWithConnection(stdin, () => {});

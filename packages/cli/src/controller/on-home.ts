@@ -57,12 +57,16 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
     let said = false;
     let left = '';
     const take = (line: string) => { if (line.trim()) { said = true; o.line(throughHome(line, home.name)); } };
-    for await (const chunk of stream) {
-      left += String(chunk);
-      const lines = left.split('\n');
-      left = lines.pop() ?? '';
-      lines.forEach(take);
-    }
+    // ssh's stdin closing as the far command ends reads as an early close; its exit says how it went
+    stream.on('error', () => undefined);
+    try {
+      for await (const chunk of stream) {
+        left += String(chunk);
+        const lines = left.split('\n');
+        left = lines.pop() ?? '';
+        lines.forEach(take);
+      }
+    } catch { /* its exit says */ }
     take(left);
     const { code, signal, stderr } = await exited;
     if (code === 255 || code === null || signal) return stop(`the connection to ${home.name} went away; what it was doing stopped`, 'try again once it answers');
