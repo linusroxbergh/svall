@@ -10,7 +10,7 @@ import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
-import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, createMarker, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, readMarker, stageAdopt } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, createMarker, enter, forgetPhoneReason, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, phoneReason, readMarker, servedPhone, stageAdopt } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -248,6 +248,53 @@ describe('a not adopted is final', () => {
     const w = await world();
     expect(await adoptStatus(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
     expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('aborted');
+    expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
+    expect(w.studio.daemon.role).toBe('worker');
+  });
+
+  it('a journal that cannot be read fails a status and an abort, and nothing goes on it, so the old home reads no answer', async () => {
+    const w = await world();
+    await staged(w);
+    expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+    const file = path.join(w.studio.paths.homeMoves, `${ID}.ndjson`);
+    const held = fs.readFileSync(file);
+    // what root meets as well as an account does a mode
+    fs.rmSync(file);
+    fs.mkdirSync(file);
+    await expect(adoptStatus(w.studio.deps, ID, ASKER)).rejects.toThrow(/EISDIR/);
+    await expect(abortAdopt(w.studio.deps, ID, ASKER)).rejects.toThrow(/EISDIR/);
+    fs.rmdirSync(file);
+    fs.writeFileSync(file, held);
+    expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('adopted');
+    expect((await adoptStatus(w.studio.deps, ID, ASKER)).status).toBe('adopted');
+    expect(w.studio.daemon.role).toBe('home');
+  });
+
+  it('a start does not guess past a journal it cannot read, which may say an install was cut short', async () => {
+    const w = await world();
+    fs.mkdirSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), { recursive: true });
+    expect(() => homeGate(w.studio.paths)).toThrow(/EISDIR/);
+  });
+
+  it('a person\'s phone switch goes on past a journal that cannot be read, and an absent one is no journal', async () => {
+    const w = await world();
+    enter(w.studio.paths, ID, 'adopted', 'serve');
+    servedPhone(w.studio.paths, ID, 'tailscale refused it');
+    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    fs.mkdirSync(path.join(w.studio.paths.homeMoves, 'hm_otherother.ndjson'));
+    expect(phoneReason(w.studio.paths)).toBe('tailscale refused it');
+    forgetPhoneReason(w.studio.paths);
+    expect(phoneReason(w.studio.paths)).toBeUndefined();
+    expect(journalLines(w.studio.paths, 'hm_nevernever')).toEqual([]);
+  });
+
+  it('a line cut short loses no abort after it: the answer is on the journal, and what comes late is refused', async () => {
+    const w = await world();
+    enter(w.studio.paths, ID, 'staging');
+    fs.appendFileSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), '{"phase":"stag');
+    expect(await abortAdopt(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+    expect(journalLines(w.studio.paths, ID).map((l) => l.phase)).toEqual(['staging', 'aborted']);
     expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toMatchObject({ status: 'not-adopted' });
     expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'not-adopted' });
     expect(w.studio.daemon.role).toBe('worker');

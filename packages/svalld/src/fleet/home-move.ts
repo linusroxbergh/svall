@@ -45,10 +45,13 @@ const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string()
 export const adoptDir = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home, `adopt-${id}`);
 const journalOf = (p: Pick<Paths, 'homeMoves'>, id: string): string => path.join(p.homeMoves, `${id}.ndjson`);
 
-/** The journal of a move as this machine holds it, a line a crash cut short left out. */
+/** The journal of a move as this machine holds it, a line a crash cut short left out. One that cannot be read throws: it may say anything. */
 export function journalLines(p: Pick<Paths, 'homeMoves'>, id: string): z.infer<typeof Record_>[] {
   let text: string;
-  try { text = fs.readFileSync(journalOf(p, id), 'utf8'); } catch { return []; }
+  try { text = fs.readFileSync(journalOf(p, id), 'utf8'); } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
+    throw e;
+  }
   return text.split('\n').flatMap((line) => {
     try { return [Record_.parse(JSON.parse(line))]; } catch { return []; }
   });
@@ -129,7 +132,10 @@ export function phoneOwed(p: Pick<Paths, 'homeMoves'>): string[] {
 export const servedPhone = (p: Pick<Paths, 'homeMoves'>, id: string, why?: string): void => enter(p, id, SERVED, why);
 
 // by the newest try of any move: what its failure said stands until a later try, or a person's own switch, says otherwise
-const phoneTries = (p: Pick<Paths, 'homeMoves'>): { id: string; at: number; detail?: string }[] => moveIds(p).flatMap((id) => journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ id, at: l.at, ...(l.detail && { detail: l.detail }) }))).sort((a, b) => a.at - b.at);
+const phoneTries = (p: Pick<Paths, 'homeMoves'>): { id: string; at: number; detail?: string }[] => moveIds(p).flatMap((id) => {
+  // what a journal that cannot be read tried says nothing to a person's switch
+  try { return journalLines(p, id).filter((l) => l.phase === SERVED).map((l) => ({ id, at: l.at, ...(l.detail && { detail: l.detail }) })); } catch { return []; }
+}).sort((a, b) => a.at - b.at);
 
 /** Why the phone link did not come on when a move last tried it, for Settings → Phone to say. */
 export const phoneReason = (p: Pick<Paths, 'homeMoves'>): string | undefined => phoneTries(p).at(-1)?.detail;

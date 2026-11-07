@@ -563,6 +563,8 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
           id, fleetId: worker.fleetId, from, fromName: name, fromHome: entry.record.home as HomeMoving['fromHome'], to: d.me, toName: here.name, toHome: here.home as HomeMoving['toHome'], at: Date.now(), keySha256,
         } });
         marked = true;
+        // an abort and a delivery in the mark's flight found no marker there and cleared this
+        owe(paths, delivery);
         return { value: undefined, detail: `${name} stays frozen until this machine tells it how the move ended` };
       });
       homePoint('move.marked');

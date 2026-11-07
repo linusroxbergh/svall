@@ -612,6 +612,31 @@ describe('fleet home set local', () => {
     expect(settled).toEqual(['not-adopted']);
   });
 
+  it('an abort and a delivery while the mark is on its way: the outcome is owed again once it lands, and the old home hears', async () => {
+    const { w, deps, far, settled, master } = await workerHere();
+    const open = () => Promise.resolve(master);
+    let lost: string | undefined;
+    deps.farClient = () => Promise.resolve({
+      call: async (m: never, p: Called['params']) => {
+        if (p.op === 'mark') {
+          const { id } = p.marker!;
+          expect((await abortAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, { machine: STUDIO, fleetId: FLEET })).status).toBe('not-adopted');
+          expect(await deliverOwed(w.mac.paths, open)).toBe('told');
+          lost = id;
+          expect(readOwed(w.mac.paths)).toBeUndefined();
+        }
+        return far.client.call(m, p as never);
+      },
+      close: () => {},
+    } as unknown as Client);
+    await moveHomeBack(deps);
+    expect(failed()?.step).toBe('adopt');
+    expect(readOwed(w.mac.paths)?.id).toBe(lost);
+    expect(await deliverOwed(w.mac.paths, open)).toBe('told');
+    expect(settled).toEqual(['not-adopted', 'not-adopted']);
+    expect(w.mac.daemon.role).toBe('worker');
+  }, 30_000);
+
   it('a daemon that will not answer leaves the old home frozen and the outcome owed; a retry finishes it', async () => {
     const { w, deps, far, settled, master } = await workerHere();
     w.mac.daemon.noAnswer = true;
