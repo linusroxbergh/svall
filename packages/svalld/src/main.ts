@@ -68,7 +68,7 @@ import { readWorkerFile, workerOptions, workerStubs, type Off } from './worker/m
 import { WorkerMutations } from './worker/mutations.js';
 import { WorkerPhone } from './worker/phone.js';
 import { Outbox } from './worker/outbox.js';
-import { homeScreenCall, homeTails, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
+import { homeScreenCall, homeTails, relayScreen, ScreenNotice, ScreenTails, sendHomeTails } from './worker/screens.js';
 import { applyReport, type RobotSync } from './worker/snapshot.js';
 import { fleetConfigFile } from './workspace/fleet-config.js';
 import { Workspace } from './workspace/workspace.js';
@@ -262,7 +262,8 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onNotify: (kind, data, machine) => {
       if (kind === 'screen') {
         const s = ScreenNotice.parse(data);
-        return terminals.sawScreen(s.id, s.text, s.at, machine);
+        if (terminals.sawScreen(s.id, s.text, s.at, machine)) relayScreen(links!, s, machine);
+        return;
       }
       if (kind !== 'viewer') return;
       const { key, ev } = ViewerNotice.parse(data);
@@ -273,7 +274,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     onSynced: (machine) => {
       for (const again of [remoteWatches?.reopen(machine), terminals.reopen(machine)]) again?.catch((e: Error) => log.error(`${machine}: ${e.message}`));
       void phone?.sync(machine);
-      void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c) }, machine);
+      void sendHomeTails({ store, tmux, links: links!, runsHere: (c) => router.runsHere(c), held: () => terminals.heldScreens() }, machine);
       void landed({ paths }, machine).catch((e: Error) => log.error(`${machine}: ${e.message}`));
     },
     onLost: (machine) => terminals.lostMachine(machine),

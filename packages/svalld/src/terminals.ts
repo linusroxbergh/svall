@@ -34,7 +34,7 @@ const fit = (screen: Buffer, max = Infinity): Buffer => {
   return screen.subarray(nl < 0 ? screen.length - max : nl + 1);
 };
 
-type Seen = { text: string; at: number; machine: MachineId; generation?: number };
+type Seen = { text: string; at: number; machine: MachineId; generation?: number; home?: MachineId };
 
 /** A terminal no route from this machine reaches: the robot runs where only that machine attaches to its tmux. */
 export function elsewhere(store: Store, id: string, machine: MachineId): ApiError {
@@ -199,15 +199,22 @@ export class TerminalHub {
     else t.viewer.send(ev);
   }
 
-  /** The last lines of a placed robot's pane, as the worker it runs on sends them after a hook. */
-  sawScreen(id: string, text: string, at: number, machine: MachineId): void {
-    if (this.remote?.router.placedAt(id) === machine) this.screens.set(id, { text, at, machine, generation: this.store.state.robots[id].placement?.generation });
+  /** The last lines of a placed robot's pane, as the worker it runs on sends them after a hook; whether it still runs there. */
+  sawScreen(id: string, text: string, at: number, machine: MachineId): boolean {
+    if (this.remote?.router.placedAt(id) !== machine) return false;
+    this.screens.set(id, { text, at, machine, generation: this.store.state.robots[id].placement?.generation });
+    return true;
   }
 
-  /** The last lines of a robot's pane on the home, as the home sends them to a worker that dials it. */
-  sawHomeScreen(id: string, text: string, at: number, machine: MachineId): void {
-    const seen = { text, at, machine };
+  /** The last lines of a robot's pane on `machine`, as `home` sends them to a worker that dials it. */
+  sawHomeScreen(id: string, text: string, at: number, machine: MachineId, home: MachineId = machine): void {
+    const seen = { text, at, machine, home };
     if (this.placedAsSeen(id, seen)) this.screens.set(id, seen);
+  }
+
+  /** What this home holds of its workers' panes, for a worker that dials it and has just linked. */
+  heldScreens(): { id: string; text: string; at: number; machine: MachineId }[] {
+    return [...this.screens].map(([id, { text, at, machine }]) => ({ id, text, at, machine }));
   }
 
   lastScreen(id: string): { text: string; at: number } | undefined {
@@ -220,7 +227,7 @@ export class TerminalHub {
     if (!Object.hasOwn(this.store.state.robots, id)) return false;
     const c = this.store.state.robots[id];
     // a worker holds only its home's, whose robots name no machine
-    if (!this.remote) return (c.machine ?? s.machine) === s.machine;
+    if (!this.remote) return (c.machine ?? s.home ?? s.machine) === s.machine;
     return this.remote.router.placedAt(id) === s.machine && c.placement?.generation === s.generation;
   }
 
