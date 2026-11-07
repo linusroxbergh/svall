@@ -7,7 +7,7 @@ import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
-import { dropToken, issueToken, workerProfile } from '@svall/svalld/placement/workers';
+import { dropToken, enrollArgv, issueToken, workerProfile } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
@@ -540,11 +540,9 @@ async function claimUnits(master: SshMaster, o: { name: string; machine: Machine
 async function enrol(master: SshMaster, o: { name: string; machine: MachineId; svallBase: string; off: string }, d: HostDeps): Promise<Outcome<void>> {
   const paths = resolvePaths(d.fleet.home);
   const fleetId = readFleet(paths.fleetConfig).id;
-  const home = d.registry.localMachine().name;
+  const { name: home, platform: homePlatform } = d.registry.localMachine();
   const token = issueToken(paths, o.machine);
-  const r = await master.run([
-    shq(svallExe(o.svallBase)), ...farFlags(profileOn(o.machine, d)), 'worker', 'enroll', '--home-machine', shq(d.machineId()), '--home-name', shq(home), '--fleet-id', shq(fleetId),
-  ], { input: token, timeoutMs: ENROL_TIMEOUT });
+  const r = await master.run(enrollArgv({ svallBase: o.svallBase, profile: profileOn(o.machine, d), home: d.machineId(), homeName: home, fleetId, homePlatform }), { input: token, timeoutMs: ENROL_TIMEOUT });
   if (r.code !== 0) throw new StepError(`svall worker enroll exited ${r.code ?? `on ${r.signal}`}: ${r.stderr.trim().replace(/^svall: /, '').slice(0, 400) || 'no output'}`);
   const last = r.stdout.trim().split('\n').at(-1);
   return { value: undefined, detail: `${o.name} serves this fleet as a worker of ${home}${last ? `; ${last}` : ''}${o.off}` };

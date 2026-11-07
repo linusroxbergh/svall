@@ -315,7 +315,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     homeName: () => homeLabel(), stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh) : 'this Mac');
+  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh, worker.worker.homePlatform) : 'this Mac');
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });

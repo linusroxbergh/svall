@@ -98,6 +98,8 @@ export const WorkerFile = z.object({
   homeSvallBase: MachinePath.optional(),
   // the fleet's profile on the home, where it is named apart from this one's
   homeProfile: z.string().optional(),
+  // what a worker calls that home: none was written by a Mac home
+  homePlatform: z.enum(['darwin', 'linux']).optional(),
 });
 export type WorkerFile = z.infer<typeof WorkerFile>;
 

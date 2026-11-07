@@ -424,7 +424,7 @@ esac
 
     expect(out).toEqual({ result: 'ready', actions: [] });
     const mac = far.registry.localMachine().name;
-    expect(fs.readFileSync(path.join(home, '.svall', 'worker-args'), 'utf8').split('\n')).toEqual(['worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '']);
+    expect(fs.readFileSync(path.join(home, '.svall', 'worker-args'), 'utf8').split('\n')).toEqual(['worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', far.registry.localMachine().platform, '']);
     expect(fs.readFileSync(path.join(home, '.svall', 'worker-token'), 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
     expect(fs.readFileSync(systemctl, 'utf8')).toBe('--user disable --now svall-gateway.service\n--user daemon-reload\n');
     expect(fs.existsSync(path.join(units, 'svall-gateway.service'))).toBe(false);

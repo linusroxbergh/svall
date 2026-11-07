@@ -57,7 +57,7 @@ describe('host add', () => {
 
     expect(out).toEqual({ result: 'ready', actions: [] });
     const mac = registry.localMachine().name;
-    expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET]);
+    expect(ssh.remoteCalls().find((w) => w.includes('enroll'))).toEqual([SVALL, 'worker', 'enroll', '--home-machine', MAC, '--home-name', mac, '--fleet-id', FLEET, '--home-platform', registry.localMachine().platform]);
     // worker.json there takes, on its stdin, the token this fleet's daemon opens the link with
     expect(fs.readFileSync(input, 'utf8')).toBe(tokenFor(resolvePaths(fleet), REMOTE));
     expect(step('enrol').at(-1)).toEqual({ step: 'enrol', status: 'ok', detail: `trift serves this fleet as a worker of ${mac}; systemctl --user restart svall-svalld@private.service` });

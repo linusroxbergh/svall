@@ -5,6 +5,8 @@ import { MachineId } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
 import { readRegistry } from '../machine.js';
 import type { Paths } from '../paths.js';
+import { svallExe } from '../release.js';
+import { shq } from '../text.js';
 
 // `profile`: the fleet's on that worker, where it is named apart from this one's
 const Workers = z.record(MachineId, z.object({ token: z.string().min(32), addedAt: z.number(), profile: z.string().optional() }));
@@ -24,6 +26,11 @@ function read(paths: Paths): Workers {
     throw new Error(`invalid ${paths.workersFile}: ${(e as Error).message}`, { cause: e });
   }
 }
+
+/** What a home runs on a worker over its own ssh to make it this fleet's, the token on its stdin. */
+export const enrollArgv = (o: { svallBase: string; profile?: string; home: MachineId; homeName: string; fleetId: string; homePlatform: string }): string[] => [
+  shq(svallExe(o.svallBase)), ...(o.profile ? ['-p', shq(o.profile)] : []), 'worker', 'enroll', '--home-machine', shq(o.home), '--home-name', shq(o.homeName), '--fleet-id', shq(o.fleetId), '--home-platform', shq(o.homePlatform),
+];
 
 /** A new token for `machine` to accept this home by, in place of any it held. */
 export function issueToken(paths: Paths, machine: MachineId): string {

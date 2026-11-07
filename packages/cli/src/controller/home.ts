@@ -263,7 +263,7 @@ export function enrolmentFor(paths: Paths, me: MachineId, o: { ssh?: string; hom
     if (long) throw new Error(`${long.message}, so ${m.record.name} cannot dial into ${paths.home}; use an account whose home is ${long.over} bytes shorter`);
     return {
       worker: WorkerFile.parse({
-        homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName, ...(o.profile && { homeProfile: o.profile }),
+        homeMachineId: me, fleetId: m.fleetId, token, homeName: m.toName, homePlatform: o.home.platform, ...(o.profile && { homeProfile: o.profile }),
         ...(o.ssh && { homeSsh: o.ssh, homeSocket: dialSocket(paths, m.from), homeSvallBase: installPrefix() }),
       }),
       // by the name the fleet has known it by
