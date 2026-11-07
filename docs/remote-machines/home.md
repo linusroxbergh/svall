@@ -25,8 +25,9 @@ a typed path before the robot starts: "/home/linus/x is not a folder on studio".
 that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
-too, as "dials in". With the home on this Mac, each machine's ⋯ holds what it does for you, and Add machine adds another. A
-window on a far home has ⋯ on the home's row alone, and no Add machine: its workers are that home's to add and remove.
+too, as "dials in". Each machine's ⋯ holds what it does for you, and Add machine adds another. On a far home these run on the home:
+see [A Linux worker of a server home](setup.md#a-linux-worker-of-a-server-home). Only a Linux machine goes under ⋯ there, as nothing can
+log in to another Mac, and a worker cannot be made the home from a far window: bring the fleet back to this Mac first.
 
 ## What opens on this Mac
 
@@ -64,7 +65,7 @@ The window goes on, on this Mac's own copy of the fleet, with a banner: **studio
 shows; the cause is in svalld's log.
 
 - Robots on this Mac are live, with their terminals.
-- A robot on studio shows unknown, with the last screen studio sent. A robot on any other machine shows unknown.
+- A robot on studio or on a Linux worker of studio shows unknown, with the last screen studio last sent or passed on. A robot on another Mac shows unknown.
 - A change to a robot on this Mac, or a new island, is kept here and reaches studio once it answers, as in
   [While the home is away](placement.md#while-the-home-is-away). A change to a robot elsewhere is refused in words.
 - A new robot starts on this Mac, inside a clone it has, with the note "started on ada-mac while studio was away", at most five
@@ -159,12 +160,22 @@ taking the fleet, if the old one served; if Tailscale refuses it there, the move
 
 A move refuses until it can go through: the other machine linked, on the same release, with Tailscale, its clock within 5
 minutes and room for three copies of the fleet's files; those files under about 180 MB, the most a move carries either way; no
-robot moving, and no other worker, which you remove and, after the move, add again from the new home, or join from it with
-`svall fleet join` if it is a Mac. A path in `fleet.json` under the old home's
+robot moving, and no other worker but a Linux one with an ssh route, which goes with the fleet: remove any other, and after the move
+add it again from the new home, or join from it with `svall fleet join` if it is a Mac. A path in `fleet.json` under the old home's
 account goes in as `~/…`, and the sheet says which of those the new home does not have yet. Mission control's folder is the
 exception when it is the fleet's own, `home` in the fleet's folder (`~/.svall/home`, `~/.svall-<fleet>/home` for a named fleet):
 it becomes the fleet's own folder on the new home, made there when mission control's robots go ahead, which work there from then
 on. A `home.cwd` you set anywhere else is yours, and goes in as written.
+
+### Linux workers in a move
+
+A Linux worker goes with the fleet, and its robots and tmux are not touched. Before anything moves, the machine that would take the fleet logs in to each from its own daemon, with its own key. It refuses
+the move if that login is refused, if the worker runs another release or if another machine there goes by its name, and if it cannot reach a worker this home is still linked to. The check
+names the fix for that machine. A worker that does not answer and is not linked does not stop the move: the sheet says "box does not answer; it joins studio when it does".
+
+Nothing changes on a worker until the move has gone through. The new home then gives each a new token over ssh, restarts its daemon, and goes on until its link greets with that token. What the worker wrote while out of reach
+reaches the new home when it links. A worker that has not joined yet shows it on its row with the last reason, and its robots read as unknown. A worker that does not answer is tried again, less and less often, up to every five minutes. A refused login
+is tried again when the new home's daemon starts, on **Check** and on `svall host upgrade`, once you have fixed it. Neither ever undoes the move. A worker that will never come back goes with `svall host remove <name> --forget`.
 
 ### When a move stops
 
@@ -200,7 +211,7 @@ written after the copy goes to the new home, and one the new home changed too is
 
 ## Limitations
 
-- A move refuses with a second worker of either kind, and Linux workers of a server home come later.
+- A move refuses with a second Mac as a worker.
 - A marked server whose Mac never comes back stays frozen.
 - A marked Mac whose server is gone for good, wiped or reinstalled stays frozen. If that server will never hold the fleet again, quit Svall, stop the Mac's daemon (`launchctl kill SIGTERM gui/$(id -u)/io.github.linusroxbergh.svall.svalld`, `io.github.linusroxbergh.svall.dev.svalld` for Svall Dev, with `.<name>` after it for a named fleet) and remove `home-moving.json` from its fleet home by hand, and it starts as the home. Do this only then: while the server holds the fleet, it makes two homes.
 - Files refuses every fleet's `journal/`, on the phone too, so read a move's journal or `journal/applied.ndjson` in a terminal.

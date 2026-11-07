@@ -46,8 +46,8 @@ function throughHome(line: string, home: string): string {
  */
 export async function relay(home: FarHome, args: string[], o: { open(destination: string): Promise<Far>; line(line: string): void }): Promise<number> {
   const stop = (detail: string, action?: string): number => {
-    o.line(JSON.stringify({ step: 'home', status: 'fail', detail, ...(action && { action }) }));
-    o.line(JSON.stringify({ result: 'actions', actions: [action ?? detail], stopped: 'home' }));
+    o.line(JSON.stringify({ step: 'relay', status: 'fail', detail, ...(action && { action }) }));
+    o.line(JSON.stringify({ result: 'actions', actions: [action ?? detail], stopped: 'relay' }));
     return 1;
   };
   let master: Far;

@@ -103,6 +103,15 @@ the machine holding the fleet, which refuses that move for good before it says s
 stdin, a key only the move's driver holds and whose hash the marker keeps, so nothing typed there ends the move. The phone's authorization travels as what it was:
 `mobile.logins` empty means this machine's Tailscale owner, which a tagged server has none of, so the effective logins are written out.
 
+### A Linux worker of a server home
+
+The server holds a login to each of its Linux workers, with a key of its own and no passphrase, as its daemon runs with no agent: anyone who takes the server's account takes those machines' accounts, as a Mac home's account does today. No Mac key
+leaves the Mac, and no link routes through it. `svall host` for such a worker opens the Mac's own ssh to the home and runs there, and its token never reaches the Mac.
+
+A move gives each Linux worker a new token, created when the new home installs and kept in its `workers.json`, 0600, and on the worker's stdin over ssh. `workers-owed.json` holds machine ids and the last failure, no token. Nothing is sent before
+the move's commit, so a move that rolls back leaves each worker as it was. A worker's `worker.json` holds one token, which it compares in constant time, so it trusts the one home it names. After the commit the old home takes no writes and, once joined, opens no links, and the worker refuses its
+old token from the restart on. The old home's `workers.json.home-<id>` keeps that token, which is worth nothing once the worker has restarted, and Files refuses that file. A worker that never joined still takes it, from whoever already holds that machine's ssh login.
+
 ## Release integrity
 
 - **Signing.** A release's `SHA256SUMS` covers every file, `release.json` included, and is signed with

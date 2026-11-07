@@ -298,6 +298,26 @@ The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like th
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
 
+## A Linux worker of a server home
+
+With the fleet's home on a server, Settings → Machines → **Add machine** and `svall host add box --ssh ada@box` on the Mac run on that home. So do **Check**, **Upgrade**, **Remove** and `svall host doctor`, `upgrade`, `consent` and
+`remove` of its workers, and their steps come back to the panel or the terminal as they run. `svall host list` lists them from the home, as `box`'s ssh destination is the home's, not this Mac's. Those of the home itself run from the Mac.
+
+The home logs in to the new machine with its own ssh: its key and its `known_hosts`, never the Mac's. Its daemon runs with no ssh agent, so that takes a key with no passphrase on the server, or Tailscale SSH. The first add
+often stops at "studio cannot log in to ada@box". **Open terminal** opens one on studio with the fix typed:
+
+```sh
+test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id 'ada@box'
+```
+
+Answer its prompts, then add the machine again. If `box` takes keys alone, send the key's public half from the Mac's Terminal: `ssh studio cat .ssh/id_ed25519.pub | ssh ada@box 'cat >> .ssh/authorized_keys'`. A
+terminal for `box` itself opens on studio too, with an `ssh` to it typed, and a sign-in that waits on a port forwards it on both hops.
+
+The home installs its own release on a machine of its own architecture, keeping its signature. For another architecture it downloads the archive this Mac's release pins, of the same release, and checks its digest and
+signature; a run by hand on the server has no such pin, and is told to name one with `--release`. Svall Dev pins nothing, and takes `--release` for that too. A run ends when its connection does: Stop, quitting the app or a dropped link leave what a Stop always left, and adding again goes on from there.
+
+The worker's `worker.json` names the home and its platform, so it calls a Linux home by name.
+
 ## A server as the fleet's home
 
 `svall host add <name> --ssh <destination> --as-home` installs the companion as above and enrols nothing, so the machine runs a

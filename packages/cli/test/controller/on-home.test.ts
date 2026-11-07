@@ -91,8 +91,8 @@ describe('a host command on a fleet whose home is far', () => {
   it('a connection that goes away mid-run ends on a failed step, and says the run stopped', async () => {
     const { code, parsed } = await run(far([JSON.stringify({ step: 'os', status: 'ok' })], { code: 255 }));
     expect(code).toBe(1);
-    expect(parsed.find((p) => p.status === 'fail')).toMatchObject({ step: 'home', detail: 'the connection to studio went away; what it was doing stopped' });
-    expect(parsed.at(-1)).toMatchObject({ result: 'actions', stopped: 'home' });
+    expect(parsed.find((p) => p.status === 'fail')).toMatchObject({ step: 'relay', detail: 'the connection to studio went away; what it was doing stopped' });
+    expect(parsed.at(-1)).toMatchObject({ result: 'actions', stopped: 'relay' });
   });
 
   it('a relayed run stops as the connection that follows it goes', async () => {
@@ -111,13 +111,13 @@ describe('a host command on a fleet whose home is far', () => {
     const out: string[] = [];
     const code = await relay(home, ['host', 'doctor', 'box'], { open: () => Promise.reject(new Error('no route')), line: (l) => out.push(l) });
     expect(code).toBe(1);
-    expect(JSON.parse(out[0])).toMatchObject({ step: 'home', status: 'fail', detail: 'studio did not answer: no route' });
+    expect(JSON.parse(out[0])).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio did not answer: no route' });
   });
 
   it('a far command that says nothing of itself is failed with what it wrote to stderr, and a home with no svall says so', async () => {
     const said = await run(far([], { code: 1, stderr: "error: unknown option '--relayed'" }));
-    expect(said.parsed[0]).toMatchObject({ step: 'home', status: 'fail', detail: "svall host add there exited 1: error: unknown option '--relayed'" });
+    expect(said.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail: "svall host add there exited 1: error: unknown option '--relayed'" });
     const none = await run(far([], { code: 127 }));
-    expect(none.parsed[0]).toMatchObject({ step: 'home', status: 'fail', detail: 'studio has no Svall at /home/ada/.local/share/svall/current/bin/svall' });
+    expect(none.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio has no Svall at /home/ada/.local/share/svall/current/bin/svall' });
   });
 });
