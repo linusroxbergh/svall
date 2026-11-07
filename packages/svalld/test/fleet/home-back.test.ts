@@ -166,6 +166,35 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     expect(w.studio.daemon.role).toBe('worker');
   });
 
+  it('an answer of no marker that comes back after the mark landed and the outcome was owed again leaves that debt, and the old home hears', async () => {
+    const w = await markedBack();
+    expect(await abortAdopt(w.mac.deps, BACK)).toEqual({ status: 'not-adopted' });
+    const mark = fs.readFileSync(w.studio.paths.homeMoving);
+    fs.rmSync(w.studio.paths.homeMoving);
+    const far = studioAt(w.studio);
+    const open = async () => {
+      const master = await (far.open as () => Promise<{ run: (argv: string[], o?: { input?: string }) => Promise<{ stdout: string }>; close: () => Promise<void> }>)();
+      return {
+        ...master,
+        run: async (argv: string[], o?: { input?: string }) => {
+          const r = await master.run(argv, o);
+          if (argv.join(' ').includes("'settle'")) {
+            expect(JSON.parse(r.stdout)).toEqual({ status: 'done' });
+            fs.writeFileSync(w.studio.paths.homeMoving, mark);
+            owe(w.mac.paths, FAR);
+          }
+          return r;
+        },
+      };
+    };
+    expect(await deliverOwed(w.mac.paths, open as never)).toBe('waiting');
+    expect(readOwed(w.mac.paths)?.id).toBe(BACK);
+    expect(readMarker(w.studio.paths)?.id).toBe(BACK);
+    expect(await deliverOwed(w.mac.paths, far.open)).toBe('told');
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+    expect(readMarker(w.studio.paths)).toBeUndefined();
+  });
+
   it('a crash after it was told tells it again, and that changes nothing', async () => {
     const w = await markedBack();
     await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);

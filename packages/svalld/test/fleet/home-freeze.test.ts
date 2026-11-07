@@ -316,6 +316,75 @@ describe('a frozen home', () => {
     });
   });
 
+  describe('an outcome that does not land', () => {
+    const ENROL = { worker: { homeMachineId: STUDIO, fleetId: FLEET, token: 'x'.repeat(48), homeName: 'studio' } } as never;
+    const OTHER_ENROL = { worker: { homeMachineId: MAC, fleetId: FLEET, token: 'x'.repeat(48), homeName: 'elsewhere' } } as never;
+    const asking = (answers: AdoptAnswer[]) => {
+      const made = setup({ frozen: true, answers });
+      let asked = 0;
+      const ask = made.d.ask;
+      made.d.ask = (m, op) => { asked++; return ask(m, op); };
+      vi.useFakeTimers();
+      made.freeze.start();
+      return { ...made, asked: () => asked };
+    };
+
+    it('a marker that cannot be written keeps it asking, and the next answer lands once it can', async () => {
+      const { freeze, paths, log, asked } = asking([{ status: 'adopted', enrol: ENROL }, { status: 'adopted', enrol: ENROL }]);
+      try {
+        const full = vi.spyOn(realStages, 'open').mockImplementationOnce(() => { throw Object.assign(new Error('ENOSPC: no space left on device'), { code: 'ENOSPC' }); });
+        await vi.advanceTimersByTimeAsync(11_000);
+        expect(full).toHaveBeenCalled();
+        expect(asked()).toBe(1);
+        expect(readMarker(paths)?.enrol).toBeUndefined();
+        expect(log).not.toContain('restart');
+        expect(freeze.status().moving?.answer).toMatch(/ENOSPC/);
+        expect(log.some((l) => /ENOSPC/.test(l))).toBe(true);
+        await vi.advanceTimersByTimeAsync(21_000);
+        expect(asked()).toBe(2);
+        expect(readMarker(paths)?.enrol).toBeDefined();
+        expect(log).toContain('restart');
+      } finally { freeze.stop(); vi.useRealTimers(); }
+    });
+
+    it('a journal that cannot be written keeps it asking, frozen under its marker, and it thaws once it can', async () => {
+      const { freeze, paths, log, asked } = asking([{ status: 'not-adopted' }, { status: 'not-adopted' }]);
+      try {
+        const journal = path.join(paths.homeMoves, `${ID}.ndjson`);
+        // what root meets as well as an account does a mode
+        fs.mkdirSync(journal, { recursive: true });
+        await vi.advanceTimersByTimeAsync(11_000);
+        expect(asked()).toBe(1);
+        expect(readMarker(paths)?.id).toBe(ID);
+        expect(freeze.active).toBe(true);
+        expect(log).not.toContain('resume');
+        fs.rmdirSync(journal);
+        await vi.advanceTimersByTimeAsync(21_000);
+        expect(asked()).toBe(2);
+        expect(readMarker(paths)).toBeUndefined();
+        expect(freeze.active).toBe(false);
+        expect(log).toContain('resume');
+      } finally { freeze.stop(); vi.useRealTimers(); }
+    });
+
+    it('an enrolment naming another machine is refused, frees nothing and joins nothing, and the asking goes on', async () => {
+      const { freeze, paths, log, asked } = asking([{ status: 'adopted', enrol: OTHER_ENROL }, { status: 'adopted', enrol: ENROL }]);
+      const before = fs.readFileSync(paths.homeMoving, 'utf8');
+      try {
+        await vi.advanceTimersByTimeAsync(11_000);
+        expect(asked()).toBe(1);
+        expect(fs.readFileSync(paths.homeMoving, 'utf8')).toBe(before);
+        expect(freeze.active).toBe(true);
+        expect(log).not.toContain('restart');
+        expect(log).not.toContain('resume');
+        expect(freeze.status().moving?.answer).toMatch(/another machine or fleet/);
+        await vi.advanceTimersByTimeAsync(21_000);
+        expect(asked()).toBe(2);
+        expect(readMarker(paths)?.enrol?.worker.homeName).toBe('studio');
+      } finally { freeze.stop(); vi.useRealTimers(); }
+    });
+  });
+
   it('a driver gone under a marker leaves it asking', async () => {
     vi.useFakeTimers();
     try {

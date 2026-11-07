@@ -266,12 +266,12 @@ two halves:
 1. On the home, `svall --json fleet enroll-worker <machine id> --name <name> --platform darwin --arch <arch> --home
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
    forwards its link to and where svall, its platform, its architecture and its user folder are on the home. A run again issues a new
-   token, which replaces the one before.
+   token, which replaces the one before; `svall fleet join` runs it with `--keep-token`, so a join run again keeps the one the worker may hold.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
    --home-socket <socket> --home-svall-base <path> --home-platform <platform> --home-arch <arch> --home-path <path>`, with the token on its stdin, makes it
    dial, keeps the home's record in this machine's registry for `svall host upgrade` and `host doctor`, and restarts its daemon as the home's worker,
    loading a named fleet's launchd job if it has none. The home's first snapshot replaces what a fleet holds, so it
-   refuses a fleet that has robots, workers or anything on an island of its own, which a fleet opened once does until its
+   refuses a fleet that has robots, workers, fleet or repo notes or anything on an island of its own, which a fleet opened once does until its
    first robot closes, and a worker of another fleet, whose robots the new home would close. Name a fleet never opened
    instead: `svall -p <empty fleet> worker enroll`.
 

@@ -16,6 +16,7 @@ import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
+import { realStages } from '../../src/durable.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { ADOPT_KEY, ASKER, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
@@ -446,12 +447,118 @@ describe('adopting', () => {
     await w.studio.daemon.stop();
     w.studio.daemon.startFails = 'the unit would not start';
     const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
-    expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: 'the unit would not start' });
+    expect(a).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('the unit would not start') });
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
     expect(w.studio.daemon.role).toBeUndefined();
     delete w.studio.daemon.startFails;
     expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
     expect(w.studio.daemon.role).toBe('home');
+  });
+
+  describe('a worker\'s daemon that does not start again as a move goes back', () => {
+    const wentBack = async () => {
+      const w = await world();
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      w.studio.daemon.noAnswer = true;
+      w.studio.daemon.startFails = 'systemctl --user: failed to connect to bus';
+      expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('failed to connect to bus') });
+      expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('stopping');
+      expect(w.studio.daemon.role).toBeUndefined();
+      expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+      return w;
+    };
+
+    it('reads as rolled back only once a status has started it', async () => {
+      const w = await wentBack();
+      expect(await adoptStatus(w.studio.deps, ID, ASKER)).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('failed to connect to bus') });
+      expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('stopping');
+      delete w.studio.daemon.startFails;
+      expect(await adoptStatus(w.studio.deps, ID, ASKER)).toMatchObject({ status: 'pending', phase: 'rolledback' });
+      expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('rolledback');
+      expect(w.studio.daemon.role).toBe('worker');
+    });
+
+    it('an abort says why and writes nothing off while the start fails, and ends the move with the worker up once it starts', async () => {
+      const w = await wentBack();
+      expect(await abortAdopt(w.studio.deps, ID, ASKER)).toMatchObject({ status: 'pending', phase: 'stopping', detail: expect.stringContaining('failed to connect to bus') });
+      expect(journalLines(w.studio.paths, ID).some((l) => l.phase === 'aborted')).toBe(false);
+      delete w.studio.daemon.startFails;
+      expect(await abortAdopt(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(await adoptStatus(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+    });
+
+    it('an abort of an install whose home never answered goes back and holds its record the same way', async () => {
+      const w = await world();
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      crashAt('adopt.installed');
+      await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
+      w.studio.daemon.startFails = 'the unit would not start';
+      expect(await abortAdopt(w.studio.deps, ID, ASKER)).toMatchObject({ status: 'pending', phase: 'stopping' });
+      expect(journalLines(w.studio.paths, ID).some((l) => l.phase === 'aborted')).toBe(false);
+      delete w.studio.daemon.startFails;
+      expect(await abortAdopt(w.studio.deps, ID, ASKER)).toEqual({ status: 'not-adopted' });
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+    });
+
+    it('a retry ends it, and an archive that comes again leaves it as it stands', async () => {
+      const w = await wentBack();
+      expect(await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).toEqual({ status: 'pending', phase: 'stopping' });
+      delete w.studio.daemon.startFails;
+      w.studio.daemon.noAnswer = false;
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+      expect(w.studio.daemon.role).toBe('home');
+    });
+  });
+
+  describe('a registry that cannot be written', () => {
+    const shut = (dir: string) => {
+      const open = realStages.open;
+      return vi.spyOn(realStages, 'open').mockImplementation((file, mode) => {
+        if (file.startsWith(dir)) throw Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' });
+        return open(file, mode);
+      });
+    };
+
+    it('at the install: the worker goes back and its daemon starts, its record as it was, and a retry goes through once it can', async () => {
+      const w = await world();
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      const spy = shut(w.studio.registryDir);
+      const a = await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment).finally(() => spy.mockRestore());
+      expect(a).toMatchObject({ status: 'pending', phase: 'rolledback', detail: expect.stringContaining('EACCES') });
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+      expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)).toBeUndefined();
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+      expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)).toBeDefined();
+    });
+
+    it('at a rollback, past the record: a status goes on, and what it held is put back by the install that comes next', async () => {
+      const w = await world();
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      w.studio.daemon.noAnswer = true;
+      crashAt('adopt.started');
+      await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
+      const spy = shut(w.studio.registryDir);
+      const a = await adoptStatus(w.studio.deps, ID, ASKER).finally(() => spy.mockRestore());
+      expect(a).toMatchObject({ status: 'pending', phase: 'rolledback' });
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(fs.existsSync(path.join(adoptDir(w.studio.paths, ID), 'held-record.json'))).toBe(true);
+      expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'rolledback' });
+      expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)).toBeUndefined();
+    });
+
+    it('at a start after a crash in the install: the restart goes ahead', async () => {
+      const w = await world();
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      crashAt('adopt.registry');
+      await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
+      const spy = shut(w.studio.registryDir);
+      await w.studio.daemon.start().finally(() => spy.mockRestore());
+      expect(w.studio.daemon.role).toBe('worker');
+      expect(journalLines(w.studio.paths, ID).at(-1)?.phase).toBe('rolledback');
+    });
   });
 
   it('a daemon that will not let go of its lock leaves the worker as it was, its daemon asked to start again', async () => {
@@ -467,7 +574,7 @@ describe('adopting', () => {
     clearInterval(later);
     vi.useRealTimers();
     w.studio.daemon.stop = held;
-    expect(a).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    expect(a).toMatchObject({ status: 'pending', phase: 'stopping' });
     expect(a.status === 'pending' && a.detail).toMatch(/did not stop/);
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
   });
@@ -483,6 +590,28 @@ describe('adopting', () => {
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
     await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
     expect(fs.existsSync(w.studio.paths.env)).toBe(false);
+  });
+
+  it('a pack gives up what an earlier stop left: a folder no journal owns and another move\'s cut, and keeps a journaled one and a standing marker\'s cut', async () => {
+    const w = await world();
+    await w.mac.daemon.stop();
+    const at = (name: string) => path.join(w.mac.paths.home, name);
+    const [killed, journaled, marked] = ['hm_killedkill', 'hm_journaled0', 'hm_markedmark'];
+    fs.mkdirSync(at(`adopt-${killed}/out`), { recursive: true });
+    fs.writeFileSync(at(`adopt-${killed}/out/mobile-key`), 'a key');
+    fs.mkdirSync(at(`adopt-${journaled}`));
+    enter(w.mac.paths, journaled, 'staged');
+    fs.writeFileSync(at(`docs-cut-${killed}.json`), '{}');
+    fs.writeFileSync(at(`docs-cut-${marked}.json`), '{}');
+    fs.mkdirSync(at('adopt-a-folder-of-mine'));
+    putMarker(w.mac.paths, { ...marker(), id: marked as never });
+    await packFleet(w.mac.paths, w.manifest);
+    expect(fs.existsSync(at(`adopt-${killed}`))).toBe(false);
+    expect(fs.existsSync(at(`docs-cut-${killed}.json`))).toBe(false);
+    expect(fs.existsSync(at(`adopt-${journaled}`))).toBe(true);
+    expect(fs.existsSync(at(`docs-cut-${marked}.json`))).toBe(true);
+    expect(fs.existsSync(at('adopt-a-folder-of-mine'))).toBe(true);
+    expect(fs.existsSync(at(`docs-cut-${ID}.json`))).toBe(true);
   });
 
   it('holds a name ustar cannot carry back, naming it, and removes its copies of the keys', async () => {

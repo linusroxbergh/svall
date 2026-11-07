@@ -62,6 +62,7 @@ const SETTLE_MS = 120_000;
 
 /** Tells the old home how its move ended, once this machine's journal says: it has no route here, so it waits frozen for this. */
 export async function deliverOwed(paths: Paths, open: Open = openMaster): Promise<'nothing' | 'waiting' | 'told'> {
+  const read = fs.statSync(paths.homeDeliver, { throwIfNoEntry: false })?.ino;
   const owed = readOwed(paths);
   if (!owed) return 'nothing';
   const said = moveOutcome(paths, owed.id);
@@ -80,6 +81,8 @@ export async function deliverOwed(paths: Paths, open: Open = openMaster): Promis
     } finally { await master.close().catch(() => undefined); }
     homePoint('deliver.told');
   }
+  // `owe` replaces the file, so another one is owed since this read it, past a mark this answer may not have seen
+  if ((fs.statSync(paths.homeDeliver, { throwIfNoEntry: false })?.ino ?? read) !== read) return 'waiting';
   fs.rmSync(paths.homeDeliver, { force: true });
   return 'told';
 }

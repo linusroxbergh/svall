@@ -1,7 +1,8 @@
 import fs from 'node:fs';
+import path from 'node:path';
 import { ApiError, migrateState, WorkerFile, type FleetState } from '@svall/protocol';
 import { InvalidConfig, parseConfig } from '../config.js';
-import { docsDir, listDocs } from '../docs.js';
+import { docsDir, fleetDir, listDocs } from '../docs.js';
 import { readRegistry } from '../machine.js';
 import type { Fleets } from '../fleets.js';
 import type { mobileControl } from '../mobile.js';
@@ -28,6 +29,13 @@ export function readWorkerFile(paths: Paths): WorkerFile {
 export const workerOptions = (paths: Paths, platform: NodeJS.Platform = process.platform): { worker: WorkerFile; off: readonly Off[] } =>
   ({ worker: readWorkerFile(paths), off: offOn(platform) });
 
+// a repo's notes, each folder named for its repo, none of which a worker's fleet reads again
+const repoNotes = (paths: Paths): number => {
+  let slugs: string[] = [];
+  try { slugs = fs.readdirSync(path.join(paths.docs, 'repos')); } catch { /* none */ }
+  return slugs.flatMap((slug) => listDocs(docsDir(paths.docs, 'repo', slug))).length;
+};
+
 /** What a fleet's home would lose to a worker's first snapshot, by name; nothing once it has taken one, as it then holds a
  *  worker's copy. An island counts for what is on it, as a new fleet opens on an empty one. */
 export function heldAsHome(paths: Paths, me: string): string | undefined {
@@ -43,6 +51,8 @@ export function heldAsHome(paths: Paths, me: string): string | undefined {
   const held = [
     ...count(Object.values(state?.robots ?? {}).filter((r) => r.machine !== me).length, 'robot'),
     ...count(islands.length, 'island'),
+    ...count(listDocs(fleetDir(paths.docs)).length, 'fleet note'),
+    ...count(repoNotes(paths), 'repo note'),
     ...count(workerIds(paths).filter((id) => !listed || listed.has(id)).length, 'worker'),
   ];
   return held.length ? new Intl.ListFormat('en').format(held) : undefined;

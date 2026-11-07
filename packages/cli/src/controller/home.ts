@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineRecord, type Refusal } from '@svall/protocol';
+import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, MachineRecord, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type Refusal } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
@@ -138,8 +138,10 @@ async function identifyHome(master: SshMaster, o: JoinOptions, d: Pick<JoinDeps,
 export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const served = await run.step('fleet', () => {
+      const destination = MachineRecord.shape.ssh.unwrap().safeParse(o.ssh);
+      if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
       const of = refuseHeld(o, d);
-      return Promise.resolve({ value: of, detail: of ? `${d.target.home} serves ${of} as a worker, whose token this renews` : `${d.target.home} holds nothing a snapshot would erase` });
+      return Promise.resolve({ value: of, detail: of ? `${d.target.home} serves ${of} as a worker, and joins it again` : `${d.target.home} holds no robot, worker or note; its island names and board columns go with the home's first snapshot` });
     });
     await run.step('tailscale', () => tailnetHere(d));
     await run.step('ssh', async () => {
@@ -165,7 +167,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       const here = d.registry.localMachine();
       const enrolled = await run.step('enrol', async () => {
         const r = await master.run([
-          shq(svallExe(home.svallBase)), ...farFlags(o), '--json', 'fleet', 'enroll-worker', shq(d.me), '--name', shq(o.name ?? here.name),
+          shq(svallExe(home.svallBase)), ...farFlags(o), '--json', 'fleet', 'enroll-worker', shq(d.me), '--keep-token', '--name', shq(o.name ?? here.name),
           '--platform', shq(here.platform), '--arch', shq(here.arch), '--home', shq(here.home), '--svall-base', shq(d.svallBase),
         ], { timeoutMs: ENROLL_TIMEOUT });
         // the answer holds the token, so only what ssh said is quoted back
@@ -447,7 +449,8 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       // before the marker nothing can be adopted, so this home thaws whatever the far side heard; from the marker on, only that side's answer does
       if (!marked) {
         await client.call('fleet.thaw', { id }).catch(() => undefined);
-        if (master) await far(['fleet', 'abort', id, ...asking]).catch(() => undefined);
+        // no folder named yet: nothing went there to call off, and no env would name a fleet
+        if (master && farHome) await far(['fleet', 'abort', id, ...asking]).catch(() => undefined);
         fs.rmSync(adoptDir(paths, id), { recursive: true, force: true });
         driverJournal(paths, id, 'aborted');
         await offerCrew(run, client).catch(() => undefined);

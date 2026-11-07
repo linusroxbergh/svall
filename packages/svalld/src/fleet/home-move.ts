@@ -372,7 +372,7 @@ function restoreOriginal(p: Paths, id: string): void {
 }
 
 /** Restores the fleet home and hands the daemon back as it was: a move that did not take leaves a worker of the old home. */
-async function rollback(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, why?: string): Promise<void> {
+async function rollback(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, why?: string): Promise<AdoptAnswer> {
   const p = d.paths;
   await d.daemon.stop().catch(() => undefined);
   const unlock = await waitForDaemonLock(p);
@@ -383,20 +383,25 @@ async function rollback(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, why?: str
     restoreRecord(d, id, m);
     enter(p, id, 'stopping', why);
   } finally { unlock(); }
-  await startAgain(d, id, why);
+  return startAgain(d, id, why);
 }
 
-// `stopping` until the daemon is back, so a crash before it leaves a status or an abort to start it
-async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<void> {
+// `stopping` until the daemon is back, so a crash or a start that fails leaves a status, an abort or a retry to start it
+async function startAgain(d: AdoptDeps, id: HomeMoveId, why?: string): Promise<AdoptAnswer> {
   homePoint('restore.restarting');
-  await d.daemon.start().catch(() => undefined);
+  try { await d.daemon.start(); } catch (e) {
+    if (e instanceof Crash) throw e;
+    return pending('stopping', `${why ? `${why}; ` : ''}its daemon did not start again: ${(e as Error).message}`);
+  }
   enter(d.paths, id, 'rolledback', why);
+  return pending('rolledback', why);
 }
 
+// a registry that cannot be written stops no worker's start, which does not go by it: what it held stays for the install that comes next
 function restoreRecord(d: Pick<AdoptDeps, 'paths' | 'registryDir'>, id: HomeMoveId, m: HomeManifest): void {
   const file = path.join(adoptDir(d.paths, id), HELD_RECORD);
   if (!fs.existsSync(file)) return;
-  putRecord(m.from, heldRecordOf(d.paths, id), d.registryDir);
+  try { putRecord(m.from, heldRecordOf(d.paths, id), d.registryDir); } catch { return; }
   fs.rmSync(file, { force: true });
 }
 
@@ -422,10 +427,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefin
       await d.daemon.stop();
       homePoint('adopt.stopped');
       const unlock = await waitForDaemonLock(p).catch((e: Error) => e);
-      if (unlock instanceof Error) {
-        await startAgain(d, id, unlock.message);
-        return pending('rolledback', unlock.message);
-      }
+      if (unlock instanceof Error) return startAgain(d, id, unlock.message);
       try {
         // the token one try issued holds for the next
         const token = fs.existsSync(enrolFile(p, id)) ? WorkerFile.parse((read(enrolFile(p, id)) as Enrolment).worker).token : crypto.randomBytes(24).toString('hex');
@@ -435,8 +437,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefin
         homePoint('adopt.installing');
         installFiles(p, id);
         const file = path.join(adoptDir(p, id), HELD_RECORD);
-        const held = fs.existsSync(file) ? heldRecordOf(p, id) : undefined;
-        writeDurable(file, { heldRecord: held ?? readRegistry(d.registryDir).find((m) => m.id === manifest.from)?.record ?? null }, { mode: 0o600 });
+        if (!fs.existsSync(file)) writeDurable(file, { heldRecord: readRegistry(d.registryDir).find((m) => m.id === manifest.from)?.record ?? null }, { mode: 0o600 });
         putRecord(manifest.from, manifest.record, d.registryDir);
         homePoint('adopt.registry');
         enter(p, id, 'installed');
@@ -449,8 +450,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefin
         }
         enter(p, id, 'stopping', (e as Error).message);
         unlock();
-        await startAgain(d, id, (e as Error).message);
-        return pending('rolledback', (e as Error).message);
+        return await startAgain(d, id, (e as Error).message);
       } finally { unlock(); }
     }
     let why = NO_HOME;
@@ -460,10 +460,7 @@ export function installAdopt(d: AdoptDeps, id: HomeMoveId, key: string | undefin
       why = e.message;
     });
     homePoint('adopt.started');
-    if (!await d.daemon.answersHome(manifest.fleetId).catch(() => false)) {
-      await rollback(d, id, manifest, why);
-      return pending('rolledback', why);
-    }
+    if (!await d.daemon.answersHome(manifest.fleetId).catch(() => false)) return rollback(d, id, manifest, why);
     return commit(p, id, manifest);
   });
 }
@@ -541,16 +538,11 @@ export function adoptStatus(d: AdoptDeps, id: HomeMoveId, asker?: Asker): Promis
     if (at === 'done') return { status: 'done' };
     if (at === 'adopted') return adopted(p, id);
     if (at === 'installing') await recoverInstall(d, id);
-    if (at === 'stopping' || at === 'installing') {
-      const why = at === 'stopping' ? 'the adopt was cut short' : CUT_SHORT;
-      await startAgain(d, id, why);
-      return pending('rolledback', why);
-    }
+    if (at === 'stopping' || at === 'installing') return startAgain(d, id, at === 'stopping' ? 'the adopt was cut short' : CUT_SHORT);
     if (at === 'installed') {
       const manifest = readManifest(p, id);
       if (await homeAnswers(d, manifest)) return commit(p, id, manifest);
-      await rollback(d, id, manifest, NO_HOME);
-      return pending('rolledback', NO_HOME);
+      return rollback(d, id, manifest, NO_HOME);
     }
     return pending(at);
   });
@@ -565,9 +557,9 @@ export function abortAdopt(d: AdoptDeps, id: HomeMoveId, asker?: Asker): Promise
     if (at === 'adopted') return adopted(p, id);
     // a home that answers may have taken writes a rollback would lose, so the move goes forward
     if (at === 'installed' && await homeAnswers(d, readManifest(p, id))) return commit(p, id, readManifest(p, id));
-    if (at === 'installing' || at === 'installed') await rollback(d, id, readManifest(p, id));
-    // the daemon comes back before the record, so a crash between leaves a status to start it
-    if (at === 'stopping') await d.daemon.start().catch(() => undefined);
+    const back = at === 'installing' || at === 'installed' ? await rollback(d, id, readManifest(p, id)) : at === 'stopping' ? await startAgain(d, id) : undefined;
+    // the daemon comes back before the record, as nothing starts it past that: a crash between leaves a status to start it, and a start that fails is answered
+    if (back?.status === 'pending' && back.phase === 'stopping') return back;
     // a rollback has put worker.json back, so only now does this folder say whom it serves
     if (asker && !servesAsker(p, asker)) return pending('unknown', NOT_SERVED);
     if (at !== 'aborted' && at !== 'released') {
@@ -775,8 +767,19 @@ export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAn
   return { status: 'not-adopted' };
 }
 
+// what an earlier stop left and no journal gives up: a pack a kill cut off, keys and all, and the cut of a move that never marked. The cut of a marked one stays for its join
+function dropLeftBehind(p: Paths, id: string): void {
+  const [marked, journaled] = [readMarker(p)?.id, moveIds(p)];
+  for (const name of fs.readdirSync(p.home)) {
+    const [, packed, cut] = /^(?:adopt-(hm_[0-9a-z]{10})|docs-cut-(hm_[0-9a-z]{10})\.json)$/.exec(name) ?? [];
+    const left = packed ? packed !== id && !journaled.includes(packed) : cut !== undefined && cut !== id && cut !== marked;
+    if (left) fs.rmSync(path.join(p.home, name), { recursive: true, force: true });
+  }
+}
+
 /** The fleet's files as an archive: only done moves, the running ones' journals being a machine's own. */
 export async function packFleet(p: Paths, m: HomeManifest): Promise<{ sha256: string; bytes: Buffer }> {
+  dropLeftBehind(p, m.id);
   const dir = adoptDir(p, m.id);
   const out = path.join(dir, 'out');
   fs.rmSync(dir, { recursive: true, force: true });

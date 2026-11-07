@@ -124,6 +124,18 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(lines.some((l) => l.includes('--home-ssh'))).toBe(false);
   });
 
+  it('a connection-info that fails sends no abort, which with no folder named would reach the far machine\'s private fleet', async () => {
+    const lines: string[] = [];
+    const { deps, called } = outDeps((line) => { lines.push(line); return answer({ status: 'not-adopted' }); });
+    const run = await deps.openMaster('ada@studio');
+    const inner = run.run.bind(run);
+    run.run = ((argv: string[], o?: never) => (argv.join(' ').includes('connection-info') ? Promise.resolve({ code: 1, signal: null, stdout: '', stderr: 'svalld is not running' }) : inner(argv, o))) as never;
+    await moveHomeOut('studio', deps);
+    expect(failed()).toMatchObject({ step: 'check' });
+    expect(lines.filter((l) => l.includes("'abort'"))).toEqual([]);
+    expect(called.some((c) => c.method === 'fleet.thaw')).toBe(true);
+  });
+
   it('the install key is minted before the copy, its hash in the manifest, and goes on stdin alone, only past the mark', async () => {
     const sent: { line: string; input?: string; marked: boolean }[] = [];
     const out = outDeps((line, input) => { sent.push({ line, input, marked: out.called.some((c) => c.params.op === 'mark') }); return happy(line); });

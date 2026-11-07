@@ -112,6 +112,40 @@ describe('svall fleet join', () => {
     expect(fs.existsSync(resolvePaths(home).fleetConfig)).toBe(false);
   });
 
+  it.each([
+    ['fleet note', 'docs/fleet/mine.md', /holds 1 fleet note/],
+    ['repo note', 'docs/repos/svall-1234abcd/mine.md', /holds 1 repo note/],
+  ])('refuses a fleet that holds a %s before anything is written or asked', async (_what, rel, said) => {
+    const file = path.join(home, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'what I wrote');
+    const d = deps({});
+    const out = await joinHome({ ssh: 'ada@studio' }, d);
+    expect(out.stopped).toBe('fleet');
+    expect(failure()?.detail).toMatch(said);
+    expect(d.far.asked).toEqual([]);
+  });
+
+  it('says what a fleet it takes loses all the same', async () => {
+    const out = await joinHome({ ssh: 'ada@studio' }, deps({}));
+    expect(out.result).toBe('ready');
+    expect(events.find((e) => e.step === 'fleet' && e.status === 'ok')?.detail).toMatch(/island names and board columns go with the home's first snapshot/);
+  });
+
+  it('refuses a destination no worker.json can hold before the home issues a token', async () => {
+    const d = deps({});
+    const out = await joinHome({ ssh: 'ssh://ada@studio' }, d);
+    expect(out.stopped).toBe('fleet');
+    expect(failure()?.detail).toMatch(/ssh:\/\/ada@studio is not an ssh destination/);
+    expect(d.far.asked).toEqual([]);
+  });
+
+  it('asks the home to keep a token it holds, as the worker may hold it yet', async () => {
+    const d = deps({});
+    expect((await joinHome({ ssh: 'ada@studio' }, d)).result).toBe('ready');
+    expect(d.far.asked.find((l) => l.includes('enroll-worker'))).toContain('--keep-token');
+  });
+
   it('refuses a fleet with a worker of its own', async () => {
     fs.mkdirSync(home, { recursive: true });
     const other = '77777777-7777-8888-9999-aaaaaaaaaaaa';

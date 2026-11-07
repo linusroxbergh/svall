@@ -429,6 +429,13 @@ describe('svall worker', () => {
     const again = JSON.parse((await enroll()).stdout);
     expect(again.token).not.toBe(answer.token);
     expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+    // a join run again: the worker may hold the one this home holds, as the answer that carried a newer could be lost
+    const kept = JSON.parse((await svallIn(env, '--json', 'fleet', 'enroll-worker', id, '--keep-token', ...facts).done).stdout);
+    expect(kept.token).toBe(again.token);
+    expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+    const other = crypto.randomUUID();
+    const first2 = JSON.parse((await svallIn(env, '--json', 'fleet', 'enroll-worker', other, '--keep-token', '--name', 'ada-mac2', ...facts.slice(2)).done).stdout);
+    expect(tokenFor(resolvePaths(home), other as never)).toBe(first2.token);
     // a run that would show the token to a person issues none
     const plain = await svallIn(env, 'fleet', 'enroll-worker', id, ...facts).done;
     expect(plain).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('run it with --json') });

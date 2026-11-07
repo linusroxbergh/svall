@@ -133,7 +133,8 @@ this Mac's as soon as the window reaches it ([your agent setup](#your-agent-setu
 
 From a terminal, `svall fleet join <ssh>` makes a fleet that holds nothing a worker of the home there: it checks the home,
 takes that fleet's id and a token the home issues, restarts as its worker and ends on the first snapshot. It refuses a fleet
-that holds anything before it writes a thing, so name one that has never been opened: `svall -p <new fleet> fleet join <ssh>`. The
+that holds robots, workers, fleet or repo notes or an island with anything on it before it writes a thing, so name one that has never
+been opened: `svall -p <new fleet> fleet join <ssh>`. An island's name and the board's columns go with the first snapshot. The
 fleet keeps the name it has on each machine, and the home follows it there however the two are named (`--home-profile` names
 the fleet on the home when it is not the private one).
 
@@ -165,7 +166,7 @@ machine stops, however it stops, what is left is one of these:
 - **Marked, and not taken.** The window says "The fleet is moving to studio, and this Mac takes no changes until the move
   ends", where studio says the move stands, with **Finish the move** and **Abort** (`svall fleet home retry`, `svall fleet
   home abort`). The old home takes no writes until one of them ends it. An abort works
-  only once the machine that would take the fleet refuses it for good, and that machine then refuses the move for good too.
+  only once the machine that would take the fleet has its daemon up and refuses it for good, and that machine then refuses the move for good too.
 - **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
   that the move went through. A new home whose daemon has started answers so too, as it may already have taken a write. The other machine's files stand as they were kept: see below.
 

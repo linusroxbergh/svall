@@ -40,9 +40,10 @@ const askSeed = (): SeedAsk => {
 
 /**
  * A worker that dials this home: its record in this machine's registry, which the home links by, and a new token, the
- * newest of which the home holds. Answers what that worker's `svall worker enroll` takes, the token only as JSON.
+ * newest of which the home holds. `keepToken`: the one it holds stands, for a worker that may hold it yet, as an answer can be lost on
+ * its way. Answers what that worker's `svall worker enroll` takes, the token only as JSON.
  */
-async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMachineId: MachineId; homeName: string; fleetId: string; socket: string; token: string; homeSvallBase: string; homePlatform: string; homeArch: string; homePath: string }> {
+async function enrollWorker(t: Target, id: string, o: Facts & { keepToken?: boolean }): Promise<{ homeMachineId: MachineId; homeName: string; fleetId: string; socket: string; token: string; homeSvallBase: string; homePlatform: string; homeArch: string; homePath: string }> {
   const paths = resolvePaths(t.home);
   if (isWorker(paths)) throw new Error(`${t.home} is a worker's fleet home; run this on the fleet's home`);
   const moving = readMarker(paths);
@@ -65,7 +66,7 @@ async function enrollWorker(t: Target, id: string, o: Facts): Promise<{ homeMach
   if (sharing) throw new Error(`the fleet in ${sharing} reaches ${record.name} over ssh at ${route}, which this would end; svall host remove ${record.name} --forget drops that route for every fleet here and leaves the machine as it is`);
   registry.put(machine, record);
   registry.save();
-  const token = issueToken(paths, machine);
+  const token = (o.keepToken && tokenFor(paths, machine)) || issueToken(paths, machine);
   // a daemon not running links it as it starts
   await withClient(() => Client.connect(t.home), (c) => c.call('machines.refresh', {})).catch(() => undefined);
   const here = registry.localMachine();
@@ -217,7 +218,8 @@ export function fleetCommands(target: () => Target, json: () => boolean): Comman
     .requiredOption('--arch <arch>', 'its architecture, as node names it')
     .requiredOption('--home <path>', "its account's home")
     .requiredOption('--svall-base <path>', 'where svall is installed there')
-    .action(async (id: string, o: Facts) => {
+    .option('--keep-token', 'answer with the token this home holds for it, where it holds one')
+    .action(async (id: string, o: Facts & { keepToken?: boolean }) => {
       if (!json()) throw new Error('fleet enroll-worker prints a new token for svall worker enroll to read; run it with --json');
       printResult(await enrollWorker(target(), id, o), true);
     });

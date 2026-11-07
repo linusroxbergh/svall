@@ -234,7 +234,12 @@ export class HomeFreeze {
     if (this.stopped || !this.marker?.ask || this.moving?.holder) return;
     this.timer = setTimeout(() => {
       this.askMs = Math.min(this.askMs * 2, LAST_ASK_MS);
-      void this.settle('status');
+      // an outcome that could not be written, or that was refused, leaves the marker as it stands, so the asking goes on
+      void this.settle('status').catch((e: Error) => {
+        this.d.log.error(`how the move ended did not land here: ${e.message}`);
+        this.answer = e.message;
+        this.schedule();
+      });
     }, this.askMs);
     this.timer.unref?.();
   }
