@@ -20,6 +20,7 @@ import { putRecord, readRegistry } from '../machine.js';
 import { filesIn, HomeDocs } from '../placement/docs-sync.js';
 import { packTar, ustarFits } from '../placement/bundle.js';
 import { carriedConsent } from '../placement/mirror-consent.js';
+import { keysOnly, readState } from '../placement/mirror-state.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
 import { tokenFor } from '../placement/workers.js';
@@ -31,7 +32,7 @@ const exec = promisify(execFile);
 
 /** What the fleet carries to its new home: never node.json, the token, .env, tmux, the hooks, the cache or the outbox. */
 const CARRIED = ['fleet.json', 'state.json', 'docs', 'agent-profiles', 'push.json', 'vapid.json', 'mobile-pass', 'mobile-key', 'mirror-consent.json', 'retro', 'journal/moves'] as const;
-/** What a worker's fleet home holds that no home does; each goes aside with the files it replaces, and comes back with them. The mirror's record names what a push wrote, which a Copy must not read as its own. */
+/** What a worker's fleet home holds that no home does; each goes aside with the files it replaces, and comes back with them. The mirror's record names what a push wrote, which a Copy must not read as its own, past the keys it copied. */
 const WORKER_ONLY = ['worker.json', 'phone.json', 'phone-fallbacks.json', 'journal/epoch', 'cache/mirror-state.json'] as const;
 const INSTALLED = [...CARRIED, 'workers.json'] as const;
 const MANIFEST = 'home-move.json';
@@ -344,6 +345,8 @@ function installFiles(p: Paths, id: HomeMoveId): void {
     if (fs.existsSync(from)) fs.renameSync(from, at);
   }
   for (const name of WORKER_ONLY) if (present(inHome(p, name))) fs.renameSync(inHome(p, name), path.join(original, name));
+  const copied = keysOnly(readState(path.join(original, 'cache/mirror-state.json')));
+  if (Object.keys(copied.secrets).length) writeDurable(p.mirrorState, copied, { mode: 0o600 });
   homePoint('adopt.dropped');
   syncFolders(p, dir);
 }

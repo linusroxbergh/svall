@@ -243,6 +243,40 @@ describe('staging', () => {
   });
 });
 
+describe('what of a worker\'s mirror record stays on the machine taking the fleet', () => {
+  const RK = JSON.stringify(['.claude.json', 'mcpServers', 'linear', 'env', 'LINEAR_API_KEY']);
+  const held = { files: { 'claude/CLAUDE.md': 'a'.repeat(64) }, docs: { 'settings.json': { model: 'b'.repeat(64) } }, servers: { x: 'c'.repeat(64) }, secrets: { [RK]: 'd'.repeat(64) }, bare: { [RK]: { value: '${LINEAR_API_KEY}' } }, applied: 3, backup: { dir: '/x' } };
+  const adopted = async () => {
+    const w = await world();
+    fs.mkdirSync(path.dirname(w.studio.paths.mirrorState), { recursive: true });
+    fs.writeFileSync(w.studio.paths.mirrorState, JSON.stringify(held));
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    await w.mac.daemon.stop();
+    putMarker(w.mac.paths, marker());
+    return w;
+  };
+
+  it('the keys a push copied, for a Copy\'s untick to take back, and nothing else it wrote', async () => {
+    const w = await adopted();
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'adopted' });
+    expect(JSON.parse(fs.readFileSync(w.studio.paths.mirrorState, 'utf8'))).toEqual({ files: {}, docs: {}, servers: {}, secrets: held.secrets, bare: held.bare });
+  });
+
+  it('none where it copied no key', async () => {
+    const w = await adopted();
+    fs.writeFileSync(w.studio.paths.mirrorState, JSON.stringify({ ...held, secrets: {} }));
+    await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment);
+    expect(fs.existsSync(w.studio.paths.mirrorState)).toBe(false);
+  });
+
+  it('the whole record again where the install rolls back', async () => {
+    const w = await adopted();
+    w.studio.daemon.noAnswer = true;
+    expect(await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).toMatchObject({ status: 'pending', phase: 'rolledback' });
+    expect(JSON.parse(fs.readFileSync(w.studio.paths.mirrorState, 'utf8'))).toEqual(held);
+  });
+});
+
 describe('a not adopted is final', () => {
   it('a status on an id never heard of records the abort first, and the adopt that comes late is refused', async () => {
     const w = await world();

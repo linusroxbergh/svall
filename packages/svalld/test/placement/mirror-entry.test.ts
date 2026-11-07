@@ -567,33 +567,6 @@ describe('a per-field copy beside a key of the target\'s own', () => {
   });
 });
 
-describe('an entry holding a key no Copy wrote', () => {
-  it.each([['a Copy names it', 'copy', ['linear']], ['a push does not', 'mac', undefined]] as const)('%s', async (_what, mode, left) => {
-    const s = setup(mode);
-    put(s.w.claudeJson, JSON.stringify({ mcpServers: { linear: { command: 'npx', args: ['-y', 'linear-mcp'], env: { LINEAR_API_KEY: 'own_key_1234567890' } } } }));
-    expect((await s.push()).left).toEqual(left);
-    expect(json(s.w.claudeJson).mcpServers.linear.env.LINEAR_API_KEY).toBe('own_key_1234567890');
-  });
-
-  it('a reference in its settings holds no key, and is not named', async () => {
-    const s = setup('copy');
-    editJson(path.join(s.w.claudeDir, 'settings.json'), (j) => { j.env = { ANTHROPIC_API_KEY: '${MY_KEY}' }; });
-    expect((await s.push()).left).toBeUndefined();
-    expect(json(path.join(s.w.claudeDir, 'settings.json')).env.ANTHROPIC_API_KEY).toBe('${MY_KEY}');
-  });
-
-  it('a tick that replaces the entry says so, and names it as staying no more', async () => {
-    const s = setup('copy');
-    editJson(s.home.claudeJson, (j) => { j.mcpServers.two = { command: 'npx', args: ['-y', 'two-mcp'], env: { A_KEY: 'a_key_1234567890', B_KEY: 'b_key_1234567890' } }; });
-    put(s.w.claudeJson, JSON.stringify({ mcpServers: { two: { command: 'npx', args: ['-y', 'two-mcp'], env: { A_KEY: '${A_KEY}', B_KEY: 'own_key_1234567890' } } } }));
-    s.consent.add('claude:mcp:two#env.A_KEY');
-    const r = await s.push();
-    expect(json(s.w.claudeJson).mcpServers.two.env).toEqual({ A_KEY: 'a_key_1234567890', B_KEY: '${B_KEY}' });
-    expect(r.replaced).toEqual(['two']);
-    expect(r.left ?? []).not.toContain('two');
-  });
-});
-
 describe('a tick over an entry holding a key of the target\'s own', () => {
   it('keeps the file first when the key is equal and only the entry differs', async () => {
     const s = setup();

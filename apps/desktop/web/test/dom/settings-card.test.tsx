@@ -568,7 +568,7 @@ test('a key unticked is said by the pane\'s one sentence, no Copy runs by itself
     render(<SettingsCard />);
     show('setup');
     fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
-    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy, which takes back one a Copy sent there; one studio held otherwise stays, and the Copy names it');
+    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy');
     expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
     expect((await screen.findByTestId('setup-replaced')).textContent).toContain('for linear: that is in this folder');
   } finally {
@@ -671,7 +671,7 @@ test('a copy says what a tick went over on the home and what an untick left ther
     fireEvent.click(screen.getByTestId('setup-copy'));
     const said = (await screen.findByTestId('setup-copied')).textContent;
     expect(said).toContain('A tick went over what studio held itself for linear: that is in its backup folder.');
-    expect(said).toContain('odd stays on studio as it is there, with any key in it; remove it yourself.');
+    expect(said).toContain('odd stays as you edited it, with any key the mirror copied in it; remove it yourself.');
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }

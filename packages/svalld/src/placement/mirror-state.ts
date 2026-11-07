@@ -92,6 +92,9 @@ export function readState(file: string): WorkerState {
   return { files: {}, docs: {}, servers: {}, secrets: {} };
 }
 
+/** What of a worker's record stays on it once it is the home: the keys a push copied, which a Copy's untick takes back; a Copy reads nothing else a push wrote as its own. */
+export const keysOnly = (s: WorkerState): WorkerState => ({ files: {}, docs: {}, servers: {}, secrets: s.secrets, ...(s.bare && { bare: s.bare }) });
+
 /** What a worker tells the home before a mirror: its record, and which of the Mac's project folders it has under its home. */
 export function configState(ask: z.infer<typeof StateAsk>, o: { stateFile: string; homedir: string; platform?: NodeJS.Platform; backups?: string }): WorkerFacts {
   const r = { from: ask.homedir, to: o.homedir };

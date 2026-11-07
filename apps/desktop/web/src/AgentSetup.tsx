@@ -120,7 +120,7 @@ export function AgentSetup() {
           text: [
             `Copied to ${home}.`, r.backup && `What it replaced there is in ${r.backup}.`,
             r.replaced && `A tick went over what ${home} held itself for ${r.replaced.join(', ')}: that is in its backup folder.`,
-            ...(r.left ?? []).map((name) => `${name} stays on ${home} as it is there, with any key in it; remove it yourself.`),
+            ...(r.left ?? []).map((name) => `${name} stays as you edited it, with any key the mirror copied in it; remove it yourself.`),
           ].filter(Boolean).join(' '),
         });
         void reloadResources(deps());
@@ -140,7 +140,7 @@ export function AgentSetup() {
         )}
       {!!rows?.length && (
         <>
-          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy, which takes back one a Copy sent there; one {home} held otherwise stays, and the Copy names it.</div>
+          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
           <SetupTicks rows={rows} tick={tick} />
         </>
       )}
