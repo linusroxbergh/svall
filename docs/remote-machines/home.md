@@ -4,6 +4,10 @@ A fleet has one home, which runs its islands, map, notes, mission control, scrib
 an always-on Linux machine, with a Mac as its [worker that dials in](setup.md#a-worker-that-dials-its-home). The app on that Mac
 then opens on the fleet as the server holds it, and robots keep working with the lid closed. This page uses `studio` for the server.
 
+To run a fleet this way, install Svall on the server and connect your Mac: **Install Svall on a server and connect this Mac** in the first
+run does both ([Starting on a server](#starting-on-a-server)). A fleet already on your Mac goes there with **Make studio this fleet's
+home…** ([Changing home](#changing-home)).
+
 On this page "this Mac" is the machine the window runs on, and every other machine goes by name, the home included. A Mac
 with no server reads as it always has.
 
@@ -181,7 +185,7 @@ robot, and stays where it runs.
 Going out, the Mac asks the server how the move ended, and believes only the machine and the fleet it marked for: a folder
 renamed there, or an ssh name that now leads elsewhere, reads as no answer. Coming back, the server has no route to the Mac, so a
 server left frozen waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends
-the wait. A Mac whose server was wiped or reinstalled waits the same way, as what answers there is no longer the machine it marked for: see Limitations.
+the wait. A Mac whose server is gone for good, wiped or reinstalled waits the same way, as nothing answers there as the machine it marked for: see Limitations.
 
 Quit during a move ends the window. A Mac frozen for a move out keeps its daemon up, as the move has to end; a Mac the fleet is
 coming back to stops as a worker does, and the old home waits until Svall opens again. A quit while the window drives a move it
@@ -195,7 +199,10 @@ written after the copy goes to the new home, and one the new home changed too is
 
 - A move refuses with a second worker of either kind, and Linux workers of a server home come later.
 - A marked server whose Mac never comes back stays frozen.
-- A marked Mac whose server was wiped or reinstalled stays frozen. If that server is gone for good, stop the Mac's daemon and remove `home-moving.json` from its fleet home by hand, and it starts as the home. Do this only then: while the server holds the fleet, it makes two homes.
+- A marked Mac whose server is gone for good, wiped or reinstalled stays frozen. If that server will never hold the fleet again, quit Svall, stop the Mac's daemon (`launchctl kill SIGTERM gui/$(id -u)/io.github.linusroxbergh.svall.svalld`, with `.<name>` after it for a named fleet) and remove `home-moving.json` from its fleet home by hand, and it starts as the home. Do this only then: while the server holds the fleet, it makes two homes.
+- Files refuses every fleet's `journal/`, on the phone too, so read a move's journal or `journal/applied.ndjson` in a terminal.
+- A hard link to a file in `journal/` or an `adopt-<id>` folder passes Files, which knows those folders by their identity and not each file in them. Nothing in Svall makes one, but whatever runs on that account can.
+- A seed checks once, before its Copy, that studio holds no agent setup: one written there in that moment is replaced, and what it replaced lies in studio's `mirror-backup/<date>/`.
 - Svall Dev carries no companion, so **Upgrade** there needs one named by hand: `svall-dev host upgrade studio --release <archive> --allow-unsigned`.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.

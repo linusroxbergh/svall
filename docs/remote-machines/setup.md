@@ -1,5 +1,8 @@
 # Setting up a Linux machine
 
+To run Svall all day, install it on a server and connect your Mac, which makes that server your fleet's home: the first run offers it,
+and [A server as the fleet's home](#a-server-as-the-fleets-home) has the commands. The machine it needs is the one below.
+
 An always-on Linux machine can be a **worker** of your fleet: robots you [move there](placement.md) keep working
 while your Mac sleeps. The fleet's **home** holds its islands, map, notes, phone and mission control: your Mac, or a
 server you made the home ([home.md](home.md)). A fleet can have several workers, and a machine can be a worker of several fleets. This page covers what the
