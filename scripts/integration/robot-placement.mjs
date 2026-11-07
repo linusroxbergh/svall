@@ -925,6 +925,12 @@ console.log(a.socket);
   } finally {
     sh(L, `iptables -D OUTPUT ${blockLocal}`, { root: true, ok: false });
   }
+  // a worker its home dials again, as the steps after this one take it
+  sh(L, 'svall host remove remote --forget --json </dev/null');
+  const again = sh(L, `svall host add remote --ssh svall@${R} --release /opt/it/svall-companion-*.tar.gz --allow-unsigned --json </dev/null`, { ok: false });
+  const failed = lines(again.stdout).filter((e) => e.step && e.status === 'fail');
+  check('remote goes back to the home dialing it', !failed.length && JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout).homeSsh === undefined, () => brief(failed));
+  linked(ids);
 }
 
 // ---------------------------------------------------------------------------------------------- the agent setup mirror
