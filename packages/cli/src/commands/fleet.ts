@@ -153,10 +153,9 @@ function homeMoveCommands(cmd: Command, target: () => Target, json: () => boolea
     .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await adoptStatus(adoptDeps(target()), idOf(raw), askerOf(o))));
   asks(cmd.command('abort').description('call a home move off here, for good, unless it has gone through'))
     .action(async (raw: string, o: { asker?: string; fleet?: string }) => answer(await abortAdopt(adoptDeps(target()), idOf(raw), askerOf(o))));
-  cmd.command('export').description('the fleet\'s archive as JSON, in base64, for the machine it moves to').argument('<id>', 'the move\'s id')
-    .requiredOption('--manifest <json>', 'what the archive says of itself')
-    .action(async (raw: string, o: { manifest: string }) => {
-      const m = HomeManifest.parse(JSON.parse(o.manifest));
+  cmd.command('export').description('the fleet\'s archive as JSON, in base64, for the machine it moves to; reads what the archive says of itself from stdin').argument('<id>', 'the move\'s id')
+    .action(async (raw: string) => {
+      const m = HomeManifest.parse(JSON.parse(await readStdin()));
       if (m.id !== idOf(raw)) throw new Error('the manifest is of another move');
       const { bytes, sha256 } = await packFleet(resolvePaths(target().home), m);
       printResult({ sha256, archive: bytes.toString('base64') }, true);

@@ -256,10 +256,11 @@ describe('the first run forks three ways', () => {
     toSsh('ada@studio');
     fireEvent.click(screen.getByTestId('fork-go'));
     receive(FAR);
-    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255', action: 'run ssh ada@studio once in Terminal' } });
+    receive({ type: 'host.step', op: 'join', event: { step: 'ssh', status: 'fail', detail: 'ssh ada@studio exited 255 to this machine', action: 'run ssh ada@studio once from this machine' } });
     receive({ type: 'host.done', op: 'join', code: 1 });
     expect(replaced).not.toHaveBeenCalled();
-    expect(screen.getByTestId('fork-steps').textContent).toContain('ssh ada@studio exited 255');
+    expect(screen.getByTestId('fork-steps').textContent).toContain('ssh ada@studio exited 255 to this Mac');
+    expect(screen.getByTestId('fork-steps').textContent).toContain('once from this Mac');
     expect(screen.getByTestId('fork-go').textContent).toBe('Try again');
     fireEvent.click(screen.getByTestId('fork-back'));
     expect(screen.getByTestId('setup-fork')).toBeTruthy();

@@ -164,10 +164,10 @@ describe('what the far machine runs for a driver', () => {
     home = w.mac.paths.home;
     await w.mac.daemon.stop();
     const manifest = { ...w.manifest, id: ID };
-    const said = await run(['export', ID, '--manifest', JSON.stringify(manifest)]) as { sha256: string; archive: string };
+    const said = await run(['export', ID], JSON.stringify(manifest)) as { sha256: string; archive: string };
     expect(said.sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(Buffer.from(said.archive, 'base64').length).toBeGreaterThan(1000);
-    await expect(run(['export', 'hm_otherother', '--manifest', JSON.stringify(manifest)])).rejects.toThrow(/of another move/);
+    await expect(run(['export', 'hm_otherother'], JSON.stringify(manifest))).rejects.toThrow(/of another move/);
   });
 
   it('enroll-worker on a home on its way elsewhere refuses, naming where', async () => {

@@ -42,6 +42,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rew
       if (method === 'fleet.home') return Promise.resolve({ machine: machineId(), name: 'mac', mine: true, me: machineId(), fleetId: FLEET });
       if (method === 'robot.moveTo') return Promise.resolve({ moveId: 'mv_0123456789' });
       if (method === 'fleet.homeMove' && params.op === 'abort' && o.abort) return Promise.resolve(o.abort);
+      if (method === 'fleet.homeMove' && params.op === 'status' && o.abort) return Promise.resolve({ moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true } });
       if (method === 'robot.moveCheck') return Promise.resolve(o.crewRefused && (params as { interruptAfterMs?: number }).interruptAfterMs === undefined ? { ok: false, refusal: o.crewRefused } : { ok: true, sheet: {} });
       return Promise.resolve({});
     },
@@ -549,11 +550,11 @@ describe('fleet home set local', () => {
     } as unknown as Client;
     const settled: string[] = [];
     const master = {
-      run: async (argv: string[]) => {
+      run: async (argv: string[], o?: { input?: string }) => {
         const line = argv.join(' ');
         const ok = (out: unknown) => ({ code: 0, signal: null, stderr: '', stdout: JSON.stringify(out) });
         if (line.includes("'export'")) {
-          const manifest = JSON.parse(argv.at(-1)!.replace(/^'|'$/g, '')) as HomeManifest;
+          const manifest = JSON.parse(o!.input!) as HomeManifest;
           const { sha256, bytes } = await packFleet(w.studio.paths, { ...manifest, to: MAC });
           return ok({ sha256, archive: bytes.toString('base64') });
         }
@@ -615,12 +616,17 @@ describe('fleet home set local', () => {
     const { w, deps, master } = await workerHere();
     const run = master.run.bind(master);
     const lines: string[] = [];
-    master.run = ((argv: string[], o?: never) => { lines.push(argv.join(' ')); return run(argv, o); }) as never;
+    let manifest!: HomeManifest;
+    master.run = ((argv: string[], o?: { input?: string }) => {
+      lines.push(argv.join(' '));
+      if (argv.join(' ').includes("'export'")) manifest = JSON.parse(o!.input!) as HomeManifest;
+      return run(argv, o as never);
+    }) as never;
     const stop = telling(w, master);
     expect((await moveHomeBack(deps)).result).toBe('ready');
     stop();
-    const exported = lines.find((l) => l.includes("'export'"))!;
-    const manifest = JSON.parse(exported.slice(exported.indexOf('{'), exported.lastIndexOf('}') + 1)) as HomeManifest;
+    // who the phone lets in stays off an argv every account there can read
+    expect(lines.find((l) => l.includes("'export'"))).toMatch(/'export' 'hm_[0-9a-z]{10}'$/);
     const id = manifest.id;
     const key = driverAdoptKey(w.mac.paths, id)!;
     expect(manifest.adoptKeySha256).toBe(crypto.createHash('sha256').update(key).digest('hex'));
@@ -707,7 +713,7 @@ describe('fleet home set local', () => {
     const out = await resumeHome(deps);
     stop();
     expect(out.result).toBe('actions');
-    expect(failed()).toMatchObject({ step: 'check', detail: 'the old home is not frozen for this move and goes on as the home' });
+    expect(failed()).toMatchObject({ step: 'check', detail: 'studio is not frozen for this move and goes on as the home' });
     expect(w.mac.daemon.role).toBe('worker');
     expect(fs.existsSync(w.mac.paths.workerFile)).toBe(true);
     expect(journalLines(w.mac.paths, id).at(-1)?.phase).toBe('aborted');
@@ -802,7 +808,7 @@ describe('fleet home set local', () => {
     fs.writeFileSync(w.mac.paths.workerFile, JSON.stringify({ ...JSON.parse(fs.readFileSync(w.mac.paths.workerFile, 'utf8')), homeProfile: 'private' }));
     const run = master.run.bind(master);
     let manifest: HomeManifest | undefined;
-    master.run = ((argv: string[], o?: never) => { if (argv.join(' ').includes("'export'")) manifest = JSON.parse(argv.at(-1)!.replace(/^'|'$/g, '')) as HomeManifest; return run(argv, o); }) as never;
+    master.run = ((argv: string[], o?: { input?: string }) => { if (argv.join(' ').includes("'export'")) manifest = JSON.parse(o!.input!) as HomeManifest; return run(argv, o as never); }) as never;
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
@@ -907,6 +913,13 @@ describe('fleet home set local', () => {
       expect(failed()).toMatchObject({ step: 'abort', detail: 'the move is still under way here: another step of this move runs there' });
       expect(readOwed(w.mac.paths)).toBeDefined();
     }, 30_000);
+
+    it('no move standing here says so and calls nothing off, a driver running included', async () => {
+      const { deps, called } = outDeps(() => answer({ status: 'done' }));
+      expect((await abortHome(deps)).result).toBe('actions');
+      expect(failed()).toMatchObject({ step: 'abort', detail: 'no move of the fleet waits on this machine', action: 'one still running stops with the command or sheet that runs it' });
+      expect(called.filter((c) => c.method === 'fleet.homeMove').map((c) => c.params.op)).toEqual(['status']);
+    });
 
     it('nothing owed: the daemon calls it off, or names the machine that holds it', async () => {
       const none = () => answer({ status: 'done' });

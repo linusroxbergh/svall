@@ -1251,7 +1251,7 @@ describe('two homes are impossible', () => {
     let restarted = false;
     const freeze = new HomeFreeze({
       paths: w.mac.paths, store: { state: w.mac.daemon.held!, flush: () => Promise.resolve(true) }, me: MAC, log: silentLogger,
-      links: { barrier: () => Promise.resolve(true), hold: () => {} }, background: { pause: () => {}, resume: () => {} },
+      links: { barrier: () => Promise.resolve(true), hold: () => {}, call: () => Promise.resolve({} as never) }, background: { pause: () => {}, resume: () => {} },
       phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) },
       ask: () => adoptStatus(w.studio.deps, ID, ASKER), restart: () => { restarted = true; },
     }, readMarker(w.mac.paths));

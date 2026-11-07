@@ -188,7 +188,7 @@ describe('followQuit', () => {
       { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0 },
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
-      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0 },
     ]);
     q.stop();
@@ -281,7 +281,7 @@ describe('followQuit', () => {
     await joined({ back: true, op: 'home-retry', to: ME });
     expect(q.answers()).toEqual([
       { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
-      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0 },
       { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
       { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
@@ -289,6 +289,44 @@ describe('followQuit', () => {
       { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
       { type: 'quit.answer', unsaved: [], working: 0 },
+    ]);
+    q.stop();
+  });
+
+  it('a move coming here past the commit names the old home the window no longer goes by, from the sheet or from what the daemon says', async () => {
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false, from: 'studio' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().setHomeMove(undefined);
+    q.store.getState().setHomeSheet({ to: ME, name: 'vault', back: true });
+    q.store.getState().hostStarted('home', { name: 'local' });
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'vault', movingHere: true },
+    ]);
+    q.stop();
+  });
+
+  it('while the pause of a move out runs, says this daemon stays up, as it refuses the stop from then on', async () => {
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+    q.store.getState().hostStarted('home', { name: 'studio' });
+    q.store.getState().hostStep('home', { step: 'mission', status: 'ok' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().hostStep('home', { step: 'pause', status: 'start' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
     ]);
     q.stop();
   });
@@ -327,6 +365,19 @@ describe('followMemory', () => {
     const off = followMemory({ store: q.store, bridge: q.bridge, reload });
     return { ...q, reload, stop: () => { off(); q.stop(); } };
   }
+
+  it('leaves a page following a run alone, whose steps it alone holds, and takes the next offer past it', async () => {
+    const m = memory();
+    m.store.getState().hostStarted('home', { name: 'studio' });
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.reload).not.toHaveBeenCalled();
+    m.store.getState().hostDone('home', 0);
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.reload).toHaveBeenCalledTimes(1);
+    m.stop();
+  });
 
   it('reloads a page in the background once its docs are written', async () => {
     const m = memory();

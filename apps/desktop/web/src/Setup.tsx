@@ -3,6 +3,7 @@ import { AGENT_LABEL, type AgentKind, type SetupPlan } from '@svall/protocol';
 import { copyText, createBridge, openUrl, type Bridge, type HostStep } from './bridge.js';
 import { FeedbackPopover } from './FeedbackPanel.js';
 import { AS_TYPED } from './Field.js';
+import { onThisMac } from './host.js';
 import { shortPath } from './paths.js';
 import { Close } from './icons.js';
 import { DEFAULT_SETTINGS, type Settings } from './settings.js';
@@ -206,7 +207,7 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
         {far && <Review writes={writes} />}
         {said && said.length > 0 && (
           <div className="setup-list" data-testid="fork-steps">
-            {said.map((r, i) => <p key={i} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{r.detail ?? r.step}{r.action && <small> {r.action}</small>}</p>)}
+            {said.map((r, i) => <p key={i} className={r.status === 'fail' ? 'setup-error' : 'setup-note'} data-step={r.step} data-status={r.status}>{onThisMac(r.detail ?? r.step)}{r.action && <small> {onThisMac(r.action)}</small>}</p>)}
           </div>
         )}
         {error && <p className="setup-error" role="alert">{error}</p>}

@@ -28,7 +28,7 @@ describe('the check names each machine for what it is', () => {
     expect(blockers(r)).toEqual([
       ['studio is not reachable', 'try again when it is awake'],
       ['studio runs 0.21, this machine 0.22', 'upgrade it under Machines'],
-      ["studio's clock is off by more than 5 minutes", 'set its clock: ssh there, then sudo timedatectl set-ntp on'],
+      ["studio's clock and this machine's are more than 5 minutes apart", 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on'],
       ['studio has no Tailscale: logged out', 'install Tailscale there and sign in'],
     ]);
   });
@@ -37,7 +37,7 @@ describe('the check names each machine for what it is', () => {
     const r = back({ synced: false, from: facts({ machineId: STUDIO, workers: ['99999999-7777-8888-9999-aaaaaaaaaaaa'] }), to: facts({ freeKb: 10, moving: 'hm_abcdefghij', tailscale: { error: 'not running' } }) });
     expect(blockers(r)).toEqual([
       ['studio is still catching up', 'try again in a moment'],
-      ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'remove 99999999-7777-8888-9999-aaaaaaaaaaaa first, and add it again from this machine'],
+      ['99999999-7777-8888-9999-aaaaaaaaaaaa is a worker of this fleet too', 'remove 99999999-7777-8888-9999-aaaaaaaaaaaa first; after the move, add it again from this machine, or run svall fleet join on it if it is a Mac'],
       ['this machine has 0 MB free, and taking the fleet takes 100 MB', 'free some space here'],
       ['this machine is still taking a move (hm_abcdefghij)', 'finish or call off that move first'],
       ['this machine has no Tailscale: not running', 'install Tailscale and sign in'],
@@ -66,7 +66,7 @@ describe('a frozen home says where the machine holding the fleet stands, apart f
     putMarker(paths, marker());
     return new HomeFreeze({
       paths, me: MAC, log: { error: () => {}, info: () => {} }, store: { state: emptyState(), flush: () => Promise.resolve(true) },
-      links: { barrier: () => Promise.resolve(true), hold: () => {} }, background: { pause: () => {}, resume: () => {} },
+      links: { barrier: () => Promise.resolve(true), hold: () => {}, call: () => Promise.resolve({} as never) }, background: { pause: () => {}, resume: () => {} },
       phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) }, ask: answer, restart: () => {},
     }, marker());
   };

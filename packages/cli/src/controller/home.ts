@@ -113,7 +113,7 @@ async function identifyHome(master: SshMaster, o: JoinOptions, d: Pick<JoinDeps,
   const { home } = await homeProbe(master);
   const { svallBase } = remotePaths(home, '');
   const r = await master.run([shq(svallExe(svallBase)), ...farFlags(o), 'version', '--json'], { timeoutMs: ENROLL_TIMEOUT });
-  if (r.code === 126 || r.code === 127) throw new StepError(`${o.ssh} has no Svall at ${svallExe(svallBase)}`, `install Svall there and run svall setup, or add it from this Mac's Add machine`);
+  if (r.code === 126 || r.code === 127) throw new StepError(`${o.ssh} has no Svall at ${svallExe(svallBase)}`, `install Svall there and run svall setup, or add it under Machines in Svall's window`);
   const parsed = FarVersion.safeParse(await remoteJson<unknown>(master, svallBase, [...farFlags(o), 'version', '--json'], 'svall version --json'));
   if (!parsed.success) throw new StepError(`${o.ssh} answered svall version --json without a machine or a fleet`, `upgrade Svall there`);
   const far = parsed.data;
@@ -152,7 +152,7 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
       try {
         return { value: await d.openMaster(o.ssh), detail: `connected to ${o.ssh}` };
       } catch (e) {
-        if (e instanceof SshError && e.kind === 'auth') throw new StepError(`ssh refused the login to ${o.ssh}: this Mac's daemon logs in without a password or passphrase prompt`, `install a key there with ssh-copy-id ${o.ssh}, then join again`);
+        if (e instanceof SshError && e.kind === 'auth') throw new StepError(`ssh refused the login to ${o.ssh}: this machine's daemon logs in without a password or passphrase prompt`, `install a key there with ssh-copy-id ${o.ssh}, then join again`);
         throw new StepError((e as Error).message, `ssh ${o.ssh} and see what it answers`);
       }
     });
@@ -556,7 +556,8 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       const here = d.registry.localMachine();
       await run.step('copy', async () => {
         const manifest: HomeManifest = { id, fleetId: worker.fleetId, from, to: d.me, toName: here.name, toHome: here.home as HomeManifest['toHome'], record: { ...entry.record, ssh, dial: undefined }, phone, adoptKeySha256, ...(worker.homeProfile && { fromProfile: worker.homeProfile }) };
-        const r = await master!.run(farCommand(svallBase, fleetHome, ['fleet', 'export', id, '--manifest', JSON.stringify(manifest)]), { timeoutMs: STEP_MS, maxOutputBytes: MAX_ARCHIVE });
+        // on stdin, as an argv is seen by every account there, and the manifest holds who the phone lets in
+        const r = await master!.run(farCommand(svallBase, fleetHome, ['fleet', 'export', id]), { timeoutMs: STEP_MS, maxOutputBytes: MAX_ARCHIVE, input: JSON.stringify(manifest) });
         if (r.code !== 0) throw new StepError(`svall fleet export there exited ${r.code}: ${r.stderr.trim().slice(0, 400)}`);
         const packed = z.object({ sha256: z.string(), archive: z.string() }).safeParse((() => { try { return JSON.parse(r.stdout) as unknown; } catch { return undefined; } })());
         if (!packed.success) throw new StepError(`svall fleet export there did not answer a whole archive, as the fleet may have grown past what a move carries`, 'check again, and it says what to do');
@@ -645,7 +646,8 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
       const adoption: AdoptDeps = { paths, me: d.me, daemon: d.daemon };
       await daemonClient(d).then((c) => c.close());
       const said = moveOutcome(paths, owed.id);
-      if (said?.status === 'not-adopted') return refuse(run, 'this move was called off here', await told(paths) ? undefined : 'this machine keeps telling the old home');
+      const old = oldHomeName(paths, owed.id) ?? 'the old home';
+      if (said?.status === 'not-adopted') return refuse(run, 'this move was called off here', await told(paths) ? undefined : `this machine keeps telling ${old}`);
       let staged: HomeManifest | undefined;
       try { staged = readManifest(paths, owed.id); } catch { /* its driver died before the archive came */ }
       // a home its driver left before the mark went on taking writes, so this machine must not take the fleet too
@@ -658,7 +660,7 @@ export function resumeHome(d: MoveDeps): Promise<HostOutcome> {
       if (!staged || !marked) {
         await abortAdopt(adoption, owed.id, oldHome(owed));
         await told(paths);
-        return refuse(run, 'the old home is not frozen for this move and goes on as the home', 'svall fleet home set local to start again', 'Bring the fleet back again from Machines');
+        return refuse(run, `${old} is not frozen for this move and goes on as the home`, 'svall fleet home set local to start again', 'Bring the fleet back again from Machines');
       }
       const { from, record } = staged;
       return finishBack(run, d, adoption, owed.id, { from, name: record.name, ends: AGAIN_OR_OFF });
@@ -702,6 +704,7 @@ export function abortHome(d: MoveDeps): Promise<HostOutcome> {
       if (back?.status === 'not-adopted') return { value: undefined, detail: back.told ? `the move is off, and ${old} takes writes again` : `the move is off; ${old} thaws once this machine reaches it` };
       if (back?.status === 'pending') throw new StepError(`the move is still under way here: ${back.said}`, 'svall fleet home abort again in a moment', undefined, 'Call it off again in a moment');
       if (back) throw new StepError('the move has gone through here, so it cannot be called off');
+      if (!(await withClient(d.client, (c) => c.call('fleet.homeMove', { op: 'status' }))).moving) throw new StepError('no move of the fleet waits on this machine', 'one still running stops with the command or sheet that runs it');
       const { moving } = await withClient(d.client, (c) => c.call('fleet.homeMove', { op: 'abort' }));
       if (!moving) return { value: undefined, detail: 'the move is off, and this home takes writes again' };
       if (!moving.asks) throw new StepError(`${moving.name} holds this move, and tells this machine how it ended`, `svall fleet home abort on ${moving.name}`, undefined, `Call it off on ${moving.name}`);

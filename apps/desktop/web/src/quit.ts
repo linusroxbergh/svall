@@ -51,27 +51,31 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       // drives goes by its own steps: until its mark it ends with its driver, and this daemon, paused for a move out, refuses the stop
       const sheet = s.host?.op === 'home' && s.host.running ? s.homeSheet : undefined;
       const did = (step: string): boolean => !!s.host?.steps.some((x) => x.step === step && x.status === 'ok');
+      // a daemon refuses the stop from the moment its pause begins
+      const pausing = !!s.host?.steps.some((x) => x.step === 'pause');
       // past a run's join no move stands: going out this Mac's daemon is a worker, which stops as any does; coming back the old home has heard
       const joined = s.host?.running && (s.host.op === 'home' || s.host.op === 'home-retry') && did('join');
-      const move = joined ? undefined : sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && did('pause') && { frozenFor: sheet.name }) }
+      const move = joined ? undefined : sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && pausing && { frozenFor: sheet.name }) }
         : sheet ? (sheet.back ? { movingHere: true as const } : { frozenFor: sheet.name })
           // a move coming here with no mark to stand holds nothing up
           : s.homeMove && !s.homeMove.unmarked ? (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name }) : undefined;
       keptUp = !!move && 'frozenFor' in move;
-      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
+      // past the commit the window no longer goes by the home it leaves, which waits frozen all the same
+      const home = s.via?.name ?? (move && 'movingHere' in move ? (sheet?.back ? sheet.name : s.homeMove?.from) : undefined);
+      bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(home && { home }), ...move });
     });
   });
   return () => { unwatch(); off(); };
 }
 
 /** Reloads the page when the shell finds its process grown large in the background, once its docs are written, unless the
- * app is back in front or the reload would drop an unsaved file or a browser tab. */
+ * app is back in front or the reload would drop an unsaved file, a browser tab or the steps of a run, which only this page holds. */
 export function followMemory({ store, bridge, reload = () => location.reload() }: { store: AppStore; bridge: Pick<Bridge, 'onMessage'>; reload?: () => void }): () => void {
   return bridge.onMessage((m) => {
     if (m.type !== 'memory.high') return;
     void flushDocs().then(() => {
       const s = store.getState();
-      if (!s.active && !unsavedFiles(s.ide).length && !Object.keys(s.webviews).length) reload();
+      if (!s.active && !unsavedFiles(s.ide).length && !Object.keys(s.webviews).length && !s.host?.running) reload();
     }, () => {});
   });
 }

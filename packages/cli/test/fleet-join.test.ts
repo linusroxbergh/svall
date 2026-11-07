@@ -165,6 +165,11 @@ describe('svall fleet join', () => {
     expect(d.far.asked).toEqual([]);
   });
 
+  it('on a machine that may be no Mac, says this machine, and sends a person to Machines by what it is', async () => {
+    await joinHome({ ssh: 'ada@studio' }, deps({ versionCode: 127 }));
+    expect(failure()?.action).toBe("install Svall there and run svall setup, or add it under Machines in Svall's window");
+  });
+
   it.each([
     ['a machine with no Svall', { versionCode: 127 }, /has no Svall/],
     ['another protocol', { version: { ...VERSION, protocol: PROTOCOL_VERSION + 1 } }, /on protocol/],

@@ -32,7 +32,7 @@ const markerOf = (p: Paths): HomeMoving | undefined => { try { return readMarker
 export type FreezeDeps = {
   paths: Paths; store: { state: FleetState; flush(): Promise<boolean> }; me: MachineId; log: Pick<Logger, 'error' | 'info'>;
   /** the link to `machine`, with what a barrier needs of it */
-  links: { barrier(machine: MachineId, ms: number): Promise<boolean>; hold(on: boolean): void; call?<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
+  links: { barrier(machine: MachineId, ms: number): Promise<boolean>; hold(on: boolean): void; call<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
   /** the scribe, the pusher, the relay and the retro, which only a home runs and which a frozen one holds still */
   background: { pause(): void; resume(): void };
   phone: Mobile;
@@ -142,7 +142,7 @@ export class HomeFreeze {
       still();
       const robot = Object.values(this.d.store.state.robots).find((r) => r.moving);
       if (robot) throw new ApiError('busy', `${robot.name} is moving; wait for its move to finish`);
-      await this.d.links.call?.(to, 'home.freeze', { id });
+      await this.d.links.call(to, 'home.freeze', { id });
       still();
       // the worker starts nothing new, and what it sent is in; from here its metadata stays in its outbox
       if (!await this.d.links.barrier(to, DRAIN_MS)) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
@@ -268,7 +268,7 @@ export class HomeFreeze {
     this.phase = undefined;
     clearTimeout(this.timer);
     this.d.links.hold(false);
-    await this.d.links.call?.(held.to, 'home.thaw', { id: held.id }).catch(() => undefined);
+    await this.d.links.call(held.to, 'home.thaw', { id: held.id }).catch(() => undefined);
     // a freeze begun during that call holds all of it
     if (this.moving) return;
     this.d.background.resume();
@@ -329,9 +329,9 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
-    fail(`${name} is a worker of this fleet too`, `remove ${name} first, and add it again from ${goesTo}`);
+    fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`);
   }
-  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock is off by more than 5 minutes`, `set its clock: ssh there, then sudo timedatectl set-ntp on`);
+  if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');
   const fleetKb = from.fleetKb ?? 0;
   if (fleetKb > MAX_CARRIED_KB) fail(`the fleet's files come to ${mb(fleetKb)} MB, more than a move carries (${mb(MAX_CARRIED_KB)} MB)`, `remove what it no longer needs from ${from.fleetHome}/docs and ${from.fleetHome}/retro`);
   const needKb = COPIES_TAKEN * fleetKb + SPARE_KB;
