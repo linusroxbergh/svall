@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import { enter } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
 import { hostCommands, setupList, type There } from '../src/commands/host.js';
@@ -38,9 +38,18 @@ const far = (args: string[]) => ssh.remoteCalls().filter((c) => args.every((a) =
 describe('host list with a far home', () => {
   it('lists what that home holds of this fleet, past a login shell\'s noise', async () => {
     ssh.reply(['host', 'list'], { stdout: `Welcome to studio\nlast login: today\n${JSON.stringify(rows, null, 2)}\n` });
-    const listed = JSON.parse(await cli(['list'], true)) as { id: string; far?: boolean; ssh?: string }[];
+    const listed = JSON.parse(await cli(['list'], true)) as { id: string; name: string; far?: boolean; ssh?: string }[];
     expect(listed.find((r) => r.id === W)).toMatchObject({ far: true, ssh: 'ada@box' });
     expect(listed.some((r) => r.name === 'stranger')).toBe(false);
+  });
+
+  it('shows neither the home nor this machine from that home\'s rows, and no row a mark of a worker', async () => {
+    const me = MachineRegistry.load(path.join(work, 'config')).localId;
+    const mine = [{ name: 'studio', id: HOME, ssh: 'ada@studio', platform: 'linux-arm64', worker: true }, { name: 'me', id: me, ssh: 'ada@me', platform: 'darwin-arm64', worker: true }];
+    ssh.reply(['host', 'list'], { stdout: `${JSON.stringify([...rows, ...mine])}\n` });
+    const listed = JSON.parse(await cli(['list'], true)) as { name: string; far?: boolean; worker?: boolean }[];
+    expect(listed.filter((r) => r.far).map((r) => r.name)).toEqual(['box', 'other-mac']);
+    expect(listed.some((r) => r.worker)).toBe(false);
   });
 
   it('in words: a machine with no route reads as one that dials in, and one owed an enrolment says why', async () => {
@@ -63,6 +72,34 @@ describe('host list with a far home', () => {
     const spy = vi.spyOn(process.stdout, 'write').mockImplementation((c: unknown) => { out += String(c); return true; });
     try { await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => config).parseAsync(['list'], { from: 'user' }); } finally { spy.mockRestore(); }
     expect((JSON.parse(out) as { id: string; joining?: string }[]).find((m) => m.id === W)?.joining).toBe('refused');
+  });
+});
+
+describe('an add the far home has no companion for', () => {
+  const NONE = JSON.stringify({ step: 'release', status: 'fail', detail: 'this build publishes no companion for linux-arm64; name one with --release <archive>' });
+  const carrying = (version: string) => {
+    const root = path.join(work, 'release-here');
+    fs.mkdirSync(path.join(root, 'companions'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'companions', 'c.tar.gz'), 'held');
+    fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version, companions: { 'linux-arm64': { url: 'companions/c.tar.gz', sha256: 'aa' } } }));
+    process.env.SVALL_RELEASE_ROOT = root;
+    onTestFinished(() => { delete process.env.SVALL_RELEASE_ROOT; });
+    ssh.reply(['host', 'add'], { stdout: `${NONE}\n`, code: 1 });
+    ssh.reply(['mkdir'], {});
+    ssh.reply(['cat > "$1"'], {});
+  };
+
+  it('a CLI on the home\'s release copies the archive it carries there, and runs again with it', async () => {
+    carrying('1.2.3');
+    await cli(['add', 'box', '--ssh', 'ada@box'], true);
+    expect(far(['host', 'add'])).toHaveLength(2);
+    expect(far(['host', 'add']).at(-1)!.some((w) => w.includes('--release'))).toBe(true);
+  });
+
+  it('a CLI on another release copies nothing, as a home takes only its own', async () => {
+    carrying('1.2.4');
+    expect(await cli(['add', 'box', '--ssh', 'ada@box'], true)).toContain('name one with --release');
+    expect(far(['host', 'add'])).toHaveLength(1);
   });
 });
 

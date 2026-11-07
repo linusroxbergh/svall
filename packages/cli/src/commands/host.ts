@@ -332,9 +332,9 @@ const orLeft = <T>(text: (r: T) => string) => (r: unknown): string => ((r as Hos
 
 const reportBy = (r: HostReport, home: FarHome): HostReport => ({ ...r, checks: r.checks.map((c) => (c.action ? { ...c, action: byHome(home, c.action) } : c)) });
 
-// an archive a relay copied here goes when the run does, however that ends
-const carriedGoes = (release: string | undefined, fleet: Target): void => {
-  if (release && path.dirname(path.resolve(release)) === carriedDir(resolvePaths(fleet.home).home)) process.once('exit', () => { fs.rmSync(release, { force: true }); });
+/** An archive a relay copied here goes when the run does, however that ends; any other is the person's. */
+export const carriedGoes = (release: string | undefined, fleet: Pick<Target, 'home'>, on: Pick<NodeJS.Process, 'once'> = process): void => {
+  if (release && path.dirname(path.resolve(release)) === carriedDir(resolvePaths(fleet.home).home)) on.once('exit', () => { fs.rmSync(release, { force: true }); });
 };
 
 /** Runs a host command for a machine of a far home on that home, its steps handed on as they come: as they are for the app and --json, as a run's lines in a terminal. */

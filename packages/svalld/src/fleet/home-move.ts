@@ -536,7 +536,9 @@ export const readWorkersOwed = (p: Pick<Paths, 'workersOwed'>): WorkersOwed | un
 export function owedWorkers(p: Paths): WorkersOwed['workers'] {
   const owed = readWorkersOwed(p);
   if (!owed) return {};
-  const at = lastPhase(p, owed.id);
+  // a journal that cannot be read may say anything, and nothing touches a worker on that
+  let at: AdoptPhase | undefined;
+  try { at = lastPhase(p, owed.id); } catch { return {}; }
   return at === 'adopted' || at === 'done' ? owed.workers : {};
 }
 

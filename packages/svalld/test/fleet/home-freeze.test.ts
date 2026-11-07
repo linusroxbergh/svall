@@ -488,6 +488,21 @@ describe('a frozen home', () => {
     expect(order).toEqual(['hold', 'quiet', 'flush']);
   });
 
+  it('a driver that goes away while the links go quiet stops the freeze there, with nothing flushed and the phone left on', async () => {
+    const { d, log } = setup({ serving: true });
+    let done!: () => void;
+    const quiet = new Promise<void>((r) => { done = r; });
+    const flush = vi.fn(() => Promise.resolve(true));
+    const freeze = new HomeFreeze({ ...d, store: Object.assign(Object.create(d.store) as typeof d.store, { flush }), links: { ...d.links, quiet: () => quiet } });
+    const going = freeze.freeze(ID, STUDIO, holder);
+    await vi.waitFor(() => expect(log).toContain('hold true'));
+    freeze.left(holder);
+    done();
+    await expect(going).rejects.toMatchObject({ code: 'not_frozen' });
+    expect(flush).not.toHaveBeenCalled();
+    expect(log).not.toContain('phone false');
+  });
+
   it('a freeze that fails after its driver left leaves a freeze begun since', async () => {
     const { d, log } = setup();
     let open!: (ok: boolean) => void;

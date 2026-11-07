@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
+import path from 'node:path';
+import { afterAll, afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { FleetState, HomeFacts, HomeWorker, MachineId, MachineRecord } from '@svall/protocol';
 import { homeCheck } from '../../src/fleet/home-freeze.js';
 import { reachWorkers, settleOwed, startRejoins, writeOwed } from '../../src/fleet/home-workers.js';
@@ -122,6 +123,7 @@ describe('the check of a move with another worker', () => {
   it.each(['auth', 'host_key'])('a refused login (%s) is refused whether or not it is linked, with the line that fixes it', (kind) => {
     const r = check({ reach: { [W]: { ok: false, kind, why: 'refused', ssh: 'ada@box' } }, linked: false });
     expect(r).toMatchObject({ ok: false, refusal: { reason: expect.stringContaining('studio cannot log in to box'), action: expect.stringContaining("ssh-copy-id 'ada@box'") } });
+    expect(r).not.toHaveProperty('refusal.run');
   });
 
   it('a home the machine could not be asked about says so once, with no word of removing a worker', () => {
@@ -298,6 +300,89 @@ describe('the workers a new home owes an enrolment', () => {
     expect(tokenFor(p, W)).toBeDefined();
   });
 
+  it('a worker enrolled is not enrolled again until its link has had a minute to greet', async () => {
+    const real = Date.now.bind(Date);
+    let later = 0;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => real() + later);
+    onTestFinished(() => { clock.mockRestore(); });
+    const p = setup('adopted');
+    const m = masterOf(serving());
+    const s = run(p, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(m.enrols()).toHaveLength(1));
+    later = 50_000;
+    await settled();
+    expect(m.enrols()).toHaveLength(1);
+    later = 61_000;
+    await vi.waitFor(() => expect(m.enrols()).toHaveLength(2));
+    s.stop();
+  });
+
+  it('a person asking again enrols at once, whatever greeting is still due', async () => {
+    const p = setup('adopted');
+    const m = masterOf(serving());
+    const s = run(p, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(m.enrols()).toHaveLength(1));
+    await settled();
+    expect(m.enrols()).toHaveLength(1);
+    s.again();
+    await vi.waitFor(() => expect(m.enrols()).toHaveLength(2));
+    s.stop();
+  });
+
+  it('a person asking again during a round starts no second round beside it', async () => {
+    const p = setup('adopted');
+    let refuse!: (e: Error) => void;
+    const open = vi.fn(() => new Promise((_, no) => { refuse = no; }));
+    const s = run(p, open);
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(1));
+    s.again();
+    await settled();
+    expect(open).toHaveBeenCalledTimes(1);
+    refuse(new SshError('unreachable', 'No route to host'));
+    await vi.waitFor(() => expect(open).toHaveBeenCalledTimes(2));
+    s.stop();
+  });
+
+  it('one that does not answer is tried at a pace that doubles up to its cap, and a person asking again starts that over', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    onTestFinished(() => { vi.useRealTimers(); });
+    const p = setup('adopted');
+    const open = vi.fn(() => Promise.reject(new SshError('unreachable', 'No route to host')));
+    const s = run(p, open);
+    const triesAfter = async (ms: number) => { await vi.advanceTimersByTimeAsync(ms); return open.mock.calls.length; };
+    expect(await triesAfter(1)).toBe(1);
+    expect(await triesAfter(1)).toBe(1);
+    expect(await triesAfter(1)).toBe(2);
+    expect(await triesAfter(3)).toBe(2);
+    expect(await triesAfter(1)).toBe(3);
+    expect(await triesAfter(3)).toBe(3);
+    expect(await triesAfter(1)).toBe(4);
+    s.again();
+    expect(await triesAfter(1)).toBe(5);
+    expect(await triesAfter(1)).toBe(5);
+    expect(await triesAfter(1)).toBe(6);
+    s.stop();
+  });
+
+  it('a greeting that comes while the enrol still runs ends the entry, and the enrol\'s own end does not bring it back', async () => {
+    const p = setup('adopted');
+    let done!: () => void;
+    const enrolling = new Promise<void>((r) => { done = r; });
+    const m = masterOf(serving());
+    const run_ = m.master.run;
+    let sent = false;
+    m.master.run = async (argv: string[], o: { input?: unknown } = {}) => { if (argv.includes('enroll')) { sent = true; await enrolling; } return run_(argv, o); };
+    const refresh = vi.fn();
+    const s = run(p, () => Promise.resolve(m.master), { refresh });
+    await vi.waitFor(() => expect(sent).toBe(true));
+    settleOwed(p, W);
+    expect(owedWorkers(p)).toEqual({});
+    done();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    s.stop();
+    expect(owedWorkers(p)).toEqual({});
+  });
+
   it('an enrol that exits non-zero is no enrolment: it stays owed, says why, and is tried again', async () => {
     const p = setup('adopted');
     const m = masterOf(serving(), { code: 1, stderr: 'svall: worker.json not written: no\n' });
@@ -351,7 +436,7 @@ describe('the workers a new home owes an enrolment', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
-  it('a token taken back after the login, while the lock waits, is never sent', async () => {
+  it('a token taken back while another holds the lock is never sent, and the next round settles it', async () => {
     const p = setup('adopted');
     const hold = await enrolLock(p.home);
     const m = masterOf(serving());
@@ -361,6 +446,18 @@ describe('the workers a new home owes an enrolment', () => {
     hold?.();
     await vi.waitFor(() => expect(owedWorkers(p)).toEqual({}));
     s.stop();
+    expect(m.enrols()).toEqual([]);
+  });
+
+  it('a token taken back during the question of who answers is never sent, as the one sent is read under the lock', async () => {
+    const p = setup('adopted');
+    const m = masterOf(serving());
+    const run_ = m.master.run;
+    m.master.run = (argv: string[], o: { input?: unknown } = {}) => { dropToken(p, W); return run_(argv, o); };
+    const s = run(p, () => Promise.resolve(m.master));
+    await vi.waitFor(() => expect(owedWorkers(p)).toEqual({}));
+    s.stop();
+    expect(m.runs).toHaveLength(1);
     expect(m.enrols()).toEqual([]);
   });
 
@@ -466,6 +563,14 @@ describe('the workers a new home owes an enrolment', () => {
     expect(() => settleOwed(p, W)).toThrow();
     expect(fired()).toBe(true);
     disarmCrash();
+    expect(owedWorkers(p)).toEqual({});
+  });
+
+  it('a journal that cannot be read owes no one, and throws at no one', () => {
+    const p = setup('adopted');
+    const journal = path.join(p.homeMoves, `${String(ID)}.ndjson`);
+    fs.rmSync(journal);
+    fs.mkdirSync(journal);
     expect(owedWorkers(p)).toEqual({});
   });
 

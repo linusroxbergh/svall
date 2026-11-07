@@ -167,6 +167,25 @@ describe('a worker that dials in', () => {
     await until(() => expect(acked()).toBe(2));
   });
 
+  it('quiet waits for an event a link is applying, and ends once that has ended', async () => {
+    let finish!: () => void;
+    const finished = new Promise<void>((r) => { finish = r; });
+    const applied: string[] = [];
+    const w = await world({ onEvent: async () => { applied.push('begun'); await finished; applied.push('ended'); } });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    w.worker.journal('mutation', { nothing: true });
+    await until(() => expect(applied).toEqual(['begun']));
+    let quiet = false;
+    const going = w.links.quiet().then(() => { quiet = true; });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(quiet).toBe(false);
+    finish();
+    await going;
+    expect(applied).toEqual(['begun', 'ended']);
+  });
+
   it('once a change is held, a report after it waits too, as acks are cumulative: acking it would take the change with it', async () => {
     let holding = false;
     const applied: string[] = [];

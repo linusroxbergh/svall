@@ -1,12 +1,25 @@
+import { execFileSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
-  applyStep, beginRun, endRun, groupSteps, loginForward, machineName, outcomeOf,
+  applyStep, beginRun, endRun, groupSteps, loginForward, machineName, outcomeOf, overHome,
   plainStep, replaceRows, rowToStep, runActions, sshDestination, stepLabel, stepSaid, withoutTokens,
 } from '../src/host.js';
 import type { HostStep } from '../src/bridge.js';
 
 const step = (s: string, status: 'start' | 'ok' | 'warn' | 'fail' | 'skip', extra: Omit<HostStep, 'step' | 'status'> = {}) =>
   ({ step: s, status, ...extra });
+
+describe('what a terminal on a far home types', () => {
+  // the words the shell here hands ssh, the far command its last
+  const farCommand = (line: string): string => execFileSync('sh', ['-c', `ssh() { for last; do :; done; printf %s "$last"; }; ${line}`], { encoding: 'utf8' });
+
+  it.each([
+    ['a single quote', "echo 'it''s'"],
+    ['a dollar', 'echo $HOME "$(id)"'],
+  ])('a run with %s reaches the far shell whole, and this one reads none of it', (_what, run) => {
+    expect(farCommand(overHome('ada@box', run))).toBe(run);
+  });
+});
 
 describe('host run', () => {
   it('folds each step event onto the row it belongs to, in the order they arrive', () => {

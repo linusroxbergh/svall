@@ -1,11 +1,12 @@
 import crypto from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
 import { resolvePaths } from '@svall/svalld/paths';
-import { asksNoOne, endsWithConnection } from '../../src/commands/host.js';
+import { asksNoOne, carriedGoes, endsWithConnection } from '../../src/commands/host.js';
 import { byHome, farDocument, farHomeOf, relay, relayFor } from '../../src/controller/on-home.js';
 import { MachineRegistry } from '../../src/controller/registry.js';
 
@@ -156,6 +157,23 @@ describe('a host command on a fleet whose home is far', () => {
     expect(asksNoOne({ relayed: false, platform: 'linux', tty: true })).toBe(false);
   });
 
+  it('a far run removes the archive a relay left for it as it ends, and no archive a person named', () => {
+    const f = fleet();
+    const dir = path.join(f, 'cache', 'carried');
+    fs.mkdirSync(dir, { recursive: true });
+    const left = path.join(dir, 'c.tar.gz');
+    const named = path.join(f, 'c.tar.gz');
+    fs.writeFileSync(left, 'x');
+    fs.writeFileSync(named, 'x');
+    const ends = new EventEmitter();
+    carriedGoes(left, { home: f }, ends as never);
+    carriedGoes(named, { home: f }, ends as never);
+    expect(fs.existsSync(left)).toBe(true);
+    ends.emit('exit');
+    expect(fs.existsSync(left)).toBe(false);
+    expect(fs.existsSync(named)).toBe(true);
+  });
+
   describe('who answers on the master', () => {
     it('asks before any command, of the fleet there by its folder', async () => {
       const f = far([], { code: 0 });
@@ -168,6 +186,7 @@ describe('a host command on a fleet whose home is far', () => {
       ['another machine', { ...AS_HOME, machineId: crypto.randomUUID() }, 'ada@studio reaches another machine than studio'],
       ['another fleet in that folder', { ...AS_HOME, fleetId: crypto.randomUUID() }, "studio is not this fleet's home"],
       ['a worker of this fleet, which a machine a move left is', { machineId: HOME, release: '1.2.3', role: 'worker', worker: { fleetId: dial.fleetId } }, "studio is not this fleet's home"],
+      ['a worker that names this fleet as a home would', { machineId: HOME, release: '1.2.3', role: 'worker', fleetId: dial.fleetId }, "studio is not this fleet's home"],
     ])('%s runs nothing, and ends on the relay step', async (_what, version, detail) => {
       const f = far(['{"step":"ssh","status":"ok"}'], { code: 0 }, { version });
       const r = await run(f);
@@ -220,6 +239,24 @@ describe('a host command on a fleet whose home is far', () => {
     expect((await run(far(['{"step":"x","status":"fail"}'], { code: 7 }))).code).toBe(7);
   });
 
+  it.each([
+    ['a signal and no code', { code: null, signal: 'SIGKILL' }],
+    ['a signal and a code of success', { code: 0, signal: 'SIGTERM' }],
+    ['a signal and a code of failure', { code: 1, signal: 'SIGTERM' }],
+    ['no code at all', { code: null }],
+  ])('a far command that ends with %s went with its connection, and the run stops on the relay step', async (_what, ended) => {
+    const r = await run(far(['{"step":"os","status":"ok"}'], ended));
+    expect(r.code).toBe(1);
+    expect(r.parsed.at(-2)).toMatchObject({ step: 'relay', status: 'fail', detail: 'the connection to studio went away; what it was doing may still finish there', action: 'try again once it answers' });
+    expect(r.parsed.at(-1)).toMatchObject({ result: 'actions', stopped: 'relay' });
+  });
+
+  it.each([126, 127])('a far exit of %i says the home has no Svall there, with its upgrade', async (code) => {
+    const r = await run(far(['{"step":"x","status":"fail"}'], { code }));
+    expect(r.code).toBe(1);
+    expect(r.parsed.at(-2)).toMatchObject({ step: 'relay', status: 'fail', detail: 'studio has no Svall at /home/ada/.local/share/svall/current/bin/svall', action: 'upgrade studio under Machines' });
+  });
+
   it('what is to do on the machine goes through the home by its route, not its name', () => {
     expect(byHome(home, 'ssh ada@box, then codex login')).toBe('ssh ada@studio, then ssh ada@box, then codex login');
     expect(byHome(home, 'upgrade it under Machines')).toBe('upgrade it under Machines');
@@ -248,7 +285,7 @@ describe('a host command on a fleet whose home is far', () => {
       return file;
     };
     // a home that lacks it on the first run, and runs on with it on the next
-    function asking() {
+    function asking(again = ['{"step":"release","status":"ok"}', '{"result":"ready"}'], code = 0) {
       const argv: string[][] = [];
       const wrote: { argv: string[]; input?: unknown }[] = [];
       const open = () => Promise.resolve({
@@ -261,8 +298,8 @@ describe('a host command on a fleet whose home is far', () => {
           argv.push(a);
           const stream = new PassThrough();
           const second = argv.length > 1;
-          setImmediate(() => { stream.end(`${(second ? ['{"step":"release","status":"ok"}', '{"result":"ready"}'] : [NONE, LEFT]).join('\n')}\n`); });
-          return { stream, exited: Promise.resolve({ signal: null, stderr: '', code: second ? 0 : 1 }) };
+          setImmediate(() => { stream.end(`${(second ? again : [NONE, LEFT]).join('\n')}\n`); });
+          return { stream, exited: Promise.resolve({ signal: null, stderr: '', code: second ? code : 1 }) };
         },
         close: () => Promise.resolve(),
       });
@@ -282,6 +319,17 @@ describe('a host command on a fleet whose home is far', () => {
       expect(f.wrote.at(-1)).toMatchObject({ argv: ['sh', '-c', expect.any(String), '--', `'${remote}'`] });
       expect(String(f.wrote.at(-1)?.input)).toBe('the archive');
       expect(f.argv[1].slice(-4)).toEqual(["'ada@box'", "'--release'", `'${remote}'`, "'--relayed'"]);
+    });
+
+    it('a home that still asks after the copy ends on its refusal, with one copy and one more run', async () => {
+      const f = asking([NONE, LEFT], 1);
+      const file = archive();
+      const out: string[] = [];
+      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: () => file });
+      expect(code).toBe(1);
+      expect(f.argv).toHaveLength(2);
+      expect(f.wrote.filter((w) => w.input !== undefined)).toHaveLength(1);
+      expect(out).toEqual([NONE, LEFT]);
     });
 
     it('a CLI that carries none leaves the home\'s refusal, naming --release', async () => {

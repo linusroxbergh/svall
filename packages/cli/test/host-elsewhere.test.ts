@@ -118,6 +118,21 @@ describe('the fleet\'s home', () => {
     expect(report.checks.find((c) => c.name === 'worker')?.detail ?? '').not.toContain('already serves');
   });
 
+  it('a person\'s add takes no worker while a move\'s enrol holds the lock: no token issued, none sent', async () => {
+    const { enrolLock } = await import('@svall/svalld/kernel-lock');
+    const paths = resolvePaths(fleet);
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const held = await enrolLock(paths.home);
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    held?.();
+    await d.close();
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'this home is enrolling a worker already', action: 'try again in a moment' });
+    expect(enrols()).toEqual([]);
+    expect(tokenFor(paths, REMOTE as never)).toBeUndefined();
+  });
+
   it('a forget waits for no one once it holds the lock, and refuses while a move\'s enrol holds it', async () => {
     const { enrolLock } = await import('@svall/svalld/kernel-lock');
     const paths = resolvePaths(fleet);
