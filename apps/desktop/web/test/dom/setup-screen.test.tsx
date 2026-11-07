@@ -274,10 +274,24 @@ describe('the first run forks three ways', () => {
     receive(FAR);
     expect(hosts(sent)).toEqual([['add', { name: 'studio', ssh: 'ada@Studio.tailnet.ts.net', asHome: true }]]);
     receive({ type: 'host.step', op: 'add', event: { step: 'claude', status: 'warn', detail: 'claude is not installed there' } });
+    receive({ type: 'host.step', op: 'add', event: { step: 'registry', status: 'ok', detail: 'studio is in this Mac\'s list of machines' } });
     receive({ type: 'host.done', op: 'add', code: 1 });
     expect(hosts(sent)[1]).toEqual(['join', { name: '', ssh: 'ada@Studio.tailnet.ts.net' }]);
     receive({ type: 'host.done', op: 'join', code: 0 });
     expect(replaced).toHaveBeenCalledWith('/');
+  });
+
+  test.each([1, 137])('an install that died with exit %i before its last step, a failure row or none, joins nothing, and says it stopped', (code) => {
+    const { sent, receive } = shell(ready, { fork: false });
+    fireEvent.click(screen.getByTestId('fork-server'));
+    toSsh('ada@studio');
+    fireEvent.click(screen.getByTestId('fork-go'));
+    receive(FAR);
+    receive({ type: 'host.step', op: 'add', event: { step: 'upload', status: 'start' } });
+    receive({ type: 'host.done', op: 'add', code });
+    expect(hosts(sent)).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toContain(`exit ${code}`);
+    expect(screen.getByTestId('fork-go').hasAttribute('disabled')).toBe(false);
   });
 
   test('an install that stops joins nothing', () => {

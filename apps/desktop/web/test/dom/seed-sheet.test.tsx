@@ -119,6 +119,59 @@ describe('the first copy of an agent setup onto a far home', () => {
     } finally { off(); }
   });
 
+  describe('while its Copy runs, with the focus left the sheet', () => {
+    const running = async () => {
+      let landed: (v: { sent: number }) => void = () => {};
+      let failed: (e: Error) => void = () => {};
+      there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : new Promise((resolve, reject) => { landed = resolve; failed = reject; })));
+      following();
+      store.getState().toggleSettings(true);
+      render(<SeedSheet />);
+      await screen.findByTestId('setup-tick-claude:mcp:a');
+      fireEvent.click(screen.getByTestId('seed-copy'));
+      await waitFor(() => expect(copies()).toHaveLength(1));
+      (document.activeElement as HTMLElement).blur();
+      expect(screen.getByTestId('seed-sheet').contains(document.activeElement)).toBe(false);
+      fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+      return { land: () => landed({ sent: 1 }), fail: (m: string) => failed(new Error(m)) };
+    };
+
+    it('Esc does nothing: the sheet stays, what lies behind stays, and it is not answered', async () => {
+      const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
+      try {
+        const { land } = await running();
+        expect(screen.getByTestId('seed-sheet')).toBeTruthy();
+        expect(store.getState().settingsOpen).toBe(true);
+        expect(localStorage.getItem('svall.seedAsked@/u/.svall-a')).toBeNull();
+        land();
+        await waitFor(() => expect(screen.queryByTestId('seed-sheet')).toBeNull());
+      } finally { off(); }
+    });
+
+    it('a failure from it is still said, and Esc answers again once it has ended', async () => {
+      const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
+      try {
+        const { fail } = await running();
+        fail('this home holds an agent setup of its own');
+        expect((await screen.findByTestId('seed-failed')).textContent).toContain('holds an agent setup');
+        (document.activeElement as HTMLElement).blur();
+        fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+        expect(store.getState().seedAsk).toBeUndefined();
+      } finally { off(); }
+    });
+
+    it('the × does nothing either', async () => {
+      const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
+      try {
+        const { land } = await running();
+        fireEvent.click(screen.getByTestId('seed-close'));
+        expect(screen.getByTestId('seed-sheet')).toBeTruthy();
+        land();
+        await waitFor(() => expect(screen.queryByTestId('seed-sheet')).toBeNull());
+      } finally { off(); }
+    });
+  });
+
   it('stays, saying why, when the home refuses or the copy fails', async () => {
     following();
     there.mockImplementation((m: string) => (m === 'machines.holdsSetup' ? Promise.resolve({ holds: false }) : Promise.reject(new Error('this home holds an agent setup of its own'))));

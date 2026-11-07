@@ -26,6 +26,7 @@ const STANDS: Record<string, (name: string) => string> = {
   staging: (n) => `${n} has not received the fleet's files yet.`,
   staged: (n) => `${n} holds the fleet's files and has not taken over.`,
   installed: (n) => `${n} has the fleet's files in place and is starting as its home.`,
+  stopping: (n) => `${n} went back as it was, and its daemon has not started again.`,
   rolledback: (n) => `${n} tried to take over and went back as it was.`,
   adopted: (n) => `${n} has taken over.`,
   done: (n) => `${n} has taken over.`,
@@ -47,7 +48,8 @@ export function HomeMoveBanner() {
     if (!online) return;
     let left = false;
     const said = (m?: typeof moving) => { if (!left) app.store.getState().setHomeMove(m); };
-    const look = () => { void (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' }).then((r) => said(r.moving), () => said(undefined)); };
+    // a poll that fails says nothing of the move, whose last answer stands
+    const look = () => { void (app.api().local ?? app.api()).call('fleet.homeMove', { op: 'status' }).then((r) => said(r.moving), () => undefined); };
     look();
     const timer = setInterval(look, WAIT_MS);
     return () => { left = true; clearInterval(timer); };
@@ -58,12 +60,13 @@ export function HomeMoveBanner() {
   return (
     <div className="banner warn" data-testid="home-move-banner">
       <span>
-        {here ? `The fleet is moving to this Mac, and ${moving.from ?? 'its old home'} takes no changes until the move ends; robots keep running.`
-          : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
+        {moving.unmarked ? `A move of the fleet to this Mac has not taken hold, and ${moving.from ?? 'its old home'} is still the home. Abort clears it, which a new move needs.`
+          : here ? `The fleet is moving to this Mac, and ${moving.from ?? 'its old home'} takes no changes until the move ends; robots keep running.`
+            : `The fleet is moving to ${moving.name}, and this Mac takes no changes until the move ends; robots keep running.`}
         {moving.phase && <small data-testid="home-move-answer" data-tip={moving.answer}> {stands(moving.phase, moving.name)}</small>}
         {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
       </span>
-      <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>
+      {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
       <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip="Works once the machine that holds the move says it was not taken" onClick={() => startHost('home-abort', { name: '' })}>{run?.op === 'home-abort' && running ? 'Calling it off…' : 'Abort'}</button>
     </div>
   );

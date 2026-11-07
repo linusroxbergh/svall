@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { emptyState, HOME_ISLAND, type HomeManifest, type MachineId, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
-import { abortAdopt, adoptStatus, installAdopt, journalLines, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptStatus, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { silentLogger } from '../../src/log.js';
 import { machineId } from '../../src/machine.js';
 import { startDaemon, type Daemon } from '../../src/main.js';
@@ -228,7 +228,9 @@ runIf('a home move through real starts', () => {
   it('a worker owes the old home what its status names, and is asked for nothing else', async () => {
     const { paths, daemon } = await taking();
     fs.writeFileSync(paths.homeDeliver, JSON.stringify({ id: ID, ssh: 'ada@nowhere', svallBase: '/x', fleetHome: '/y', from: MAC, fleetId: FLEET }));
-    expect(await daemon.ask('fleet.homeMove', { op: 'status' })).toMatchObject({ result: { moving: { id: ID, asks: false } } });
+    expect(await daemon.ask('fleet.homeMove', { op: 'status' })).toMatchObject({ result: { moving: { id: ID, asks: false, unmarked: true } } });
+    markKey(paths, ID);
+    expect(((await daemon.ask('fleet.homeMove', { op: 'status' })) as { result: { moving: object } }).result.moving).not.toHaveProperty('unmarked');
     expect(await daemon.ask('fleet.homeMove', { op: 'abort' })).toMatchObject({ error: { code: 'not_on_worker' } });
     fs.rmSync(paths.homeDeliver);
   }, 60_000);

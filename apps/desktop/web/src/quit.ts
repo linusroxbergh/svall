@@ -25,8 +25,11 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
   const tell = () => bridge.send({ type: 'keys.quit', chord: chordFor('quit', store.getState().settings.bindings) ?? undefined });
   tell();
   const unwatch = store.subscribe((s, prev) => { if (s.settings.bindings !== prev.settings.bindings) tell(); });
+  // whether the last answer said this daemon stays up for a move: then it is not asked to stop, and no failure to reach it ends it
+  let keptUp = false;
   const off = bridge.onMessage((m) => {
     if (m.type === 'quit.stop') {
+      if (keptUp) { bridge.send({ type: 'quit.stopped', ok: true }); return; }
       const stopping = api()?.call('fleet.stop', {}) ?? Promise.reject(new Error('svalld not connected'));
       // a daemon frozen for a home move stays up, and its robots with it, for the move to end; nothing there may be killed
       void stopping.then(() => true, (e: unknown) => e instanceof ApiError && e.code === 'frozen').then((ok) => bridge.send({ type: 'quit.stopped', ok }));
@@ -48,10 +51,13 @@ export function followQuit({ store, bridge, api }: { store: AppStore; bridge: Pi
       // drives goes by its own steps: until its mark it ends with its driver, and this daemon, paused for a move out, refuses the stop
       const sheet = s.host?.op === 'home' && s.host.running ? s.homeSheet : undefined;
       const did = (step: string): boolean => !!s.host?.steps.some((x) => x.step === step && x.status === 'ok');
-      const move = sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && did('pause') && { frozenFor: sheet.name }) }
-        // past its join this Mac's daemon is a worker, which stops as any does
-        : sheet ? (sheet.back ? { movingHere: true as const } : did('join') ? undefined : { frozenFor: sheet.name })
-          : s.homeMove && (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name });
+      // past a run's join no move stands: going out this Mac's daemon is a worker, which stops as any does; coming back the old home has heard
+      const joined = s.host?.running && (s.host.op === 'home' || s.host.op === 'home-retry') && did('join');
+      const move = joined ? undefined : sheet && !did('mark') ? { callsOff: sheet.back ? 'this Mac' : sheet.name, ...(!sheet.back && did('pause') && { frozenFor: sheet.name }) }
+        : sheet ? (sheet.back ? { movingHere: true as const } : { frozenFor: sheet.name })
+          // a move coming here with no mark to stand holds nothing up
+          : s.homeMove && !s.homeMove.unmarked ? (s.homeMove.to === myMachine(s) ? { movingHere: true as const } : { frozenFor: s.homeMove.name }) : undefined;
+      keptUp = !!move && 'frozenFor' in move;
       bridge.send({ type: 'quit.answer', unsaved: unsavedFiles(s.ide), working, ...(placed > 0 && { placed }), ...(s.via?.name && { home: s.via.name }), ...move });
     });
   });

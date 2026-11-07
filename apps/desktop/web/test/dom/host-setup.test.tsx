@@ -121,6 +121,30 @@ test('a step that failed shows what to do; a step of a run other than a check of
   expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'trift' } }]);
 });
 
+test.each(['home', 'home-retry', 'home-abort', 'home-crew'] as const)('a %s run that failed offers no Try again here, which would run it with no sheet and none of its words', (op) => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted(op, { name: 'trift', interrupt: true });
+    store.getState().hostStep(op, { step: 'pause', status: 'fail', detail: 'a call this home took is still running; try again in a moment' });
+    store.getState().hostDone(op, 1);
+  });
+  expect(screen.queryByTestId('host-again-pause')).toBeNull();
+});
+
+test.each(['add', 'rollback', 'remove'] as const)('a %s that failed with nothing to do offers itself again', (op) => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted(op, { name: 'trift' });
+    store.getState().hostStep(op, { step: 'install', status: 'fail', detail: 'install exited 1' });
+    store.getState().hostDone(op, 1);
+  });
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('host-again-install'));
+  expect(sent).toEqual([{ type: 'host.start', op, args: { name: 'trift' } }]);
+});
+
 test('a running check shows the step under way and what needs the user as found, the fine checks and the agent setup each folded behind one line', () => {
   render(<HostSetup />);
   act(() => {

@@ -68,9 +68,15 @@ function SetupScreen({ bridge }: { bridge: Bridge }) {
       const to = going.current;
       if (!to) return;
       const failed = farRows.current.some((r) => r.status === 'fail');
-      if (!failed && m.op === 'add') bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
-      else if (!failed && m.code === 0) { if (to.warnings?.length) setWarnings(to.warnings); else window.location.replace('/'); }
-      else { pending.current = undefined; setRunning(false); setBusy(false); }
+      // an add that warns exits 1 too, so its last step says as well that it ran through
+      if (!failed && m.op === 'add' && (m.code === 0 || farRows.current.some((r) => r.step === 'registry' && r.status === 'ok'))) bridge.send({ type: 'host.start', op: 'join', args: { name: '', ssh: to.ssh } });
+      else if (m.op !== 'add' && !failed && m.code === 0) { if (to.warnings?.length) setWarnings(to.warnings); else window.location.replace('/'); }
+      else {
+        pending.current = undefined;
+        setRunning(false);
+        setBusy(false);
+        if (!failed) setError(`It stopped with exit ${m.code}, saying nothing more.`);
+      }
       return;
     }
     if (m.type === 'shell.info') { machine.current = m.machine || undefined; return; }

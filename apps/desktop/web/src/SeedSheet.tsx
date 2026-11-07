@@ -17,7 +17,7 @@ export function SeedSheet() {
   const fleetHome = useApp((s) => s.shell?.home);
   const [rows, setRows] = useState<SetupRow[]>();
   const [pending, setPending] = useState(0);
-  const [busy, setBusy] = useState(false);
+  const busy = useApp((s) => s.seedCopying === true);
   const [failed, setFailed] = useState<string>();
   const shut = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -38,22 +38,24 @@ export function SeedSheet() {
   useEffect(() => { if (open && !panel.current?.contains(document.activeElement)) (shut.current ?? panel.current)?.focus(); });
   if (!open) return null;
   const close = () => { app.store.getState().answerSeed(); };
+  const shutUnlessCopying = () => { if (!busy) close(); };
   const tick = (r: SetupRow, fields: string[], on: boolean) => {
     setPending((n) => n + 1);
     (app.api().local ?? app.api()).call('home.setupConsent', { item: r.tick!.item, fields, on }).then(show, fail).finally(() => setPending((n) => n - 1));
   };
   const copy = () => {
-    setBusy(true);
+    const { setSeedCopying } = app.store.getState();
+    setSeedCopying(true);
     setFailed(undefined);
     app.api().call('machines.copySetupFrom', { machine: me!, seed: true }).then(
       () => { close(); void reloadResources(deps()); },
       fail,
-    ).finally(() => setBusy(false));
+    ).finally(() => setSeedCopying(false));
   };
   return (
     <div className="modal-back" data-testid="seed-sheet">
-      <div className="modal dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(() => { if (!busy) close(); })}>
-        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span><CloseX ref={shut} onClose={close} testid="seed-close" /></div>
+      <div className="modal dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessCopying)}>
+        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span><CloseX ref={shut} onClose={shutUnlessCopying} testid="seed-close" /></div>
         <div className="desc" data-testid="seed-says">
           Your agent setup lives on the fleet's home, and every worker takes it from there, this Mac included. Copy this Mac's to {home} first, or start {home} from nothing. Keys in config files stay on this Mac unless you tick them.
         </div>

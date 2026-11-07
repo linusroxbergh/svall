@@ -15,7 +15,7 @@ import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
-import { homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
+import { driverKey, homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
 import { workerProfile } from './placement/workers.js';
 import { bootId } from './processes.js';
 import { agentProber, realProbeDeps } from './sessions/registry.js';
@@ -431,11 +431,11 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
     return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, rewrites: rewrites(os.homedir()), fromIsHome: true });
   };
-  // a move coming here that its driver left, or an outcome the old home has yet to hear
+  // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {
     const owed = readOwed(paths);
     const from = owed && oldHomeName(paths, owed.id);
-    return owed ? { moving: { id: owed.id, to: me, name: ownName(), asks: false, ...(from && { from }) } } : {};
+    return owed ? { moving: { id: owed.id, to: me, name: ownName(), asks: false, ...(from && { from }), ...(!driverKey(paths, owed.id) && { unmarked: true }) } } : {};
   };
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   const fleetHome = () => (worker

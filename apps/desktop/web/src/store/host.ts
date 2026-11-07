@@ -27,6 +27,7 @@ export type HostState = {
   homeMove?: Result<'fleet.homeMove'>['moving'];
   // a far home with no agent setup yet is offered this Mac's
   seedAsk?: true;
+  seedCopying?: true;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
   hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
@@ -51,6 +52,7 @@ export type HostActions = {
   setSeedAsk(on: boolean): void;
   // the sheet goes, not to be asked again in this fleet
   answerSeed(): void;
+  setSeedCopying(on: boolean): void;
   setHomeMove(moving?: Result<'fleet.homeMove'>['moving']): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
@@ -77,6 +79,7 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   setHomeSheet: (homeSheet) => set({ homeSheet }),
   setSeedAsk: (on) => set({ seedAsk: on ? true : undefined }),
+  setSeedCopying: (on) => set({ seedCopying: on ? true : undefined }),
   answerSeed: () => {
     const home = get().shell?.home;
     try { if (home) localStorage.setItem(seedAsked(home), '1'); } catch { /* it asks once more */ }

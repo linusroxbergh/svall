@@ -39,7 +39,7 @@ export function HomeSheet() {
   const busy = useApp((s) => !!s.host?.running);
   // where the fleet's home goes, and whether the window follows it there, whose phone the sheet ends on
   const target = useApp((s) => (s.homeSheet?.back ? s.via?.machine : s.homeSheet?.to));
-  const reached = useApp((s) => (s.homeSheet?.back ? !s.via : s.via?.home === s.homeSheet?.to));
+  const reached = useApp((s) => (s.homeSheet?.back ? !s.via : s.via?.home === s.homeSheet?.to && !!s.via?.online));
   const [check, setCheck] = useState<Check>();
   // what mission control's robots answer the move, undefined while they are asked; a robot at work is interrupted only on the
   // choice its box keeps, as in the move sheet, `working` saying why

@@ -86,6 +86,22 @@ describe('the sheet of a home move', () => {
     expect(store.getState().homeSheet).toBeUndefined();
   });
 
+  it('holds the old home\'s QR back while the window follows the new home with no socket to it yet', async () => {
+    const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
+    const NEW = { ...OLD, url: 'https://studio.tailnet.ts.net:8443', qr: 'data:image/png;base64,NEW' };
+    answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'mobile.get': NEW });
+    act(() => { store.getState().setMobile(OLD as never); });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    act(() => { store.getState().hostDone('home', 0); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio' }); });
+    expect(screen.getByTestId('home-reaching')).toBeTruthy();
+    expect(screen.getByTestId('home-done').querySelector('img')).toBeNull();
+    expect(call).not.toHaveBeenCalledWith('mobile.get', {});
+    act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await waitFor(() => expect(screen.getByTestId('home-done').querySelector('img')?.getAttribute('src')).toBe(NEW.qr));
+  });
+
   it('a failure outside its rows, at the mark or in the shell, says why, and closes', async () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
@@ -284,6 +300,51 @@ describe('a move nothing is driving', () => {
     const said = (await screen.findByTestId('home-move-banner')).textContent;
     expect(said).toContain('moving to this Mac');
     expect(said).not.toContain('linus-mbp');
+  });
+
+  it('a poll that fails keeps the move it last heard of, its buttons and its words, until one answers', async () => {
+    online();
+    let polls = 0;
+    const moving = { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true };
+    call.mockImplementation((method: string) => {
+      if (method !== 'fleet.homeMove') return Promise.resolve({});
+      polls++;
+      return polls === 1 ? Promise.resolve({ moving }) : polls === 2 ? Promise.reject(new Error('svalld connection closed')) : Promise.resolve({});
+    });
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+    try {
+      render(<HomeMoveBanner />);
+      await screen.findByTestId('home-move-banner');
+      await act(async () => { vi.advanceTimersByTime(5000); await Promise.resolve(); await Promise.resolve(); });
+      expect(polls).toBe(2);
+      expect(screen.getByTestId('home-move-abort')).toBeTruthy();
+      expect(store.getState().homeMove).toEqual(moving);
+      await act(async () => { vi.advanceTimersByTime(5000); await Promise.resolve(); await Promise.resolve(); });
+      expect(polls).toBe(3);
+      expect(screen.queryByTestId('home-move-banner')).toBeNull();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('a move coming here with no mark to stand says the old home is still the home, and offers only to clear it', async () => {
+    online();
+    act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio', unmarked: true } } });
+    render(<HomeMoveBanner />);
+    const said = (await screen.findByTestId('home-move-banner')).textContent;
+    expect(said).toContain('A move of the fleet to this Mac has not taken hold, and studio is still the home.');
+    expect(said).not.toContain('takes no changes');
+    expect(screen.queryByTestId('home-move-retry')).toBeNull();
+    fireEvent.click(screen.getByTestId('home-move-abort'));
+    expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-abort', args: { name: '' } });
+  });
+
+  it('a machine whose daemon has not started again says so', async () => {
+    online();
+    answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true, answer: 'its daemon did not start again: failed to connect to bus', phase: 'stopping' } } });
+    render(<HomeMoveBanner />);
+    const said = await screen.findByTestId('home-move-answer');
+    expect(said.textContent).toBe(' studio went back as it was, and its daemon has not started again.');
+    expect(said.getAttribute('data-tip')).toMatch(/failed to connect to bus/);
   });
 
   it('a machine out of reach reads as a sentence, its own words behind it', async () => {

@@ -18,6 +18,8 @@ import { VarField } from './VarField.js';
 // the machine's own setup, which installing this Mac's release there runs again
 const SETUP = /^svall(-dev)? setup$/;
 const FORGET = /\bhost remove \S+ --forget\b/;
+// what a failed row runs again as it ran; a home move goes back through its sheet, with its check and its words
+const RUN_AGAIN = new Set<HostOp>(['add', 'upgrade', 'rollback', 'remove']);
 
 /** What can be done to a machine in the registry, each on that machine and in the panel that follows it. `id`: the machine's,
  * where the row knows it, as a far home names itself otherwise than the registry; the registry's name is what svall takes. */
@@ -228,7 +230,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       ) : row.run && terminal && idle ? (
         <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
           onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
-      ) : run.op !== 'doctor' && !row.action && row.status === 'fail' && idle ? (
+      ) : RUN_AGAIN.has(run.op) && !row.action && row.status === 'fail' && idle ? (
         <button className="btn sm" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
       ) : null}
     </div>

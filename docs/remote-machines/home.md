@@ -162,7 +162,8 @@ The fleet never has two homes, and nothing is deleted. The machine the fleet lea
 the fleet, and from then on it starts as a home only once the other machine has said for good that it did not take it. Whichever
 machine stops, however it stops, what is left is one of these:
 
-- **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied.
+- **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied. Coming back to this Mac, the
+  window says the move has not taken hold, and **Abort** clears it, which the next move needs.
 - **Marked, and not taken.** The window says "The fleet is moving to studio, and this Mac takes no changes until the move
   ends", where studio says the move stands, with **Finish the move** and **Abort** (`svall fleet home retry`, `svall fleet
   home abort`). The old home takes no writes until one of them ends it. An abort works
