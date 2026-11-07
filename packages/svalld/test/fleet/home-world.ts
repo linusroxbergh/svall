@@ -182,7 +182,7 @@ export const marker = (): HomeMoving => ({
 export const POINTS_OF = {
   move: ['adopt.staging', 'adopt.staged', 'adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started', 'restore.restarting', 'adopt.committed', 'restore.file', 'restore.done', 'abort.recorded', 'join.kept', 'join.state', 'join.docs', 'join.worker', 'join.done', 'mark.written'],
   back: ['enrol.written', 'deliver.owed', 'deliver.told'],
-  driver: ['move.marked'],
+  driver: ['move.paused', 'move.copied', 'move.marked', 'move.joined'],
 } as const satisfies Record<string, readonly HomeFailpoint[]>;
 export const pointsOf = Object.values(POINTS_OF).flat() as HomeFailpoint[];
 if (pointsOf.length !== HOME_FAILPOINTS.length || HOME_FAILPOINTS.some((p) => !pointsOf.includes(p))) throw new Error('POINTS_OF does not name every failpoint once');

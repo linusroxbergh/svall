@@ -425,6 +425,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       await moveMission(run, client, paths, id, to, name, name, o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await client.call('fleet.freeze', { id, to }), detail: 'this home takes no more writes' }));
+      homePoint('move.paused');
       const adoptKeySha256 = mintAdoptKey(paths, id);
       driverJournal(paths, id, 'copy');
       await run.step('copy', async () => {
@@ -435,6 +436,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
         if (a.status !== 'pending' || a.phase !== 'staged') throw new StepError(`${name} did not stage the fleet's files: ${a.status === 'pending' ? a.detail ?? a.phase : a.status}`);
         return { value: undefined, detail: `${bytes.length} bytes checked and staged on ${name}` };
       });
+      homePoint('move.copied');
       const keySha256 = markKey(paths, id);
       await run.step('mark', async () => {
         const here = d.registry.localMachine();
@@ -449,7 +451,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       await finishOut(run, d, client, paths, id, { to, name, ssh, asking, ends: CLOSE_TO_END }, far);
     } catch (e) {
       // before the marker nothing can be adopted, so this home thaws whatever the far side heard; from the marker on, only that side's answer does
-      if (!marked) {
+      if (!marked && !(e instanceof HomeCrash)) {
         await client.call('fleet.thaw', { id }).catch(() => undefined);
         // no folder named yet: nothing went there to call off, and no env would name a fleet
         if (master && farHome) await far(['fleet', 'abort', id, ...asking]).catch(() => undefined);
@@ -490,6 +492,7 @@ async function finishOut(run: Runner, d: MoveDeps, client: Client, paths: Paths,
     }
     return { value: undefined, detail: `this machine runs as a worker of ${o.name}` };
   });
+  homePoint('move.joined');
   await run.step('probe', async () => {
     const state = await firstSnapshot(d.client, o.to);
     if (!state) throw new StepError(`${o.name} sent this machine no snapshot in ${SNAPSHOT_MS / 1000} s`, 'svall doctor; this machine\'s robots are safe and keep running', undefined, 'this machine\'s robots are safe and keep running; Check under Machines says what is wrong');

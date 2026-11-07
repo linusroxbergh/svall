@@ -118,29 +118,37 @@ each machine's daemon and unit logs.
     A window's daemon side runs here too: remote's daemon names local as its home and how to reach it, local's API answers as the home over the
     forward it makes, with each machine's role, and no log there holds local's token.
 16. **The home moves to remote.** Local's ssh in from remote is blocked first, so what links them after can only be
-    local's dial. Mission control's robot goes first with the move engine, then `svall fleet home set remote`: both
+    local's dial. A fleet past what a move carries is refused at the check, with nothing moved. Mission control's robot
+    goes first with the move engine, then `svall fleet home set remote`: both
     machines keep their tmux windows, one daemon answers as the home and the other as its worker, the phone serves from
     remote under the same pass and logins and local's link is off, a push subscription and the pass came along, local
-    keeps its old state and docs, and nothing staged stays on either machine. The agent setup follows the home: what a
+    keeps its old state and docs, and nothing staged stays on either machine. The check names a path of `fleet.json` that
+    remote says it lacks and passes, and not one it has; that path goes in as `~/…`, a repo's notes take the name its path
+    has on remote, and `svall --host remote status` on local lists every robot. The agent setup follows the home: what a
     Copy wrote on local before it left is copied before the first push takes it, a change on remote lands on local with
     that copy standing and a file only local has staying, a Copy from local lands on remote, which keeps what it
-    replaced, and a seed of a home that holds a setup is refused.
+    replaced, and a seed of a home that holds a setup is refused. Then `agent`, in a clone, which went through the move
+    as local's robot at the generation it had, moves to remote and back from the home. Each way the home's record at the
+    next generation, both journals, its worktree, one agent on its session, one window and a turn through the home hold.
 17. **The home move's fault matrix**, below.
-18. **The home comes back.** `svall fleet home set local` from local: remote is a worker again with its robots, a change
+18. **The home comes back.** `svall fleet home set local` from local: the check names a path that local says it lacks
+    and passes, the repo's notes go by local's path again, remote is a worker again with its robots, a change
     on local lands on remote, a Copy from remote lands on local, which keeps what it replaced, then a robot moves each
     way on the home that came back.
-19. **A machine set up first takes a join.** `svall -p joined fleet join` on remote makes a fleet never opened a worker
+19. **A machine set up first takes a join.** `svall -p joined fleet join` on remote makes a fleet that holds nothing,
+    whose first start gave it an id of its own, a worker
     of the home on local, under the home's fleet id, ending on its first snapshot; a fleet that holds anything is
     refused. Then a third machine of no fleet, `<prefix>-server`: `svall -p mac2 host add --as-home` from local leaves it a
     home and enrols no one, `svall -p mac2 fleet join` makes local's empty fleet its worker, and the server reaches it over
     that dial. A server as a real setup leaves it holds no agent setup: the join says so and copies nothing, the server
-    pushes nothing over local, and a seed through the Copy lands, after which it holds one.
+    pushes nothing over local, and a seed through the Copy lands, after which it holds one. A fleet on remote joins the same
+    server: it reaches both over their dials, and again past its restart, and that one is then removed.
 20. **Terminals across a dropped master.** A window on local holds three terminals attached to robots on the home on
     remote the way the app attaches them, over local's ssh master, and a tmux on local stands in for the terminal. The
     master is killed: every terminal ends, the daemon opens the master again, each comes back to its own pane with its
     process unchanged, and an OSC 52 copy in a far pane reaches the terminal.
 
-Steps 1, 2, 5, 6 and 14 also check that the bare repository on remote is untouched: a move never pushes.
+Steps 1, 2, 5, 6, 14 and 16 also check that the bare repository on remote is untouched: a move never pushes.
 
 ### The fault matrix
 
@@ -177,14 +185,17 @@ the run never reached fails it. The kills come from a `home-fault` file in the f
 | Direction | Where | Boundaries |
 | --- | --- | --- |
 | local to remote | remote's `fleet adopt` | `adopt.staging`, `staged`, `stopped`, `installing`, `file`, `dropped`, `registry`, `installed`, `started`, `committed` |
-| local to remote | local's driver | `move.marked` |
+| local to remote | local's driver | `move.paused`, `move.marked`, `move.joined`, each with the phone on |
 | local to remote | local's daemon | `mark.written`, `enrol.written`, `join.kept`, `state`, `docs`, `worker`, `done` |
 | remote to local | local's driver | `deliver.owed`, `move.marked`, and each `adopt.*` as above, which runs there |
 | remote to local | local's daemon | `deliver.told` |
 | remote to local | remote's daemon | `mark.written`, `enrol.written`, each `join.*` |
 
-- **A kill in the recovery of a kill**, each way: `restore.file` and `restore.done` past `adopt.dropped`, `abort.recorded`
-  past `adopt.stopped`.
+- **A kill in the recovery of a kill**, each way: `restore.restarting`, `restore.file` and `restore.done` past
+  `adopt.dropped`, `abort.recorded` past `adopt.stopped`.
+- **A driver killed past its copy** (`move.copied`), going out, with the phone on. Nothing is marked, so its daemon thaws and
+  serves again with no one asking. What it staged stays on remote, closed to a typed `svall fleet adopt`, until the next move
+  gives it up.
 - **Mission control comes back**, each way: its robot goes ahead, the move stops at `adopt.stopped` and is called off, the
   robot stays where it went, and `svall fleet home crew-back` returns it to the home in the same conversation.
 - **A link drop between mark and adopt**, each way, ended by retry and by abort. The driver stands still at `move.marked`,
@@ -194,10 +205,12 @@ the run never reached fails it. The kills come from a `home-fault` file in the f
   and the `svall` that ran it. Nothing is marked, so the old home goes on as the home. A driver that died with its tar
   leaves the half unpacked folder, which a retry calls off on finding the old home never frozen.
 - **A delayed adopt against an abort.** A status on an id never heard of, from no home named, waits and writes nothing. From
-  the home the machine serves it refuses the id for good, and the adopt that comes later is refused.
+  the home the machine serves it refuses the id for good, and the adopt that comes later is refused. Then the same with a real
+  archive: `svall fleet export` on local, a stage on remote and an abort from local's id, which takes the archive with it. An
+  adopt with the move's key and a second stage then answer `not-adopted`.
 - **Afterwards**: exactly one daemon answers as the home and the other names it; every window on either machine stands;
-  no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`; the home holds the
-  fleet's `push.json` and pass; and the home's phone link alone serves.
+  no marker, owed outcome or staged folder stays; every journal of a move ends `done` or `aborted`, or holds `released` alone
+  on an old home the move let go; the home holds the fleet's `push.json` and pass; and the home's phone link alone serves.
 
 A move needs the daemons it moves between, so a failed check does not stop a step: a run that seems to hang there is
 often a failed drive waiting to settle, and `run.log` says which. `--points` narrows the matrix while working on one.

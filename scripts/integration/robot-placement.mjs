@@ -11,6 +11,7 @@
 // `--steps` picks steps by number (the fixture always runs); `--prefix` replaces `svall` in the machines' and network's
 // names. Every failed check is printed; the run exits 1 on the first step that has one.
 import { spawnSync } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -1176,11 +1177,40 @@ function setHome(on, target, label = target) {
   return steps;
 }
 
+// a key of the fleet.json on a machine; none, and it goes
+const fleetKey = (m, key, value) => sh(m, `/opt/it/node/bin/node -e 'const fs = require("fs"); const f = process.env.HOME + "/.svall/fleet.json"; const j = JSON.parse(fs.readFileSync(f, "utf8")); j[process.argv[1]] = process.argv[2] && JSON.parse(process.argv[2]); fs.writeFileSync(f, JSON.stringify(j, null, 2));' ${key} ${value === undefined ? '' : shq(JSON.stringify(value))}`);
+// two paths under the account a home leaves, one the machine taking the fleet has and one it does not; the check goes by that machine's answer
+const namePaths = (m, nowhere) => {
+  fleetKey(m, 'defaultCwd', `${HOMES[m]}/${nowhere}`);
+  fleetKey(m, 'onboarding', { firstProject: `${HOMES[m]}/src`, scribe: false });
+};
+const dropPaths = (m) => { fleetKey(m, 'defaultCwd'); fleetKey(m, 'onboarding'); };
+function saysLacking(label, steps, nowhere, name) {
+  const said = steps.find((e) => e.step === 'check' && e.status === 'ok')?.detail ?? '';
+  check(`${label}: the check says what the far machine lacks, and passes`, said.includes(`defaultCwd becomes ~/${nowhere}, which ${name} does not have yet`) && !said.includes('onboarding'), said);
+}
+// the folder a repo's notes lie in on a home at `home`, by the path of its main checkout there
+const NOTE = 'it-note.md';
+const repoNotes = (home) => `~/.svall/docs/repos/app-${crypto.createHash('sha256').update(`${home}/src/app`).digest('hex').slice(0, 8)}`;
+
 function homeMoves(ids, fx) {
   if (ctx.at !== 'remote') reposition(ids, 'remote');
+  // the robot that goes each way once the home has moved runs here as that move comes
+  if (robotIn(snap(L, true), fx.agent)?.machine === ids.remote) {
+    const m = move(fx.agent, 'local');
+    check('agent runs on local', m.code === 0 && m.res?.ok, () => `exit ${m.code}: ${m.stderr.trim()}`);
+  }
+  ctx.generation = robotIn(snap(L, true), fx.agent)?.placement?.generation ?? 0;
   // nothing on remote can reach local from here on, so what links them after is local's own dial
   sh(L, `iptables -I INPUT ${blockSsh(R)}`, { root: true });
   ctx.blocked = true;
+  // a fleet past what a move carries stops at the check, whichever way it would go
+  sh(L, 'mkdir -p ~/.svall/retro && truncate -s 200M ~/.svall/retro/it-big');
+  const big = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
+  const bigFailed = moveSteps(big.stdout).find((e) => e.status === 'fail');
+  check('a fleet too big to carry is refused at the check', big.code !== 0 && bigFailed?.step === 'check' && /the fleet's files come to 2\d\d MB, more than a move carries/.test(bigFailed.detail), () => `${big.code}: ${brief(bigFailed)}`);
+  sh(L, 'rm -f ~/.svall/retro/it-big');
+  check('and the home goes on, with nothing of a move', homeOf(L).mine === true && call(L, 'fleet.homeMove', { op: 'status' }).moving === undefined && !moveLeft(L), () => moveLeft(L));
   // mission control's robot, which goes first with the move engine, and the phone, which travels as what it was
   const crew = JSON.parse(sh(L, 'svall --json robot new --island home --cwd ~/.svall/home --name crew --claude').stdout).id;
   sh(L, `svall robot wait ${crew} --until idle --timeout 60`);
@@ -1195,9 +1225,17 @@ function homeMoves(ids, fx) {
   putRule(R, 'copied onto the old home');
   const taken = windowCall(L, 'machines.copySetupFrom', { machine: ids.remote });
   check('the home takes a copy before it moves', !taken.error && readRule(L) === 'copied onto the old home\n', () => `${brief(taken)} ${readRule(L)}`);
+  // a repo's notes, which take the name its path has on the new home
+  sh(L, `mkdir -p ${repoNotes(HOMES[L])} && echo notes of the repo > ${repoNotes(HOMES[L])}/${NOTE}`);
+  ctx.noted = true;
+  namePaths(L, 'it-nowhere');
   const steps = setHome(L, 'remote');
   check('the steps ran in order', ['check', 'mission', 'pause', 'copy', 'mark', 'adopt', 'join', 'probe'].every((want) => steps.some((e) => e.step === want && e.status !== 'fail')), () => brief(steps));
   oneHome(R, ids);
+  saysLacking('going out', steps, 'it-nowhere', 'remote');
+  check('the paths went in as ~/…', JSON.parse(sh(R, 'cat ~/.svall/fleet.json').stdout).defaultCwd === '~/it-nowhere', () => sh(R, 'cat ~/.svall/fleet.json').stdout);
+  for (const m of [L, R]) dropPaths(m);
+  check("the repo's notes go by its path there", sh(R, `cat ${repoNotes(HOMES[R])}/${NOTE}`, { ok: false }).stdout === 'notes of the repo\n', () => sh(R, 'ls ~/.svall/docs/repos', { ok: false }).stdout);
   const kept = (was, is) => was.split('\n').filter(Boolean).every((w) => is.includes(w));
   check("local's windows stay, but for the crew's", windows(L).split('\n').filter(Boolean).every((w) => before.L.includes(w)), () => `${windows(L)} vs ${before.L}`);
   check("remote's windows stay", kept(before.R, windows(R)), () => `${windows(R)} vs ${before.R}`);
@@ -1210,6 +1248,8 @@ function homeMoves(ids, fx) {
   check('one origin at a time: local no longer serves', call(L, 'home.fallback', { on: false }) !== undefined && sh(L, 'test -f ~/.tailscale-double.json', { ok: false }).code !== 0, 'local still serves');
   check('what was staged is gone from local, keys and all', sh(L, 'ls -d ~/.svall/adopt-* 2>/dev/null', { ok: false }).stdout === '', 'an adopt folder stays');
   for (const id of robots) check(`${id} in the fleet on remote`, far.robots[id] !== undefined, () => id);
+  const hosted = JSON.parse(sh(L, 'svall --host remote --json status', { ok: false }).stdout || '{}');
+  check('svall --host remote on local lists every robot', robots.every((id) => hosted.robots?.[id]), () => brief(Object.keys(hosted.robots ?? {})));
   check('a robot here runs on local', far.robots[fx.agent]?.machine === ids.local || far.robots[fx.agent]?.machine === undefined, () => brief(far.robots[fx.agent]));
   const worker = JSON.parse(sh(L, 'cat ~/.svall/worker.json').stdout);
   check('local dials remote', worker.homeMachineId === ids.remote && worker.homeSsh === `svall@${R}`, () => brief({ ...worker, token: undefined }));
@@ -1222,6 +1262,43 @@ function homeMoves(ids, fx) {
   check('the new home reaches local, with its robots', seen?.reachable === true && seen.robots > 0, () => brief(seen));
   ctx.home = 'remote';
   movedSetup(ids);
+  cloneAcross(ids, fx);
+}
+
+// a robot in a clone, each way with the home moved, as decision 1 has it: it went through the relabel as local's, and each move runs over local's dial
+function cloneAcross(ids, fx) {
+  const id = fx.agent;
+  const rel = 'src/app-wt';
+  const relabelled = robotIn(snap(R, true), id);
+  check("its record names local, at the generation it had", relabelled?.machine === ids.local && relabelled.placement?.generation === ctx.generation, () => brief(relabelled));
+  let generation = ctx.generation;
+  const across = (to) => {
+    const [dest, src] = to === 'remote' ? [R, L] : [L, R];
+    const base = snap(src);
+    const sessionId = robotIn(snap(R), id)?.agent?.sessionId;
+    // from the home, whose own machine is `local` to it
+    const r = sh(R, `svall robot move ${id} --machine ${to === 'remote' ? 'local' : ids.local} --json </dev/null`, { ok: false });
+    const moved = (() => { try { return JSON.parse(r.stdout); } catch { return undefined; } })();
+    check(`${to}: moved`, r.code === 0 && moved?.ok, () => `exit ${r.code}: ${r.stderr.trim()} ${r.stdout.slice(0, 300)}`);
+    const [home, there, left] = [snap(R), snap(dest), snap(src)];
+    const c = robotIn(home, id);
+    check(`${to}: the home's record`, (c?.machine ?? 'remote') === (to === 'remote' ? 'remote' : ids.local) && !c.moving && c.cwd === `${HOMES[dest]}/${rel}`, () => brief(c));
+    check(`${to}: the next generation`, c?.placement?.generation === ++generation, () => `${brief(c?.placement)}, wanted ${generation}`);
+    check(`${to}: where it left`, c?.left?.machine === (to === 'remote' ? ids.local : ids.remote) && c.left.path === `${HOMES[src]}/${rel}` && c.left.moveId === moved?.moveId, () => brief(c?.left));
+    check(`${to}: journals`, there.moves[moved?.moveId]?.phase === 'done' && left.moves[moved?.moveId]?.phase === 'done', () => brief([there.moves[moved?.moveId], left.moves[moved?.moveId]]));
+    sameWork(`${to}: worktree`, there, base, rel);
+    const procs = agentsOf(there, id);
+    check(`${to}: one agent, on its session`, procs.length === 1 && agentsOf(left, id).length === 0 && procs[0].args.at(-2) === '--resume' && procs[0].args.at(-1) === sessionId, () => `${brief(procs)} ${brief(agentsOf(left, id))}`);
+    check(`${to}: its window`, there.windows.some((x) => x.name === id) && !left.windows.some((x) => x.name === id), () => `${brief(there.windows)} / ${brief(left.windows)}`);
+    // through the home, which reaches whichever machine runs it
+    const text = `a turn on ${to} with the home moved`;
+    sh(R, `svall robot run ${id} '${text}' && svall robot wait ${id} --until done,idle --timeout 60`);
+    const read = sh(R, `svall robot read ${id} --transcript --lines 1`).stdout;
+    check(`${to}: the turn reached the home`, read.includes(`did: ${text}`) && robotIn(snap(R, true), id)?.agent?.prompt === text, () => read.slice(-300));
+    originUntouched();
+  };
+  across('remote');
+  across('local');
 }
 
 // every copy kept of the rule, an earlier step's among them, as a second of one name goes beside the first
@@ -1261,10 +1338,14 @@ function cameBackSetup(ids) {
 
 function homeBack(ids, again = true) {
   const before = { L: windows(L), R: windows(R) };
+  namePaths(R, 'it-nowhere-back');
   // the Mac drives it, whatever else there is to reach
   const steps = setHome(L, 'local');
   check('the steps ran', steps.some((e) => e.step === 'join' && e.status === 'ok'), () => brief(steps));
   oneHome(L, ids);
+  saysLacking('coming back', steps, 'it-nowhere-back', 'this machine');
+  for (const m of [L, R]) dropPaths(m);
+  if (ctx.noted) check("the repo's notes go by its path here again", sh(L, `cat ${repoNotes(HOMES[L])}/${NOTE}`, { ok: false }).stdout === 'notes of the repo\n', () => sh(L, 'ls ~/.svall/docs/repos', { ok: false }).stdout);
   check("remote's windows stay, but for what came home", windows(R).split('\n').filter(Boolean).every((w) => before.R.includes(w)), () => `${windows(R)} vs ${before.R}`);
   check("local's windows stay", before.L.split('\n').filter(Boolean).every((w) => windows(L).includes(w)), () => `${windows(L)} vs ${before.L}`);
   check('remote takes local as its home', JSON.parse(sh(R, 'cat ~/.svall/worker.json').stdout).homeMachineId === ids.local, 'remote names another');
@@ -1285,6 +1366,7 @@ const POINTS = {
   out: [
     ['adopt.staging', 'far'], ['adopt.staged', 'far'], ...INSTALL.map((p) => [p, 'far']),
     ['mark.written', 'near'], ['move.marked', 'near'], ['enrol.written', 'near'], ...JOIN.map((p) => [p, 'near']),
+    ['move.paused', 'near'], ['move.joined', 'near'],
   ],
   back: [
     ['deliver.owed', 'near'], ['move.marked', 'near'], ['adopt.staging', 'near'], ['adopt.staged', 'near'], ...INSTALL.map((p) => [p, 'near']), ['deliver.told', 'near'],
@@ -1313,12 +1395,13 @@ function placeHome(where) {
   for (let i = 0; i < 90 && !call(L, 'fleet.homeCheck', { to }).ok; i++) sh(L, 'sleep 1');
 }
 
-// each move this machine has a part in ended, and none stands between
+// each move this machine has a part in ended, and none stands between: `released` is the old home's alone, whose journal holds nothing else
 function journalsEnded(label, m) {
-  const said = sh(m, 'for f in ~/.svall/journal/home/hm_*.ndjson; do case $f in *.driver.ndjson) ;; *) echo "$f $(grep -v \'"phase":"served"\' "$f" | tail -n 1)" ;; esac; done', { ok: false }).stdout;
+  const said = sh(m, 'for f in ~/.svall/journal/home/hm_*.ndjson; do case $f in *.driver.ndjson) ;; *) echo "$f $(grep -vc \'"phase":"served"\' "$f") $(grep -v \'"phase":"served"\' "$f" | tail -n 1)" ;; esac; done', { ok: false }).stdout;
   for (const line of said.split('\n').filter((l) => l.includes('{'))) {
     const phase = JSON.parse(line.slice(line.indexOf('{'))).phase;
-    check(`${label}: journal on ${m}`, phase === 'done' || phase === 'aborted' || phase === 'released', () => line);
+    const lone = / 1 \{/.test(line);
+    check(`${label}: journal on ${m}`, phase === 'done' || phase === 'aborted' || (phase === 'released' && lone), () => line);
   }
 }
 
@@ -1332,8 +1415,8 @@ const sameRobots = (a, b) => JSON.stringify(Object.entries(a).sort()) === JSON.s
 const homeView = () => ({ L: windows(L), R: windows(R), robots: robotsHeld(tryHome(L)?.mine ? L : R) });
 
 // where a fault ends. Before the old home's mark nothing can be adopted; past the new home's answer a call-off comes too late, and it goes through
-const BEFORE_MARK = { out: ['adopt.staging', 'adopt.staged', 'mark.written'], back: ['deliver.owed', 'adopt.staging', 'adopt.staged', 'mark.written'] };
-const PAST_ANSWER = ['adopt.installed', 'adopt.started', 'adopt.committed', 'enrol.written', 'deliver.told', ...JOIN];
+const BEFORE_MARK = { out: ['adopt.staging', 'adopt.staged', 'mark.written', 'move.paused'], back: ['deliver.owed', 'adopt.staging', 'adopt.staged', 'mark.written'] };
+const PAST_ANSWER = ['adopt.installed', 'adopt.started', 'adopt.committed', 'enrol.written', 'deliver.told', 'move.joined', ...JOIN];
 const endsOn = (dir, ending) => (ending === 'retry') === (dir === 'out') ? 'remote' : 'local';
 const faultEnds = (dir, point, ending) => {
   if (BEFORE_MARK[dir].includes(point)) return endsOn(dir, 'abort');
@@ -1401,6 +1484,28 @@ function homeFault(ids, dir, point, where, ending, revives = true) {
   afterMove(point, ids, before, faultEnds(dir, point, ending));
 }
 
+// the driver killed past its copy, the phone on: nothing is marked, so its daemon thaws and serves again by itself, and what it staged waits there, closed to a typed adopt, for a later move to end for good
+function driverGone(ids) {
+  placeHome('local');
+  const before = homeView();
+  sh(L, `echo move.copied > ${FAULT}`);
+  const r = sh(L, 'svall --json fleet home set remote </dev/null', { ok: false });
+  check('move.copied: the run reached it', r.code === 137 && sh(L, `test -e ${FAULT}`, { ok: false }).code !== 0, () => `exit ${r.code}: ${r.stdout.slice(-300)}`);
+  sh(L, `rm -f ${FAULT}`);
+  const up = (m) => sh(m, 'test -f ~/.tailscale-double.json', { ok: false }).code === 0;
+  for (let i = 0; i < 40 && !up(L); i++) sh(L, 'sleep 0.5');
+  check('move.copied: the phone serves again with no one asking', up(L), 'it stays off');
+  check('move.copied: the old home holds no marker', !moveLeft(L).includes('moving'), () => moveLeft(L));
+  const [stale] = sh(R, 'ls -d ~/.svall/adopt-hm_*', { ok: false }).stdout.trim().split('\n');
+  const id = /adopt-(hm_[0-9a-z]{10})$/.exec(stale ?? '')?.[1];
+  check('move.copied: what it staged stands there', id !== undefined, () => stale);
+  const typed = sh(R, `svall --json fleet adopt ${id}`, { ok: false });
+  check('move.copied: a typed adopt installs nothing', typed.code !== 0 && tryHome(R)?.mine === false, () => `${typed.code}: ${typed.stdout} ${typed.stderr.slice(0, 300)}`);
+  for (let i = 0; i < 90 && !call(L, 'fleet.homeCheck', { to: ids.remote }).ok; i++) sh(L, 'sleep 1');
+  setHome(L, 'remote');
+  afterMove('move.copied', ids, before, 'remote');
+}
+
 // a kill, then another in the recovery of what the first left
 function recoveryFault(ids, dir, point, after, ending, revives) {
   placeHome(dir === 'out' ? 'local' : 'remote');
@@ -1454,6 +1559,7 @@ function homeFaults(ids) {
       step(`${point}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, ${where}, then ${ending}`, () => homeFault(ids, dir, point, where, ending));
     });
   }
+  if (picked('out move.copied')) step('move.copied, local -> remote, near, then a later move', () => driverGone(ids));
   for (const dir of ['out', 'back']) {
     for (const [point, after, ending, revives = true] of RECOVERY) {
       if (picked(`${dir} ${point}`)) step(`${point}, past ${after}, ${dir === 'out' ? 'local -> remote' : 'remote -> local'}, then ${ending}${revives ? '' : ', no unit started by hand'}`, () => recoveryFault(ids, dir, point, after, ending, revives));
@@ -1479,6 +1585,24 @@ function homeFaults(ids) {
     check('an id never heard of is refused to the home this machine serves', answered.status === 'not-adopted', () => brief(answered));
     const late = JSON.parse(sh(R, `svall --json fleet adopt ${id}`).stdout);
     check('the adopt that comes late is refused', late.status === 'not-adopted', () => brief(late));
+    // the same with a real archive staged there, and the key a driver would send
+    const real = 'hm_stagedabrt';
+    const key = crypto.randomBytes(32).toString('base64url');
+    const { arch, svallBase } = JSON.parse(sh(L, 'cat ~/.config/svall/machines.json').stdout).machines[ids.remote];
+    const manifest = {
+      id: real, fleetId: ids.fleet, from: ids.local, to: ids.remote, toName: 'remote', toHome: HOMES[R], record: { name: L, platform: 'linux', arch, home: HOMES[L], svallBase, dial: 'worker' },
+      phone: { serving: false, logins: [] }, adoptKeySha256: crypto.createHash('sha256').update(key).digest('hex'),
+    };
+    const packed = JSON.parse(sh(L, `svall fleet export ${real}`, { input: JSON.stringify(manifest) }).stdout);
+    const stage = () => JSON.parse(sh(R, `svall --json fleet adopt ${real} --stage --sha256 ${packed.sha256}`, { input: packed.archive }).stdout);
+    const staged = stage();
+    check('a real archive stages', staged.status === 'pending' && staged.phase === 'staged' && sh(R, `test -d ~/.svall/adopt-${real}`, { ok: false }).code === 0, () => brief(staged));
+    const abort = JSON.parse(sh(R, `svall --json fleet abort ${real} --asker ${ids.local} --fleet ${ids.fleet}`).stdout);
+    check('the abort answers, and its archive goes', abort.status === 'not-adopted' && sh(R, `test -e ~/.svall/adopt-${real}`, { ok: false }).code !== 0, () => brief(abort));
+    const keyed = JSON.parse(sh(R, `svall --json fleet adopt ${real} --home-ssh svall@${R}`, { input: key }).stdout);
+    check('an adopt with its key comes late, and is refused', keyed.status === 'not-adopted' && tryHome(R)?.mine === false, () => brief({ ...keyed, enrol: undefined }));
+    const again = stage();
+    check('so is a stage', again.status === 'not-adopted' && sh(R, `test -e ~/.svall/adopt-${real}`, { ok: false }).code !== 0, () => brief(again));
     oneHome(L, ids);
   });
 }
@@ -1602,6 +1726,10 @@ function freshJoin(ids) {
   // a joiner dials the home, which takes its key as Add machine's ssh would
   sh(L, 'cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys', { input: sh(R, 'cat ~/.ssh/id_ed25519.pub').stdout });
   sh(R, `ssh-keyscan -t ed25519 ${L} 2>/dev/null >> ~/.ssh/known_hosts`);
+  // a first start, stopped again, leaves the fleet an id of its own, and it holds nothing yet
+  sh(R, 'SVALL_HOME=~/.svall-joined ~/.local/share/svall/current/bin/svalld >/dev/null 2>&1 & p=$!; for i in $(seq 60); do [ -f ~/.svall-joined/port ] && break; sleep 0.5; done; kill $p; wait $p; true');
+  const prior = JSON.parse(sh(R, 'cat ~/.svall-joined/fleet.json').stdout).id;
+  check('the fleet starts under an id of its own', prior && prior !== ids.fleet, () => prior);
   const r = sh(R, `SHELL=/bin/bash svall -p joined --json fleet join svall@${L} --name remote-joined </dev/null`, { ok: false });
   const steps = moveSteps(r.stdout);
   check('the join ran', r.code === 0, () => `${r.code}: ${brief(steps.filter((s) => s.status === 'fail'))} ${r.stderr.slice(0, 400)}`);
@@ -1650,7 +1778,27 @@ function serverFirst() {
   check('the seed goes through the Copy', seed.sent > 0 && readRule(S) === 'from the joining machine\n', () => `${brief(seed)} ${readRule(S)}`);
   check('and the server holds a setup from there', call(S, 'machines.holdsSetup').holds === true, 'it holds none');
   sh(L, `rm -f ${RULE}`);
+  secondDialer();
   namedApart(serverMachine);
+}
+
+// two machines dial one home: each link stands, and comes back past the home's restart. The second goes after, as a move refuses another worker
+function secondDialer() {
+  sh(S, 'cat >> ~/.ssh/authorized_keys', { input: sh(R, 'cat ~/.ssh/id_ed25519.pub').stdout });
+  sh(R, `ssh-keyscan -t ed25519 ${S} 2>/dev/null >> ~/.ssh/known_hosts`);
+  const join = sh(R, `SHELL=/bin/bash svall -p dial2 --json fleet join svall@${S} --name dial2 </dev/null`, { ok: false });
+  check('a second machine joins the same home', join.code === 0, () => `${join.code}: ${brief(moveSteps(join.stdout).filter((e) => e.status === 'fail'))} ${join.stderr.slice(0, 400)}`);
+  const dialing = (seconds) => {
+    let seen;
+    for (let i = 0; i < seconds && seen?.length !== 2; i++) { if (i) sh(S, 'sleep 1'); seen = call(S, 'machines.list').machines?.filter((m) => m.reachable && ['mac2-joined', 'dial2'].includes(m.name)); }
+    return seen?.length === 2;
+  };
+  check('the home reaches both over their dials', dialing(60), () => brief(call(S, 'machines.list')));
+  sh(S, `systemctl --user restart ${UNIT}`);
+  sh(S, 'sleep 2');
+  check('and both again past its restart', dialing(90), () => brief(call(S, 'machines.list')));
+  sh(S, 'svall host remove dial2 --forget --json </dev/null');
+  sh(R, 'systemctl --user disable --now svall-svalld@dial2.service');
 }
 
 // mac2 here and private on the server: the fleet comes to mac2, which reaches the server's fleet by its own name, and goes out again

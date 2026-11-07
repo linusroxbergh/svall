@@ -429,6 +429,29 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     });
   });
 
+  it.each([
+    ['move.paused', 'pause:ok', false],
+    ['move.copied', 'copy:ok', true],
+  ] as const)('a driver killed at %s leaves no mark, calls nothing off and thaws nothing itself, which its daemon does when it goes', async (point, last, staged) => {
+    const lines: string[] = [];
+    const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });
+    crashAt(point);
+    await expect(moveHomeOut('studio', deps)).rejects.toThrow(HomeCrash);
+    expect(ran().at(-1)).toBe(last);
+    expect(called.some((c) => c.method === 'fleet.thaw' || c.params.op === 'mark')).toBe(false);
+    expect(lines.some((l) => l.includes('--stage'))).toBe(staged);
+    expect(lines.some((l) => /'fleet' 'abort'|--home-ssh/.test(l))).toBe(false);
+  });
+
+  it('a driver killed past the join leaves this machine to go on as a worker, with no probe', async () => {
+    const { deps, called, started } = outDeps(happy);
+    crashAt('move.joined');
+    await expect(moveHomeOut('studio', deps)).rejects.toThrow(HomeCrash);
+    expect(ran().at(-1)).toBe('join:ok');
+    expect(called.some((c) => c.params.op === 'join')).toBe(true);
+    expect(started()).toBe(1);
+  });
+
   it('a driver killed right after the mark leaves the marker, and the far machine holding its archive', async () => {
     const lines: string[] = [];
     const { deps, called } = outDeps((line) => { lines.push(line); return happy(line); });
