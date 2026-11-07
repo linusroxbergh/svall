@@ -157,6 +157,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
   const idle = !run.running;
   // no upgrade from a row while the machine runs a newer release or serves another Mac
   const noUpgrade = run.steps.some((s) => (s.step === 'release' || s.step === 'worker') && s.action);
+  const release = useApp((s) => (s.via?.name && s.via.home !== id ? `${s.via.name}'s` : "this Mac's"));
   // the rows svalld answers a change with go to the run the change was made in, known by its args, which its rows keep,
   // or to a check of the machine since
   const take = () => {
@@ -217,12 +218,12 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           data-tip={`Runs ${[updates && `${row.run} on ${name}`, onMac && `${onMac.map((k) => AGENT_UPDATE[k]).join(' && ')} on this Mac`].filter(Boolean).join(', then ')}, then checks again`}
           onClick={() => update(id as MachineId, updates, onMac)}>Update</button>
       ) : run.op === 'doctor' && row.step === 'release' && row.status === 'fail' && !row.action && idle ? (
-        <button className="btn sm" data-testid="host-upgrade" data-tip="Install this Mac's release there" onClick={() => startHost('upgrade', { name })}>Upgrade</button>
+        <button className="btn sm" data-testid="host-upgrade" data-tip={`Install ${release} release there`} onClick={() => startHost('upgrade', { name })}>Upgrade</button>
       ) : run.op === 'doctor' && row.step === 'worker' && row.status === 'fail' && !noUpgrade && idle ? (
-        <button className="btn sm" data-testid="host-worker" data-tip={`Install this Mac's release there and run this fleet's robots on ${name}`}
+        <button className="btn sm" data-testid="host-worker" data-tip={`Install ${release} release there and run this fleet's robots on ${name}`}
           onClick={() => startHost('upgrade', { name })}>Set up</button>
       ) : run.op === 'doctor' && row.run && SETUP.test(row.run) && run.steps.some((s) => s.step === 'release' && s.status === 'ok') && !noUpgrade && idle ? (
-        <button className="btn sm" data-testid={`host-repair-${row.step}`} data-tip={`Install this Mac's release on ${name} again, whose setup puts this right`}
+        <button className="btn sm" data-testid={`host-repair-${row.step}`} data-tip={`Install ${release} release on ${name} again, whose setup puts this right`}
           onClick={() => startHost('upgrade', { name })}>Repair</button>
       ) : row.step.startsWith('mirror:var:') && row.status === 'warn' && row.action && id && idle ? (
         <VarField machine={id as MachineId} name={name} varName={row.step.slice('mirror:var:'.length)} here={row.here} testid={`host-var-${row.step}`}

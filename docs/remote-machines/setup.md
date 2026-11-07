@@ -13,7 +13,7 @@ machine needs, how to add it, and how to look after it.
 | | Mac | Linux machine |
 | --- | --- | --- |
 | System | macOS 15 or newer | Ubuntu LTS 22.04 or newer, x86-64 or arm64. Ubuntu 24.04 is the tested release; a release other than an LTS is a warning, and an older Ubuntu or any other system is refused. |
-| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
+| Svall | The app (see the [README](../../README.md#quickstart)) | Installed by `svall host add` from the Mac, or from a server that is the fleet's home. It brings its own Node and tmux and needs no clone, pnpm or build tools. |
 | Services | launchd, as for any fleet | systemd user services, with lingering on so the fleet keeps running after you log out; `svall host add` turns it on |
 | Tools | Git | Git (`sudo apt install git`) |
 | Network | Tailscale, and OpenSSH to the Linux account with a key ssh can use without asking (Tailscale SSH works); a password gets only past the first login | Tailscale |
