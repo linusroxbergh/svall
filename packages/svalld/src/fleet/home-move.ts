@@ -36,6 +36,11 @@ const CARRIED = ['fleet.json', 'state.json', 'docs', 'agent-profiles', 'push.jso
 const WORKER_ONLY = ['worker.json', 'phone.json', 'phone-fallbacks.json', 'journal/epoch', 'cache/mirror-state.json'] as const;
 const INSTALLED = [...CARRIED, 'workers.json'] as const;
 const MANIFEST = 'home-move.json';
+/** What a way back's export may answer over ssh: the archive in base64, in JSON. */
+export const MAX_ARCHIVE = 256 * 1024 * 1024;
+/** What a move carries, either way, so a fleet that goes out can come back: base64 takes a third more, and the rest is room for what its robots write meanwhile. */
+export const MAX_CARRIED_KB = Math.floor((MAX_ARCHIVE * 0.7) / 1024);
+const TAR_BLOCK = 512;
 // how long a stopped daemon has to let go of its lock
 const STOP_MS = 60_000;
 
@@ -775,6 +780,17 @@ function dropLeftBehind(p: Paths, id: string): void {
     const left = packed ? packed !== id && !journaled.includes(packed) : cut !== undefined && cut !== id && cut !== marked;
     if (left) fs.rmSync(path.join(p.home, name), { recursive: true, force: true });
   }
+}
+
+/** What an archive of this fleet's files comes to, as `packFleet` takes them. */
+export function carriedKb(p: Paths): number {
+  const files = CARRIED.flatMap((name) => {
+    const from = inHome(p, name);
+    if (!fs.existsSync(from)) return [];
+    const real = fs.realpathSync(from);
+    return fs.statSync(real).isDirectory() ? ownFiles(real).map((rel) => path.join(real, rel)) : [real];
+  });
+  return Math.ceil(files.reduce((n, f) => n + TAR_BLOCK + Math.ceil(fs.statSync(f).size / TAR_BLOCK) * TAR_BLOCK, 0) / 1024);
 }
 
 /** The fleet's files as an archive: only done moves, the running ones' journals being a machine's own. */

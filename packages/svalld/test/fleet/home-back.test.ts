@@ -27,7 +27,7 @@ async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => 
 
   // as studio holds it at its freeze, with what it took of its worker's robots
   await w.studio.daemon.stop();
-  const manifest: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, at: 6, adoptKeySha256: ADOPT_SHA };
+  const manifest: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(w.studio.paths, manifest);
   await w.studio.daemon.start();
   await stageAdopt(w.mac.deps, BACK, packed.sha256, packed.bytes);
@@ -43,7 +43,7 @@ async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => 
 
 const NOT_RUNNING = 'svalld is not running (no port): it runs while Svall is open on this fleet';
 const ASKER_BACK = { machine: STUDIO, fleetId: FLEET };
-const STUDIO_FACTS = { machineId: STUDIO, role: 'home', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {} };
+const STUDIO_FACTS = { machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {} };
 
 /** The old home's side of what a delivery runs there, on the real settle, over a master that fails as told. */
 function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object } = {}) {
@@ -377,7 +377,7 @@ describe('a kill on this machine at each boundary of the way back, with studio f
 
 describe('whether the old home still holds this move', () => {
   const FAR_OWED = { id: BACK, ssh: 'ada@studio', svallBase: '/home/ada/.local/share/svall', fleetHome: '/home/ada/.svall', from: STUDIO, fleetId: FLEET } as never;
-  const facts = (moving?: string) => ({ run: () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, role: 'home', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, ...(moving && { moving }) }) }) }) as never;
+  const facts = (moving?: string) => ({ run: () => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/f', tailscale: {}, ...(moving && { moving }) }) }) }) as never;
 
   it('only its own mark says so: another move\'s is none', async () => {
     expect(await markedThere(facts(BACK), FAR_OWED)).toBe(true);
@@ -484,14 +484,14 @@ describe('a worker a person removed before the move', () => {
 
   it('stops neither way once its token has gone, though the fleet still holds its name; a token still held refuses', async () => {
     const w = await markedBack(async (m) => {
-      const back = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.studio, STUDIO, 'home'), to: await facts(m.mac, MAC, 'worker'), toName: 'mac', back: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true });
+      const back = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.studio, STUDIO, 'home'), to: await facts(m.mac, MAC, 'worker'), toName: 'mac', back: 'studio', linked: true, synced: true, fromIsHome: true });
       expect(m.mac.daemon.held!.machines?.[SECOND]?.name).toBe('second');
       expect(await back()).toMatchObject({ ok: true });
       issueToken(m.studio.paths, SECOND);
       expect(await back()).toMatchObject(refusal);
       dropToken(m.studio.paths, SECOND);
     }, async (m) => {
-      const out = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.mac, MAC, 'home'), to: await facts(m.studio, STUDIO, 'worker'), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true });
+      const out = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.mac, MAC, 'home'), to: await facts(m.studio, STUDIO, 'worker'), toName: 'studio', linked: true, synced: true, fromIsHome: true });
       m.mac.daemon.held!.machines = { ...m.mac.daemon.held!.machines, [SECOND]: { name: 'second', reachable: false, since: 1 } };
       issueToken(m.mac.paths, SECOND);
       expect(await out()).toMatchObject(refusal);

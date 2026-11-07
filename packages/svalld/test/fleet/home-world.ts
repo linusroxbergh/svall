@@ -139,7 +139,7 @@ export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; 
   await mac.daemon.start();
   await studio.daemon.start();
   await mac.daemon.stop();
-  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, record: MAC_RECORD as never, phone: { serving: true, logins: ['ada@tailnet'] }, at: 5, adoptKeySha256: ADOPT_SHA };
+  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, record: MAC_RECORD as never, phone: { serving: true, logins: ['ada@tailnet'] }, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(mac.paths, manifest);
   await mac.daemon.start();
   const enrolment = (token: string, m: HomeManifest): Enrolment => ({

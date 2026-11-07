@@ -1,14 +1,17 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { emptyState, HOME_ISLAND, type HomeManifest, type MachineId, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
 import { abortAdopt, adoptStatus, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { HomeDial } from '../../src/link/dialout.js';
+import { HomeLinks } from '../../src/link/home.js';
 import { silentLogger } from '../../src/log.js';
 import { machineId } from '../../src/machine.js';
 import { startDaemon, type Daemon } from '../../src/main.js';
-import { resolvePaths, type Paths } from '../../src/paths.js';
+import { dialSocket, resolvePaths, type Paths } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { Tmux } from '../../src/tmux/tmux.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
@@ -88,6 +91,36 @@ runIf('a home move through real starts', () => {
     issueToken(paths, STUDIO);
     return d;
   };
+
+  describe('the check asks the machine taking the fleet of each path that changes', () => {
+    const NONE = 'svall-holds-no-such-folder';
+    afterEach(() => { vi.restoreAllMocks(); });
+    const config = (paths: Paths, cwd: string) => fs.writeFileSync(paths.fleetConfig, JSON.stringify({ ...JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')), defaultCwd: cwd }));
+
+    it('going out, over the link to the worker, and says what it answers', async () => {
+      const paths = fleetHome();
+      const d = await firstStart(paths);
+      await d.stop();
+      config(paths, path.join(os.homedir(), NONE));
+      await d.start();
+      const call = vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {}, paths: { [`~/${NONE}`]: false } });
+      expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { sheet: { rewrites: [{ key: 'defaultCwd', to: `~/${NONE}`, lacks: true }] } } });
+      expect(call).toHaveBeenCalledWith(STUDIO, 'home.facts', { paths: [`~/${NONE}`] });
+    }, 60_000);
+
+    it('coming back, the paths the home names by its own fleet.json, of this machine', async () => {
+      const paths = fleetHome();
+      fs.writeFileSync(paths.workerFile, JSON.stringify({ homeMachineId: STUDIO, fleetId: FLEET, token: TOKEN, homeName: 'studio', homeSsh: 'ada@studio', homeSocket: dialSocket(resolvePaths('/home/ada/.svall'), machineId()), homeSvallBase: '/opt/svall' }));
+      vi.spyOn(HomeDial.prototype, 'start').mockImplementation(() => {});
+      const rewrites = [{ key: 'defaultCwd', to: `~/${NONE}` }, { key: 'home.cwd', to: '~' }];
+      const run = vi.fn().mockResolvedValue({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {}, rewrites }) });
+      vi.spyOn(HomeDial.prototype, 'master').mockReturnValue({ run } as never);
+      const d = real(paths);
+      await d.start();
+      config(paths, path.join(os.homedir(), 'what-this-worker-holds'));
+      expect(await d.ask('fleet.homeCheck', { to: machineId() })).toMatchObject({ result: { sheet: { rewrites: [{ key: 'defaultCwd', to: `~/${NONE}`, lacks: true }, { key: 'home.cwd', to: '~' }] } } });
+    }, 60_000);
+  });
 
   it('the old home: frozen under its marker and refusing writes, then a worker past its guard, with its robots', async () => {
     const paths = fleetHome();

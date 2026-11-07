@@ -288,7 +288,7 @@ const handlers: Handlers = {
     if (p.op === 'mark') held.mark(p.marker);
     if (p.op === 'join') held.join(p.id, p.enrol, p.key);
     if (p.op === 'told') await held.told(p.id, p.key);
-    if (p.op === 'ask' || p.op === 'abort') await held.settle(p.op === 'ask' ? 'status' : 'abort');
+    if (p.op === 'abort') await held.settle('abort');
     const said = held.status();
     return said.moving ? said : homeWaits?.() ?? said;
   },

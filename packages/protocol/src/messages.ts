@@ -409,10 +409,10 @@ export const methods = {
   'fleet.thaw': { params: z.object({ id: HomeMoveId }), result: z.object({}) },
   // whether the fleet can move to machine `to` now, every reason it cannot with its own action
   'fleet.homeCheck': { params: z.object({ to: MachineId }), result: z.discriminatedUnion('ok', [z.object({ ok: z.literal(true), sheet: HomeSheet }), z.object({ ok: z.literal(false), refusal: Refusal, sheet: HomeSheet.optional() })]) },
-  // a move under way as this daemon holds it: `open` makes its id one this caller may move mission control's robots under, `mark` writes the marker past which it never thaws by itself, `ask` looks for the outcome now, `abort` calls the move off where that can still be done, `join` records the outcome and ends this daemon, whose next start joins, and `told` takes the outcome not-adopted from the machine holding the fleet; both carry the key of the move's driver
+  // a move under way as this daemon holds it: `open` makes its id one this caller may move mission control's robots under, `mark` writes the marker past which it never thaws by itself, `abort` calls the move off where that can still be done, `join` records the outcome and ends this daemon, whose next start joins, and `told` takes the outcome not-adopted from the machine holding the fleet; both carry the key of the move's driver
   'fleet.homeMove': {
     params: z.discriminatedUnion('op', [
-      z.object({ op: z.literal('status') }), z.object({ op: z.literal('ask') }), z.object({ op: z.literal('abort') }),
+      z.object({ op: z.literal('status') }), z.object({ op: z.literal('abort') }),
       z.object({ op: z.literal('open'), id: HomeMoveId }),
       z.object({ op: z.literal('mark'), marker: HomeMoving }),
       z.object({ op: z.literal('join'), id: HomeMoveId, enrol: Enrolment, key: z.string() }),

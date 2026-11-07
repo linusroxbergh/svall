@@ -102,7 +102,7 @@ export function HomeSheet() {
               ? `${sheet.there} here, ${sheet.here} on ${name}`
               : `${sheet.here} here, ${sheet.there} on ${name}`}.</span>
             {sheet.mission.length > 0 && <span className="modal-sub" data-testid="home-mission">Mission control's {sheet.mission.length === 1 ? 'robot moves' : `${sheet.mission.length} robots move`} to {back ? 'this Mac' : name} first.</span>}
-            {sheet.rewrites.map((r) => <span key={r.key} className="modal-sub" data-testid="home-rewrite">{r.key} becomes {r.to}</span>)}
+            {sheet.rewrites.map((r) => <span key={r.key} className="modal-sub" data-testid="home-rewrite">{r.key} becomes {r.to}{r.lacks && `, which ${back ? 'this Mac' : name} does not have yet`}</span>)}
           </div>
         )}
         {!run && refused && [refused, ...refused.more ?? []].map((b) => (

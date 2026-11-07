@@ -10,7 +10,7 @@ import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
-import { abortAdopt, adoptDir, adoptStatus, confirmAdopt, createMarker, enter, forgetPhoneReason, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, phoneReason, readMarker, servedPhone, stageAdopt } from '../../src/fleet/home-move.js';
+import { abortAdopt, adoptDir, adoptStatus, carriedKb, confirmAdopt, createMarker, enter, forgetPhoneReason, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, phoneReason, readMarker, servedPhone, stageAdopt } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -577,6 +577,13 @@ describe('adopting', () => {
     expect(a).toMatchObject({ status: 'pending', phase: 'stopping' });
     expect(a.status === 'pending' && a.detail).toMatch(/did not stop/);
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+  });
+
+  it('says what an archive of the fleet comes to before one is made', async () => {
+    const w = await world();
+    fs.writeFileSync(path.join(w.mac.paths.docs, 'big.bin'), Buffer.alloc(3 * 1024 * 1024));
+    const { bytes } = await packFleet(w.mac.paths, w.manifest);
+    expect(Math.abs(carriedKb(w.mac.paths) - bytes.length / 1024)).toBeLessThan(16);
   });
 
   it('carries no key of the old machine, nor its token, its .env, its cache or its outbox', async () => {

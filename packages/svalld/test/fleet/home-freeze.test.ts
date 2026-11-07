@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ApiError, crewAway, emptyState, HOME_ISLAND, type AdoptAnswer, type HomeFacts, type HomeMoveId, type HomeMoving, type MachineId, type MobileStatus } from '@svall/protocol';
@@ -7,7 +8,7 @@ import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
-import { addEnrol, createMarker, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
+import { addEnrol, createMarker, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
 import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
@@ -865,10 +866,10 @@ describe('a real move the API took as the freeze came', () => {
   }, 60_000);
 });
 
-const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, role: 'home', release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, home: '/Users/ada', svallBase: '/opt', fleetHome: '/x', tailscale: { host: 'h' }, workers: [STUDIO], ...o } as HomeFacts);
+const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, fleetHome: '/x', tailscale: { host: 'h' }, workers: [STUDIO], ...o } as HomeFacts);
 
 describe('the check', () => {
-  const input = (o = {}) => ({ state: { ...emptyState(), robots: { here: robot('here'), placed: robot('placed', STUDIO) } }, from: facts({}), to: facts({ machineId: STUDIO, home: '/home/ada' as never }), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true, ...o });
+  const input = (o = {}) => ({ state: { ...emptyState(), robots: { here: robot('here'), placed: robot('placed', STUDIO) } }, from: facts({}), to: facts({ machineId: STUDIO }), toName: 'studio', linked: true, synced: true, fromIsHome: true, ...o });
 
   it('passes a linked worker on this release, counting who stays where', () => {
     const r = homeCheck(input());
@@ -896,7 +897,42 @@ describe('the check', () => {
   it('lists every reason at once', () => {
     const r = homeCheck(input({ linked: false, to: facts({ machineId: STUDIO, release: '2', clock: 1e9, freeKb: 10, tailscale: { error: 'no tailscale' } }) }));
     if (r.ok) throw new Error('passed');
-    expect([r.refusal.reason, ...(r.refusal.more ?? []).map((m) => m.reason)].join('\n')).toMatch(/not reachable[\s\S]*runs 2[\s\S]*clock[\s\S]*KB free[\s\S]*no Tailscale/);
+    expect([r.refusal.reason, ...(r.refusal.more ?? []).map((m) => m.reason)].join('\n')).toMatch(/not reachable[\s\S]*runs 2[\s\S]*clock[\s\S]*MB free[\s\S]*no Tailscale/);
+  });
+
+  it('says which path going in as ~/… the machine taking the fleet lacks, and passes all the same', () => {
+    const r = homeCheck(input({ from: facts({ rewrites: [{ key: 'defaultCwd', to: '~/code' }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/first' }] }), to: facts({ machineId: STUDIO, paths: { '~/code': false, '~/crew': true } }) }));
+    expect(r.ok).toBe(true);
+    expect(r.sheet?.rewrites).toEqual([{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/first' }]);
+  });
+
+  it('a home names the paths that change and what its files come to; a worker says which paths it holds and neither of those', async () => {
+    const paths = resolvePaths(makeHome());
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: FLEET, defaultCwd: path.join(os.homedir(), 'code'), home: { cwd: '/opt/crew' } }));
+    const home = await homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never });
+    expect(home.rewrites).toEqual([{ key: 'defaultCwd', to: '~/code' }]);
+    expect(home.fleetKb).toBeGreaterThan(0);
+    const worker = await homeFacts(paths, { paths: ['~', '~/svall-holds-no-such-folder'], me: STUDIO, role: 'worker', fleetId: FLEET, tailscale: {} as never });
+    expect(worker.paths).toEqual({ '~': true, '~/svall-holds-no-such-folder': false });
+    expect(worker).not.toHaveProperty('rewrites');
+    expect(worker).not.toHaveProperty('fleetKb');
+  });
+
+  const WAYS = [
+    ['out', (fleetKb: number, freeKb: number) => input({ from: facts({ fleetKb }), to: facts({ machineId: STUDIO, freeKb }) }), 'studio', 'there'],
+    ['back', (fleetKb: number, freeKb: number) => input({ back: 'studio', toName: 'mac', from: facts({ machineId: STUDIO, fleetKb, workers: [], fleetHome: '/x' as never }), to: facts({ freeKb }) }), 'this machine', 'here'],
+  ] as const;
+
+  it.each(WAYS)('%s: the machine taking the fleet has room for the archive, what it unpacks to and the files built from that, and some', (_way, asked, who, where) => {
+    const needs = (3 * 50 + 100) * 1024;
+    expect(homeCheck(asked(50 * 1024, needs)).ok).toBe(true);
+    expect(homeCheck(asked(50 * 1024, needs - 1))).toMatchObject({ ok: false, refusal: { reason: `${who} has 249 MB free, and taking the fleet takes 250 MB`, action: `free some space ${where}` } });
+  });
+
+  it.each(WAYS)('%s: a fleet past what a way back can carry stays where it is, so none goes out and cannot come back', (_way, asked) => {
+    expect(homeCheck(asked(MAX_CARRIED_KB, 1e9)).ok).toBe(true);
+    expect(homeCheck(asked(MAX_CARRIED_KB + 1, 1e9))).toMatchObject({ ok: false, refusal: { reason: expect.stringMatching(/^the fleet's files come to 180 MB, more than a move carries \(180 MB\)$/), action: 'remove what it no longer needs from /x/docs and /x/retro' } });
+    expect((MAX_CARRIED_KB * 1024 * 4) / 3).toBeLessThan(MAX_ARCHIVE);
   });
 
   it('names mission control\'s crew, which goes first', () => {
@@ -908,5 +944,5 @@ describe('the check', () => {
 it('rewrites what fleet.json names under the old home, and nothing else', () => {
   const paths = resolvePaths(makeHome());
   fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', defaultCwd: '/Users/ada/code', home: { cwd: '/opt/crew' }, onboarding: { firstProject: '/Users/ada', scribe: true } }));
-  expect(configRewrites(paths, '/Users/ada')).toEqual([{ key: 'defaultCwd', from: '/Users/ada/code', to: '~/code' }, { key: 'onboarding.firstProject', from: '/Users/ada', to: '~' }]);
+  expect(configRewrites(paths, '/Users/ada')).toEqual([{ key: 'defaultCwd', to: '~/code' }, { key: 'onboarding.firstProject', to: '~' }]);
 });

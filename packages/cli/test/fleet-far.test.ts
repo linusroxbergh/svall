@@ -89,9 +89,11 @@ describe('what the far machine runs for a driver', () => {
     const OWN = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
     fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: OWN }));
     serving();
-    expect(await run(['facts'])).toMatchObject({ role: 'worker', fleetId: FLEET });
+    expect(await run(['facts'])).not.toHaveProperty('fleetKb');
+    expect(await run(['facts'])).toMatchObject({ fleetId: FLEET });
     fs.rmSync(resolvePaths(home).workerFile);
-    expect(await run(['facts'])).toMatchObject({ role: 'home', fleetId: OWN });
+    expect(await run(['facts'])).toHaveProperty('fleetKb');
+    expect(await run(['facts'])).toMatchObject({ fleetId: OWN });
     fs.rmSync(resolvePaths(home).fleetConfig);
     await expect(run(['facts'])).rejects.toThrow();
   });

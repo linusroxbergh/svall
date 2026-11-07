@@ -7,8 +7,8 @@ import type { Logger } from '../log.js';
 import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
-import { installPrefix, releaseVersion } from '../release.js';
-import { addEnrol, createMarker, endMove, keyFits, moveInFlight, phoneOwed, readMarker, servedPhone } from './home-move.js';
+import { releaseVersion } from '../release.js';
+import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -19,8 +19,11 @@ const DRAIN_MS = 30_000;
 const FIRST_ASK_MS = 5_000;
 const LAST_ASK_MS = 60_000;
 const CLOCK_SKEW_MS = 5 * 60_000;
-// a fleet's kilobytes, with room for what its robots write meanwhile
-const MIN_FREE_KB = 100 * 1024;
+// room for what its robots write meanwhile, past what the move itself takes
+const SPARE_KB = 100 * 1024;
+// the archive, what it unpacks to and the files built from that stand side by side until the install ends
+const COPIES_TAKEN = 3;
+const mb = (kb: number): number => Math.ceil(kb / 1024);
 
 type Holder = object;
 
@@ -283,12 +286,15 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   } catch (e) { tailscale = { error: (e as Error).message }; }
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
+  let fleetKb: number | undefined;
+  if (o.role === 'home') try { fleetKb = carriedKb(p); } catch { /* the archive says what it could not read */ }
   const workers = workersOf(p);
   return {
-    machineId: o.me, role: o.role, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
-    clock: Date.now(), ...(freeKb !== undefined && { freeKb }), home: os.homedir() as HomeFacts['home'], svallBase: installPrefix() as HomeFacts['svallBase'], fleetHome: p.home as HomeFacts['fleetHome'],
+    machineId: o.me, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
+    clock: Date.now(), ...(freeKb !== undefined && { freeKb }), ...(fleetKb !== undefined && { fleetKb }), fleetHome: p.home as HomeFacts['fleetHome'],
     ...(moveInFlight(p) && { moving: moveInFlight(p) }), tailscale,
     ...(o.paths && { paths: Object.fromEntries(o.paths.map((f) => [f, fs.existsSync(expandHome(f))])) }), ...(workers && { workers }),
+    ...(o.role === 'home' && { rewrites: configRewrites(p, os.homedir()) }),
   };
 }
 
@@ -297,12 +303,12 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
   let c: ReturnType<typeof readFleetConfig>;
   try { c = readFleetConfig(p); } catch { return []; }
   const named: [string, string | undefined][] = [['defaultCwd', c.defaultCwd], ['home.cwd', c.home.cwd], ['onboarding.firstProject', c.onboarding?.firstProject]];
-  return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, from: value, to: `~${value.slice(fromHome.length)}` }] : []));
+  return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, to: `~${value.slice(fromHome.length)}` }] : []));
 }
 
 /** `back`: the name of the home the fleet leaves for this machine, on the way back. */
 type HomeCheckInput = {
-  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; rewrites: HomeSheet['rewrites']; fromIsHome: boolean;
+  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
@@ -326,16 +332,19 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     fail(`${name} is a worker of this fleet too`, `remove ${name} first, and add it again from ${goesTo}`);
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock is off by more than 5 minutes`, `set its clock: ssh there, then sudo timedatectl set-ntp on`);
-  if (to.freeKb !== undefined && to.freeKb < MIN_FREE_KB) fail(`${goesTo} has ${to.freeKb} KB free, too little for the fleet's files`, i.back ? 'free some space here' : 'free some space there');
+  const fleetKb = from.fleetKb ?? 0;
+  if (fleetKb > MAX_CARRIED_KB) fail(`the fleet's files come to ${mb(fleetKb)} MB, more than a move carries (${mb(MAX_CARRIED_KB)} MB)`, `remove what it no longer needs from ${from.fleetHome}/docs and ${from.fleetHome}/retro`);
+  const needKb = COPIES_TAKEN * fleetKb + SPARE_KB;
+  if (to.freeKb !== undefined && to.freeKb < needKb) fail(`${goesTo} has ${Math.floor(to.freeKb / 1024)} MB free, and taking the fleet takes ${mb(needKb)} MB`, i.back ? 'free some space here' : 'free some space there');
   if (from.moving) fail(`the fleet is moving already (${from.moving})`, 'finish or call off that move first');
-  if (to.moving) fail(`${goesTo} is still leaving a move (${to.moving})`, 'finish or call off that move first');
+  if (to.moving) fail(i.back ? `this machine is still taking a move (${to.moving})` : `${toName} is still leaving a move (${to.moving})`, 'finish or call off that move first');
   if (there.tailscale.error) fail(`${far} has no Tailscale: ${there.tailscale.error}`, 'install Tailscale there and sign in');
   if (here.tailscale.error) fail(`this machine has no Tailscale: ${here.tailscale.error}`, 'install Tailscale and sign in');
   const sheet: HomeSheet = {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),
-    rewrites: i.rewrites,
+    rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })),
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;

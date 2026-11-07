@@ -25,7 +25,7 @@ const FAR_INFO = (id: string) => ({ fleetId: FLEET, machineId: id, release: '1.0
 type Called = { method: string; params: { op?: string; marker?: HomeMoving } & Record<string, unknown> };
 
 /** This fleet's daemon as the driver sees it. */
-function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
+function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; rewrites?: object[]; state?: object; crewRefused?: object; abort?: object; phone?: object } = {}) {
   const called: Called[] = [];
   const client = {
     call: (method: string, params: Called['params']) => {
@@ -35,7 +35,7 @@ function daemon(o: { refuse?: Record<string, Error>; checkRefused?: boolean; sta
       if (method === 'fleet.homeCheck') {
         return Promise.resolve(o.checkRefused
           ? { ok: false, refusal: { reason: 'studio is not reachable', action: 'try again when it is awake', details: [] } }
-          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: [] } });
+          : { ok: true, sheet: { here: 2, there: 1, mission: [], toName: 'studio', rewrites: o.rewrites ?? [] } });
       }
       if (method === 'state.get') return Promise.resolve(o.state ?? { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } }, [MAC]: { name: 'mac', reachable: true, since: 1 } } });
       if (method === 'fleet.freeze') return Promise.resolve({ phone: o.phone ?? { serving: false, logins: [] } });
@@ -104,6 +104,12 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     expect(called.map((c) => (c.params.op ? `${c.method}:${c.params.op}` : c.method)).filter((m) => m !== 'state.get')).toEqual(['fleet.homeCheck', 'fleet.homeMove:open', 'fleet.freeze', 'fleet.homeMove:mark', 'fleet.homeMove:join']);
     expect(called.some((c) => c.method === 'fleet.thaw')).toBe(false);
     expect(started()).toBe(1);
+  });
+
+  it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
+    const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }] });
+    expect((await moveHomeOut('studio', deps)).result).toBe('ready');
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet');
   });
 
   it('a check that refuses freezes nothing, and says what to do', async () => {
@@ -530,7 +536,7 @@ describe('fleet home retry', () => {
 
 describe('fleet home set local', () => {
   // this machine a worker of studio by a real move out, its registry naming it, and studio answering over a master
-  async function workerHere(marked: () => boolean = () => true, farHolds: Parameters<typeof daemon>[0] = {}) {
+  async function workerHere(marked: () => boolean = () => true, farHolds: Parameters<typeof daemon>[0] = {}, localHolds: Parameters<typeof daemon>[0] = {}) {
     const w = await movedOut();
     const registry = MachineRegistry.load();
     registry.put(STUDIO, STUDIO_RECORD as never);
@@ -552,12 +558,12 @@ describe('fleet home set local', () => {
           return ok({ sha256, archive: bytes.toString('base64') });
         }
         if (line.includes("'settle'")) { settled.push(line.includes('not-adopted') ? 'not-adopted' : 'adopted'); return ok({ status: 'done' }); }
-        if (line.includes("'facts'")) return ok({ machineId: STUDIO, role: 'home', fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
+        if (line.includes("'facts'")) return ok({ machineId: STUDIO, fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
         throw new Error(`unexpected ${line}`);
       },
       close: () => Promise.resolve(),
     } as unknown as SshMaster;
-    const local = daemon({ state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1 } } } });
+    const local = daemon({ state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1 } } }, ...localHolds });
     const deps: MoveDeps = {
       emit: (e) => events.push(e), openMaster: () => Promise.resolve(master), registry, target: { name: 'private', home: w.mac.paths.home, managed: false }, me: MAC,
       daemon: w.mac.daemon, client: () => Promise.resolve(local.client), farClient: () => Promise.resolve(farClient),
@@ -575,6 +581,22 @@ describe('fleet home set local', () => {
     expect(out.result).toBe('actions');
     expect(out.actions).toEqual(["this machine is the fleet's home already"]);
   });
+
+  it('says of a rewritten path that this machine does not have it, and goes on', async () => {
+    const { w, deps, master } = await workerHere(undefined, {}, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }] });
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which this machine does not have yet');
+  }, 30_000);
+
+  it('an export an ssh answer cut short stops at the copy, in words', async () => {
+    const { deps, master } = await workerHere();
+    const run = master.run.bind(master);
+    master.run = ((argv: string[], o?: never) => (argv.join(' ').includes("'export'") ? Promise.resolve({ code: 0, signal: null, stderr: '', stdout: '{"sha256":"ab","archive":"Zm9v' }) : run(argv, o))) as never;
+    expect((await moveHomeBack(deps)).result).toBe('actions');
+    expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('did not answer a whole archive') });
+  }, 30_000);
 
   it('runs its steps in order, the outcome owed before the old home is marked, and tells it', async () => {
     const { w, deps, order, settled, master } = await workerHere();
@@ -751,7 +773,7 @@ describe('fleet home set local', () => {
     const run = master.run.bind(master);
     master.run = ((argv: string[], o?: never) => {
       if (!argv.join(' ').includes("'facts'")) return run(argv, o);
-      return Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: MAC, role: 'home', fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, home: '/x', svallBase: '/opt', fleetHome: '/x/.svall', tailscale: {} }) });
+      return Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify({ machineId: MAC, fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, fleetHome: '/x/.svall', tailscale: {} }) });
     }) as never;
     events = [];
     expect((await resumeHome(deps)).result).toBe('actions');

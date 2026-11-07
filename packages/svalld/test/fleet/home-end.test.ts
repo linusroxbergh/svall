@@ -167,7 +167,7 @@ describe('a not-adopted takes proof: this folder holds the fleet and still serve
 });
 
 describe('a marked home believes only the machine it marked for', () => {
-  const FACTS = { machineId: STUDIO, role: 'worker', fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/opt', fleetHome: '/home/ada/.svall', tailscale: {} };
+  const FACTS = { machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {} };
   const ANOTHER_FLEET = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
   const ENROL = { worker: WorkerFile.parse({ homeMachineId: STUDIO, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'studio' }) };
   const farAt = (facts: object | undefined, said: AdoptAnswer = { status: 'not-adopted' }) => {
@@ -437,7 +437,7 @@ describe('the one way a move ends', () => {
       // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
       /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/.source,
     ].join('|'))],
-    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, createMarker, endMove, |^\s*try \{ createMarker\(this\.d\.paths, marker\); \} catch \(e\) \{$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
+    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, carriedKb, createMarker, endMove, |^\s*try \{ createMarker\(this\.d\.paths, marker\); \} catch \(e\) \{$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
     [/svalld\/src\/api\/methods\.ts$/, /^\s*if \(p\.op === 'mark'\) held\.mark\(p\.marker\);$|'retro\.mark': \(p, ctx\) => retroOf\(ctx\)\.mark\(p\)/],
     // a machine's own reachability, no marker
     [/svalld\/src\/link\/home\.ts$/, /\bthis\.mark\(\{ name: this\.name, /],

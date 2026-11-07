@@ -40,10 +40,17 @@ describe('the sheet of a home move', () => {
   });
 
   it('names mission control\'s robots, and each path it rewrites', async () => {
-    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, mission: [{ id: 'c_a', name: 'crew' }, { id: 'c_b', name: 'crew2' }], rewrites: [{ key: 'defaultCwd', from: '/Users/ada/code', to: '~/code' }] } } });
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, mission: [{ id: 'c_a', name: 'crew' }, { id: 'c_b', name: 'crew2' }], rewrites: [{ key: 'defaultCwd', to: '~/code' }] } } });
     await open();
     expect(screen.getByTestId('home-mission').textContent).toBe("Mission control's 2 robots move to studio first.");
     expect(screen.getByTestId('home-rewrite').textContent).toBe('defaultCwd becomes ~/code');
+  });
+
+  it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }] } } });
+    await open();
+    expect(screen.getAllByTestId('home-rewrite').map((r) => r.textContent)).toEqual(['defaultCwd becomes ~/code, which studio does not have yet', 'home.cwd becomes ~/crew']);
+    expect(screen.getByTestId('home-go')).toBeTruthy();
   });
 
   it('lists every refusal with what to do, offers no way past them, and checks again', async () => {

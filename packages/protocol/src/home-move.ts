@@ -42,7 +42,7 @@ export type AdoptAnswer = z.infer<typeof AdoptAnswer>;
 /** What the fleet's archive says of itself. `phone`: whether its link served, and who it let through, as `mobile.logins` empty means a login only that machine has. */
 export const HomeManifest = z.object({
   id: HomeMoveId, fleetId: FleetId, from: MachineId, to: MachineId, toName: z.string(), toHome: MachinePath, record: MachineRecord,
-  phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }), at: z.number(),
+  phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }),
   // the fleet's profile on the old home, which the new one reaches it as once it is a worker
   fromProfile: z.string().optional(),
   // of the key only the move's driver holds, sent once the old home is marked: without it this machine installs nothing
@@ -50,19 +50,25 @@ export const HomeManifest = z.object({
 });
 export type HomeManifest = z.infer<typeof HomeManifest>;
 
-/** What a machine says of itself to a home move's check, none of it secret; `workers` those its fleet holds a token for, none said where it cannot read them. */
+/** A path in fleet.json that goes in as `~/…` for the new home to read as its own; `lacks`: that machine says it has nothing there. */
+const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean().optional() });
+
+/**
+ * What a machine says of itself to a home move's check, none of it secret. `workers`: those its fleet holds a token for, none said where it
+ * cannot read them. `paths`: whether each path it was asked of is there. `fleetKb`, `rewrites`: a home's, what a move of its fleet carries and which paths change.
+ */
 export const HomeFacts = z.object({
-  machineId: MachineId, role: z.enum(['home', 'worker']), fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
-  clock: z.number(), freeKb: z.number().optional(), home: MachinePath, svallBase: MachinePath, fleetHome: MachinePath, moving: z.string().optional(),
+  machineId: MachineId, fleetId: FleetId.optional(), release: z.string(), protocol: z.number().int(), stateSchema: z.number().int(),
+  clock: z.number(), freeKb: z.number().optional(), fleetKb: z.number().optional(), fleetHome: MachinePath, moving: z.string().optional(),
   tailscale: z.object({ host: z.string().optional(), error: z.string().optional() }),
-  paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(),
+  paths: z.record(z.string(), z.boolean()).optional(), workers: z.array(z.string()).optional(), rewrites: z.array(HomeRewrite).optional(),
 });
 export type HomeFacts = z.infer<typeof HomeFacts>;
 
 /** What the sheet says will move: robots by where they run, and the mission control's that go first. */
 export const HomeSheet = z.object({
   here: z.number().int(), there: z.number().int(), mission: z.array(z.object({ id: z.string(), name: z.string() })),
-  rewrites: z.array(z.object({ key: z.string(), from: z.string(), to: z.string() })),
+  rewrites: z.array(HomeRewrite),
 });
 export type HomeSheet = z.infer<typeof HomeSheet>;
 

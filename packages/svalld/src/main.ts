@@ -13,7 +13,7 @@ import { configRelinked, fleetMainAgent, keptPorts, loadConfig, readFleetConfig,
 import { liftRobotDocs } from './docs.js';
 import { Fleet } from './fleet.js';
 import { fleetControl, realFleetDeps } from './fleets.js';
-import { configRewrites, homeCheck, homeFacts, HomeFreeze } from './fleet/home-freeze.js';
+import { homeCheck, homeFacts, HomeFreeze } from './fleet/home-freeze.js';
 import { askAcross, factsAcross, phoneWithReason, startDeliveries } from './fleet/home-far.js';
 import { driverKey, homeGate, landed, oldHomeName, readOwed } from './fleet/home-move.js';
 import { workerProfile } from './placement/workers.js';
@@ -416,20 +416,20 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const homeChecks = async (to: MachineId) => {
     const worker_ = worker?.worker;
     const fleetId = readFleetConfig(paths).id;
-    const here = await homeFacts(paths, { me, role: worker ? 'worker' : 'home', fleetId });
-    const rewrites = (home: string) => configRewrites(paths, home);
     if (worker_) {
-      // the way back: this machine takes the fleet, and the home answers over this daemon's own connection to it
+      // the way back: this machine takes the fleet, and the home answers over this daemon's own connection to it, naming the paths this machine is asked of
       const far = await factsAcross(dial, worker_).catch(() => undefined);
+      const here = await homeFacts(paths, { paths: far?.rewrites?.map((r) => r.to) ?? [], me, role: 'worker', fleetId });
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
       const back = store.state.machines?.[worker_.homeMachineId]?.name ?? worker_.homeName;
-      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), rewrites: rewrites(from.home), fromIsHome: to === me });
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me });
     }
+    const here = await homeFacts(paths, { me, role: 'home', fleetId });
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
-    const far = await links!.call<HomeFacts>(to, 'home.facts', {}).catch(() => undefined);
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, rewrites: rewrites(os.homedir()), fromIsHome: true });
+    const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {
