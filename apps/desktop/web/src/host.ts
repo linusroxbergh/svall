@@ -115,7 +115,7 @@ export function replaceRows(run: HostRun, rows: HostStep[], names: MachineNames 
 export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (s.action ? [s.action] : []));
 
 const STEP_LABEL: Record<string, string> = {
-  name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
+  name: 'Name', machine: 'Machine', relay: 'The home', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
   service: 'Services', identity: 'Installed release', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
