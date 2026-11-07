@@ -308,6 +308,31 @@ test('Phone says why a home move left the link off, beside the switch that turns
   expect(screen.queryByTestId('set-mobile-blocked')).toBeNull();
 });
 
+test('a window on a far home adds a machine there, and acts on that home\'s workers, but for making one its home', async () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const BOX = 'cccccccc-0000-4000-8000-000000000000';
+  try {
+    call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [{ id: HOME, name: 'studio', role: 'home', reachable: true, robots: 1 }, { id: BOX, name: 'box', role: 'worker', reachable: true, robots: 2 }] } : {}));
+    act(() => {
+      store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+      store.getState().setStatus('online');
+      store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }, { id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64', far: true }] as never);
+    });
+    render(<SettingsCard />);
+    show('machines');
+    await screen.findByTestId('machine-box');
+    expect(screen.getByTestId('machine-add')).toBeTruthy();
+    const row = screen.getByTestId('machine-box');
+    expect(row.querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
+    fireEvent.click(row.querySelector('[data-testid="machine-more"]')!);
+    expect(row.querySelector('[data-testid="machine-upgrade"]')!.textContent).toBe("Upgrade to studio's release");
+    expect(row.querySelector('[data-testid="machine-remove"]')).not.toBeNull();
+    expect(row.querySelector('[data-testid="machine-make-home"]')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
 test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
   try {
     act(() => {
@@ -350,7 +375,7 @@ test('a far home that calls itself otherwise than this Mac\'s registry is acted 
   }
 });
 
-test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and a far home takes no Add machine', async () => {
+test('Machines names each machine\'s role from the fleet, the home first and a worker that dials in too, and the far home\'s row alone has its actions, of what this Mac\'s registry lists', async () => {
   const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
   const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
   const DIAL = 'cccccccc-0000-4000-8000-000000000000';
@@ -378,7 +403,6 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     expect(screen.getByTestId('machine-laptop').textContent).toContain('dials in');
     // no route in this Mac's registry says nothing of who opens the link
     expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
-    expect(screen.queryByTestId('machine-add')).toBeNull();
     // the far home has its Check and ⋯ from this window; a worker of it is that home's to manage
     expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
     expect(screen.getByTestId('machine-mac').querySelector('[data-testid="machine-doctor"]')).toBeNull();

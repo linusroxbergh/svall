@@ -32,6 +32,12 @@ export const enrollArgv = (o: { svallBase: string; profile?: string; home: Machi
   shq(svallExe(o.svallBase)), ...(o.profile ? ['-p', shq(o.profile)] : []), 'worker', 'enroll', '--home-machine', shq(o.home), '--home-name', shq(o.homeName), '--fleet-id', shq(o.fleetId), '--home-platform', shq(o.homePlatform),
 ];
 
+/** What makes this machine a key if it has none, and copies it to `ssh`, whose prompt also takes the host key. */
+export const keyLine = (ssh: string): string => `test -f ~/.ssh/id_ed25519 || ssh-keygen -q -t ed25519 -N '' -f ~/.ssh/id_ed25519; ssh-copy-id ${shq(ssh)}`;
+
+/** The fix for a machine `here` cannot log in to. */
+export const noLoginFix = (here: string, ssh: string): string => `on ${here}, run ${keyLine(ssh)}, then try again; a machine that takes keys alone gets the public half by hand: ssh ${here} cat .ssh/id_ed25519.pub | ssh ${ssh} 'cat >> .ssh/authorized_keys'`;
+
 /** A new token for `machine` to accept this home by, in place of any it held. */
 export function issueToken(paths: Paths, machine: MachineId): string {
   const token = crypto.randomBytes(24).toString('hex');

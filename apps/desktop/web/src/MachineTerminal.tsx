@@ -5,7 +5,7 @@ import { loginForward } from './host.js';
 
 /** A terminal on the machine over its own ssh, `run` typed at its prompt and `forward` the port its login waits on there;
  * `onEnd` once the user is done with it or its shell exits, `back` when that goes back to the machine's checks. */
-export function MachineTerminal({ name, ssh, run, forward: port, back, onEnd }: { name: string; ssh: string; run?: string; forward?: number; back: boolean; onEnd: () => void }) {
+export function MachineTerminal({ name, on = name, ssh, run, forward: port, back, onEnd }: { name: string; on?: string; ssh: string; run?: string; forward?: number; back: boolean; onEnd: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState<string>();
   const [attempt, setAttempt] = useState(0);
@@ -49,7 +49,7 @@ export function MachineTerminal({ name, ssh, run, forward: port, back, onEnd }: 
     <div className="host-term" data-testid="host-terminal">
       <div className="host-note" data-testid="host-terminal-note">
         <span>
-          {run ? <>On {name}, <code>{run}</code> is typed for you: press Return to run it.</> : <>A terminal on {name}.</>}
+          {run ? <>On {on}, <code>{run}</code> is typed for you: press Return to run it.</> : <>A terminal on {on}.</>}
           {forward && ` Its sign-in comes back from your browser through port ${forward} on this Mac.`}
           {' Click a link to open it in your browser.'}
         </span>

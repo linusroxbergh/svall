@@ -202,6 +202,36 @@ describe('host add', () => {
     expect(step('tailscale')).toEqual([]);
   });
 
+  it('a home with no terminal asks nothing, and says its own key is what is missing, with the line that fixes it', async () => {
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) }));
+    expect(out.stopped).toBe('ssh');
+    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot log in to trift\.test: Permission denied/), run: expect.stringContaining("ssh-copy-id 'trift.test'") });
+    events.length = 0;
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'ssh: connect to host trift.test port 22: No route to host', batch: true }) }));
+    expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot reach trift\.test/) });
+    expect(step('ssh').at(-1)!.run).toBeUndefined();
+  });
+
+  it('takes a machine of another architecture from the signed pin the Mac hands it, of the same release only', async () => {
+    healthy();
+    const d = await daemon();
+    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
+    const bytes = fs.readFileSync(archive());
+    const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+    const companions = { 'linux-arm64': { url: 'https://example.test/svall-companion.tar.gz', sha256 } };
+    const fetched: string[] = [];
+    const fetch = (url: string) => { fetched.push(url); return Promise.resolve({ ok: true, status: 200, arrayBuffer: () => Promise.resolve(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer) }); };
+    const stale = await addHost({ name: 'trift', ssh: 'trift.test', pins: { release: '9.9.9', unsignedBuild: false, companions } }, deps({ fetch }));
+    expect(stale.stopped).toBe('release');
+    expect(step('release').at(-1)).toMatchObject({ detail: 'this build publishes no companion for linux-arm64; name one with --release <archive>' });
+    expect(fetched).toEqual([]);
+    events.length = 0;
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', pins: { release: '1.2.3', unsignedBuild: false, companions } }, deps({ fetch }));
+    await d.close();
+    expect(step('release').at(-1)).toMatchObject({ status: 'ok', detail: expect.stringContaining(companions['linux-arm64'].url) });
+    expect(out.result).toBe('ready');
+  });
+
   it('uploads and enrols nothing over a fleet home there that serves another Mac as a worker, and registers nothing', async () => {
     const action = 'on bea-mbp, run svall host remove trift';
     const worker = { homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: OTHER_FLEET };

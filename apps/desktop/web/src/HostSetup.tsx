@@ -5,7 +5,7 @@ import type { HostArgs, HostOp, HostStep } from './bridge.js';
 import { CloseX } from './CloseX.js';
 import { AS_TYPED } from './Field.js';
 import {
-  asideStep, groupSteps, machineName, machineNames, OP_TITLE, outcomeOf, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
+  asideStep, groupSteps, loginForward, machineName, machineNames, OP_TITLE, outcomeOf, overHome, plainStep, plural, rowToStep, sshDestination, stepLabel, stepSaid, type HostRun,
 } from './host.js';
 import { useApp, useMeasure } from './hooks.js';
 import { startHost } from './hostRun.js';
@@ -13,10 +13,12 @@ import { MachineTerminal } from './MachineTerminal.js';
 import { answers } from './placement.js';
 import { placeTip } from './settings.js';
 import { Caret, Mark, More } from './icons.js';
+import type { App } from './store/index.js';
 import { VarField } from './VarField.js';
 
 // the machine's own setup, which installing this Mac's release there runs again
 const SETUP = /^svall(-dev)? setup$/;
+const isFarHome = (s: App): boolean => { const id = s.machines?.find((m) => m.name === s.hostMachine)?.id; return !!id && id === s.via?.home; };
 const FORGET = /\bhost remove \S+ --forget\b/;
 // what a failed row runs again as it ran; a home move goes back through its sheet, with its check and its words
 const RUN_AGAIN = new Set<HostOp>(['add', 'upgrade', 'rollback', 'remove']);
@@ -26,6 +28,7 @@ const RUN_AGAIN = new Set<HostOp>(['add', 'upgrade', 'rollback', 'remove']);
 export function MachineActions({ id: rowId, name: shown, home = false, worker = false }: { id?: string; name: string; home?: boolean; worker?: boolean }) {
   const running = useApp((s) => !!s.host?.running);
   const row = useApp((s) => s.machines?.find((m) => (rowId ? m.id === rowId : m.name === shown)));
+  const release = useApp((s) => (row?.far && s.via ? `${s.via.name ?? 'the home'}'s` : "this Mac's"));
   const name = row?.name ?? shown;
   // a terminal needs the destination the registry has for it, which the page may not have read yet
   const reachable = !!row?.ssh;
@@ -81,7 +84,7 @@ export function MachineActions({ id: rowId, name: shown, home = false, worker = 
       <button ref={more} className="btn sm" data-testid="machine-more" aria-haspopup="menu" aria-expanded={open} aria-label="More for this machine" onClick={() => setOpen(!open)}><More /></button>
       {open && (
         <div ref={menu} className="machine-menu menu popover" role="menu" style={place}>
-          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip="Install this Mac's release there" onClick={item(() => run('upgrade'))}>Upgrade to this Mac's release</button>
+          <button role="menuitem" className="menu-item" data-testid="machine-upgrade" disabled={running} data-tip={`Install ${release} release there`} onClick={item(() => run('upgrade'))}>Upgrade to {release} release</button>
           <button role="menuitem" className="menu-item" data-testid="machine-terminal" disabled={running || !reachable} data-tip="A terminal on this machine, for what Svall leaves to you there"
             onClick={item(() => store().openHostTerminal(name))}>Open a terminal there</button>
           {worker && id && (
@@ -133,7 +136,7 @@ function Outcome({ run }: { run: HostRun }) {
   );
 }
 
-type Terminal = (command: string, forward?: number) => void;
+type Terminal = (command: string, forward?: number, step?: string) => void;
 
 function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const name = run.args.name;
@@ -201,7 +204,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
       {/* a program row keeps its install command's terminal beside the box that says the machine does not need it */}
       {notNeeded(row) && row.run && terminal && idle && (
         <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
-          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+          onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>
       )}
       {row.tick ? (
         // a tick under way keeps the box, and focus on it, and takes no second change
@@ -229,7 +232,7 @@ function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: T
           onClick={() => app.store.getState().confirmHost({ name, forget: true })}>Forget</button>
       ) : row.run && terminal && idle ? (
         <button className="btn sm" data-testid={`host-terminal-${row.step}`} data-tip={`Opens a terminal on ${name} with ${row.run} typed, for you to run`}
-          onClick={() => terminal(row.run!, row.forward)}>Open terminal</button>
+          onClick={() => terminal(row.run!, row.forward, row.step)}>Open terminal</button>
       ) : RUN_AGAIN.has(run.op) && !row.action && row.status === 'fail' && idle ? (
         <button className="btn sm" data-testid={`host-again-${row.step}`} onClick={() => startHost(run.op, run.args)}>Try again</button>
       ) : null}
@@ -292,17 +295,18 @@ function Checklist({ run, terminal, open: { fine, setup }, unfold }: { run: Host
 
 // from: an add that stopped short, whose name and ssh fill the form in again
 function AddForm({ running, from }: { running: boolean; from?: HostArgs }) {
+  const home = useApp((s) => s.via?.name);
   const [name, setName] = useState(from?.name ?? '');
   const [ssh, setSsh] = useState(from?.ssh ?? '');
   return (
     <>
       <div className="host-note" data-testid="host-intro">
-        <span>Svall installs itself on the machine over ssh and lists what is left for you to do.</span>
+        <span>{home ? `${home} installs Svall on the machine over its own ssh` : 'Svall installs itself on the machine over ssh'} and lists what is left for you to do.</span>
         <span>The machine needs:</span>
         <ul>
           <li>Ubuntu 22.04 LTS or newer, with systemd</li>
           <li>x86-64 or arm64</li>
-          <li>An account you reach over ssh, with any home</li>
+          <li>{home ? `An account ${home} reaches over ssh with its own key, with any home` : 'An account you reach over ssh, with any home'}</li>
         </ul>
       </div>
       <div className="host-form">
@@ -333,6 +337,9 @@ export function HostSetup() {
   const terminal = useApp((s) => s.hostTerminal);
   // the registry's destination, or the one an add not yet in the registry was given
   const ssh = useApp((s) => s.machines?.find((m) => m.name === s.hostMachine)?.ssh ?? (s.host?.args.name === s.hostMachine ? s.host?.args.ssh : undefined));
+  // a machine of a far home is reached through that home, whose own ssh knows it
+  const homeSsh = useApp((s) => (s.via && !isFarHome(s) ? s.machines?.find((m) => m.id === s.via!.home)?.ssh : undefined));
+  const homeLabel = useApp((s) => s.via?.name);
   const shut = useRef<HTMLButtonElement>(null);
   // kept while a terminal there stands in for the checklist, and folded again once the panel closes
   const [unfolded, unfold] = useState<Open>(SHUT);
@@ -379,7 +386,7 @@ export function HostSetup() {
           <CloseX ref={shut} onClose={close} testid="host-close" />
         </div>
         <div className="host-body">
-          {term ? <MachineTerminal name={machine} ssh={ssh} run={terminal.run} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
+          {term ? <MachineTerminal name={machine} on={homeSsh ? homeLabel : undefined} ssh={homeSsh ?? ssh} run={terminal.run ?? (homeSsh ? `ssh ${ssh}` : undefined)} forward={terminal.forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
               {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} home={isHome} worker={isWorker} /></div>}
               {confirm && (
@@ -399,7 +406,12 @@ export function HostSetup() {
                 </div>
               )}
               {shown && (
-                <Checklist run={shown} terminal={machine && ssh ? (run, forward) => app.store.getState().openHostTerminal(machine, run, forward) : undefined}
+                <Checklist run={shown} terminal={machine && ssh ? (typed, forward, step) => {
+                  // the fix of a home that cannot log in is that home's own
+                  if (!homeSsh || step === 'ssh' || step === 'master') { app.store.getState().openHostTerminal(machine, typed, forward); return; }
+                  const port = loginForward(typed, forward);
+                  app.store.getState().openHostTerminal(machine, overHome(ssh, typed, port), port);
+                } : undefined}
                   open={unfolded} unfold={unfold} />
               )}
             </>

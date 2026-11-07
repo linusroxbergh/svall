@@ -79,6 +79,27 @@ test('the panel\'s menu is the row\'s: a worker of this Mac\'s home can take the
   expect(store.getState().homeSheet).toEqual({ to: STUDIO, name: 'studio', back: true });
 });
 
+test('on a far home a machine\'s terminal opens on that home: an ssh to the machine typed ahead of what it runs, its login forwarded on each hop, and the home\'s own fix typed bare', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const shown = () => sent.filter((m) => m.type === 'term.show').at(-1) as unknown as { machine: { ssh: string; type?: string; forward?: number } };
+  act(() => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never);
+    store.getState().toggleHost(true);
+    store.getState().hostStarted('add', { name: 'box', ssh: 'ada@box' });
+    store.getState().hostStep('add', { step: 'ssh', status: 'fail', detail: 'studio cannot log in to ada@box', action: 'on studio, run this', run: 'ssh-copy-id ada@box' });
+    store.getState().hostStep('add', { step: 'codex', status: 'warn', detail: 'not logged in', action: 'ssh ada@box, then codex login', run: 'codex login' });
+    store.getState().hostDone('add', 1);
+  });
+  render(<HostSetup />);
+  fireEvent.click(screen.getByTestId('host-terminal-ssh'));
+  expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh-copy-id ada@box' });
+  expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+  act(() => store.getState().closeHostTerminal());
+  fireEvent.click(screen.getByTestId('host-terminal-codex'));
+  expect(shown().machine).toEqual({ ssh: 'ada@studio', type: "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", forward: 1455 });
+});
+
 test('Done in a terminal goes back to where it was opened: out of the panel, or to its checks, which run again', () => {
   store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
   render(<HostSetup />);

@@ -9,12 +9,15 @@ import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
 import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
+import { tokenFor } from '@svall/svalld/placement/workers';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { Client, withClient } from '../client.js';
 import { printResult, table } from '../format.js';
-import { addHost, consentHost, dialingFleet, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { addHost, consentHost, dialingFleet, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type CompanionPins, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
+import { companionPins } from '../controller/install.js';
+import { relay, relayFor, type FarHome } from '../controller/on-home.js';
 import { MachineRegistry } from '../controller/registry.js';
 import { closeMastersOnSignal, SshMaster } from '../controller/ssh.js';
 import { ask } from '../prompt.js';
@@ -34,15 +37,17 @@ export function interactiveEnv(o: { tty: boolean; platform: NodeJS.Platform; ask
  * The one ssh the user answers: a new host key, a passphrase, a password. Its prompts go to the terminal or the dialog;
  * what it writes to stderr is passed on, and its last lines handed back for the step to name.
  */
-export function interactiveSsh(destination: string): Promise<{ code: number; stderr: string }> {
+export function interactiveSsh(destination: string): Promise<{ code: number; stderr: string; batch?: true }> {
   const env = interactiveEnv({ tty: process.stdin.isTTY === true, platform: process.platform, askpass: askpassPath(), env: process.env });
+  // a server's run with no terminal has no one to answer, and asks nothing
+  const batch = process.platform === 'linux' && process.stdin.isTTY !== true;
   return new Promise((resolve, reject) => {
     // a RemoteCommand in the user's config would refuse `true`. Not detached, so the app's Stop, sent to svall's process group, ends it
-    const child = spawn('ssh', ['-o', 'RemoteCommand=none', '--', destination, 'true'], { stdio: ['inherit', 'inherit', 'pipe'], env });
+    const child = spawn('ssh', [...(batch ? ['-o', 'BatchMode=yes'] : []), '-o', 'RemoteCommand=none', '--', destination, 'true'], { stdio: [batch ? 'ignore' : 'inherit', 'inherit', 'pipe'], env });
     let said = '';
     child.stderr.on('data', (chunk: Buffer) => { process.stderr.write(chunk); said = (said + chunk.toString()).slice(-2000); });
     child.on('error', reject);
-    child.on('close', (code) => resolve({ code: code ?? 1, stderr: said.trim().split('\n').slice(-3).join('\n').slice(-400) }));
+    child.on('close', (code) => resolve({ code: code ?? 1, stderr: said.trim().split('\n').slice(-3).join('\n').slice(-400), ...(batch && { batch: true as const }) }));
   });
 }
 
@@ -224,7 +229,8 @@ export function forgetCheck(dir: string, id: string): void {
 }
 
 /** One machine as `host list --json` gives it: no ssh for this one, and its last check. */
-export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck };
+// worker: holds this fleet's token here, as a Mac asks of its far home; far: a machine of that home, its `ssh` as that home reaches it
+export type MachineRow = { name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string; check?: LastCheck; worker?: true; far?: true };
 
 const dialRow = (d: ReturnType<typeof dialingFleet>): Pick<MachineRow, 'dialedBy' | 'unreadWorker'> =>
   (!d ? {} : d.unreadable ? { unreadWorker: resolvePaths(d.home).workerFile } : { dialedBy: d.home });
@@ -274,11 +280,71 @@ async function runFlow(
   }
 }
 
+/** Calls `stop` once the Mac this run is for has gone: a relayed run lasts no longer than the connection that follows it. */
+export function endsWithConnection(stdin: NodeJS.ReadableStream, stop: () => void): void {
+  stdin.once('end', stop);
+  stdin.once('close', stop);
+  stdin.resume();
+}
+
+const parsedPins = (pins?: string): { pins?: CompanionPins } => (pins ? { pins: JSON.parse(pins) as CompanionPins } : {});
+
+// a named archive is the home's, and otherwise it takes this release's pin for an architecture of another machine than itself
+const companionFlags = (o: { release?: string; allowUnsigned?: boolean }): string[] => {
+  const pins = o.release ? undefined : companionPins(releaseRoot());
+  return [...(o.release ? ['--release', o.release] : []), ...(o.allowUnsigned ? ['--allow-unsigned'] : []), ...(pins ? ['--pins', JSON.stringify(pins)] : [])];
+};
+
+/** How a line of the list reaches a machine of a far home from this Mac's terminal: by way of that home. */
+const farThere = (home: FarHome, ssh: string, fleet: Target): There => ({ ssh: `${home.ssh}, then ssh ${ssh}`, svall: farProfile(fleet) ? `svall -p ${farProfile(fleet)}` : 'svall' });
+
+const heldHere = (fleet: Target, id: string): boolean => {
+  try { return tokenFor(resolvePaths(fleet.home), id as MachineId) !== undefined; } catch { return false; }
+};
+
+const open = (destination: string) => SshMaster.open({ destination });
+
+/** What a far home says it holds of this fleet's workers; none while it does not answer. */
+async function farRows(home: FarHome, registry: MachineRegistry): Promise<MachineRow[]> {
+  let text = '';
+  const code = await relay(home, ['host', 'list'], { open, line: (l) => { text += `${l}\n`; } });
+  if (code !== 0) return [];
+  try {
+    return (JSON.parse(text) as MachineRow[]).filter((r) => r.worker && r.id !== home.machine && r.id !== registry.localId).map(({ worker: _, ...r }) => ({ ...r, far: true as const }));
+  } catch { return []; }
+}
+
+/** The destination a far home reaches `name` at, for a line a person runs from this Mac's terminal; its name, where the home does not say. */
+const destinationOn = async (home: FarHome, name: string, registry: MachineRegistry): Promise<string> => (await farRows(home, registry)).find((r) => r.name === name || r.id === name)?.ssh ?? name;
+
+/** Runs a host command for a machine of a far home on that home, its steps handed on as they come: as they are for the app and --json, as a run's lines in a terminal. */
+async function onHome(home: FarHome, args: string[], json: boolean, last: (final: unknown) => string, steps = true): Promise<void> {
+  let rest = '';
+  const code = await relay(home, args, { open, line: (l) => {
+    if (json) { process.stdout.write(`${l}\n`); return; }
+    let step: StepEvent | undefined;
+    try { const v = JSON.parse(l) as StepEvent; if (typeof v.step === 'string') step = v; } catch { /* a line of the report */ }
+    if (!step) rest += `${l}\n`;
+    else if (steps && step.status !== 'start' && !step.step.startsWith(MIRROR)) process.stdout.write(`${stepLine(step)}\n`);
+  } });
+  if (rest) {
+    let said: string;
+    try { said = last(JSON.parse(rest)); } catch { said = rest.trimEnd(); }
+    process.stdout.write(`${said}\n`);
+  }
+  if (code !== 0) process.exitCode = code;
+}
+
 /** `target`: the fleet a machine added or upgraded becomes a worker of. */
 export function hostCommands(json: () => boolean, target: () => Target, dir: () => string = configDir): Command {
   const host = new Command('host').description('the machines robots can run on')
     // the app's Stop is a SIGTERM, which would otherwise leave this command's master running
-    .hook('preAction', () => { closeMastersOnSignal(); });
+    .hook('preAction', (_host, action) => {
+      closeMastersOnSignal();
+      if ((action.opts() as { relayed?: boolean }).relayed) endsWithConnection(process.stdin, () => process.kill(process.pid, 'SIGTERM'));
+    });
+  const farFor = (name?: string) => relayFor(target().home, MachineRegistry.load(dir()), name);
+  const farLines = async (home: FarHome, name: string): Promise<There> => farThere(home, json() ? name : await destinationOn(home, name, MachineRegistry.load(dir())), target());
 
   host.command('add')
     .description('provision a remote Svall host and add it to the registry')
@@ -287,18 +353,26 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
-    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean }) => {
+    .addOption(new Option('--pins <json>', "the Mac's companions, as it hands them to its home").hideHelp())
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
+    .action((name: string, { pins, relayed: _, ...o }: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; pins?: string; relayed?: boolean }) => {
+      const home = o.asHome ? undefined : farFor(name);
+      if (home) return onHome(home, [...['host', 'add', name, '--ssh', o.ssh], ...companionFlags(o)], json(), (r) => outcomeText(r as HostOutcome, 'add', name, { there: farThere(home, o.ssh, target()) }));
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
-      return runFlow(json(), (out) => outcomeText(out, 'add', name, { there }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
+      return runFlow(json(), (out) => outcomeText(out, 'add', name, { there }), (d) => addHost({ name, ...o, ...parsedPins(pins) }, d), dir(), target(), { name, there });
     });
 
   host.command('list')
     .description('every machine in the registry and its last check')
-    .action(() => {
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
+    .action(async (o: { relayed?: boolean }) => {
       const registry = MachineRegistry.load(dir());
-      const rows = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir()));
+      const home = relayFor(target().home, registry);
+      const far = home ? await farRows(home, registry) : [];
+      const here = machineRows(registry, lastChecks(dir()), (id) => dialingFleet(id, os.homedir())).map((r) => (o.relayed && heldHere(target(), r.id) ? { ...r, worker: true as const } : r));
+      const rows = [...here.filter((r) => !far.some((f) => f.id === r.id)), ...far];
       printResult(rows, json(), () => table(rows.map((r) => ({
-        name: r.name, ssh: r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,
+        name: r.name, ssh: r.far ? `${r.ssh} (from ${home!.name})` : r.ssh ?? (r.id === registry.localId ? '(this machine)' : '(dials in)'), platform: r.platform,
         release: r.check?.release ?? '', checked: r.check ? checkedLine(r.check) : '', id: r.id,
       }))));
     });
@@ -307,7 +381,13 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .description('what the machine answers about itself, and what only this controller can check')
     .argument('<name>', 'the machine in the registry')
     .addOption(new Option('--steps', 'with --json, print each step as an NDJSON line as it goes, before the report').hideHelp())
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(async (name: string, o: { steps?: boolean }) => {
+      const far = farFor(name);
+      if (far) {
+        const there = await farLines(far, name);
+        return onHome(far, ['host', 'doctor', name, '--steps'], json(), (r) => doctorText(r as HostReport, name, there), Boolean(o.steps));
+      }
       const entry = MachineRegistry.load(dir()).get(name);
       // a diagnosis prints a table, not steps, unless the app follows it
       const emit = o.steps && json() ? reporter(true, String).emit : () => {};
@@ -327,8 +407,11 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .argument('<item>', 'the setting, such as claude:mcp:linear')
     .argument('<state>', 'on to copy its keys there, off to stop')
     .option('--field <field...>', 'with on, only these fields of it; off unticks every field')
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(async (name: string, item: string, state: string, o: { field?: string[] }) => {
       if (state !== 'on' && state !== 'off') throw new Error(`${state} is not on or off`);
+      const far = farFor(name);
+      if (far) return onHome(far, ['host', 'consent', name, item, state, ...(o.field ? ['--field', ...o.field] : [])], json(), (r) => (r as SetupRow[]).map((row) => stepLine(rowStep(row))).join('\n'));
       let rows;
       try {
         rows = await consentHost(name, { item, on: state === 'on', ...(o.field && { fields: o.field }) }, realDeps(() => { /* rows print below */ }, dir(), target()));
@@ -347,10 +430,17 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
     .option('--rollback [release]', 'put the machine back on this release, or on the one before, and check its daemons answer from it')
-    .action((name: string, o: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string }) => {
+    .addOption(new Option('--pins <json>', "the Mac's companions, as it hands them to its home").hideHelp())
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
+    .action((name: string, { pins, relayed: _, ...o }: { release?: string; allowUnsigned?: boolean; rollback?: boolean | string; pins?: string; relayed?: boolean }) => {
+      const far = farFor(name);
+      if (far) {
+        const back = o.rollback === undefined ? [] : ['--rollback', ...(typeof o.rollback === 'string' ? [o.rollback] : [])];
+        return farLines(far, name).then((there) => onHome(far, ['host', 'upgrade', name, ...back, ...companionFlags(o)], json(), (r) => outcomeText(r as HostOutcome, o.rollback === undefined ? 'upgrade' : 'rollback', name, { there })));
+      }
       if (o.rollback === undefined) {
         const there = thereOf(name, dir(), target());
-        return runFlow(json(), (out) => outcomeText(out, 'upgrade', name, { there }), (d) => upgradeHost(name, o, d), dir(), target(), { name, there });
+        return runFlow(json(), (out) => outcomeText(out, 'upgrade', name, { there }), (d) => upgradeHost(name, { ...o, ...parsedPins(pins) }, d), dir(), target(), { name, there });
       }
       if (o.release !== undefined || o.allowUnsigned) throw new Error('--rollback installs nothing, so it takes no --release or --allow-unsigned');
       const to = typeof o.rollback === 'string' ? o.rollback : undefined;
@@ -361,7 +451,10 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .description('uninstall Svall on the machine and drop its route')
     .argument('<name>', 'the machine in the registry')
     .option('--forget', 'drop the route for a machine that cannot be reached, leaving it untouched')
+    .addOption(new Option('--relayed', 'run for a Mac, ending with its connection').hideHelp())
     .action(async (name: string, o: { forget?: boolean }) => {
+      const far = farFor(name);
+      if (far) return onHome(far, ['host', 'remove', name, ...(o.forget ? ['--forget'] : [])], json(), (r) => outcomeText(r as HostOutcome, 'remove', name, o));
       const id = MachineRegistry.load(dir()).get(name)?.id;
       await runFlow(json(), (out) => outcomeText(out, 'remove', name, o), (d) => removeHost(name, o, d), dir(), target());
       if (id && !MachineRegistry.load(dir()).get(id)) forgetCheck(dir(), id);

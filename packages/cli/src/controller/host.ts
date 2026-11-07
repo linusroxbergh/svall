@@ -4,10 +4,11 @@ import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, Worke
 import { AGENT_KINDS, AGENTS, compareVersions, versionOf, versionOk } from '@svall/svalld/agents';
 import { readFleetConfig } from '@svall/svalld/config';
 import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld/linux/setup';
+import { homeWord } from '@svall/svalld/machine';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
-import { dropToken, enrollArgv, issueToken, workerProfile } from '@svall/svalld/placement/workers';
+import { dropToken, enrollArgv, issueToken, keyLine, noLoginFix, workerProfile } from '@svall/svalld/placement/workers';
 import { svallExe } from '@svall/svalld/release';
 import { releaseRuntime } from '@svall/svalld/runtime';
 import { tmuxTooOld } from '@svall/svalld/tmux/conf';
@@ -17,12 +18,12 @@ import type { Verify } from '../../../../scripts/release-manifest.mjs';
 import type { Check } from '../checks-view.js';
 import { connectForwarded, identify, MachineMismatch } from './connection.js';
 import {
-  bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion,
+  bootstrapSetup, companionAsset, companionCache, currentRelease, downloadCompanion, inspectCompanion, ownCompanion,
   remoteRollback, requireCompatible, rollbackRefusal, uploadArchive, type CompanionArchive, type FetchLike,
 } from './install.js';
 import { redact } from './process.js';
 import { MachineRegistry, reservedName, type MachineEntry } from './registry.js';
-import { SshError, type SshMaster } from './ssh.js';
+import { classifySsh, SshError, type SshMaster } from './ssh.js';
 
 const PROBE_TIMEOUT = 30_000;
 // the enrolment there waits on systemd to restart the fleet's daemon and on that daemon to answer
@@ -47,8 +48,8 @@ export type HostDeps = {
   runs?(release: string): void;
   registry: MachineRegistry;
   openMaster(destination: string): Promise<SshMaster>;
-  /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said */
-  interactiveSsh(destination: string): Promise<{ code: number; stderr: string }>;
+  /** one ssh the user can answer: a new host key, a passphrase, a password; stderr: the last of what ssh said; batch: there is no one to answer, as on a home with no terminal */
+  interactiveSsh(destination: string): Promise<{ code: number; stderr: string; batch?: true }>;
   fetch: FetchLike;
   controller: { release: string; protocol: number; releaseRoot: string; signed: boolean };
   /** this Mac's agent CLIs, as its own fleet's daemon finds them; rejects when it cannot be asked */
@@ -70,7 +71,10 @@ export type HostDeps = {
   consent(machine: MachineId, item: string, fields: string[], on: boolean): Promise<SetupRow[]>;
 };
 
-export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean };
+/** The companions of the Mac's signed release, handed to a home of the same release for a machine of another architecture. */
+export type CompanionPins = { release: string; unsignedBuild: boolean; companions: Record<string, { url: string; sha256: string }> };
+
+export type AddOptions = { name: string; ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean; pins?: CompanionPins };
 
 /** A step that could not finish, with the one thing the user can do about it. */
 export class StepError extends Error {
@@ -328,7 +332,7 @@ async function agentChecks(master: SshMaster, o: { destination: string; home: st
       const v = await call(a.bin, ['--version']);
       // env exits 127 for a program it finds nowhere on that PATH; setup writes Svall's hooks only for the agents it finds
       if (v.code === 127) {
-        if (used && !used.has(kind)) return { value: undefined, status: 'skip', detail: `${kind} is not installed on this machine, and no fleet on this Mac runs it` };
+        if (used && !used.has(kind)) return { value: undefined, status: 'skip', detail: `${kind} is not installed on this machine, and no fleet on ${homeWord()} runs it` };
         return todo(`${kind} is not installed on this machine`, `install ${a.label}, then svall setup`, a.installCommand);
       }
       const version = v.stdout.trim().split('\n')[0];
@@ -375,13 +379,13 @@ function versionsOutcome(far: FarVersions, mine: { kind: AgentKind; version?: st
   });
   if (!both.length) return { value: undefined, status: 'skip', detail: 'no agent CLI to compare' };
   const apart = both.filter((b) => b.order !== 0);
-  if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${b.kind} ${b.there}`).join(', ')}, as on this Mac` };
+  if (!apart.length) return { value: undefined, detail: `${both.map((b) => `${b.kind} ${b.there}`).join(', ')}, as on ${homeWord()}` };
   const updates = (order: number) => apart.filter((b) => b.order === order).map((b) => AGENTS[b.kind].updateCommand);
   const [there, here] = [updates(-1), updates(1)];
   return {
     value: undefined, status: 'warn',
-    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on this Mac`).join('; ')}: a move there and back needs the same release on both`,
-    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`${ON_THIS_MAC}${here.join(', then ')}`] : [])].join('; '),
+    detail: `${apart.map((b) => `${b.kind} ${b.there} there, ${b.order < 0 ? 'behind' : 'ahead of'} ${b.here} on ${homeWord()}`).join('; ')}: a move there and back needs the same release on both`,
+    action: [...(there.length ? [onThere(destination, there.join(', then '))] : []), ...(here.length ? [`${homeWord() === 'this Mac' ? ON_THIS_MAC : `on ${homeWord()}, run `}${here.join(', then ')}`] : [])].join('; '),
     ...(there.length > 0 && { run: there.join(' && ') }),
   };
 }
@@ -481,7 +485,8 @@ function homeOfUs(v: RemoteVersion, d: HostDeps): boolean {
 
 /** Why the fleet home there is not this fleet's to enrol: it serves another Mac as a worker. */
 function notOurs(v: RemoteVersion, name: string, d: HostDeps): StepError | undefined {
-  if (v.worker && v.worker.homeMachineId !== d.machineId()) {
+  // a worker of this fleet names the home it had until the fleet moved, and the fleet's home takes it from there
+  if (v.worker && v.worker.homeMachineId !== d.machineId() && v.worker.fleetId !== readFleet(resolvePaths(d.fleet.home).fleetConfig).id) {
     const home = v.worker.homeName || v.worker.homeMachineId;
     return new StepError(`${name} already serves ${home} as a worker; remove it from that Mac first`, `on ${home}, run svall host remove ${name}`);
   }
@@ -495,7 +500,7 @@ const newerRelease = (a: string, b: string): boolean => compareVersions(a.replac
 function listedAs(d: Pick<HostDeps, 'registry' | 'fleet'>, id: string, o: { name: string; ssh: string }): StepError | undefined {
   const listed = d.registry.get(id);
   if (!listed || listed.record.name === o.name) return undefined;
-  return new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in this Mac's list`,
+  return new StepError(`${o.ssh} reaches ${listed.record.name}, a machine already in ${homeWord()}'s list`,
     `${hostCmd(d)} upgrade ${listed.record.name} sets it up again, or ${hostCmd(d)} remove ${listed.record.name} --forget and add it as ${o.name}`);
 }
 
@@ -520,7 +525,7 @@ async function mayInstall(master: SshMaster, o: { name: string; ssh: string; sva
   }
   if (o.adding && !o.asHome && servedHome(far.machineId, d)) throw new StepError(`${o.name} is this fleet's home, so it cannot be added as its worker`, `${hostCmd(d)} upgrade ${o.name} takes it to this Mac's release`);
   if (newerRelease(far.release, o.version)) {
-    throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one this Mac would install`, 'update svall on this Mac');
+    throw new StepError(`${o.name} runs release ${far.release}, newer than ${o.version}, the one ${homeWord()} would install`, `update svall on ${homeWord()}`);
   }
 }
 
@@ -555,13 +560,16 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   let from = 'the archive you named';
   let allowUnsigned = Boolean(o.allowUnsigned);
   if (!archive) {
-    const asset = companionAsset(d.controller.releaseRoot, `linux-${arch}`);
-    if (!asset) throw new StepError(`this build publishes no companion for linux-${arch}; name one with --release <archive>`);
-    archive = await downloadCompanion({ ...asset, dir: companionCache(d.homedir), fetch: d.fetch });
-    from = asset.url;
+    const platform = `linux-${arch}`;
+    const pin = o.pins?.release === d.controller.release ? o.pins.companions[platform] : undefined;
+    const asset = companionAsset(d.controller.releaseRoot, platform) ?? (pin && { ...pin, unsignedBuild: o.pins!.unsignedBuild });
+    const own = asset ? undefined : ownCompanion(d.controller.releaseRoot, platform, companionCache(d.homedir));
+    if (!asset && !own) throw new StepError(`this build publishes no companion for ${platform}; name one with --release <archive>`);
+    archive = asset ? await downloadCompanion({ ...asset, dir: companionCache(d.homedir), fetch: d.fetch }) : own!.archive;
+    from = asset ? asset.url : `${homeWord()}'s own release`;
     // an unsigned development build pins the companion it was built with by digest, and that pin is
     // as trustworthy as the build the user already chose to run
-    allowUnsigned ||= asset.unsignedBuild;
+    allowUnsigned ||= (asset ?? own!).unsignedBuild;
   }
   const companion = await inspectCompanion(archive, { verify: d.verify });
   requireCompatible(companion, { ...d.controller, arch, allowUnsigned });
@@ -584,11 +592,18 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
   if (!destination.success) throw new StepError(`${o.ssh} is not an ssh destination: ${destination.error.issues[0].message}`);
   const held = registry.get(o.name);
   if (held?.record.dial === 'worker') throw new StepError(`${o.name} is a worker that dials in; remove it first or add this one under another name`);
-  if (held && !held.record.ssh) throw new StepError(`${o.name} is this Mac's name; add the machine under another name`);
+  if (held && !held.record.ssh) throw new StepError(`${o.name} is ${homeWord()}'s name; add the machine under another name`);
   if (held && held.record.ssh !== o.ssh) {
     throw new StepError(`${o.name} is already the machine at ${held.record.ssh}; remove it first or add this one under another name`);
   }
   return { value: held as Registered | undefined, detail: held ? `${o.name} is already in the registry; its probes run again` : `${o.name} at ${o.ssh}` };
+}
+
+/** What a home with no one at its ssh says of a machine it cannot log in to; the fix is that home's own key, as no key leaves the Mac. */
+function noLogin(ssh: string, said: string): StepError {
+  const here = homeWord();
+  if (!['auth', 'host_key'].includes(classifySsh(said))) return new StepError(`${here} cannot reach ${ssh}${said ? `: ${said}` : ''}`, `check Tailscale on both machines, then ssh ${ssh} from ${here}`);
+  return new StepError(`${here} cannot log in to ${ssh}${said ? `: ${said}` : ''}`, noLoginFix(here, ssh), keyLine(ssh));
 }
 
 /** `svall host add`: the spec's Add Machine flow, from the first interactive ssh to the registry entry. */
@@ -597,9 +612,13 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
     const held = await run.step('name', () => Promise.resolve(claimName(d.registry, o)));
     if (o.asHome) await run.step('tailscale', () => tailnetHere(d));
 
+    let batch = false;
     await run.step('ssh', async () => {
-      const { code, stderr } = await d.interactiveSsh(o.ssh);
+      const said = await d.interactiveSsh(o.ssh);
+      const { code, stderr } = said;
+      batch = said.batch === true;
       if (code !== 0) {
+        if (batch) throw noLogin(o.ssh, stderr);
         throw new StepError(`ssh ${o.ssh} exited ${code}${stderr ? `: ${stderr}` : ''}`,
           `run ssh ${o.ssh} once in Terminal and answer its host key and login there, then add the machine again`);
       }
@@ -611,6 +630,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       try {
         opened = await d.openMaster(o.ssh);
       } catch (err) {
+        if (batch && err instanceof SshError) throw noLogin(o.ssh, err.message);
         if (err instanceof SshError && err.kind === 'auth') {
           throw new StepError(`ssh refused the login to ${o.ssh}: every step from here logs in without a password or passphrase prompt`,
             `install a key there with ssh-copy-id ${o.ssh}, keep its passphrase in the keychain with ssh-add --apple-use-keychain and add UseKeychain yes and AddKeysToAgent yes to ~/.ssh/config so ssh still finds it after a restart, then add the machine again`);
@@ -679,7 +699,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
           throw new StepError(`${o.name} runs release ${v.release}, not ${companion.version}: its setup went back, as the daemon of ${companion.version} did not answer`,
             `ssh ${o.ssh} and read the daemon log; ${o.name} runs release ${v.release}, the one its setup went back to; then ${held ? `${hostCmd(d)} upgrade ${o.name}, or ` : ''}add the machine again`);
         }
-        if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to this Mac's`);
+        if (v.protocol !== d.controller.protocol) throw new StepError(`the release installed on ${o.name} cannot talk to ${homeWord()}'s`);
         return { value: id.data, detail: `${o.name} runs release ${v.release}` };
       });
       if (!o.asHome) {
@@ -698,7 +718,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         if (held) d.registry.remove(held.id);
         const entry = d.registry.add(record, machine);
         d.registry.save();
-        return Promise.resolve({ value: entry, detail: `${o.name} is in this Mac's list of machines` });
+        return Promise.resolve({ value: entry, detail: `${o.name} is in ${homeWord()}'s list of machines` });
       });
       // a home's agent setup is its own, and this fleet joins it next
       if (!o.asHome) await setupSteps(run, machine, o.name, d);
@@ -796,10 +816,10 @@ export async function doctorHost(name: string, d: HostDeps): Promise<HostReport>
       const newer = !same && newerRelease(v.release, d.controller.release);
       found({
         name: 'release', status: same && talks ? 'ok' : 'fail',
-        detail: same && talks ? `${v.release}, as on this Mac`
-          : newer ? `${v.release} there, newer than this Mac's ${d.controller.release}`
-            : same ? `${v.release} there, a build that cannot talk to this Mac's` : `${v.release} there; this Mac runs ${d.controller.release}`,
-        ...(newer && { action: 'update svall on this Mac' }),
+        detail: same && talks ? `${v.release}, as on ${homeWord()}`
+          : newer ? `${v.release} there, newer than ${homeWord()}'s ${d.controller.release}`
+            : same ? `${v.release} there, a build that cannot talk to ${homeWord()}'s` : `${v.release} there; ${homeWord()} runs ${d.controller.release}`,
+        ...(newer && { action: `update svall on ${homeWord()}` }),
       });
       const refused = notOurs(v, entry.record.name, d);
       home = homeOfUs(v, d);
@@ -875,7 +895,7 @@ const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f 
  * `svall host upgrade`: the new release installed by its own setup, as the old one's may not speak its protocol, then a
  * probe that puts the old one back if it does not answer; a machine not yet this fleet's worker then becomes one.
  */
-export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
+export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean; pins?: CompanionPins }, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
     const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, asked); servedHome(out.value.id, d); return Promise.resolve(out); });
     const name = entry.record.name;
@@ -1073,7 +1093,7 @@ for f in .svall/worker.json .svall-*/worker.json; do
 done
 exit 0`;
 
-const ServedBy = WorkerFile.pick({ homeMachineId: true, homeName: true });
+const ServedBy = WorkerFile.pick({ homeMachineId: true, homeName: true, fleetId: true });
 
 /** Refuses the far uninstall, which stops every fleet there, while a fleet home there serves another Mac or one cannot be read. */
 async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Promise<void> {
@@ -1084,10 +1104,10 @@ async function sharedWith(master: SshMaster, entry: Registered, d: HostDeps): Pr
   const others = new Set<string>();
   for (const line of out.split('\n').filter(Boolean)) {
     const at = line.indexOf('\t');
-    let worker: Pick<WorkerFile, 'homeMachineId' | 'homeName'>;
+    let worker: Pick<WorkerFile, 'homeMachineId' | 'homeName' | 'fleetId'>;
     // the file holds that fleet's token, so what fails to parse is never quoted
     try { worker = ServedBy.parse(JSON.parse(line.slice(at + 1))); } catch { throw unread(`${path.posix.join(home, line.slice(0, at), 'worker.json')} cannot be read`); }
-    if (worker.homeMachineId !== d.machineId()) others.add(worker.homeName || worker.homeMachineId);
+    if (worker.homeMachineId !== d.machineId() && worker.fleetId !== readFleet(resolvePaths(d.fleet.home).fleetConfig).id) others.add(worker.homeName || worker.homeMachineId);
   }
   if (others.size) {
     throw new StepError(`${name} also serves ${[...others].join(' and ')} as a worker: svall uninstall there would stop ${others.size === 1 ? 'that fleet' : 'those fleets'} too`, forget);

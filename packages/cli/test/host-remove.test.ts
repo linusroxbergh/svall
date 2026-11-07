@@ -244,6 +244,21 @@ describe('host remove', () => {
     expect(registry.get('trift')).toBeDefined();
   });
 
+  it('removes a worker of this fleet that still names the home the fleet left', async () => {
+    ssh.clearReplies();
+    const far = path.join(work, 'far');
+    const base = `${far}/.local/share/svall`;
+    fs.mkdirSync(`${base}/current/bin`, { recursive: true });
+    fs.writeFileSync(`${base}/current/bin/svall`, `#!/bin/sh\ncase "$1" in version) printf '%s\\n' '${JSON.stringify({ machineId: REMOTE }, null, 2)}' ;; uninstall) echo removed ;; esac\n`, { mode: 0o755 });
+    fs.mkdirSync(path.join(far, '.svall'), { recursive: true });
+    fs.writeFileSync(path.join(far, '.svall', 'worker.json'), JSON.stringify({ homeMachineId: OTHER_MAC, homeName: 'bea-mbp', fleetId: FLEET, token: TOKEN }));
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: far, svallBase: base }, REMOTE);
+    ssh.execute({});
+    expect((await removeHost('trift', {}, deps({ registry }))).stopped).toBeUndefined();
+    expect(registry.get('trift')).toBeUndefined();
+  });
+
   it('uninstalls nothing on a machine where a fleet home serves another Mac, or whose fleet homes cannot be read, as svall uninstall there stops every fleet on it', async () => {
     ssh.clearReplies();
     const far = path.join(work, 'far');

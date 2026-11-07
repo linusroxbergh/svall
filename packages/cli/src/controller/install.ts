@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -44,7 +45,7 @@ export function requireCompatible(c: CompanionArchive, o: { release: string; pro
   if (c.protocol !== o.protocol) throw new Error(`${c.archive} speaks protocol ${c.protocol}, not this controller's ${o.protocol}`);
   // a development controller has no release of its own to match, so the protocol is the whole agreement
   if (o.release !== 'dev' && c.version !== o.release) {
-    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a worker runs this Mac's release`);
+    throw new Error(`${c.archive} is release ${c.version}, not this controller's ${o.release}; a worker runs its home's release`);
   }
   if (!c.signed && !o.allowUnsigned) throw new Error(`${c.archive} carries no signature; install it with --allow-unsigned or get a signed release`);
 }
@@ -60,6 +61,26 @@ export function companionAsset(releaseRoot: string, platform: string): { url: st
   if (typeof asset?.url !== 'string' || typeof asset.sha256 !== 'string') return undefined;
   const url = new URL(asset.url, pathToFileURL(path.join(releaseRoot, path.sep))).href;
   return { url, sha256: asset.sha256, unsignedBuild: manifest.unsigned === true };
+}
+
+/** The companions this release publishes on the network, for a home of the same release that has only its own; none for a build that carries them relative to itself. */
+export function companionPins(releaseRoot: string): { release: string; unsignedBuild: boolean; companions: Record<string, { url: string; sha256: string }> } | undefined {
+  const manifest = readManifest(releaseRoot) as { version?: unknown; unsigned?: unknown; companions?: Record<string, { url?: unknown; sha256?: unknown }> } | undefined;
+  const companions = Object.entries(manifest?.companions ?? {}).flatMap(([k, c]) => (typeof c.url === 'string' && typeof c.sha256 === 'string' && /^https?:/.test(c.url) ? [[k, { url: c.url, sha256: c.sha256 }] as const] : []));
+  return companions.length ? { release: String(manifest!.version), unsignedBuild: manifest!.unsigned === true, companions: Object.fromEntries(companions) } : undefined;
+}
+
+/** This machine's own installed release as a companion for `platform`, signed sums and all; none for another platform, or for a checkout. */
+export function ownCompanion(releaseRoot: string, platform: string, dir: string): { archive: string; unsignedBuild: boolean } | undefined {
+  const manifest = readManifest(releaseRoot) as { platform?: unknown; unsigned?: unknown } | undefined;
+  const releases = path.dirname(releaseRoot);
+  if (manifest?.platform !== platform || path.basename(releases) !== 'releases') return undefined;
+  fs.mkdirSync(dir, { recursive: true });
+  const archive = path.join(dir, `svall-own-${path.basename(releaseRoot)}-${platform}.tar.gz`);
+  const part = `${archive}.part-${process.pid}`;
+  execFileSync('tar', ['-czf', part, '-C', path.dirname(releases), `releases/${path.basename(releaseRoot)}`], { timeout: TAR_TIMEOUT });
+  fs.renameSync(part, archive);
+  return { archive, unsignedBuild: manifest.unsigned === true };
 }
 
 const sha256Of = (body: Buffer): string => crypto.createHash('sha256').update(body).digest('hex');
