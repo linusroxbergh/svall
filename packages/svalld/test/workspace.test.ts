@@ -246,6 +246,22 @@ describe('Workspace files', () => {
       expect(await codeOf(() => ws.read('c', `${paths.workersFile}.home-hm_abcdefghij`))).toBe('invalid');
     });
 
+    it('refuses what lies under journal/ by the path asked, where a link there leads out of it', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const out = makeHome();
+      fs.writeFileSync(path.join(out, 'file'), 'x');
+      fs.symlinkSync(out, path.join(paths.home, 'journal', 'out'));
+      expect(await codeOf(() => ws.read('c', path.join(paths.home, 'journal', 'out', 'file')))).toBe('invalid');
+    });
+
+    it('refuses a marker not on disk through a link to the fleet home, by the folder it is', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const alias = path.join(makeHome(), 'alias');
+      fs.symlinkSync(paths.home, alias);
+      expect(await codeOf(() => ws.write('c', path.join(alias, 'home-moving.json'), '{}', 0))).toBe('invalid');
+      expect(fs.existsSync(paths.homeMoving)).toBe(false);
+    });
+
     // APFS as a Mac formats it folds case, and more than ASCII's: what a spelling opens is what is refused
     const folds = (() => { const d = makeHome(); fs.writeFileSync(path.join(d, 'case'), ''); return fs.existsSync(path.join(d, 'CASE')); })();
     it.skipIf(!folds)('on a folding volume, refuses a spelling the volume folds onto journal/, ASCII or not, for a read and a write', async () => {

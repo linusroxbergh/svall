@@ -17,6 +17,9 @@ vi.mock('../src/controller/home.js', async (actual) => {
   return { ...(await actual<object>()), realHomeDaemon: () => daemon.current, moveHomeOut: drive, moveHomeBack: drive, bringCrewBack: drive };
 });
 
+// what the way back's connection to the home was asked for
+const forwarded = vi.hoisted(() => [] as unknown[][]);
+vi.mock('../src/controller/connection.js', async (actual) => ({ ...(await actual<object>()), connectForwarded: (...args: unknown[]) => { forwarded.push(args); return Promise.resolve({ client: {}, forward: {} }); } }));
 // a daemon that answers, while `on`: what settle hands it
 const up = vi.hoisted(() => ({ on: false, calls: [] as unknown[] }));
 vi.mock('../src/client.js', async (actual) => {
@@ -25,18 +28,19 @@ vi.mock('../src/client.js', async (actual) => {
 });
 
 const { fleetCommands } = await import('../src/commands/fleet.js');
+type MoveDeps = import('../src/controller/home.js').MoveDeps;
 
 const ID = 'hm_abcdefghij';
 const FAR_FLEET = '11111111-2222-3333-4444-555555555555';
 let home: string;
 let printed: string[];
 
-async function run(args: string[], stdin = '', o: { tty?: boolean } = {}): Promise<unknown> {
+async function run(args: string[], stdin = '', o: { tty?: boolean; target?: { name: string; home: string; managed: boolean } } = {}): Promise<unknown> {
   printed = [];
   const out = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { printed.push(String(s)); return true; });
   const input = vi.spyOn(process, 'stdin', 'get').mockReturnValue(Object.assign(Readable.from([stdin]), o.tty && { isTTY: true }) as never);
   try {
-    await fleetCommands(() => ({ name: 'private', home, managed: false }), () => true).parseAsync(args, { from: 'user' });
+    await fleetCommands(() => o.target ?? { name: 'private', home, managed: false }, () => true).parseAsync(args, { from: 'user' });
   } finally { out.mockRestore(); input.mockRestore(); }
   return JSON.parse(printed.join(''));
 }
@@ -183,6 +187,15 @@ describe('the driver\'s commands', () => {
     await run(['home', 'set', 'studio', '--interrupt-after', '0']);
     await run(['home', 'crew-back', '--interrupt-after', '24h']);
     expect(driven.slice(3).map((args) => args.at(-1))).toEqual([{ interruptAfterMs: 0 }, { interruptAfterMs: 24 * 3_600_000 }]);
+  });
+
+  it.each([
+    [{ name: 'work', managed: true }, 'work'],
+    [{ name: 'private', managed: false }, undefined],
+  ])('the way back\'s connection to the home of %o names the -p a mismatch\'s upgrade goes by', async (t, profile) => {
+    await run(['home', 'set', 'local'], '', { target: { ...t, home } });
+    await (driven.at(-1)![0] as MoveDeps).farClient({} as never, {} as never, '/home/ada/.svall', FAR_FLEET);
+    expect(forwarded.at(-1)![2]).toEqual({ fleetId: FAR_FLEET, fleetHome: '/home/ada/.svall', here: { profile } });
   });
 
   it('--interrupt-after past 24h is refused before anything moves', async () => {

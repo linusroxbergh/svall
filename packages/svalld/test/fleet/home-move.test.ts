@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import type { HomeManifest, HomeMoving } from '@svall/protocol';
+import webpush from 'web-push';
+import type { HomeManifest, HomeMoving, MachineId } from '@svall/protocol';
 import { InvalidConfig } from '../../src/config.js';
 import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
@@ -12,13 +13,15 @@ import { HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { HomeDocs, WorkerDocs } from '../../src/placement/docs-sync.js';
 import { abortAdopt, adoptDir, adoptStatus, carriedKb, confirmAdopt, createMarker, enter, forgetPhoneReason, homeGate, installAdopt, journalLines, joinAsWorker, packFleet, phoneReason, readMarker, servedPhone, stageAdopt } from '../../src/fleet/home-move.js';
 import { putRecord, readRegistry } from '../../src/machine.js';
+import { readConsent, setConsent, tickedFields } from '../../src/placement/mirror-consent.js';
+import { readOrCreateVapid } from '../../src/push/vapid.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
 import { startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
 import { realStages } from '../../src/durable.js';
 import { cleanHomes, makeHome } from '../helpers.js';
-import { ADOPT_KEY, ASKER, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
+import { ADOPT_KEY, ASKER, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, phoneAt, POINTS_OF, robot, movedOut, MAC_RECORD, sha, stateOf, STUDIO, TOKEN, world, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.move.filter((p) => !crashesFired().has(p))).toEqual([]); });
@@ -549,6 +552,17 @@ describe('adopting', () => {
       expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)).toBeUndefined();
     });
 
+    it('a start after a crash past the record puts back what the registry held of the old home', async () => {
+      const w = await world();
+      putRecord(MAC, { ...MAC_RECORD, ssh: 'ada@mac', dial: undefined } as never, w.studio.registryDir);
+      await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+      crashAt('adopt.registry');
+      await expect(installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).rejects.toThrow(HomeCrash);
+      expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record).toMatchObject({ dial: 'worker' });
+      await w.studio.daemon.start();
+      expect(readRegistry(w.studio.registryDir).find((m) => m.id === MAC)?.record.ssh).toBe('ada@mac');
+    });
+
     it('at a start after a crash in the install: the restart goes ahead', async () => {
       const w = await world();
       await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
@@ -577,6 +591,43 @@ describe('adopting', () => {
     expect(a).toMatchObject({ status: 'pending', phase: 'stopping' });
     expect(a.status === 'pending' && a.detail).toMatch(/did not stop/);
     expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
+  });
+
+  describe('what a move carries reaches what reads it on the new home', () => {
+    const THIRD = '99999999-7777-8888-9999-aaaaaaaaaaaa' as MachineId;
+    const mine = (dir: string, name: string, data: string) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, name), data); };
+
+    it('by the path each reader goes by, and a done move\'s journal only', async () => {
+      const w = await movedOut((m) => {
+        const p = m.mac.paths;
+        fs.writeFileSync(p.mobileKey, 'the phones\' key');
+        setConsent(p.mirrorConsent, THIRD, 'env', ['ALPHA_KEY'], true);
+        mine(p.agentProfiles, 'reviewer.md', 'a profile');
+        mine(p.retro, path.basename(p.retroSessions), '{"session":1}\n');
+        mine(p.moves, 'mv_done.json', JSON.stringify({ phase: 'done' }));
+        mine(p.moves, 'mv_running.json', JSON.stringify({ phase: 'bundle' }));
+      });
+      const p = w.studio.paths;
+      expect(fs.readFileSync(p.mobileKey, 'utf8')).toBe('the phones\' key');
+      expect(tickedFields(readConsent(p.mirrorConsent, THIRD), 'env', ['ALPHA_KEY'])).toEqual(['ALPHA_KEY']);
+      expect(fs.readFileSync(path.join(p.agentProfiles, 'reviewer.md'), 'utf8')).toBe('a profile');
+      expect(fs.readFileSync(p.retroSessions, 'utf8')).toBe('{"session":1}\n');
+      expect(fs.readdirSync(p.moves)).toEqual(['mv_done.json']);
+    });
+
+    it('vapid.json: the new home signs a push with the pair every phone subscribed under, and makes no other', async () => {
+      let pair!: ReturnType<typeof readOrCreateVapid>;
+      const w = await movedOut((m) => { pair = readOrCreateVapid(m.mac.paths.vapid); });
+      const there = readOrCreateVapid(w.studio.paths.vapid);
+      expect(there).toEqual(pair);
+      const { headers } = webpush.generateRequestDetails({ endpoint: 'https://push.example/phone', keys: { p256dh: '', auth: '' } }, null, { vapidDetails: { subject: 'mailto:ada@example.com', ...there } });
+      const [, jwt, signedBy] = /^vapid t=([^,]+), k=(.+)$/.exec(String((headers as Record<string, string>).Authorization))!;
+      expect(signedBy).toBe(pair.publicKey);
+      const [body, payload, signature] = jwt.split('.');
+      const raw = Buffer.from(pair.publicKey, 'base64url');
+      const key = crypto.createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: raw.subarray(1, 33).toString('base64url'), y: raw.subarray(33).toString('base64url') }, format: 'jwk' });
+      expect(crypto.verify('sha256', Buffer.from(`${body}.${payload}`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(signature, 'base64url'))).toBe(true);
+    });
   });
 
   it('says what an archive of the fleet comes to before one is made', async () => {

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type AdoptAnswer, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { askAcross } from '../../src/fleet/home-far.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { abortAdopt, addEnrol, adoptDir, adoptStatus, endMove, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
+import { abortAdopt, addEnrol, adoptDir, adoptStatus, endMove, enter, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -328,6 +328,32 @@ describe('the one way a move ends', () => {
     expect(journalLines(paths, ID)).toEqual([]);
   });
 
+  it('recorded takes only a release or a done on the journal: this machine\'s own refusal from before the mark says nothing of where the fleet is', () => {
+    const paths = marked();
+    enter(paths, ID, 'aborted');
+    expect(() => endMove(paths, ID, { by: 'recorded' })).toThrow(/not ended by recorded/);
+    expect(readMarker(paths)?.id).toBe(ID);
+  });
+
+  it.each([['done', false], ['released', true]])('a start past a recorded %s: what a freeze would turn back on standing is %s', (phase, stands) => {
+    const paths = marked();
+    enter(paths, ID, phase);
+    fs.writeFileSync(paths.homeServed, JSON.stringify({ id: ID }));
+    expect(homeGate(paths)).toEqual({});
+    expect(readMarker(paths)).toBeUndefined();
+    expect(fs.existsSync(paths.homeServed)).toBe(stands);
+  });
+
+  it.each([
+    ['adopted', { status: 'adopted', enrol: { worker: WorkerFile.parse({ homeMachineId: STUDIO, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'studio' }) } }, 'join'],
+    ['not-adopted', { status: 'not-adopted' }, 'thaw'],
+  ] as const)('a settle of %s whose connection closed past a daemon that heard: heard, whatever closed it', async (status, said, how) => {
+    const paths = marked(told);
+    const heard = () => { fs.rmSync(paths.homeMoving); return Promise.reject(new Error('the connection closed')); };
+    const start = vi.fn(() => Promise.resolve());
+    expect(await settleMove(paths, ID, said as never, KEY, { join: () => Promise.resolve(), thaw: () => Promise.resolve(), start, [how]: heard })).toEqual({ status });
+  });
+
   it('with no marker: nothing but a refusal goes through', () => {
     const paths = resolvePaths(makeHome());
     for (const end of [{ by: 'asked' }, { by: 'told', key: KEY }, { by: 'joined' }, { by: 'recorded' }] as const) expect(() => endMove(paths, ID, end)).toThrow(/no marker/);
@@ -419,57 +445,95 @@ describe('the one way a move ends', () => {
     expect(freeze.active).toBe(true);
   });
 
-  // every line that touches a marker or a home move's journal, and every call that writes or ends a marker, each one named: a new
-  // one fails here until it is read and named
-  const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /\bjournalOf\(/, /\benter\((?!\))/, /phase:\s*['"`](aborted|released|done)['"`]/,
+  // every line that names a marker or a home move's journal, and every call that writes or ends a marker, each one named, and those that
+  // write or end one counted: a new one fails here until it is read and named, however it is spelt
+  const TOUCHES = [/\bhomeMoving\b/, /home-moving/, /moving\.json/, /['"`]Mov(e|ing)['"`]/, /\bhomeMoves\b/, /journal\/home/, /'journal',\s*'home'/, /path\.join\([^)]*'journal'(?!, '(outbox\.ndjson|acked|epoch|applied\.ndjson|moves)')/, /\bjournalOf\(/,
+    /\benter\s*\((?!\))/, /\benter\s+as\b/, /\bconst \w+ = enter\b/, /\{[^}]*\benter\b[^}]*\}\s*from/, /phase:\s*['"`](aborted|released|done)['"`]/,
     /\bcreateMarker\b/, /\baddEnrol\b/, /\bwriteMarker\b/, /\bendMove\b/, /\.mark\s*\(/];
-  // a home move's phases that end nothing: what the machine taking the fleet writes, and the driver's two keys
-  const NO_END = /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'|\benter\(p, id, SERVED\b|^\s*enter\(p, driverOf\(id\), use, JSON\.stringify\(\{ key \}\)\);$/;
-  const NAMED: [RegExp, RegExp][] = [
-    [/svalld\/src\/paths\.ts$/, /^\s*(homeMoving|homeMoves): path\.join\(home, |^export const fleetKeys = /],
-    [/svalld\/src\/bin\.ts$/, /^const stamp = /],
-    [/svalld\/src\/fleet\/home-move\.ts$/, new RegExp([
-      NO_END.source, /Pick<Paths, 'homeMoves'>|Pick<Paths, 'homeMoving'( \| 'homeMoves')?>/.source, /^const journalOf = |readFileSync\(journalOf\(p, id\)|appendDurable\(journalOf\(p, id\), \{ phase, /.source,
-      /readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*writeDurable\(p\.homeMoving, m, |createDurable\(p\.homeMoving, m, /.source,
-      // the marker's two writers, the outcome's write on the disk with the driver's key, and the ends that are no end of a marker
-      /^export function (createMarker|addEnrol)\(p: Pick<Paths, 'homeMoving'>, |^\s*addEnrol\(p, id, enrol\);$|endMove\(p, (other|id), \{ by: 'refused'/.source,
-      /endMove\(p, id, \{ by: 'told', key \}\)|^\s*endMove\(p, m\.id, \{ by: 'joined' \}\);$|^\s*endMove\(p, marker\.id, \{ by: 'recorded' \}\);$/.source, /fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/.source,
-      // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
-      /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/.source,
-    ].join('|'))],
-    [/svalld\/src\/fleet\/home-freeze\.ts$/, /^import \{ addEnrol, carriedKb, createMarker, endMove, |^\s*try \{ createMarker\(this\.d\.paths, marker\); \} catch \(e\) \{$|^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$|^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/],
-    [/svalld\/src\/api\/methods\.ts$/, /^\s*if \(p\.op === 'mark'\) held\.mark\(p\.marker\);$|'retro\.mark': \(p, ctx\) => retroOf\(ctx\)\.mark\(p\)/],
+  const FREEZE = /svalld\/src\/fleet\/home-freeze\.ts$/;
+  const MOVE = /svalld\/src\/fleet\/home-move\.ts$/;
+  const PATHS = /svalld\/src\/paths\.ts$/;
+  const NOT_WRITING = /^(?!.*\b(rmSync|unlinkSync|renameSync|writeFileSync|writeDurable|createDurable|appendDurable|appendFileSync)\b)/.source;
+  // a third number, where a line writes or ends something: how many such lines there are
+  const NAMED: [RegExp, RegExp, number?][] = [
+    [PATHS, /^\s*homeMoving: path\.join\(home, /, 1], [PATHS, /^\s*homeMoves: path\.join\(home, /, 1],
+    [PATHS, /^export const fleetKeys = /, 1], [PATHS, /^\s*return \[\.\.\.fleetKeys\(p\), path\.join\(p\.home, 'journal'\), /, 1],
+    [/svalld\/src\/bin\.ts$/, /^const stamp = /, 1],
+    // what reads alone
+    [MOVE, new RegExp(`${NOT_WRITING}.*Pick<Paths, 'homeMoves'>|${NOT_WRITING}.*Pick<Paths, 'homeMoving'( \\| 'homeMoves')?>`)],
+    [MOVE, /readFileSync\(journalOf\(p, id\)|readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*for \(const name of fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/],
+    [MOVE, /^const journalOf = /, 1], [MOVE, /^export function endMove\(p: Paths, /, 1],
+    // a journal's one writer, and the phases that end nothing: what the machine taking the fleet writes, and the driver's two keys
+    [MOVE, /appendDurable\(journalOf\(p, id\), \{ phase, /, 1],
+    [MOVE, /\benter\((p|d\.paths), id, '(staging|staged|stopping|installing|installed|rolledback|adopted)'/, 12],
+    [MOVE, /\benter\(p, id, SERVED\b/, 1], [MOVE, /^\s*enter\(p, driverOf\(id\), use, JSON\.stringify\(\{ key \}\)\);$/, 1],
+    [MOVE, /^\s*for \(const folder of \[p\.home, path\.join\(p\.home, 'journal'\), |^\s*fs\.mkdirSync\(path\.join\(p\.home, 'journal'\), \{ recursive: true \}\);$/, 2],
+    // the marker's two writers, and the outcome's write on the disk with the driver's key
+    [MOVE, /^export function (createMarker|addEnrol)\(p: Pick<Paths, 'homeMoving'>, /, 2], [MOVE, /createDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*writeDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*addEnrol\(p, id, enrol\);$/, 1],
+    // endMove's own body
+    [MOVE, /^\s*enter\(p, id, 'aborted', end\.detail\);$|^\s*if \(end\.by === 'asked' \|\| end\.by === 'told'\) enter\(p, id, 'released', end\.by\);$|^\s*if \(end\.by === 'joined'\) enter\(p, id, 'done'\);$/, 3],
+    [MOVE, /^\s*fs\.rmSync\(p\.homeMoving, \{ force: true \}\);$/, 1],
+    // its callers: the ends that are no end of a marker, and those that end one
+    [MOVE, /endMove\(p, other, \{ by: 'refused', detail: 'a later move came' \}\);$|^\s*endMove\(p, id, \{ by: 'refused'/, 3],
+    [MOVE, /endMove\(p, id, \{ by: 'told', key \}\)/, 1], [MOVE, /^\s*endMove\(p, m\.id, \{ by: 'joined' \}\);$/, 1], [MOVE, /^\s*endMove\(p, marker\.id, \{ by: 'recorded' \}\);$/, 1],
+    // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
+    [MOVE, /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/, 1],
+    [FREEZE, /^import \{ addEnrol, carriedKb, createMarker, endMove, /, 1],
+    [FREEZE, /^\s*try \{ createMarker\(this\.d\.paths, marker\); \} catch \(e\) \{$/, 1], [FREEZE, /^\s*this\.marker = addEnrol\(this\.d\.paths, held\.id, enrol\);$/, 1], [FREEZE, /^\s*endMove\(this\.d\.paths, this\.marker\.id, end\);$/, 1],
+    // the freeze's own: one with no answer behind it throws under a marker, and each with an answer has its one caller
+    [FREEZE, /this\.release\(\);$/, 3], [FREEZE, /^\s*private async release\(end\?: /, 1], [FREEZE, /^\s*await this\.release\(\{ by: 'told', key \}\);$/, 1], [FREEZE, /^\s*if \(a\.status === 'not-adopted'\) return this\.release\(\{ by: 'asked' \}\);$/, 1],
+    [FREEZE, /^\s*private enrolled\(held: HomeMoving, enrol: Enrolment\): void \{$/, 1], [FREEZE, /^\s*this\.enrolled\(this\.marker, enrol\);$/, 1], [FREEZE, /^\s*if \(a\.status === 'adopted'\) return this\.enrolled\(held, a\.enrol\);$/, 1],
+    [/svalld\/src\/api\/methods\.ts$/, /^\s*if \(p\.op === 'mark'\) held\.mark\(p\.marker\);$/, 1], [/svalld\/src\/api\/methods\.ts$/, /'retro\.mark': \(p, ctx\) => retroOf\(ctx\)\.mark\(p\)/],
     // a machine's own reachability, no marker
     [/svalld\/src\/link\/home\.ts$/, /\bthis\.mark\(\{ name: this\.name, /],
     // the robot moves' own journal, of another folder
     [/svalld\/src\/placement\/move\.ts$/, /\bthis\.enter\(|^\s*private enter\(j: MoveJournal/],
     [/svalld\/src\/placement\/prepare\.ts$/, /^\s*this\.save\(\{ \.\.\.j, phase: '(done|aborted)'/],
-    [/cli\/src\/controller\/home\.ts$/, /^const driverJournal = .*enter\(paths, `\$\{id\}\.driver`, /],
+    [/cli\/src\/controller\/home\.ts$/, /^import \{ .*\benter\b.* \} from '@svall\/svalld\/fleet\/home-move';$/, 1], [/cli\/src\/controller\/home\.ts$/, /^const driverJournal = .*enter\(paths, `\$\{id\}\.driver`, /, 1],
     // the containers' checks, which read alone
     [/scripts\/integration\/robot-placement\.mjs$/, /^function homeMoves\(|homeMoves\(ids, fx\)|'(ls -d|test -f|cat) ~\/\.svall\/home-moving\.json|for f in ~\/\.svall\/journal\/home\/hm_\*\.ndjson|`test -e ~\/\.svall\/journal\/home\//],
   ];
+  // a comment says what it says only with no code behind it
+  const isComment = (line: string): boolean => /^\s*(\*|\/\/)/.test(line) || /^\s*\/\*(?!.*\*\/\s*\S)/.test(line);
+  const touches = (file: string, line: string): boolean => TOUCHES.some((t) => t.test(line)) || (FREEZE.test(file) && /\b(release|enrolled)\s*\(/.test(line));
   const offenders = (files: { file: string; text: string }[]): string[] => files.flatMap(({ file, text }) => text.split('\n')
-    .filter((line) => TOUCHES.some((t) => t.test(line)) && !/^\s*(\*|\/\/|\/\*)/.test(line) && !NAMED.some(([f, l]) => f.test(file) && l.test(line)))
+    .filter((line) => touches(file, line) && !isComment(line) && !NAMED.some(([f, l]) => f.test(file) && l.test(line)))
     .map((line) => `${file}: ${line.trim()}`));
+  const miscounted = (files: { file: string; text: string }[]): string[] => NAMED.flatMap(([f, l, times]) => {
+    if (times === undefined) return [];
+    const lines = files.filter(({ file }) => f.test(file)).flatMap(({ text }) => text.split('\n')).filter((line) => !isComment(line) && l.test(line));
+    return lines.length === times ? [] : [`${l.source}: ${lines.length} lines, named ${times}`];
+  });
+
+  const root = path.resolve(__dirname, '../../../..');
+  const sources = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    if (['node_modules', 'dist', 'test', 'build.noindex', '.build'].includes(e.name)) return [];
+    const file = path.join(dir, e.name);
+    return e.isDirectory() ? sources(file) : /\.(ts|tsx|mjs|js|cjs|swift|sh|py)$/.test(e.name) ? [file] : [];
+  });
+  const tree = () => ['packages/svalld/src', 'packages/cli/src', 'packages/protocol/src', 'apps/desktop/web/src', 'apps/desktop/mac/Sources', 'scripts'].flatMap((d) => sources(path.join(root, d)))
+    .map((file) => ({ file: path.relative(root, file), text: fs.readFileSync(file, 'utf8') }));
 
   it('no other code removes a marker or writes an id off', () => {
-    const root = path.resolve(__dirname, '../../../..');
-    const sources = (dir: string): string[] => fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
-      if (['node_modules', 'dist', 'test', 'build.noindex', '.build'].includes(e.name)) return [];
-      const file = path.join(dir, e.name);
-      return e.isDirectory() ? sources(file) : /\.(ts|tsx|mjs|swift)$/.test(e.name) ? [file] : [];
-    });
-    const files = ['packages/svalld/src', 'packages/cli/src', 'packages/protocol/src', 'apps/desktop/web/src', 'apps/desktop/mac/Sources', 'scripts'].flatMap((d) => sources(path.join(root, d))).map((file) => {
-      let text = fs.readFileSync(file, 'utf8');
-      if (file.endsWith('/svalld/src/fleet/home-move.ts')) {
-        const from = text.indexOf('export function endMove(');
-        expect(from).toBeGreaterThan(0);
-        text = text.slice(0, from) + text.slice(text.indexOf('\n}\n', from));
-      }
-      return { file: path.relative(root, file), text };
-    });
+    const files = tree();
     expect(files.length).toBeGreaterThan(100);
     expect(offenders(files)).toEqual([]);
+    expect(miscounted(files)).toEqual([]);
+  });
+
+  it.each([
+    ['packages/svalld/src/fleet/home-freeze.ts', '      endMove(this.d.paths, this.marker.id, end);'],
+    ['packages/svalld/src/fleet/home-freeze.ts', '    this.marker = addEnrol(this.d.paths, held.id, enrol);'],
+    ['packages/svalld/src/fleet/home-move.ts', '  writeDurable(p.homeMoving, m, { mode: 0o600 });'],
+    ['packages/svalld/src/fleet/home-move.ts', '  createDurable(p.homeMoving, m, { mode: 0o600 });'],
+    ['packages/svalld/src/fleet/home-move.ts', "  enter(p, id, 'staged');"],
+    ['packages/svalld/src/fleet/home-move.ts', '  fs.rmSync(p.homeMoving, { force: true });'],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    if (a.status === 'not-adopted') return this.release({ by: 'asked' });"],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    if (a.status === 'adopted') return this.enrolled(held, a.enrol);"],
+  ])('a second line in %s spelt as a named one fails it: %s', (file, line) => {
+    const files = tree();
+    expect(miscounted(files)).toEqual([]);
+    expect(miscounted(files.map((f) => (f.file === file ? { ...f, text: `${f.text}\n${line}` } : f)))).toHaveLength(1);
   });
 
   it.each([
@@ -493,6 +557,21 @@ describe('the one way a move ends', () => {
     ['packages/svalld/src/fleet/home-move.ts', '  writeMarker(p, { ...held, keySha256 });'],
     ['packages/svalld/src/fleet/home-freeze.ts', "import { endMove as settled } from './home-move.js';"],
     ['packages/svalld/src/fleet/home-freeze.ts', "    endMove (this.d.paths, id, { by: 'asked' });"],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    await this.release({ by: 'asked' });"],
+    ['packages/svalld/src/fleet/home-freeze.ts', '    if (this.marker) this.enrolled(this.marker, enrol);'],
+    ['packages/svalld/src/fleet/home-move.ts', "  enter (p, id, 'released');"],
+    ['packages/svalld/src/fleet/home-move.ts', '  const note = enter;'],
+    ['packages/svalld/src/fleet/home-freeze.ts', "import { enter as note } from './home-move.js';"],
+    ['packages/svalld/src/fleet/home-far.ts', "export { enter as note } from './home-move.js';"],
+    ['packages/svalld/src/placement/move.ts', "  const marker = ['home', 'moving.json'].join('-');"],
+    ['packages/svalld/src/placement/move.ts', "  fs.rmSync(path.join(home, 'home-' + 'moving.json'));"],
+    ['packages/svalld/src/placement/move.ts', "  fs.readdirSync(home).filter((n) => n.endsWith('-moving.json'));"],
+    ['packages/svalld/src/placement/move.ts', "  fs.rmSync(p['home' + 'Moving']);"],
+    ['packages/svalld/src/fleet/home-far.ts', "  (moves as never)['end' + 'Move'](p, id, { by: 'asked' });"],
+    ['packages/svalld/src/placement/move.ts', "  fs.appendFileSync(path.join(home, 'journal', SUB, `${id}.ndjson`), line);"],
+    ['packages/svalld/src/placement/move.ts', '  /* gone */ fs.rmSync(p.homeMoving, { force: true });'],
+    ['scripts/integration/tailscale.sh', 'rm -f ~/.svall/home-moving.json'],
+    ['packages/svalld/src/fleet/home-move.ts', '    if (marker?.id === id) fs.rmSync(p.homeMoving, { force: true });'],
   ])('a line in %s that ends a move some other way fails it: %s', (file, line) => {
     expect(offenders([{ file, text: line }])).toHaveLength(1);
   });

@@ -162,6 +162,8 @@ describe('a frozen home', () => {
     expect(fs.statSync(paths.homeMoving).mode & 0o777).toBe(0o600);
     const enrol = { worker: { homeMachineId: STUDIO, fleetId: '11111111-2222-3333-4444-555555555555', token: 'x'.repeat(48), homeName: 'studio' } } as never;
     expect(addEnrol(paths, ID, enrol).enrol).toEqual(enrol);
+    // it holds the worker's token from here
+    expect(fs.statSync(paths.homeMoving).mode & 0o777).toBe(0o600);
     const once = fs.readFileSync(paths.homeMoving);
     addEnrol(paths, ID, enrol);
     expect(() => addEnrol(paths, ID, { worker: { ...(enrol as { worker: object }).worker, token: 'y'.repeat(48) } } as never)).toThrow(/holds its outcome already/);
@@ -856,7 +858,7 @@ describe('a real move the API took as the freeze came', () => {
       phone: { get: () => Promise.resolve(phoneAt(false)), set: () => Promise.resolve(phoneAt(false)) }, ask: () => Promise.resolve({ status: 'pending', phase: 'x' }), restart: () => {},
     });
     const moving = dispatch({ id: 1, method: 'robot.moveTo', params: { id: 'c_1', machine: W } }, { viewer: { kind: 'app', loopback: true }, placement: home.placement, freeze } as unknown as Ctx);
-    expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_1', note: 'too soon' } }, { viewer: { kind: 'app', loopback: true }, freeze: { refusal: () => undefined, admit: () => undefined } } as unknown as Ctx)).toBeDefined();
+    expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_1', note: 'too soon' } }, { viewer: { kind: 'app', loopback: true }, fleet: home.fleet, freeze: { refusal: () => undefined, admit: () => undefined } } as unknown as Ctx)).toMatchObject({ result: {} });
     await freeze.freeze(ID, W, holder);
     const cut = home.store.state.robots.c_1.machine;
     expect(cut).toBe(W);

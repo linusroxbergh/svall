@@ -134,6 +134,14 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     expect(roles(w)).toEqual(['home', 'worker']);
   });
 
+  it('a settle that exits 0 and answers nothing readable leaves the outcome owed', async () => {
+    const w = await markedBack();
+    await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
+    const run = (argv: string[]) => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: argv.join(' ').includes("'facts'") ? JSON.stringify(STUDIO_FACTS) : 'a login banner' });
+    await expect(deliverOwed(w.mac.paths, (() => Promise.resolve({ run, close: () => Promise.resolve() })) as never)).rejects.toThrow();
+    expect(readOwed(w.mac.paths)?.id).toBe(BACK);
+  });
+
   it('a settle that fails there leaves the outcome owed, whatever it printed', async () => {
     const w = await markedBack();
     await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
