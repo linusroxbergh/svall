@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
 import type { HostStep } from '../../src/bridge.js';
 import { call, freshStore, sent, store } from './harness.js';
 
 vi.mock('../../src/boot.js', async () => (await import('./harness.js')).bootModule());
 
-const { HostSetup } = await import('../../src/HostSetup.js');
+const { HostSetup, MachineActions } = await import('../../src/HostSetup.js');
+const { terminalOn } = await import('../../src/MoveSheet.js');
 
 beforeEach(() => {
   freshStore();
@@ -606,4 +607,47 @@ test('a variable row takes its value in a field, shown to no one, and Set sends 
   await act(async () => { fireEvent.click(screen.getByTestId('host-var-mirror:var:X-set')); });
   expect(screen.getByTestId('host-tick-failed-mirror:var:X').textContent).toBe('trift runs a release that cannot take a variable from here; upgrade it under Machines');
   expect((screen.getByTestId('host-var-mirror:var:X-value') as HTMLInputElement).value).toBe('');
+});
+
+describe('a terminal for a far worker, wherever it is opened from', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const BOX = 'cccccccc-0000-4000-8000-000000000000';
+  const shown = () => sent.filter((m) => m.type === 'term.show').at(-1) as unknown as { machine: { ssh: string; type?: string; forward?: number } };
+  const far = () => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }, { id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64', far: true }] as never);
+  };
+
+  test.each([
+    ['a login, by its port', 'codex login', 1455, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
+    ['a login with no port of its own, as Codex waits on its own', 'codex login', undefined, "ssh -t -L 1455:localhost:1455 ada@box 'codex login'", 1455],
+    ['a cd, which leaves a shell open there', "cd '/home/ada/code'", undefined, `ssh -t ada@box 'cd '\\''/home/ada/code'\\''; exec "$SHELL" -l'`, undefined],
+    ['any other command', 'svall worker env FOO', undefined, "ssh -t ada@box 'svall worker env FOO'", undefined],
+  ])('%s runs on the worker, by way of the home', (_what, run, forward, typed, port) => {
+    act(() => { far(); terminalOn('box', run, forward); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: typed, ...(port && { forward: port }) });
+    expect(screen.getByTestId('host-terminal-note').textContent).toContain('On studio,');
+  });
+
+  test('none typed is a shell on the worker', () => {
+    act(() => { far(); terminalOn('box'); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh ada@box' });
+  });
+
+  test('the home itself and a Mac\'s own machine open as they always did', () => {
+    act(() => { far(); terminalOn('studio', 'svall setup'); });
+    render(<HostSetup />);
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'svall setup' });
+  });
+
+  test('a far row runs by its id, while the panel goes by its name', () => {
+    act(() => { far(); store.getState().toggleHost(true, 'box'); });
+    render(<MachineActions id={BOX} name="box" />);
+    fireEvent.click(screen.getByTestId('machine-doctor'));
+    expect(sent.filter((m) => m.type === 'host.start').at(-1)).toMatchObject({ op: 'doctor', args: { name: BOX } });
+    expect(store.getState().hostMachine).toBe('box');
+    expect(store.getState().host?.args).toMatchObject({ name: 'box', id: BOX });
+  });
 });

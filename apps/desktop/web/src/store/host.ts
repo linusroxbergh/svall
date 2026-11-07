@@ -4,7 +4,7 @@ import type { HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyStep, beginRun, endRun, machineNames, replaceRows, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
-export type HostConfirm = { name: string; forget: boolean };
+export type HostConfirm = { name: string; id?: string; forget: boolean };
 
 const seedAsked = (home: string): string => `svall.seedAsked@${home}`;
 /** Whether this fleet's window has had its answer to the first copy of an agent setup. */
@@ -30,7 +30,8 @@ export type HostState = {
   seedCopying?: true;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
-  hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
+  // bare: `run` is for the machine the terminal opens on, the home's own login fix, not for the worker it goes on to
+  hostTerminal?: { run?: string; forward?: number; fromPanel?: true; bare?: true };
   // the registry as the shell last read it, and why it could not
   machines?: MachineRow[];
   machinesError?: string;
@@ -40,7 +41,7 @@ export type HomeSheetAsk = { to: MachineId; name: string; back: boolean };
 
 export type HostActions = {
   toggleHost(open?: boolean, machine?: string): void;
-  openHostTerminal(machine: string, run?: string, forward?: number): void;
+  openHostTerminal(machine: string, run?: string, forward?: number, bare?: boolean): void;
   closeHostTerminal(): void;
   hostStarted(op: HostOp, args: HostArgs): void;
   hostStep(op: HostOp, event: HostStep): void;
@@ -71,10 +72,10 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
     const next = open ?? !s.hostOpen;
     return { hostOpen: next, hostConfirm: next ? s.hostConfirm : undefined, hostMachine: next ? machine : undefined, hostTerminal: undefined };
   }),
-  openHostTerminal: (machine, run, forward) => set((s) => ({
+  openHostTerminal: (machine, run, forward, bare) => set((s) => ({
     hostOpen: true, hostMachine: machine, hostConfirm: undefined,
     // a terminal opened again over one keeps where the first came from
-    hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...((s.hostTerminal ? s.hostTerminal.fromPanel : s.hostOpen) && { fromPanel: true as const }) },
+    hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }), ...(bare && { bare: true as const }) }), ...((s.hostTerminal ? s.hostTerminal.fromPanel : s.hostOpen) && { fromPanel: true as const }) },
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
   setHomeSheet: (homeSheet) => set({ homeSheet }),

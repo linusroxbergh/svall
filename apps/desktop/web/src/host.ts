@@ -204,8 +204,11 @@ export function outcomeOf(run: HostRun): RunOutcome {
 export const machineName = (value: string): boolean => MachineRecord.shape.name.safeParse(value).success;
 export const sshDestination = (value: string): boolean => MachineRecord.shape.ssh.safeParse(value).success;
 
-/** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
-/** What a terminal on a far home types to run `run` on a machine of that home: a login's port comes back over each hop. */
-export const overHome = (ssh: string, run: string, forward?: number): string => `ssh -t ${forward ? `-L ${forward}:localhost:${forward} ` : ''}${ssh} '${run.replaceAll("'", "'\\''")}'`;
+/** What a terminal on a far home types to run `run` on a machine of that home: a login's port comes back over each hop, and a `cd` is left with a shell there. */
+export const overHome = (ssh: string, run: string, forward?: number): string => {
+  const there = run.startsWith('cd ') ? `${run}; exec "$SHELL" -l` : run;
+  return `ssh -t ${forward ? `-L ${forward}:localhost:${forward} ` : ''}${ssh} '${there.replaceAll("'", "'\\''")}'`;
+};
 
+/** The port a login there waits for the browser on, which a forward from this Mac reaches: the row's own, or Codex's 1455. */
 export const loginForward = (run: string, forward?: number): number | undefined => forward ?? (/^codex login\s*$/.test(run) ? 1455 : undefined);

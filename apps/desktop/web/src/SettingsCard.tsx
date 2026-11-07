@@ -205,8 +205,7 @@ function Machines() {
           <div className="row">
             <span><b>{m.id === via?.machine || (m.role === 'home' && !via) ? 'this Mac' : m.name}</b> {[m.role, m.ssh].filter(Boolean).join(' · ')}{m.robots ? ` · ${m.robots} ${m.robots === 1 ? 'robot' : 'robots'}` : ''}</span>
             <b className="machine-said" data-testid={m.joining === undefined ? undefined : `machine-joining-${m.name}`}>
-              {m.joining !== undefined && `has not joined yet${m.joining ? `: ${m.joining}` : ''}`}
-              {[m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : m.dialsIn ? 'dials in' : '']
+              {[m.joining !== undefined ? `has not joined yet${m.joining ? `: ${m.joining}` : ''}` : '', m.check?.release ? `release ${m.check.release}` : '', m.role === 'home' ? '' : m.check ? checked(m.check) : m.ssh ? 'not checked yet' : m.dialsIn ? 'dials in' : '']
                 .filter(Boolean).join(' · ')}
             </b>
           </div>

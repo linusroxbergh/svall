@@ -331,6 +331,7 @@ test('a window on a far home adds a machine there, and acts on that home\'s work
     call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [{ id: BOX, name: 'box', role: 'worker', reachable: false, robots: 2, joining: 'No route to host' }] } : {}));
     act(() => store.getState().setFleet({ ...store.getState().fleet, machines: { [BOX]: { name: 'box', reachable: false, since: 1 } } } as never));
     expect((await screen.findByTestId('machine-joining-box')).textContent).toContain('has not joined yet: No route to host');
+    expect(screen.getByTestId('machine-joining-box').textContent).not.toMatch(/hostnot|hostrelease/);
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
