@@ -483,7 +483,7 @@ describe('the one way a move ends', () => {
   const NAMED: [RegExp, RegExp, number?][] = [
     [PATHS, /^\s*homeMoving: path\.join\(home, /, 1], [PATHS, /^\s*homeMoves: path\.join\(home, /, 1],
     [PATHS, /^export const fleetKeys = /, 1], [PATHS, /^\s*return \[\.\.\.fleetKeys\(p\), path\.join\(p\.home, 'journal'\), /, 1],
-    [/svalld\/src\/bin\.ts$/, /^const stamp = /, 1],
+    [/svalld\/src\/bin\.ts$/, /^const stamp = /, 1], [/svalld\/src\/bin\.ts$/, /^const journals = /, 1],
     // what reads alone
     [MOVE, new RegExp(`${NOT_WRITING}.*Pick<Paths, 'homeMoves'>|${NOT_WRITING}.*Pick<Paths, 'homeMoving'( \\| 'homeMoves')?>`)],
     [MOVE, /readFileSync\(journalOf\(p, id\)|^\s*throw new InvalidConfig\(`\$\{journalOf\(p, id\)\} cannot be read: |readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}/],
