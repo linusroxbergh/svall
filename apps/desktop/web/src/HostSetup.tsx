@@ -142,7 +142,8 @@ type Terminal = (command: string, forward?: number, step?: string) => void;
 
 function Row({ row, run, terminal }: { row: HostStep; run: HostRun; terminal?: Terminal }) {
   const name = run.args.name;
-  const id = useApp((s) => s.machines?.find((m) => m.name === name)?.id);
+  // the run's own far id, as this Mac's registry may give its name to another machine
+  const id = useApp((s) => run.args.id ?? s.machines?.find((m) => m.name === name)?.id);
   // the tick asked for while svalld pushes it, and an agent update under way there
   const [asked, setAsked] = useState<boolean>();
   const [updating, setUpdating] = useState(false);

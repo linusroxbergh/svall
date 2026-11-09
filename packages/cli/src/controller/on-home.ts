@@ -111,7 +111,8 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
         // a CLI that carries none leaves the home's own refusal, which names --release
         if (held) { wants = { platform: platform!, ...held }; return; }
         if (v && typeof v.step === 'string' && extra.length) {
-          if (ended.has(v.step)) return;
+          // a step that fails only on the run again, as a disk the copy filled, still shows
+          if (ended.has(v.step) && v.status !== 'fail') return;
         } else if (v && typeof v.step === 'string' && v.status !== 'start') ended.add(v.step);
         o.line(throughHome(line, home));
       };

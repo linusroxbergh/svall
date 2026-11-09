@@ -724,6 +724,19 @@ describe('a far worker this Mac\'s registry names as it names its home', () => {
     expect(started()).toMatchObject({ op, args: { name: BOX } });
   });
 
+  test('a row\'s Update and Forget act on the far worker, not the home this Mac names the same', async () => {
+    ran('doctor', [
+      { step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac', action: 'ssh ada@box, then claude update', run: 'claude update' },
+      { step: 'master', status: 'fail', detail: 'nothing answers at ada@box', action: 'svall host remove box --forget' },
+    ]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-forget-master'));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: true, id: BOX });
+    await act(async () => { fireEvent.click(screen.getByTestId('host-update-versions')); });
+    expect(call).toHaveBeenCalledWith('machines.updateAgents', expect.objectContaining({ machine: BOX }));
+    expect(call).not.toHaveBeenCalledWith('machines.updateAgents', expect.objectContaining({ machine: HOME }));
+  });
+
   test('a Rollback after a failed upgrade goes by that id', () => {
     ran('upgrade', [{ step: 'rollback', status: 'fail', detail: 'the release before did not start' }]);
     render(<HostSetup />);

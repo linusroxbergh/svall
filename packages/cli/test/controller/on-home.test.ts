@@ -360,6 +360,15 @@ describe('a host command on a fleet whose home is far', () => {
       ]);
     });
 
+    it('a step the first run ended that fails on the run again shows its failure, once', async () => {
+      const FAILED = '{"step":"linger","status":"fail","detail":"no space left on the device"}';
+      const again = [...PROBES.slice(0, 3), FAILED, '{"result":"actions","actions":["free some space there"],"stopped":"linger"}'];
+      const out: string[] = [];
+      expect(await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: asking(again, 1).open, line: (l) => out.push(l), carried: holding(archive()) })).toBe(1);
+      expect(out.filter((l) => l === FAILED)).toHaveLength(1);
+      expect(out.filter((l) => l === '{"step":"linger","status":"start"}')).toHaveLength(1);
+    });
+
     it('two relays at once copy to two names, so neither touches the other\'s', async () => {
       const file = archive();
       const [a, b] = [asking(), asking()];
