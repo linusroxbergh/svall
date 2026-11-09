@@ -528,6 +528,19 @@ describe('fleet home retry', () => {
     expect(started()).toBe(1);
   });
 
+  it('a connection that goes during the far adopt asks the far side how it stands, saying which home asks', async () => {
+    let asked = '';
+    const { deps } = outDeps((line) => {
+      if (line.includes("'adopt'")) return { code: 255, stdout: '' };
+      if (line.includes("'status'")) asked = line;
+      return answer({ status: 'adopted', enrol: ENROL as never });
+    });
+    putMarker(resolvePaths(home), marker());
+    mintAdoptKey(resolvePaths(home), 'hm_abcdefghij');
+    expect((await resumeHome(deps)).result).toBe('ready');
+    expect(asked).toContain(`'fleet' 'status' 'hm_abcdefghij' '--asker' '${machineId()}' '--fleet' '${FLEET}'`);
+  }, 20_000);
+
   it('a journal that holds no key sends the far machine nothing to install with, and leaves the abort', async () => {
     const lines: string[] = [];
     const { deps, started } = outDeps((line) => { lines.push(line); return answer({ status: 'adopted', enrol: ENROL as never }); });

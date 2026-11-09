@@ -52,12 +52,12 @@ const Record_ = z.object({ phase: z.string(), at: z.number(), detail: z.string()
 export const adoptDir = (p: Pick<Paths, 'home'>, id: string): string => path.join(p.home, `adopt-${id}`);
 const journalOf = (p: Pick<Paths, 'homeMoves'>, id: string): string => path.join(p.homeMoves, `${id}.ndjson`);
 
-/** The journal of a move as this machine holds it, a line a crash cut short left out. One that cannot be read throws: it may say anything. */
+/** The journal of a move as this machine holds it, a line a crash cut short left out. One that cannot be read throws, naming it: it may say anything. */
 export function journalLines(p: Pick<Paths, 'homeMoves'>, id: string): z.infer<typeof Record_>[] {
   let text: string;
   try { text = fs.readFileSync(journalOf(p, id), 'utf8'); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'ENOENT') return [];
-    throw e;
+    throw new InvalidConfig(`${journalOf(p, id)} cannot be read: ${(e as Error).message}`, { cause: e });
   }
   return text.split('\n').flatMap((line) => {
     try { return [Record_.parse(JSON.parse(line))]; } catch { return []; }
@@ -361,7 +361,8 @@ function restoreOriginal(p: Paths, id: string): void {
   const dir = adoptDir(p, id);
   const [original, thrown] = [path.join(dir, 'original'), path.join(dir, `thrown-${Date.now()}`)];
   for (const under of ['journal', 'cache']) fs.mkdirSync(path.join(thrown, under), { recursive: true, mode: 0o700 });
-  for (const name of [...INSTALLED, ...WORKER_ONLY]) {
+  // what says whom the folder serves goes back first, so a cut anywhere leaves it answering as the fleet it serves
+  for (const name of [...WORKER_ONLY, ...INSTALLED]) {
     const [kept, none, at] = [path.join(original, name), heldNone(original, name), inHome(p, name)];
     // neither: this name was not reached, or is back already
     if (!present(kept) && !fs.existsSync(none)) continue;
@@ -914,8 +915,8 @@ export function joinAsWorker(p: Paths, m: HomeMoving & { enrol: Enrolment }, reg
  * move is not known yet.
  */
 export function homeGate(p: Paths, registryDir?: string): { frozen?: HomeMoving } {
-  for (const name of fs.existsSync(p.homeMoves) ? fs.readdirSync(p.homeMoves) : []) {
-    const id = name.replace(/\.ndjson$/, '');
+  // only a move whose folder stands here can be installing: a driver's journal and a move over are not read
+  for (const id of moveIds(p).filter((m) => fs.existsSync(adoptDir(p, m)))) {
     if (lastPhase(p, id) !== 'installing') continue;
     restoreOriginal(p, id);
     restoreRecord({ paths: p, registryDir }, id as HomeMoveId, readManifest(p, id));

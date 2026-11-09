@@ -479,7 +479,7 @@ describe('the one way a move ends', () => {
     [/svalld\/src\/bin\.ts$/, /^const stamp = /, 1],
     // what reads alone
     [MOVE, new RegExp(`${NOT_WRITING}.*Pick<Paths, 'homeMoves'>|${NOT_WRITING}.*Pick<Paths, 'homeMoving'( \\| 'homeMoves')?>`)],
-    [MOVE, /readFileSync\(journalOf\(p, id\)|readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}|^\s*for \(const name of fs\.existsSync\(p\.homeMoves\) \? fs\.readdirSync\(p\.homeMoves\)/],
+    [MOVE, /readFileSync\(journalOf\(p, id\)|^\s*throw new InvalidConfig\(`\$\{journalOf\(p, id\)\} cannot be read: |readFileSync\(p\.homeMoving, |invalid \$\{p\.homeMoving\}/],
     [MOVE, /^const journalOf = /, 1], [MOVE, /^export function endMove\(p: Paths, /, 1],
     // a journal's one writer, and the phases that end nothing: what the machine taking the fleet writes, and the driver's two keys
     [MOVE, /appendDurable\(journalOf\(p, id\), \{ phase, /, 1],

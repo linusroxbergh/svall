@@ -6,7 +6,7 @@ import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import webpush from 'web-push';
 import type { HomeManifest, HomeMoving, MachineId } from '@svall/protocol';
-import { InvalidConfig } from '../../src/config.js';
+import { InvalidConfig, readFleetConfig } from '../../src/config.js';
 import { repoSlug } from '../../src/docs.js';
 import { HOME_FAILPOINTS, HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
@@ -17,7 +17,7 @@ import { readConsent, setConsent, tickedFields } from '../../src/placement/mirro
 import { readOrCreateVapid } from '../../src/push/vapid.js';
 import { resolvePaths, inStagedMove } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
-import { startsAsWorker } from '../../src/worker/mode.js';
+import { isWorker, readWorkerFile, startsAsWorker } from '../../src/worker/mode.js';
 import { silentLogger } from '../../src/log.js';
 import { realStages } from '../../src/durable.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -309,10 +309,27 @@ describe('a not adopted is final', () => {
     expect(w.studio.daemon.role).toBe('home');
   });
 
-  it('a start does not guess past a journal it cannot read, which may say an install was cut short', async () => {
+  it('a start does not guess past the journal it cannot read of a move whose folder stands, which may say an install was cut short, and names it as a config it waits on', async () => {
     const w = await world();
-    fs.mkdirSync(path.join(w.studio.paths.homeMoves, `${ID}.ndjson`), { recursive: true });
-    expect(() => homeGate(w.studio.paths)).toThrow(/EISDIR/);
+    await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
+    const file = path.join(w.studio.paths.homeMoves, `${ID}.ndjson`);
+    fs.rmSync(file);
+    fs.mkdirSync(file);
+    expect(() => homeGate(w.studio.paths)).toThrow(InvalidConfig);
+    expect(() => homeGate(w.studio.paths)).toThrow(`${file} cannot be read: EISDIR`);
+  });
+
+  it('a start passes a driver\'s journal and the journal of a move over that it cannot read, and a stage beside one names it', async () => {
+    const w = await world();
+    fs.mkdirSync(w.studio.paths.homeMoves, { recursive: true });
+    const done = path.join(w.studio.paths.homeMoves, 'hm_oldoldoldo.ndjson');
+    fs.writeFileSync(done, `${JSON.stringify({ phase: 'done', at: 2 })}\n`);
+    fs.mkdirSync(path.join(w.studio.paths.homeMoves, `${ID}.driver.ndjson`));
+    fs.chmodSync(done, 0o000);
+    try {
+      expect(homeGate(w.studio.paths)).toEqual({});
+      await expect(stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes)).rejects.toThrow(`${done} cannot be read`);
+    } finally { fs.chmodSync(done, 0o600); }
   });
 
   it('a person\'s phone switch goes on past a journal that cannot be read, and an absent one is no journal', async () => {
@@ -929,8 +946,8 @@ describe('a crash at each boundary of the adopt', () => {
 
   describe('a crash inside the rollback of a home that never answered', () => {
     // a worker going by the fleet's id, as a join's or a way back's does, whose restored fleet.json alone could read as the home's
-    const rolling = async (point: HomeFailpoint, n: number) => {
-      const w = await world({ sameId: true });
+    const rolling = async (point: HomeFailpoint, n: number, sameId = true) => {
+      const w = await world({ sameId });
       await w.studio.daemon.stop();
       await w.studio.daemon.start();
       await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);
@@ -954,6 +971,18 @@ describe('a crash at each boundary of the adopt', () => {
         expect(fs.existsSync(w.studio.paths.workerFile)).toBe(true);
         expect(stateOf(w.studio).robots.placed.machine).toBe(STUDIO);
         expect(stateOf(w.studio).machines?.[MAC]?.snapshot?.version).toBe(7);
+        return true;
+      });
+      expect(files).toBe(15);
+    }, 120_000);
+
+    it('at every file, on a worker going by an id of its own: the folder holds the fleet the asker marked for, so its ask reaches the status that restores it', async () => {
+      const files = await walk(async (n) => {
+        const { w, fell } = await rolling('restore.file', n, false);
+        if (!fell) return false;
+        // as svall fleet facts names the fleet a folder holds
+        const fleet = isWorker(w.studio.paths) ? readWorkerFile(w.studio.paths).fleetId : readFleetConfig(w.studio.paths).id;
+        expect(fleet).toBe(FLEET);
         return true;
       });
       expect(files).toBe(15);
