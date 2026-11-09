@@ -4,6 +4,7 @@ import path from 'node:path';
 import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, UPGRADE_ACTION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeReach, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
+import { enrolLock } from '../kernel-lock.js';
 import type { Logger } from '../log.js';
 import { realDeps, resolveTailscale, tailnetSelf, TailscaleStopped, type Mobile, type MobileDeps } from '../mobile.js';
 import { expandHome, type Paths } from '../paths.js';
@@ -64,6 +65,7 @@ export class HomeFreeze {
   private asking = false;
   private stopped = false;
   private beat?: NodeJS.Timeout;
+  private enrolling?: () => void;
 
   constructor(private d: FreezeDeps, frozen?: HomeMoving) {
     if (!frozen) return;
@@ -83,6 +85,8 @@ export class HomeFreeze {
 
   stop(): void {
     this.stopped = true;
+    this.enrolling?.();
+    this.enrolling = undefined;
     clearTimeout(this.timer);
     clearInterval(this.beat);
   }
@@ -139,6 +143,13 @@ export class HomeFreeze {
     this.d.background.pause();
     const still = (): void => { if (this.moving !== held) throw new ApiError('not_frozen', `the driver of ${id} went away`); };
     try {
+      // from the pause, no person's add and no re-enrol issues a token here: an enrol under way refuses the freeze
+      const unlock = await enrolLock(this.d.paths.home);
+      if (!unlock) throw new ApiError('busy', 'a worker is being enrolled; try again in a moment');
+      // a driver that left while this waited has let the freeze go already
+      if (this.moving === held) this.enrolling = unlock;
+      else unlock();
+      still();
       const status = await this.d.phone.get();
       still();
       // a link that cannot be read must not be taken for off, as the next home would never serve it
@@ -305,6 +316,8 @@ export class HomeFreeze {
     }
     this.marker = undefined;
     this.moving = undefined;
+    this.enrolling?.();
+    this.enrolling = undefined;
     this.answer = undefined;
     this.phase = undefined;
     clearTimeout(this.timer);
@@ -360,6 +373,8 @@ type HomeCheckInput = {
   state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean; platformOf?: (id: string) => string | undefined;
   /** What the machine that would take the fleet found of each worker the move can carry, null where it could not be asked; `linkedTo`: whether this home's link to one is up. */
   reach?: Record<string, HomeReach> | null; linkedTo?: (machine: string) => boolean;
+  /** The workers the move would carry, where known: what an unasked machine leaves unsaid. */
+  carried?: string[];
   /** How this machine's terminal reaches the home the fleet would leave, on the way back, or the machine taking it, on the way out. */
   farSsh?: string;
 };
@@ -389,9 +404,10 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   for (const r of robots.filter((c) => c.moving)) fail(`${r.name} is moving`, 'wait for its move to finish');
   if (!from.workers) fail(`${i.back ?? 'this machine'} cannot read which workers this fleet has`, `fix ${from.fleetHome}/workers.json`);
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
-  // a linked machine could not be asked: nothing is known of any worker yet, so nothing is said of one
-  if (i.reach === null) { if (others.length && i.linked) fail(`${goesTo} could not be asked whether it reaches the other workers`, 'try again in a moment'); }
-  else for (const m of others) {
+  // a machine that could not be asked says nothing of a worker it would carry; one it would not, as a second Mac, is refused all the same
+  const unasked = (m: string): boolean => i.reach === null && (!i.carried || i.carried.includes(m));
+  if (i.linked && others.some(unasked)) fail(`${goesTo} could not be asked whether it reaches the other workers`, 'try again in a moment');
+  for (const m of others.filter((w) => !unasked(w))) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
     const r = i.reach?.[m];
     // nothing can log in to it, so nothing can tell it of a new home

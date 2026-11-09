@@ -733,6 +733,26 @@ describe('fleet home set local', () => {
     expect(w.mac.daemon.role).toBe('home');
   }, 30_000);
 
+  it('names a worker the way back carried that has not joined this machine, and the move stands', async () => {
+    const BOX = crypto.randomUUID();
+    const { w, deps, master } = await workerHere(undefined, {}, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 1 }, [BOX]: { name: 'far-box', reachable: false, since: 1 } } } });
+    const run = master.run.bind(master);
+    // the old home's export carries the workers it holds
+    master.run = ((argv: string[], o?: { input?: string }) => run(argv, (argv.join(' ').includes("'export'")
+      ? { ...o, input: JSON.stringify({ ...JSON.parse(o!.input!), workers: [{ id: BOX, record: { ...STUDIO_RECORD, name: 'far-box', ssh: 'ada@far-box' }, profile: 'private' }] }) }
+      : o) as never)) as never;
+    let now = Date.now();
+    const clock = vi.spyOn(Date, 'now');
+    const emit = deps.emit;
+    deps.emit = (e) => { emit(e); if (e.step === 'probe' && e.status === 'ok') clock.mockImplementation(() => (now += 30_000)); };
+    const stop = telling(w, master);
+    try {
+      const out = await moveHomeBack(deps);
+      expect(out.stopped).toBeUndefined();
+    } finally { stop(); clock.mockRestore(); }
+    expect(events.filter((e) => e.step === 'workers').at(-1)).toMatchObject({ status: 'warn', detail: 'far-box has not joined this machine yet; its row under Machines says why' });
+  }, 30_000);
+
   it('the manifest it sends the old home holds only the install key\'s hash, and this machine installs from its driver\'s journal', async () => {
     const { w, deps, master } = await workerHere();
     const run = master.run.bind(master);

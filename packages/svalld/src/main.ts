@@ -446,9 +446,9 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);
     // homeCheck refuses a workers.json that cannot be read
     const carried = (carriedWorkers(paths, registered(), profile) ?? []).filter((w) => w.id !== to);
-    const reach = !far ? null : !carried.length ? {} : await links!.call<unknown>(to, 'home.reach', carried, { timeoutMs: REACH_MS }).then((r) => z.record(z.string(), HomeReach).parse(r), () => null);
+    const reach = !far ? null : !carried.length ? {} : await links!.call<unknown>(to, 'home.reach', carried, { timeoutMs: REACH_MS }).then((r) => z.record(z.string(), HomeReach).safeParse(r).data ?? null, () => null);
     const farSsh = registered().find((m) => m.id === to)?.record.ssh;
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf, reach, linkedTo: (m) => links?.for(m as MachineId)?.connected() ?? false, ...(farSsh && { farSsh }) });
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf, reach, carried: carried.map((w) => w.id), linkedTo: (m) => links?.for(m as MachineId)?.connected() ?? false, ...(farSsh && { farSsh }) });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {

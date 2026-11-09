@@ -97,6 +97,7 @@ export function startRejoins(o: {
   let ms = first;
   let stopped = false;
   let running = false;
+  let threw: string | undefined;
 
   // a cause goes on the row and in the log once, however often it comes back
   const failed = (machine: string, why: string): false => {
@@ -109,7 +110,8 @@ export function startRejoins(o: {
 
   const notTaken = (machine: string, kind: string, why: string, ssh: string): false => {
     if (STOPS.includes(kind)) refused.add(machine);
-    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${why}; ${noLoginFix(o.name(), ssh)}` : why);
+    // ssh's own advice, a terminal on this machine, is what this home cannot use
+    return failed(machine, kind === 'auth' || kind === 'host_key' ? `${why.replace(/; run ssh \S+ once in a terminal, then try again$/, '')}; ${noLoginFix(o.name(), ssh)}` : why);
   };
 
   async function enrol(machine: MachineId, entry: MachineEntry): Promise<boolean> {
@@ -149,7 +151,7 @@ export function startRejoins(o: {
       if (refused.has(machine)) continue;
       if (Date.now() - (enrolled.get(machine) ?? -Infinity) < GREET_MS) { fine = false; continue; }
       const entry = o.records().find((r) => r.id === machine);
-      if (!entry?.record.ssh) { fine = failed(machine, 'this home has no ssh route to it; svall host upgrade it, or svall host remove it --forget'); continue; }
+      if (!entry?.record.ssh) { fine = failed(machine, 'this home has no ssh route to it; svall host add it again with --ssh <its destination>'); continue; }
       fine = await enrol(machine, entry) && fine;
     }
     return fine;
@@ -164,7 +166,14 @@ export function startRejoins(o: {
   const tick = async (): Promise<void> => {
     running = true;
     let fine = false;
-    try { fine = await round(); } catch (e) { o.log.error(`a worker was not enrolled: ${(e as Error).message}`); }
+    try {
+      fine = await round();
+      threw = undefined;
+    } catch (e) {
+      // once per cause, as a failed enrol is
+      if (threw !== (e as Error).message) o.log.error(`a worker was not enrolled: ${(e as Error).message}`);
+      threw = (e as Error).message;
+    }
     running = false;
     ms = fine ? first : Math.min(ms * 2, last);
     schedule();

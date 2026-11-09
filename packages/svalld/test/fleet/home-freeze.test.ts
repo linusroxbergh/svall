@@ -10,6 +10,7 @@ import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } fro
 import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { addEnrol, createMarker, journalLines, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
+import { enrolLock } from '../../src/kernel-lock.js';
 import { silentLogger } from '../../src/log.js';
 import { putRecord, registryFile } from '../../src/machine.js';
 import { mobileControl } from '../../src/mobile.js';
@@ -103,6 +104,40 @@ describe('a frozen home', () => {
     d.store.state.robots.placed.moving = { id: 'mv_0123456789', to: STUDIO, phase: 'rest' } as never;
     await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(/placed is moving/);
     expect(freeze.active).toBe(false);
+  });
+
+  it('an enrol under way refuses the freeze, which thaws what it paused', async () => {
+    const { freeze, log, paths } = setup();
+    const enrolling = await enrolLock(paths.home);
+    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toMatchObject({ code: 'busy', message: 'a worker is being enrolled; try again in a moment' });
+    enrolling?.();
+    expect(freeze.active).toBe(false);
+    expect(log).toEqual(['pause', 'hold false', 'home.thaw', 'resume']);
+  });
+
+  it('holds the enrol lock from the freeze until it thaws, or the daemon stops, so no token goes out meanwhile', async () => {
+    const free = async (p: string) => { const got = await enrolLock(p); got?.(); return got !== undefined; };
+    const thawed = setup();
+    await thawed.freeze.freeze(ID, STUDIO, holder);
+    expect(await free(thawed.paths.home)).toBe(false);
+    await thawed.freeze.thaw(ID);
+    expect(await free(thawed.paths.home)).toBe(true);
+    const stopped = setup();
+    await stopped.freeze.freeze(ID, STUDIO, holder);
+    stopped.freeze.mark(marker());
+    expect(await free(stopped.paths.home)).toBe(false);
+    stopped.freeze.stop();
+    expect(await free(stopped.paths.home)).toBe(true);
+  });
+
+  it('lets the enrol lock go when its driver leaves while the freeze takes it', async () => {
+    const { freeze, paths } = setup();
+    const going = freeze.freeze(ID, STUDIO, holder);
+    freeze.left(holder);
+    await expect(going).rejects.toThrow('went away');
+    const got = await enrolLock(paths.home);
+    got?.();
+    expect(got).toBeDefined();
   });
 
   it('thaws when its driver goes away before the marker, with the phone it served', async () => {
@@ -555,9 +590,11 @@ describe('a frozen home', () => {
 
     it('while it reads the phone: no holder left dead, nothing frozen', async () => {
       let open!: (s: MobileStatus) => void;
-      const { freeze, log } = setup({ phone: new Promise((r) => { open = r; }) });
+      const { freeze, log, d } = setup({ phone: new Promise((r) => { open = r; }) });
+      const read = vi.spyOn(d.phone, 'get');
       const freezing = freeze.freeze(ID, STUDIO, holder);
       expect(freeze.refusal('robot.update')?.code).toBe('frozen');
+      await vi.waitFor(() => expect(read).toHaveBeenCalled());
       freeze.left(holder);
       await vi.waitFor(() => expect(log).toContain('resume'));
       open(phoneAt(false));
@@ -568,10 +605,12 @@ describe('a frozen home', () => {
     });
 
     it('while what the home had taken drains: the worker is never told', async () => {
-      const { freeze, log } = setup();
+      const { freeze, log, d } = setup();
+      const read = vi.spyOn(d.phone, 'get');
       const ended = freeze.admit('robot.update')!;
       const freezing = freeze.freeze(ID, STUDIO, holder);
-      await vi.waitFor(() => expect(log).toContain('pause'));
+      // the phone is read just before the drain
+      await vi.waitFor(() => expect(read).toHaveBeenCalled());
       freeze.left(holder);
       await vi.waitFor(() => expect(log).toContain('resume'));
       ended();

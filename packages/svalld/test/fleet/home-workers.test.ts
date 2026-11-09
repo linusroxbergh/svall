@@ -9,7 +9,7 @@ import { createMarker, enter, owedWorkers, readMarker } from '../../src/fleet/ho
 import { enrolLock, homeMoveLock } from '../../src/kernel-lock.js';
 import { SshError } from '../../src/link/ssh.js';
 import { resolvePaths } from '../../src/paths.js';
-import { dropToken, issueToken, tokenFor } from '../../src/placement/workers.js';
+import { dropToken, issueToken, noLoginFix, tokenFor } from '../../src/placement/workers.js';
 import { silentLogger } from '../../src/log.js';
 import { cleanHomes, makeHome } from '../helpers.js';
 import { crashAt, crashesFired, disarmCrash, POINTS_OF } from './home-world.js';
@@ -132,6 +132,19 @@ describe('the check of a move with another worker', () => {
     expect(JSON.stringify(r)).not.toContain('remove box');
   });
 
+  it('a machine that could not be asked says nothing of a worker it would carry, and refuses one it would not, as a second Mac, all the same', () => {
+    const MAC2 = crypto.randomUUID() as MachineId;
+    const both = { ...state, machines: { ...state.machines, [MAC2]: { name: 'mac2', reachable: true, since: 0 } } } as FleetState;
+    for (const linked of [true, false]) {
+      const r = homeCheck({ state: both, from: { ...facts(ME), workers: [W, MAC2] }, to: facts(OTHER), toName: 'studio', linked, synced: true, fromIsHome: true, reach: null, carried: [W], linkedTo: () => true });
+      if (r.ok) throw new Error('passed');
+      const reasons = [r.refusal, ...(r.refusal.more ?? [])].map((m) => m.reason);
+      expect(reasons).toContain('mac2 is a worker of this fleet too');
+      expect(reasons.includes('studio could not be asked whether it reaches the other workers')).toBe(linked);
+      expect(reasons.join('\n')).not.toContain('box');
+    }
+  });
+
   it('a machine not linked is what refuses, and says nothing of a worker it was not asked about', () => {
     const r = homeCheck({ state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: false, synced: true, fromIsHome: true, reach: null });
     expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio is not reachable' } });
@@ -245,6 +258,7 @@ describe('the workers a new home owes an enrolment', () => {
     ['another machine', () => serving({ machineId: OTHER }), 'ada@box reaches another machine than box'],
     ['a worker of another fleet', () => serving({ fleetId: crypto.randomUUID() }), 'box does not serve this fleet'],
     ['a fleet home', () => ({ machineId: W, release: '1.2.3', role: 'home', fleetId: crypto.randomUUID() }), 'box does not serve this fleet'],
+    ['a fleet home of this fleet', () => ({ machineId: W, release: '1.2.3', role: 'home', fleetId: FLEET }), 'box does not serve this fleet'],
   ])('%s gets no token, says why, and is not tried again until a person asks', async (_what, answer, why) => {
     const p = setup('adopted');
     const m = masterOf(answer());
@@ -292,7 +306,7 @@ describe('the workers a new home owes an enrolment', () => {
     const p = setup('adopted');
     const open = vi.fn();
     const s = run(p, open, { records: () => [] });
-    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toContain('no ssh route'));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBe('this home has no ssh route to it; svall host add it again with --ssh <its destination>'));
     await settled();
     s.stop();
     expect(Object.keys(owedWorkers(p))).toEqual([W]);
@@ -423,6 +437,52 @@ describe('the workers a new home owes an enrolment', () => {
     await settled();
     again.stop();
     expect(m.enrols()).toHaveLength(1);
+  });
+
+  it('a login ssh refused says this home\'s fix alone, not ssh\'s own of a terminal here', async () => {
+    const p = setup('adopted');
+    const said = 'ssh could not reach ada@box: ada@box: Permission denied (publickey).';
+    const s = run(p, () => Promise.reject(new SshError('auth', `${said}; run ssh ada@box once in a terminal, then try again`)));
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBeDefined());
+    s.stop();
+    expect(owedWorkers(p)[W]?.why).toBe(`${said}; ${noLoginFix('studio', 'ada@box')}`);
+  });
+
+  it('a cause that comes back once the worker was enrolled is said again', async () => {
+    const p = setup('adopted');
+    const error = vi.fn();
+    const m = masterOf(serving());
+    let tries = 0;
+    const s = run(p, () => (++tries === 2 ? Promise.resolve(m.master) : Promise.reject(new SshError('unreachable', 'No route to host'))), { log: { ...silentLogger, error } });
+    await vi.waitFor(() => expect(m.enrols()).toHaveLength(1));
+    expect(owedWorkers(p)[W]?.why).toBeUndefined();
+    s.again();
+    await vi.waitFor(() => expect(owedWorkers(p)[W]?.why).toBe('No route to host'));
+    s.stop();
+    expect(error).toHaveBeenCalledTimes(2);
+  });
+
+  it('a round that throws says so in the log once per cause, however often it comes back, and again once a round went through', async () => {
+    const p = setup('adopted');
+    const error = vi.fn();
+    const thrown = () => error.mock.calls.filter(([l]) => String(l).startsWith('a worker was not enrolled: ')).length;
+    let rounds = 0;
+    const after = async (more: number) => { const now = rounds; await vi.waitFor(() => expect(rounds).toBeGreaterThan(now + more)); };
+    fs.writeFileSync(p.homeMoving, '{');
+    const open = vi.fn(() => Promise.reject(new SshError('unreachable', 'No route to host')));
+    const s = run(p, open, { log: { ...silentLogger, error }, frozen: () => { rounds++; return false; } });
+    await after(3);
+    expect(thrown()).toBe(1);
+    expect(error.mock.calls[0][0]).toMatch(/^a worker was not enrolled: invalid .*home-moving/);
+    fs.writeFileSync(p.homeMoving, '[]');
+    await vi.waitFor(() => expect(thrown()).toBe(2));
+    await after(3);
+    expect(thrown()).toBe(2);
+    fs.rmSync(p.homeMoving);
+    await vi.waitFor(() => expect(open).toHaveBeenCalled());
+    fs.writeFileSync(p.homeMoving, '[]');
+    await vi.waitFor(() => expect(thrown()).toBe(3));
+    s.stop();
   });
 
   it('a worker forgotten while its login stays refused is owed nothing from the next round', async () => {

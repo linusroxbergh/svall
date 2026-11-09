@@ -1,13 +1,14 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import WebSocket from 'ws';
 import { emptyState, HOME_ISLAND, MachineId, type HomeManifest, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
 import { abortAdopt, adoptStatus, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { HomeDial } from '../../src/link/dialout.js';
 import { HomeLinks } from '../../src/link/home.js';
+import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger } from '../../src/log.js';
 import { machineId, putRecord } from '../../src/machine.js';
 import { startDaemon, type Daemon } from '../../src/main.js';
@@ -129,6 +130,47 @@ runIf('a home move through real starts', () => {
       await d.start();
       config(paths, path.join(os.homedir(), 'what-this-worker-holds'));
       expect(await d.ask('fleet.homeCheck', { to: machineId() })).toMatchObject({ result: { sheet: { rewrites: [{ key: 'defaultCwd', to: `~/${NONE}`, lacks: true }, { key: 'home.cwd', to: '~' }] } } });
+    }, 60_000);
+  });
+
+  describe('what the machine taking the fleet answers of the other workers', () => {
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('a worker that dials out is never asked what it reaches, as it probes in its own process; one its home dials is', async () => {
+      let served: Record<string, unknown> = {};
+      const start = HomeConnection.prototype.start;
+      vi.spyOn(HomeConnection.prototype, 'start').mockImplementation(function (this: HomeConnection) { served = (this as unknown as { o: { handlers: Record<string, unknown> } }).o.handlers; return start.call(this); });
+      vi.spyOn(HomeDial.prototype, 'start').mockImplementation(() => {});
+      for (const dials of [true, false]) {
+        const paths = fleetHome();
+        const out = { homeSsh: 'ada@studio', homeSocket: dialSocket(resolvePaths('/home/ada/.svall'), machineId()), homeSvallBase: '/opt/svall' };
+        fs.writeFileSync(paths.workerFile, JSON.stringify({ homeMachineId: STUDIO, fleetId: FLEET, token: TOKEN, homeName: 'studio', ...(dials && out) }));
+        const d = real(paths);
+        await d.start();
+        expect(Object.hasOwn(served, 'home.facts')).toBe(true);
+        expect(Object.hasOwn(served, 'home.reach')).toBe(!dials);
+        await d.stop();
+      }
+    }, 60_000);
+
+    it('an answer this release cannot read is one that could not be asked, not an error of the check, and a second Mac is refused all the same', async () => {
+      const W = '77777777-0000-4000-8000-000000000000' as MachineId;
+      const MAC2 = '88888888-0000-4000-8000-000000000000' as MachineId;
+      putRecord(W, { name: 'reach-box', ssh: 'ada@reach-box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' });
+      onTestFinished(() => { putRecord(W, undefined); });
+      const paths = fleetHome();
+      const d = await firstStart(paths);
+      issueToken(paths, W);
+      issueToken(paths, MAC2);
+      const facts = { machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {}, paths: {} };
+      // a kind a later release knows
+      const reach = { [W]: { ok: false, ssh: 'ada@reach-box', kind: 'from-a-later-release' } };
+      vi.spyOn(HomeLinks.prototype, 'call').mockImplementation(((_m: MachineId, method: string) => Promise.resolve(method === 'home.reach' ? reach : facts)) as never);
+      const r = await d.ask('fleet.homeCheck', { to: STUDIO }) as unknown as { result: { ok: boolean; refusal: { reason: string; more?: { reason: string }[] } } };
+      expect(r.result.ok).toBe(false);
+      const reasons = [r.result.refusal, ...(r.result.refusal.more ?? [])].map((m) => m.reason).join('\n');
+      expect(reasons).toContain('could not be asked whether it reaches the other workers');
+      expect(reasons).toContain(`${MAC2} is a worker of this fleet too`);
     }, 60_000);
   });
 
