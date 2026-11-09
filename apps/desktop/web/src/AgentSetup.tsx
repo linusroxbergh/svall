@@ -140,7 +140,7 @@ export function AgentSetup() {
         )}
       {!!rows?.length && (
         <>
-          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy.</div>
+          <div className="desc" data-testid="setup-keys">Keys in config files stay on this Mac unless you tick them for {home}. CLAUDE.md, AGENTS.md, keybindings.json, rules, skills, commands, agents, plugins and agent profiles go as they are, anything written in them included. A key you untick stays on {home} until the next Copy; a server or a file ticked whole before the fleet moved stays until you remove it on {home}.</div>
           <SetupTicks rows={rows} tick={tick} />
         </>
       )}

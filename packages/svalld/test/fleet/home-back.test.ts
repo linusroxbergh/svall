@@ -8,6 +8,7 @@ import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-
 import { homeCheck, homeFacts, HomeFreeze } from '../../src/fleet/home-freeze.js';
 import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
 import { silentLogger } from '../../src/log.js';
+import { putRecord } from '../../src/machine.js';
 import { readConsent, setConsent } from '../../src/placement/mirror-consent.js';
 import { dropToken, issueToken } from '../../src/placement/workers.js';
 import { isWorker, readWorkerFile } from '../../src/worker/mode.js';
@@ -552,7 +553,12 @@ describe('the phone link a move owes', () => {
 
 describe('a worker a person removed before the move', () => {
   const SECOND = '99999999-7777-8888-9999-aaaaaaaaaaaa' as MachineId;
-  const facts = async (s: Side, me: MachineId, role: 'home' | 'worker') => ({ ...await homeFacts(s.paths, { me, role, fleetId: FLEET, tailscale: {} as never }), tailscale: { host: 'h' } });
+  // each machine reads its own registry, which lists the second while it is a worker
+  const facts = async (s: Side, me: MachineId, role: 'home' | 'worker') => {
+    vi.stubEnv('SVALL_CONFIG_DIR', s.registryDir);
+    try { return { ...await homeFacts(s.paths, { me, role, fleetId: FLEET, tailscale: {} as never }), tailscale: { host: 'h' } }; } finally { vi.unstubAllEnvs(); }
+  };
+  const listed = (s: Side) => putRecord(SECOND, { name: 'second', platform: 'darwin', arch: 'arm64', home: '/Users/bo', svallBase: '/opt/svall', dial: 'worker' } as never, s.registryDir);
   const refusal = { ok: false, refusal: { reason: 'second is a worker of this fleet too' } };
 
   it('stops neither way once its token has gone, though the fleet still holds its name; a token still held refuses', async () => {
@@ -560,12 +566,14 @@ describe('a worker a person removed before the move', () => {
       const back = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.studio, STUDIO, 'home'), to: await facts(m.mac, MAC, 'worker'), toName: 'mac', back: 'studio', linked: true, synced: true, fromIsHome: true });
       expect(m.mac.daemon.held!.machines?.[SECOND]?.name).toBe('second');
       expect(await back()).toMatchObject({ ok: true });
+      listed(m.studio);
       issueToken(m.studio.paths, SECOND);
       expect(await back()).toMatchObject(refusal);
       dropToken(m.studio.paths, SECOND);
     }, async (m) => {
       const out = async () => homeCheck({ state: m.mac.daemon.held!, from: await facts(m.mac, MAC, 'home'), to: await facts(m.studio, STUDIO, 'worker'), toName: 'studio', linked: true, synced: true, fromIsHome: true });
       m.mac.daemon.held!.machines = { ...m.mac.daemon.held!.machines, [SECOND]: { name: 'second', reachable: false, since: 1 } };
+      listed(m.mac);
       issueToken(m.mac.paths, SECOND);
       expect(await out()).toMatchObject(refusal);
       dropToken(m.mac.paths, SECOND);

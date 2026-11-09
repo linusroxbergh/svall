@@ -561,14 +561,14 @@ test('an item that travels whole keeps one box', async () => {
   }
 });
 
-test('a key unticked is said by the pane\'s one sentence, no Copy runs by itself, and what a tick went over is named with the folder', async () => {
+test('a key unticked, and what was ticked whole before a move, are said by the pane\'s one sentence, no Copy runs by itself, and what a tick went over is named with the folder', async () => {
   try {
     const on = { ...tickRow, tick: { ...tickRow.tick, on: true, ticked: ['env.KEY'] } };
     farWindow({ ...SETUP, 'home.setup': () => ({ rows: [on], backup: '/b', replaced: ['linear'] }), 'home.setupConsent': () => ({ rows: [{ ...tickRow, tick: { ...tickRow.tick, ticked: [] } }], backup: '/b', replaced: ['linear'] }) });
     render(<SettingsCard />);
     show('setup');
     fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
-    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy');
+    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy; a server or a file ticked whole before the fleet moved stays until you remove it on studio.');
     expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
     expect((await screen.findByTestId('setup-replaced')).textContent).toContain('for linear: that is in this folder');
   } finally {

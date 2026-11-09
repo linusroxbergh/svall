@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { z } from 'zod';
 import { MachineId } from '@svall/protocol';
 import { writeDurable } from '../durable.js';
+import { readRegistry } from '../machine.js';
 import type { Paths } from '../paths.js';
 
 // `profile`: the fleet's on that worker, where it is named apart from this one's
@@ -43,6 +44,13 @@ export function tokenFor(paths: Paths, machine: MachineId): string | undefined {
 
 /** The machines this home holds a token for. */
 export const workerIds = (paths: Paths): string[] => Object.keys(read(paths));
+
+/** Those of them the registry lists, as only those link; all of them where the registry cannot be read. */
+export function listedWorkerIds(paths: Paths): string[] {
+  let listed: Set<string> | undefined;
+  try { listed = new Set(readRegistry().map((m) => m.id)); } catch { /* every token counts */ }
+  return workerIds(paths).filter((id) => !listed || listed.has(id));
+}
 
 /** Takes back the token of a machine that is no longer a worker; a home that holds none is left as it is. */
 export function dropToken(paths: Paths, machine: MachineId): void {

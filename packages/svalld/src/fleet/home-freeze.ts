@@ -9,7 +9,7 @@ import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
 import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
-import { workerIds } from '../placement/workers.js';
+import { listedWorkerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
 const STILL = new Set<MethodName>(['term.open', 'term.attach', 'term.input', 'term.resize', 'term.close', 'robot.seen', 'robot.answer', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove']);
@@ -289,7 +289,7 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   let freeKb: number | undefined;
   try { const s = fs.statfsSync(p.home); freeKb = Math.floor((s.bavail * s.bsize) / 1024); } catch { /* the check says it could not read it */ }
   let fleetKb: number | undefined;
-  if (o.role === 'home') try { fleetKb = carriedKb(p); } catch { /* the archive says what it could not read */ }
+  if (o.role === 'home') try { fleetKb = carriedKb(p); } catch { /* the check refuses a fleet it cannot measure */ }
   const workers = workersOf(p);
   return {
     machineId: o.me, ...(o.fleetId && { fleetId: o.fleetId as HomeFacts['fleetId'] }), release: releaseVersion(), protocol: PROTOCOL_VERSION, stateSchema: STATE_SCHEMA_VERSION,
@@ -334,6 +334,8 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`);
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');
+  // on the way back, the leaving home's facts are its own only once it answers
+  if (i.linked && from.fleetKb === undefined) fail(`${i.back ?? 'this machine'} cannot tell what the fleet's files come to`, `check that everything in ${from.fleetHome} can be read`);
   const fleetKb = from.fleetKb ?? 0;
   if (fleetKb > MAX_CARRIED_KB) fail(`the fleet's files come to ${mb(fleetKb)} MB, more than a move carries (${mb(MAX_CARRIED_KB)} MB)`, `remove what it no longer needs from ${from.fleetHome}/docs and ${from.fleetHome}/retro`);
   const needKb = COPIES_TAKEN * fleetKb + SPARE_KB;
@@ -354,7 +356,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   return { ok: false, refusal, sheet };
 }
 
-/** The machines this fleet holds a token for, none where it has no workers.json; undefined where it cannot read one, which refuses a move. */
+/** The machines this fleet holds a token for that the registry lists, none where it has no workers.json; undefined where it cannot read one, which refuses a move. */
 export const workersOf = (p: Paths): string[] | undefined => {
-  try { return workerIds(p); } catch { return undefined; }
+  try { return listedWorkerIds(p); } catch { return undefined; }
 };

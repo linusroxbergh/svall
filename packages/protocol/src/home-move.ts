@@ -54,7 +54,7 @@ export type HomeManifest = z.infer<typeof HomeManifest>;
 const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean().optional() });
 
 /**
- * What a machine says of itself to a home move's check, none of it secret. `workers`: those its fleet holds a token for, none said where it
+ * What a machine says of itself to a home move's check, none of it secret. `workers`: those its fleet holds a token for and its registry lists, none said where it
  * cannot read them. `paths`: whether each path it was asked of is there. `fleetKb`, `rewrites`: a home's, what a move of its fleet carries and which paths change.
  */
 export const HomeFacts = z.object({

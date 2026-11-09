@@ -654,6 +654,18 @@ describe('adopting', () => {
     expect(Math.abs(carriedKb(w.mac.paths) - bytes.length / 1024)).toBeLessThan(16);
   });
 
+  it('counts a file gone between its listing and its size as nothing, as a robot\'s temp file may be', async () => {
+    const w = await world();
+    const before = carriedKb(w.mac.paths);
+    fs.writeFileSync(path.join(w.mac.paths.docs, 'scratch.tmp'), Buffer.alloc(64 * 1024));
+    const stat = fs.statSync;
+    const gone = vi.spyOn(fs, 'statSync').mockImplementation(((f: fs.PathLike, o?: fs.StatSyncOptions) => {
+      if (path.basename(String(f)) === 'scratch.tmp') fs.rmSync(f, { force: true });
+      return stat(f, o);
+    }) as typeof fs.statSync);
+    try { expect(carriedKb(w.mac.paths)).toBe(before); } finally { gone.mockRestore(); }
+  });
+
   it('carries no key of the old machine, nor its token, its .env, its cache or its outbox', async () => {
     const w = await world();
     const dir = makeHome();

@@ -1431,15 +1431,18 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
   describe('a key a push left on a machine before the fleet moved there', () => {
     const ITEM = 'claude:mcp:linear';
     const FIELD = 'env.LINEAR_API_KEY';
-    // the Mac its home, its ticked key pushed to the server; then the server the home, holding what an install leaves of that record
-    async function movedThere() {
+    // the Mac its home, its ticked key pushed to the server; then the server the home, holding what an install leaves of that record.
+    // `whole`: a server of a shape Svall cannot read, ticked whole too
+    async function movedThere(whole?: object) {
       const server = farHome();
       const mac = macHome();
+      if (whole) editJson(mac.claudeJson, (j) => { j.mcpServers.odd = whole; });
       const first = world({ mirror: { home: mac, worker: { ...server, overrides: server.overrides } } });
       await first.link();
       await until(() => expect(first.worker.connection.connected()).toBe(true));
       await first.home.links.mirrorSettled(W);
       await call(first.home.ctx, 'machines.consent', { machine: W, item: ITEM, fields: [FIELD], on: true });
+      if (whole) await call(first.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:odd', fields: ['command', 'sandbox'], on: true });
       await first.home.links.mirrorSettled(W);
       expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: KEY });
       const record = keysOnly(readState(first.worker.paths.mirrorState));
@@ -1467,6 +1470,15 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
       await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: false });
       await ask();
       expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    });
+
+    it('a server ticked whole stays through the untick and the next Copy, its key with it, where a key goes back', async () => {
+      const odd = { command: 'odd', sandbox: { token: 'odd_key_secret_1234567890' } };
+      const { server, ask } = await movedThere(odd);
+      expect(json(server.claudeJson).mcpServers.odd).toEqual(odd);
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+      expect(json(server.claudeJson).mcpServers.odd).toEqual(odd);
     });
 
     it('a key the home holds that no push copied stays through the untick', async () => {

@@ -11,9 +11,11 @@ import { phoneWithReason } from '../../src/fleet/home-far.js';
 import { addEnrol, createMarker, journalLines, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
 import { silentLogger } from '../../src/log.js';
+import { putRecord, registryFile } from '../../src/machine.js';
 import { mobileControl } from '../../src/mobile.js';
 import { Phones } from '../../src/phones.js';
 import { resolvePaths } from '../../src/paths.js';
+import { issueToken } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -889,7 +891,7 @@ describe('a real move the API took as the freeze came', () => {
   }, 60_000);
 });
 
-const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, fleetHome: '/x', tailscale: { host: 'h' }, workers: [STUDIO], ...o } as HomeFacts);
+const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, fleetKb: 0, fleetHome: '/x', tailscale: { host: 'h' }, workers: [STUDIO], ...o } as HomeFacts);
 
 describe('the check', () => {
   const input = (o = {}) => ({ state: { ...emptyState(), robots: { here: robot('here'), placed: robot('placed', STUDIO) } }, from: facts({}), to: facts({ machineId: STUDIO }), toName: 'studio', linked: true, synced: true, fromIsHome: true, ...o });
@@ -915,6 +917,33 @@ describe('the check', () => {
     expect(workers).toBeUndefined();
     const r = homeCheck(input({ from: { ...facts({ fleetHome: '/x' as never }), workers } }));
     expect(r).toMatchObject({ ok: false, refusal: { reason: 'this machine cannot read which workers this fleet has', action: 'fix /x/workers.json' } });
+  });
+
+  it('counts only the workers the registry lists, as a token of a machine it no longer lists links nothing; all of them where it cannot be read', async () => {
+    const paths = resolvePaths(makeHome());
+    const config = makeHome();
+    vi.stubEnv('SVALL_CONFIG_DIR', config);
+    try {
+      const gone = '99999999-7777-8888-9999-aaaaaaaaaaaa' as MachineId;
+      issueToken(paths, STUDIO);
+      issueToken(paths, gone);
+      putRecord(STUDIO, { name: 'studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall', ssh: 'ada@studio' } as never, config);
+      const said = async () => (await homeFacts(paths, { me: MAC, role: 'home', fleetId: FLEET, tailscale: {} as never })).workers;
+      expect(await said()).toEqual([STUDIO]);
+      expect(homeCheck(input({ from: facts({ workers: await said() }) })).ok).toBe(true);
+      fs.writeFileSync(registryFile(config), '{"cut short');
+      expect(await said()).toEqual([STUDIO, gone]);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
+  it.each([
+    ['out', input({ from: facts({ fleetKb: undefined }) }), 'this machine'],
+    ['back', input({ back: 'studio', toName: 'mac', from: facts({ machineId: STUDIO, fleetKb: undefined, workers: [] }), to: facts({}) }), 'studio'],
+  ])('%s: refuses a fleet the leaving home cannot measure once it answers, as it could be past what a move carries', (_way, unmeasured, who) => {
+    expect(homeCheck(unmeasured)).toMatchObject({ ok: false, refusal: { reason: `${who} cannot tell what the fleet's files come to`, action: 'check that everything in /x can be read' } });
+    const unreached = homeCheck({ ...unmeasured, linked: false });
+    expect(unreached).toMatchObject({ ok: false, refusal: { reason: 'studio is not reachable' } });
+    expect(unreached).not.toHaveProperty('refusal.more');
   });
 
   it('lists every reason at once', () => {

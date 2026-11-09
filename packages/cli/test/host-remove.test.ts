@@ -3,6 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, emptyState } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
+import { workersOf } from '@svall/svalld/fleet/home-freeze';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { dialingFleet, removeHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
@@ -166,6 +167,21 @@ describe('host remove', () => {
       expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
       expect(tokenFor(sibling, REMOTE)).toBe(theirs);
     }
+  });
+
+  it('leaves a sibling a token that holds back no move of its own, as nothing links by it once the record is gone', async () => {
+    vi.stubEnv('SVALL_CONFIG_DIR', path.join(work, 'config'));
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    issueToken(sibling, REMOTE);
+    const registry = registered('trift.test');
+    registry.save();
+    expect(workersOf(sibling)).toEqual([REMOTE]);
+    expect((await removeHost('trift', { forget: true }, deps({ registry }))).result).toBe('ready');
+    expect(tokenFor(sibling, REMOTE)).toBeDefined();
+    expect(workersOf(sibling)).toEqual([]);
+    vi.unstubAllEnvs();
   });
 
   it("clears the machine's consent in every fleet home here, on remove and on --forget", async () => {

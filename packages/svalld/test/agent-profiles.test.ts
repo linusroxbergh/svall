@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { AGENT_PROFILE_MAX, listAgentProfiles, readAgentProfile, seedAgentProfiles } from '../src/agent-profiles.js';
+import { AGENT_PROFILE_MAX, isStarterProfile, listAgentProfiles, readAgentProfile, seedAgentProfiles, STARTER_SHAS } from '../src/agent-profiles.js';
+import { sha256Hex } from '../src/hash.js';
 
 const dirs: string[] = [];
 afterEach(() => { for (const d of dirs.splice(0)) fs.rmSync(d, { recursive: true, force: true }); });
@@ -64,5 +65,23 @@ describe('seedAgentProfiles', () => {
     fs.rmSync(path.join(dir, 'reviewer.md'));
     expect(seedAgentProfiles(dir)).toBe(false);
     expect(fs.existsSync(path.join(dir, 'reviewer.md'))).toBe(false);
+  });
+});
+
+describe('isStarterProfile', () => {
+  it('knows every starter this release ships by its bytes', () => {
+    const dir = path.join(tmp(), 'agent-profiles');
+    seedAgentProfiles(dir);
+    for (const name of fs.readdirSync(dir)) expect(isStarterProfile(name, path.join(dir, name))).toBe(true);
+  });
+
+  it('reads a profile as a starter by the bytes any release shipped, so one a later release edits reads so on a machine set up before', () => {
+    const dir = tmp();
+    write(dir, 'reviewer.md', 'You are a reviewer, as an earlier release had it.\n');
+    const shipped = { 'reviewer.md': [sha256Hex('You are a reviewer, as an earlier release had it.\n'), ...STARTER_SHAS['reviewer.md']] };
+    expect(isStarterProfile('reviewer.md', path.join(dir, 'reviewer.md'), shipped)).toBe(true);
+    write(dir, 'reviewer.md', 'You are a reviewer, as a person edited it.\n');
+    expect(isStarterProfile('reviewer.md', path.join(dir, 'reviewer.md'), shipped)).toBe(false);
+    expect(isStarterProfile('constructor', path.join(dir, 'reviewer.md'), shipped)).toBe(false);
   });
 });

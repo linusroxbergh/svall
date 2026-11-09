@@ -8,7 +8,7 @@ import { MAC, marker, phoneAt, robot, STUDIO, putMarker } from './home-world.js'
 
 afterEach(cleanHomes);
 
-const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, fleetHome: '/x', tailscale: { host: 'h' }, ...o } as HomeFacts);
+const facts = (o: Partial<HomeFacts>): HomeFacts => ({ machineId: MAC, release: '1', protocol: 44, stateSchema: 12, clock: 1000, freeKb: 1e7, fleetKb: 0, fleetHome: '/x', tailscale: { host: 'h' }, ...o } as HomeFacts);
 const blockers = (r: Result<'fleet.homeCheck'>): [string, string][] => (r.ok ? [] : [r.refusal, ...r.refusal.more ?? []].map((b) => [b.reason, b.action]));
 
 describe('the check names each machine for what it is', () => {

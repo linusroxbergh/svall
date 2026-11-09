@@ -804,7 +804,9 @@ export function carriedKb(p: Paths): number {
     const real = fs.realpathSync(from);
     return fs.statSync(real).isDirectory() ? ownFiles(real).map((rel) => path.join(real, rel)) : [real];
   });
-  return Math.ceil(files.reduce((n, f) => n + TAR_BLOCK + Math.ceil(fs.statSync(f).size / TAR_BLOCK) * TAR_BLOCK, 0) / 1024);
+  // a file gone since it was listed, such as a robot's temp file, carries nothing
+  const sizes = files.map((f) => fs.statSync(f, { throwIfNoEntry: false })?.size).filter((n) => n !== undefined);
+  return Math.ceil(sizes.reduce((n, size) => n + TAR_BLOCK + Math.ceil(size / TAR_BLOCK) * TAR_BLOCK, 0) / 1024);
 }
 
 /** The fleet's files as an archive: only done moves, the running ones' journals being a machine's own. */
