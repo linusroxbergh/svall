@@ -5,9 +5,13 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import WebSocket from 'ws';
 import { emptyState, HOME_ISLAND, MachineId, type HomeManifest, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
-import { abortAdopt, adoptStatus, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { HomeFreeze } from '../../src/fleet/home-freeze.js';
+import { abortAdopt, adoptStatus, enter, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
+import { writeOwed } from '../../src/fleet/home-workers.js';
+import { enrolLock } from '../../src/kernel-lock.js';
 import { HomeDial } from '../../src/link/dialout.js';
 import { HomeLinks } from '../../src/link/home.js';
+import { SshMaster } from '../../src/link/ssh.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger } from '../../src/log.js';
 import { machineId, putRecord } from '../../src/machine.js';
@@ -310,6 +314,33 @@ runIf('a home move through real starts', () => {
     await d.start();
     await waitFor(() => journalLines(paths, ID).some((l) => l.phase === 'served'), 15_000);
     expect(journalLines(paths, ID).filter((l) => l.phase === 'served')).toHaveLength(1);
+  }, 60_000);
+
+  it('a home frozen under no marker opens no ssh to a worker it owes, though the freeze\'s lock alone would let it; once it thaws, it does', async () => {
+    const W = '99999999-0000-4000-8000-000000000000' as MachineId;
+    putRecord(W, { name: 'owed-box', ssh: 'ada@owed-box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' });
+    onTestFinished(() => { putRecord(W, undefined); vi.restoreAllMocks(); });
+    // the home's own links would dial it too
+    vi.spyOn(HomeLinks.prototype, 'start').mockImplementation(() => {});
+    const open = vi.spyOn(SshMaster, 'open').mockRejectedValue(new Error('no ssh in this test'));
+    let frozen = true;
+    vi.spyOn(HomeFreeze.prototype, 'active', 'get').mockImplementation(() => frozen);
+    const paths = fleetHome();
+    const d = real(paths);
+    await d.start();
+    enter(paths, ID, 'adopted');
+    writeOwed(paths, ID, [W]);
+    issueToken(paths, W);
+    // as a freeze holds it from its pause
+    const held = await enrolLock(paths.home);
+    expect(held).toBeDefined();
+    await new Promise((r) => { setTimeout(r, 7_000); });
+    expect(open).not.toHaveBeenCalled();
+    frozen = false;
+    held?.();
+    await waitFor(() => open.mock.calls.length > 0, 15_000);
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ destination: 'ada@owed-box' }));
+    await d.stop();
   }, 60_000);
 
   it('a worker owes the old home what its status names, and is asked for nothing else', async () => {
