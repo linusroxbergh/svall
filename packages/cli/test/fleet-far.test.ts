@@ -2,6 +2,7 @@ import { Readable } from 'node:stream';
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { askAcross } from '@svall/svalld/fleet/home-far';
 import type { HomeDaemon } from '@svall/svalld/fleet/home-move';
 import { adoptDir, journalLines, packFleet, readMarker } from '@svall/svalld/fleet/home-move';
 import { machineId } from '@svall/svalld/machine';
@@ -28,6 +29,7 @@ vi.mock('../src/client.js', async (actual) => {
 });
 
 const { fleetCommands } = await import('../src/commands/fleet.js');
+const { versionCommand } = await import('../src/commands/version.js');
 type MoveDeps = import('../src/controller/home.js').MoveDeps;
 
 const ID = 'hm_abcdefghij';
@@ -42,6 +44,13 @@ async function run(args: string[], stdin = '', o: { tty?: boolean; target?: { na
   try {
     await fleetCommands(() => o.target ?? { name: 'private', home, managed: false }, () => true).parseAsync(args, { from: 'user' });
   } finally { out.mockRestore(); input.mockRestore(); }
+  return JSON.parse(printed.join(''));
+}
+
+async function version(): Promise<unknown> {
+  printed = [];
+  const out = vi.spyOn(process.stdout, 'write').mockImplementation((s) => { printed.push(String(s)); return true; });
+  try { await versionCommand(() => true, () => home).parseAsync([], { from: 'user' }); } finally { out.mockRestore(); }
   return JSON.parse(printed.join(''));
 }
 
@@ -100,6 +109,20 @@ describe('what the far machine runs for a driver', () => {
     expect(await run(['facts'])).toMatchObject({ fleetId: OWN });
     fs.rmSync(resolvePaths(home).fleetConfig);
     await expect(run(['facts'])).rejects.toThrow();
+  });
+
+  it('version names the fleet a worker serves, as facts does, and the asker takes that for the fleet it marked for', async () => {
+    fs.writeFileSync(resolvePaths(home).fleetConfig, JSON.stringify({ id: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }));
+    serving();
+    expect(await run(['facts'])).toMatchObject({ fleetId: FLEET });
+    const ask = async () => {
+      const said = await version();
+      const master = { run: (argv: string[]) => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify(argv.at(-1) === "'version'" ? said : { status: 'pending', phase: 'unknown' }) }), close: () => Promise.resolve() };
+      return askAcross({ ...marker(), to: machineId() as never, ask: { ssh: 'ada@here' as never, svallBase: '/x' as never, fleetHome: home as never } }, 'status', () => Promise.resolve(master as never));
+    };
+    expect(await ask()).toEqual({ status: 'pending', phase: 'unknown' });
+    fs.rmSync(resolvePaths(home).workerFile);
+    await expect(ask()).rejects.toThrow(/another machine or fleet/);
   });
 
   it('adopt --stage takes the archive from stdin, checked against its sha256', async () => {

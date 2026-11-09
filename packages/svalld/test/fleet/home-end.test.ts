@@ -167,10 +167,14 @@ describe('a not-adopted takes proof: this folder holds the fleet and still serve
 });
 
 describe('a marked home believes only the machine it marked for', () => {
-  const FACTS = { machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {} };
+  // as `svall version --json` answers there
+  const VERSION = { release: 'r', signed: false, machineId: STUDIO, protocol: 1, stateSchema: 1, runtime: { node: 'v24', platform: 'linux', arch: 'x64' } };
+  const HOME = { ...VERSION, role: 'home', fleetId: FLEET };
+  const WORKER = { ...VERSION, role: 'worker', worker: { homeMachineId: MAC, homeName: 'mac', fleetId: FLEET } };
   const ANOTHER_FLEET = '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70';
   const ENROL = { worker: WorkerFile.parse({ homeMachineId: STUDIO, fleetId: FLEET, token: 'b'.repeat(48), homeName: 'studio' }) };
-  const farAt = (facts: object | undefined, said: AdoptAnswer = { status: 'not-adopted' }) => {
+  // `fleet facts` there waits on a tailscaled that does not answer
+  const farAt = (version: object | undefined, said: AdoptAnswer = { status: 'not-adopted' }) => {
     const lines: string[] = [];
     let opened = 0;
     const open = () => {
@@ -179,7 +183,8 @@ describe('a marked home believes only the machine it marked for', () => {
         run: (argv: string[]) => {
           const line = argv.join(' ');
           lines.push(line);
-          const out = line.includes("'facts'") ? facts : said;
+          if (line.includes("'facts'")) return Promise.resolve({ code: null, signal: 'SIGTERM', stderr: 'tailscale status timed out', stdout: '' });
+          const out = line.includes("'version'") ? version : said;
           return Promise.resolve(out ? { code: 0, signal: null, stderr: '', stdout: JSON.stringify(out) } : { code: 1, signal: null, stderr: 'svall: no fleet here', stdout: '' });
         },
         close: () => Promise.resolve(),
@@ -189,26 +194,28 @@ describe('a marked home believes only the machine it marked for', () => {
   };
   const freezeAt = (paths: ReturnType<typeof marked>, far: ReturnType<typeof farAt>) => new HomeFreeze({ paths, me: MAC, restart: () => {}, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
 
-  it('reads the far fleet\'s word for itself on the connection it asks over, and says who asks', async () => {
-    const far = farAt(FACTS);
+  it.each([['its home', HOME], ['still a worker of the home that asks', WORKER]])('reads the far fleet\'s word for itself on the connection it asks over, as %s, from its files alone, and says who asks', async (_as, version) => {
+    const far = farAt(version);
     expect(await askAcross(marker(), 'abort', far.open)).toEqual({ status: 'not-adopted' });
     expect(far.opened()).toBe(1);
-    expect(far.lines).toEqual([expect.stringMatching(/'fleet' 'facts'$/), expect.stringMatching(new RegExp(`'fleet' 'abort' '${ID}' '--asker' '${MAC}' '--fleet' '${FLEET}'$`))]);
+    expect(far.lines).toEqual([expect.stringMatching(/ --json 'version'$/), expect.stringMatching(new RegExp(`'fleet' 'abort' '${ID}' '--asker' '${MAC}' '--fleet' '${FLEET}'$`))]);
   });
 
   it.each([
-    ['another machine', { ...FACTS, machineId: MAC }],
-    ['another fleet', { ...FACTS, fleetId: ANOTHER_FLEET }],
-    ['a folder with no fleet id', { ...FACTS, fleetId: undefined }],
+    ['another machine', { ...HOME, machineId: MAC }],
+    ['another fleet', { ...HOME, fleetId: ANOTHER_FLEET }],
+    ['a folder with no fleet id', { ...VERSION, role: 'home' }],
+    ['a worker of another fleet', { ...WORKER, worker: { ...WORKER.worker, fleetId: ANOTHER_FLEET } }],
+    ['a worker that cannot say whom it serves', { ...VERSION, role: 'worker' }],
     ['a folder that holds no fleet', undefined],
-  ])('%s answering reads as unreachable: no status is asked, and the marker stands', async (_who, facts) => {
+  ])('%s answering reads as unreachable: no status is asked, and the marker stands', async (_who, version) => {
     const paths = marked();
-    const far = farAt(facts);
+    const far = farAt(version);
     const freeze = freezeAt(paths, far);
     await freeze.settle('status');
     await freeze.settle('abort');
     freeze.stop();
-    expect(far.lines.filter((l) => !l.includes("'facts'"))).toEqual([]);
+    expect(far.lines.filter((l) => !l.includes("'version'"))).toEqual([]);
     expect(freeze.active).toBe(true);
     expect(freeze.status().moving?.phase).toBe('unreachable');
     expect(readMarker(paths)).toEqual(marker());
@@ -219,7 +226,7 @@ describe('a marked home believes only the machine it marked for', () => {
     ['another fleet', { ...ENROL.worker, fleetId: ANOTHER_FLEET }],
   ])('an adopted naming %s reads as unreachable, and goes on no marker', async (_who, worker) => {
     const paths = marked();
-    const far = farAt(FACTS, { status: 'adopted', enrol: { worker } as never });
+    const far = farAt(HOME, { status: 'adopted', enrol: { worker } as never });
     const restart = vi.fn();
     const freeze = new HomeFreeze({ paths, me: MAC, restart, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
     await freeze.settle('status');
@@ -246,7 +253,7 @@ describe('a marked home believes only the machine it marked for', () => {
 
   it('the machine and fleet it marked for go on as ever', async () => {
     const paths = marked();
-    const far = farAt(FACTS, { status: 'adopted', enrol: ENROL });
+    const far = farAt(HOME, { status: 'adopted', enrol: ENROL });
     const restart = vi.fn();
     const freeze = new HomeFreeze({ paths, me: MAC, restart, ask: (m: HomeMoving, op: AskOp) => askAcross(m, op, far.open) } as never, marker());
     await freeze.settle('status');

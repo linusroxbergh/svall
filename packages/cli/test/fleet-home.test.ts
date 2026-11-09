@@ -595,6 +595,7 @@ describe('fleet home set local', () => {
           return ok({ sha256, archive: bytes.toString('base64') });
         }
         if (line.includes("'settle'")) { settled.push(line.includes('not-adopted') ? 'not-adopted' : 'adopted'); return ok({ status: 'done' }); }
+        if (line.includes("'version'")) return ok({ machineId: STUDIO, role: 'home', fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1 });
         if (line.includes("'facts'")) return ok({ machineId: STUDIO, fleetId: FLEET, release: '1', protocol: PROTOCOL_VERSION, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {}, ...(marked() && { moving: readOwed(w.mac.paths)?.id }) });
         throw new Error(`unexpected ${line}`);
       },

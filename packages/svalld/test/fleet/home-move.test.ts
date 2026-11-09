@@ -980,7 +980,7 @@ describe('a crash at each boundary of the adopt', () => {
       const files = await walk(async (n) => {
         const { w, fell } = await rolling('restore.file', n, false);
         if (!fell) return false;
-        // as svall fleet facts names the fleet a folder holds
+        // as svall version names the fleet a folder holds to an asker
         const fleet = isWorker(w.studio.paths) ? readWorkerFile(w.studio.paths).fleetId : readFleetConfig(w.studio.paths).id;
         expect(fleet).toBe(FLEET);
         return true;

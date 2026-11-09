@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { emptyState, WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
+import { readFleetConfig } from '../../src/config.js';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
 import { homeCheck, homeFacts, HomeFreeze } from '../../src/fleet/home-freeze.js';
@@ -9,6 +10,7 @@ import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, driverKey, e
 import { silentLogger } from '../../src/log.js';
 import { readConsent, setConsent } from '../../src/placement/mirror-consent.js';
 import { dropToken, issueToken } from '../../src/placement/workers.js';
+import { isWorker, readWorkerFile } from '../../src/worker/mode.js';
 import { cleanHomes } from '../helpers.js';
 import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, phoneAt, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
@@ -46,6 +48,9 @@ async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => 
 const NOT_RUNNING = 'svalld is not running (no port): it runs while Svall is open on this fleet';
 const ASKER_BACK = { machine: STUDIO, fleetId: FLEET };
 const STUDIO_FACTS = { machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {} };
+const STUDIO_VERSION = { release: 'r', signed: false, machineId: STUDIO, protocol: 1, stateSchema: 1, runtime: { node: 'v24', platform: 'linux', arch: 'x64' }, role: 'home', fleetId: FLEET };
+// as `svall version --json` reads studio's own files: a worker names the fleet it serves
+const versionOf = (s: Side) => ({ ...STUDIO_VERSION, ...(isWorker(s.paths) ? { role: 'worker', fleetId: undefined, worker: { homeMachineId: MAC, homeName: 'mac', fleetId: readWorkerFile(s.paths).fleetId } } : { fleetId: readFleetConfig(s.paths).id }) });
 
 /** Studio's daemon as its freeze holds what stands there, with nothing behind its links or phone. */
 const studioFreeze = (s: Side, frozen = readMarker(s.paths)): HomeFreeze => new HomeFreeze({
@@ -66,7 +71,7 @@ function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object; f
       run: async (argv: string[], opts?: { input?: string }) => {
         const line = argv.join(' ');
         sent.push({ argv: line, input: opts?.input ?? '' });
-        if (line.includes("'facts'")) return { code: 0, signal: null, stdout: JSON.stringify(o.answersAs ?? STUDIO_FACTS), stderr: '' };
+        if (line.includes("'version'")) return { code: 0, signal: null, stdout: JSON.stringify(o.answersAs ?? versionOf(studio)), stderr: '' };
         delivered++;
         const { key, enrol } = JSON.parse(opts!.input!) as { key: string; enrol?: Enrolment };
         const told = !line.includes('not-adopted') ? { status: 'adopted' as const, enrol: enrol! } : { status: 'not-adopted' as const };
@@ -110,7 +115,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     const far = studioAt(w.studio);
     expect(await deliverOwed(w.mac.paths, far.open)).toBe('told');
     // the old home's own word first, then the driver's key on stdin alone
-    expect(far.sent[0]).toEqual({ argv: expect.stringContaining("'fleet' 'facts'"), input: '' });
+    expect(far.sent[0]).toEqual({ argv: expect.stringMatching(/ --json 'version'$/), input: '' });
     expect(far.sent.slice(1).map((c) => [c.argv.includes(keyOf(w)), JSON.parse(c.input).key === keyOf(w)])).toEqual([[false, true]]);
     expect(roles(w)).toEqual(['home', 'worker']);
     expect(fs.existsSync(w.mac.paths.homeDeliver)).toBe(false);
@@ -123,9 +128,9 @@ describe('the way back: the outcome is owed before the old home is marked', () =
   });
 
   it.each([
-    ['another machine', { ...STUDIO_FACTS, machineId: MAC }],
-    ['another fleet', { ...STUDIO_FACTS, fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }],
-    ['no fleet', { ...STUDIO_FACTS, fleetId: undefined }],
+    ['another machine', { ...STUDIO_VERSION, machineId: MAC }],
+    ['another fleet', { ...STUDIO_VERSION, fleetId: '0d9e8f7a-6b5c-4d3e-8f1a-2b3c4d5e6f70' }],
+    ['no fleet', { ...STUDIO_VERSION, fleetId: undefined }],
   ])('%s answering at the old home\'s ssh reads as no answer: its key does not go, the outcome stays owed, and it stays frozen', async (_who, answersAs) => {
     const w = await markedBack();
     await abortAdopt(w.mac.deps, BACK, ASKER_BACK);
@@ -153,7 +158,7 @@ describe('the way back: the outcome is owed before the old home is marked', () =
   it('a settle that exits 0 and answers nothing readable leaves the outcome owed', async () => {
     const w = await markedBack();
     await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);
-    const run = (argv: string[]) => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: argv.join(' ').includes("'facts'") ? JSON.stringify(STUDIO_FACTS) : 'a login banner' });
+    const run = (argv: string[]) => Promise.resolve({ code: 0, signal: null, stderr: '', stdout: argv.join(' ').includes("'version'") ? JSON.stringify(STUDIO_VERSION) : 'a login banner' });
     await expect(deliverOwed(w.mac.paths, (() => Promise.resolve({ run, close: () => Promise.resolve() })) as never)).rejects.toThrow();
     expect(readOwed(w.mac.paths)?.id).toBe(BACK);
   });

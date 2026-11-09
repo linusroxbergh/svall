@@ -21,11 +21,20 @@ async function farJson<T>(master: Pick<SshMaster, 'run'>, svallBase: string, fle
   try { return schema.parse(JSON.parse(r.stdout)); } catch { throw new Error(`${what} did not answer what it should`); }
 }
 
-// the far fleet in its own words on this connection: any machine or fleet but the one meant reads as no answer
-async function factsOf(master: Pick<SshMaster, 'run'>, at: { ssh: string; svallBase: string; fleetHome: string }, want: { machine: MachineId; fleetId: string }): Promise<HomeFacts> {
-  const there = await farJson(master, at.svallBase, at.fleetHome, ['fleet', 'facts'], HomeFacts, 'svall fleet facts');
+type Far = { ssh: string; svallBase: string; fleetHome: string };
+type Meant = { machine: MachineId; fleetId: string };
+
+// any machine or fleet but the one meant reads as no answer
+function meant(there: { machineId: string; fleetId?: string }, at: Far, want: Meant): void {
   if (there.machineId !== want.machine || there.fleetId !== want.fleetId) throw new Error(`${at.ssh} answers as another machine or fleet than this move's`);
-  return there;
+}
+
+const FarVersion = z.object({ machineId: z.string(), role: z.enum(['home', 'worker']), fleetId: z.string().optional(), worker: z.object({ fleetId: z.string() }).optional() });
+
+// who the far fleet says it is on this connection, by `svall version`, which reads only files: a worker's fleet is the one it serves
+async function identify(master: Pick<SshMaster, 'run'>, at: Far, want: Meant): Promise<void> {
+  const v = await farJson(master, at.svallBase, at.fleetHome, ['version'], FarVersion, 'svall version');
+  meant({ machineId: v.machineId, fleetId: v.role === 'worker' ? v.worker?.fleetId : v.fleetId }, at, want);
 }
 
 type Open = (destination: string) => Promise<Pick<SshMaster, 'run' | 'close'>>;
@@ -36,7 +45,7 @@ export async function askAcross(marker: HomeMoving, op: 'status' | 'abort', open
   if (!marker.ask) throw new Error('this home has no route to where the fleet went');
   const master = await open(marker.ask.ssh);
   try {
-    await factsOf(master, marker.ask, { machine: marker.to, fleetId: marker.fleetId });
+    await identify(master, marker.ask, { machine: marker.to, fleetId: marker.fleetId });
     const said = await farJson(master, marker.ask.svallBase, marker.ask.fleetHome, ['fleet', op, marker.id, '--asker', marker.from, '--fleet', marker.fleetId], AdoptAnswer, `svall fleet ${op}`);
     if (said.status === 'adopted' && !enrolFits(marker, said.enrol)) throw new Error(`${marker.ask.ssh} says another machine or fleet took this move`);
     return said;
@@ -52,7 +61,9 @@ export async function factsAcross(dial: { master(): SshMaster | undefined } | un
 
 /** Whether the old home still holds its mark of this move: only a marked home stays frozen, so only then may this machine go on and take the fleet. */
 export async function markedThere(master: Pick<SshMaster, 'run'>, owed: HomeDelivery): Promise<boolean> {
-  return (await factsOf(master, owed, { machine: owed.from, fleetId: owed.fleetId })).moving === owed.id;
+  const there = await farJson(master, owed.svallBase, owed.fleetHome, ['fleet', 'facts'], HomeFacts, 'svall fleet facts');
+  meant(there, owed, { machine: owed.from, fleetId: owed.fleetId });
+  return there.moving === owed.id;
 }
 
 const Settled = z.object({ status: z.string() });
@@ -72,7 +83,7 @@ export async function deliverOwed(paths: Paths, open: Open = openMaster): Promis
   if (said.status !== 'done' && key) {
     const master = await open(owed.ssh);
     try {
-      await factsOf(master, owed, { machine: owed.from, fleetId: owed.fleetId });
+      await identify(master, owed, { machine: owed.from, fleetId: owed.fleetId });
       // the key on stdin, as an argv is seen by every account there
       const input = JSON.stringify({ key, ...(said.status === 'adopted' && { enrol: said.enrol }) });
       const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, input });
