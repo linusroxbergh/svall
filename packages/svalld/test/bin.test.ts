@@ -224,6 +224,28 @@ runIf('svalld bin', () => {
     }
   }, 70_000);
 
+  it('starts once a journal it could not read is made readable again, as a mode change is a fix too', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const p = resolvePaths(home);
+    const log = () => (fs.existsSync(p.log) ? fs.readFileSync(p.log, 'utf8') : '');
+    fs.writeFileSync(p.legacyConfig, JSON.stringify({ shell: '/bin/sh', port: 0 }));
+    const journal = path.join(p.homeMoves, 'hm_abcdefghij.ndjson');
+    fs.mkdirSync(p.homeMoves, { recursive: true });
+    fs.writeFileSync(journal, `${JSON.stringify({ phase: 'staged', at: 1 })}\n`, { mode: 0o000 });
+    fs.mkdirSync(path.join(home, 'adopt-hm_abcdefghij'));
+    const daemon = spawn(tsx, [bin], { env: { ...process.env, SVALL_HOME: home }, stdio: 'ignore' });
+    try {
+      await waitFor(() => log().includes('svalld starts once it is fixed'), 30_000);
+      expect(log()).toContain(`${journal} cannot be read`);
+      fs.chmodSync(journal, 0o600);
+      await waitFor(() => fs.existsSync(p.port), 30_000);
+    } finally {
+      daemon.kill('SIGTERM');
+      if (daemon.exitCode === null) await once(daemon, 'exit');
+    }
+  }, 70_000);
+
   it("waits on a fleet's home a worker.json would flip when all it holds is an island with something on it", async () => {
     const home = makeHome();
     homes.push(home);

@@ -28,9 +28,10 @@ const report = (line: string, detail = line) => {
   if (process.stderr.isTTY) process.stderr.write(`${line}\n`);
 };
 
-// changes whenever a config file or state.json is written, the files a start can be refused for
-const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, paths.homeMoving, paths.homeMoves, path.join(configDir(), 'machine.json')].map((file) => {
-  try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
+const journals = (): string[] => { try { return fs.readdirSync(paths.homeMoves).map((n) => path.join(paths.homeMoves, n)); } catch { return []; } };
+// changes whenever a config file, state.json or a home move's journal is written or has its mode changed, the files a start can be refused for
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, paths.homeMoving, paths.homeMoves, ...journals(), path.join(configDir(), 'machine.json')].map((file) => {
+  try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`; } catch { return '-'; }
 }).join(' ');
 
 // the app would start an exiting daemon again every ten seconds while its window is open, so one refused for its config
