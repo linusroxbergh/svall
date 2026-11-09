@@ -109,6 +109,18 @@ describe('the sheet of a home move', () => {
     await waitFor(() => expect(screen.getByTestId('home-done').querySelector('img')?.getAttribute('src')).toBe(NEW.qr));
   });
 
+  it.each([['has yet to answer', () => new Promise(() => {})], ['fails', () => Promise.reject(new Error('no route'))]])('shows no QR code of the old home while the new home\'s phone link %s', async (_how, said) => {
+    const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
+    call.mockImplementation((method: string) => (method === 'mobile.get' ? said() : Promise.resolve(method === 'fleet.homeCheck' ? { ok: true, sheet: SHEET } : {})));
+    act(() => { store.getState().setMobile(OLD as never); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
+    await open();
+    fireEvent.click(screen.getByTestId('home-go'));
+    for (const s of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(s, 'ok');
+    await act(async () => { store.getState().hostDone('home', 0); await Promise.resolve(); });
+    expect(call).toHaveBeenCalledWith('mobile.get', {});
+    expect(screen.getByTestId('home-done').querySelector('img')).toBeNull();
+  });
+
   it('a failure outside its rows, at the mark or in the shell, says why, and closes', async () => {
     await open();
     fireEvent.click(screen.getByTestId('home-go'));
@@ -284,6 +296,7 @@ describe('a move nothing is driving', () => {
     fireEvent.click(screen.getByTestId('home-move-retry'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-retry', args: { name: '' } });
     act(() => { store.getState().hostDone('home-retry', 1); });
+    expect(screen.getByTestId('home-move-abort').dataset.tip).toBe('Works once the machine that holds the move says it was not taken');
     fireEvent.click(screen.getByTestId('home-move-abort'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-abort', args: { name: '' } });
   });
@@ -332,7 +345,7 @@ describe('a move nothing is driving', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('a move coming here with no mark to stand says the old home is still the home, and offers only to clear it', async () => {
+  it('a move coming here with no mark to stand says the old home is still the home, and offers only to clear it, with no word of an answer to wait for', async () => {
     online();
     act(() => { store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
     answer({ 'fleet.homeMove': { moving: { id: 'hm_abcdefghij', to: ME, name: 'this mac', asks: false, from: 'studio', unmarked: true } } });
@@ -341,6 +354,7 @@ describe('a move nothing is driving', () => {
     expect(said).toContain('A move of the fleet to this Mac has not taken hold, and studio is still the home.');
     expect(said).not.toContain('takes no changes');
     expect(screen.queryByTestId('home-move-retry')).toBeNull();
+    expect(screen.getByTestId('home-move-abort').dataset.tip).toBeUndefined();
     fireEvent.click(screen.getByTestId('home-move-abort'));
     expect(sent.at(-1)).toEqual({ type: 'host.start', op: 'home-abort', args: { name: '' } });
   });

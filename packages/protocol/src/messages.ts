@@ -418,7 +418,8 @@ export const methods = {
       z.object({ op: z.literal('join'), id: HomeMoveId, enrol: Enrolment, key: z.string() }),
       z.object({ op: z.literal('told'), id: HomeMoveId, key: z.string() }),
     ]),
-    // `phase`: where the machine holding the fleet last said the move stands, and `answer` what it said; `from`: the old home's name, on the machine the fleet comes to
+    // `phase`: where the machine holding the fleet last said the move stands, and `answer` what it said; `from`: the old home's name, on the machine the fleet comes to;
+    // `unmarked`: there, no mark key stands, so the old home holds no mark of it and is still the home; an abort only clears it
     result: z.object({ moving: z.object({ id: HomeMoveId, to: MachineId, name: z.string(), asks: z.boolean(), answer: z.string().optional(), phase: z.string().optional(), from: z.string().optional(), unmarked: z.boolean().optional() }).optional() }),
   },
   // the root fs.read and fs.write reach fleet.json through, in the editor of a window on a far home; a worker holds no fleet's config

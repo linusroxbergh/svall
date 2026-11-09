@@ -74,18 +74,20 @@ export function HomeSheet() {
   }, [check, interrupt]);
   // the focus stays in the sheet: on its ×, or on the sheet itself while a run hides that
   useEffect(() => { if (ask && !panel.current?.contains(document.activeElement)) (shut.current ?? panel.current)?.focus(); });
+  const run = started ? host : undefined;
+  const failed = run?.steps.find((s) => s.status === 'fail');
+  const ended = !!run && !run.running;
+  const done = ended && !failed && run.code === 0;
+  // the phone's link is the old home's until the new home answers for its own
+  useEffect(() => { if (done) app.store.getState().setMobile(undefined); }, [done]);
   if (!ask) return null;
   const { name, back } = ask;
   const shutUnlessRunning = () => { if (!(started && host?.running)) close(); };
   const go = () => { if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) setStarted(true); };
-  const run = started ? host : undefined;
   const refused = check && 'ok' in check && !check.ok ? check.refusal : undefined;
   const sheet = check && 'sheet' in check ? check.sheet : undefined;
   const crewSaid = mission && !mission.length ? [] : crew;
   const ready = !!mission && crewSaid?.length === 0;
-  const failed = run?.steps.find((s) => s.status === 'fail');
-  const ended = !!run && !run.running;
-  const done = ended && !failed && run.code === 0;
   const steps = STEPS(name, back);
   // what the run reports past its rows, as a failure at the mark or the shell's own, or mission control left away
   const more = run?.steps.filter((s) => (s.status === 'fail' || s.status === 'warn') && !steps.some(([k]) => k === s.step)).map((s): [string, string] => [s.step, stepLabel(s.step)]) ?? [];

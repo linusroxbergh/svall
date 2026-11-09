@@ -160,14 +160,14 @@ describe('the first copy of an agent setup onto a far home', () => {
       } finally { off(); }
     });
 
-    it('the × does nothing either', async () => {
+    it('offers no ×, and gives it back once a failed Copy has ended', async () => {
       const off = installKeyHandlers({ store, api: { call: there } as never, bridge });
       try {
-        const { land } = await running();
-        fireEvent.click(screen.getByTestId('seed-close'));
-        expect(screen.getByTestId('seed-sheet')).toBeTruthy();
-        land();
-        await waitFor(() => expect(screen.queryByTestId('seed-sheet')).toBeNull());
+        const { fail } = await running();
+        expect(screen.queryByTestId('seed-close')).toBeNull();
+        fail('this home holds an agent setup of its own');
+        fireEvent.click(await screen.findByTestId('seed-close'));
+        expect(store.getState().seedAsk).toBeUndefined();
       } finally { off(); }
     });
   });

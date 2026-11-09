@@ -138,7 +138,7 @@ to fix with its name, what it lacks and the one thing to do.
 | The socket is past what a Unix socket path holds | home | Use an account whose home is as many bytes shorter as it says; a Mac on either end holds 103 bytes, Linux 107. |
 | The socket holds a colon | home | Use a fleet home with none in its path. |
 | Another fleet reaches the machine over ssh | home | `svall host remove <name> --forget` first: it drops that route for every fleet here, as the machine's record is the account's, and leaves the machine as it is. |
-| A run without `--json` | home | Run it with `--json`: each run issues a new token, which only `worker enroll` should read. |
+| A run without `--json` | home | Run it with `--json`: each run issues a new token, which only `worker enroll` should read, but with `--keep-token` where the home holds one. |
 | The machine is the home itself | home | Give the worker's id: the home is no worker of its own fleet. |
 | The name is another machine's | home | Give another `--name`, or `svall host remove` the machine holding it. |
 | `--home-ssh` and `--home-socket` go together, or one is not what `worker.json` holds | worker | Give both, the destination an ssh destination and the socket the path `fleet enroll-worker` printed. |

@@ -67,7 +67,7 @@ export function HomeMoveBanner() {
         {failed && <small data-testid="home-move-failed"> {failedLine(failed, run?.op === 'home')}</small>}
       </span>
       {!moving.unmarked && <button className="btn sm" data-testid="home-move-retry" disabled={running} onClick={() => startHost('home-retry', { name: '' })}>{run?.op === 'home-retry' && running ? 'Finishing…' : 'Finish the move'}</button>}
-      <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip="Works once the machine that holds the move says it was not taken" onClick={() => startHost('home-abort', { name: '' })}>{run?.op === 'home-abort' && running ? 'Calling it off…' : 'Abort'}</button>
+      <button className="btn sm" data-testid="home-move-abort" disabled={running} data-tip={moving.unmarked ? undefined : 'Works once the machine that holds the move says it was not taken'} onClick={() => startHost('home-abort', { name: '' })}>{run?.op === 'home-abort' && running ? 'Calling it off…' : 'Abort'}</button>
     </div>
   );
 }

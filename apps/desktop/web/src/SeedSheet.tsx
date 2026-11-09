@@ -55,7 +55,7 @@ export function SeedSheet() {
   return (
     <div className="modal-back" data-testid="seed-sheet">
       <div className="modal dialog" ref={panel} tabIndex={-1} role="dialog" aria-label={`Copy your agent setup to ${home}`} onPointerDown={(e) => e.stopPropagation()} onKeyDown={dialogKeys(shutUnlessCopying)}>
-        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span><CloseX ref={shut} onClose={shutUnlessCopying} testid="seed-close" /></div>
+        <div className="kicker"><span data-testid="seed-title">{home} has no agent setup yet</span>{!busy && <CloseX ref={shut} onClose={close} testid="seed-close" />}</div>
         <div className="desc" data-testid="seed-says">
           Your agent setup lives on the fleet's home, and every worker takes it from there, this Mac included. Copy this Mac's to {home} first, or start {home} from nothing. Keys in config files stay on this Mac unless you tick them.
         </div>
