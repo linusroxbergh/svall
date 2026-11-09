@@ -1137,7 +1137,7 @@ describe('a crash at each boundary of the adopt', () => {
         expect(fleet).toBe(FLEET);
         return true;
       });
-      expect(files).toBe(15);
+      expect(files).toBe(16);
     }, 120_000);
 
     it('at every file: a start alone restores it', async () => {
