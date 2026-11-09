@@ -631,9 +631,10 @@ export function readMarker(p: Pick<Paths, 'homeMoving'>): HomeMoving | undefined
   try { return HomeMoving.parse(JSON.parse(text)); } catch (e) { throw new InvalidConfig(`invalid ${p.homeMoving}: ${(e as Error).message}`, { cause: e }); }
 }
 
-/** The marker, written once: by the mark alone, never over one that stands, and with no outcome in it. */
-export function createMarker(p: Pick<Paths, 'homeMoving'>, m: HomeMoving): void {
+/** The marker, written once: by the mark alone, never over one that stands, never for a move this home has written off, and with no outcome in it. */
+export function createMarker(p: Pick<Paths, 'homeMoving' | 'homeMoves'>, m: HomeMoving): void {
   if (m.enrol) throw new Error(`the mark of ${m.id} carries an outcome, which only the machine holding the fleet gives`);
+  if (lastPhase(p, m.id) === 'aborted') throw new Error(`move ${m.id} was called off here before its mark`);
   try { createDurable(p.homeMoving, m, { mode: 0o600 }); } catch (e) {
     if ((e as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`a marker stands here already, of ${readMarker(p)?.id ?? 'a move'}`);
     throw e;
@@ -707,11 +708,14 @@ export const writeEnrol = (p: Paths, id: string, enrol: Enrolment, key: string):
 });
 
 /**
- * Who says a move is over here. `refused`: this machine, about to take the fleet, turns the move down for good. The rest end the
+ * Who says a move is over here. `refused`: this machine turns the move down for good, about to take the fleet or told before its mark. The rest end the
  * marker of a home the fleet left: `asked`, the machine holding the fleet answered `not-adopted`; `told`, it delivered that to a
  * home with no route to ask it; `joined`, its enrolment is in place; `recorded`, a call of this function got as far as its journal line.
  */
 export type MoveEnd = { by: 'refused'; detail?: string } | { by: 'told'; key: string } | { by: 'asked' | 'joined' | 'recorded' };
+
+/** Why a home refuses a move it was told is off before its mark came. */
+export const TOLD_UNMARKED = 'told it was called off before its mark';
 
 /**
  * The only way a marker goes or an id is written off, so a thawed home always has an answer from the machine holding the fleet
@@ -747,12 +751,21 @@ const noDaemon = (e: unknown): boolean => /svalld is not running|ECONNREFUSED/.t
 
 /**
  * Told by the machine that took the fleet how a move ended, as often as it takes, with the key its driver holds; what has heard
- * already says `done`. The file is changed only with no daemon there to take it, and only on a marker that waits to be told; a
- * daemon that refuses leaves it.
+ * already says `done`, and a `not-adopted` that finds no marker refuses that move's mark for good. The file is changed only with no
+ * daemon there to take it, and a marker only one that waits to be told; a daemon that refuses leaves it.
  */
 export async function settleMove(p: Paths, id: HomeMoveId, told: Extract<AdoptAnswer, { status: 'adopted' | 'not-adopted' }>, key: string | undefined, d: Settling): Promise<{ status: string }> {
   const held = readMarker(p);
-  if (held?.id !== id) return { status: 'done' };
+  if (held?.id !== id) {
+    // told before its mark: that mark is refused for good, by the daemon that would take it, or on the file with none running
+    if (told.status === 'not-adopted' && key !== undefined) {
+      await d.thaw(key).catch((e: unknown) => {
+        if (e instanceof Crash || !noDaemon(e)) throw e;
+        endMove(p, id, { by: 'refused', detail: TOLD_UNMARKED });
+      });
+    }
+    return { status: 'done' };
+  }
   if (held.ask) throw new Error(`this home asks ${held.toName} how its move ended, and is told by no one; svall fleet home abort calls it off`);
   if (!keyFits(held, key)) throw new Error(`only ${held.toName} ends this move, with a key it alone holds; svall fleet home abort there calls it off`);
   const onFile = async (e: unknown, write: () => Promise<void>): Promise<boolean> => {

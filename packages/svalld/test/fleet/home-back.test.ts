@@ -1,21 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
-import { WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
+import { emptyState, WorkerFile, type Enrolment, type HomeManifest, type HomeMoveId, type HomeMoving, type MachineId } from '@svall/protocol';
 import { HomeCrash, type HomeFailpoint } from '../../src/failpoints.js';
 import { deliverOwed, markedThere, startDeliveries } from '../../src/fleet/home-far.js';
-import { homeCheck, homeFacts } from '../../src/fleet/home-freeze.js';
-import { abortAdopt, addEnrol, adoptDir, adoptStatus, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
+import { homeCheck, homeFacts, HomeFreeze } from '../../src/fleet/home-freeze.js';
+import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, driverKey, enter, installAdopt, journalLines, landed, markKey, moveInFlight, moveOutcome, oldHomeName, owe, packFleet, phoneOwed, readMarker, readOwed, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
+import { silentLogger } from '../../src/log.js';
 import { readConsent, setConsent } from '../../src/placement/mirror-consent.js';
 import { dropToken, issueToken } from '../../src/placement/workers.js';
 import { cleanHomes } from '../helpers.js';
-import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
+import { ADOPT_KEY, ADOPT_SHA, crashAt, crashesFired, disarmCrash, FLEET, ID, MAC, marker, movedOut, phoneAt, POINTS_OF, stateOf, STUDIO, world, type Side, putMarker } from './home-world.js';
 
 afterEach(() => { disarmCrash(); vi.useRealTimers(); cleanHomes(); });
 afterAll(() => { expect(POINTS_OF.back.filter((p) => !crashesFired().has(p))).toEqual([]); });
 
 const BACK = 'hm_backbackba' as HomeMoveId;
 const FAR = { id: BACK, ssh: 'ada@studio' as never, svallBase: '/home/ada/.local/share/svall' as never, fleetHome: '/home/ada/.svall' as never, from: STUDIO, fleetId: FLEET as never };
+const BACK_MANIFEST: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, adoptKeySha256: ADOPT_SHA };
+const backMark = (keySha256: string): HomeMoving => ({ id: BACK, fleetId: FLEET as never, from: STUDIO, fromName: 'studio', fromHome: '/home/ada' as never, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, at: 6, keySha256 });
 
 /**
  * The fleet moved out to studio and back from it as far as studio's mark: studio's daemon frozen under a marker with no way to ask, the
@@ -27,12 +30,11 @@ async function markedBack(before?: (w: Awaited<ReturnType<typeof movedOut>>) => 
 
   // as studio holds it at its freeze, with what it took of its worker's robots
   await w.studio.daemon.stop();
-  const manifest: HomeManifest = { id: BACK, fleetId: FLEET as never, from: STUDIO, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, record: { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' } as never, phone: { serving: false, logins: [] }, adoptKeySha256: ADOPT_SHA };
-  const packed = await packFleet(w.studio.paths, manifest);
+  const packed = await packFleet(w.studio.paths, BACK_MANIFEST);
   await w.studio.daemon.start();
   await stageAdopt(w.mac.deps, BACK, packed.sha256, packed.bytes);
   owe(w.mac.paths, FAR);
-  const mark: HomeMoving = { id: BACK, fleetId: FLEET as never, from: STUDIO, fromName: 'studio', fromHome: '/home/ada' as never, to: MAC, toName: 'mac', toHome: '/Users/ada' as never, at: 6, keySha256: markKey(w.mac.paths, BACK) };
+  const mark = backMark(markKey(w.mac.paths, BACK));
   await w.studio.daemon.stop();
   putMarker(w.studio.paths, mark);
   await w.studio.daemon.start();
@@ -45,8 +47,17 @@ const NOT_RUNNING = 'svalld is not running (no port): it runs while Svall is ope
 const ASKER_BACK = { machine: STUDIO, fleetId: FLEET };
 const STUDIO_FACTS = { machineId: STUDIO, fleetId: FLEET, release: 'r', protocol: 1, stateSchema: 1, clock: 1, fleetHome: '/home/ada/.svall', tailscale: {} };
 
-/** The old home's side of what a delivery runs there, on the real settle, over a master that fails as told. */
-function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object } = {}) {
+/** Studio's daemon as its freeze holds what stands there, with nothing behind its links or phone. */
+const studioFreeze = (s: Side, frozen = readMarker(s.paths)): HomeFreeze => new HomeFreeze({
+  paths: s.paths, me: STUDIO, log: silentLogger, store: { state: emptyState(), flush: () => Promise.resolve(true) },
+  links: { barrier: () => Promise.resolve(true), hold: () => {}, call: () => Promise.resolve({}) as never },
+  background: { pause: () => {}, resume: () => {} },
+  phone: { get: () => Promise.resolve(phoneAt(false)), set: (on) => Promise.resolve(phoneAt(on)) },
+  ask: () => Promise.reject(new Error('studio asks no one')), restart: () => {},
+}, frozen);
+
+/** The old home's side of what a delivery runs there, on the real settle and its daemon's told, over a master that fails as told. `freeze`: that daemon's, where a test holds it. */
+function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object; freeze?: HomeFreeze } = {}) {
   let delivered = 0;
   const sent: { argv: string; input: string }[] = [];
   const open = () => {
@@ -61,7 +72,11 @@ function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object } 
         const told = !line.includes('not-adopted') ? { status: 'adopted' as const, enrol: enrol! } : { status: 'not-adopted' as const };
         const said = await settleMove(studio.paths, BACK, told, key, {
           join: async (enrol) => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); addEnrol(studio.paths, BACK, enrol); await studio.daemon.stop(); },
-          thaw: async () => { if (!studio.daemon.role) throw new Error(NOT_RUNNING); fs.rmSync(studio.paths.homeMoving); await studio.daemon.start(); },
+          thaw: async (key) => {
+            if (!studio.daemon.role) throw new Error(NOT_RUNNING);
+            await (o.freeze ?? studioFreeze(studio)).told(BACK, key);
+            if (!o.freeze) await studio.daemon.start();
+          },
           start: () => studio.daemon.start(),
         });
         return { code: 0, signal: null, stdout: JSON.stringify(said), stderr: '' };
@@ -73,6 +88,7 @@ function studioAt(studio: Side, o: { down?: () => boolean; answersAs?: object } 
 }
 
 const keyOf = (w: { mac: Side }): string => driverKey(w.mac.paths, BACK)!;
+const TOKEN_BACK = 'c'.repeat(48);
 const roles = (w: { mac: Side; studio: Side }): unknown[] => [w.mac.daemon.role, w.studio.daemon.role];
 const homes = (w: { mac: Side; studio: Side }) => roles(w).filter((r) => r === 'home');
 
@@ -226,6 +242,49 @@ describe('the way back: the outcome is owed before the old home is marked', () =
   });
 });
 
+describe('an abort and a delivery while the mark is on its way', () => {
+  // studio frozen for the way back by its driver, not yet marked; the archive staged here, the outcome owed, and the move called off here
+  const unmarked = async () => {
+    const w = await movedOut();
+    await w.studio.daemon.stop();
+    const packed = await packFleet(w.studio.paths, BACK_MANIFEST);
+    await w.studio.daemon.start();
+    await stageAdopt(w.mac.deps, BACK, packed.sha256, packed.bytes);
+    owe(w.mac.paths, FAR);
+    const mark = backMark(markKey(w.mac.paths, BACK));
+    const driver = {};
+    const freeze = studioFreeze(w.studio, undefined);
+    await freeze.freeze(BACK, MAC, driver);
+    expect(await abortAdopt(w.mac.deps, BACK, ASKER_BACK)).toEqual({ status: 'not-adopted' });
+    return { w, mark, driver, freeze };
+  };
+  const journalOf = (s: Side) => fs.readFileSync(path.join(s.paths.homeMoves, `${BACK}.ndjson`));
+
+  it('studio\'s daemon told first refuses the mark that lands after, and a driver killed there leaves studio the home it was, owed nothing', async () => {
+    const { w, mark, driver, freeze } = await unmarked();
+    expect(await deliverOwed(w.mac.paths, studioAt(w.studio, { freeze }).open)).toBe('told');
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+    expect(journalLines(w.studio.paths, BACK)).toEqual([expect.objectContaining({ phase: 'aborted', detail: TOLD_UNMARKED })]);
+    const before = journalOf(w.studio);
+    expect(() => freeze.mark(mark)).toThrow(/called off here before its mark/);
+    expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
+    expect(journalOf(w.studio)).toEqual(before);
+    freeze.left(driver);
+    await vi.waitFor(() => expect(freeze.active).toBe(false));
+    expect(roles(w)).toEqual(['worker', 'home']);
+    expect(await deliverOwed(w.mac.paths, studioAt(w.studio, { freeze }).open)).toBe('nothing');
+  });
+
+  it('with studio\'s daemon down, the file holds the refusal, and the mark meets it', async () => {
+    const { w, mark } = await unmarked();
+    w.studio.daemon.kill();
+    expect(await deliverOwed(w.mac.paths, studioAt(w.studio).open)).toBe('told');
+    expect(journalLines(w.studio.paths, BACK)).toEqual([expect.objectContaining({ phase: 'aborted', detail: TOLD_UNMARKED })]);
+    expect(() => createMarker(w.studio.paths, mark)).toThrow(/called off here before its mark/);
+    expect(fs.existsSync(w.studio.paths.homeMoving)).toBe(false);
+  });
+});
+
 const INSTALL: HomeFailpoint[] = ['adopt.stopped', 'adopt.installing', 'adopt.file', 'adopt.dropped', 'adopt.registry', 'adopt.installed', 'adopt.started'];
 
 describe('a kill on this machine at each boundary of the way back, with studio frozen', () => {
@@ -366,11 +425,12 @@ describe('a kill on this machine at each boundary of the way back, with studio f
     });
   });
 
-  it('a settle of a move this home holds no marker of says it has heard, and changes nothing', async () => {
+  it('an adopted of a move this home holds no marker of says it has heard, and changes nothing', async () => {
     const w = await markedBack();
     fs.rmSync(w.studio.paths.homeMoving);
-    const told = await settleMove(w.studio.paths, BACK, { status: 'not-adopted' }, keyOf(w), { join: () => { throw new Error('joined'); }, thaw: () => { throw new Error('thawed'); }, start: () => { throw new Error('started'); } });
+    const told = await settleMove(w.studio.paths, BACK, { status: 'adopted', enrol: w.enrolment(TOKEN_BACK, BACK_MANIFEST) }, keyOf(w), { join: () => { throw new Error('joined'); }, thaw: () => { throw new Error('thawed'); }, start: () => { throw new Error('started'); } });
     expect(told).toEqual({ status: 'done' });
+    expect(journalLines(w.studio.paths, BACK)).toEqual([]);
   });
 
   it('a thaw with studio\'s daemon down leaves it a home that takes writes', async () => {

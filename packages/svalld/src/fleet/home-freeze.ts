@@ -8,7 +8,7 @@ import { realDeps, resolveTailscale, tailnetSelf, type Mobile, type MobileDeps }
 import { expandHome, type Paths } from '../paths.js';
 import { classification } from '../api/classify.js';
 import { releaseVersion } from '../release.js';
-import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone } from './home-move.js';
+import { addEnrol, carriedKb, createMarker, endMove, keyFits, MAX_CARRIED_KB, moveInFlight, phoneOwed, readMarker, servedPhone, TOLD_UNMARKED } from './home-move.js';
 import { workerIds } from '../placement/workers.js';
 
 // what still answers on a frozen home: a person's terminals go on, as do the robots
@@ -182,9 +182,9 @@ export class HomeFreeze {
     await this.release();
   }
 
-  /** The outcome `not-adopted`, delivered by the machine holding the fleet to a home with no route to ask it. */
+  /** The outcome `not-adopted`, delivered by the machine holding the fleet to a home with no route to ask it; before the mark, it refuses that mark for good. */
   async told(id: HomeMoveId, key: string): Promise<void> {
-    if (this.marker?.id !== id) throw new ApiError('not_frozen', `this home holds no marker of ${id}`);
+    if (this.marker?.id !== id) return endMove(this.d.paths, id, { by: 'refused', detail: TOLD_UNMARKED });
     if (this.marker.ask) throw new ApiError('frozen', 'this home asks where the fleet went, and is told by no one');
     await this.release({ by: 'told', key });
   }

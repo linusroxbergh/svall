@@ -8,7 +8,7 @@ import { dispatch, type Ctx } from '../../src/api/methods.js';
 import { moveRobot } from '../../src/arrange.js';
 import { configRewrites, homeCheck, homeFacts, HomeFreeze, type FreezeDeps } from '../../src/fleet/home-freeze.js';
 import { phoneWithReason } from '../../src/fleet/home-far.js';
-import { addEnrol, createMarker, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
+import { addEnrol, createMarker, journalLines, MAX_ARCHIVE, MAX_CARRIED_KB, phoneOwed, readMarker, servedPhone } from '../../src/fleet/home-move.js';
 import { realStages } from '../../src/durable.js';
 import { silentLogger } from '../../src/log.js';
 import { mobileControl } from '../../src/mobile.js';
@@ -259,6 +259,17 @@ describe('a frozen home', () => {
     expect(freeze.active).toBe(true);
   });
 
+  it('told before its mark, it refuses that mark for good, and its driver\'s thaw ends the freeze', async () => {
+    const { freeze, paths } = setup();
+    await freeze.freeze(ID, STUDIO, holder);
+    await freeze.told(ID, KEY);
+    expect(() => freeze.mark(marker())).toThrow(/called off here before its mark/);
+    expect(fs.existsSync(paths.homeMoving)).toBe(false);
+    expect(freeze.active).toBe(true);
+    await freeze.thaw(ID);
+    expect(freeze.active).toBe(false);
+  });
+
   it('marks only a freeze that has ended, as only then is there a cut', async () => {
     let open!: (ok: boolean) => void;
     const { freeze, paths } = setup({ barrier: new Promise<boolean>((r) => { open = r; }) });
@@ -307,10 +318,11 @@ describe('a frozen home', () => {
       expect(log).not.toContain('restart');
     });
 
-    it('each outcome by id: told, join, mark and thaw of another move change nothing', async () => {
+    it('each outcome by id: told, join, mark and thaw of another move leave this one as it stands, a told refusing only that move', async () => {
       const { ask: _ask, ...bare } = marker();
       const { freeze, paths, log } = setup({ frozen: bare });
-      await expect(freeze.told(OTHER, KEY)).rejects.toThrow(/no marker of/);
+      await freeze.told(OTHER, KEY);
+      expect(journalLines(paths, OTHER).map((l) => l.phase)).toEqual(['aborted']);
       expect(() => freeze.join(OTHER, { worker: {} } as never, KEY)).toThrow(/no marker of/);
       expect(() => freeze.mark({ ...marker(), id: OTHER })).toThrow(/not frozen/);
       await freeze.thaw(OTHER);

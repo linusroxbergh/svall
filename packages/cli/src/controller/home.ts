@@ -587,6 +587,8 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
         await home?.call('fleet.thaw', { id }).catch(() => undefined);
         await abortAdopt(adoption, id, oldHome(delivery)).catch(() => undefined);
         driverJournal(paths, id, 'aborted');
+        // a mark that landed with its answer lost ends only by this debt, which a delivery in the mark's flight may have cleared
+        if (driverKey(paths, id)) owe(paths, delivery);
         if (home) await offerCrew(run, home).catch(() => undefined);
       }
       throw e;

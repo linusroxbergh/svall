@@ -614,6 +614,14 @@ describe('fleet home set local', () => {
     expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay on studio, 1 here; defaultCwd becomes ~/code, which this machine does not have yet');
   }, 30_000);
 
+  it('a check that refuses freezes nothing there and owes nothing, as no mark was ever sent', async () => {
+    const { w, deps, far } = await workerHere(undefined, {}, { checkRefused: true });
+    expect((await moveHomeBack(deps)).result).toBe('actions');
+    expect(failed()?.step).toBe('check');
+    expect(far.called).toEqual([]);
+    expect(readOwed(w.mac.paths)).toBeUndefined();
+  });
+
   it('an export an ssh answer cut short stops at the copy, in words', async () => {
     const { deps, master } = await workerHere();
     const run = master.run.bind(master);
@@ -694,6 +702,30 @@ describe('fleet home set local', () => {
     } as unknown as Client);
     await moveHomeBack(deps);
     expect(failed()?.step).toBe('adopt');
+    expect(readOwed(w.mac.paths)?.id).toBe(lost);
+    expect(await deliverOwed(w.mac.paths, open)).toBe('told');
+    expect(settled).toEqual(['not-adopted', 'not-adopted']);
+    expect(w.mac.daemon.role).toBe('worker');
+  }, 30_000);
+
+  it('an abort and a delivery while the mark is on its way, the mark landing with its answer lost: the outcome is owed again, and the old home hears', async () => {
+    const { w, deps, far, settled, master } = await workerHere();
+    const open = () => Promise.resolve(master);
+    let lost: string | undefined;
+    deps.farClient = () => Promise.resolve({
+      call: async (m: never, p: Called['params']) => {
+        if (p.op !== 'mark') return far.client.call(m, p as never);
+        const { id } = p.marker!;
+        expect((await abortAdopt({ paths: w.mac.paths, me: MAC, daemon: w.mac.daemon }, id, { machine: STUDIO, fleetId: FLEET })).status).toBe('not-adopted');
+        expect(await deliverOwed(w.mac.paths, open)).toBe('told');
+        lost = id;
+        await far.client.call(m, p as never);
+        throw new Error('svalld closed the connection (1006)');
+      },
+      close: () => {},
+    } as unknown as Client);
+    await moveHomeBack(deps);
+    expect(failed()?.step).toBe('mark');
     expect(readOwed(w.mac.paths)?.id).toBe(lost);
     expect(await deliverOwed(w.mac.paths, open)).toBe('told');
     expect(settled).toEqual(['not-adopted', 'not-adopted']);

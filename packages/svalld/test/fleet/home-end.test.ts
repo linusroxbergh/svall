@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkerFile, type AdoptAnswer, type HomeMoveId, type HomeMoving } from '@svall/protocol';
 import { askAcross } from '../../src/fleet/home-far.js';
 import { HomeFreeze } from '../../src/fleet/home-freeze.js';
-import { abortAdopt, addEnrol, adoptDir, adoptStatus, endMove, enter, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, writeEnrol } from '../../src/fleet/home-move.js';
+import { abortAdopt, addEnrol, adoptDir, adoptStatus, createMarker, endMove, enter, homeGate, installAdopt, journalLines, packFleet, readMarker, settleMove, stageAdopt, TOLD_UNMARKED, writeEnrol } from '../../src/fleet/home-move.js';
 import { daemonLock } from '../../src/kernel-lock.js';
 import { resolvePaths } from '../../src/paths.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -368,6 +368,24 @@ describe('the one way a move ends', () => {
     expect(readMarker(paths)?.id).toBe(ID);
   });
 
+  it('told a move is off before its mark: the mark is refused with the home\'s bytes as they were, and the record frees no marker another hand put there', async () => {
+    const paths = resolvePaths(makeHome());
+    const none = () => Promise.reject(new Error('svalld is not running'));
+    const d = { join: none, thaw: none, start: none };
+    expect(await settleMove(paths, ID, { status: 'not-adopted' }, KEY, d)).toEqual({ status: 'done' });
+    expect(journalLines(paths, ID)).toEqual([expect.objectContaining({ phase: 'aborted', detail: TOLD_UNMARKED })]);
+    const bytes = () => (fs.readdirSync(paths.home, { recursive: true }) as string[]).sort().map((f) => [f, fs.statSync(path.join(paths.home, f)).isFile() ? fs.readFileSync(path.join(paths.home, f), 'utf8') : '']);
+    const before = bytes();
+    expect(() => createMarker(paths, told)).toThrow(/called off here before its mark/);
+    expect(bytes()).toEqual(before);
+    putMarker(paths, told);
+    const held = fs.readFileSync(paths.homeMoving);
+    expect(homeGate(paths).frozen?.id).toBe(ID);
+    expect(() => endMove(paths, ID, { by: 'recorded' })).toThrow(/not ended by recorded/);
+    await expect(settleMove(paths, ID, { status: 'not-adopted' }, 'typed by hand', d)).rejects.toThrow(/only studio ends this move/);
+    expect(fs.readFileSync(paths.homeMoving)).toEqual(held);
+  });
+
   it('a crash between the record and the marker: the next start ends what the record says, and only that', () => {
     const paths = marked();
     endMove(paths, ID, { by: 'asked' });
@@ -469,12 +487,16 @@ describe('the one way a move ends', () => {
     [MOVE, /\benter\(p, id, SERVED\b/, 1], [MOVE, /^\s*enter\(p, driverOf\(id\), use, JSON\.stringify\(\{ key \}\)\);$/, 1],
     [MOVE, /^\s*for \(const folder of \[p\.home, path\.join\(p\.home, 'journal'\), |^\s*fs\.mkdirSync\(path\.join\(p\.home, 'journal'\), \{ recursive: true \}\);$/, 2],
     // the marker's two writers, and the outcome's write on the disk with the driver's key
-    [MOVE, /^export function (createMarker|addEnrol)\(p: Pick<Paths, 'homeMoving'>, /, 2], [MOVE, /createDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*writeDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*addEnrol\(p, id, enrol\);$/, 1],
+    [MOVE, /^export function (createMarker|addEnrol)\(p: Pick<Paths, 'homeMoving'( \| 'homeMoves')?>, /, 2], [MOVE, /createDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*writeDurable\(p\.homeMoving, m, /, 1], [MOVE, /^\s*addEnrol\(p, id, enrol\);$/, 1],
     // endMove's own body
     [MOVE, /^\s*enter\(p, id, 'aborted', end\.detail\);$|^\s*if \(end\.by === 'asked' \|\| end\.by === 'told'\) enter\(p, id, 'released', end\.by\);$|^\s*if \(end\.by === 'joined'\) enter\(p, id, 'done'\);$/, 3],
     [MOVE, /^\s*fs\.rmSync\(p\.homeMoving, \{ force: true \}\);$/, 1],
     // its callers: the ends that are no end of a marker, and those that end one
-    [MOVE, /endMove\(p, other, \{ by: 'refused', detail: 'a later move came' \}\);$|^\s*endMove\(p, id, \{ by: 'refused'/, 3],
+    [MOVE, /endMove\(p, other, \{ by: 'refused', detail: 'a later move came' \}\);$|^\s*endMove\(p, id, \{ by: 'refused'(?!, detail: TOLD_UNMARKED)/, 3],
+    // the old home's record of a move told off before its mark, on the file and in its daemon, and the mark that record refuses
+    [MOVE, /^\s*endMove\(p, id, \{ by: 'refused', detail: TOLD_UNMARKED \}\);$/, 1],
+    [FREEZE, /^\s*if \(this\.marker\?\.id !== id\) return endMove\(this\.d\.paths, id, \{ by: 'refused', detail: TOLD_UNMARKED \}\);$/, 1],
+    [MOVE, /^\s*if \(lastPhase\(p, m\.id\) === 'aborted'\) throw new Error\(/, 1],
     [MOVE, /endMove\(p, id, \{ by: 'told', key \}\)/, 1], [MOVE, /^\s*endMove\(p, m\.id, \{ by: 'joined' \}\);$/, 1], [MOVE, /^\s*endMove\(p, marker\.id, \{ by: 'recorded' \}\);$/, 1],
     // the machine that took the fleet, once the old home linked with the move's token: it holds no marker of that id
     [MOVE, /^\s*if \(at === 'adopted'\) enter\(p, id, 'done'\);$/, 1],
@@ -530,6 +552,8 @@ describe('the one way a move ends', () => {
     ['packages/svalld/src/fleet/home-move.ts', '  fs.rmSync(p.homeMoving, { force: true });'],
     ['packages/svalld/src/fleet/home-freeze.ts', "    if (a.status === 'not-adopted') return this.release({ by: 'asked' });"],
     ['packages/svalld/src/fleet/home-freeze.ts', "    if (a.status === 'adopted') return this.enrolled(held, a.enrol);"],
+    ['packages/svalld/src/fleet/home-freeze.ts', "    if (this.marker?.id !== id) return endMove(this.d.paths, id, { by: 'refused', detail: TOLD_UNMARKED });"],
+    ['packages/svalld/src/fleet/home-move.ts', "  if (lastPhase(p, m.id) === 'aborted') throw new Error(`move ${m.id} was called off here before its mark`);"],
   ])('a second line in %s spelt as a named one fails it: %s', (file, line) => {
     const files = tree();
     expect(miscounted(files)).toEqual([]);
