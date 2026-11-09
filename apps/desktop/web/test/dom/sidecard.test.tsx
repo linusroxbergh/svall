@@ -589,6 +589,16 @@ test('Check of a far worker this Mac names as it names its home goes by the work
   expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: VAULT } }]);
 });
 
+test('Check of a worker this Mac lists as its own goes by its name alone', () => {
+  withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
+  act(() => store.getState().setMachines([{ id: VAULT, name: 'linus-vault', ssh: 'ada@vault', platform: 'linux-x64' }]));
+  render(<Side />);
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('side-away-run'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: 'linus-vault' } }]);
+  expect(store.getState().host?.args).toEqual({ name: 'linus-vault' });
+});
+
 test('a card mounted for a robot the fleet does not list yet shows it once it appears', () => {
   const f = fleet();
   f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0 } };

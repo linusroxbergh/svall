@@ -53,7 +53,7 @@ const PHASES = [
   { phase: 'prerequisites', label: 'What it needs', steps: ['os', 'home', 'tools', 'space', 'linger', 'git'] },
   {
     phase: 'svall', label: 'Svall there', steps: [
-      'release', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
+      'release', 'relay', 'upload', 'install', 'tmux', 'uninstall', 'keys', 'service', 'identity', 'enrol', 'systemd', 'worker',
       'daemon env', 'daemon node', 'daemon path', 'svalld', 'node', 'path', 'hooks', 'codex hooks', 'codex sandbox', 'opencode plugin', 'hook receiver',
       'config', 'machine id', 'doctor', 'svall',
     ],

@@ -244,6 +244,17 @@ describe('the attended checklist', () => {
     ]);
   });
 
+  it("puts a far home's copy of the archive between the release and the upload, where it ran", () => {
+    const relayed = [step('name', 'ok'), step('ssh', 'ok'), step('linger', 'warn'), step('release', 'start'), step('relay', 'start'), step('relay', 'ok'),
+                     step('release', 'start'), step('release', 'ok'), step('upload', 'ok'), step('install', 'ok')];
+    const run = relayed.reduce((r, e) => applyStep(r, e), beginRun('add', { name: 'box' }));
+    expect(groupSteps(run.steps).map((g) => [g.label, g.rows.map((r) => r.step)])).toEqual([
+      ['Reaching it', ['name', 'ssh']],
+      ['What it needs', ['linger']],
+      ['Svall there', ['release', 'relay', 'upload', 'install']],
+    ]);
+  });
+
   it('shows a step it does not know rather than dropping it', () => {
     expect(groupSteps([step('weather', 'ok')])).toEqual([{ phase: 'other', label: 'Checks', rows: [step('weather', 'ok')] }]);
   });

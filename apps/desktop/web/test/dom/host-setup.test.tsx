@@ -708,6 +708,22 @@ describe('a far worker this Mac\'s registry names as it names its home', () => {
     expect(started()).toMatchObject({ op: 'upgrade', args: { name: BOX } });
   });
 
+  test.each([
+    ["a row's Set up", 'host-worker', 'upgrade', [{ step: 'worker', status: 'fail', detail: "does not run this fleet's robots yet: svall host upgrade box sets it up" }]],
+    ["a row's Repair", 'host-repair-hooks', 'upgrade', [
+      { step: 'release', status: 'ok', detail: '0.21.0, as on this Mac' },
+      { step: 'hooks', status: 'fail', detail: 'not installed in /home/ada/.claude/settings.json: svall setup', run: 'svall setup' },
+    ]],
+    ["the check after a row's Update", 'host-update-versions', 'doctor', [
+      { step: 'versions', status: 'warn', detail: 'claude 1.2.3 there, behind 1.2.4 on this Mac', action: 'ssh ada@box, then claude update', run: 'claude update' },
+    ]],
+  ] as const)('%s goes by that id', async (_what, button, op, steps) => {
+    ran('doctor', [...steps]);
+    render(<HostSetup />);
+    await act(async () => { fireEvent.click(screen.getByTestId(button)); });
+    expect(started()).toMatchObject({ op, args: { name: BOX } });
+  });
+
   test('a Rollback after a failed upgrade goes by that id', () => {
     ran('upgrade', [{ step: 'rollback', status: 'fail', detail: 'the release before did not start' }]);
     render(<HostSetup />);
