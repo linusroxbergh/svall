@@ -97,7 +97,7 @@ describe('the check of a move with another worker', () => {
   const facts = (machineId: MachineId): HomeFacts => ({ machineId, role: 'home', release: '1.2.3', protocol: 1, stateSchema: 1, clock: 1, home: '/home/ada', svallBase: '/s', fleetHome: '/f', tailscale: {}, workers: [W] } as never);
   const state = { robots: {}, islands: {}, machines: { [W]: { name: 'box', reachable: true, since: 0 } } } as unknown as FleetState;
   const check = (o: { reach?: Record<string, unknown> | null; linked?: boolean; back?: string; farSsh?: string }) => homeCheck({
-    state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: true, synced: true, rewrites: [], fromIsHome: true, reach: (o.reach === undefined ? {} : o.reach) as never, linkedTo: () => o.linked ?? true,
+    state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: true, synced: true, fromIsHome: true, reach: (o.reach === undefined ? {} : o.reach) as never, linkedTo: () => o.linked ?? true,
     ...(o.back && { back: o.back }), ...(o.farSsh && { farSsh: o.farSsh }),
   });
 
@@ -133,7 +133,7 @@ describe('the check of a move with another worker', () => {
   });
 
   it('a machine not linked is what refuses, and says nothing of a worker it was not asked about', () => {
-    const r = homeCheck({ state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: false, synced: true, rewrites: [], fromIsHome: true, reach: null });
+    const r = homeCheck({ state, from: facts(ME), to: facts(OTHER), toName: 'studio', linked: false, synced: true, fromIsHome: true, reach: null });
     expect(r).toMatchObject({ ok: false, refusal: { reason: 'studio is not reachable' } });
     expect(JSON.stringify(r)).not.toContain('box');
   });

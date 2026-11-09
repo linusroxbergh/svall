@@ -980,7 +980,7 @@ describe('the check', () => {
   it('refuses a second worker of either kind, by decision, naming how to bring it along', () => {
     const r = homeCheck(input({ from: facts({ workers: [STUDIO, '99999999-7777-8888-9999-aaaaaaaaaaaa'] }) }));
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.refusal.action).toMatch(/svall fleet join from it/);
+    if (!r.ok) expect(r.refusal.action).toMatch(/svall fleet join on it if it is a Mac/);
   });
 
   it('gives a second worker only the way back its platform takes, and both where this machine has no record of it', () => {
