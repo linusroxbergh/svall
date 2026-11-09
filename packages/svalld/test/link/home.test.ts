@@ -128,7 +128,7 @@ describe('a worker that dials in', () => {
     expect(w.home.state.machines?.[W]).toMatchObject({ name: 'mac', reachable: true });
   });
 
-  it('a barrier waits out an apply under way, past its time, and answers what came of it', async () => {
+  it('a barrier answers in its time while an apply is under way, saying so, and what came of it once that ends', async () => {
     let finish!: () => void;
     const applying = new Promise<void>((r) => { finish = r; });
     const w = await world({ onEvent: () => applying });
@@ -137,13 +137,11 @@ describe('a worker that dials in', () => {
     await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
     w.worker.journal('mutation', { nothing: true });
     await until(() => expect(w.links.for(W)?.outboxDrained()).toBe(false));
-    let said: boolean | undefined;
-    const asked = w.links.barrier(W, 50).then((b) => { said = b; });
-    await new Promise((r) => setTimeout(r, 250));
-    expect(said).toBeUndefined();
+    const at = Date.now();
+    expect(await w.links.barrier(W, 50)).toBe('applying');
+    expect(Date.now() - at).toBeLessThan(1000);
     finish();
-    await asked;
-    expect(said).toBe(true);
+    expect(await w.links.barrier(W, 2000)).toBe(true);
   });
 
   it('while the fleet moves, leaves a change in the worker\'s outbox unacknowledged, and applies it once the move is off; a report goes on', async () => {

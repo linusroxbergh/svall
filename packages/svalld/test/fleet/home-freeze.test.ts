@@ -23,7 +23,7 @@ import { FLEET, ID, KEY, MAC, marker, phoneAt, robot, STUDIO, putMarker } from '
 
 afterEach(cleanHomes);
 
-function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barrier?: boolean | Promise<boolean>; serving?: boolean; flush?: boolean; phone?: Promise<MobileStatus>; set?: (on: boolean) => MobileStatus; link?: () => Promise<unknown> } = {}) {
+function setup(o: { frozen?: boolean | HomeMoving; answers?: AdoptAnswer[]; barrier?: boolean | 'applying' | Promise<boolean>; serving?: boolean; flush?: boolean; phone?: Promise<MobileStatus>; set?: (on: boolean) => MobileStatus; link?: () => Promise<unknown> } = {}) {
   const paths = resolvePaths(makeHome());
   const log: string[] = [];
   const answers = o.answers ?? [];
@@ -72,12 +72,21 @@ describe('a frozen home', () => {
 
   it.each([
     ['a worker that does not drain', { barrier: false }, /catching up/],
+    ['a change a worker sent still being applied', { barrier: 'applying' }, /still being applied/],
     ['a flush that fails', { flush: false }, /state\.json/],
   ] as const)('%s thaws what it froze and says why', async (_what, o, said) => {
     const { freeze, log } = setup(o);
     await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toThrow(said);
     expect(freeze.active).toBe(false);
     expect(log).toContain('resume');
+  });
+
+  it('a change a worker sent still being applied goes no further than the barrier: nothing is held, and the home thaws', async () => {
+    const { freeze, log } = setup({ serving: true, barrier: 'applying' });
+    await expect(freeze.freeze(ID, STUDIO, holder)).rejects.toMatchObject({ code: 'busy' });
+    expect(log).not.toContain('hold true');
+    expect(log).not.toContain('phone false');
+    expect(freeze.active).toBe(false);
   });
 
   it('a phone that cannot be read freezes nothing, as what served must not be taken for off', async () => {

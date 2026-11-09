@@ -32,7 +32,7 @@ const markerOf = (p: Paths): HomeMoving | undefined => { try { return readMarker
 export type FreezeDeps = {
   paths: Paths; store: { state: FleetState; flush(): Promise<boolean> }; me: MachineId; log: Pick<Logger, 'error' | 'info'>;
   /** the link to `machine`, with what a barrier needs of it */
-  links: { barrier(machine: MachineId, ms: number): Promise<boolean>; hold(on: boolean): void; call<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
+  links: { barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'>; hold(on: boolean): void; call<T>(machine: MachineId, method: string, params: unknown): Promise<T> };
   /** the scribe, the pusher, the relay and the retro, which only a home runs and which a frozen one holds still */
   background: { pause(): void; resume(): void };
   phone: Mobile;
@@ -145,7 +145,9 @@ export class HomeFreeze {
       await this.d.links.call(to, 'home.freeze', { id });
       still();
       // the worker starts nothing new, and what it sent is in; from here its metadata stays in its outbox
-      if (!await this.d.links.barrier(to, DRAIN_MS)) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
+      const caught = await this.d.links.barrier(to, DRAIN_MS);
+      if (caught === 'applying') throw new ApiError('busy', 'a change a worker sent is still being applied; try again in a moment');
+      if (!caught) throw new ApiError('busy', 'a worker is still catching up; try again in a moment');
       still();
       this.d.links.hold(true);
       if (!await this.d.store.flush()) throw new ApiError('not_written', 'state.json was not written');

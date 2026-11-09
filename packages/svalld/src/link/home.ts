@@ -223,10 +223,13 @@ export class WorkerLink {
     return this.synced && this.last === this.acked;
   }
 
-  /** Whether all the worker has sent is applied and acknowledged, within `ms`; what a stream delivers after this is the barrier's to hold. */
-  async barrier(ms: number): Promise<boolean> {
+  /** Whether all the worker has sent is applied and acknowledged, within `ms`, or `applying` while a change it sent still is then; what a stream delivers after this is the barrier's to hold. */
+  async barrier(ms: number): Promise<boolean | 'applying'> {
     for (const until = Date.now() + ms; Date.now() < until; await new Promise((r) => setTimeout(r, 50))) {
-      await this.applying;
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), until - Date.now()); });
+      const applied = await Promise.race([this.applying.then(() => 'applied' as const), late]).finally(() => clearTimeout(timer));
+      if (applied === 'late') return 'applying';
       if (this.outboxDrained()) return true;
     }
     return false;
@@ -611,7 +614,7 @@ export class HomeLinks {
   }
 
   /** Whether all `machine` has sent is in, as the first thing a move of the fleet asks; no link, none is owed. */
-  barrier(machine: MachineId, ms: number): Promise<boolean> {
+  barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'> {
     return this.links.get(machine)?.barrier(ms) ?? Promise.resolve(true);
   }
 
