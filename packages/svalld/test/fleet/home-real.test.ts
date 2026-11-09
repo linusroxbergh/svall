@@ -157,7 +157,9 @@ runIf('a home move through real starts', () => {
       const W = '77777777-0000-4000-8000-000000000000' as MachineId;
       const MAC2 = '88888888-0000-4000-8000-000000000000' as MachineId;
       putRecord(W, { name: 'reach-box', ssh: 'ada@reach-box', platform: 'linux', arch: 'arm64', home: '/home/ada', svallBase: '/home/ada/.local/share/svall' });
-      onTestFinished(() => { putRecord(W, undefined); });
+      // the check counts only the workers the registry lists
+      putRecord(MAC2, { name: 'reach-mac', platform: 'darwin', arch: 'arm64', home: '/Users/ada', svallBase: '/Users/ada/.local/share/svall', dial: 'worker' });
+      onTestFinished(() => { putRecord(W, undefined); putRecord(MAC2, undefined); });
       const paths = fleetHome();
       const d = await firstStart(paths);
       issueToken(paths, W);
