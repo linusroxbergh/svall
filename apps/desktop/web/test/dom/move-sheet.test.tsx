@@ -345,6 +345,18 @@ describe('on a window whose home is elsewhere', () => {
     await open(W);
     expect(screen.getByTestId('move-action').textContent).toBe('Upgrade w1');
   });
+
+  test.each([['by its id on a far row', true], ['by its name on a row of this Mac\'s', false]] as const)('the sheet\'s Upgrade goes %s, as this Mac may name its home the same', async (_by, far) => {
+    const W = 'cccccccc-0000-4000-8000-000000000000' as MachineId;
+    const f = store.getState().fleet;
+    store.getState().setFleet({ ...f, machines: { [W]: { name: 'box', reachable: true, since: 0 } } });
+    store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true });
+    store.getState().setMachines([{ id: STUDIO, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }, { id: W, name: 'box', ssh: 'ada@box', platform: 'linux-x64', ...(far && { far: true }) }] as never);
+    refuse(UPGRADE_ACTION);
+    await open(W);
+    fireEvent.click(screen.getByTestId('move-action'));
+    expect(sent.filter((m) => m.type === 'host.start')).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: far ? W : 'box' } }]);
+  });
 });
 
 test('the focus stays in the sheet while a move runs: on its × once Move goes, then on the button the move ends with', async () => {

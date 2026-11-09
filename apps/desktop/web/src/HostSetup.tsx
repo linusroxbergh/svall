@@ -376,7 +376,7 @@ export function HostSetup() {
   const ended = () => {
     if (!terminal?.fromPanel) { app.store.getState().toggleHost(false); return; }
     app.store.getState().closeHostTerminal();
-    if (known && machine && !running) startHost('doctor', { name: machine });
+    if (known && machine && !running) startHost('doctor', { name: machine, ...(shown && farId(shown.args)) });
   };
   const close = () => {
     if (term) ended();
@@ -393,7 +393,7 @@ export function HostSetup() {
         <div className="host-body">
           {term ? <MachineTerminal name={machine} on={homeSsh ? homeLabel : undefined} ssh={homeSsh ?? ssh} run={typed} forward={forward} back={!!terminal.fromPanel && known} onEnd={ended} /> : (
             <>
-              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions name={machine} home={isHome} worker={isWorker} /></div>}
+              {adding ? !running && <AddForm key={machine ?? ''} running={running} from={shown?.args} /> : machine && !gone && <div className="acts"><MachineActions id={shown?.args.id} name={machine} home={isHome} worker={isWorker} /></div>}
               {confirm && (
                 <div className="host-note" data-testid="host-confirm" data-op={confirm.forget ? 'forget' : 'remove'}>
                   <span>

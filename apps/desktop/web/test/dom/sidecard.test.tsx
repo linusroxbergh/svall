@@ -577,6 +577,18 @@ test('a robot on a worker this Mac cannot reach says so under its machine line, 
   expect(screen.queryByTestId('side-away')).toBeNull();
 });
 
+test('Check of a far worker this Mac names as it names its home goes by the worker\'s id', () => {
+  withVault(false, { machine: VAULT, cwd: '/home/ada/svall' });
+  act(() => store.getState().setMachines([
+    { id: '0c1d2e3f-4a5b-4c6d-8e7f-9a0b1c2d3e4f', name: 'linus-vault', ssh: 'ada@studio', platform: 'linux-x64' },
+    { id: VAULT, name: 'linus-vault', ssh: 'ada@vault', platform: 'linux-x64', far: true },
+  ]));
+  render(<Side />);
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('side-away-run'));
+  expect(sent).toEqual([{ type: 'host.start', op: 'doctor', args: { name: VAULT } }]);
+});
+
 test('a card mounted for a robot the fleet does not list yet shows it once it appears', () => {
   const f = fleet();
   f.machines = { [VAULT]: { name: 'linus-vault', reachable: false, since: 0 } };

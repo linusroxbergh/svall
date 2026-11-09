@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ApiError } from '../../src/api.js';
 import type { HostStep } from '../../src/bridge.js';
@@ -649,5 +649,81 @@ describe('a terminal for a far worker, wherever it is opened from', () => {
     expect(sent.filter((m) => m.type === 'host.start').at(-1)).toMatchObject({ op: 'doctor', args: { name: BOX } });
     expect(store.getState().hostMachine).toBe('box');
     expect(store.getState().host?.args).toMatchObject({ name: 'box', id: BOX });
+  });
+
+  test('a far worker\'s own fix for its master, as its login, is typed bare on the home', () => {
+    act(() => {
+      far();
+      store.getState().toggleHost(true, 'box');
+      store.getState().hostStarted('doctor', { name: 'box', id: BOX });
+      store.getState().hostStep('doctor', { step: 'master', status: 'fail', detail: 'studio cannot log in to ada@box', action: 'on studio, run this', run: 'ssh-copy-id ada@box' });
+      store.getState().hostDone('doctor', 1);
+    });
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-terminal-master'));
+    expect(shown().machine).toEqual({ ssh: 'ada@studio', type: 'ssh-copy-id ada@box' });
+  });
+});
+
+describe('a far worker this Mac\'s registry names as it names its home', () => {
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  const BOX = 'cccccccc-0000-4000-8000-000000000000';
+  const started = () => sent.filter((m) => m.type === 'host.start').at(-1);
+  // the home's own row first, as `svall host list` gives this Mac's rows before the far home's
+  const collide = () => {
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: HOME as never, name: 'studio', online: true });
+    store.getState().setMachines([{ id: HOME, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }, { id: BOX, name: 'box', ssh: 'ada@box', platform: 'linux-x64', far: true }] as never);
+  };
+  // a run of the far row, which went by its id, ended with `steps`
+  const ran = (op: 'doctor' | 'upgrade', steps: HostStep[]) => act(() => {
+    collide();
+    store.getState().toggleHost(true, 'box');
+    store.getState().hostStarted(op, { name: 'box', id: BOX });
+    for (const s of steps) store.getState().hostStep(op, s);
+    store.getState().hostDone(op, 1);
+  });
+
+  test('the panel\'s own Check and the check after its terminal go on by the id its run went by', () => {
+    ran('doctor', []);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('machine-doctor'));
+    expect(started()).toMatchObject({ op: 'doctor', args: { name: BOX } });
+    act(() => {
+      store.getState().hostDone('doctor', 0);
+      store.getState().openHostTerminal('box', 'codex login');
+    });
+    fireEvent.click(screen.getByTestId('host-terminal-done'));
+    expect(started()).toMatchObject({ op: 'doctor', args: { name: BOX } });
+  });
+
+  test('a row\'s Upgrade and Forget go by that id', () => {
+    ran('doctor', [
+      { step: 'release', status: 'fail', detail: 'box runs 1.2.2' },
+      { step: 'master', status: 'fail', detail: 'nothing answers at ada@box', action: 'svall host remove box --forget' },
+    ]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-forget-master'));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: true, id: BOX });
+    fireEvent.click(screen.getByTestId('host-upgrade'));
+    expect(started()).toMatchObject({ op: 'upgrade', args: { name: BOX } });
+  });
+
+  test('a Rollback after a failed upgrade goes by that id', () => {
+    ran('upgrade', [{ step: 'rollback', status: 'fail', detail: 'the release before did not start' }]);
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-rollback'));
+    expect(started()).toMatchObject({ op: 'rollback', args: { name: BOX } });
+  });
+
+  test.each([['Remove', 'machine-remove', {}], ['Forget', 'machine-forget', { forget: true }]] as const)('the row\'s %s asks by that id, and its yes runs by it', (_what, item, forget) => {
+    act(() => collide());
+    render(<MachineActions id={BOX} name="box" />);
+    fireEvent.click(screen.getByTestId('machine-more'));
+    fireEvent.click(screen.getByTestId(item));
+    expect(store.getState().hostConfirm).toEqual({ name: 'box', forget: 'forget' in forget, id: BOX });
+    cleanup();
+    render(<HostSetup />);
+    fireEvent.click(screen.getByTestId('host-confirm-yes'));
+    expect(started()).toEqual({ type: 'host.start', op: 'remove', args: { name: BOX, ...forget } });
   });
 });

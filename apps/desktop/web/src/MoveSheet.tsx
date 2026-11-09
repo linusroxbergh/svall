@@ -112,6 +112,8 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   const back = !to || to === via?.home;
   // the machine a refusal is about: the one the robot goes to, or the one it comes back from
   const far = back ? here : where;
+  // a far home's machine goes by its id, as that home may name it as this Mac names another
+  const farRow = useApp((s) => { const m = back ? s.fleet.robots[id]?.machine : to; return s.machines?.find((r) => r.id === m && r.far)?.id; });
   // which the app upgrades and opens terminals on for every machine but this one, whose remedies are its own
   const atMe = !!via && (back ? c?.machine : to) === via.machine;
   // a move that fails once the sheet is closed says so in a toast
@@ -211,7 +213,7 @@ function Sheet({ id, to }: { id: string; to?: MachineId }) {
   };
   const farId = back ? c.machine : to;
   const blockers = refusal ? blockersOf(refusal) : [];
-  const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far }); };
+  const upgrade = () => { setFix({ doing: `Upgrading ${far}`, upgrade: true }); startHost('upgrade', { name: far, ...(farRow && { id: farRow }) }); };
   const update = (kinds: AgentKind[], machine: MachineId) => {
     setFix({ doing: `Updating ${kinds.map((k) => AGENT_LABEL[k]).join(' and ')} on ${far}` });
     app.api().call('machines.updateAgents', { machine, kinds }).then(recheck, (e: Error) => setFix({ failed: plainStep(e.message, machineNames(store().machines)) }));
