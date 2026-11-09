@@ -174,6 +174,21 @@ describe('a host command on a fleet whose home is far', () => {
     expect(fs.existsSync(named)).toBe(true);
   });
 
+  it('a far run sweeps what a relay stopped between its copy and its run left there over a day ago, and keeps a later one', () => {
+    const f = fleet();
+    const dir = path.join(f, 'cache', 'carried');
+    fs.mkdirSync(dir, { recursive: true });
+    const now = Date.now();
+    const [old, late, part] = ['a-c.tar.gz', 'b-c.tar.gz', 'c-c.tar.gz.part'].map((n) => path.join(dir, n));
+    for (const file of [old, late, part]) fs.writeFileSync(file, 'x');
+    const day = 24 * 60 * 60;
+    fs.utimesSync(old, now / 1000 - day - 60, now / 1000 - day - 60);
+    fs.utimesSync(part, now / 1000 - day - 60, now / 1000 - day - 60);
+    fs.utimesSync(late, now / 1000 - day + 60, now / 1000 - day + 60);
+    carriedGoes(undefined, { home: f }, new EventEmitter() as never, now);
+    expect(fs.readdirSync(dir)).toEqual(['b-c.tar.gz']);
+  });
+
   describe('who answers on the master', () => {
     it('asks before any command, of the fleet there by its folder', async () => {
       const f = far([], { code: 0 });
@@ -194,6 +209,13 @@ describe('a host command on a fleet whose home is far', () => {
       expect(r.code).toBe(1);
       expect(r.parsed[0]).toMatchObject({ step: 'relay', status: 'fail', detail });
       expect(f.closed()).toBe(1);
+    });
+
+    it.each([126, 127])('one whose svall cannot run there (exit %i) has no Svall, with its upgrade, and runs nothing', async (code) => {
+      const f = far([], { code: 0 }, { exit: { code, stderr: 'sh: svall: not found', stdout: '' } as never });
+      const r = await run(f);
+      expect(f.argv).toEqual([]);
+      expect(r.parsed[0]).toEqual({ step: 'relay', status: 'fail', detail: 'studio has no Svall at /home/ada/.local/share/svall/current/bin/svall', action: 'upgrade studio under Machines' });
     });
 
     it('one that does not answer is a failed step, and runs nothing', async () => {
@@ -279,57 +301,106 @@ describe('a host command on a fleet whose home is far', () => {
   describe('a companion of another architecture', () => {
     const NONE = '{"step":"release","status":"fail","detail":"this build publishes no companion for linux-arm64; name one with --release <archive>"}';
     const LEFT = '{"result":"actions","actions":["x"],"stopped":"release"}';
+    // the probe steps a run takes before it looks for the release, as each run of a host add does
+    const PROBES = ['{"step":"ssh","status":"start"}', '{"step":"ssh","status":"ok","detail":"ada@box"}', '{"step":"linger","status":"start"}', '{"step":"linger","status":"warn","detail":"off"}', '{"step":"release","status":"start"}'];
     const archive = () => {
       const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'svall-carried-')), 'svall-1.2.3-linux-arm64.tar.gz');
       fs.writeFileSync(file, 'the archive');
       return file;
     };
-    // a home that lacks it on the first run, and runs on with it on the next
-    function asking(again = ['{"step":"release","status":"ok"}', '{"result":"ready"}'], code = 0) {
+    const holding = (file: string, release = '1.2.3') => () => ({ archive: file, release });
+    // a home that lacks it on the first run, and runs on with it on the next; `fails`: the far command that does not go through
+    function asking(again = [...PROBES, '{"step":"release","status":"ok"}', '{"result":"ready"}'], code = 0, fails?: string) {
       const argv: string[][] = [];
       const wrote: { argv: string[]; input?: unknown }[] = [];
       const open = () => Promise.resolve({
         run: (a: string[], o: { input?: unknown } = {}) => {
           if (a.includes('version')) return Promise.resolve({ code: 0, signal: null, stderr: '', stdout: JSON.stringify(AS_HOME) });
           wrote.push({ argv: a, input: o.input });
+          if (fails && a.some((w) => w.includes(fails))) return Promise.resolve({ code: 1, signal: null, stderr: 'No space left on device', stdout: '' });
           return Promise.resolve({ code: 0, signal: null, stderr: '', stdout: '' });
         },
         stream: (a: string[]) => {
           argv.push(a);
           const stream = new PassThrough();
           const second = argv.length > 1;
-          setImmediate(() => { stream.end(`${(second ? again : [NONE, LEFT]).join('\n')}\n`); });
+          setImmediate(() => { stream.end(`${(second ? again : [...PROBES, NONE, LEFT]).join('\n')}\n`); });
           return { stream, exited: Promise.resolve({ signal: null, stderr: '', code: second ? code : 1 }) };
         },
         close: () => Promise.resolve(),
       });
       return { open: open as never, argv, wrote };
     }
+    const RELAY_OK = '{"step":"relay","status":"ok","detail":"the archive this CLI carries for linux-arm64 is on studio"}';
+    const uploaded = (f: ReturnType<typeof asking>) => f.wrote.find((w) => w.input !== undefined);
 
-    it('copies the archive this CLI carries of the home\'s release, and runs again with it, hiding the first try', async () => {
+    it('copies the archive this CLI carries of the home\'s release under a name of its own, whole before it is named, and runs again with it', async () => {
       const f = asking();
       const file = archive();
       const out: string[] = [];
-      const seen: string[][] = [];
-      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: (platform, release) => { seen.push([platform, release]); return file; } });
-      const remote = `/home/ada/.svall/cache/carried/${path.basename(file)}`;
+      const seen: string[] = [];
+      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: (platform) => { seen.push(platform); return { archive: file, release: '1.2.3' }; } });
       expect(code).toBe(0);
-      expect(seen).toEqual([['linux-arm64', '1.2.3']]);
-      expect(out).toEqual(['{"step":"release","status":"ok"}', '{"result":"ready"}']);
-      expect(f.wrote.at(-1)).toMatchObject({ argv: ['sh', '-c', expect.any(String), '--', `'${remote}'`] });
-      expect(String(f.wrote.at(-1)?.input)).toBe('the archive');
+      expect(seen).toEqual(['linux-arm64']);
+      const remote = f.argv[1].at(-2)!.slice(1, -1);
+      expect(remote).toMatch(new RegExp(`^/home/ada/.svall/cache/carried/[0-9a-f-]{36}-${path.basename(file)}$`));
       expect(f.argv[1].slice(-4)).toEqual(["'ada@box'", "'--release'", `'${remote}'`, "'--relayed'"]);
+      expect(uploaded(f)).toMatchObject({ argv: ['sh', '-c', expect.any(String), '--', `'${remote}.part'`] });
+      expect(String(uploaded(f)?.input)).toBe('the archive');
+      expect(f.wrote.at(-1)?.argv).toEqual(['mv', '--', `'${remote}.part'`, `'${remote}'`]);
+    });
+
+    it('says each step once: the second run drops what the first ended as it stood, and keeps a step that ends otherwise', async () => {
+      const again = [...PROBES.slice(0, 3), '{"step":"linger","status":"ok","detail":"on"}', '{"step":"release","status":"start"}', '{"step":"release","status":"ok"}', '{"result":"ready"}'];
+      const out: string[] = [];
+      expect(await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: asking(again).open, line: (l) => out.push(l), carried: holding(archive()) })).toBe(0);
+      expect(out).toEqual([
+        ...PROBES, '{"step":"relay","status":"start"}', RELAY_OK,
+        '{"step":"linger","status":"ok","detail":"on"}', '{"step":"release","status":"start"}', '{"step":"release","status":"ok"}', '{"result":"ready"}',
+      ]);
+    });
+
+    it('two relays at once copy to two names, so neither touches the other\'s', async () => {
+      const file = archive();
+      const [a, b] = [asking(), asking()];
+      await Promise.all([a, b].map((f) => relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: () => {}, carried: holding(file) })));
+      expect(a.argv[1].at(-2)).not.toBe(b.argv[1].at(-2));
+    });
+
+    it.each([['an upload', 'cat >'], ['a rename', 'mv']])('%s that fails removes the part copied, and stops on the relay step with no second run', async (_what, fails) => {
+      const f = asking(undefined, 0, fails);
+      const out: string[] = [];
+      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: holding(archive()) });
+      expect(code).toBe(1);
+      expect(f.argv).toHaveLength(1);
+      const part = uploaded(f)!.argv.at(-1)!;
+      expect(part).toMatch(/\.part'$/);
+      expect(f.wrote.at(-1)?.argv).toEqual(['rm', '-f', '--', part]);
+      expect(JSON.parse(out.at(-2)!)).toMatchObject({ step: 'relay', status: 'fail', detail: expect.stringContaining('studio did not take the archive this CLI carries for linux-arm64: '), action: 'try again once it answers' });
+    });
+
+    it('a home on another release than this CLI\'s copies nothing, and the relay names both releases and how to bring them to one', async () => {
+      const f = asking();
+      const out: string[] = [];
+      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: holding(archive(), '1.2.4') });
+      expect(code).toBe(1);
+      expect(f.argv).toHaveLength(1);
+      expect(f.wrote).toEqual([]);
+      expect(out.join('\n')).not.toContain('--release');
+      expect(JSON.parse(out.at(-2)!)).toEqual({
+        step: 'relay', status: 'fail', detail: 'studio runs 1.2.3, and this CLI 1.2.4: the archive it carries for linux-arm64 is of its own release',
+        action: 'bring them to one release: upgrade studio under Machines, or update Svall here',
+      });
     });
 
     it('a home that still asks after the copy ends on its refusal, with one copy and one more run', async () => {
       const f = asking([NONE, LEFT], 1);
-      const file = archive();
       const out: string[] = [];
-      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: () => file });
+      const code = await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: f.open, line: (l) => out.push(l), carried: holding(archive()) });
       expect(code).toBe(1);
       expect(f.argv).toHaveLength(2);
       expect(f.wrote.filter((w) => w.input !== undefined)).toHaveLength(1);
-      expect(out).toEqual([NONE, LEFT]);
+      expect(out.slice(-2)).toEqual([NONE, LEFT]);
     });
 
     it('a CLI that carries none leaves the home\'s refusal, naming --release', async () => {

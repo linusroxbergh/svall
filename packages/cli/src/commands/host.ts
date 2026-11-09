@@ -325,16 +325,26 @@ async function farRows(home: FarHome, registry: MachineRegistry): Promise<Machin
 const destinationOn = async (home: FarHome, name: string, registry: MachineRegistry): Promise<string> => (await farRows(home, registry)).find((r) => r.name === name || r.id === name)?.ssh ?? name;
 
 // a release of the home's own, as only that is one a home takes
-const carried = (platform: string, release: string): string | undefined => (release === releaseVersion() ? carriedCompanion(releaseRoot(), platform) : undefined);
+const carried = (platform: string): { archive: string; release: string } | undefined => {
+  const archive = carriedCompanion(releaseRoot(), platform);
+  return archive === undefined ? undefined : { archive, release: releaseVersion() };
+};
 
 // a far run that stopped short says what is left, whatever its report would have been
 const orLeft = <T>(text: (r: T) => string) => (r: unknown): string => ((r as HostOutcome).result === 'actions' ? (r as HostOutcome).actions.join('\n') : text(r as T));
 
 const reportBy = (r: HostReport, home: FarHome): HostReport => ({ ...r, checks: r.checks.map((c) => (c.action ? { ...c, action: byHome(home, c.action) } : c)) });
 
+const CARRIED_KEPT_MS = 24 * 60 * 60_000;
+
 /** An archive a relay copied here goes when the run does, however that ends; any other is the person's. */
-export const carriedGoes = (release: string | undefined, fleet: Pick<Target, 'home'>, on: Pick<NodeJS.Process, 'once'> = process): void => {
-  if (release && path.dirname(path.resolve(release)) === carriedDir(resolvePaths(fleet.home).home)) on.once('exit', () => { fs.rmSync(release, { force: true }); });
+export const carriedGoes = (release: string | undefined, fleet: Pick<Target, 'home'>, on: Pick<NodeJS.Process, 'once'> = process, now = Date.now()): void => {
+  const dir = carriedDir(resolvePaths(fleet.home).home);
+  // what a relay stopped or killed between its copy and the run left
+  try {
+    for (const f of fs.readdirSync(dir)) if (now - fs.statSync(path.join(dir, f)).mtimeMs > CARRIED_KEPT_MS) fs.rmSync(path.join(dir, f), { force: true });
+  } catch { /* none left */ }
+  if (release && path.dirname(path.resolve(release)) === dir) on.once('exit', () => { fs.rmSync(release, { force: true }); });
 };
 
 /** Runs a host command for a machine of a far home on that home, its steps handed on as they come: as they are for the app and --json, as a run's lines in a terminal. */

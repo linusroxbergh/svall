@@ -84,22 +84,72 @@ describe('an add the far home has no companion for', () => {
     fs.writeFileSync(path.join(root, 'release.json'), JSON.stringify({ version, companions: { 'linux-arm64': { url: 'companions/c.tar.gz', sha256: 'aa' } } }));
     process.env.SVALL_RELEASE_ROOT = root;
     onTestFinished(() => { delete process.env.SVALL_RELEASE_ROOT; });
-    ssh.reply(['host', 'add'], { stdout: `${NONE}\n`, code: 1 });
+    for (const op of ['add', 'upgrade']) ssh.reply(['host', op], { stdout: `${NONE}\n`, code: 1 });
     ssh.reply(['mkdir'], {});
     ssh.reply(['cat > "$1"'], {});
+    ssh.reply(['mv'], {});
   };
+  const copies = () => ssh.remoteCalls().filter((w) => w.includes('cat > "$1"'));
 
-  it('a CLI on the home\'s release copies the archive it carries there, and runs again with it', async () => {
+  it.each([
+    ['add', ['add', 'box', '--ssh', 'ada@box']],
+    ['upgrade', ['upgrade', 'box']],
+  ])('a CLI on the home\'s release copies the archive it carries there, and runs %s again with it', async (op, args) => {
     carrying('1.2.3');
-    await cli(['add', 'box', '--ssh', 'ada@box'], true);
-    expect(far(['host', 'add'])).toHaveLength(2);
-    expect(far(['host', 'add']).at(-1)!.some((w) => w.includes('--release'))).toBe(true);
+    await cli(args, true);
+    expect(copies()).toHaveLength(1);
+    expect(far(['host', op])).toHaveLength(2);
+    expect(far(['host', op]).at(-1)!.some((w) => w.includes('--release'))).toBe(true);
   });
 
-  it('a CLI on another release copies nothing, as a home takes only its own', async () => {
+  it('a rollback installs no archive, so it copies none', async () => {
+    carrying('1.2.3');
+    await cli(['upgrade', 'box', '--rollback'], true);
+    expect(copies()).toEqual([]);
+    expect(far(['host', 'upgrade'])).toHaveLength(1);
+  });
+
+  it('a CLI on another release copies nothing, and names both releases on the relay step', async () => {
     carrying('1.2.4');
-    expect(await cli(['add', 'box', '--ssh', 'ada@box'], true)).toContain('name one with --release');
+    const out = await cli(['add', 'box', '--ssh', 'ada@box'], true);
+    expect(out).toContain('"detail":"studio runs 1.2.3, and this CLI 1.2.4: the archive it carries for linux-arm64 is of its own release"');
+    expect(out).not.toContain('name one with --release');
+    expect(copies()).toEqual([]);
     expect(far(['host', 'add'])).toHaveLength(1);
+  });
+});
+
+describe('an archive a relay copied to this home', () => {
+  // this fleet is the home: the run is the far one a relay started here, with the copy it was handed
+  async function here(args: string[]): Promise<() => void> {
+    let exit = () => {};
+    const once = vi.spyOn(process, 'once').mockImplementation(((event: string, fn: () => void) => { if (event === 'exit') exit = fn; return process; }) as never);
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const code = process.exitCode;
+    try { await hostCommands(() => true, () => ({ name: 'private', home: fleet, managed: true }), () => path.join(work, 'config')).parseAsync(args, { from: 'user' }); } finally { spy.mockRestore(); once.mockRestore(); process.exitCode = code; }
+    return exit;
+  }
+  const carried = () => {
+    const dir = path.join(fleet, 'cache', 'carried');
+    fs.mkdirSync(dir, { recursive: true });
+    const left = path.join(dir, 'a-c.tar.gz');
+    const copy = path.join(dir, 'b-c.tar.gz');
+    for (const f of [left, copy]) fs.writeFileSync(f, 'x');
+    const old = Date.now() / 1000 - 2 * 24 * 60 * 60;
+    fs.utimesSync(left, old, old);
+    return { left, copy };
+  };
+
+  it.each([
+    ['add', (copy: string) => ['add', 'box', '--ssh', 'ada@box', '--release', copy]],
+    ['upgrade', (copy: string) => ['upgrade', 'box', '--release', copy]],
+  ])('a %s removes its copy as it ends, and one a stopped relay left over a day ago', async (_op, args) => {
+    const { left, copy } = carried();
+    const ended = await here(args(copy));
+    expect(fs.existsSync(left)).toBe(false);
+    expect(fs.existsSync(copy)).toBe(true);
+    ended();
+    expect(fs.existsSync(copy)).toBe(false);
   });
 });
 

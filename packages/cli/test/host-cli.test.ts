@@ -43,6 +43,22 @@ describe('a host command told to stop', () => {
   });
 });
 
+describe('a relayed run', () => {
+  it('logs in with no one to ask, as ssh in batch mode, and says this machine\'s key is what is missing', async () => {
+    const root = path.resolve(import.meta.dirname, '../../..');
+    // stdin stays open, as the connection a relay keeps does
+    const child = spawn(process.execPath, ['--import', 'tsx', path.join(root, 'packages/cli/src/main.ts'), 'host', 'add', 'trift', '--ssh', 'denied.test', '--relayed', '--json'], {
+      cwd: root, env: { ...process.env, SVALL_CONFIG_DIR: path.join(work, 'config'), SVALL_HOME: fleet }, stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    let out = '';
+    child.stdout.on('data', (c: Buffer) => { out += c.toString(); });
+    await new Promise((resolve) => { child.on('close', resolve); });
+    child.stdin.destroy();
+    expect(ssh.calls()[0].slice(0, 2)).toEqual(['-o', 'BatchMode=yes']);
+    expect(out).toContain('cannot log in to denied.test: linus@denied.test: Permission denied (publickey).');
+  });
+});
+
 describe('the localhost sshd integration', () => {
   const live = process.env.SVALL_TEST_SSH;
   it.skipIf(!live)('runs a host probe over a real master (set SVALL_TEST_SSH=<destination> to run)', async () => {

@@ -314,7 +314,7 @@ Answer its prompts, then add the machine again. If `box` takes keys alone, add s
 terminal for `box` itself opens on studio too, with an `ssh` to it typed, and a sign-in that waits on a port forwards it on both hops. Each run first checks that the home answers as the machine and the fleet this fleet's `worker.json` names, and stops on the `relay` step if not.
 
 The home installs its own release on a machine of its own architecture, keeping its signature. For another architecture the Mac copies the signed archive it carries to the home over its own connection and names it with `--release`, for the same release only; the home checks its
-signature and removes the copy as the run ends. Nothing is downloaded. A CLI that carries none, as Svall Dev or a tarball's, and a run by hand on the server are told to name one with `--release`, a path on the home. Stop or quitting the app ends the run there, and leaves what a Stop always left. A link that drops with no word, as a Mac whose lid closes, may leave the run to finish on the server. Adding again goes on from either.
+signature and removes the copy as the run ends, and any a stopped run left after a day. Nothing is downloaded. A CLI that carries none, as Svall Dev or a tarball's, and a run by hand on the server are told to name one with `--release`, a path on the home. Stop or quitting the app ends the run there, and leaves what a Stop always left. A link that drops with no word, as a Mac whose lid closes, may leave the run to finish on the server. Adding again goes on from either.
 
 The worker's `worker.json` names the home and its platform, so it calls a Linux home by name.
 
