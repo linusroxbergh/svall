@@ -139,9 +139,12 @@ describe('host add', () => {
 
   it('adds nothing over the fleet\'s own home, which would make it a worker of its worker', async () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }, null, 2) });
     healthy();
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    // listed, as the home it serves is past what a worker refuses
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry }));
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.detail).toBe("trift is this fleet's home, so it cannot be added as its worker");
     expect(step('release').at(-1)?.action).toBe("svall host upgrade trift takes it to this Mac's release");
@@ -211,6 +214,14 @@ describe('host add', () => {
     await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'ssh: connect to host trift.test port 22: No route to host', batch: true }) }));
     expect(step('ssh').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringMatching(/cannot reach trift\.test/) });
     expect(step('ssh').at(-1)!.run).toBeUndefined();
+  });
+
+  it('a Mac home read in another machine\'s window names itself by its name, not "this Mac"', async () => {
+    const d = deps({ interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'Permission denied (publickey).', batch: true }) });
+    const me = d.registry.localMachine().name;
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, d);
+    expect(step('ssh').at(-1)).toMatchObject({ detail: `${me} cannot log in to trift.test: Permission denied (publickey).`, action: expect.stringMatching(new RegExp(`^on ${me}, run `)) });
+    expect(JSON.stringify(step('ssh'))).not.toContain('this Mac');
   });
 
   it('has nothing for a machine of another architecture but what the relay names, and fetches nothing', async () => {

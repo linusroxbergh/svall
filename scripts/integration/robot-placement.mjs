@@ -1940,7 +1940,7 @@ function moveWithWorker(ids) {
   // the machine the fleet left holds box's route and, stale, its old token, and takes and removes nothing by them
   const named = boxFile();
   const upgrade = sh(R, 'svall --json host upgrade box --release /opt/it/svall-companion-*.tar.gz --allow-unsigned </dev/null', { ok: false });
-  check('the old home takes no worker by an upgrade', upgrade.code !== 0 && carriedSteps(upgrade).some((e) => e.status === 'fail' && /only that machine takes or removes it/.test(e.detail ?? '')), () => brief(carriedSteps(upgrade)));
+  check('the old home takes no worker by an upgrade', upgrade.code !== 0 && carriedSteps(upgrade).some((e) => e.status === 'fail' && /only it takes or removes a worker/.test(e.detail ?? '')), () => brief(carriedSteps(upgrade)));
   check('nor removes one', sh(R, 'svall --json host remove box </dev/null', { ok: false }).code !== 0, 'it removed it');
   check('box goes on as it was', boxFile().homeMachineId === named.homeMachineId && boxFile().token === named.token && sh(B, 'test -e ~/.local/share/svall/current', { ok: false }).code === 0, 'it changed');
   const was = heldToken(L, ids.box);
