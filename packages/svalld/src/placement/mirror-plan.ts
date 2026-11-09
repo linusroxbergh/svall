@@ -304,8 +304,8 @@ export function holdsSetup(p: MirrorPlan): boolean {
     || Object.keys(p.settingsEnv).length > 0 || Object.keys(p.codex ?? {}).length > 0 || p.opencode.some((d) => Object.keys(d.doc).length > 0) || !p.unreadable.every(clone) || !p.skipped.every(clone);
 }
 
-/** Whether a first push may go onto a machine that keeps its own: unlike a seed's question, a file that cannot be read answers not yet. */
-export const readyToPush = (p: MirrorPlan): boolean => holdsSetup(p) && p.unreadable.every(writtenUnasked(p).clone);
+/** Whether a first push may go onto a machine that keeps its own: unlike a seed's question, a setup held only by a file that cannot be read answers not yet. */
+export const readyToPush = (p: MirrorPlan): boolean => holdsSetup({ ...p, unreadable: [], skipped: p.skipped.filter((s) => !p.unreadable.some((u) => s.startsWith(`${u} `))) });
 
 export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Set(), facts?: WorkerFacts): MirrorPlan {
   const files: MirrorPlan['files'] = [];

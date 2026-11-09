@@ -142,7 +142,10 @@ export class Mirror {
     const facts = WorkerFacts.parse(await link.call('config.state', { homedir: this.o.homedir, projects: this.projects() }));
     const plan = mirrorPlan(this.o, readConsent(this.o.consent, link.machine), facts);
     // a source with no setup yet has nothing of its own to give, and what `svall setup` left here must not go over what a target holds ahead of a seed
-    if (facts.keeps && facts.state.applied === undefined && !(link.copy ? holdsSetup(plan) : readyToPush(plan))) return { sent: 0 };
+    if (facts.keeps && facts.state.applied === undefined && !(link.copy ? holdsSetup(plan) : readyToPush(plan))) {
+      if (!link.copy && holdsSetup(plan)) this.o.log.info(`mirror: ${plan.unreadable.join(', ')} cannot be read, and the first push onto a machine that keeps its own setup waits until it can`);
+      return { sent: 0 };
+    }
     for (const line of plan.skipped) this.o.log.info(`mirror: ${line}; it stays on ${homeWord()}`);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'svall-mirror-'));
     try {

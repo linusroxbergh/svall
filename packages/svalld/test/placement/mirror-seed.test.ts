@@ -6,6 +6,7 @@ import { answer, dispatch, type Ctx } from '../../src/api/methods.js';
 import { holdsSetup, mirrorPlan, type MirrorPlan } from '../../src/placement/mirror-plan.js';
 import { readState } from '../../src/placement/mirror-state.js';
 import { editJson, farHome, macHome, put, read } from './mirror-homes.js';
+import type { Logger } from '../../src/log.js';
 import { stopWorlds, until, W, world } from './world.js';
 
 afterEach(async () => {
@@ -59,11 +60,11 @@ function claudeStarted(h: Home) {
   return market;
 }
 
-function seeded(server = emptyServer(), keeps = true) {
+function seeded(server = emptyServer(), keeps = true, homeLog?: Logger) {
   const mac = { ...macHome(), overrides: path.join(server.homedir, 'unused-overrides') };
   editJson(path.join(mac.claudeDir, 'settings.json'), (s) => { s.permissions = MAC_RULES; });
   const backups = path.join(mac.homedir, '.svall/mirror-backup');
-  const w = world({ mirror: { home: server, worker: { ...mac, ...(keeps && { backups }) } } });
+  const w = world({ mirror: { home: server, worker: { ...mac, ...(keeps && { backups }) } }, ...(homeLog && { homeLog }) });
   const linked = async () => {
     await w.link();
     await until(() => expect(w.worker.connection.connected()).toBe(true));
@@ -267,13 +268,6 @@ describe('a first push onto a Mac', () => {
   it.each<[string, (h: Home) => void]>([
     ['a .claude.json cut short', (h) => put(h.claudeJson, '{"oauth')],
     ['a settings file it cannot read', (h) => put(path.join(h.claudeDir, 'settings.json'), '[not an object]')],
-    ['a setup beside a Codex config it cannot read', (h) => { put(path.join(h.claudeDir, 'CLAUDE.md'), '# mine\n'); put(path.join(h.codexDir, 'config.toml'), 'model = '); }],
-    ['a plugin installed from a marketplace whose list is cut short', (h) => {
-      const market = claudeStarted(h);
-      const at = path.join(market, 'plugins/agent-sdk-dev');
-      put(path.join(h.claudeDir, 'plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'agent-sdk-dev@claude-plugins-official': [{ scope: 'user', installPath: at }] } }));
-      put(path.join(market, '.claude-plugin/marketplace.json'), '{"plugins');
-    }],
   ])('does not go yet with %s, though no seed may go either', async (_what, make) => {
     const server = emptyServer();
     make(server);
@@ -285,6 +279,36 @@ describe('a first push onto a Mac', () => {
     expect(read(path.join(mac.claudeDir, 'settings.json'))).toBe(before);
     expect(await holds(w.home.ctx)).toBe(true);
     await expect(seed(w.home.ctx)).rejects.toMatchObject({ code: 'refused' });
+  });
+
+  it('says why it waits at each link-up, and says nothing where the home holds no setup', async () => {
+    const lines: string[] = [];
+    const log: Logger = { info: (l) => lines.push(l), error: (l) => lines.push(l) };
+    const waits = () => lines.filter((l) => l.includes('the first push onto a machine that keeps its own setup waits'));
+    await seeded(emptyServer(), true, log).linked();
+    expect(waits()).toEqual([]);
+    const server = emptyServer();
+    put(server.claudeJson, '{"oauth');
+    const { w, linked } = seeded(server, true, log);
+    await linked();
+    expect(waits()).toEqual([`mirror: ${server.claudeJson} cannot be read, and the first push onto a machine that keeps its own setup waits until it can`]);
+    await w.home.links.pushMirror(W);
+    expect(waits()).toHaveLength(2);
+  });
+
+  it.each([
+    ['a Codex config that does not parse', (h: ReturnType<typeof macHome>) => put(path.join(h.codexDir, 'config.toml'), 'model = ')],
+    ['an OpenCode config that does not parse', (h: ReturnType<typeof macHome>) => put(path.join(h.opencodeDir, 'opencode.json'), '{"model": ')],
+  ])('a Mac home that never moved, with %s, pushes its setup to a Mac that joins it', async (_what, broken) => {
+    const home = macHome();
+    broken(home);
+    const other = { ...farHome(), overrides: path.join(home.homedir, 'unused-overrides') };
+    const w = world({ mirror: { home, worker: { ...other, backups: path.join(other.homedir, '.svall/mirror-backup') } } });
+    await w.link();
+    await until(() => expect(w.worker.connection.connected()).toBe(true));
+    await w.home.links.mirrorSettled(W);
+    expect(readState(w.worker.paths.mirrorState).applied).toBeGreaterThan(0);
+    expect(read(path.join(other.claudeDir, 'CLAUDE.md'))).toBe('# how I work\n');
   });
 
   it('a Copy a person asks for still goes from a Mac with a file it cannot read, with what it can', async () => {
@@ -300,7 +324,14 @@ describe('a first push onto a Mac', () => {
     ['one key an app wrote in its settings', (h) => editJson(path.join(h.claudeDir, 'settings.json'), (s) => { s.feedbackSurveyState = { lastShownTime: 1 }; })],
     ['a Codex notice', (h) => put(path.join(h.codexDir, 'config.toml'), '[notice]\nhide = true\n')],
     ['an OpenCode schema', (h) => put(path.join(h.opencodeDir, 'opencode.json'), '{"$schema":"https://opencode.ai/config.json"}')],
-  ])('with %s, leaves the Mac\'s permissions while the home holds only Svall\'s rules', async (_what, make) => {
+    ['a setup beside a Codex config it cannot read', (h) => { put(path.join(h.claudeDir, 'CLAUDE.md'), '# mine\n'); put(path.join(h.codexDir, 'config.toml'), 'model = '); }],
+    ['a plugin installed from a marketplace whose list is cut short', (h) => {
+      const market = claudeStarted(h);
+      const at = path.join(market, 'plugins/agent-sdk-dev');
+      put(path.join(h.claudeDir, 'plugins/installed_plugins.json'), JSON.stringify({ version: 2, plugins: { 'agent-sdk-dev@claude-plugins-official': [{ scope: 'user', installPath: at }] } }));
+      put(path.join(market, '.claude-plugin/marketplace.json'), '{"plugins');
+    }],
+  ])('goes with %s, and leaves the Mac\'s permissions while the home holds only Svall\'s rules', async (_what, make) => {
     const { server, mac, w, linked } = seeded();
     await linked();
     make(server);
