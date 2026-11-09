@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { createMarker } from '@svall/svalld/fleet/home-move';
 import { resolvePaths } from '@svall/svalld/paths';
@@ -69,6 +69,14 @@ describe.each([['a worker of this fleet now', joined, JOINED], ['marked for a mo
     expect(out.stopped).toBe('machine');
     expect(step('machine').at(-1)).toMatchObject({ status: 'fail', ...words });
     expect(ssh.calls()).toEqual([]);
+  });
+
+  it('says so on the worker row of its doctor of a worker of this fleet', async () => {
+    leave();
+    serving(NEW_HOME);
+    healthy();
+    const report = await doctorHost('trift', deps({ registry: listed() }));
+    expect(report.checks.find((c) => c.name === 'worker')).toMatchObject({ status: 'fail', ...words });
   });
 
   it('uninstalls none, whichever home it names', async () => {
@@ -142,19 +150,50 @@ describe('the fleet\'s home', () => {
     expect(report.checks.find((c) => c.name === 'worker')?.detail ?? '').not.toContain('already serves');
   });
 
-  it('a person\'s add takes no worker while a move\'s enrol holds the lock: no token issued, none sent', async () => {
+  it('a person\'s add stops at its name while a move holds the lock, before anything is reached, and goes on to ssh once it is let go', async () => {
+    const { enrolLock } = await import('@svall/svalld/kernel-lock');
+    const paths = resolvePaths(fleet);
+    const interactiveSsh = vi.fn(() => Promise.resolve({ code: 0, stderr: '' }));
+    const openMaster = () => Promise.reject(new Error('no master in this test'));
+    const held = await enrolLock(paths.home);
+    const busy = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh, openMaster }));
+    held?.();
+    expect(busy.stopped).toBe('name');
+    expect(step('name').at(-1)).toMatchObject({ status: 'fail', detail: 'this home is enrolling a worker, or moving the fleet', action: 'try again in a moment' });
+    expect(interactiveSsh).not.toHaveBeenCalled();
+    expect(ssh.calls()).toEqual([]);
+    expect(tokenFor(paths, REMOTE as never)).toBeUndefined();
+    const free = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh, openMaster }));
+    expect(free.stopped).toBe('master');
+    expect(step('name').at(-1)?.status).toBe('ok');
+    expect(step('ssh').at(-1)?.status).toBe('ok');
+    expect(interactiveSsh).toHaveBeenCalledOnce();
+  });
+
+  it('a person\'s add takes no worker once a move\'s enrol takes the lock past its name: no token issued, none sent', async () => {
     const { enrolLock } = await import('@svall/svalld/kernel-lock');
     const paths = resolvePaths(fleet);
     healthy();
-    const d = await daemon();
-    ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    const held = await enrolLock(paths.home);
-    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')) }));
+    let held: (() => void) | undefined;
+    const interactiveSsh = async () => { held = await enrolLock(paths.home); return { code: 0, stderr: '' }; };
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh }));
     held?.();
-    await d.close();
+    expect(held).toBeDefined();
     expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', detail: 'this home is enrolling a worker, or moving the fleet', action: 'try again in a moment' });
     expect(enrols()).toEqual([]);
     expect(tokenFor(paths, REMOTE as never)).toBeUndefined();
+  });
+
+  it('takes no worker once this machine becomes a worker past the add\'s name: no token issued, none sent', async () => {
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE }) });
+    healthy();
+    const interactiveSsh = () => { joined(); return Promise.resolve({ code: 0, stderr: '' }); };
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ interactiveSsh }));
+    expect(out.stopped).toBe('enrol');
+    expect(step('install').at(-1)?.status).toBe('ok');
+    expect(step('enrol').at(-1)).toMatchObject({ status: 'fail', ...JOINED });
+    expect(enrols()).toEqual([]);
+    expect(tokenFor(resolvePaths(fleet), REMOTE as never)).toBeUndefined();
   });
 
   it('a forget waits for no one once it holds the lock, and refuses while a move\'s enrol holds it', async () => {

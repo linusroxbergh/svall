@@ -350,13 +350,13 @@ describe('a host command on a fleet whose home is far', () => {
       expect(f.wrote.at(-1)?.argv).toEqual(['mv', '--', `'${remote}.part'`, `'${remote}'`]);
     });
 
-    it('says each step once: the second run drops what the first ended as it stood, and keeps a step that ends otherwise', async () => {
+    it('says each step once: the second run drops any line of a step the first ended, whatever its status now', async () => {
       const again = [...PROBES.slice(0, 3), '{"step":"linger","status":"ok","detail":"on"}', '{"step":"release","status":"start"}', '{"step":"release","status":"ok"}', '{"result":"ready"}'];
       const out: string[] = [];
       expect(await relay(home, ['host', 'add', 'box', '--ssh', 'ada@box'], { open: asking(again).open, line: (l) => out.push(l), carried: holding(archive()) })).toBe(0);
       expect(out).toEqual([
         ...PROBES, '{"step":"relay","status":"start"}', RELAY_OK,
-        '{"step":"linger","status":"ok","detail":"on"}', '{"step":"release","status":"start"}', '{"step":"release","status":"ok"}', '{"result":"ready"}',
+        '{"step":"release","status":"start"}', '{"step":"release","status":"ok"}', '{"result":"ready"}',
       ]);
     });
 

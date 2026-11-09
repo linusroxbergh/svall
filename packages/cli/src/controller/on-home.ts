@@ -90,7 +90,7 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
       return stop(`${home.name} did not answer: ${(e as Error).message}`, 'try again once it answers');
     }
     // the steps a first run ended as they stand, which a run again with the archive repeats
-    const ended = new Map<string, unknown>();
+    const ended = new Set<string>();
     const run = async (extra: string[]) => {
       const { stream, exited } = master.stream([...svall, '--json', ...[...args, ...extra, '--relayed'].map(shq)]);
       let said = false;
@@ -111,8 +111,8 @@ export async function relay(home: FarHome, args: string[], o: { open(destination
         // a CLI that carries none leaves the home's own refusal, which names --release
         if (held) { wants = { platform: platform!, ...held }; return; }
         if (v && typeof v.step === 'string' && extra.length) {
-          if (v.status === 'start' ? ended.has(v.step) : ended.get(v.step) === v.status) return;
-        } else if (v && typeof v.step === 'string' && v.status !== 'start') ended.set(v.step, v.status);
+          if (ended.has(v.step)) return;
+        } else if (v && typeof v.step === 'string' && v.status !== 'start') ended.add(v.step);
         o.line(throughHome(line, home));
       };
       // ssh's stdin closing as the far command ends reads as an early close; its exit says how it went

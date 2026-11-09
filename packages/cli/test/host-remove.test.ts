@@ -100,6 +100,26 @@ describe('host remove', () => {
     expect(refreshLinks).toHaveBeenCalledOnce();
   });
 
+  it('refuses a worker that dials in while a sibling fleet that dials it too is enrolling, and every fleet keeps its token', async () => {
+    const { enrolLock } = await import('@svall/svalld/kernel-lock');
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });
+    registry.save();
+    const ours = issueToken(resolvePaths(fleet), REMOTE);
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    const theirs = issueToken(sibling, REMOTE);
+    const held = await enrolLock(sibling.home);
+    const busy = await removeHost('ada-mac', {}, deps({ registry }));
+    held?.();
+    expect(busy.stopped).toBe('registry');
+    expect(step('registry').at(-1)).toMatchObject({ status: 'fail', detail: 'this home is enrolling a worker, or moving the fleet', action: 'try again in a moment' });
+    expect(tokenFor(sibling, REMOTE)).toBe(theirs);
+    expect(tokenFor(resolvePaths(fleet), REMOTE)).toBe(ours);
+    expect(registry.get('ada-mac')).toBeDefined();
+  });
+
   it('refuses a worker that dials in while a robot here runs on it', async () => {
     const registry = MachineRegistry.load(path.join(work, 'config'));
     registry.put(REMOTE, { name: 'ada-mac', platform: 'darwin', arch: 'arm64', home: HOME, svallBase: BASE, dial: 'worker' });

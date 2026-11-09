@@ -645,9 +645,13 @@ function noLogin(ssh: string, said: string, d: HostDeps): StepError {
 /** `svall host add`: the spec's Add Machine flow, from the first interactive ssh to the registry entry. */
 export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
   return flow(d.emit, async (run) => {
-    const held = await run.step('name', () => {
-      if (!o.asHome) mayActOn(d.registry.get(o.name)?.id, d);
-      return Promise.resolve(claimName(d.registry, o));
+    const held = await run.step('name', async () => {
+      if (!o.asHome) {
+        mayActOn(d.registry.get(o.name)?.id, d);
+        // a move's pause holds this lock, and refuses the add before anything is reached
+        (await heldEnrol(resolvePaths(d.fleet.home)))();
+      }
+      return claimName(d.registry, o);
     });
     if (o.asHome) await run.step('tailscale', () => tailnetHere(d));
 
@@ -1209,15 +1213,17 @@ export function removeHost(name: string, o: { forget?: boolean }, d: HostDeps): 
       }
     });
     await run.step('registry', async () => {
-      for (const home of new Set([d.fleet.home, ...fleetHomes(d.homedir)])) {
-        clearConsent(resolvePaths(home).mirrorConsent, entry.id);
-        // nothing there ends the link of a worker that dials in, so its token goes in every fleet, and with it the link; one this
-        // fleet dials keeps no profile for a later add, and a sibling that dials it too keeps its own, which that add would not renew
-        if (ssh && home !== d.fleet.home) continue;
-        if (home === d.fleet.home) { dropHeld(resolvePaths(home), entry.id); continue; }
-        const sibling = await heldEnrol(resolvePaths(home));
-        try { dropHeld(resolvePaths(home), entry.id); } finally { sibling(); }
-      }
+      const homes = [...new Set([d.fleet.home, ...fleetHomes(d.homedir)])];
+      // nothing there ends the link of a worker that dials in, so its token goes in every fleet, and with it the link; one this
+      // fleet dials keeps no profile for a later add, and a sibling that dials it too keeps its own, which that add would not renew
+      const dropped = homes.filter((home) => !ssh || home === d.fleet.home);
+      // every sibling's lock before any token goes, so a refusal leaves every token as it was
+      const siblings: (() => void)[] = [];
+      try {
+        for (const home of dropped) if (home !== d.fleet.home) siblings.push(await heldEnrol(resolvePaths(home)));
+        for (const home of homes) clearConsent(resolvePaths(home).mirrorConsent, entry.id);
+        for (const home of dropped) dropHeld(resolvePaths(home), entry.id);
+      } finally { for (const let_go of siblings) let_go(); }
       d.registry.remove(entry.id);
       d.registry.save();
       if (!ssh) await d.refreshLinks();
