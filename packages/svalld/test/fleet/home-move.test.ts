@@ -1274,6 +1274,25 @@ describe('the join', () => {
     expect(inStagedMove(kept)).toBe(true);
   });
 
+  it('keeps this move\'s copies and the move\'s before, and takes out an older move\'s, leaving what is not a copy', async () => {
+    const { w, marked } = await adopted();
+    await w.mac.daemon.stop();
+    const [older, before, other] = ['hm_0000000001', 'hm_0000000002', 'hm_0000000003'];
+    const copy = (id: string, ago: number) => {
+      for (const f of [w.mac.paths.state, w.mac.paths.workersFile]) fs.writeFileSync(`${f}.home-${id}`, '{}');
+      fs.mkdirSync(`${w.mac.paths.docs}.home-${id}`, { recursive: true });
+      const t = new Date(Date.now() - ago);
+      fs.utimesSync(`${w.mac.paths.state}.home-${id}`, t, t);
+    };
+    copy(older, 2 * 86_400_000);
+    copy(before, 86_400_000);
+    fs.writeFileSync(path.join(w.mac.paths.home, `notes.home-${other}`), 'mine');
+    putMarker(w.mac.paths, marked);
+    joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
+    const left = fs.readdirSync(w.mac.paths.home).filter((n) => n.includes('.home-')).sort();
+    expect(left).toEqual([`docs.home-${ID}`, `docs.home-${before}`, `notes.home-${other}`, `state.json.home-${ID}`, `state.json.home-${before}`, `workers.json.home-${ID}`, `workers.json.home-${before}`].sort());
+  });
+
   it('run again on what it wrote, it derives the same state', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();

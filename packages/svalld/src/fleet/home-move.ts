@@ -908,7 +908,21 @@ export function joinAsWorker(p: Paths, m: HomeMoving & { enrol: Enrolment }, reg
   writeDurable(p.workerFile, m.enrol.worker, { mode: 0o600 });
   homePoint('join.worker');
   endMove(p, m.id, { by: 'joined' });
+  dropOldCopies(p, m.id);
   homePoint('join.done');
+}
+
+/** The copies a join keeps of the old home's files, of this move and the one before it here; an older move's go. */
+function dropOldCopies(p: Paths, id: string): void {
+  const kept = new RegExp(`^(?:${[p.state, p.docs, p.workersFile].map((f) => path.basename(f).replace(/\./g, '\\.')).join('|')})\\.home-(hm_[0-9a-z]{10})$`);
+  const byMove = new Map<string, string[]>();
+  for (const name of fs.readdirSync(p.home)) {
+    const of = kept.exec(name)?.[1];
+    if (of) byMove.set(of, [...byMove.get(of) ?? [], name]);
+  }
+  const at = (m: string): number => { try { return fs.statSync(`${p.state}.home-${m}`).mtimeMs; } catch { return 0; } };
+  const older = [...byMove.keys()].filter((m) => m !== id).sort((a, b) => at(b) - at(a)).slice(1);
+  for (const m of older) for (const name of byMove.get(m)!) fs.rmSync(path.join(p.home, name), { recursive: true, force: true });
 }
 
 /**
