@@ -108,9 +108,10 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
   });
 
   it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
-    const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }] });
+    const { deps } = outDeps(happy, { rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/first', kept: true, lacks: true }] });
     expect((await moveHomeOut('studio', deps)).result).toBe('ready');
-    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail).toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet');
+    expect(events.find((e) => e.step === 'check' && e.status === 'ok')?.detail)
+      .toBe('2 robots stay here, 1 on studio; defaultCwd becomes ~/code, which studio does not have yet; onboarding.firstProject is ~/first, which studio does not have yet');
   });
 
   it('a check that refuses freezes nothing, and says what to do', async () => {
