@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -6,7 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
 import { tokenFor } from '@svall/svalld/placement/workers';
-import { addHost } from '../src/controller/host.js';
+import { hostLock } from '@svall/svalld/kernel-lock';
+import { addHost, upgradeHost } from '../src/controller/host.js';
 import { wantedCompanion } from '../src/controller/install.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import { companionArchive, ephemeralSigner } from './controller/archive.js';
@@ -632,4 +634,57 @@ esac
       expect(registry.list().filter((m) => m.record.name === 'trift').map((m) => m.id)).toEqual([REMOTE]);
     });
   });
+});
+
+describe('one add or upgrade of a machine at a time', () => {
+  const BUSY = { status: 'fail', detail: 'trift is being added or upgraded by another run', action: 'try again once it ends' };
+  const unreachable = { interactiveSsh: () => Promise.resolve({ code: 255, stderr: 'no route' }) };
+
+  it('refuses a second run while another holds the machine, before it reaches it, and lets the next one through once it ends', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const unlock = (await hostLock(registry.dir, 'trift'))!;
+    const added = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }));
+    expect(added.stopped).toBe('name');
+    expect(step('name').at(-1)).toMatchObject(BUSY);
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const upgraded = await upgradeHost('trift', { release: archive() }, deps({ registry }));
+    expect(upgraded.stopped).toBe('machine');
+    expect(step('machine').at(-1)).toMatchObject(BUSY);
+    expect(ssh.calls()).toEqual([]);
+    unlock();
+    events.length = 0;
+    // a run that ended, however far it got, holds the machine no longer
+    expect((await upgradeHost('trift', { release: archive() }, deps({ registry }))).stopped).not.toBe('machine');
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  });
+
+  it('lets the machine go when the run holding it dies', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    const script = path.join(work, 'hold-machine.mts');
+    fs.writeFileSync(script, [
+      `import { hostLock } from ${JSON.stringify(path.join(import.meta.dirname, '../../svalld/src/kernel-lock.ts'))};`,
+      `process.stdout.write((await hostLock(${JSON.stringify(registry.dir)}, 'trift')) ? 'held\\n' : 'busy\\n');`,
+      'setInterval(() => undefined, 1000);',
+    ].join('\n'));
+    const child = spawn(process.execPath, ['--import', 'tsx', script], { cwd: path.resolve(import.meta.dirname, '../../..'), stdio: ['ignore', 'pipe', 'inherit'] });
+    const exited = new Promise((resolve) => { child.on('close', resolve); });
+    try {
+      const said = await new Promise<string>((resolve, reject) => {
+        child.stdout.on('data', (b: Buffer) => resolve(b.toString()));
+        setTimeout(() => reject(new Error('the holder said nothing')), 15_000);
+      });
+      expect(said).toBe('held\n');
+      expect((await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('name');
+    } finally { child.kill('SIGKILL'); }
+    await exited;
+    events.length = 0;
+    expect((await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, ...unreachable }))).stopped).toBe('ssh');
+    expect(step('name').at(-1)?.status).toBe('ok');
+    // and that run, ended, holds it no longer
+    const free = await hostLock(registry.dir, 'trift');
+    expect(free).toBeDefined();
+    free?.();
+  }, 30_000);
 });

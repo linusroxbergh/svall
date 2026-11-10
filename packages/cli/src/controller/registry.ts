@@ -76,6 +76,11 @@ export class MachineRegistry {
     writeDurable(this.file, { machines: Object.fromEntries(this.machines) });
   }
 
+  /** The folder the registry is in, the account's, as every fleet and build reads it. */
+  get dir(): string {
+    return path.dirname(this.file);
+  }
+
   /** What a lookup that found no machine adds: where a registry that could not be read went, with every machine it named. */
   setAside(): string {
     return this.recovered

@@ -98,7 +98,7 @@ esac
     expect(far.now()).toBe('1.2.3');
     expect(JSON.stringify(events)).not.toContain(TOKEN);
     const setup = ssh.remoteCalls().find((w) => w.includes('setup'))!;
-    expect(setup[0]).toBe(`${work}/far/.cache/svall/staging-1.2.3/releases/1.2.3/bin/svall`);
+    expect(setup[0]).toMatch(new RegExp(`^${work}/far/\\.cache/svall/staging-1\\.2\\.3-[0-9a-f-]{36}/releases/1\\.2\\.3/bin/svall$`));
     expect(ssh.remoteCalls().some((w) => w.includes('--rollback'))).toBe(false);
   });
 
@@ -859,7 +859,7 @@ esac
     expect(ssh.remoteCalls().some((w) => w.includes('cat > "$1"') || w.includes('setup'))).toBe(false);
   });
 
-  it('deletes the archive it uploaded and the release it unpacked once the release is installed', async () => {
+  it('deletes the archive it uploaded and the release it unpacked once the release is installed, each run only its own', async () => {
     ssh.reply(['uname', '-sm'], { stdout: 'Linux aarch64\n' });
     ssh.reply(['cat', '/etc/os-release'], { stdout: OS_RELEASE });
     ssh.reply(['cat > "$1"'], {});
@@ -871,9 +871,19 @@ esac
     ssh.reply(['doctor', '--json'], { stdout: DOCTOR });
     const d = await daemon();
     ssh.answer({ fleetId: FLEET, machineId: REMOTE, release: '1.2.3', protocol: PROTOCOL_VERSION, host: '127.0.0.1', port: d.port, token: TOKEN, fleetHome: '/home/linus/.svall' });
-    await upgradeHost('trift', { release: archive() }, deps({ registry: registered() }));
+    const registry = registered();
+    await upgradeHost('trift', { release: archive() }, deps({ registry }));
+    await upgradeHost('trift', { release: archive() }, deps({ registry }));
     await d.close();
-    expect(ssh.remoteCalls()).toContainEqual(['rm', '-rf', `${HOME}/.cache/svall/staging-1.2.3`, `${HOME}/.cache/svall/companion-1.2.3.tar.gz`]);
+    // each run uploads to a path of its own and removes only that, so one run's cleanup never takes another's archive
+    const uploads = ssh.remoteCalls().filter((w) => w.includes('cat > "$1"')).map((w) => w.at(-1)!);
+    const removed = ssh.remoteCalls().filter((w) => w[0] === 'rm');
+    expect(uploads).toHaveLength(2);
+    expect(uploads[0]).not.toBe(uploads[1]);
+    for (const [i, upload] of uploads.entries()) {
+      expect(upload).toMatch(new RegExp(`^${HOME}/\\.cache/svall/companion-1\\.2\\.3-[0-9a-f-]{36}\\.tar\\.gz$`));
+      expect(removed[i]).toEqual(['rm', '-rf', upload.replace('/companion-', '/staging-').replace(/\.tar\.gz$/, ''), upload]);
+    }
   });
 
   describe('a fleet named apart on its two machines, the server its worker under the private profile there', () => {

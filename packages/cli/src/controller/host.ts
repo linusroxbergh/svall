@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetConfig, MachineId, MachineRecord, migrateState, ON_THIS_MAC, WorkerFile, type AgentKind, type FleetState, type SetupRow } from '@svall/protocol';
@@ -7,7 +8,7 @@ import { GATEWAY_UNIT, svalldUnitName, unitDirOf, unitPath } from '@svall/svalld
 import { homeWord } from '@svall/svalld/machine';
 import { isFleetName, isProfileName, PRIVATE, profileHome, profileOf } from '@svall/svalld/profile';
 import { readMarker } from '@svall/svalld/fleet/home-move';
-import { enrolLock } from '@svall/svalld/kernel-lock';
+import { enrolLock, hostLock } from '@svall/svalld/kernel-lock';
 import { fleetHomeOfSocket, resolvePaths, socketTooLong } from '@svall/svalld/paths';
 import { clearConsent } from '@svall/svalld/placement/mirror-consent';
 import { dropToken, enrollArgv, issueToken, keyLine, noLoginFix, workerProfile } from '@svall/svalld/placement/workers';
@@ -611,9 +612,10 @@ async function companionFor(o: AddOptions, d: HostDeps, arch: string): Promise<O
   return { value: { ...companion, allowUnsigned }, detail: `${companion.version} for ${companion.platform} from ${from} (${signedWord(companion.signed)})` };
 }
 
-export const remotePaths = (home: string, version: string) => ({
-  archive: path.posix.join(home, '.cache', 'svall', `companion-${version}.tar.gz`),
-  staging: path.posix.join(home, '.cache', 'svall', `staging-${version}`),
+// each run's own upload and staging there, which no other run's cleanup can take
+export const remotePaths = (home: string, version: string, run: string = crypto.randomUUID()) => ({
+  archive: path.posix.join(home, '.cache', 'svall', `companion-${version}-${run}.tar.gz`),
+  staging: path.posix.join(home, '.cache', 'svall', `staging-${version}-${run}`),
   svallBase: path.posix.join(home, '.local', 'share', 'svall'),
 });
 
@@ -642,8 +644,21 @@ function noLogin(ssh: string, said: string): StepError {
   return new StepError(`${here} cannot log in to ${ssh}${said ? `: ${said}` : ''}`, noLoginFix(here, ssh), keyLine(ssh));
 }
 
+// one add or upgrade of a machine at a time, held to the run's end; the kernel lets it go with the process however it ends
+function machineLock(): { take(d: Pick<HostDeps, 'registry'>, name: string): Promise<void>; free(): void } {
+  let unlock: (() => void) | undefined;
+  return {
+    async take(d, name) {
+      unlock = await hostLock(d.registry.dir, name);
+      if (!unlock) throw new StepError(`${name} is being added or upgraded by another run`, 'try again once it ends');
+    },
+    free: () => unlock?.(),
+  };
+}
+
 /** `svall host add`: the spec's Add Machine flow, from the first interactive ssh to the registry entry. */
 export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
+  const lock = machineLock();
   return flow(d.emit, async (run) => {
     const held = await run.step('name', async () => {
       if (!o.asHome) {
@@ -651,7 +666,9 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
         // a move's pause holds this lock, and refuses the add before anything is reached
         (await heldEnrol(resolvePaths(d.fleet.home)))();
       }
-      return claimName(d.registry, o);
+      const claimed = claimName(d.registry, o);
+      await lock.take(d, o.name);
+      return claimed;
     });
     if (o.asHome) await run.step('tailscale', () => tailnetHere(d));
 
@@ -768,7 +785,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
     } finally {
       await master.close().catch(() => undefined);
     }
-  });
+  }).finally(lock.free);
 }
 
 /** This fleet's daemon linked to the machine, and its agent setup there as steps, a machine just linked given up to 30 s to come up and answer. */
@@ -939,8 +956,14 @@ const GATEWAY_OFF = 'systemctl --user disable --now "$(basename "$1")" && rm -f 
  * probe that puts the old one back if it does not answer; a machine not yet this fleet's worker then becomes one.
  */
 export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?: boolean }, d: HostDeps): Promise<HostOutcome> {
+  const lock = machineLock();
   return flow(d.emit, async (run) => {
-    const entry = await run.step('machine', () => { const out = machineOutcome(d.registry, asked); mayActOn(out.value.id, d); return Promise.resolve(out); });
+    const entry = await run.step('machine', async () => {
+      const out = machineOutcome(d.registry, asked);
+      mayActOn(out.value.id, d);
+      await lock.take(d, out.value.record.name);
+      return out;
+    });
     const name = entry.record.name;
     const fleetHome = dialedHome(entry.id, d);
     const master = await run.step('master', () => checkedMaster(d, entry));
@@ -999,7 +1022,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
     } finally {
       await master.close().catch(() => undefined);
     }
-  });
+  }).finally(lock.free);
 }
 
 /**
