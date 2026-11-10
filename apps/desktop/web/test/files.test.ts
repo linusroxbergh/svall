@@ -127,6 +127,26 @@ describe('files', () => {
     expect(getBuffer('c1', 'a.ts')!.state.doc.toString()).toBe('one\n');
   });
 
+  it('a save refused for what the file holds leaves it unsaved, and the next save that lands leaves nothing unsaved', async () => {
+    const disk: Disk = { 'fleet.json': { text: '{}\n', mtimeMs: 1 } };
+    const { api: base } = fakeApi(disk);
+    const call = base.call as (method: string, p: { text?: string }) => Promise<unknown>;
+    const api = { call: (method: string, p: { text?: string }) => (method === 'fs.write' && p.text?.includes('bad') ? Promise.reject(Object.assign(new Error('fleet.json is not JSON'), { code: 'invalid' })) : call(method, p)) } as unknown as Pick<Api, 'call'>;
+    const store = createAppStore();
+    store.getState().setFleet(fleet());
+    const d = { api, store };
+    await openFile(d, 'c1', 'fleet.json');
+    edit('c1', 'fleet.json', 'bad');
+    store.getState().markFile('c1', 'fleet.json', { dirty: true });
+    await saveFile(d, 'c1', 'fleet.json');
+    expect(store.getState().ide.c1).toMatchObject({ dirty: ['fleet.json'], failed: ['fleet.json'] });
+    setState('c1', 'fleet.json', getBuffer('c1', 'fleet.json')!.state.update({ changes: { from: 3, to: 6, insert: '' } }).state);
+    store.getState().markFile('c1', 'fleet.json', { dirty: true });
+    await saveFile(d, 'c1', 'fleet.json');
+    expect(disk['fleet.json']).toEqual({ text: '{}\n', mtimeMs: 2 });
+    expect(store.getState().ide.c1).toMatchObject({ dirty: [], failed: [] });
+  });
+
   it('keeps what was typed during a save as unsaved', async () => {
     const disk: Disk = { 'a.ts': { text: 'one\n', mtimeMs: 1 } };
     const { api } = fakeApi(disk);
