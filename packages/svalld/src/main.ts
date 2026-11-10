@@ -417,6 +417,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     // the supervisor starts it again, or the app within seconds of opening; a start finishes the join
     restart: () => { setImmediate(() => fleet.emit('stopped')); },
   }, opts.frozen);
+  const platformOf = (id: string): string | undefined => { try { return readRegistry().find((m) => m.id === id)?.record.platform; } catch { return undefined; } };
   const homeChecks = async (to: MachineId) => {
     const worker_ = worker?.worker;
     const fleetId = readFleetConfig(paths).id;
@@ -427,13 +428,13 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
       const back = homeLabel();
-      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me });
+      return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me, platformOf });
     }
     const here = await homeFacts(paths, { me, role: 'home', fleetId });
     const link = links?.for(to);
     const name = store.state.machines?.[to]?.name ?? to;
     const far = await links!.call<HomeFacts>(to, 'home.facts', { paths: here.rewrites?.map((r) => r.to) ?? [] }).catch(() => undefined);
-    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true });
+    return homeCheck({ state: store.state, from: here, to: far ?? { ...here, machineId: to, tailscale: {} }, toName: name, linked: far !== undefined, synced: link?.synced ?? false, fromIsHome: true, platformOf });
   };
   // a move coming here that its driver left, or an outcome the old home has yet to hear. `unmarked`: its driver writes the key before the mark, so with none no mark can stand
   const homeWaits = () => {

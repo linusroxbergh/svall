@@ -908,6 +908,17 @@ describe('the check', () => {
     if (!r.ok) expect(r.refusal.action).toMatch(/add it again from studio/);
   });
 
+  it('gives a second worker only the way back its platform takes, and both where this machine has no record of it', () => {
+    const second = '99999999-7777-8888-9999-aaaaaaaaaaaa';
+    const action = (platform?: string) => {
+      const r = homeCheck(input({ from: facts({ workers: [STUDIO, second] }), platformOf: (id: string) => (id === second ? platform : 'linux') }));
+      return r.ok ? undefined : r.refusal.action;
+    };
+    expect(action('linux')).toBe(`remove ${second} first; after the move, add it again from studio`);
+    expect(action('darwin')).toBe(`remove ${second} first; after the move, run svall fleet join on it`);
+    expect(action()).toBe(`remove ${second} first; after the move, add it again from studio, or run svall fleet join on it if it is a Mac`);
+  });
+
   it('a Tailscale installed and stopped says it is not running and how to start it, its own words behind details; one not installed says so', async () => {
     const paths = resolvePaths(makeHome());
     const raw = 'Command failed: tailscale status --json\nfailed to connect to local tailscaled; it doesn\'t appear to be running';

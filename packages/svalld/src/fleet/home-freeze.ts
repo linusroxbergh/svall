@@ -308,9 +308,9 @@ export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string):
   return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, to: `~${value.slice(fromHome.length)}` }] : []));
 }
 
-/** `back`: the name of the home the fleet leaves for this machine, on the way back. */
+/** `back`: the name of the home the fleet leaves for this machine, on the way back. `platformOf`: a machine's platform, as this machine's registry has it. */
 type HomeCheckInput = {
-  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean;
+  state: FleetState; from: HomeFacts; to: HomeFacts; toName: string; back?: string; linked: boolean; synced: boolean; fromIsHome: boolean; platformOf?: (id: string) => string | undefined;
 };
 
 /** Every reason the fleet cannot move now, each with its action, and what it would move. A reason names the other machine, and this one as this machine. */
@@ -331,7 +331,9 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
   const others = (from.workers ?? []).filter((m) => m !== to.machineId && m !== from.machineId);
   for (const m of others) {
     const name = state.machines?.[m as MachineId]?.name ?? m;
-    fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`);
+    const platform = i.platformOf?.(m);
+    const again = platform === 'linux' ? `add it again from ${goesTo}` : platform === 'darwin' ? 'run svall fleet join on it' : `add it again from ${goesTo}, or run svall fleet join on it if it is a Mac`;
+    fail(`${name} is a worker of this fleet too`, `remove ${name} first; after the move, ${again}`);
   }
   if (Math.abs(from.clock - to.clock) > CLOCK_SKEW_MS) fail(`${far}'s clock and this machine's are more than 5 minutes apart`, 'set the one that is wrong: on a server, ssh there, then sudo timedatectl set-ntp on');
   // on the way back, the leaving home's facts are its own only once it answers
