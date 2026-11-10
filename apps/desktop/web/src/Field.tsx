@@ -3,8 +3,8 @@ import { useEffect, useLayoutEffect, useRef, type ComponentProps } from 'react';
 // a name, path, url or ssh destination is kept as typed: macOS may not capitalise, correct or complete it
 export const AS_TYPED = { autoCapitalize: 'off', autoCorrect: 'off', spellCheck: false, autoComplete: 'off' } as const;
 
-// onSave returns false to decline an edit, which puts the fleet's value back
-type Follow = { value: string; onSave(value: string): boolean | void };
+// onSave returns false to decline an edit, which puts the fleet's value back, or a promise of false once the fleet refused it
+type Follow = { value: string; onSave(value: string): boolean | void | Promise<boolean> };
 
 // an uncontrolled field that shows the fleet's value as it changes, except while someone is editing it;
 // onSave hears only an edit made in the field, and one the fleet has not taken stays there for the next blur to send again
@@ -31,8 +31,16 @@ function useFollow<T extends HTMLInputElement | HTMLTextAreaElement>({ value, on
     onFocus: () => { const v = ref.current!.value; start.current = v === sent.current ? latest.current : v; },
     onBlur: () => {
       const el = ref.current!;
-      if (el.value === start.current || onSave(el.value) === false) el.value = latest.current;
-      else if (el.value !== latest.current) sent.current = el.value;
+      const said = el.value === start.current ? false : onSave(el.value);
+      if (said === false) { el.value = latest.current; return; }
+      const typed = el.value;
+      if (typed !== latest.current) sent.current = typed;
+      // a field someone is back in keeps what they type
+      void Promise.resolve(said).then((ok) => {
+        if (ok !== false || sent.current !== typed) return;
+        sent.current = undefined;
+        if (el !== document.activeElement) el.value = latest.current;
+      });
     },
   };
 }

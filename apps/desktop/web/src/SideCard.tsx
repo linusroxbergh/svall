@@ -113,7 +113,7 @@ export function SideCard({ id }: { id: string }) {
         <div className="side-head">
           <PortraitPicker id={id} portrait={c.portrait} figure={c.figure} refuse={refuse} />
           <FollowLine className="h2" aria-label="Name" key={`name-${id}`} value={c.name} {...fieldTry(refuse)} data-testid="side-name"
-            onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; save({ name }); }} />
+            onSave={(v) => { const name = v.trim(); if (!name || name === c.name) return false; return save({ name }); }} />
           <button className="ib side-star" data-testid="side-star" aria-pressed={starred} data-tip={starred ? 'Unstar' : 'Star'}
             aria-label="Star" {...buttonTry(refuse)} onClick={() => setStar(deps(), id, !starred)}><Star on={starred} size="lg" /></button>
         </div>
@@ -132,12 +132,12 @@ export function SideCard({ id }: { id: string }) {
         {placed && c.machine && !onHome && !c.moving && <OnMachine key={`${id}:${c.machine}:${c.placement?.generation}`} id={id} machine={c.machine} name={placed} />}
         <Section name="robot.note" title="Note" head={<Info id="robot-note">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. The scribe fills it in until you write one.</Info>}>
           <FollowTextarea className="fld desc" rows={6} placeholder="What this robot is doing" key={`note-${id}`} value={c.note} {...fieldTry(refuse)} maxLength={ROBOT_NOTE_MAX} data-testid="side-note"
-            onSave={(v) => { if (v !== c.note) save({ note: v }); }} />
+            onSave={(v) => (v !== c.note ? save({ note: v }) : undefined)} />
         </Section>
         <Section name="robot.instructions" title="Agent instructions" shut head={<Info id="robot-instructions">Sent to the agent when it starts; your change mid-session reaches it with your next prompt. A new profile is sent whole.</Info>}>
           <AgentProfilePick id={id} refuse={refuse} />
           <FollowTextarea className="fld desc" rows={3} placeholder="Anything else this agent should know" key={`instructions-${id}`} value={c.instructions} {...fieldTry(refuse)} data-testid="side-instructions"
-            onSave={(v) => { if (v !== c.instructions) save({ instructions: v }); }} />
+            onSave={(v) => (v !== c.instructions ? save({ instructions: v }) : undefined)} />
         </Section>
         <Section name="robot.context" title="Context" head={<Info id="robot-context">Listed for the agent when it starts, pinned items to read first; your change mid-session reaches it with your next prompt.</Info>}>
           <ContextPills items={c.context} ids={{ list: 'side-context', remove: 'context-remove' }}

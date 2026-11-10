@@ -323,9 +323,12 @@ export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promis
 const unsent = (d: ActionDeps, retry: () => void) => (e: Error) =>
   d.store.getState().showToast(e.message, 'error', e instanceof ApiError ? undefined : { label: 'Retry', run: retry });
 
-export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.update'>, 'id'>): void => {
-  d.api.call('robot.update', { id, ...patch }).catch(unsent(d, () => saveRobot(d, id, patch)));
-};
+// false once the fleet refused it, for a field to put back what the fleet holds; one that never reached the fleet stays to send again
+const saved = (d: ActionDeps, call: Promise<unknown>, retry: () => void): Promise<boolean> =>
+  call.then(() => true, (e: Error) => { unsent(d, retry)(e); return !(e instanceof ApiError); });
+
+export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.update'>, 'id'>): Promise<boolean> =>
+  saved(d, d.api.call('robot.update', { id, ...patch }), () => { void saveRobot(d, id, patch); });
 
 // a context write carries the whole list, so a failed one is only reported: sent again later it could drop items added meanwhile
 export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
@@ -357,9 +360,8 @@ export const openSecondTerminal = (d: ActionDeps, id: string): void => {
   });
 };
 
-export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island.update'>, 'id'>): void => {
-  d.api.call('island.update', { id, ...patch }).catch(unsent(d, () => saveIsland(d, id, patch)));
-};
+export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island.update'>, 'id'>): Promise<boolean> =>
+  saved(d, d.api.call('island.update', { id, ...patch }), () => { void saveIsland(d, id, patch); });
 
 export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
   d.api.call('island.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
