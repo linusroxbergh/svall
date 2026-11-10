@@ -36,6 +36,14 @@ describe('a robot landing on a worker', () => {
     expect([store.getState().selectedId, store.getState().sideCardOpen]).toEqual(['c1', true]);
   });
 
+  it('says this Mac for one landing on the worker the window is on', async () => {
+    const { store } = setup([linear]);
+    store.getState().setVia({ machine: VAULT, home: 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId, name: 'studio' });
+    store.getState().setFleet(landed);
+    await vi.waitFor(() => expect(store.getState().toast).toBeDefined());
+    expect(store.getState().toast?.text).toBe('c1 is on this Mac. 1 part of its agent setup will not work there.');
+  });
+
   it("says nothing while that robot's move sheet is open, whose done line says it", async () => {
     const { store, call } = setup([linear]);
     store.getState().setMoveSheet({ id: 'c1', to: VAULT });
