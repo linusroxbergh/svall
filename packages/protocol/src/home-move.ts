@@ -51,7 +51,8 @@ export const HomeManifest = z.object({
 export type HomeManifest = z.infer<typeof HomeManifest>;
 
 /** A path in fleet.json that goes in as `~/…` for the new home to read as its own; `lacks`: that machine says it has nothing there. */
-const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean().optional() });
+// `kept`: written as ~/… already, so it names the same place there, which the sheet names only while that machine lacks it
+const HomeRewrite = z.object({ key: z.string(), to: z.string(), lacks: z.boolean().optional(), kept: z.literal(true).optional() });
 
 /**
  * What a machine says of itself to a home move's check, none of it secret. `tailscale.stopped`: installed, and its daemon does not answer. `workers`: those its fleet holds a token for and its registry lists, none said where it

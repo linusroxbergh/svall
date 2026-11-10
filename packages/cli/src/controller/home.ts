@@ -308,7 +308,7 @@ const refuse = (run: Runner, why: string, action?: string, say?: string): Promis
 const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reason, ...(refusal.more ?? []).map((m) => m.reason)].join('; '), refusal.action);
 
 // a terminal's word for what the sheet says of a path the machine taking the fleet does not have yet
-const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${r.key} becomes ${r.to}, which ${name} does not have yet`).join('');
+const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${r.key} ${r.kept ? 'is' : 'becomes'} ${r.to}, which ${name} does not have yet`).join('');
 
 const CREW_BACK = 'svall fleet home crew-back';
 // what a window says where a terminal is given the commands that end a move: the sheet's, and the banner's, which holds both buttons

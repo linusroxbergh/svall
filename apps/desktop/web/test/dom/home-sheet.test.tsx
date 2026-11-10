@@ -47,9 +47,9 @@ describe('the sheet of a home move', () => {
   });
 
   it('says of a rewritten path that the machine taking the fleet does not have it, and goes on', async () => {
-    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }] } } });
+    answer({ 'fleet.homeCheck': { ok: true, sheet: { ...SHEET, rewrites: [{ key: 'defaultCwd', to: '~/code', lacks: true }, { key: 'home.cwd', to: '~/crew' }, { key: 'onboarding.firstProject', to: '~/app', kept: true, lacks: true }] } } });
     await open();
-    expect(screen.getAllByTestId('home-rewrite').map((r) => r.textContent)).toEqual(['defaultCwd becomes ~/code, which studio does not have yet', 'home.cwd becomes ~/crew']);
+    expect(screen.getAllByTestId('home-rewrite').map((r) => r.textContent)).toEqual(['defaultCwd becomes ~/code, which studio does not have yet', 'home.cwd becomes ~/crew', 'onboarding.firstProject is ~/app, which studio does not have yet']);
     expect(screen.getByTestId('home-go')).toBeTruthy();
   });
 

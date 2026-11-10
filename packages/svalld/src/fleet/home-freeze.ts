@@ -331,12 +331,15 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   };
 }
 
-/** The paths in fleet.json named under the old home, which go in as `~/…` for the new one to read as its own. */
+/** The paths in fleet.json named under the old home, which go in as `~/…` for the new one to read as its own, and those written as `~/…` already. */
 export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string): HomeSheet['rewrites'] {
   let c: ReturnType<typeof readFleetConfig>;
   try { c = readFleetConfig(p); } catch { return []; }
   const named: [string, string | undefined][] = [['defaultCwd', c.defaultCwd], ['home.cwd', c.home.cwd], ['onboarding.firstProject', c.onboarding?.firstProject]];
-  return named.flatMap(([key, value]) => (value && (value === fromHome || value.startsWith(`${fromHome}/`)) ? [{ key, to: `~${value.slice(fromHome.length)}` }] : []));
+  return named.flatMap(([key, value]) => {
+    if (value && (value === fromHome || value.startsWith(`${fromHome}/`))) return [{ key, to: `~${value.slice(fromHome.length)}` }];
+    return value && (value === '~' || value.startsWith('~/')) ? [{ key, to: value, kept: true as const }] : [];
+  });
 }
 
 /** `back`: the name of the home the fleet leaves for this machine, on the way back. `platformOf`: a machine's platform, as this machine's registry has it. */
@@ -385,7 +388,7 @@ export function homeCheck(i: HomeCheckInput): Result<'fleet.homeCheck'> {
     here: robots.filter((r) => (r.machine ?? from.machineId) === from.machineId && state.islands[r.islandId]?.kind !== 'home').length,
     there: robots.filter((r) => r.machine === to.machineId).length,
     mission: robots.filter((r) => state.islands[r.islandId]?.kind === 'home' && r.islandId === HOME_ISLAND && (r.machine ?? from.machineId) !== to.machineId).map((r) => ({ id: r.id, name: r.name })),
-    rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })),
+    rewrites: (from.rewrites ?? []).map((r) => ({ ...r, ...(to.paths?.[r.to] === false && { lacks: true }) })).filter((r) => !r.kept || r.lacks),
   };
   if (!failed.length) return { ok: true, sheet };
   const [first, ...more] = failed;

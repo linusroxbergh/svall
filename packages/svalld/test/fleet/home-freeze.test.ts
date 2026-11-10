@@ -1045,3 +1045,13 @@ it('rewrites what fleet.json names under the old home, and nothing else', () => 
   fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', defaultCwd: '/Users/ada/code', home: { cwd: '/opt/crew' }, onboarding: { firstProject: '/Users/ada', scribe: true } }));
   expect(configRewrites(paths, '/Users/ada')).toEqual([{ key: 'defaultCwd', to: '~/code' }, { key: 'onboarding.firstProject', to: '~' }]);
 });
+
+it('asks the new home of a path fleet.json writes as ~/ already, and names it only while that machine lacks it', () => {
+  const paths = resolvePaths(makeHome());
+  fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', defaultCwd: '~/code', home: { cwd: '~/.svall-dev-fartest/home' } }));
+  const rewrites = configRewrites(paths, '/Users/ada');
+  expect(rewrites).toEqual([{ key: 'defaultCwd', to: '~/code', kept: true }, { key: 'home.cwd', to: '~/.svall-dev-fartest/home', kept: true }]);
+  const there = { ...facts({ machineId: STUDIO }), paths: { '~/code': true, '~/.svall-dev-fartest/home': false } };
+  const r = homeCheck({ state: emptyState(), from: { ...facts({}), rewrites }, to: there, toName: 'studio', linked: true, synced: true, fromIsHome: true });
+  expect(r.sheet?.rewrites).toEqual([{ key: 'home.cwd', to: '~/.svall-dev-fartest/home', kept: true, lacks: true }]);
+});
