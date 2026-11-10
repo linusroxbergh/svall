@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import { promisify } from 'node:util';
 import { z } from 'zod';
-import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, MachineRecord, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type HomeSheet, type Refusal } from '@svall/protocol';
+import { AdoptAnswer, ApiError, crewAway, FleetId, INTERRUPT_ACTIONS, MachineId, MachineRecord, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, WorkerFile, type Enrolment, type FleetState, type HomeDelivery, type HomeFacts, type HomeManifest, type HomeMoveId, type HomeMoving, type HomeSheet, type Refusal, type SetupRow } from '@svall/protocol';
 import { readFleetConfig } from '@svall/svalld/config';
 import { HomeCrash, homePoint } from '@svall/svalld/failpoints';
 import { markedThere } from '@svall/svalld/fleet/home-far';
@@ -84,12 +84,18 @@ export async function seedHome(o: { here: SeedClient; far: SeedClient; me: Machi
   // a tick stored earlier is asked too, and a no takes it back, as what the Copy sends is what stands ticked as it reads
   for (const r of rows) {
     const t = r.tick!;
-    const yes = await o.ask.key(r.action ?? r.detail ?? r.key, t.preview);
+    const yes = await o.ask.key(sendWords(r, o.name), t.preview);
     if (yes !== t.on || (!yes && t.ticked?.length)) await o.here.call('home.setupConsent', { item: t.item, fields: t.fields, on: yes });
   }
   const { sent, backup } = await o.far.call('machines.copySetupFrom', { machine: o.me, seed: true });
   return { value: undefined, detail: `${sent} files of this machine's agent setup copied to ${o.name}${backup ? `; what it replaced there is in ${backup}` : ''}` };
 }
+
+// a key row ticks fields of an item; any other row's file goes whole
+const sendWords = (r: SetupRow, home: string): string => {
+  const name = r.gap?.name ?? r.key;
+  return r.tick!.ticked ? `Send ${name}'s ${r.tick!.fields.map((f) => f.replace(/^env\./, '')).join(', ')} to ${home}` : `Send ${name} to ${home} as it is, keys included`;
+};
 
 /** What this fleet holds that the home's first snapshot would erase, as the refusal that stops a join before any write. */
 function refuseHeld(o: JoinOptions, d: Pick<JoinDeps, 'target' | 'me'>): string {

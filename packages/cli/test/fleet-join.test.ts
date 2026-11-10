@@ -248,13 +248,13 @@ describe('svall fleet join', () => {
 
   describe('the seed', () => {
     const ROWS = { rows: [
-      { key: 'claude:mcp:a', status: 'warn', detail: 'a key', action: 'copy the key', tick: { item: 'claude:mcp:a', fields: ['env.A'], on: false, preview: ['env.A ****'] } },
-      { key: 'claude:mcp:b', status: 'ok', detail: 'a key', tick: { item: 'claude:mcp:b', fields: ['env.B'], on: true, preview: ['env.B ****'] } },
-      { key: 'claude:mcp:c', status: 'warn', detail: 'a key', action: 'copy this key too', tick: { item: 'claude:mcp:c', fields: ['env.C'], on: false, preview: ['env.C ****'] } },
+      { key: 'claude:mcp:a', status: 'warn', detail: 'a key', action: 'copy the key', tick: { item: 'claude:mcp:a', fields: ['env.A'], on: false, preview: ['env.A ****'], ticked: [] }, gap: { name: 'a', what: 'keys not copied' } },
+      { key: 'claude:mcp:b', status: 'ok', detail: 'a key', tick: { item: 'claude:mcp:b', fields: ['env.B'], on: true, preview: ['env.B ****'], ticked: ['env.B'] }, gap: { name: 'b', what: 'ticked' } },
+      { key: 'claude:mcp:c', status: 'warn', detail: 'a key', action: 'check studio again', tick: { item: 'claude:mcp:c', fields: ['env.C'], on: false, preview: ['env.C ****'], ticked: [] }, gap: { name: 'c', what: 'keys not copied' } },
     ] };
     type Asked = [string, unknown];
     const client = (asked: Asked[], answers: Record<string, unknown>) => ({ call: (m: string, p: unknown) => { asked.push([m, p]); return Object.hasOwn(answers, m) ? Promise.resolve(answers[m]) : Promise.reject(new Error(`${m} not answered`)); } }) as unknown as Pick<Client, 'call'>;
-    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said !== 'copy this key too') };
+    const yes: SeedAsk = { go: () => Promise.resolve(true), key: (said) => Promise.resolve(said !== "Send c's C to studio") };
     const run = (o: { far: boolean; here: boolean; ask?: SeedAsk; copied?: unknown }) => {
       const [farCalls, hereCalls]: [Asked[], Asked[]] = [[], []];
       const out = seedHome({
@@ -295,19 +295,21 @@ describe('svall fleet join', () => {
 
     it('asks each row a tick stands on too, and a no takes that tick back before the Copy, a part of a row\'s included', async () => {
       const rows = { rows: [
-        { key: 'claude:mcp:whole', status: 'ok', detail: 'whole', tick: { item: 'claude:mcp:whole', fields: ['env.W'], on: true, preview: ['env.W ****'], ticked: ['env.W'] } },
-        { key: 'claude:mcp:part', status: 'warn', detail: 'part', tick: { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false, preview: ['env.A ****', 'env.B ****'], ticked: ['env.A'] } },
-        { key: 'claude:mcp:kept', status: 'ok', detail: 'kept', tick: { item: 'claude:mcp:kept', fields: ['env.K'], on: true, preview: ['env.K ****'], ticked: ['env.K'] } },
-        { key: 'claude:mcp:none', status: 'warn', detail: 'none', tick: { item: 'claude:mcp:none', fields: ['env.N'], on: false, preview: ['env.N ****'], ticked: [] } },
+        { key: 'claude:mcp:whole', status: 'ok', detail: 'whole', tick: { item: 'claude:mcp:whole', fields: ['env.W'], on: true, preview: ['env.W ****'], ticked: ['env.W'] }, gap: { name: 'whole', what: 'ticked' } },
+        { key: 'claude:mcp:part', status: 'warn', detail: 'part', tick: { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false, preview: ['env.A ****', 'env.B ****'], ticked: ['env.A'] }, gap: { name: 'part', what: 'keys not copied' } },
+        { key: 'claude:mcp:kept', status: 'ok', detail: 'kept', tick: { item: 'claude:mcp:kept', fields: ['env.K'], on: true, preview: ['env.K ****'], ticked: ['env.K'] }, gap: { name: 'kept', what: 'ticked' } },
+        { key: 'claude:mcp:none', status: 'warn', detail: 'none', tick: { item: 'claude:mcp:none', fields: ['env.N'], on: false, preview: ['env.N ****'], ticked: [] }, gap: { name: 'none', what: 'keys not copied' } },
+        { key: 'claude:mcp:odd', status: 'warn', action: 'check studio again', detail: 'odd', tick: { item: 'claude:mcp:odd', fields: ['url', 'headers'], on: false, preview: ['url', 'headers'] }, gap: { name: 'odd', what: 'not copied' } },
       ] };
       const order: Asked[] = [];
       const asked: string[] = [];
       await seedHome({
         here: client(order, { 'machines.holdsSetup': { holds: true }, 'home.setup': rows, 'home.setupConsent': rows }),
         far: client(order, { 'machines.holdsSetup': { holds: false }, 'machines.copySetupFrom': { sent: 1 } }),
-        me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said) => { asked.push(said); return Promise.resolve(said === 'kept'); } },
+        me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said) => { asked.push(said); return Promise.resolve(said.startsWith("Send kept's")); } },
       });
-      expect(asked).toEqual(['whole', 'part', 'kept', 'none']);
+      // a question says what goes where, never a row's action
+      expect(asked).toEqual(["Send whole's W to studio", "Send part's A, B to studio", "Send kept's K to studio", "Send none's N to studio", 'Send odd to studio as it is, keys included']);
       expect(order.filter(([m]) => m === 'home.setupConsent' || m === 'machines.copySetupFrom')).toEqual([
         ['home.setupConsent', { item: 'claude:mcp:whole', fields: ['env.W'], on: false }],
         ['home.setupConsent', { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false }],
