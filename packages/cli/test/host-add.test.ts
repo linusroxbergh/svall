@@ -38,7 +38,7 @@ describe('host add', () => {
       'df -Pk "$HOME"', 'l=$(loginctl show-us',
     ]);
     expect(order.slice(6)).toEqual([
-      'svall version', 'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
+      'svall version', '[ -d "$1" ] || exit ', 'mkdir -p', 'cat > "$1"', 'mkdir -p', 'PATH=/usr/bin:/bin:/', 'svall setup', 'rm -rf',
       'sh -c', 'svall doctor', 'svall version', '[ -f "$1/$2" ] && ec', 'svall version', 'svall worker',
       'claude --version', 'claude auth', 'codex --version', 'codex login', 'opencode --version', 'opencode auth',
       'svall connection-info', 'svall version', 'sh -c',

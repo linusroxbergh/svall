@@ -90,6 +90,21 @@ esac
     return { base, now, registry, close: d.close, svall, archive: companionArchive(work, { signedBy: signer.key, svall: svall('1.2.3', PROTOCOL_VERSION) }) };
   }
 
+  it('sweeps what runs that stopped short left over a day ago, and nothing fresher or of another name', async () => {
+    const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION]] });
+    const cache = `${work}/far/.cache/svall`;
+    const id = () => crypto.randomUUID();
+    const [oldArchive, oldStaging, fresh, named, other] = [`companion-1.2.2-${id()}.tar.gz`, `staging-1.2.2-${id()}`, `companion-1.2.2-${id()}.tar.gz`, 'companion-1.2.2.tar.gz', 'notes.txt'];
+    fs.mkdirSync(path.join(cache, oldStaging, 'releases'), { recursive: true });
+    for (const f of [oldArchive, fresh, named, other]) fs.writeFileSync(path.join(cache, f), 'x');
+    const twoDays = new Date(Date.now() - 2 * 86_400_000);
+    for (const f of [oldArchive, oldStaging, named, other]) fs.utimesSync(path.join(cache, f), twoDays, twoDays);
+    const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));
+    await far.close();
+    expect(out).toEqual({ result: 'ready', actions: [] });
+    expect(fs.readdirSync(cache).sort()).toEqual([fresh, named, other].sort());
+  });
+
   it('installs a release that speaks a newer protocol with its own setup, and keeps it', async () => {
     const far = await farMachine({ releases: [['1.2.2', PROTOCOL_VERSION - 1]] });
     const out = await upgradeHost('trift', { release: far.archive }, deps({ registry: far.registry }));

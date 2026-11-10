@@ -619,6 +619,17 @@ export const remotePaths = (home: string, version: string, run: string = crypto.
   svallBase: path.posix.join(home, '.local', 'share', 'svall'),
 });
 
+// what runs that stopped short left there over a day ago, by the names remotePaths gives; a later one may be another home's run under way
+const RUN_ID = '????????-????-????-????-????????????';
+const LEFTOVERS = `[ -d "$1" ] || exit 0; find "$1" -mindepth 1 -maxdepth 1 -mmin +1440 \\( -name 'companion-*-${RUN_ID}.tar.gz' -o -name 'staging-*-${RUN_ID}' \\) -exec rm -rf {} +`;
+
+/** Uploads the companion for this run, past what earlier runs left there; a sweep that fails leaves them, and the upload goes on. */
+async function upload(master: SshMaster, archive: string, remote: { archive: string }): Promise<Outcome<void>> {
+  await master.run(sh('svall-sweep', LEFTOVERS, path.posix.dirname(remote.archive)), { timeoutMs: PROBE_TIMEOUT }).catch(() => undefined);
+  await uploadArchive(master, { archive, remote: remote.archive });
+  return { value: undefined, detail: `${path.basename(archive)} -> ${remote.archive}` };
+}
+
 /** The one machine record this name may carry, and the ssh destination it is already reached at. */
 function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered | undefined> {
   const name = MachineRecord.shape.name.safeParse(o.name);
@@ -728,10 +739,7 @@ export function addHost(o: AddOptions, d: HostDeps): Promise<HostOutcome> {
       });
       const remote = remotePaths(home, companion.version);
 
-      await run.step('upload', async () => {
-        await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
-        return { value: undefined, detail: `${path.basename(companion.archive)} -> ${remote.archive}` };
-      });
+      await run.step('upload', () => upload(master, companion.archive, remote));
       await run.step('install', async () => {
         const out = await bootstrapSetup(master, {
           staging: remote.staging, archive: remote.archive, version: companion.version,
@@ -975,10 +983,7 @@ export function upgradeHost(asked: string, o: { release?: string; allowUnsigned?
         return c;
       });
       const remote = remotePaths(entry.record.home, companion.version);
-      await run.step('upload', async () => {
-        await uploadArchive(master, { archive: companion.archive, remote: remote.archive });
-        return { value: undefined, detail: `${path.basename(companion.archive)} -> ${remote.archive}` };
-      });
+      await run.step('upload', () => upload(master, companion.archive, remote));
       const before = await run.step('install', async () => {
         const was = await currentRelease(master, entry.record.svallBase);
         const out = await bootstrapSetup(master, {
