@@ -197,8 +197,9 @@ export function toggleIsland(d: ActionDeps, id: string): void {
   d.api.call('island.update', { id, collapsed: !island.collapsed }).catch(toast(d));
 }
 
-export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number): void {
-  d.api.call('island.arrange', { aspect, homeRoom }).catch(toast(d));
+// one the map makes on its own, as a banner gives it room back, says nothing when refused, as a home frozen for a move refuses it
+export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number, automatic = false): void {
+  d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? () => {} : toast(d));
 }
 
 // without a cell the daemon picks the spot

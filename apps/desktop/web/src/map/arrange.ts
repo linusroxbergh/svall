@@ -34,7 +34,7 @@ export function useAutoArrange({ host, islands, card, cardSize, lastPressAt, res
     if (w <= 0 || h <= 0) return;
     // the map's own shape says whether it is squeezed, whatever margins the fit keeps inside it
     if (automatic && room.w / room.h < MIN_ARRANGE_ASPECT) return;
-    arrangeIslands(deps(), w / h, homeRoom(el.clientWidth));
+    arrangeIslands(deps(), w / h, homeRoom(el.clientWidth), automatic);
   };
   const arrangeRef = useRef(() => arrange(true));
   arrangeRef.current = () => arrange(true);
