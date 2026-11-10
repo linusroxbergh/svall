@@ -36,7 +36,7 @@ function useFollow<T extends HTMLInputElement | HTMLTextAreaElement>({ value, on
       const typed = el.value;
       if (typed !== latest.current) sent.current = typed;
       // a field someone is back in keeps what they type
-      void Promise.resolve(said).then((ok) => {
+      return Promise.resolve(said).then((ok) => {
         if (ok !== false || sent.current !== typed) return;
         sent.current = undefined;
         if (el !== document.activeElement) el.value = latest.current;
@@ -64,7 +64,7 @@ export function FollowLine({ value, onSave, ...rest }: Props<'textarea'>) {
   const fit = () => { const el = follow.ref.current; if (el) { el.style.height = '0'; el.style.height = `${el.scrollHeight}px`; } };
   useEffect(fit, [value]);
   return (
-    <textarea rows={1} {...rest} {...follow} onInput={fit} onBlur={() => { follow.onBlur(); fit(); }}
+    <textarea rows={1} {...rest} {...follow} onInput={fit} onBlur={() => { void follow.onBlur()?.then(fit); fit(); }}
       onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }} />
   );
 }

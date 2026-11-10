@@ -2,6 +2,7 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { farRootId, type MachineId } from '@svall/protocol';
+import { ApiError } from '../../src/api.js';
 import { getBuffer } from '../../src/ide/buffers.js';
 import { createAppStore, localAppStorage } from '../../src/store/index.js';
 import { bridge, call, freshStore, sent, store } from './harness.js';
@@ -55,6 +56,21 @@ test('the shelf chord saves a half typed note before the shelf closes', async ()
   await act(() => dispatchKey({ type: 'toggleResources' }, { store, api: { call } as never, bridge }));
   expect(store.getState().resourcesOpen).toBe(false);
   expect(call).toHaveBeenCalledWith('robot.update', { id: 'c0', note: 'half a thought' });
+});
+
+test('an island description the fleet refuses in the shelf puts back what the fleet holds', async () => {
+  call.mockImplementation((method: string, params?: unknown) => (method === 'island.update'
+    ? Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) : answer(method, params)));
+  store.getState().showResourceField({ tier: 'island', id: 'i_a', field: 'note' });
+  render(<OnMap />);
+  await act(async () => {});
+  const description = screen.getByTestId('resources-field') as HTMLTextAreaElement;
+  description.focus();
+  fireEvent.change(description, { target: { value: 'a description the fleet will not take' } });
+  description.blur();
+  await act(async () => {});
+  expect(store.getState().toast?.text).toBe('the fleet is moving to studio; try again once it has');
+  expect(description.value).toBe('');
 });
 
 test('the robot keys leave the keys with the shelf', async () => {

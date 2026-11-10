@@ -366,6 +366,40 @@ test('an edit the fleet refuses puts the field back to what the fleet holds, and
   expect(name.value).toBe(named);
 });
 
+test('an island edit the fleet refuses puts back what the fleet holds, and the name\'s box fits it again', async () => {
+  const { ApiError } = await import('../../src/api.js');
+  refuse = (m) => (m === 'island.update' ? new ApiError('frozen', 'the fleet is moving to studio; try again once it has') : undefined);
+  store.getState().selectIsland('i_a');
+  render(<IslandSide />);
+  const description = field('side-island-description');
+  type(description, 'a description the fleet will not take');
+  description.blur();
+  await act(async () => {});
+  expect(description.value).toBe('');
+  const name = field('side-island-name');
+  // jsdom lays nothing out, so the box's height goes by its text's length
+  Object.defineProperty(name, 'scrollHeight', { configurable: true, get: () => (name.value.length > 20 ? 48 : 24) });
+  type(name, 'a name far too long for one line');
+  name.blur();
+  expect(name.style.height).toBe('48px');
+  await act(async () => {});
+  expect(name.value).toBe('alpha');
+  expect(name.style.height).toBe('24px');
+});
+
+test('a field someone is back in keeps what they type when the fleet refuses the edit before', async () => {
+  const { ApiError } = await import('../../src/api.js');
+  refuse = (m) => (m === 'robot.update' ? new ApiError('frozen', 'the fleet is moving to studio; try again once it has') : undefined);
+  render(<Side />);
+  const note = field('side-note');
+  type(note, 'first');
+  note.blur();
+  note.focus();
+  fireEvent.change(note, { target: { value: 'first, then more' } });
+  await act(async () => {});
+  expect(note.value).toBe('first, then more');
+});
+
 test('a note written while svalld is away stays in the field, and the next blur sends it again', async () => {
   refuse = () => 'svalld offline';
   render(<Side />);

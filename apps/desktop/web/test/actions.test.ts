@@ -316,6 +316,20 @@ describe('an edit that never reached the fleet', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().toast).toEqual({ text: 'another robot is already called x', tone: 'error' });
   });
+
+  it.each(['not_reachable', 'timeout', 'stopping', 'internal'])('stays to send again when it failed as %s, which the fleet never weighed', async (code) => {
+    const api = { call: () => Promise.reject(new ApiError(code, 'studio is not reachable')) } as unknown as Api;
+    const store = createAppStore(undefined);
+    expect(await saveRobot({ api, store }, 'c0', { note: 'half a thought' })).toBe(true);
+    expect(store.getState().toast).toMatchObject({ text: 'studio is not reachable', action: { label: 'Retry' } });
+  });
+
+  it.each(['frozen', 'invalid', 'invalid_params', 'not_found', 'moving'])('is put back when the fleet refused it as %s', async (code) => {
+    const api = { call: () => Promise.reject(new ApiError(code, 'refused')) } as unknown as Api;
+    const store = createAppStore(undefined);
+    expect(await saveIsland({ api, store }, 'i_a', { description: 'half a thought' })).toBe(false);
+    expect(store.getState().toast).toEqual({ text: 'refused', tone: 'error' });
+  });
 });
 
 describe('a crew member whose directory is gone', () => {
