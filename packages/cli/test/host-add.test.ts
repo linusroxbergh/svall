@@ -153,9 +153,11 @@ describe('host add', () => {
 
   it('a named fleet\'s refusal names its profile in the command it gives, as a copied one would act on the private fleet', async () => {
     fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'trift' }));
-    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }) });
+    ssh.reply(['version', '--json'], { stdout: JSON.stringify({ release: '1.2.3', protocol: PROTOCOL_VERSION, machineId: REMOTE, role: 'home', fleetId: FLEET }, null, 2) });
     healthy();
-    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'fartest' } }));
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.add({ name: 'trift', ssh: 'trift.test', platform: 'linux', arch: 'arm64', home: HOME, svallBase: BASE }, REMOTE);
+    const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry, fleet: { home: fleet, profile: 'fartest' } }));
     expect(out.stopped).toBe('release');
     expect(step('release').at(-1)?.action).toBe("svall -p fartest host upgrade trift takes it to this Mac's release");
   });

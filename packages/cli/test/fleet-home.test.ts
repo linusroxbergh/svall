@@ -406,7 +406,7 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     const { deps } = outDeps((line, input) => { if (line.includes('--stage')) staged = input; return happy(line); }, { phone: { serving: true, logins: ['ada@tailnet'] } });
     await moveHomeOut('studio', deps);
     // the sheet waits on the new home's phone link by this step, which a freeze that found it off leaves out
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
     const dir = fs.mkdtempSync(path.join(home, 'tar-'));
     fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(staged!, 'base64'));
     execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
@@ -717,7 +717,7 @@ describe('fleet home set local', () => {
     const stop = telling(w, master);
     await moveHomeBack(deps);
     stop();
-    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok', 'workers:skip']);
   }, 30_000);
 
   it('runs its steps in order, the outcome owed before the old home is marked, and tells it', async () => {

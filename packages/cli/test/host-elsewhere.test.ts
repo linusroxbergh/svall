@@ -96,6 +96,13 @@ describe.each([['a worker of this fleet now', joined, JOINED], ['marked for a mo
   });
 });
 
+it('a named fleet marked for a move names its profile in the commands it gives', async () => {
+  marked();
+  const out = await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ registry: MachineRegistry.load(path.join(work, 'config')), fleet: { home: fleet, profile: 'fartest' } }));
+  expect(out.stopped).toBe('name');
+  expect(step('name').at(-1)?.action).toBe('finish the move with svall -p fartest fleet home retry, or call it off with svall -p fartest fleet home abort');
+});
+
 describe('a worker of this fleet now', () => {
   it('upgrades the home it serves all the same, as that is this fleet\'s home', async () => {
     joined();

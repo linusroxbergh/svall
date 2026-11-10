@@ -483,7 +483,7 @@ function notTheHome(d: HostDeps): StepError | undefined {
     if (isWorker(paths)) home = readWorkerFile(paths).homeName;
     else leaving = readMarker(paths)?.toName;
   } catch (e) { return new StepError(`this machine cannot tell whether it holds this fleet: ${(e as Error).message}`, isWorker(paths) ? `fix ${paths.workerFile}` : `fix the marker a move left in ${paths.home}`); }
-  if (leaving) return new StepError(`this home is leaving for ${leaving}, and takes or removes no worker until the move ends`, 'finish the move with svall fleet home retry, or call it off with svall fleet home abort');
+  if (leaving) return new StepError(`this home is leaving for ${leaving}, and takes or removes no worker until the move ends`, `finish the move with ${svallAt(d.fleet.home, d, 'fleet home retry')}, or call it off with ${svallAt(d.fleet.home, d, 'fleet home abort')}`);
   return home === undefined ? undefined : new StepError(`this fleet's home is ${home}, and only it takes or removes a worker`, `run it on ${home}`);
 }
 
