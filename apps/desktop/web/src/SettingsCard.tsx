@@ -38,6 +38,7 @@ function Phone() {
   const status = useApp((s) => s.mobile);
   const home = useApp((s) => s.via && homeName(s.fleet, s.via));
   const blocked = status?.error;
+  const said = blocked ?? status?.reason;
   useEffect(() => loadMobileStatus(deps()), []);
   return (
     <>
@@ -59,8 +60,8 @@ function Phone() {
           </>
         )}
       </div>
-      {(blocked || status?.pageMissing) && (
-        <div className="desc">{blocked ?? <b data-testid="set-mobile-nopage">{NO_PAGE}</b>}</div>
+      {(said || status?.pageMissing) && (
+        <div className="desc">{said ?? <b data-testid="set-mobile-nopage">{NO_PAGE}</b>}</div>
       )}
     </>
   );
@@ -188,7 +189,7 @@ function Machines() {
   const registered = new Map(machines?.map((m) => [m.id, m]));
   const known = new Set<string>(fleetRows?.map((m) => m.id));
   const rows = [
-    ...fleetRows?.map((f) => ({ id: f.id, name: f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
+    ...fleetRows?.map((f) => ({ id: f.id, name: registered.get(f.id)?.name ?? f.name, role: f.role as string | undefined, dialsIn: f.dialsIn, robots: f.robots as number | undefined, ssh: registered.get(f.id)?.ssh, check: registered.get(f.id)?.check })) ?? [],
     // on a registry here and not yet a machine of this fleet
     ...machines?.filter((m) => m.ssh && !known.has(m.id)).map((m) => ({ id: m.id, name: m.name, role: undefined, dialsIn: undefined, robots: undefined, ssh: m.ssh, check: m.check })) ?? [],
   ];
@@ -197,7 +198,7 @@ function Machines() {
   return (
     <div className="rows" data-testid="machines">
       {machines && !shown.length && (
-        <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.</span></div>
+        <div className="row" data-testid="machines-empty"><span>A machine is a Linux computer that runs this fleet's robots while this Mac sleeps, or runs the whole fleet while this Mac is off.</span></div>
       )}
       {shown.map((m) => (
         <div key={m.id} className="machine" data-testid={`machine-${m.name}`} data-role={m.role}>
@@ -208,7 +209,7 @@ function Machines() {
                 .filter(Boolean).join(' · ')}
             </b>
           </div>
-          {m.ssh && !via && m.role !== 'home' && <MachineActions name={m.name} />}
+          {m.ssh && (via ? m.role === 'home' : m.role !== 'home') && <MachineActions id={m.id} name={m.name} home={m.role === 'home'} worker={m.role === 'worker' && !m.dialsIn} />}
         </div>
       ))}
       {error && (

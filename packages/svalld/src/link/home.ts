@@ -39,7 +39,7 @@ export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via?:
 /** What a worker says of itself once it has taken the home's token; one that names no schema or protocol reads as another build. */
 const WorkerHello = z.object({
   t: z.literal('hello'), workerMachineId: MachineId, bootId: z.string(), release: z.string(), schema: z.number().optional(), protocol: z.number().optional(),
-  agentHomes: Snapshot.shape.agentHomes, home: z.string(),
+  agentHomes: Snapshot.shape.agentHomes, home: z.string(), fleetHome: z.string().optional(),
 });
 export type WorkerHello = z.infer<typeof WorkerHello>;
 
@@ -72,14 +72,17 @@ type Options = {
   mirror?: Pick<Mirror, 'push' | 'settled'>;
   /** The fleet's docs, which a worker takes once linked and after they change. */
   docs?: Pick<HomeDocs, 'push' | 'watch'>;
+  /** While the fleet moves to another home: anything from a worker but its running fields stays in its outbox, unacknowledged. */
+  held?: () => boolean;
 };
 
 /** The far `svall worker link` over this machine's ssh master to the worker. */
-export function sshTransport(o: { profile: string; log: Logger }): Transport {
-  return async ({ record }) => {
+export function sshTransport(o: { profile: string; log: Logger; profileOf?: (machine: string) => string | undefined }): Transport {
+  return async ({ id, record }) => {
     if (!record.ssh) throw new Error(`${record.name} has no ssh destination in the registry`);
     const master = await SshMaster.open({ destination: record.ssh });
-    const { stream, exited } = master.stream([shq(svallExe(record.svallBase)), 'worker', 'link', ...(o.profile === PRIVATE ? [] : ['-p', shq(o.profile)])]);
+    const profile = o.profileOf?.(id) ?? o.profile;
+    const { stream, exited } = master.stream([shq(svallExe(record.svallBase)), 'worker', 'link', ...(profile === PRIVATE ? [] : ['-p', shq(profile)])]);
     void exited.then(async (r) => {
       if (r.code !== 0 && r.stderr.trim()) o.log.error(`${record.name}: svall worker link exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
       await master.close().catch((e: Error) => o.log.error(`${record.name}: the ssh master did not close: ${e.message}`));
@@ -140,6 +143,8 @@ export class WorkerLink {
   private stopped = false;
   // the worker greeted this stream, or the last one if none has opened since
   private heard = false;
+  // an event was left in the worker's outbox while the fleet moves
+  private holding = false;
   // a docs push runs, and another is due after it
   private sendingDocs = false;
   private docsAgain = false;
@@ -216,6 +221,24 @@ export class WorkerLink {
 
   outboxDrained(): boolean {
     return this.synced && this.last === this.acked;
+  }
+
+  /** Whether all the worker has sent is applied and acknowledged, within `ms`, or `applying` while a change it sent still is then; what a stream delivers after this is the barrier's to hold. */
+  async barrier(ms: number): Promise<boolean | 'applying'> {
+    for (const until = Date.now() + ms; Date.now() < until; await new Promise((r) => setTimeout(r, 50))) {
+      let timer: NodeJS.Timeout | undefined;
+      const late = new Promise<'late'>((r) => { timer = setTimeout(() => r('late'), until - Date.now()); });
+      const applied = await Promise.race([this.applying.then(() => 'applied' as const), late]).finally(() => clearTimeout(timer));
+      if (applied === 'late') return 'applying';
+      if (this.outboxDrained()) return true;
+    }
+    return false;
+  }
+
+  /** The thaw of a move: a stream with held events ends, and its worker replays them on the next. */
+  released(): void {
+    if (this.holding) this.stream?.close();
+    this.holding = false;
   }
 
   start(): void {
@@ -408,6 +431,12 @@ export class WorkerLink {
   // epoch and seq it was applied at, before its ack
   private async apply(stream: LinkStream, f: Extract<LinkFrame, { t: 'inventory' | 'event' }>): Promise<void> {
     if (stream !== this.stream) return;
+    // acks are cumulative, so all that follows a held event waits with it; a stream after the thaw replays them
+    if (f.t === 'event' && (this.holding || (f.kind !== 'robot.sync' && f.seq > this.acked && this.o.held?.()))) {
+      this.holding = true;
+      this.last = Math.max(this.last, f.seq);
+      return;
+    }
     try {
       if (f.t === 'inventory') {
         const inv = Inventory.parse(f);
@@ -476,6 +505,7 @@ export class WorkerLink {
     clearTimeout(this.rehello);
     this.stream = this.route = this.peer = this.odd = this.inventory = undefined;
     this.synced = false;
+    this.holding = false;
     for (const w of this.waiting.splice(0)) w.done();
     this.lost(err?.message ?? 'the link closed');
     this.hook('onLost failed', () => this.o.onLost?.(this.machine));
@@ -581,6 +611,16 @@ export class HomeLinks {
     } catch (e) {
       this.o.log.error(`${dir} is not watched, so a worker that dials in links at its next try: ${(e as Error).message}`);
     }
+  }
+
+  /** Whether all `machine` has sent is in, as the first thing a move of the fleet asks; no link, none is owed. */
+  barrier(machine: MachineId, ms: number): Promise<boolean | 'applying'> {
+    return this.links.get(machine)?.barrier(ms) ?? Promise.resolve(true);
+  }
+
+  /** Every held event comes again, once the move is off. */
+  released(): void {
+    for (const link of this.links.values()) link.released();
   }
 
   /** The workers a call reaches now. */

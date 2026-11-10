@@ -24,12 +24,14 @@ export type ShellInfo = { home: string; log: string[]; op: boolean; ghosttyKeys?
 export type NotifyPermission = 'unknown' | 'denied' | 'granted';
 
 // the machines robots run on: what the shell may run `svall host …` for, and with what
-export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove';
-export type HostArgs = { name: string; ssh?: string; forget?: boolean };
+export type HostOp = 'add' | 'doctor' | 'upgrade' | 'rollback' | 'remove' | 'home' | 'home-retry' | 'home-abort' | 'home-crew' | 'join';
+// interrupt: a person chose that what mission control's robots run is interrupted
+export type HostArgs = { name: string; ssh?: string; forget?: boolean; asHome?: boolean; interrupt?: boolean };
 export type StepStatus = 'start' | 'ok' | 'warn' | 'fail' | 'skip';
 // run: a next command toward `action`'s fix, for the user to run on the machine; more steps may remain;
 // forward: the port its login waits on there; tick: what a row of the mirror's report copies once ticked
-export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
+// say: what the window shows in place of `action`, where a button stands for the command
+export type HostStep = { step: string; status: StepStatus; detail?: string; action?: string; run?: string; say?: string; forward?: number; tick?: SetupRow['tick']; gap?: SetupRow['gap']; here?: SetupRow['here'] };
 // one machine as `svall host list --json` gives it: no ssh for this Mac, and its last check
 export type MachineRow = {
   name: string; id: string; ssh?: string; platform: string; dialedBy?: string; unreadWorker?: string;
@@ -69,6 +71,8 @@ export type ToShell =
   // a file the editor cannot show: a picture, PDF or film in its own app, text in the text editor, anything else in Finder
   | { type: 'openFile'; path: string; machine?: string }
   | { type: 'copy'; text: string }
+  // a line for the app's log, as each toast's words and tone, which a toast too brief to read leaves behind
+  | { type: 'log'; text: string }
   | { type: 'openConfig'; which: 'ghostty' | 'fleet' }
   | { type: 'zoom'; factor: number; fontDelta: number }
   // a banner in Notification Center; a new one for the same session key replaces the last
@@ -84,7 +88,7 @@ export type ToShell =
   // `svall host list`, answered by host.machines
   | { type: 'host.list' }
   // the files a quit would drop, by name, once the docs waiting to be written are, and the agents it would stop mid-task
-  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number; home?: string }
+  | { type: 'quit.answer'; unsaved: string[]; working: number; placed?: number; home?: string; frozenFor?: string; movingHere?: true; callsOff?: string }
   // the fleet has stopped, or could not be asked to
   | { type: 'quit.stopped'; ok: boolean }
   // brings up the window open on another fleet, or opens one; quit then leaves that window alone
@@ -96,6 +100,8 @@ export type ToShell =
   | { type: 'setup.plan' }
   | { type: 'setup.login'; agent: AgentKind }
   | { type: 'setup.run'; agents: AgentKind[]; found: AgentKind[]; projects: string; mainAgent: AgentKind; firstProject?: string; scribe: boolean; svallPermissions: boolean; newRobotStart: 'agent' | 'shell' }
+  // this Mac set up to join a fleet on a server next, its agents as saved; answered as setup.run is
+  | { type: 'setup.join'; svallPermissions: boolean }
   // a native folder picker opened at `start`, answered by folder.picked unless cancelled
   | { type: 'folder.pick'; start: string; machine?: string }
   // keeps the Mac from idle-sleeping under this reason; none lets go

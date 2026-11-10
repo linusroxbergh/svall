@@ -14,6 +14,10 @@ type ActionDeps = Pick<Deps, 'api' | 'store'>;
 
 const toast = (d: ActionDeps) => (e: Error) => d.store.getState().showToast(e.message);
 
+// the codes the fleet refuses an edit with; any other failure, as a dropped link, a timeout or a restart, leaves it to send again
+const REFUSALS = new Set(['frozen', 'invalid', 'invalid_params', 'not_found', 'moving']);
+const refused = (e: Error): boolean => e instanceof ApiError && REFUSALS.has(e.code);
+
 // making an island or robot puts the settings window away, so what was made is in sight
 const closeSettings = (d: ActionDeps): void => { if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false); };
 
@@ -197,8 +201,12 @@ export function toggleIsland(d: ActionDeps, id: string): void {
   d.api.call('island.update', { id, collapsed: !island.collapsed }).catch(toast(d));
 }
 
-export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number): void {
-  d.api.call('island.arrange', { aspect, homeRoom }).catch(toast(d));
+// one the map makes on its own says nothing when refused, as a home frozen for a move refuses it, or cut off by svalld's
+// restart; any other failure of it is logged
+export function arrangeIslands(d: ActionDeps, aspect?: number, homeRoom?: number, automatic = false): void {
+  d.api.call('island.arrange', { aspect, homeRoom }).catch(automatic ? (e: Error) => {
+    if (!refused(e) && e.message !== 'svalld connection closed') console.warn(`island.arrange: ${e.message}`);
+  } : toast(d));
 }
 
 // without a cell the daemon picks the spot
@@ -321,11 +329,14 @@ export const startHomeAction = async (d: ActionDeps, action: HomeAction): Promis
 
 // an edit that never reached the fleet may have left with its field, so the toast keeps it to send again
 const unsent = (d: ActionDeps, retry: () => void) => (e: Error) =>
-  d.store.getState().showToast(e.message, 'error', e instanceof ApiError ? undefined : { label: 'Retry', run: retry });
+  d.store.getState().showToast(e.message, 'error', refused(e) ? undefined : { label: 'Retry', run: retry });
 
-export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.update'>, 'id'>): void => {
-  d.api.call('robot.update', { id, ...patch }).catch(unsent(d, () => saveRobot(d, id, patch)));
-};
+// false once the fleet refused it, for a field to put back what the fleet holds; one that never reached the fleet stays to send again
+const saved = (d: ActionDeps, call: Promise<unknown>, retry: () => void): Promise<boolean> =>
+  call.then(() => true, (e: Error) => { unsent(d, retry)(e); return !refused(e); });
+
+export const saveRobot = (d: ActionDeps, id: string, patch: Omit<Params<'robot.update'>, 'id'>): Promise<boolean> =>
+  saved(d, d.api.call('robot.update', { id, ...patch }), () => { void saveRobot(d, id, patch); });
 
 // a context write carries the whole list, so a failed one is only reported: sent again later it could drop items added meanwhile
 export const saveRobotContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
@@ -357,9 +368,8 @@ export const openSecondTerminal = (d: ActionDeps, id: string): void => {
   });
 };
 
-export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island.update'>, 'id'>): void => {
-  d.api.call('island.update', { id, ...patch }).catch(unsent(d, () => saveIsland(d, id, patch)));
-};
+export const saveIsland = (d: ActionDeps, id: string, patch: Omit<Params<'island.update'>, 'id'>): Promise<boolean> =>
+  saved(d, d.api.call('island.update', { id, ...patch }), () => { void saveIsland(d, id, patch); });
 
 export const saveIslandContext = (d: ActionDeps, id: string, context: ContextItem[], removed?: string): void => {
   d.api.call('island.update', { id, context, ...(removed && { removed: [removed] }) }).catch(toast(d));
@@ -373,10 +383,9 @@ export const deleteIsland = (d: ActionDeps, id: string): void => {
 export const sleepRobot = (d: ActionDeps, id: string): Promise<void> =>
   d.api.call('robot.sleep', { id }).then(() => {}, toast(d));
 
-export const saveEntityField = (d: ActionDeps, r: FieldRef, value: string): void => {
-  if (r.tier === 'robot') saveRobot(d, r.id, r.field === 'note' ? { note: value } : { instructions: value });
-  else saveIsland(d, r.id, r.field === 'note' ? { description: value } : { instructions: value });
-};
+export const saveEntityField = (d: ActionDeps, r: FieldRef, value: string): Promise<boolean> =>
+  (r.tier === 'robot' ? saveRobot(d, r.id, r.field === 'note' ? { note: value } : { instructions: value })
+    : saveIsland(d, r.id, r.field === 'note' ? { description: value } : { instructions: value }));
 
 export const activateBrowserTab = (d: ActionDeps, id: string, tab: string): void => { d.api.fire('browser.activate', { id, tab }); };
 

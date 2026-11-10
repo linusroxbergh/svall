@@ -96,6 +96,8 @@ export const WorkerFile = z.object({
   homeSsh: SshDestination.optional(),
   homeSocket: MachinePath.regex(/^[^:]*\/w\/[0-9a-f]{12}\.sock$/, 'a socket w/<12 hex>.sock in the home\'s fleet home, with no colon, which ssh reads as a forward\'s separator').optional(),
   homeSvallBase: MachinePath.optional(),
+  // the fleet's profile on the home, where it is named apart from this one's
+  homeProfile: z.string().optional(),
 });
 export type WorkerFile = z.infer<typeof WorkerFile>;
 
@@ -106,7 +108,7 @@ export type WorkerFile = z.infer<typeof WorkerFile>;
  */
 export const SetupRow = z.object({
   key: z.string(), status: z.enum(['ok', 'warn', 'skip']), detail: z.string(), action: z.string().optional(), run: z.string().optional(),
-  forward: z.number().int().optional(), tick: z.object({ item: z.string(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()), ticked: z.array(z.string()).optional() }).optional(),
+  forward: z.number().int().optional(), tick: z.object({ item: z.string(), name: z.string().optional(), fields: z.array(z.string()), on: z.boolean(), preview: z.array(z.string()), ticked: z.array(z.string()).optional() }).optional(),
   gap: z.object({ name: z.string(), what: z.string() }).optional(), here: z.literal(true).optional(),
 });
 export type SetupRow = z.infer<typeof SetupRow>;

@@ -42,6 +42,7 @@ enum ToShell: Decodable {
     case reveal(path: String, machine: String?)
     case openFile(path: String, machine: String?)
     case copy(text: String)
+    case log(text: String)
     case openConfig(which: String)
     case zoom(factor: Double, fontDelta: Double)
     case browserShow(tab: String, rect: WebRect, url: String?, focus: Bool?)
@@ -62,20 +63,21 @@ enum ToShell: Decodable {
     case hostStart(op: HostOp, args: HostArgs)
     case hostCancel
     case hostList
-    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?)
+    case quitAnswer(unsaved: [String], working: Int, placed: Int, home: String?, frozenFor: String?, movingHere: Bool, callsOff: String?)
     case quitStopped(ok: Bool)
     case openFleet(home: String, quit: Bool?)
     case retitle
     case windowSize(width: Double, height: Double)
     case setupPlan
     case setupRun(agents: [String], found: [String], projects: String, mainAgent: String, firstProject: String?, scribe: Bool, svallPermissions: Bool, newRobotStart: String)
+    case setupJoin(svallPermissions: Bool)
     case setupLogin(agent: String)
     case folderPick(start: String, machine: String?)
     case awake(reason: String?)
     case menuState(chords: [String: String], state: MenuState)
     case menuFleets(fleets: [MenuFleet], note: String?)
 
-    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
+    private enum Keys: String, CodingKey { case type, id, rect, rects, paths, passive, attach, machine, opacity, chords, on, chord, bindings, url, path, text, which, factor, fontDelta, tab, focus, action, key, title, body, sound, actions, promptId, unsaved, working, placed, ok, home, frozenFor, movingHere, callsOff, quit, agents, found, projects, mainAgent, firstProject, scribe, svallPermissions, newRobotStart, agent, start, op, args, reason, state, fleets, note, width, height }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -96,6 +98,7 @@ enum ToShell: Decodable {
         case "reveal": self = .reveal(path: try c.decode(String.self, forKey: .path), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "openFile": self = .openFile(path: try c.decode(String.self, forKey: .path), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "copy": self = .copy(text: try c.decode(String.self, forKey: .text))
+        case "log": self = .log(text: try c.decode(String.self, forKey: .text))
         case "openConfig": self = .openConfig(which: try c.decode(String.self, forKey: .which))
         case "zoom": self = .zoom(factor: try c.decode(Double.self, forKey: .factor), fontDelta: try c.decode(Double.self, forKey: .fontDelta))
         case "browser.show": self = .browserShow(tab: try c.decode(String.self, forKey: .tab), rect: try c.decode(WebRect.self, forKey: .rect), url: try c.decodeIfPresent(String.self, forKey: .url), focus: try c.decodeIfPresent(Bool.self, forKey: .focus))
@@ -118,13 +121,16 @@ enum ToShell: Decodable {
         case "host.list": self = .hostList
         case "quit.answer":
             self = .quitAnswer(unsaved: try c.decode([String].self, forKey: .unsaved), working: try c.decode(Int.self, forKey: .working),
-                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home))
+                               placed: try c.decodeIfPresent(Int.self, forKey: .placed) ?? 0, home: try c.decodeIfPresent(String.self, forKey: .home),
+                               frozenFor: try c.decodeIfPresent(String.self, forKey: .frozenFor), movingHere: try c.decodeIfPresent(Bool.self, forKey: .movingHere) ?? false,
+                               callsOff: try c.decodeIfPresent(String.self, forKey: .callsOff))
         case "quit.stopped": self = .quitStopped(ok: try c.decode(Bool.self, forKey: .ok))
         case "openFleet": self = .openFleet(home: try c.decode(String.self, forKey: .home), quit: try c.decodeIfPresent(Bool.self, forKey: .quit))
         case "retitle": self = .retitle
         case "window.size": self = .windowSize(width: try c.decode(Double.self, forKey: .width), height: try c.decode(Double.self, forKey: .height))
         case "setup.plan": self = .setupPlan
         case "setup.run": self = .setupRun(agents: try c.decode([String].self, forKey: .agents), found: try c.decode([String].self, forKey: .found), projects: try c.decode(String.self, forKey: .projects), mainAgent: try c.decode(String.self, forKey: .mainAgent), firstProject: try c.decodeIfPresent(String.self, forKey: .firstProject), scribe: try c.decode(Bool.self, forKey: .scribe), svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions), newRobotStart: try c.decode(String.self, forKey: .newRobotStart))
+        case "setup.join": self = .setupJoin(svallPermissions: try c.decode(Bool.self, forKey: .svallPermissions))
         case "setup.login": self = .setupLogin(agent: try c.decode(String.self, forKey: .agent))
         case "folder.pick": self = .folderPick(start: try c.decode(String.self, forKey: .start), machine: try c.decodeIfPresent(String.self, forKey: .machine))
         case "awake": self = .awake(reason: try c.decodeIfPresent(String.self, forKey: .reason))
@@ -181,6 +187,7 @@ enum FromShell {
             if let detail = step.detail { event["detail"] = detail }
             if let action = step.action { event["action"] = action }
             if let run = step.run { event["run"] = run }
+            if let say = step.say { event["say"] = say }
             if let forward = step.forward { event["forward"] = forward }
             if let tick = step.tick { event["tick"] = ["item": tick.item, "fields": tick.fields, "on": tick.on, "preview": tick.preview] as [String: Any] }
             if let gap = step.gap { event["gap"] = ["name": gap.name, "what": gap.what] }

@@ -7,7 +7,7 @@ import { addHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
 import {
   BASE, DOCTOR, ELSEWHERE, FLEET, HOME, REMOTE, THERE, TOKEN, UNIT_PATH, archive, daemon, deps, doctorJson, events, healthy, ssh, step, unticked, useHostWorld,
-  varRow, work,
+  varRow, work, fleet,
 } from './controller/host-world.js';
 
 useHostWorld();
@@ -273,6 +273,16 @@ describe('host add', () => {
       action: 'use an account on trift.test whose home path is at most 89 bytes',
     });
     expect(ssh.remoteCalls().some((w) => w.includes('setup') || w.includes('cat > "$1"'))).toBe(false);
+  });
+
+  it('--as-home sizes the socket by the private fleet it makes the home, where a worker\'s is sized by this fleet\'s profile', async () => {
+    const long = `/home/${'h'.repeat(83)}`;
+    healthy({ home: long });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive(), asHome: true }, deps({ fleet: { home: fleet, profile: 'mac2' } }));
+    expect(step('home').at(-1)?.status).toBe('ok');
+    healthy({ home: long });
+    await addHost({ name: 'trift', ssh: 'trift.test', release: archive() }, deps({ fleet: { home: fleet, profile: 'mac2' } }));
+    expect(step('home').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining('/.svall-mac2/hooks.sock') });
   });
 
   it('takes a home just short enough for the fleet socket', async () => {

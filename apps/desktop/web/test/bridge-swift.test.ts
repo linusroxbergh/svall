@@ -75,6 +75,10 @@ describe('bridge between the page and the shell', () => {
     expect(router).toMatch(/stopPortWatch\(\)\s+sendShellInfo\(\)\s+return bridge\.send\(\.connection\(connection\)\)/);
   });
 
+  it('a machine run asked for while one runs is answered as a failed run, never dropped', () => {
+    expect(router).toMatch(/guard hostRun == nil else \{\s*bridge\.send\(\.hostStep\(op: op\.rawValue, step: HostProcess\.Step\(step: "svall", status: "fail", detail: "[^"]+", action: nil\)\)\)\s*bridge\.send\(\.hostDone\(op: op\.rawValue, code: 1\)\)\s*return\s*\}/);
+  });
+
   it('the shell info carries the home, its log, 1Password, the Ghostty chords, the Mac\'s bindings and this machine\'s id', () => {
     expect(tsUnion('FromShell')['shell.info']!.map((f) => f.replace('?', '')).sort()).toEqual(['bindings', 'ghosttyKeys', 'home', 'log', 'machine', 'op']);
   });
@@ -122,7 +126,7 @@ describe('a second terminal\'s key outside the protocol', () => {
 
 it('the shell hands a far home on to the quit question', () => {
   const router = fs.readFileSync(new URL('../../mac/Sources/Svall/ShellRouter.swift', import.meta.url), 'utf8');
-  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home\)/);
+  expect(router).toMatch(/quitFlow\.answered\([^)]*home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff\)/);
 });
 
 it('the shell admits the machine id the banner upgrades by, or it answers that these are no arguments and nothing runs', () => {

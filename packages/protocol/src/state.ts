@@ -217,6 +217,8 @@ export const Robot = TerminalSlot.extend({
   machine: MachineId.optional(),
   placement: Placement.optional(),
   moving: Moving.optional(),
+  // the home move that sent this robot of mission control ahead, which only a landed move or a drag clears: one that stopped leaves it away
+  sentAhead: z.string().optional(),
   left: LeftBehind.optional(),
   // its place among the starred, lowest first; absent, it is not starred
   star: z.number().int().optional(),

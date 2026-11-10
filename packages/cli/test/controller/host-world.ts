@@ -85,6 +85,7 @@ export function deps(o: Partial<HostDeps> = {}): HostDeps {
     controller: { release: '1.2.3', protocol: PROTOCOL_VERSION, releaseRoot: path.join(work, 'release'), signed: true },
     localAgents: () => Promise.resolve([...MAC_AGENTS]),
     machineId: () => MAC,
+    tailnet: () => Promise.resolve(),
     homedir: work,
     verify: (dir, id) => signer.verify(dir, id),
     fleet: { home: fleet },

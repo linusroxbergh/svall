@@ -3,7 +3,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { ApiError, emptyState, type AgentAdapter, type FleetState, type MachineId, type Robot } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
-import type { AgentProbe } from '../../src/sessions/registry.js';
+import { agentAdapters, agentProber, type AgentProbe } from '../../src/sessions/registry.js';
 import type { CliRun } from '../../src/sessions/types.js';
 import { hooklessGit } from '../../src/links/git.js';
 import { BUNDLE_MAX } from '../../src/placement/bundle.js';
@@ -53,7 +53,7 @@ type Machines = ReturnType<typeof machines>;
 
 type Opts = {
   reachable?: boolean; mismatch?: boolean; release?: string; mine?: string; local?: AgentProbe[]; far?: AgentAdapter[];
-  probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>; cli?: CliRun;
+  probe?: (p: { path: string; remote?: string }) => Promise<RepoProbe>; terminals?: Awaited<ReturnType<CheckDeps['terminals']>>; cli?: CliRun; homeCwd?: string;
 };
 
 // the home's view of the fleet and of linus-vault, which answers system.info as faked and repo.probe from its real folder
@@ -64,9 +64,10 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     islands: { i_1: island, i_home: { ...island, id: 'i_home', kind: 'home' } },
     robots: Object.fromEntries(robots.map((r) => [r.id, r])),
     machines: { [W]: { name: VAULT, reachable: o.reachable !== false, since: 0, release: o.release ?? '0.17.0' } },
+    ...(o.homeCwd && { home: { ...emptyState().home, cwd: o.homeCwd } }),
   };
   const hello = {
-    t: 'hello' as const, workerMachineId: W, bootId: 'b', release: o.release ?? '0.17.0', home: t.far,
+    t: 'hello' as const, workerMachineId: W, bootId: 'b', release: o.release ?? '0.17.0', home: t.far, fleetHome: `${t.far}/.svall-dev-crew`,
     agentHomes: { claude: `${t.far}/.claude`, codex: `${t.far}/.codex`, opencode: `${t.far}/.config/opencode` },
   };
   const far: AgentAdapter[] = o.far ?? [{ kind: 'claude', version: CLAUDE, adapter: 1, home: `${t.far}/.claude`, loggedIn: true, hooks: true }];
@@ -77,6 +78,7 @@ function depsOf(t: Machines, robots: Robot[], o: Opts = {}): CheckDeps & { asked
     git: hooklessGit,
     release: o.mine ?? '0.17.0',
     homedir: t.mac,
+    fleetHome: `${t.mac}/.svall-crew`,
     agents: async () => o.local ?? [{ kind: 'claude', version: CLAUDE, home: `${t.mac}/.claude`, loggedIn: true, hooks: true }],
     terminals: async () => o.terminals ?? [],
     ...(o.cli && { cli: o.cli }),
@@ -247,6 +249,22 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [shellIn(t)]));
   });
 
+  it('in a home move, mission control\'s folder that is the fleet\'s own lands in the fleet\'s folder there; any other by the user\'s home; only the folder itself is marked to be made', async () => {
+    const t = machines();
+    const own = `${t.mac}/.svall-crew/home`;
+    const planned = async (homeCwd: string, cwd: string) => {
+      fs.mkdirSync(cwd, { recursive: true });
+      const { plan } = await sheet(depsOf(t, [shellIn(t, { islandId: 'i_home', cwd })], { homeCwd }), { homeMove: 'hm_abcdefghij' });
+      return { cwd: plan.paths.cwd, mission: plan.mission };
+    };
+    for (const homeCwd of [own, '~/.svall-crew/home']) expect(await planned(homeCwd, own)).toEqual({ cwd: `${t.far}/.svall-dev-crew/home`, mission: true });
+    expect(await planned('~/notes', `${t.mac}/notes`)).toEqual({ cwd: `${t.far}/notes`, mission: true });
+    expect(await planned(own, t.mac)).toEqual({ cwd: t.far, mission: undefined });
+    expect(await planned(own, `${t.mac}/notes`)).toEqual({ cwd: `${t.far}/notes`, mission: undefined });
+    const { plan } = await sheet(depsOf(t, [shellIn(t, { cwd: own })], { homeCwd: own }));
+    expect({ cwd: plan.paths.cwd, mission: plan.mission }).toEqual({ cwd: `${t.far}/.svall-crew/home`, mission: undefined });
+  });
+
   it('passes an OpenCode robot, whose session counts its log and the export its OpenCode writes of it, as the move would', async () => {
     const t = machines();
     const sid = 'ses_0123456789abAbCdEfGhIjKlMn';
@@ -309,6 +327,14 @@ describe.skipIf(!hasGit)('moveChecks', () => {
     await sheet(depsOf(t, [c], { far: there({ version: '2.2.0' }) }));
     // a shell robot needs no agent there
     await sheet(depsOf(t, [shellIn(t)], { far: [] }));
+  });
+
+  it('check 2: a move onto a Mac that joined a server with no agent CLI is refused as any machine without the agent', async () => {
+    const t = machines();
+    const none = await agentProber({ run: () => Promise.reject(Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' })), read: () => Promise.resolve(undefined), env: {}, homedir: t.far })(true);
+    const d = depsOf(t, [shellIn(t, { agent: claude() })], { far: agentAdapters(none) });
+    d.store.state.machines![W].name = 'ada-mbp';
+    expect(await refusal(d)).toEqual({ reason: 'claude is not installed on ada-mbp', action: 'install claude on ada-mbp', run: AGENTS.claude.installCommand, details: [] });
   });
 
   it('check 3: refuses two robots in one main checkout, a main checkout mid-merge and a detached HEAD; a worktree robot does not convert', async () => {

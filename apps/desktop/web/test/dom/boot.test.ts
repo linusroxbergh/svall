@@ -37,6 +37,16 @@ test('Send Feedback… opens the form from the menu although svalld never connec
   delete (window as unknown as { webkit?: unknown }).webkit;
 });
 
+test('each toast reaches the app\'s log through the shell', async () => {
+  const sent: string[] = [];
+  (window as unknown as { webkit: unknown }).webkit = { messageHandlers: { svall: { postMessage: (m: string) => sent.push(m) } } };
+  vi.resetModules();
+  const fresh = await import('../../src/boot.js');
+  fresh.initApp().store.getState().showToast('svalld connection closed');
+  expect(sent.map((m) => JSON.parse(m) as unknown)).toContainEqual({ type: 'log', text: 'toast error: svalld connection closed' });
+  delete (window as unknown as { webkit?: unknown }).webkit;
+});
+
 test('the shell names this machine, and a local action it refuses is said on a toast', async () => {
   (window as unknown as { webkit: unknown }).webkit = { messageHandlers: { svall: { postMessage: () => {} } } };
   vi.resetModules();

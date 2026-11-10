@@ -56,6 +56,29 @@ test('opened on a machine, the panel names it once and acts on it without asking
   // one run at a time
   expect((screen.getByTestId('machine-doctor') as HTMLButtonElement).disabled).toBe(true);
 });
+test('the panel\'s menu is the row\'s: a worker of this Mac\'s home can take the fleet, and a far home brings it back and is not removed', () => {
+  const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000';
+  store.getState().setMachines([{ name: 'studio', id: STUDIO, ssh: 'ada@studio', platform: 'linux-x64' }]);
+  store.getState().setFleet({ ...store.getState().fleet, machines: { [STUDIO]: { name: 'studio', reachable: true, since: 0 } } } as never);
+  render(<HostSetup />);
+  act(() => store.getState().toggleHost(true, 'studio'));
+  fireEvent.click(screen.getByTestId('machine-more'));
+  fireEvent.click(screen.getByTestId('machine-make-home'));
+  expect(store.getState().homeSheet).toEqual({ to: STUDIO, name: 'studio', back: false });
+  expect(store.getState().hostOpen).toBe(false);
+
+  act(() => {
+    store.getState().setHomeSheet(undefined);
+    store.getState().setVia({ machine: 'aaaaaaaa-0000-4000-8000-000000000000' as never, home: STUDIO as never, name: 'studio', online: true });
+    store.getState().toggleHost(true, 'studio');
+  });
+  fireEvent.click(screen.getByTestId('machine-more'));
+  expect(screen.queryByTestId('machine-remove')).toBeNull();
+  expect(screen.queryByTestId('machine-make-home')).toBeNull();
+  fireEvent.click(screen.getByTestId('machine-bring-back'));
+  expect(store.getState().homeSheet).toEqual({ to: STUDIO, name: 'studio', back: true });
+});
+
 test('Done in a terminal goes back to where it was opened: out of the panel, or to its checks, which run again', () => {
   store.getState().setMachines([{ name: 'trift', id: 'm1', ssh: 'ada@trift', platform: 'linux-x64' }]);
   render(<HostSetup />);
@@ -96,6 +119,30 @@ test('a step that failed shows what to do; a step of a run other than a check of
   sent.length = 0;
   fireEvent.click(screen.getByTestId('host-again-install'));
   expect(sent).toEqual([{ type: 'host.start', op: 'upgrade', args: { name: 'trift' } }]);
+});
+
+test.each(['home', 'home-retry', 'home-abort', 'home-crew'] as const)('a %s run that failed offers no Try again here, which would run it with no sheet and none of its words', (op) => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted(op, { name: 'trift', interrupt: true });
+    store.getState().hostStep(op, { step: 'pause', status: 'fail', detail: 'a call this home took is still running; try again in a moment' });
+    store.getState().hostDone(op, 1);
+  });
+  expect(screen.queryByTestId('host-again-pause')).toBeNull();
+});
+
+test.each(['add', 'rollback', 'remove'] as const)('a %s that failed with nothing to do offers itself again', (op) => {
+  render(<HostSetup />);
+  act(() => {
+    store.getState().toggleHost(true, 'trift');
+    store.getState().hostStarted(op, { name: 'trift' });
+    store.getState().hostStep(op, { step: 'install', status: 'fail', detail: 'install exited 1' });
+    store.getState().hostDone(op, 1);
+  });
+  sent.length = 0;
+  fireEvent.click(screen.getByTestId('host-again-install'));
+  expect(sent).toEqual([{ type: 'host.start', op, args: { name: 'trift' } }]);
 });
 
 test('a running check shows the step under way and what needs the user as found, the fine checks and the agent setup each folded behind one line', () => {

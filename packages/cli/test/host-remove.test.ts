@@ -3,6 +3,7 @@ import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PROTOCOL_VERSION, emptyState } from '@svall/protocol';
 import { resolvePaths } from '@svall/svalld/paths';
+import { workersOf } from '@svall/svalld/fleet/home-freeze';
 import { issueToken, tokenFor } from '@svall/svalld/placement/workers';
 import { dialingFleet, removeHost } from '../src/controller/host.js';
 import { MachineRegistry } from '../src/controller/registry.js';
@@ -21,10 +22,21 @@ describe('host remove', () => {
     fs.writeFileSync(sibling.workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: OTHER_FLEET, token: 't'.repeat(48), homeName: 'studio' }));
     const out = await removeHost('studio', o, deps({ registry }));
     expect(out.result).not.toBe('ready');
-    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home), action: `delete ${sibling.workerFile} or that fleet first, once you no longer serve it` });
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: expect.stringContaining(sibling.home), action: `bring the fleet in ${sibling.home} back here first: SVALL_HOME=${sibling.home} svall fleet home set local` });
     expect(ssh.remoteCalls().some((w) => w.includes('uninstall'))).toBe(false);
     expect(ssh.calls()).toEqual([]);
     expect(MachineRegistry.load(path.join(work, 'config')).get('studio')).toBeDefined();
+  });
+
+  it('this fleet\'s own home stays, until the fleet is brought back', async () => {
+    const registry = MachineRegistry.load(path.join(work, 'config'));
+    registry.put(REMOTE, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: HOME, svallBase: BASE });
+    registry.save();
+    fs.writeFileSync(resolvePaths(fleet).workerFile, JSON.stringify({ homeMachineId: REMOTE, fleetId: FLEET, token: 't'.repeat(48), homeName: 'studio' }));
+    const out = await removeHost('studio', {}, deps({ registry }));
+    expect(out.result).not.toBe('ready');
+    expect(step('machine').at(-1)).toMatchObject({ status: 'fail', detail: "studio is this fleet's home, so it stays listed here", action: 'bring the fleet back here first: svall fleet home set local' });
+    expect(ssh.calls()).toEqual([]);
   });
 
   describe('a fleet on this account that dials the machine', () => {
@@ -132,6 +144,44 @@ describe('host remove', () => {
 
     expect((await removeHost('trift', { forget: true }, deps({ registry }))).result).toBe('ready');
     expect(registry.get('trift')).toBeUndefined();
+  });
+
+  it('drops the token, and the profile a move kept with it, so a later add enrols afresh', async () => {
+    for (const forget of [false, true]) {
+      fs.writeFileSync(resolvePaths(fleet).workersFile, JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'private' } }));
+      ssh.reply(['uninstall'], { stdout: 'removed\n' });
+      expect((await removeHost('trift', { forget }, deps({ registry: registered('trift.test'), fleet: { home: fleet, profile: 'work' } }))).result).toBe('ready');
+      expect(JSON.parse(fs.readFileSync(resolvePaths(fleet).workersFile, 'utf8'))).toEqual({});
+    }
+  });
+
+  it('leaves a sibling fleet its own token for a machine this fleet dials, on remove and on --forget', async () => {
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    const theirs = issueToken(sibling, REMOTE);
+    for (const forget of [false, true]) {
+      issueToken(resolvePaths(fleet), REMOTE);
+      ssh.reply(['uninstall'], { stdout: 'removed\n' });
+      expect((await removeHost('trift', { forget }, deps({ registry: registered('trift.test') }))).result).toBe('ready');
+      expect(tokenFor(resolvePaths(fleet), REMOTE)).toBeUndefined();
+      expect(tokenFor(sibling, REMOTE)).toBe(theirs);
+    }
+  });
+
+  it('leaves a sibling a token that holds back no move of its own, as nothing links by it once the record is gone', async () => {
+    vi.stubEnv('SVALL_CONFIG_DIR', path.join(work, 'config'));
+    const sibling = resolvePaths(path.join(work, '.svall-work'));
+    fs.mkdirSync(sibling.home);
+    fs.writeFileSync(sibling.fleetConfig, JSON.stringify({ id: OTHER_FLEET }));
+    issueToken(sibling, REMOTE);
+    const registry = registered('trift.test');
+    registry.save();
+    expect(workersOf(sibling)).toEqual([REMOTE]);
+    expect((await removeHost('trift', { forget: true }, deps({ registry }))).result).toBe('ready');
+    expect(tokenFor(sibling, REMOTE)).toBeDefined();
+    expect(workersOf(sibling)).toEqual([]);
+    vi.unstubAllEnvs();
   });
 
   it("clears the machine's consent in every fleet home here, on remove and on --forget", async () => {

@@ -1,8 +1,11 @@
 # Setting up a Linux machine
 
+To run Svall all day, install it on a server and connect your Mac, which makes that server your fleet's home: the first run offers it,
+and [A server as the fleet's home](#a-server-as-the-fleets-home) has the commands. The machine it needs is the one below.
+
 An always-on Linux machine can be a **worker** of your fleet: robots you [move there](placement.md) keep working
-while your Mac sleeps. The fleet itself stays on the Mac, its **home**: islands, map, notes, phone and mission
-control. A fleet can have several workers, and a machine can be a worker of several fleets. This page covers what the
+while your Mac sleeps. The fleet's **home** holds its islands, map, notes, phone and mission control: your Mac, or a
+server you made the home ([home.md](home.md)). A fleet can have several workers, and a machine can be a worker of several fleets. This page covers what the
 machine needs, how to add it, and how to look after it.
 
 ## Supported machines
@@ -266,12 +269,12 @@ two halves:
 1. On the home, `svall --json fleet enroll-worker <machine id> --name <name> --platform darwin --arch <arch> --home
    <path> --svall-base <path>` records the worker as one that dials in and prints its token, once, with the socket it
    forwards its link to and where svall, its platform, its architecture and its user folder are on the home. A run again issues a new
-   token, which replaces the one before.
+   token, which replaces the one before; `svall fleet join` runs it with `--keep-token`, so a join run again keeps the one the worker may hold.
 2. On the worker, `svall worker enroll --home-machine <id> --home-name <name> --fleet-id <id> --home-ssh <destination>
    --home-socket <socket> --home-svall-base <path> --home-platform <platform> --home-arch <arch> --home-path <path>`, with the token on its stdin, makes it
    dial, keeps the home's record in this machine's registry for `svall host upgrade` and `host doctor`, and restarts its daemon as the home's worker,
    loading a named fleet's launchd job if it has none. The home's first snapshot replaces what a fleet holds, so it
-   refuses a fleet that has robots, workers or anything on an island of its own, which a fleet opened once does until its
+   refuses a fleet that has robots, workers, fleet or repo notes or anything on an island of its own, which a fleet opened once does until its
    first robot closes, and a worker of another fleet, whose robots the new home would close. Name a fleet never opened
    instead: `svall -p <empty fleet> worker enroll`.
 
@@ -294,6 +297,15 @@ The app on such a Mac opens on the home: see [A fleet whose home is a server](ho
 The socket, `w/<12 hex>.sock` in the home's fleet home, is a Unix socket like the
 hook socket and longer: with a Mac on either end a home's account home can be at most 76 bytes for the private fleet, and
 80 with Linux on both, and `fleet enroll-worker` refuses a longer one, saying how much shorter it must be.
+
+## A server as the fleet's home
+
+`svall host add <name> --ssh <destination> --as-home` installs the companion as above and enrols nothing, so the machine runs a
+fleet of its own, as its home. `svall fleet join <destination>` on the Mac then makes the Mac its worker. The first run does both,
+under **Install Svall on a server and connect this Mac**. A worker that is already there becomes the home with `svall fleet home
+set <name>`: see [Changing home](home.md#changing-home).
+
+`host add` refuses the fleet's own home but with `--as-home`, which installs it again, `host remove` keeps it until the fleet is back, and `host upgrade` restarts it as the home it is.
 
 ## The phone while the home is off
 

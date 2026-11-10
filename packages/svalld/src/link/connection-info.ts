@@ -36,7 +36,8 @@ type Far = { id: MachineId; record: Pick<MachineRecord, 'name' | 'svallBase'> & 
  * handed on. `anyProtocol` also takes a companion on another protocol, as one a rollback put on an older release is;
  * `fleetHome` names the fleet there by its folder.
  */
-export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machine: Far, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean; fleetHome?: string }): Promise<ConnectionInfo> {
+/** `here`: how this machine's svall names this fleet, for the way out a mismatch names, where the fleet there goes by another profile. */
+export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machine: Far, o: { fleetId?: FleetId; profile?: string; anyProtocol?: boolean; fleetHome?: string; here?: { profile?: string } }): Promise<ConnectionInfo> {
   const name = machine.record.name;
   // the record and the flag are read again here, whatever wrote them, and everything that is not a
   // literal flag is quoted for the login shell ssh hands the command line to
@@ -61,7 +62,8 @@ export async function remoteConnectionInfo(master: Pick<SshMaster, 'run'>, machi
     throw new SshError('other', `${name}: svall connection-info did not answer a connection description`);
   }
   if (o.fleetId !== undefined && info.fleetId !== o.fleetId) {
-    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${o.profile ? `-p ${o.profile} ` : ''}host upgrade ${name}\` makes it this fleet's worker`, info.fleetId);
+    const own = o.here ? o.here.profile : o.profile;
+    throw new FleetMismatch(`${name} answered with fleetId ${info.fleetId}, not ${o.fleetId}: it runs another fleet there; \`svall ${own ? `-p ${own} ` : ''}host upgrade ${name}\` makes it this fleet's worker`, info.fleetId);
   }
   if (info.machineId !== machine.id) throw new MachineMismatch(`${name} answered with machineId ${info.machineId}, not ${machine.id}`, info.machineId);
   if (!o.anyProtocol && info.protocol !== PROTOCOL_VERSION) throw new SshError('version', `${name} answered with protocol ${info.protocol}, not ${PROTOCOL_VERSION}`);

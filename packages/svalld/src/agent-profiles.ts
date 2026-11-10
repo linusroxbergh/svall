@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { bodyOf, frontmatter } from '@svall/protocol';
+import { sha256Hex } from './hash.js';
 import { assetDir } from './runtime.js';
 
 // the body rides first in every brief whose robot picks it, and in a change to one; Claude shows only the first 2,000 or so
@@ -43,6 +44,22 @@ export function listAgentProfiles(dir: string): AgentProfileRead[] {
   try { found = fs.readdirSync(dir, { withFileTypes: true }); } catch { return []; }
   return found.filter((d) => d.isFile() && d.name.endsWith('.md')).map((d) => d.name.slice(0, -3))
     .sort((a, b) => a.localeCompare(b)).map((n) => readAgentProfile(dir, n));
+}
+
+// each starter's sha256 as every release shipped it: an edit to one adds its new sha, so a machine set up before reads as untouched
+export const STARTER_SHAS: Readonly<Record<string, readonly string[]>> = {
+  'architect.md': ['91fdef9af503c9f9acc1296adddf74efad0ca6e851becab561d15921789f07a1'],
+  'debugger.md': ['9ac81c9196d003495786f16390bc150732bb1b749c4be65a68bd048c7986cd00'],
+  'explorer.md': ['762a3bcb4b45920fa154203b6876265673c88d32fe07e3d02a3c9a65b7c00c32'],
+  'island-leader.md': ['cf85e51f3b54ac4ca164ad81e3804c133850752a3b630f7037d3fe3617a97b23'],
+  'planner.md': ['a7b75252a76f2a95cc75a8177a7b368c1a9159465031dc18614ccebfce5d44f2'],
+  'reviewer.md': ['68e77aa1cdb002d1b9df419f857813eccd0449c28e8ad715946b80c9884252d9'],
+  'verifier.md': ['8fabc63c1088b576c7d54a446547f057bcb273a29f26604d446d654ea2ff262b'],
+};
+
+/** Whether `file` holds the bytes of the profile a fleet starts with at `rel`, as any release shipped it. */
+export function isStarterProfile(rel: string, file: string, shipped = STARTER_SHAS): boolean {
+  try { return Object.hasOwn(shipped, rel) && shipped[rel].includes(sha256Hex(fs.readFileSync(file))); } catch { return false; }
 }
 
 /** A fleet's first profiles, copied in only while its folder is not there, so one the user deletes stays deleted. */

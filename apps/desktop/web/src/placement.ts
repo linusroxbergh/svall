@@ -7,7 +7,7 @@ export const machineName = (f: Machines, id: MachineId): string => f.machines?.[
 
 /** Where a move goes, by name: this Mac is the window's machine; the fleet lists its workers, and the home named by `via` lists none of itself. */
 export const destinationName = (f: Machines, to: MachineId, via?: Via): string =>
-  (to === via?.machine ? 'this Mac' : f.machines?.[to]?.name ?? via?.name ?? 'this Mac');
+  (to === via?.machine ? 'this Mac' : to === via?.home ? homeName(f, via) : f.machines?.[to]?.name ?? via?.name ?? 'this Mac');
 
 /**
  * Whether a robot runs elsewhere than this window. A robot that names no machine runs on the home, which is here only
@@ -64,8 +64,8 @@ export const readsOn = (f: Pick<FleetState, 'robots' | 'machines'>, id: string, 
  */
 export type Via = { machine: MachineId; home: MachineId; name?: string; online?: true; served?: true };
 
-/** The home as the fleet names it, as a window was told, or by what it is. */
-export const homeName = (f: Machines, via: Via): string => f.machines?.[via.home]?.name ?? via.name ?? 'the Mac';
+/** The home as this machine's daemon names it, which is its registry's name where it holds one, else as the fleet names it, or by what it is. */
+export const homeName = (f: Machines, via: Via): string => via.name ?? f.machines?.[via.home]?.name ?? 'the Mac';
 
 /** The machine a robot runs on, while the home has lost its link to it; through a worker, any machine but that worker. */
 export const unreachableOf = (f: Machines, c: Pick<Robot, 'machine'>, via?: Via): string | undefined => {

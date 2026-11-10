@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FleetState, MachineId, SetupRow } from '@svall/protocol';
-import { followLandings } from '../src/landings.js';
+import { followLandings, logToasts } from '../src/landings.js';
 import { createAppStore } from '../src/store/index.js';
 import { fleet } from './fixtures.js';
 
@@ -36,6 +36,14 @@ describe('a robot landing on a worker', () => {
     expect([store.getState().selectedId, store.getState().sideCardOpen]).toEqual(['c1', true]);
   });
 
+  it('says this Mac for one landing on the worker the window is on', async () => {
+    const { store } = setup([linear]);
+    store.getState().setVia({ machine: VAULT, home: 'a1b2c3d4-0000-4000-8000-000000000002' as MachineId, name: 'studio' });
+    store.getState().setFleet(landed);
+    await vi.waitFor(() => expect(store.getState().toast).toBeDefined());
+    expect(store.getState().toast?.text).toBe('c1 is on this Mac. 1 part of its agent setup will not work there.');
+  });
+
   it("says nothing while that robot's move sheet is open, whose done line says it", async () => {
     const { store, call } = setup([linear]);
     store.getState().setMoveSheet({ id: 'c1', to: VAULT });
@@ -64,5 +72,30 @@ describe('a robot landing on a worker', () => {
     back.store.getState().setFleet(fleet());
     back.store.getState().setFleet(landed);
     expect(back.call).not.toHaveBeenCalled();
+  });
+});
+
+describe('the app log', () => {
+  it('takes each toast\'s tone and words, a toast shown again too, so one too brief to read can be read back', () => {
+    const store = createAppStore();
+    const sent: unknown[] = [];
+    logToasts({ store, bridge: { send: (m) => { sent.push(m); } } });
+    store.getState().showToast('svalld connection closed');
+    store.getState().showToast('studio is on studio', 'ok');
+    store.getState().showToast('svalld connection closed');
+    expect(sent).toEqual([
+      { type: 'log', text: 'toast error: svalld connection closed' },
+      { type: 'log', text: 'toast ok: studio is on studio' },
+      { type: 'log', text: 'toast error: svalld connection closed' },
+    ]);
+  });
+
+  it('takes the same toast shown twice in a row twice', () => {
+    const store = createAppStore();
+    const sent: unknown[] = [];
+    logToasts({ store, bridge: { send: (m) => { sent.push(m); } } });
+    store.getState().showToast('svalld connection closed');
+    store.getState().showToast('svalld connection closed');
+    expect(sent).toHaveLength(2);
   });
 });

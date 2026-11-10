@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
+import { ApiError, MachineId, MoveId, MovePhase, Robot, WORKER_OWNED, type AgentKind, type LeftBehind, type MoveSheet, type Repo, type SystemInfo } from '@svall/protocol';
 import { Invalid, NotFound } from '../errors.js';
 import type { Fleet } from '../fleet.js';
 import { boundary, type Failpoint } from '../failpoints.js';
@@ -14,13 +14,13 @@ import type { HomeLinks, WorkerHello } from '../link/home.js';
 import { must, type GitRunner } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { homeWord } from '../machine.js';
-import type { Paths } from '../paths.js';
+import { expandHome, type Paths } from '../paths.js';
 import type { Store } from '../store.js';
 import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  agentFailures, converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
+  agentFailures, converted, homesOf, missionHomes, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
   type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
@@ -28,7 +28,7 @@ import { destinationPaths } from './paths.js';
 import { addLine } from './replay.js';
 import {
   blobIds, changedSince, checkSessions, CloneLocks, holding, importSessions, landed, leaveAgain, liveTerminals, lockWorktree, MoveFiles, MoveJournal, newWorktree,
-  packMove, placeSessions, refused, removeWorktree, restRobot, serversLeft, takeBack, takenBack, unpack, wake, type AbortAnswer, type Failure, type Made, type RestSide, type ReturnSheet,
+  makeMission, missionFolder, packMove, placeSessions, refused, removeWorktree, restRobot, seedLanding, serversLeft, takeBack, takenBack, TRUST_ASKED, unmakeMission, unpack, wake, type AbortAnswer, type Failure, type Made, type RestSide, type ReturnSheet,
 } from './move-steps.js';
 
 const JOURNALED: Record<MovePhase, Failpoint> = {
@@ -71,19 +71,21 @@ function clash(a: string, b: string): boolean {
 
 const newMoveId = (): string => `mv_${[...crypto.randomBytes(10)].map((b) => (b % 36).toString(36)).join('')}`;
 
-export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWorktree?: boolean };
+export type StartOptions = { interruptAfterMs?: number; carry?: string[]; ownWorktree?: boolean; homeMove?: string };
 
 export type PlacementDeps = {
   store: Store;
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
   links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror' | 'mirrorSettled'>;
   me: MachineId;
-  paths: Pick<Paths, 'moves'>;
+  paths: Pick<Paths, 'moves' | 'home'>;
+  /** Whether an agent of that kind runs here, which a trust seed waits on. */
+  agentRunning?: (kind: AgentKind) => Promise<boolean>;
   git: GitRunner;
   agents: AgentProber;
   release: string;
   homedir: string;
-  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes'>;
+  tmux: RestDeps['tmux'] & Pick<Tmux, 'screen' | 'sendBytes' | 'sendKey'>;
   viewers: RestDeps['viewers'];
   processes?: RestDeps['processes'];
   kill?: RestDeps['kill'];
@@ -152,7 +154,10 @@ export class Placement {
       const j = this.enter({
         id, robotId, from: back ? there! : this.d.me, to, phase: 'rest', generation: (c.placement?.generation ?? 0) + 1, plan: checked.plan, updatedAt: Date.now(),
       }, 'rest');
-      this.d.store.update((d) => { d.robots[robotId].moving = { id, to, phase: 'rest' }; });
+      this.d.store.update((d) => {
+        d.robots[robotId].moving = { id, to, phase: 'rest' };
+        if (o.homeMove && !back) d.robots[robotId].sentAhead = o.homeMove;
+      });
       await (back ? this.back(j) : this.out(j));
     }).then(() => id);
   }
@@ -254,7 +259,7 @@ export class Placement {
 
   private checkDeps(): CheckDeps {
     const { store, me, links, git, agents, release, homedir, cli } = this.d;
-    return { store, me, links, git, agents, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
+    return { store, me, links, git, agents, release, homedir, fleetHome: this.d.paths.home, terminals: () => this.terminals(), ...(cli && { cli }) };
   }
 
   private terminals(): Promise<Classified[]> {
@@ -460,6 +465,7 @@ export class Placement {
     }
     placeSessions(j.sessions ?? [], sessions);
     await importSessions(j.sessions ?? [], sessions, paths, path.join(this.files.dir, 'held'), run);
+    makeMission(j, this.d.homedir, (x) => { j = { ...j, made: { ...j.made, ...x } }; this.save(j); }, `on ${homeWord()}`);
     fs.rmSync(stage, { recursive: true, force: true });
     return j;
   }
@@ -497,6 +503,7 @@ export class Placement {
       await this.clones.run(clone, () => removeWorktree(clone, paths.root, m, made, this.d.git, still))
         .catch((e: Error) => this.d.log.error(`move ${j.id}: ${paths.root} was not removed: ${e.message}`));
     }
+    unmakeMission(j);
     const told = await this.d.links.call(j.from, 'move.abort', { id: j.id }).then(() => true, (e: Error) => {
       this.d.log.error(`move ${j.id}: ${this.name(j.from)} was not told to reopen ${j.robotId}: ${e.message}`);
       return false;
@@ -553,9 +560,14 @@ export class Placement {
       .map(({ run, ...f }) => ({ ...f, action: `on ${homeWord()}, run ${run}` }));
     if (agents.length) return { failure: refusalOf(agents) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, local);
+    const mission = missionHomes(c, this.d.store.state, { homedir: this.d.homedir, fleetHome: this.d.paths.home }, hello.fleetHome, true);
+    if (mission) homes.mission = mission;
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
-    const plan: MovePlan = { clone: main, paths, have: [], carry: [] };
+    // mission control's robot back in the fleet's folder here, made and trusted as the way out does
+    const s = this.d.store.state;
+    const crew = !c.repo && s.islands[c.islandId]?.kind === 'home' && clean(paths.cwd) === clean(expandHome(s.home.cwd, this.d.homedir));
+    const plan: MovePlan = { clone: main, paths, have: [], carry: [], ...(crew && { mission: true as const }) };
     if (!c.repo) return { plan };
     const back = takenBack(c.left, paths.root, this.d.me);
     const failure = await this.landingRefusal(c, c.repo, back, from, main, paths.root);
@@ -679,17 +691,24 @@ export class Placement {
       const s = await this.d.links.call<{ phase: string }>(j.to, 'move.state', { id: j.id });
       if (s.phase === 'done') return undefined;
       if (s.phase !== 'commit' && s.phase !== 'activate') return `${this.name(j.to)} holds nothing prepared for move ${j.id}`;
-      const r = await this.d.links.call<{ ok: boolean; error?: string }>(j.to, 'move.activate', { id: j.id }, { timeoutMs: (this.d.watchMs ?? WATCH_MS) + 60_000 });
+      const r = await this.d.links.call<{ ok: boolean; error?: string; asks?: true }>(j.to, 'move.activate', { id: j.id }, { timeoutMs: (this.d.watchMs ?? WATCH_MS) + 60_000 });
+      if (r.ok && r.asks) this.d.store.update((d) => { if (d.robots[j.robotId]) addLine(d.robots[j.robotId], TRUST_ASKED); });
       return r.ok ? undefined : r.error ?? 'the robot did not start';
     } catch (e) {
       return (e as Error).message;
     }
   }
 
-  // the robot is this Mac's from the commit on; the worker takes the snapshot that says so whenever it is linked
-  private activateHere(j: MoveJournal): Promise<string | undefined> {
-    const { store, fleet, tmux, log } = this.d;
-    return wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS }, j);
+  // the robot is this Mac's from the commit on; the worker takes the snapshot that says so whenever it is linked. Mission
+  // control's folder is trusted as the way out trusts it, and a trust question no seed answered is answered as it shows
+  private async activateHere(j: MoveJournal): Promise<string | undefined> {
+    const { store, fleet, tmux, log, homedir } = this.d;
+    const c = this.robot(j.robotId);
+    const seeded = await seedLanding(j, c, missionFolder(j, homedir), {
+      agents: this.d.agents, homedir, fleetHome: this.d.paths.home, log, ...(this.d.agentRunning && { agentRunning: this.d.agentRunning }),
+    });
+    const asks = (): void => { store.update((d) => { if (d.robots[j.robotId]) addLine(d.robots[j.robotId], TRUST_ASKED); }); };
+    return wake({ store, fleet, tmux, log, watchMs: this.d.watchMs ?? WATCH_MS, trust: !!c.agent && !seeded.has(c.agent.kind), asks }, j);
   }
 
   // the worktree the robot left is locked with the move's id. The robot runs at its destination from here on, so a worker

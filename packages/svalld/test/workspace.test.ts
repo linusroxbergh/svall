@@ -4,7 +4,9 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Event } from '@svall/protocol';
+import { markKey } from '../src/fleet/home-move.js';
 import { silentLogger } from '../src/log.js';
+import { fleetRefused, resolvePaths } from '../src/paths.js';
 import type { Viewer } from '../src/terminals.js';
 import { git } from '../src/workspace/git.js';
 import { Workspace } from '../src/workspace/workspace.js';
@@ -202,6 +204,128 @@ describe('Workspace files', () => {
     expect((await ws.list('c', outside)).map((e) => e.name)).toEqual(['alias']);
     expect(await codeOf(() => ws.file('c', path.join(dir, 'a.txt'), 'head'))).toBe('invalid');
     expect(fs.existsSync(path.join(dir, '.git/hooks/pre-commit'))).toBe(false);
+  });
+
+  it('keeps a home move\'s driver journal, which holds its key, out of reach under any case, and its own alone', async () => {
+    const dir = repo();
+    const fleet = makeHome();
+    const paths = resolvePaths(fleet);
+    markKey(paths, 'hm_abcdefghij');
+    const journal = path.join(paths.homeMoves, 'hm_abcdefghij.driver.ndjson');
+    expect(fs.statSync(journal).mode & 0o777).toBe(0o600);
+    const ws = workspace({ c: dir });
+    expect(await codeOf(() => ws.read('c', journal))).toBe('invalid');
+    expect(await codeOf(() => ws.read('c', journal.replace('hm_abcdefghij.driver', 'HM_ABCDEFGHIJ.DRIVER')))).toBe('invalid');
+    expect(await codeOf(() => ws.write('c', journal, 'x', 0))).toBe('invalid');
+    fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{}\n');
+    expect(ws.read('c', path.join(paths.homeMoves, 'hm_abcdefghij.ndjson')).text).toBe('{}\n');
+  });
+
+  describe('a fleet home\'s journals, whose lines a move\'s end reads, and what a move staged', () => {
+    const fleetWorkspace = () => {
+      const dir = repo();
+      const paths = resolvePaths(path.join(makeHome(), 'fleets'));
+      fs.mkdirSync(paths.homeMoves, { recursive: true });
+      fs.writeFileSync(path.join(paths.homeMoves, 'hm_abcdefghij.ndjson'), '{"phase":"staged","at":1}\n');
+      markKey(paths, 'hm_abcdefghij');
+      fs.writeFileSync(`${paths.workersFile}.home-hm_abcdefghij`, '{}');
+      return { paths, ws: new Workspace(() => dir, silentLogger, () => fleetRefused(paths), [], path.join(makeHome(), 'trash')) };
+    };
+
+    it('refuses every read and write under journal/, a new line or file included, and through a link', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const journal = path.join(paths.homeMoves, 'hm_abcdefghij.ndjson');
+      expect(await codeOf(() => ws.read('c', journal))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', journal, '{"phase":"released","at":2}\n', fs.statSync(journal).mtimeMs))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', path.join(paths.homeMoves, 'hm_otherother.ndjson'), '{"phase":"done","at":2}\n', 0))).toBe('invalid');
+      const alias = path.join(makeHome(), 'alias');
+      fs.symlinkSync(path.join(paths.home, 'journal'), alias);
+      expect(await codeOf(() => ws.read('c', path.join(alias, 'home', 'hm_abcdefghij.ndjson')))).toBe('invalid');
+      expect(fs.readFileSync(journal, 'utf8')).toBe('{"phase":"staged","at":1}\n');
+      expect(fs.existsSync(path.join(paths.homeMoves, 'hm_otherother.ndjson'))).toBe(false);
+      expect(await codeOf(() => ws.read('c', `${paths.workersFile}.home-hm_abcdefghij`))).toBe('invalid');
+    });
+
+    it('refuses what lies under journal/ by the path asked, where a link there leads out of it', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const out = makeHome();
+      fs.writeFileSync(path.join(out, 'file'), 'x');
+      fs.symlinkSync(out, path.join(paths.home, 'journal', 'out'));
+      expect(await codeOf(() => ws.read('c', path.join(paths.home, 'journal', 'out', 'file')))).toBe('invalid');
+    });
+
+    it('refuses a marker not on disk through a link to the fleet home, by the folder it is', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const alias = path.join(makeHome(), 'alias');
+      fs.symlinkSync(paths.home, alias);
+      expect(await codeOf(() => ws.write('c', path.join(alias, 'home-moving.json'), '{}', 0))).toBe('invalid');
+      expect(fs.existsSync(paths.homeMoving)).toBe(false);
+    });
+
+    // APFS as a Mac formats it folds case, and more than ASCII's: what a spelling opens is what is refused
+    const folds = (() => { const d = makeHome(); fs.writeFileSync(path.join(d, 'case'), ''); return fs.existsSync(path.join(d, 'CASE')); })();
+    it.skipIf(!folds)('on a folding volume, refuses a spelling the volume folds onto journal/, ASCII or not, for a read and a write', async () => {
+      const { paths, ws } = fleetWorkspace();
+      const driver = path.join(paths.homeMoves, 'hm_abcdefghij.driver.ndjson');
+      for (const spelled of [driver.replace('/journal/', '/JOURNAL/'), driver.replace(/ndjson$/, 'ndjſon'), driver.replace('/fleets/', '/fleetſ/')]) {
+        if (!fs.existsSync(spelled)) continue;
+        expect(await codeOf(() => ws.read('c', spelled)), spelled).toBe('invalid');
+        expect(await codeOf(() => ws.write('c', spelled, 'x', fs.statSync(spelled).mtimeMs)), spelled).toBe('invalid');
+      }
+      const kept = `${paths.workersFile}.home-hm_abcdefghij`.replace(/workers\.json/, 'workerſ.json');
+      if (fs.existsSync(kept)) expect(await codeOf(() => ws.read('c', kept))).toBe('invalid');
+      expect(fs.existsSync(driver.replace('/journal/', '/JOURNAL/'))).toBe(true);
+      expect(fs.readFileSync(driver, 'utf8')).toContain('"phase":"mark"');
+    });
+
+    const namesOf = (paths: ReturnType<typeof resolvePaths>) => fs.readdirSync(paths.home).sort();
+    it.skipIf(!folds).each([
+      ['home-moving.jſon'], ['home-moving.json'], ['HOME-MOVING.JSON'], ['home-deliver.jſon'], ['worker.jſon'], ['workerſ.json'], ['phone.jſon'], ['mobile-Key'.replace('K', '\u212A')], ['to\u212Aen'],
+      ['state.json.home-hm_abcdefghik'.replace('state', 'ſtate')], ['docs-cut-hm_abcdefghik.jſon'], ['adopt-hm_abcdefghi\u212A/incoming/token'], ['workerſ.json.home-hm_abcdefghi\u212A'],
+    ])('on a folding volume, creates none of %s, a spelling of what a fleet home keeps out of Files, that is not on disk', async (name) => {
+      const { paths, ws } = fleetWorkspace();
+      const before = namesOf(paths);
+      expect(await codeOf(() => ws.write('c', path.join(paths.home, name), '{}', 0)), name).toBe('invalid');
+      expect(namesOf(paths)).toEqual(before);
+    });
+
+    it.skipIf(!folds)('on a folding volume, refuses a copy of a refused dotfile under a spelling it folds, and a file in a sealed folder\'s place', async () => {
+      const dir = repo();
+      const sealed = path.join(dir, 'sealed');
+      fs.writeFileSync(path.join(dir, '.claude.json.backup'), 'a key');
+      const ws = new Workspace(() => dir, silentLogger, () => [path.join(dir, '.claude.json'), path.join(dir, 'ſecret')], [], undefined, () => [sealed]);
+      expect(await codeOf(() => ws.read('c', '.claude.jſon.backup'))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', 'ſealed', 'x', 0))).toBe('invalid');
+      expect(fs.existsSync(sealed)).toBe(false);
+      expect(await codeOf(() => ws.write('c', 'secret', 'x', 0))).toBe('invalid');
+      expect(fs.existsSync(path.join(dir, 'secret'))).toBe(false);
+    });
+
+    it.each(['homeMoving', 'homeDeliver'] as const)('refuses a read, a write and a delete of %s, on disk and not', async (file) => {
+      const { paths, ws } = fleetWorkspace();
+      const at = paths[file];
+      const asks = {
+        read: () => ws.read('c', at),
+        write: () => ws.write('c', at, '{}', fs.existsSync(at) ? fs.statSync(at).mtimeMs : 0),
+        delete: () => ws.setAside('c', at),
+      };
+      for (const [what, ask] of Object.entries(asks)) expect(await codeOf(ask), `${what}, not on disk`).toBe('invalid');
+      expect(fs.existsSync(at)).toBe(false);
+      fs.writeFileSync(at, 'stands');
+      for (const [what, ask] of Object.entries(asks)) expect(await codeOf(ask), `${what}, on disk`).toBe('invalid');
+      expect(fs.readFileSync(at, 'utf8')).toBe('stands');
+    });
+
+    it.each(['state.json.home-hm_abcdefghij', 'docs-cut-hm_abcdefghij.json'])('refuses %s, which a join trusts, on disk and not', async (name) => {
+      const { paths, ws } = fleetWorkspace();
+      const at = path.join(paths.home, name);
+      expect(await codeOf(() => ws.write('c', at, '{}', 0))).toBe('invalid');
+      expect(fs.existsSync(at)).toBe(false);
+      fs.writeFileSync(at, 'stands');
+      expect(await codeOf(() => ws.read('c', at))).toBe('invalid');
+      expect(await codeOf(() => ws.write('c', at, '{}', fs.statSync(at).mtimeMs))).toBe('invalid');
+      expect(fs.readFileSync(at, 'utf8')).toBe('stands');
+    });
   });
 
   it('lists a repository outside the root without running the command its config names', async () => {

@@ -197,6 +197,10 @@ export function installKeyHandlers(ctx: KeyDeps, win: Window = window): () => vo
   const closeCard = () => {
     const st = ctx.store.getState();
     if (st.capturingKey) { st.setCapturingKey(undefined); return; }
+    // the seed's sheet stands over all else, and Esc answers it as Not now, or does nothing while its Copy runs, whose failure it has to say
+    if (st.seedAsk) { if (!st.seedCopying) st.answerSeed(); return; }
+    // a home move's sheet stands over the settings it opens from, and stays while its run runs
+    if (st.homeSheet) { if (!(st.host?.op === 'home' && st.host.running)) st.setHomeSheet(undefined); return; }
     // the settings window stands over the shelf
     if (st.settingsOpen) { st.toggleSettings(false); refocusSurface(ctx); return; }
     if (st.resourcesOpen) { st.toggleResources(false); refocusSurface(ctx); return; }

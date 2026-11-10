@@ -6,12 +6,14 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FleetId, MachineId, emptyState } from '@svall/protocol';
-import { HomeLinks, socketTransport, type Transport } from '../../src/link/home.js';
+import { PassThrough } from 'node:stream';
+import { HomeLinks, socketTransport, sshTransport, type Transport } from '../../src/link/home.js';
+import { SshMaster } from '../../src/link/ssh.js';
 import { HomeConnection } from '../../src/link/worker.js';
 import { silentLogger, type Logger } from '../../src/log.js';
 import type { MachineEntry } from '../../src/machine.js';
 import { dialSocket, resolvePaths } from '../../src/paths.js';
-import { dropToken, issueToken } from '../../src/placement/workers.js';
+import { dropToken, issueToken, workerProfile } from '../../src/placement/workers.js';
 import { Store } from '../../src/store.js';
 import { Outbox } from '../../src/worker/outbox.js';
 import { cleanHomes, makeHome } from '../helpers.js';
@@ -35,16 +37,17 @@ const errors = (): Logger & { lines: string[] } => {
 };
 
 /** A home and a worker that dials it; `tunnel()` binds the home's socket onto the worker's link.sock, as sshd does for -R. */
-async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void } = {}) {
+async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; log?: Logger; mirror?: { push: () => Promise<{ sent: number }>; settled: () => Promise<unknown> }; onEvent?: () => Promise<void>; onLink?: (live: boolean) => void; held?: () => boolean } = {}) {
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
   const token = issueToken(homePaths, W);
   const home = Store.load(homePaths.state, () => {});
   const store = Store.load(workerPaths.state, () => {});
   store.update((d) => { Object.assign(d, emptyState()); });
+  const outbox = Outbox.open(workerPaths);
   const worker = new HomeConnection({
     paths: workerPaths, worker: { homeMachineId: H, fleetId: FleetId.parse(crypto.randomUUID()), token, homeName: 'studio' }, me: W, store,
-    outbox: Outbox.open(workerPaths), log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {}, onLink: o.onLink,
+    outbox, log: silentLogger, release: '1.2.3', bootId: 'boot-1', handlers: {}, onLink: o.onLink,
   });
   await worker.start();
   stops.push(() => worker.stop());
@@ -72,12 +75,12 @@ async function world(o: { machines?: () => MachineEntry[]; connect?: Transport; 
     paths: homePaths, store: home, log: o.log ?? silentLogger, release: '1.2.3', machines: o.machines ?? (() => [dialing]),
     connect: o.connect ?? (() => Promise.reject(new Error('the home never ssh-es to a worker that dials in'))),
     dialIn: (e) => { tries++; return dialIn(e); },
-    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {},
+    onReport: () => {}, onEvent: o.onEvent ?? (async () => {}), onInventory: async () => {}, held: o.held,
     snapshot: () => ({ version: 1, state: home.state, agentHomes: { claude: '/c', codex: '/x', opencode: '/o' }, home: '/home/ada' }),
     ...(o.mirror && { mirror: o.mirror }),
   });
   stops.push(() => links.stop());
-  return { homePaths, workerPaths, token, home, worker, sock, tunnel, links, firsts, tries: () => tries };
+  return { homePaths, workerPaths, token, home, worker, outbox, sock, tunnel, links, firsts, tries: () => tries };
 }
 
 // a socket whose listener is gone without unlinking it, as a tunnel sshd dropped without its cancel leaves
@@ -89,6 +92,31 @@ async function staleSocket(sock: string): Promise<void> {
   await once(child, 'exit');
 }
 
+describe('the link a home dials', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+  const dialed = async (profile: string, profileOf?: (m: string) => string | undefined): Promise<string[]> => {
+    let argv: string[] = [];
+    vi.spyOn(SshMaster, 'open').mockResolvedValue({ socket: '/tmp/m', stream: (a: string[]) => { argv = a; return { stream: new PassThrough(), exited: new Promise(() => {}) }; }, close: () => Promise.resolve() } as never);
+    await sshTransport({ profile, log: silentLogger, ...(profileOf && { profileOf }) })({ id: 'w1', record: { name: 'studio', ssh: 'ada@studio', svallBase: '/opt/svall' } } as never);
+    return argv;
+  };
+
+  it('asks the worker for the fleet by the name it has there, or by this one\'s where none is held', async () => {
+    expect(await dialed('mac2', () => 'private')).not.toContain('-p');
+    expect(await dialed('private', () => 'mac2')).toEqual(expect.arrayContaining(['-p', "'mac2'"]));
+    expect(await dialed('mac2', () => undefined)).toEqual(expect.arrayContaining(['-p', "'mac2'"]));
+  });
+
+  it('a token issued again keeps the name held for that worker', () => {
+    const paths = resolvePaths(makeHome());
+    issueToken(paths, W);
+    expect(workerProfile(paths, W)).toBeUndefined();
+    fs.writeFileSync(paths.workersFile, JSON.stringify({ [W]: { ...JSON.parse(fs.readFileSync(paths.workersFile, 'utf8'))[W], profile: 'private' } }));
+    issueToken(paths, W);
+    expect(workerProfile(paths, W)).toBe('private');
+  });
+});
+
 describe('a worker that dials in', () => {
   it('links over its socket in the fleet home, greeted with the token first, and gives terminals no ssh route', async () => {
     const w = await world();
@@ -98,6 +126,64 @@ describe('a worker that dials in', () => {
     expect(JSON.parse(w.firsts[0])).toMatchObject({ t: 'hello', token: w.token });
     expect(w.links.for(W)?.via()).toBeUndefined();
     expect(w.home.state.machines?.[W]).toMatchObject({ name: 'mac', reachable: true });
+  });
+
+  it('a barrier answers in its time while an apply is under way, saying so, and what came of it once that ends', async () => {
+    let finish!: () => void;
+    const applying = new Promise<void>((r) => { finish = r; });
+    const w = await world({ onEvent: () => applying });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    w.worker.journal('mutation', { nothing: true });
+    await until(() => expect(w.links.for(W)?.outboxDrained()).toBe(false));
+    const at = Date.now();
+    expect(await w.links.barrier(W, 50)).toBe('applying');
+    expect(Date.now() - at).toBeLessThan(1000);
+    finish();
+    expect(await w.links.barrier(W, 2000)).toBe(true);
+  });
+
+  it('while the fleet moves, leaves a change in the worker\'s outbox unacknowledged, and applies it once the move is off; a report goes on', async () => {
+    let holding = false;
+    const applied: string[] = [];
+    const w = await world({ held: () => holding, onEvent: async () => { applied.push('mutation'); } });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    expect(await w.links.barrier(W, 2000)).toBe(true);
+    holding = true;
+    const acked = () => w.outbox.acked();
+    w.worker.journal('robot.sync', { robotId: 'nobody', generation: 0, fields: {} }, 'nobody');
+    await until(() => expect(acked()).toBe(1));
+    w.worker.journal('mutation', { nothing: true });
+    await new Promise((r) => setTimeout(r, 150));
+    expect(applied).toEqual([]);
+    expect(acked()).toBe(1);
+    expect(await w.links.barrier(W, 100)).toBe(false);
+    holding = false;
+    w.links.released();
+    await until(() => expect(applied).toEqual(['mutation']), 4000);
+    await until(() => expect(acked()).toBe(2));
+  });
+
+  it('once a change is held, a report after it waits too, as acks are cumulative: acking it would take the change with it', async () => {
+    let holding = false;
+    const applied: string[] = [];
+    const w = await world({ held: () => holding, onEvent: async () => { applied.push('mutation'); } });
+    await w.tunnel();
+    w.links.start();
+    await until(() => expect(w.links.for(W)?.synced && w.worker.connected()).toBe(true));
+    holding = true;
+    w.worker.journal('mutation', { nothing: true });
+    w.worker.journal('robot.sync', { robotId: 'nobody', generation: 0, fields: {} }, 'nobody');
+    await new Promise((r) => setTimeout(r, 200));
+    expect(applied).toEqual([]);
+    expect(w.outbox.acked()).toBe(0);
+    holding = false;
+    w.links.released();
+    await until(() => expect(w.outbox.acked()).toBe(2), 4000);
+    expect(applied).toEqual(['mutation']);
   });
 
   it('holds its socket folder to the account alone, whatever mode it found it at', async () => {

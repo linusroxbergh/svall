@@ -298,4 +298,41 @@ final class HostProcessTests: XCTestCase {
         XCTAssertEqual(FromShell.hostDone(op: "add", code: 1).json as NSDictionary,
                        ["type": "host.done", "op": "add", "code": 1] as NSDictionary)
     }
+
+    func testHomeMoveAndJoinArguments() {
+        XCTAssertEqual(HostCommand.arguments(op: .home, args: HostArgs(name: "studio")), ["--json", "fleet", "home", "set", "studio"])
+        XCTAssertEqual(HostCommand.arguments(op: .home, args: HostArgs(name: "local")), ["--json", "fleet", "home", "set", "local"])
+        XCTAssertNil(HostCommand.arguments(op: .home, args: HostArgs(name: "--force")))
+        XCTAssertNil(HostCommand.arguments(op: .home, args: HostArgs(name: "studio", ssh: "a@b")))
+        XCTAssertEqual(HostCommand.arguments(op: .homeRetry, args: HostArgs(name: "")), ["--json", "fleet", "home", "retry"])
+        XCTAssertEqual(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "")), ["--json", "fleet", "home", "abort"])
+        XCTAssertNil(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "studio")))
+        XCTAssertEqual(HostCommand.arguments(op: .homeCrew, args: HostArgs(name: "")), ["--json", "fleet", "home", "crew-back"])
+        XCTAssertNil(HostCommand.arguments(op: .homeCrew, args: HostArgs(name: "studio")))
+        XCTAssertEqual(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "ada@studio")), ["--json", "fleet", "join", "ada@studio"])
+        XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "-oProxyCommand=x")))
+        XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "")))
+        XCTAssertEqual(HostCommand.arguments(op: .add, args: HostArgs(name: "studio", ssh: "ada@studio", asHome: true)), ["host", "add", "studio", "--ssh", "ada@studio", "--as-home", "--json"])
+        XCTAssertNil(HostCommand.arguments(op: .upgrade, args: HostArgs(name: "studio", asHome: true)))
+    }
+
+    func testMissionControlIsInterruptedOnlyOnThePagesChoiceAndOnlyWhereItMoves() throws {
+        let start = #"{"type":"host.start","op":"home","args":{"name":"studio","interrupt":true}}"#
+        guard case .hostStart(let op, let args) = try JSONDecoder().decode(ToShell.self, from: Data(start.utf8)) else { return XCTFail("host.start did not decode") }
+        XCTAssertEqual(HostCommand.arguments(op: op, args: args), ["--json", "fleet", "home", "set", "studio", "--interrupt-after", "0"])
+        XCTAssertEqual(HostCommand.arguments(op: .homeCrew, args: HostArgs(name: "", interrupt: true)), ["--json", "fleet", "home", "crew-back", "--interrupt-after", "0"])
+        XCTAssertEqual(HostCommand.arguments(op: .home, args: HostArgs(name: "studio", interrupt: false)), ["--json", "fleet", "home", "set", "studio"])
+        XCTAssertNil(HostCommand.arguments(op: .homeRetry, args: HostArgs(name: "", interrupt: true)))
+        XCTAssertNil(HostCommand.arguments(op: .homeAbort, args: HostArgs(name: "", interrupt: true)))
+        XCTAssertNil(HostCommand.arguments(op: .join, args: HostArgs(name: "", ssh: "ada@studio", interrupt: true)))
+        XCTAssertNil(HostCommand.arguments(op: .doctor, args: HostArgs(name: "studio", interrupt: true)))
+    }
+
+    func testWhatAWindowSaysInPlaceOfACommandReachesThePage() throws {
+        let row = #"{"step":"adopt","status":"fail","detail":"studio did not take the fleet: rolledback","action":"svall fleet home abort, or svall fleet home retry","say":"Close to finish the move or call it off"}"#
+        let step = try JSONDecoder().decode(HostProcess.Step.self, from: Data(row.utf8))
+        let event = FromShell.hostStep(op: "home", step: step).json["event"] as? [String: Any]
+        XCTAssertEqual(event?["say"] as? String, "Close to finish the move or call it off")
+        XCTAssertEqual(event?["action"] as? String, "svall fleet home abort, or svall fleet home retry")
+    }
 }

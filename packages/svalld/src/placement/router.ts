@@ -1,11 +1,12 @@
 import os from 'node:os';
 import { z } from 'zod';
-import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
+import { AGENT_UPDATE, AGENT_UPDATE_MS, AgentKind, ApiError, Column, ContextItem, farRootOf, methods, serverWait, type MachineId, type MethodName, type Params, type ParsedParams, type ResourceSource, type Result, type Robot } from '@svall/protocol';
 import { loseSecond, markDormant } from '../dormancy.js';
 import type { Fleet } from '../fleet.js';
 import type { HomeLinks } from '../link/home.js';
 import type { HomeConnection } from '../link/worker.js';
 import { hooklessGit } from '../links/git.js';
+import { readsDisk, settleItems } from '../context/items.js';
 import type { Logger } from '../log.js';
 import { cliRunner } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
@@ -74,6 +75,20 @@ export class Router {
     const { robots } = this.o.store.state;
     if (!Object.hasOwn(robots, robotId) || this.runsHere(robots[robotId])) return undefined;
     return robots[robotId].machine ?? this.o.home?.id;
+  }
+
+  /** On the home, a placed robot's context items settled on the machine it runs on, whose files its paths name; undefined for a robot here, or items that name no new path. */
+  async settleContext(robotId: string, items: ContextItem[], current: ContextItem[]): Promise<ContextItem[] | undefined> {
+    const at = this.placedAt(robotId);
+    if (!at || !this.o.links || !readsDisk(items, current)) return undefined;
+    const name = this.o.store.state.machines?.[at]?.name ?? at;
+    const raw = await this.o.links.call(at, 'context.settle', { items, current }, { timeoutMs: callMs('robot.update', {}) }).catch((e: Error) => {
+      if (e instanceof ApiError && e.code === 'unknown_method') throw new ApiError('invalid', `${name} runs a release that cannot look for its robots' files; upgrade it under Machines`);
+      throw e;
+    });
+    const settled = z.array(ContextItem).length(items.length).safeParse(raw);
+    if (!settled.success) throw new ApiError('internal', `${name} answered with a context svalld cannot read`);
+    return settled.data;
   }
 
   /** The machine a workspace id's folder is on, when that is another one: a placed robot's, or the worker a clone's root id names. */
@@ -215,6 +230,8 @@ const AgentsUpdate = z.object({ kinds: z.array(AgentKind).min(1) });
  */
 export function workerCalls(o: {
   fleet: Fleet; store: Store; me: MachineId; log: Logger; terminals: Pick<TerminalHub, 'attach' | 'open' | 'input' | 'resize' | 'close'>; viewers: FarViewers; cli?: CliRun;
+  /** A path that is not the fleet's to open, as Files refuses it. */
+  refuses?: (abs: string) => boolean;
 }): Handlers {
   const { fleet, terminals, viewers } = o;
   const on = <M extends MethodName>(method: M, run: (p: ParsedParams<M>) => Promise<Result<M>>) => async (raw: unknown) => {
@@ -257,6 +274,12 @@ export function workerCalls(o: {
     },
     'robot.close': forget,
     'robot.forget': forget,
+    // a robot's context paths name files on this machine, ~ included
+    'context.settle': async (raw) => {
+      const p = z.object({ items: z.array(ContextItem), current: z.array(ContextItem) }).safeParse(raw);
+      if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));
+      return settleItems(p.data.items, p.data.current, o.refuses);
+    },
     'scribe.run': async (raw) => {
       const p = ScribeRun.safeParse(raw);
       if (!p.success) throw new ApiError('invalid_params', z.prettifyError(p.error));

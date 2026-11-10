@@ -18,9 +18,9 @@ final class QuitFlowTests: XCTestCase {
                  terminate: { [unowned self] in quits.append($0) })
     }
 
-    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0, placed: Int = 0, home: String? = nil) {
+    private func quit(_ flow: QuitFlow, unsaved: [String] = [], working: Int = 0, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false, callsOff: String? = nil) {
         XCTAssertEqual(flow.ask(confirm: true) { [unowned self] in answers.append($0) }, .terminateLater)
-        flow.answered(unsaved: unsaved, working: working, placed: placed, home: home)
+        flow.answered(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff)
     }
 
     func testALocalFleetIsPutToSleepByThePage() {
@@ -45,12 +45,41 @@ final class QuitFlowTests: XCTestCase {
 
     func testThePageNamesAFarHomeInItsAnswer() throws {
         let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
-        guard case .quitAnswer(_, let working, let placed, let home) = try decode(#"{"type":"quit.answer","unsaved":[],"working":1,"placed":7,"home":"studio"}"#) else { return XCTFail("not a quit answer") }
+        guard case .quitAnswer(_, let working, let placed, let home, _, _, _) = try decode(#"{"type":"quit.answer","unsaved":[],"working":1,"placed":7,"home":"studio"}"#) else { return XCTFail("not a quit answer") }
         XCTAssertEqual(working, 1)
         XCTAssertEqual(placed, 7)
         XCTAssertEqual(home, "studio")
-        guard case .quitAnswer(_, _, _, let none) = try decode(#"{"type":"quit.answer","unsaved":[],"working":0}"#) else { return XCTFail("not a quit answer") }
+        guard case .quitAnswer(_, _, _, let none, _, _, _) = try decode(#"{"type":"quit.answer","unsaved":[],"working":0}"#) else { return XCTFail("not a quit answer") }
         XCTAssertNil(none)
+    }
+
+    func testAQuitDuringAMoveOfTheHomeSaysWhatItDoes() throws {
+        quit(flow(), working: 2, frozenFor: "studio")
+        quit(flow(), unsaved: ["a.ts"], working: 2, frozenFor: "studio")
+        quit(flow(), working: 1, home: "studio", movingHere: true)
+        quit(flow(), movingHere: true)
+        XCTAssertEqual(asked, [
+            "Quit Svall? The fleet is moving to studio, so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off.",
+            "Quit with unsaved changes? a.ts has changes that were not saved. Quitting drops them. The fleet is moving to studio, so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off.",
+            "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. studio keeps running. The move to this Mac waits until you open Svall again, and studio takes no changes until then.",
+            "Quit Svall? Your robots stop and pick up where they left off when you open Svall again. The move to this Mac waits until you open Svall again, and its old home takes no changes until then.",
+        ])
+        let decode = { (json: String) in try JSONDecoder().decode(ToShell.self, from: Data(json.utf8)) }
+        guard case .quitAnswer(_, _, _, _, let frozenFor, let movingHere, let callsOff) = try decode(#"{"type":"quit.answer","unsaved":[],"working":0,"frozenFor":"studio","movingHere":true,"callsOff":"studio"}"#) else { return XCTFail("not a quit answer") }
+        XCTAssertEqual(frozenFor, "studio")
+        XCTAssertTrue(movingHere)
+        XCTAssertEqual(callsOff, "studio")
+    }
+
+    func testAQuitDuringAMoveTheWindowDrivesSaysItCallsTheMoveOff() {
+        quit(flow(), working: 2, callsOff: "studio")
+        quit(flow(), working: 2, frozenFor: "studio", callsOff: "studio")
+        quit(flow(), working: 1, home: "studio", callsOff: "this Mac")
+        XCTAssertEqual(asked, [
+            "Quit Svall? 2 robots are working and will stop. Everything picks up where it left off when you open Svall again. Quitting calls off the move to studio.",
+            "Quit Svall? Quitting calls off the move to studio, and this Mac's daemon stays up with its robots running.",
+            "Quit Svall? 1 robot is working and will stop. Everything picks up where it left off when you open Svall again. studio keeps running. Quitting calls off the move to this Mac.",
+        ])
     }
 
     func testAFarHomeIsSaidToKeepRunningAndTheFleetIsStoppedByThePageAlone() {

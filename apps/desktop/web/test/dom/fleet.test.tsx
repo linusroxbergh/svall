@@ -270,3 +270,21 @@ test('a new robot sheet open as the Mac comes back starts in the Mac\'s folder, 
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Create' })); });
   expect(call).toHaveBeenCalledWith('robot.create', { islandId: 'i_a', cwd: '/tmp' });
 });
+
+test('a page a worker still serves says where the fleet runs now; the home and a fallback through a machine do not', () => {
+  const copy = fleet();
+  copy.machines = { studio: { name: 'studio', reachable: true, since: 1, snapshot: { version: 3, at: 1 } } } as never;
+  store.getState().setFleet(copy);
+  store.getState().setStatus('online');
+  const { unmount } = render(<Fleet onOpen={() => {}} />);
+  expect(screen.getByTestId('phone-moved').textContent).toContain('This fleet runs on studio now.');
+  unmount();
+  store.getState().setVia({ machine: 'm', home: 'studio' } as never);
+  const fallback = render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByTestId('phone-moved')).toBeNull();
+  fallback.unmount();
+  store.getState().setVia(undefined);
+  store.getState().setFleet({ ...copy, machines: { studio: { name: 'studio', reachable: true, since: 1 } } as never });
+  render(<Fleet onOpen={() => {}} />);
+  expect(screen.queryByTestId('phone-moved')).toBeNull();
+});

@@ -182,9 +182,9 @@ export const scribePlaces = (f: FleetState): boolean => placingOn(f) && !f.scrib
 
 // the shell draws terminals and browser tabs above the page, so anything the page spreads over one
 // only reads as on top once that surface is hidden. An overlay that covers a rect takes a cutout instead
-export const isVeiled = (s: { view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState; via?: Via }): boolean =>
+export const isVeiled = (s: { homeSheet?: unknown; seedAsk?: true; view?: View; namingRobot: boolean; missionPrompt: boolean; palette: boolean; closingRobot?: string; sleepingRobot?: string; deletingIsland?: string; deletingColumn?: string; fleetPicker?: string; moveSheet?: unknown; resourcesOpen: boolean; hostOpen: boolean; fleet: FleetState; via?: Via }): boolean =>
   s.namingRobot || s.missionPrompt || s.palette || s.closingRobot !== undefined || s.sleepingRobot !== undefined || s.deletingIsland !== undefined || s.deletingColumn !== undefined || s.fleetPicker !== undefined
-  || s.moveSheet !== undefined || s.resourcesOpen || s.hostOpen || scribeAsking(s) || placingAsking(s);
+  || s.moveSheet !== undefined || s.homeSheet !== undefined || s.seedAsk === true || s.resourcesOpen || s.hostOpen || scribeAsking(s) || placingAsking(s);
 
 // the name a fleet's home directory gives it: ~/.svall (or ~/.svall-dev) is the private fleet, ~/.svall-work is work
 export const directoryName = (home: string): string => {

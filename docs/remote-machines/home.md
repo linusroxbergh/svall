@@ -4,6 +4,10 @@ A fleet has one home, which runs its islands, map, notes, mission control, scrib
 an always-on Linux machine, with a Mac as its [worker that dials in](setup.md#a-worker-that-dials-its-home). The app on that Mac
 then opens on the fleet as the server holds it, and robots keep working with the lid closed. This page uses `studio` for the server.
 
+To run a fleet this way, install Svall on the server and connect your Mac: **Install Svall on a server and connect this Mac** in the first
+run does both ([Starting on a server](#starting-on-a-server)). A fleet already on your Mac goes there with **Make studio this fleet's
+home…** ([Changing home](#changing-home)).
+
 On this page "this Mac" is the machine the window runs on, and every other machine goes by name, the home included. A Mac
 with no server reads as it always has.
 
@@ -21,7 +25,8 @@ a typed path before the robot starts: "/home/linus/x is not a folder on studio".
 that island. A Mac home has no such field: a new robot starts beside the robot or island you selected.
 
 Settings → Machines lists the fleet's machines, the home first, each with its role and its robots. A worker that dials in is listed
-too, as "dials in". What a machine does for you from there, and adding another, is for a home on this Mac.
+too, as "dials in". With the home on this Mac, each machine's ⋯ holds what it does for you, and Add machine adds another. A
+window on a far home has ⋯ on the home's row alone, and no Add machine: its workers are that home's to add and remove.
 
 ## What opens on this Mac
 
@@ -96,9 +101,10 @@ Your agent setup lives where the fleet lives. studio is the source, and every wo
 studio links to this Mac and before every move here, only what changed on studio since the last time.
 
 - **Your own files.** Each file a push is the first to take, the first push's and any later one's, is copied first under `~/.svall/mirror-backup/<date>/` (`~/.svall-<fleet>/` for a named fleet), laid out as under your home, for you alone, even where it held the same bytes. Settings → Agent setup names the folder. A file the mirror wrote keeps no copy, whatever you edit in it since, but where a tick goes over a key of your own in it.
-- **What it leaves.** A push removes a file only once it has taken it, so one you held yourself lies in that folder first. The unit this Mac keeps is the whole entry: a server in a config file, a provider table, a config key's value or list. An entry holding a key of your own, in a field Svall reads as a key, stays whole while studio's is unticked, so what studio changes in it does not land, and it stays when studio drops it. In a table of entries, such as providers, where every child on both sides is a table, an entry only this Mac holds and the mirror did not write stays, with or without a key, and studio's are laid over it, each whole; one the mirror wrote and studio drops goes. Any other table is one value, and studio's replaces it. A tick on studio's side replaces the entry whole, the file copied to the folder first; an untick leaves studio's form, which is the reference for a server's key and empty elsewhere, with your key in the folder and the Agent setup pane naming it. A plugin's `.mcp.json` goes by the file: a key of yours in it lies only in the folder, from when the file was first taken, and one you fill in since is in no copy. A server the mirror copied whole and you edited in any way is yours: an untick or studio dropping it leaves it as you edited it, with any key the mirror copied in it, its row says so while studio lists it, and you remove it yourself; a later tick replaces it, the file copied first without the mirror's strings. A linked keyed file whose target you edited is yours too, ticked or not: nothing writes through the link, and its row says so, until you remove the link; the next tick then writes a plain file, and the target stays, with any key the mirror copied in it. A linked folder, such as `~/.claude/agents` under a dotfiles manager, doesn't count: the files in it read as plain ones, so an edit goes at studio's next change or an untick, in no copy. A server you, or an agent, edit so Svall cannot read it field by field stays yours too: while unticked it stops following studio, its row says so, and deleting it brings studio's back at the next push. An override under `mirror-overrides/` reads as such an edit, and stands only over a server this Mac still holds, unless it names a `command` or `url` of its own. An edit Svall can read leaves a server studio's: studio's next change to it replaces it, with no copy. A plugin or marketplace studio does not list stays in `installed_plugins.json`, `known_marketplaces.json` and `enabledPlugins`, as does a setting only this Mac has. A setting both hold is studio's, `permissions` among them; the folder keeps what you had when the file was first taken. `mirror-overrides/` in the fleet's home here stands over what comes, as on [any worker](setup.md#your-agent-setup-on-the-machine).
+- **What it leaves.** A push removes a file only once it has taken it, so one you held yourself lies in that folder first. The unit this Mac keeps is the whole entry: a server in a config file, a provider table, a config key's value or list. An entry holding a key of your own, in a field Svall reads as a key, stays whole while studio's is unticked, so what studio changes in it does not land, and it stays when studio drops it. In a table of entries, such as providers, where every child on both sides is a table, an entry only this Mac holds and the mirror did not write stays, with or without a key, and studio's are laid over it, each whole; one the mirror wrote and studio drops goes. Any other table is one value, and studio's replaces it. A tick on studio's side replaces the entry whole, the file copied to the folder first; an untick leaves studio's form, which is the reference for a server's key and empty elsewhere, with your key in the folder and the Agent setup pane naming it. A plugin's `.mcp.json` goes by the file: a key of yours in it lies only in the folder, from when the file was first taken, and one you fill in since is in no copy. A server the mirror copied whole and you edited in any way is yours: an untick or studio dropping it leaves it as you edited it, with any key the mirror copied in it, its row says so while studio lists it, and you remove it yourself; a later tick replaces it, the file copied first without the mirror's strings. A linked keyed file whose target you edited is yours too, ticked or not: nothing writes through the link, and its row says so, until you remove the link; the next tick then writes a plain file, and the target stays, with any key the mirror copied in it. A linked folder, such as `~/.claude/agents` under a dotfiles manager, doesn't count: the files in it read as plain ones, so an edit goes at studio's next change or an untick, in no copy. A server you, or an agent, edit so Svall cannot read it field by field stays yours too: while unticked it stops following studio, its row says so, and deleting it brings studio's back at the next push. An override under `mirror-overrides/` reads as such an edit, and stands only over a server this Mac still holds, unless it names a `command` or `url` of its own. An edit Svall can read leaves a server studio's: studio's next change to it replaces it, with no copy. A plugin or marketplace studio does not list stays in `installed_plugins.json`, `known_marketplaces.json` and `enabledPlugins`, as does a setting only this Mac has. A setting both hold is studio's, `permissions` among them, unless studio's hold only Svall's own rules and no push wrote yours, which then stay; the folder keeps what you had when the file was first taken. `mirror-overrides/` in the fleet's home here stands over what comes, as on [any worker](setup.md#your-agent-setup-on-the-machine).
 - **Editing it.** Settings → Agent setup opens studio's `CLAUDE.md`, `settings.json`, skills and rules in the app's editor, and saves them on studio. It offers this while the window reaches studio. A Mac that is its fleet's home has no such pane.
-- **Copy my agent setup from this Mac to studio.** The same pane sends what is on this Mac now, once. Keys in config files stay on this Mac unless you tick them there, field by field; the ticks are this Mac's, and studio has no say in them. `CLAUDE.md`, rules, skills and agent profiles go as they are, anything written in them included. A key you untick stays on studio until the next copy. By the same rule as a push, studio keeps each file a copy is the first to take in its own `mirror-backup/<date>/`, and the copy's result names that folder when that copy kept any, each entry a tick went over, and what an untick left. The Agent setup pane forgets that line when you leave it.
+- **A home with no setup yet.** A server you made home from this Mac, or joined, has none of its own past what `svall setup` writes there, the agent profiles as they ship among it, and what Claude Code writes by itself as it starts: its theme, its plugin lists and a marketplace no plugin installs from. It pushes nothing onto this Mac until it does, nor while all it holds is a config file it cannot read. Your window offers this Mac's first, through the copy below, with the same boxes for its keys, and `svall fleet join` asks at a terminal; **Not now** leaves studio empty, and the pane still copies it later. A home that holds a `CLAUDE.md`, a rule, a server, a setting, a profile of its own or an edited one, or anything else of a person's, or anything Svall cannot read or carry there, is never offered this.
+- **Copy my agent setup from this Mac to studio.** The same pane sends what is on this Mac now, once. Keys in config files stay on this Mac unless you tick them there, field by field; the ticks are this Mac's, and studio has no say in them. `CLAUDE.md`, rules, skills and agent profiles go as they are, anything written in them included. A key you untick stays on studio until the next copy, one a push wrote there before the fleet moved among them; a server or a file ticked whole before it moved stays until you remove it there. By the same rule as a push, studio keeps each file a copy is the first to take in its own `mirror-backup/<date>/`, and the copy's result names that folder when that copy kept any, each entry a tick went over, and what an untick left. The Agent setup pane forgets that line when you leave it.
 
 A copy removes nothing on studio but a whole item or file you unticked, while it is still the copy, a key you unticked from a row it still lists, and Svall's rollback copies holding a key you unticked or changed. In a table, a part only studio holds stays, so a provider or a key only it has stays; a part both hold is this Mac's, whole, a list included. A whole item you edited on studio since stays as you edited it, with any key the mirror copied in it, until you remove it there, and the copy's result names it. It carries what changed on this Mac since the last one, so a file you edited on studio since stays unless this Mac's changed too.
 The first copy has no last one: it replaces studio's same-named files, your edits there included, and those lie in studio's backup folder. It
@@ -121,8 +127,85 @@ On wake this Mac dials again, its changes land, and the window reconnects. A reb
 Quit stops this Mac's daemon and its tmux, as on any Mac: the robots here sleep and resume when you open Svall again. The question says so,
 and that "studio's 7 robots keep running". Nothing on studio is touched.
 
+## Starting on a server
+
+The first run offers three things. **Run the fleet on this Mac** is what it always was. **Install Svall on a server and connect
+this Mac** installs the companion as `svall host add` does and leaves the server a fleet's home, then joins it. **Connect to a
+fleet already on a server** joins one a server already runs. Both server paths need Tailscale on both machines, and both join
+before this Mac's fleet has ever started, so nothing here holds anything to lose. A server with no agent setup yet is offered
+this Mac's as soon as the window reaches it ([your agent setup](#your-agent-setup)).
+
+From a terminal, `svall fleet join <ssh>` makes a fleet that holds nothing a worker of the home there: it checks the home,
+takes that fleet's id and a token the home issues, restarts as its worker and ends on the first snapshot. It refuses a fleet
+that holds robots, workers, fleet or repo notes or an island with anything on it before it writes a thing, so name one that has never
+been opened: `svall -p <new fleet> fleet join <ssh>`. An island's name and the board's columns go with the first snapshot. The
+fleet keeps the name it has on each machine, and the home follows it there however the two are named (`--home-profile` names
+the fleet on the home when it is not the private one).
+
+## Changing home
+
+Settings → Machines moves a fleet's home to a worker with **Make studio this fleet's home…**, and back with **Bring the fleet
+back to this Mac…**. From a terminal: `svall fleet home` says where it runs, `svall fleet home set studio` moves it there and
+`svall fleet home set local` brings it back.
+
+A move carries the fleet's islands, notes, settings, phone pairing and push keys, and no robot: each runs where it ran and its
+tmux is never touched. Mission control's robots run on the home, so they move first, each with a robot's own move. The check
+names one at work before anything moves, with **Interrupt it now** ticked, as a robot's move sheet does: what it runs is
+interrupted at once as it moves. Untick it and the move does not start while that robot is at work. From a terminal,
+`svall fleet home set` refuses one at work unless `--interrupt-after` says when to interrupt it, 0 at once. The move pauses the home, copies the fleet, has the other machine take over, has the old home join it as a worker, and reconnects the
+window. While the home is paused no write is taken, on the phone either, and robots go on working. Afterwards open the phone
+once from its new QR code: it stays paired and pushes keep arriving. The new home turns its phone link on within seconds of
+taking the fleet, if the old one served; if Tailscale refuses it there, the move stands, and Settings → Phone says why.
+
+A move refuses until it can go through: the other machine linked, on the same release, with Tailscale, its clock within 5
+minutes and room for three copies of the fleet's files; those files under about 180 MB, the most a move carries either way; no
+robot moving, and no other worker, which you remove and, after the move, add again from the new home, or join from it with
+`svall fleet join` if it is a Mac. A path in `fleet.json` under the old home's
+account goes in as `~/…`, and the sheet says which of those the new home does not have yet. Mission control's folder is the
+exception when it is the fleet's own, `home` in the fleet's folder (`~/.svall/home`, `~/.svall-<fleet>/home` for a named fleet):
+it becomes the fleet's own folder on the new home, made there when mission control's robots go ahead, which work there from then
+on. A `home.cwd` you set anywhere else is yours, and goes in as written.
+
+### When a move stops
+
+The fleet never has two homes, and nothing is deleted. The machine the fleet leaves writes a marker before anything can take
+the fleet, and from then on it starts as a home only once the other machine has said for good that it did not take it. Whichever
+machine stops, however it stops, what is left is one of these:
+
+- **Nothing was marked.** The old home goes on as it was, and a later move gives up what was copied. Coming back to this Mac, the
+  window says the move has not taken hold, and **Abort** clears it, which the next move needs.
+- **Marked, and not taken.** The window says "The fleet is moving to studio, and this Mac takes no changes until the move
+  ends", where studio says the move stands, with **Finish the move** and **Abort** (`svall fleet home retry`, `svall fleet
+  home abort`). The old home takes no writes until one of them ends it. An abort works
+  only once the machine that would take the fleet has its daemon up and refuses it for good, and that machine then refuses the move for good too.
+- **Taken.** The new home runs the fleet, and the old home joins it as soon as it hears, however late, so an abort answers
+  that the move went through. A new home whose daemon has started answers so too, as it may already have taken a write. The other machine's files stand as they were kept: see below.
+
+A move that stops leaves mission control's robots that went ahead where they went: a banner names them, with **Bring them back**
+(`svall fleet home crew-back`), and says which cannot return and why. A robot you placed on mission control yourself is no such
+robot, and stays where it runs.
+
+Going out, the Mac asks the server how the move ended, and believes only the machine and the fleet it marked for: a folder
+renamed there, or an ssh name that now leads elsewhere, reads as no answer. Coming back, the server has no route to the Mac, so a
+server left frozen waits for the Mac to tell it, and the Mac keeps trying. If that Mac is gone for good, nothing on the server ends
+the wait. A Mac whose server is gone for good, wiped or reinstalled waits the same way, as nothing answers there as the machine it marked for: see Limitations.
+
+Quit during a move ends the window. A Mac frozen for a move out keeps its daemon up, as the move has to end; a Mac the fleet is
+coming back to stops as a worker does, and the old home waits until Svall opens again. A quit while the window drives a move it
+has not marked yet calls the move off, and the dialog says so. A move is not a backup, and keeps what it replaced:
+the old home's `state.json.home-<id>`, `docs.home-<id>` and `workers.json.home-<id>` stay in its fleet home, those of the last two moves
+it left, as each join there removes an older move's, and `adopt-<id>` holds what was staged until the old home links to the new one. Files refuses every `adopt-<id>` folder and `workers.json.home-<id>`, as they hold the fleet's keys, and `state.json.home-<id>` and `docs-cut-<id>.json`, as a join goes by them.
+A link inside `docs/` is not carried, and neither is a name a tar cannot hold, which refuses the move and names the file. A note
+written after the copy goes to the new home, and one the new home changed too is kept beside it as a conflict copy.
+
 ## Limitations
 
+- A move refuses with a second worker of either kind, and Linux workers of a server home come later.
+- A marked server whose Mac never comes back stays frozen.
+- A marked Mac whose server is gone for good, wiped or reinstalled stays frozen. If that server will never hold the fleet again, quit Svall, stop the Mac's daemon (`launchctl kill SIGTERM gui/$(id -u)/io.github.linusroxbergh.svall.svalld`, `io.github.linusroxbergh.svall.dev.svalld` for Svall Dev, with `.<name>` after it for a named fleet) and remove `home-moving.json` from its fleet home by hand, and it starts as the home. Do this only then: while the server holds the fleet, it makes two homes.
+- Files refuses every fleet's `journal/`, on the phone too, so read a move's journal or `journal/applied.ndjson` in a terminal.
+- A hard link to a file in `journal/` or an `adopt-<id>` folder passes Files, which knows those folders by their identity and not each file in them. Nothing in Svall makes one, but whatever runs on that account can.
+- A seed checks once, before its Copy, that studio holds no agent setup: one written there in that moment is replaced, and what it replaced lies in studio's `mirror-backup/<date>/`.
 - Svall Dev carries no companion, so **Upgrade** there needs one named by hand: `svall-dev host upgrade studio --release <archive> --allow-unsigned`.
 - The retro reads the home's agent stores, so a robot on this Mac is not in it.
 - A dev server on a far robot is not forwarded to this Mac.

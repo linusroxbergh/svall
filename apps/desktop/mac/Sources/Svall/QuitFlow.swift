@@ -68,13 +68,15 @@ final class QuitFlow {
     }
 
     /// The page's answer to `.quitAsk`: the files the quit would drop, the agents it would stop mid-task, the robots elsewhere,
-    /// which keep running there, and the fleet's home when it is another machine, which the quit leaves alone.
-    func answered(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil) {
+    /// which keep running there, the fleet's home when it is another machine, which the quit leaves alone, and a move of the home
+    /// that stands: to `frozenFor`, which keeps this daemon up, or `movingHere`, which waits on its next start. `callsOff`: where
+    /// a move the window drives, not yet marked, goes, which the quit calls off.
+    func answered(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false, callsOff: String? = nil) {
         guard quitAnswer != nil, !confirming, !stopping else { return }
         quitTimeout?.invalidate()
         if userQuit || !unsaved.isEmpty {
             confirming = true
-            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed, home: home)
+            let ok = confirmQuit(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff)
             confirming = false
             guard ok else { return finishQuit(false) }
         }
@@ -130,22 +132,31 @@ final class QuitFlow {
         kill { [weak self] in self?.finishQuit(true) }
     }
 
-    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil) -> Bool {
-        let busy = working == 0 ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
+    private func confirmQuit(unsaved: [String], working: Int, placed: Int = 0, home: String? = nil, frozenFor: String? = nil, movingHere: Bool = false, callsOff: String? = nil) -> Bool {
+        // a daemon frozen for a move refuses the stop, so nothing on this Mac stops
+        let busy = working == 0 || frozenFor != nil ? "" : "\(working) \(working == 1 ? "robot is" : "robots are") working and will stop."
         let away = if let home {
             placed == 0 ? " \(home) keeps running." : " \(home)'s \(placed) \(placed == 1 ? "robot keeps" : "robots keep") running."
         } else {
             placed == 0 ? "" : " \(placed) \(placed == 1 ? "robot keeps running on its machine" : "robots keep running on their machines")."
         }
+        let move = if let callsOff {
+            " Quitting calls off the move to \(callsOff)" + (frozenFor != nil ? ", and this Mac's daemon stays up with its robots running." : ".")
+        } else if let frozenFor {
+            " The fleet is moving to \(frozenFor), so this Mac's daemon stays up and its robots keep running until the move ends; open Svall to finish it or call it off."
+        } else if movingHere {
+            " The move to this Mac waits until you open Svall again, and \(home ?? "its old home") takes no changes until then."
+        } else { "" }
         let message: String, detail: String
         if unsaved.isEmpty {
             message = "Quit Svall?"
-            detail = working == 0 ? "\(placed == 0 && home == nil ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away
-                : busy + " Everything picks up where it left off when you open Svall again." + away
+            detail = frozenFor != nil ? String(move.dropFirst()) + away
+                : working == 0 ? "\(placed == 0 && home == nil ? "Your robots" : "The robots on this Mac") stop and pick up where they left off when you open Svall again." + away + move
+                : busy + " Everything picks up where it left off when you open Svall again." + away + move
         } else {
             message = "Quit with unsaved changes?"
             let names = unsaved.count > 4 ? unsaved.prefix(3).joined(separator: ", ") + " and \(unsaved.count - 3) more" : ListFormatter.localizedString(byJoining: unsaved)
-            detail = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy) + away
+            detail = "\(names) \(unsaved.count == 1 ? "has" : "have") changes that were not saved. Quitting drops them." + (busy.isEmpty ? "" : " " + busy) + away + move
         }
         return confirm(message, detail)
     }

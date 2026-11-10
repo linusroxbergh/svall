@@ -3,7 +3,7 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { z } from 'zod';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { DURABLE_TEMP, DurableBatch, DurableJson, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../src/durable.js';
+import { DURABLE_TEMP, DurableBatch, DurableJson, appendDurable, cleanupDurableTemps, createDurable, realStages, writeDurable, type DurableStages } from '../src/durable.js';
 import { cleanHomes, diskLog, makeHome } from './helpers.js';
 
 afterEach(cleanHomes);
@@ -107,6 +107,26 @@ describe('writeDurable', () => {
     const refuse = { fsyncDir: () => { throw Object.assign(new Error('nope'), { code: 'EPERM' }); } };
     writeDurable(file, { v: 'new' }, { stages: refuse });
     expect(JSON.parse(fs.readFileSync(file, 'utf8')).v).toBe('new');
+  });
+});
+
+describe('appendDurable', () => {
+  const linesOf = (file: string): string[] => fs.readFileSync(file, 'utf8').split('\n');
+
+  it('adds one line to what ends in a newline, and a file it creates is the owner\'s alone', () => {
+    const file = path.join(makeHome(), 'journal', 'a.ndjson');
+    appendDurable(file, { n: 1 });
+    appendDurable(file, { n: 2 });
+    expect(fs.readFileSync(file, 'utf8')).toBe('{"n":1}\n{"n":2}\n');
+    expect(fs.statSync(file).mode & 0o777).toBe(0o600);
+  });
+
+  it('starts a line of its own past one a crash cut short, which stays as it was', () => {
+    const file = path.join(makeHome(), 'a.ndjson');
+    fs.writeFileSync(file, '{"n":1}\n{"n":');
+    appendDurable(file, { n: 2 });
+    appendDurable(file, { n: 3 });
+    expect(linesOf(file)).toEqual(['{"n":1}', '{"n":', '{"n":2}', '{"n":3}', '']);
   });
 });
 

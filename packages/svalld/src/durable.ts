@@ -127,14 +127,17 @@ export class DurableBatch {
   }
 }
 
-/** Appends `value` to `file` as one JSON line and fsyncs it before returning; a file it creates is the owner's alone. */
+/** Appends `value` to `file` as one JSON line and fsyncs it before returning, on a line of its own past any a crash cut short; a file it creates is the owner's alone. */
 export function appendDurable(file: string, value: object): void {
   const dir = path.dirname(file);
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   const created = !fs.existsSync(file);
-  const bytes = Buffer.from(`${JSON.stringify(value)}\n`);
-  const fd = fs.openSync(file, 'a', 0o600);
+  const fd = fs.openSync(file, 'a+', 0o600);
   try {
+    const { size } = fs.fstatSync(fd);
+    const last = Buffer.alloc(1);
+    const torn = size > 0 && fs.readSync(fd, last, 0, 1, size - 1) === 1 && last[0] !== 0x0a;
+    const bytes = Buffer.from(`${torn ? '\n' : ''}${JSON.stringify(value)}\n`);
     for (let at = 0; at < bytes.length;) {
       const n = fs.writeSync(fd, bytes, at, bytes.length - at);
       if (n <= 0) throw new Error(`append stalled at ${at} of ${bytes.length} bytes for ${file}`);
@@ -148,7 +151,7 @@ export function appendDurable(file: string, value: object): void {
 }
 
 /** Makes a rename in `dir` durable, accepting the filesystems that refuse to fsync a directory. */
-function syncDir(dir: string, stages: DurableStages = realStages): void {
+export function syncDir(dir: string, stages: DurableStages = realStages): void {
   try {
     stages.fsyncDir(dir);
   } catch (err) {

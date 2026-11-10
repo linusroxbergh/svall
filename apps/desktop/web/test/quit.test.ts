@@ -1,3 +1,4 @@
+import { ApiError } from '@svall/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
@@ -136,6 +137,211 @@ describe('followQuit', () => {
     q.stop();
   });
 
+  it('names a move of the home that stands: one elsewhere, which keeps this daemon up, or one coming here, which waits on the next start', async () => {
+    const q = setup();
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+    ]);
+    q.stop();
+  });
+
+  it('names a move the window drives by its own steps: before its mark the quit calls it off, past it the move stands', async () => {
+    const q = setup();
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    const ask = async () => { q.bridge.emit({ type: 'quit.ask' }); await vi.advanceTimersByTimeAsync(0); };
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+    q.store.getState().hostStarted('home', { name: 'studio' });
+    await ask();
+    q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
+    await ask();
+    // past the mark, before this window has heard of the marker
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
+    await ask();
+    q.store.getState().hostStep('home', { step: 'join', status: 'ok' });
+    await ask();
+    q.store.getState().hostStarted('home', { name: 'studio' });
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: true });
+    // the way back's debt stands from its pause, before any mark; this Mac, a worker, is not what pauses
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+    q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
+    await ask();
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
+    await ask();
+    q.store.getState().hostDone('home', 0);
+    q.store.getState().setHomeMove(undefined);
+    await ask();
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+    ]);
+    q.stop();
+  });
+
+  it('a daemon frozen for a home move refuses the stop and stays up: nothing is killed for it, as the move has to end', async () => {
+    const q = setup({ stop: () => Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) });
+    q.bridge.emit({ type: 'quit.stop' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.stopped', ok: true }]);
+    q.stop();
+  });
+
+  describe('a daemon the last answer said stays up for a move', () => {
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    const asked = async (q: ReturnType<typeof setup>) => { q.bridge.emit({ type: 'quit.ask' }); await vi.advanceTimersByTimeAsync(0); };
+    const stopped = async (q: ReturnType<typeof setup>) => {
+      q.bridge.emit({ type: 'quit.stop' });
+      await vi.advanceTimersByTimeAsync(0);
+      return q.answers().filter((m) => m.type === 'quit.stopped').at(-1);
+    };
+    const setting = (o: Parameters<typeof setup>[0]) => {
+      const q = setup(o);
+      q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+      return q;
+    };
+
+    it.each([
+      ['restarting at the join', () => Promise.reject(new Error('svalld connection closed'))],
+      ['offline', () => Promise.reject(new Error('svalld offline'))],
+      ['that never answers', () => new Promise<object>(() => {})],
+    ])('gets no kill, %s', async (_how, stop) => {
+      const q = setting({ stop });
+      q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true });
+      await asked(q);
+      expect(await stopped(q)).toEqual({ type: 'quit.stopped', ok: true });
+      q.stop();
+    });
+
+    it('nor one a move this window drives has paused, before its mark', async () => {
+      const q = setting({ stop: () => Promise.reject(new Error('svalld connection closed')) });
+      q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+      q.store.getState().hostStarted('home', { name: 'studio' });
+      q.store.getState().hostStep('home', { step: 'pause', status: 'ok' });
+      await asked(q);
+      expect(await stopped(q)).toEqual({ type: 'quit.stopped', ok: true });
+      q.stop();
+    });
+
+    it('a later quit with no such move goes by what the daemon says again', async () => {
+      const q = setting({ stop: () => Promise.reject(new Error('svalld connection closed')) });
+      q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: STUDIO, name: 'studio', asks: true });
+      await asked(q);
+      q.store.getState().setHomeMove(undefined);
+      await asked(q);
+      expect(await stopped(q)).toEqual({ type: 'quit.stopped', ok: false });
+      q.stop();
+    });
+
+    it('a move coming here keeps no daemon up, as it waits on the next start', async () => {
+      const q = setting({ stop: () => Promise.reject(new Error('svalld connection closed')) });
+      q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false });
+      await asked(q);
+      expect(await stopped(q)).toEqual({ type: 'quit.stopped', ok: false });
+      q.stop();
+    });
+  });
+
+  it('past a run\'s join no move stands, either way, on the first run and on a retry', async () => {
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    const ask = async () => { q.bridge.emit({ type: 'quit.ask' }); await vi.advanceTimersByTimeAsync(0); };
+    const joined = async (o: { sheet?: boolean; back: boolean; op: 'home' | 'home-retry'; to: MachineId }) => {
+      q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: o.to, name: o.to === ME ? 'linus-mbp' : 'studio', asks: !o.back });
+      q.store.getState().setHomeSheet(o.sheet ? { to: STUDIO, name: 'studio', back: o.back } : undefined);
+      q.store.getState().hostStarted(o.op, { name: o.back ? 'local' : 'studio' });
+      await ask();
+      q.store.getState().hostStep(o.op, { step: 'mark', status: 'ok' });
+      q.store.getState().hostStep(o.op, { step: 'adopt', status: 'ok' });
+      await ask();
+      q.store.getState().hostStep(o.op, { step: 'join', status: 'ok' });
+      q.store.getState().hostStep(o.op, { step: 'probe', status: 'start' });
+      await ask();
+    };
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    await joined({ sheet: true, back: true, op: 'home', to: ME });
+    await joined({ back: false, op: 'home-retry', to: STUDIO });
+    await joined({ back: true, op: 'home-retry', to: ME });
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'this Mac' },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, frozenFor: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0, movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0 },
+    ]);
+    q.stop();
+  });
+
+  it('a move coming here past the commit names the old home the window no longer goes by, from the sheet or from what the daemon says', async () => {
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false, from: 'studio' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().setHomeMove(undefined);
+    q.store.getState().setHomeSheet({ to: ME, name: 'vault', back: true });
+    q.store.getState().hostStarted('home', { name: 'local' });
+    q.store.getState().hostStep('home', { step: 'mark', status: 'ok' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'studio', movingHere: true },
+      { type: 'quit.answer', unsaved: [], working: 0, home: 'vault', movingHere: true },
+    ]);
+    q.stop();
+  });
+
+  it('while the pause of a move out runs, says this daemon stays up, as it refuses the stop from then on', async () => {
+    const STUDIO = 'bbbbbbbb-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    q.store.getState().setHomeSheet({ to: STUDIO, name: 'studio', back: false });
+    q.store.getState().hostStarted('home', { name: 'studio' });
+    q.store.getState().hostStep('home', { step: 'mission', status: 'ok' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    q.store.getState().hostStep('home', { step: 'pause', status: 'start' });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio' },
+      { type: 'quit.answer', unsaved: [], working: 0, callsOff: 'studio', frozenFor: 'studio' },
+    ]);
+    q.stop();
+  });
+
+  it('a move coming here with no mark to stand says nothing of the old home', async () => {
+    const ME = 'aaaaaaaa-0000-4000-8000-000000000000' as MachineId;
+    const q = setup();
+    q.store.getState().setShell({ home: '/Users/ada/.svall', log: [], op: false, machine: ME });
+    q.store.getState().setHomeMove({ id: 'hm_abcdefghij', to: ME, name: 'linus-mbp', asks: false, from: 'studio', unmarked: true });
+    q.bridge.emit({ type: 'quit.ask' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(q.answers()).toEqual([{ type: 'quit.answer', unsaved: [], working: 0 }]);
+    q.stop();
+  });
+
   it('has the fleet stopped once the quit goes ahead, and says so when the daemon could not do it', async () => {
     const q = setup();
     q.bridge.emit({ type: 'quit.stop' });
@@ -159,6 +365,19 @@ describe('followMemory', () => {
     const off = followMemory({ store: q.store, bridge: q.bridge, reload });
     return { ...q, reload, stop: () => { off(); q.stop(); } };
   }
+
+  it('leaves a page following a run alone, whose steps it alone holds, and takes the next offer past it', async () => {
+    const m = memory();
+    m.store.getState().hostStarted('home', { name: 'studio' });
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.reload).not.toHaveBeenCalled();
+    m.store.getState().hostDone('home', 0);
+    m.bridge.emit({ type: 'memory.high' });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(m.reload).toHaveBeenCalledTimes(1);
+    m.stop();
+  });
 
   it('reloads a page in the background once its docs are written', async () => {
     const m = memory();

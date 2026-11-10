@@ -4,6 +4,7 @@ import { z, type ZodTypeAny } from 'zod';
 import { ApiError, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, methods, serverWait, type AppShow, type LoadSnapshot, type MachineId, type MachineRecord, type MethodName, type ParsedParams, type Request, type Response, type Result, type SetupRow, type SystemInfo } from '@svall/protocol';
 import type { Fleet } from '../fleet.js';
 import type { Fleets } from '../fleets.js';
+import type { HomeFreeze } from '../fleet/home-freeze.js';
 import { gitVersion } from '../links/git.js';
 import type { HomeApi } from '../link/home-api.js';
 import { askWorkers, type HomeLinks } from '../link/home.js';
@@ -37,7 +38,7 @@ import { WorkspaceError } from '../workspace/errors.js';
 import type { Workspace } from '../workspace/workspace.js';
 import { classification } from './classify.js';
 
-export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
+export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () => Promise<SystemInfo>; diagnostics?: () => Promise<string>; terminals: TerminalHub; workspace: Workspace; usage: FetchUsage; load: () => Promise<LoadSnapshot>; mobile: Mobile; push: PushStore; vapidPublicKey: string; viewer: Viewer; claude: ClaudePaths; codex?: CodexPaths; docs?: string; agentProfiles?: string; router?: Router; placement?: Placement; links?: Pick<HomeLinks, 'refresh' | 'call' | 'connectedWorkers' | 'for'>; mirror?: Mirror; drops?: Drops; fleetFlag?: (machine: MachineId) => string; mutations?: WorkerMutations; remoteWatches?: RemoteWatches; retro?: Retro; apps?: AppWindows; signal?: AbortSignal;
   // the home's: each worker's phone link
   phone?: PhoneFallbacks;
   // the fleet's home, what this machine's registry says of each machine, and on a worker, how a window reaches its home
@@ -45,14 +46,16 @@ export type Ctx = { store: Store; fleet: Fleet; fleets: Fleets; systemInfo: () =
   // the home's: the one copy of a worker's agent setup it takes; a worker's: that setup, and what its first push from the home kept
   setupCopy?: SetupCopy; workerSetup?: WorkerSetup;
   // the home's
-  fleetConfig?: ReturnType<typeof fleetConfigFile> };
+  fleetConfig?: ReturnType<typeof fleetConfigFile>;
+  // a move of the home as this daemon holds it, and what its check asks both machines
+  freeze?: HomeFreeze; homeChecks?: (to: MachineId) => Promise<Result<'fleet.homeCheck'>>; homeWaits?: () => Result<'fleet.homeMove'> };
 // the app windows on this fleet, each told what to show; show answers how many were
 export type AppWindows = { show(p: AppShow): number };
 
 // what starts launchd agents and names fleets stays with the Mac, and so does what its window shows
-const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones'] satisfies MethodName[]);
+const DESKTOP_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start', 'fleet.rename', 'fleet.stop', 'machines.setup', 'machines.consent', 'machines.updateAgents', 'machines.setVar', 'machines.copySetupFrom', 'machines.holdsSetup', 'home.setup', 'home.setupConsent', 'app.show', 'feedback.preview', 'drop.part', 'robot.drop', 'fleet.home', 'home.connection', 'home.fallback', 'fleet.config', 'workspace.clones', 'fleet.freeze', 'fleet.thaw', 'fleet.homeCheck', 'fleet.homeMove'] satisfies MethodName[]);
 // what hands over the home's token never leaves this machine, whatever node.json's host says
-const LOOPBACK_ONLY = new Set<string>(['home.connection'] satisfies MethodName[]);
+const LOOPBACK_ONLY = new Set<string>(['home.connection', 'fleet.homeMove', 'fleet.freeze', 'fleet.thaw'] satisfies MethodName[]);
 // the fleets beside this one are a Mac's: a Linux daemon has no launchd to start them with
 const MAC_ONLY = new Set<string>(['fleets.list', 'fleets.create', 'fleets.start'] satisfies MethodName[]);
 
@@ -102,7 +105,7 @@ async function setupOf(ctx: Ctx, machine: MachineId, waitMs: number, robot?: str
     agents: [c.agent?.kind, c.second?.agent?.kind].filter((k) => k !== undefined), folders: [c.cwd, c.repo?.mainRoot, c.second?.cwd].filter((f) => f !== undefined),
     ...(far && { home: far }),
   };
-  const rows = await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag ?? '', ...(only && { robot: only }) });
+  const rows = await mirror.report(link, machine, { name: machines?.[machine]?.name ?? machine, fleetFlag: ctx.fleetFlag?.(machine) ?? '', ...(only && { robot: only }) });
   return { rows: ctx.phone && !only ? [...rows, ctx.phone.row(machine)] : rows };
 }
 
@@ -124,6 +127,11 @@ function configFor({ fleetConfig, viewer }: Pick<Ctx, 'fleetConfig' | 'viewer'>,
   return fleetConfig;
 }
 
+const freezeOf = (freeze: Ctx['freeze']): HomeFreeze => {
+  if (!freeze) throw new ApiError('not_on_worker', 'only the fleet\'s home freezes');
+  return freeze;
+};
+
 // svalld runs on macOS and Linux alone; nothing else gets this far
 const platform = (): 'darwin' | 'linux' => (process.platform === 'linux' ? 'linux' : 'darwin');
 
@@ -136,7 +144,7 @@ const handlers: Handlers = {
   'island.show': (p, { fleet }) => ({ text: fleet.islandBrief(p.id) }),
   'island.reorder': (p, { fleet }) => fleet.reorderIsland(p.id, p.targetId, p.after),
   'robot.create': (p, { fleet }) => fleet.createRobot(p),
-  'robot.update': (p, { fleet }) => fleet.updateRobot(p.id, p),
+  'robot.update': async (p, { fleet, router }) => fleet.updateRobot(p.id, p, p.context && await router?.settleContext(p.id, p.context, fleet.robot(p.id).context)),
   'robot.move': (p, { fleet }) => fleet.moveRobot(p.id, p.islandId, p.cell),
   'robot.reorder': (p, { fleet }) => fleet.reorderRobot(p.id, p.targetId, p.after),
   'robot.star': (p, { fleet }) => fleet.starRobot(p.id, p.targetId, p.after),
@@ -166,7 +174,7 @@ const handlers: Handlers = {
     const r = await placementOf(ctx).check(p.id, p.machine, p);
     return r.ok ? { ok: true, sheet: r.sheet } : { ok: false, refusal: r.refusal };
   },
-  'robot.moveTo': async (p, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, p) }),
+  'robot.moveTo': async ({ homeMove, ...p }, ctx) => ({ moveId: await placementOf(ctx).start(p.id, p.machine, { ...p, ...(homeMove && ctx.freeze?.mayMoveCrew(homeMove, ctx.viewer) && { homeMove }) }) }),
   'robot.moveRetry': async (p, ctx) => { await placementOf(ctx).retry(p.moveId); return {}; },
   // the home first, whichever machine answers; a home holds no record of itself, and a worker's copy holds the home's
   'machines.list': (_p, { store, fleetHome, registered, router }) => {
@@ -216,9 +224,14 @@ const handlers: Handlers = {
     if (!ctx.setupCopy || !ctx.links) throw new ApiError('not_on_worker', 'a copy of an agent setup lands on the fleet\'s home');
     if (!ctx.store.state.machines?.[p.machine]) throw new ApiError('not_found', `no machine ${p.machine}`);
     const { links, setupCopy } = ctx;
+    const mirror = mirrorOf(ctx);
     // no push of the home's lands on the worker while it reads what it sends
-    return mirrorOf(ctx).inTurn(p.machine, () => setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) })));
+    return mirror.inTurn(p.machine, () => {
+      if (p.seed && mirror.holdsSetup()) throw new ApiError('refused', 'this home holds an agent setup of its own, which is never seeded');
+      return setupCopy.from(p.machine, () => links.call(p.machine, 'config.copyToHome', {}, { timeoutMs: serverWait('machines.copySetupFrom', p) }));
+    });
   },
+  'machines.holdsSetup': (_p, ctx) => ({ holds: ctx.workerSetup ? ctx.workerSetup.holds() : mirrorOf(ctx).holdsSetup() }),
   // the value goes to the worker's .env and nowhere else on the home; no error names it
   'machines.setVar': async (p, ctx) => {
     const name = ctx.store.state.machines?.[p.machine]?.name;
@@ -261,6 +274,23 @@ const handlers: Handlers = {
   'fleet.home': (_p, { fleetHome }) => {
     if (!fleetHome) throw new ApiError('not_found', 'this daemon names no home');
     return fleetHome();
+  },
+  'fleet.freeze': (p, { freeze, viewer }) => freezeOf(freeze).freeze(p.id, p.to, viewer),
+  'fleet.thaw': async (p, { freeze }) => { await freezeOf(freeze).thaw(p.id); return {}; },
+  'fleet.homeCheck': (p, { homeChecks }) => {
+    if (!homeChecks) throw new ApiError('not_found', 'this daemon checks no move of the home');
+    return homeChecks(p.to);
+  },
+  'fleet.homeMove': async (p, { freeze, homeWaits, viewer }) => {
+    if (!freeze && p.op === 'status') return homeWaits?.() ?? {};
+    const held = freezeOf(freeze);
+    if (p.op === 'open') held.open(p.id, viewer);
+    if (p.op === 'mark') held.mark(p.marker);
+    if (p.op === 'join') held.join(p.id, p.enrol, p.key);
+    if (p.op === 'told') await held.told(p.id, p.key);
+    if (p.op === 'abort') await held.settle('abort');
+    const said = held.status();
+    return said.moving ? said : homeWaits?.() ?? said;
   },
   // a home is reached at the socket this window already holds
   'home.connection': async (p, { fleetHome, homeApi }) => {
@@ -411,15 +441,21 @@ export async function dispatch(req: Request, ctx: Ctx): Promise<Response> {
   if (DESKTOP_ONLY.has(req.method) && ctx.viewer.kind === 'phone') return { id: req.id, error: { code: 'forbidden', message: `${req.method} is not open to a phone` } };
   if (LOOPBACK_ONLY.has(req.method) && !ctx.viewer.loopback) return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on this machine` } };
   if (MAC_ONLY.has(req.method) && process.platform !== 'darwin') return { id: req.id, error: { code: 'forbidden', message: `${req.method} answers only on a Mac` } };
+  let admitted: (() => void) | undefined;
   try {
     const parsed = def.params.safeParse(req.params ?? {});
     if (!parsed.success) return { id: req.id, error: { code: 'invalid_params', message: z.prettifyError(parsed.error) } };
+    const frozen = ctx.freeze?.refusal(req.method as MethodName);
+    if (frozen) throw frozen;
+    admitted = ctx.freeze?.admit(req.method as MethodName);
     if (ctx.mutations?.serves(req.method as MethodName, parsed.data, ctx.viewer.kind === 'phone' || ctx.viewer.fallback === true)) return { id: req.id, result: await ctx.mutations.serve(req.method as MethodName, parsed.data as ParsedParams<MethodName>, ctx.viewer.fallback === true) };
     if (homeAnswers(ctx, req.method as MethodName, parsed.data)) return { id: req.id, result: await ctx.router!.toHome(req.method as MethodName, parsed.data, ctx.signal) };
     const handler = handlers[req.method as MethodName] as (p: unknown, ctx: Ctx) => unknown;
     return { id: req.id, result: await handler(parsed.data, ctx) };
   } catch (e) {
     return { id: req.id, error: errorFrame(e) };
+  } finally {
+    admitted?.();
   }
 }
 

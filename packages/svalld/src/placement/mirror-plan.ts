@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { NOT_NEEDED, type AgentKind } from '@svall/protocol';
+import { isStarterProfile } from '../agent-profiles.js';
 import { VAR_NAME } from '../claude.js';
 import { sha256Hex } from '../hash.js';
 import { clean, holds } from '../path-tools.js';
@@ -95,6 +96,12 @@ const without = (doc: Doc, keys: readonly string[]): Doc => Object.fromEntries(O
 
 type Walk = { found: { file: string; rel: string; mode: number }[]; bytes: number; seen: Set<string> };
 
+// a path that stands but cannot be followed or listed, of which the plan cannot say it holds nothing
+const noteUnread = (file: string, skipped: string[]): void => {
+  try { if (!fs.lstatSync(file, { throwIfNoEntry: false })) return; } catch { /* what holds it cannot be read */ }
+  skipped.push(`${file} cannot be read`);
+};
+
 // gathers the files under `dir` into `w`, links followed and .git left out; false once past the tree's limit
 function walk(dir: string, rel: string, w: Walk, keep: (file: string) => boolean, skipped: string[]): boolean {
   let names: string[];
@@ -104,6 +111,7 @@ function walk(dir: string, rel: string, w: Walk, keep: (file: string) => boolean
     w.seen.add(real);
     names = fs.readdirSync(dir).sort();
   } catch {
+    noteUnread(dir, skipped);
     return true;
   }
   for (const name of names) {
@@ -119,7 +127,7 @@ function walk(dir: string, rel: string, w: Walk, keep: (file: string) => boolean
       w.bytes += st.size;
       if (w.bytes > MIRROR_TREE_MAX) return false;
       w.found.push({ file, rel: path.posix.join(rel, name), mode: st.mode & 0o777 });
-    }
+    } else if (!st && name !== '.git') noteUnread(file, skipped);
   }
   return true;
 }
@@ -277,6 +285,29 @@ function marketplaceKeys(found: string[]): { keyed: string[]; broken: string[]; 
  * What the agent configuration mirror carries to a worker: every agent's instructions, skills, plugins, settings and MCP servers
  * but the Mac-only ones, a project's only where the worker has it. A key travels only where ticked; logins never do.
  */
+// what `svall setup` leaves on every machine: the agent profiles a fleet starts with, as they ship, and Svall's own permission rules
+const leftBySetup = (f: { from: string; to: string }): boolean => f.to.startsWith('profiles/') && isStarterProfile(f.to.slice('profiles/'.length), f.from);
+const svallAllows = (v: unknown): boolean => isDoc(v) && Object.keys(v).every((k) => k === 'allow') && Array.isArray(v.allow) && v.allow.every((r) => typeof r === 'string' && /^Bash\(svall [^)]*:\*\)$/.test(r));
+
+// what Claude Code writes unasked while no plugin is installed: its plugin lists, by where they land, and a marketplace it clones, by a path or a line that starts with one
+function writtenUnasked(p: MirrorPlan): { list(to: string): boolean; clone(s: string): boolean } {
+  const idle = readPlugins(p.homes.claudeDir, []).length === 0;
+  const markets = path.join(p.homes.claudeDir, 'plugins/marketplaces');
+  return { list: (to) => idle && PLUGIN_LISTS.some((n) => to === `claude/plugins/${n}`), clone: (s) => idle && s.startsWith(markets) };
+}
+
+/** Whether what a plan carries is an agent setup of a person's making. Anything unsure of counts, as a home that holds one is never seeded. */
+export function holdsSetup(p: MirrorPlan): boolean {
+  // Claude Code writes `theme` at its first start, unasked
+  const { permissions, theme, ...settings } = p.settings;
+  const { list, clone } = writtenUnasked(p);
+  return p.files.some((f) => !leftBySetup(f) && !list(f.to) && !clone(f.from)) || p.servers.length > 0 || p.plugins.some((r) => !r.files.every(clone)) || p.configs.length > 0 || Object.keys(settings).length > 0 || (permissions !== undefined && !svallAllows(permissions))
+    || Object.keys(p.settingsEnv).length > 0 || Object.keys(p.codex ?? {}).length > 0 || p.opencode.some((d) => Object.keys(d.doc).length > 0) || !p.unreadable.every(clone) || !p.skipped.every(clone);
+}
+
+/** Whether a first push may go onto a machine that keeps its own: unlike a seed's question, a setup held only by a file that cannot be read answers not yet. */
+export const readyToPush = (p: MirrorPlan): boolean => holdsSetup({ ...p, unreadable: [], skipped: p.skipped.filter((s) => !p.unreadable.some((u) => s.startsWith(`${u} `))) });
+
 export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Set(), facts?: WorkerFacts): MirrorPlan {
   const files: MirrorPlan['files'] = [];
   const skipped: string[] = [];
@@ -306,7 +337,10 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const settingsOff = unticked(CONFIG_ITEMS.settings, 'claude', 'settings.json', [
     ...configSecrets('claude', settingsDoc), ...Object.entries(env).map(([k, value]) => ({ field: `env.${k}`, value })),
   ]);
+  // Svall's rules alone go over no `permissions` a target keeps for itself, only over those the mirror wrote there
+  const keptPermissions = facts?.keeps && facts.state.docs['settings.json']?.permissions === undefined && svallAllows(settingsDoc.permissions);
   const tomlFile = path.join(o.codexDir, 'config.toml');
+  for (const f of [path.join(o.claudeDir, 'settings.json'), o.claudeJson, tomlFile, ...OPENCODE_FILES.map((n) => path.join(o.opencodeDir, n))]) if (!statOf(f)) noteUnread(f, skipped);
   const tomlDoc = configDoc(tomlFile, parseToml, unreadable);
   const codexDoc = tomlDoc && without(tomlDoc, [...CODEX_WORKER_OWNED, ...CODEX_MAC_ONLY]);
   const codexOff = codexDoc ? unticked(CONFIG_ITEMS.codex, 'codex', 'config.toml', configSecrets('codex', codexDoc)) : [];
@@ -370,6 +404,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   const one = (root: Root, dir: string, name: string): void => {
     const from = path.join(dir, name);
     const st = statOf(from);
+    if (!st) noteUnread(from, skipped);
     if (!st?.isFile() || !keep(from)) return;
     if (st.size > MIRROR_FILE_MAX) skipped.push(`${from} is over ${MIRROR_FILE_MAX / 2 ** 20} MB`);
     else files.push({ from, to: path.posix.join(root, name), mode: st.mode & 0o777 });
@@ -506,7 +541,7 @@ export function mirrorPlan(o: MirrorHomes, consent: ReadonlySet<string> = new Se
   return {
     files: carried, servers, macOnly, configs, notNeeded: [...consent].flatMap((k) => (k.startsWith('runtime:') && k.endsWith(`#${NOT_NEEDED}`) ? [k.slice('runtime:'.length, -NOT_NEEDED.length - 1)] : [])),
     settingsEnv: Object.fromEntries(Object.entries(env).filter(([k]) => !settingsOff.includes(`env.${k}`))),
-    settings: configRedacted(settingsDoc, settingsOff), plugins: pluginRows,
+    settings: configRedacted(keptPermissions ? without(settingsDoc, ['permissions']) : settingsDoc, settingsOff), plugins: pluginRows,
     ...(codexDoc && { codex: configRedacted(codexDoc, codexOff) }),
     opencode: ocDocs.map((d) => ({ file: d.file, doc: configRedacted(d.doc, ocOff.filter((f) => d.fields.includes(f))), fields: d.fields })),
     homes: { homedir: o.homedir, claudeDir: o.claudeDir, claudeJson: o.claudeJson, codexDir: o.codexDir, opencodeDir: o.opencodeDir },

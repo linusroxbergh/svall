@@ -299,6 +299,15 @@ test('Machines asks the fleet again after a list that failed', async () => {
   }
 });
 
+test('Phone says why a home move left the link off, beside the switch that turns it on again', async () => {
+  call.mockImplementation((m: string) => Promise.resolve(m === 'mobile.get' ? { serving: false, url: '', port: 8443, logins: [], phones: [], reason: 'Access denied' } : {}));
+  render(<SettingsCard />);
+  fireEvent.click(screen.getByTestId('settings-tab-phone'));
+  expect(await screen.findByText('Access denied')).toBeTruthy();
+  expect(screen.getByTestId('set-mobile')).toBeTruthy();
+  expect(screen.queryByTestId('set-mobile-blocked')).toBeNull();
+});
+
 test('a window standing in for its home offers no Phone pane, and no Add machine', async () => {
   try {
     act(() => {
@@ -309,6 +318,33 @@ test('a window standing in for its home offers no Phone pane, and no Add machine
     expect(screen.queryByTestId('set-tab-phone')).toBeNull();
     show('machines');
     expect(screen.queryByTestId('machine-add')).toBeNull();
+  } finally {
+    call.mockImplementation(() => Promise.resolve({}));
+  }
+});
+
+test('a far home that calls itself otherwise than this Mac\'s registry is acted on by the registry\'s name: checked, opened, and brought back', async () => {
+  const ME = 'aaaaaaaa-0000-4000-8000-000000000000';
+  const HOME = 'bbbbbbbb-0000-4000-8000-000000000000';
+  call.mockImplementation((method: string) => Promise.resolve(method === 'machines.list' ? { machines: [
+    { id: HOME, name: 'vps-1234', role: 'home', platform: 'linux', reachable: true, robots: 7 },
+    { id: ME, name: 'mac', role: 'worker', platform: 'darwin', reachable: true, robots: 3 },
+  ] } : {}));
+  try {
+    act(() => {
+      store.getState().setVia({ machine: ME as never, home: HOME as never, name: 'vps-1234', online: true });
+      store.getState().setStatus('online');
+    });
+    render(<SettingsCard />);
+    show('machines');
+    const row = await screen.findByTestId('machine-vps-1234');
+    act(() => store.getState().setMachines([{ id: HOME, name: 'studio', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    fireEvent.click(row.querySelector('[data-testid="machine-more"]')!);
+    expect((row.querySelector('[data-testid="machine-terminal"]') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(row.querySelector('[data-testid="machine-bring-back"]')!);
+    expect(store.getState().homeSheet).toEqual({ to: HOME, name: 'studio', back: true });
+    fireEvent.click(row.querySelector('[data-testid="machine-doctor"]')!);
+    expect(sent).toContainEqual({ type: 'host.start', op: 'doctor', args: { name: 'studio' } });
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -343,7 +379,13 @@ test('Machines names each machine\'s role from the fleet, the home first and a w
     // no route in this Mac's registry says nothing of who opens the link
     expect(screen.getByTestId('machine-vault').textContent).not.toContain('dials in');
     expect(screen.queryByTestId('machine-add')).toBeNull();
-    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+    // the far home has its Check and ⋯ from this window; a worker of it is that home's to manage
+    expect(screen.getByTestId('machine-studio').querySelector('[data-testid="machine-doctor"]')).not.toBeNull();
+    expect(screen.getByTestId('machine-mac').querySelector('[data-testid="machine-doctor"]')).toBeNull();
+    // the home's row by the name this Mac knows it by, as its menu and sheet go
+    act(() => store.getState().setMachines([{ id: HOME, name: 'box', ssh: 'ada@studio', platform: 'linux-x64' }] as never));
+    expect(screen.getByTestId('machine-box').textContent).toContain('home · ada@studio');
+    expect(screen.queryByTestId('machine-studio')).toBeNull();
   } finally {
     call.mockImplementation(() => Promise.resolve({}));
   }
@@ -519,14 +561,14 @@ test('an item that travels whole keeps one box', async () => {
   }
 });
 
-test('a key unticked is said by the pane\'s one sentence, no Copy runs by itself, and what a tick went over is named with the folder', async () => {
+test('a key unticked, and what was ticked whole before a move, are said by the pane\'s one sentence, no Copy runs by itself, and what a tick went over is named with the folder', async () => {
   try {
     const on = { ...tickRow, tick: { ...tickRow.tick, on: true, ticked: ['env.KEY'] } };
     farWindow({ ...SETUP, 'home.setup': () => ({ rows: [on], backup: '/b', replaced: ['linear'] }), 'home.setupConsent': () => ({ rows: [{ ...tickRow, tick: { ...tickRow.tick, ticked: [] } }], backup: '/b', replaced: ['linear'] }) });
     render(<SettingsCard />);
     show('setup');
     fireEvent.click(await screen.findByTestId('setup-tick-claude:mcp:linear'));
-    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy');
+    expect(screen.getByTestId('setup-keys').textContent).toContain('A key you untick stays on studio until the next Copy; a server or a file ticked whole before the fleet moved stays until you remove it on studio.');
     expect(call).not.toHaveBeenCalledWith('machines.copySetupFrom', expect.anything());
     expect((await screen.findByTestId('setup-replaced')).textContent).toContain('for linear: that is in this folder');
   } finally {

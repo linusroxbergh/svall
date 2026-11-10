@@ -90,7 +90,7 @@ export class Replay {
     }
     const m = parsed.data;
     const p = m.method === 'robot.update' ? Update.safeParse(m.params) : undefined;
-    const settled = p?.success && p.data.context ? this.settle(p.data.id, p.data.context) : undefined;
+    const settled = p?.success && p.data.context ? this.settle(p.data.id, p.data.context, machine) : undefined;
     const later: (() => void)[] = [];
     const log: Logger = { info: (s) => later.push(() => this.o.log.info(s)), error: (s) => later.push(() => this.o.log.error(s)) };
     return {
@@ -159,9 +159,11 @@ export class Replay {
     else this.made.set(machine, [...(this.made.get(machine) ?? []), r.id]);
   }
 
-  // each item of an update's context as this Mac stores it, read before the hold; a path this Mac lacks is left out
-  private settle(id: string, items: ContextItem[]): Settled {
+  // each item of an update's context as this Mac stores it, read before the hold: a robot placed on that worker has them
+  // as the worker settled them, where its files are; any other's are read here, and a path this Mac lacks is left out
+  private settle(id: string, items: ContextItem[], machine: MachineId): Settled {
     const { robots } = this.o.store.state;
+    if (Object.hasOwn(robots, id) && robots[id].machine === machine) return { items, missing: [] };
     const held = Object.hasOwn(robots, id) ? robots[id].context : [];
     const settled: Settled = { items: [], missing: [] };
     for (const it of items) {

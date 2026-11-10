@@ -1,9 +1,16 @@
+import type { MachineId, Result } from '@svall/protocol';
 import type { StateCreator } from 'zustand/vanilla';
 import type { HostArgs, HostOp, HostStep, MachineRow } from '../bridge.js';
 import { applyStep, beginRun, endRun, machineNames, replaceRows, type HostRun } from '../host.js';
 import type { App } from './index.js';
 
 export type HostConfirm = { name: string; forget: boolean };
+
+const seedAsked = (home: string): string => `svall.seedAsked@${home}`;
+/** Whether this fleet's window has had its answer to the first copy of an agent setup. */
+export const seedAnswered = (home: string): boolean => {
+  try { return localStorage.getItem(seedAsked(home)) !== null; } catch { return false; }
+};
 
 // the machines panel: what the shell's helpers report
 export type HostState = {
@@ -14,6 +21,13 @@ export type HostState = {
   hostMachine?: string;
   // the removal the user is being asked about before it runs: uninstalling there, or only forgetting the route
   hostConfirm?: HostConfirm;
+  // the move of the fleet's home the sheet is asking about: to a worker, or back to this Mac
+  homeSheet?: HomeSheetAsk;
+  // a move of the fleet's home that stands, as this Mac's daemon last said
+  homeMove?: Result<'fleet.homeMove'>['moving'];
+  // a far home with no agent setup yet is offered this Mac's
+  seedAsk?: true;
+  seedCopying?: true;
   // the terminal the panel shows on its machine, the command typed in it, and the port its login waits on there;
   // `fromPanel`, opened from the panel itself, whose checks it goes back to
   hostTerminal?: { run?: string; forward?: number; fromPanel?: true };
@@ -21,6 +35,8 @@ export type HostState = {
   machines?: MachineRow[];
   machinesError?: string;
 };
+
+export type HomeSheetAsk = { to: MachineId; name: string; back: boolean };
 
 export type HostActions = {
   toggleHost(open?: boolean, machine?: string): void;
@@ -32,14 +48,22 @@ export type HostActions = {
   // the mirror's rows as a tick left them, in place of the run's own
   hostRows(rows: HostStep[]): void;
   confirmHost(ask?: HostConfirm): void;
+  setHomeSheet(ask?: HomeSheetAsk): void;
+  setSeedAsk(on: boolean): void;
+  // the sheet goes, not to be asked again in this fleet
+  answerSeed(): void;
+  setSeedCopying(on: boolean): void;
+  setHomeMove(moving?: Result<'fleet.homeMove'>['moving']): void;
   setMachines(machines: MachineRow[], error?: string): void;
 };
 
-export const createHostSlice: StateCreator<App, [], [], HostState & HostActions> = (set) => ({
+export const createHostSlice: StateCreator<App, [], [], HostState & HostActions> = (set, get) => ({
   host: undefined,
   hostOpen: false,
   hostMachine: undefined,
   hostConfirm: undefined,
+  homeSheet: undefined,
+  homeMove: undefined,
   hostTerminal: undefined,
   machines: undefined,
   machinesError: undefined,
@@ -53,11 +77,21 @@ export const createHostSlice: StateCreator<App, [], [], HostState & HostActions>
     hostTerminal: { ...(run && { run, ...(forward !== undefined && { forward }) }), ...((s.hostTerminal ? s.hostTerminal.fromPanel : s.hostOpen) && { fromPanel: true as const }) },
   })),
   closeHostTerminal: () => set({ hostTerminal: undefined }),
+  setHomeSheet: (homeSheet) => set({ homeSheet }),
+  setSeedAsk: (on) => set({ seedAsk: on ? true : undefined }),
+  setSeedCopying: (on) => set({ seedCopying: on ? true : undefined }),
+  answerSeed: () => {
+    const home = get().shell?.home;
+    try { if (home) localStorage.setItem(seedAsked(home), '1'); } catch { /* it asks once more */ }
+    set({ seedAsk: undefined });
+  },
+  setHomeMove: (homeMove) => set({ homeMove }),
   // the panel follows the machine its run is about, an add's included
   hostStarted: (op, args) => set({ host: beginRun(op, args), hostConfirm: undefined, hostMachine: args.name }),
-  // a step from an operation the page is no longer watching belongs to a run it has forgotten
-  hostStep: (op, event) => set((s) => (s.host?.op === op ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
-  hostDone: (op, code) => set((s) => (s.host?.op === op ? { host: endRun(s.host, code) } : {})),
+  // a step from an operation the page is no longer watching belongs to a run it has forgotten, as does one after its run ended:
+  // a start refused while a run the page lost at a reload goes on in the shell
+  hostStep: (op, event) => set((s) => (s.host?.op === op && s.host.running ? { host: applyStep(s.host, event, machineNames(s.machines)) } : {})),
+  hostDone: (op, code) => set((s) => (s.host?.op === op && s.host.running ? { host: endRun(s.host, code) } : {})),
   hostRows: (rows) => set((s) => (s.host ? { host: replaceRows(s.host, rows, machineNames(s.machines)) } : {})),
   confirmHost: (hostConfirm) => set({ hostConfirm }),
   setMachines: (machines, machinesError) => set({ machines, machinesError }),

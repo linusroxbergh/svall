@@ -33,6 +33,8 @@ export async function openFleetConfig(d: ResourcesDeps): Promise<void> {
     if (d.store.getState().settingsOpen) d.store.getState().toggleSettings(false);
     d.store.getState().toggleResources(true);
     await openFile(d, rootId, path);
+    // the list has no row for fleet.json, so none stays marked
+    d.store.getState().chooseResourceRow(undefined);
   } catch (e) {
     d.store.getState().showToast((e as Error).message);
   }

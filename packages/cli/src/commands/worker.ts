@@ -8,6 +8,7 @@ import { Command } from 'commander';
 import { z } from 'zod';
 import { MachineRecord, WorkerFile } from '@svall/protocol';
 import { VAR_NAME } from '@svall/svalld/claude';
+import { initConfig, patchFleetConfig } from '@svall/svalld/config';
 import { writeDurable } from '@svall/svalld/durable';
 import { envValueFault, writeEnvVar } from '@svall/svalld/env-file';
 import { loadFleetAgent, realFleetDeps } from '@svall/svalld/fleets';
@@ -61,10 +62,11 @@ async function readSecret(name: string): Promise<string> {
   } finally { rl.close(); process.stderr.write('\n'); }
 }
 
-type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string };
-type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
+/** `takesFleetId`: for a fleet joining its home, which goes by the home's id from its worker.json on. */
+export type Enrol = { homeMachine: string; homeName: string; fleetId: string; homeProfile?: string; homeSsh?: string; homeSocket?: string; homeSvallBase?: string; homePlatform?: string; homeArch?: string; homePath?: string; takesFleetId?: true };
+export type EnrolDeps = { platform: NodeJS.Platform; token: () => Promise<string>; daemonUp: (t: Target) => Promise<boolean>; out: (line: string) => void; me: () => string; load: (t: Target) => Promise<void> };
 
-const realEnrol: EnrolDeps = {
+export const realEnrol: EnrolDeps = {
   platform: process.platform,
   token: async () => (await readAll(process.stdin)).trim(),
   daemonUp: (t) => daemonRuns(releaseVersion(), () => Client.connect(t.home)),
@@ -83,7 +85,7 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
   if (o.homeSsh === undefined && (o.homeSvallBase !== undefined || o.homePlatform !== undefined || o.homeArch !== undefined || o.homePath !== undefined)) throw new Error('worker.json not written: --home-svall-base, --home-platform, --home-arch and --home-path are for a worker that dials its home');
   if (o.homeSsh !== undefined && (o.homeSvallBase === undefined || o.homePlatform === undefined || o.homeArch === undefined || o.homePath === undefined)) throw new Error('worker.json not written: a worker that dials its home takes --home-svall-base, --home-platform, --home-arch and --home-path, as svall fleet enroll-worker there names them');
   const dial = o.homeSsh === undefined ? {} : { homeSsh: o.homeSsh, homeSocket: o.homeSocket, homeSvallBase: o.homeSvallBase };
-  const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial });
+  const file = WorkerFile.safeParse({ homeMachineId: o.homeMachine, fleetId: o.fleetId, token: await d.token(), homeName: o.homeName, ...dial, ...(o.homeProfile && { homeProfile: o.homeProfile }) });
   if (!file.success) throw new Error(`worker.json not written: ${z.prettifyError(file.error)}`);
   const homeRecord = o.homeSsh === undefined ? undefined : MachineRecord.safeParse({ name: o.homeName, ssh: o.homeSsh, platform: o.homePlatform, arch: o.homeArch, home: o.homePath, svallBase: o.homeSvallBase });
   if (homeRecord && !homeRecord.success) throw new Error(`worker.json not written: ${z.prettifyError(homeRecord.error)}`);
@@ -123,7 +125,13 @@ export async function enrollHere(t: Target, o: Enrol, d: EnrolDeps = realEnrol):
       }
     } catch (e) { throw new Error(`worker.json not written: ${(e as Error).message}`, { cause: e }); }
   }
+  // named after worker.json, so what is refused or cut short before it leaves no home going by the fleet's id, and a retry finishes
+  if (o.takesFleetId) fs.mkdirSync(paths.home, { recursive: true, mode: 0o700 });
   writeDurable(paths.workerFile, file.data, { mode: 0o600 });
+  if (o.takesFleetId) {
+    initConfig(paths);
+    patchFleetConfig(paths.fleetConfig, { id: file.data.fleetId });
+  }
   if (!t.managed || (d.platform !== 'linux' && d.platform !== 'darwin')) return;
   const done = linux
     ? await serveAsWorker({ runtime: ownRuntime(), homedir: os.homedir(), prefix: DEFAULT_PREFIX, unitDir: unitDirOf(os.homedir()), fleet: t.name, home: t.home, run: realRun })

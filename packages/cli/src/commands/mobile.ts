@@ -4,7 +4,7 @@ import { SHIM } from '@svall/svalld/profile';
 import { isRelease } from '@svall/svalld/release';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { withClient } from './fleet.js';
+import { withClient } from '../client.js';
 
 export function mobileCommand(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('mobile').description('serve the fleet to your phone over Tailscale');

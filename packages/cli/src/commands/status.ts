@@ -5,7 +5,7 @@ import { resolvePaths } from '@svall/svalld/paths';
 import type { Client } from '../client.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
-import { withFleet } from './fleet.js';
+import { withFleet } from '../client.js';
 
 export function statusCommand(connect: () => Promise<Client>, json: () => boolean, home: () => string): Command {
   return new Command('status').description('show every island and robot').action(() => withFleet(connect, async (c, state) => {

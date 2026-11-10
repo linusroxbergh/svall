@@ -6,24 +6,17 @@ import { createLogger } from './log.js';
 import { configDir, machineId, machineIdFailure } from './machine.js';
 import { AlreadyRunning, OtherBuildHome, startDaemon, type Daemon } from './main.js';
 import { svallHome, resolvePaths } from './paths.js';
-import { heldAsHome, isWorker } from './worker/mode.js';
+import { startsAsWorker } from './worker/mode.js';
 
 const home = svallHome();
 fs.mkdirSync(home, { recursive: true });
 const paths = resolvePaths(home);
 const log = createLogger(paths.log);
-// a Mac's launchd agent runs every fleet the same way, so worker.json alone makes it a worker, but for a fleet's home
 const asWorker = (): true | undefined => {
   if (process.argv.includes('--worker')) return true;
-  if (!isWorker(paths)) return undefined;
-  // only a worker's outbox writes it, so what this holds is a worker's, even with no link yet
-  if (fs.existsSync(paths.epoch)) return true;
-  let me: string;
-  try { me = machineId(); } catch (e) { throw new InvalidConfig(machineIdFailure(e), { cause: e }); }
-  let held: string | undefined;
-  try { held = heldAsHome(paths, me); } catch (e) { throw new InvalidConfig((e as Error).message, { cause: e }); }
-  if (held) throw new InvalidConfig(`${paths.workerFile} makes this fleet home a worker, but it holds ${held} as a fleet's home, which the first snapshot would erase; remove the file, or enrol an empty fleet`);
-  return true;
+  return startsAsWorker(paths, () => {
+    try { return machineId(); } catch (e) { throw new InvalidConfig(machineIdFailure(e), { cause: e }); }
+  });
 };
 
 process.on('uncaughtException', (e) => log.error(`uncaught: ${e.stack ?? String(e)}`));
@@ -35,9 +28,10 @@ const report = (line: string, detail = line) => {
   if (process.stderr.isTTY) process.stderr.write(`${line}\n`);
 };
 
-// changes whenever a config file or state.json is written, the files a start can be refused for
-const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, path.join(configDir(), 'machine.json')].map((file) => {
-  try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}`; } catch { return '-'; }
+const journals = (): string[] => { try { return fs.readdirSync(paths.homeMoves).map((n) => path.join(paths.homeMoves, n)); } catch { return []; } };
+// changes whenever a config file, state.json or a home move's journal is written or has its mode changed, the files a start can be refused for
+const stamp = (): string => [paths.fleetConfig, paths.nodeConfig, paths.legacyConfig, `${paths.legacyConfig}.bak`, paths.state, paths.workerFile, paths.workersFile, paths.homeMoving, paths.homeMoves, ...journals(), path.join(configDir(), 'machine.json')].map((file) => {
+  try { const s = fs.statSync(file); return `${s.ino}:${s.size}:${s.mtimeMs}:${s.ctimeMs}`; } catch { return '-'; }
 }).join(' ');
 
 // the app would start an exiting daemon again every ten seconds while its window is open, so one refused for its config
@@ -46,7 +40,7 @@ async function start(): Promise<Daemon> {
   for (;;) {
     const before = stamp();
     try {
-      return await startDaemon({ home, log, worker: asWorker() });
+      return await startDaemon({ home, log, worker: asWorker });
     } catch (e) {
       // no file here can fix that; the other build's setup restarts the agent onto its own program
       if (e instanceof OtherBuildHome) {
@@ -68,6 +62,6 @@ const daemon = await start().catch((e: Error) => {
 });
 const shutdown = async (sig: string) => { log.info(`received ${sig}`); await daemon.stop(); process.exit(0); };
 // the app quit and the fleet has stopped; launchd starts the daemon again only when the app asks
-daemon.fleet.once('stopped', () => void shutdown('fleet.stop'));
+daemon.whenStopped(() => void shutdown('fleet.stop'));
 process.on('SIGTERM', () => void shutdown('SIGTERM'));
 process.on('SIGINT', () => void shutdown('SIGINT'));

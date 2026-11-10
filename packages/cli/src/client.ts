@@ -1,9 +1,10 @@
 import fs from 'node:fs';
 import WebSocket from 'ws';
 import { handshake, handshakeHome, ProtocolMismatch } from '@svall/svalld/fleets';
+import { machineId } from '@svall/svalld/machine';
 import { svallHome, resolvePaths } from '@svall/svalld/paths';
 import { SHIM, profileLabel } from '@svall/svalld/profile';
-import { ApiError, PART_BYTES, serverWait, type Event, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
+import { ApiError, PART_BYTES, serverWait, type Event, type FleetState, type MethodName, type Params, type Response, type Result } from '@svall/protocol';
 import { resolveTarget, type Target } from './target.js';
 
 // a wedged daemon must not hang the control loop, which shells out to svall and expects it to return.
@@ -19,6 +20,11 @@ export const restartHint = (t: Target): string => (t.managed
 
 /** The doctor that checks a fleet; an ad-hoc home is found again through the same $SVALL_HOME. */
 const doctorHint = (t: Target): string => (t.managed ? `${SHIM} -p ${t.name} doctor` : `${SHIM} doctor`);
+
+// a home frozen for a move names the machine the fleet goes to by its name, which on that machine is this one
+const movingHere = (e: ApiError): ApiError => (e.code === 'frozen' && e.data?.to !== undefined && e.data.to === machineId()
+  ? new ApiError(e.code, `the fleet is moving to ${process.platform === 'darwin' ? 'this Mac' : 'this machine'}; try again once it has`, e.data)
+  : e);
 
 export class Client {
   private next = 1;
@@ -39,7 +45,7 @@ export class Client {
       if (!p) return;
       this.pending.delete(msg.id);
       clearTimeout(p.timer);
-      if ('error' in msg) p.reject(new ApiError(msg.error.code, msg.error.message, msg.error.data));
+      if ('error' in msg) p.reject(movingHere(new ApiError(msg.error.code, msg.error.message, msg.error.data)));
       else p.resolve(msg.result);
     });
     const fail = (err: Error) => {
@@ -118,3 +124,11 @@ export class Client {
     this.ws.once('close', fn);
   }
 }
+
+export async function withClient<T>(connect: () => Promise<Client>, f: (c: Client) => Promise<T>): Promise<T> {
+  const c = await connect();
+  try { return await f(c); } finally { c.close(); }
+}
+
+export const withFleet = <T>(connect: () => Promise<Client>, f: (c: Client, state: FleetState) => Promise<T>): Promise<T> =>
+  withClient(connect, async (c) => f(c, await c.call('state.get', {})));

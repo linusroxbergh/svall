@@ -11,6 +11,7 @@ import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { expandHome, type Paths } from '../paths.js';
 import { unreachableLine } from '../placement/router.js';
+import { settleItems } from '../context/items.js';
 import type { Store } from '../store.js';
 import type { Entry, Outbox } from './outbox.js';
 
@@ -60,11 +61,18 @@ export class WorkerMutations {
   };
   // the starts the quota let through that are not journaled yet, by the params the fleet hands back to `created`
   private starting = new Set<object>();
+  // the home is moving here: nothing new goes in an outbox it would not take
+  private frozen = false;
 
   constructor(private o: {
     store: Store; fleet: Fleet; connection: Pick<HomeConnection, 'journal' | 'fits' | 'connected' | 'snapshotVersion'>; outbox: Pick<Outbox, 'after' | 'acked'>;
     me: MachineId; paths: Pick<Paths, 'applied'>; log: Logger; forget: (id: string) => Promise<void>; homeWord: () => string;
   }) {}
+
+  /** While the fleet moves, for as long as the home's stream lasts: this worker refuses what it would journal. */
+  setFrozen(on: boolean): void {
+    this.frozen = on;
+  }
 
   /** Whether the home has acknowledged every mutation this worker has journaled; its reports change nothing it could lack. */
   drained(): boolean {
@@ -101,6 +109,7 @@ export class WorkerMutations {
   /** `inWindow`: the person asking sits at this machine's window, which calls it this Mac; anyone else knows it by name. */
   serve<M extends MethodName>(method: M, params: ParsedParams<M>, inWindow = false): Promise<Result<M>> {
     if (!Object.hasOwn(this.handlers, method)) throw new Error(`${method} is not served on a worker`);
+    if (this.frozen && method !== 'robot.seen') throw new ApiError('frozen', `the fleet is moving here from ${this.o.homeWord()}; try again once it has`);
     return (this.handlers[method as Served] as unknown as (p: ParsedParams<M>, where: string) => Promise<Result<M>>)(params, inWindow ? 'this Mac' : this.name);
   }
 
@@ -157,10 +166,13 @@ export class WorkerMutations {
     if (named.some((k) => !(UPDATE_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name, this.o.homeWord()));
     const held = this.o.fleet.robot(p.id);
     const base = Object.fromEntries(named.map((k) => [k, held[k as keyof Robot]]));
-    const mutation = this.stamp({ method: 'robot.update', params: p, base });
+    // a robot of this machine's has its context paths settled here, where its files are, and journaled so
+    const context = p.context && held.machine === this.o.me ? settleItems(p.context, held.context) : undefined;
+    const q = context ? { ...p, context } : p;
+    const mutation = this.stamp({ method: 'robot.update', params: q, base });
     // refused before the change is made here, as the home could never take it
     this.o.connection.fits('mutation', mutation);
-    const robot = this.o.fleet.updateRobot(p.id, p);
+    const robot = this.o.fleet.updateRobot(p.id, q, context);
     this.o.connection.journal('mutation', mutation);
     return robot;
   }

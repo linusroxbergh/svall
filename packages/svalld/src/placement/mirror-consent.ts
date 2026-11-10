@@ -54,6 +54,19 @@ export function replaceConsent(file: string, machine: MachineId, item: string, f
   writeAll(file, all);
 }
 
+/**
+ * The ticks a fleet's archive carried at `file`, as the machine taking the fleet holds them: a machine's ticks say what it sends, so none
+ * stands under its own id, and for the machine the fleet came from those it held, at `held`, as that machine's worker.
+ */
+export function carriedConsent(file: string, held: string, me: MachineId, from: MachineId): void {
+  const all = readAll(file);
+  const mine = readAll(held)[from];
+  delete all[me];
+  delete all[from];
+  if (mine) all[from] = mine;
+  if (fs.existsSync(file) || mine) writeAll(file, all);
+}
+
 export function clearConsent(file: string, machine: MachineId): void {
   const all = readAll(file);
   delete all[machine];

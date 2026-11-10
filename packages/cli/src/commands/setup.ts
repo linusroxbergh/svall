@@ -22,6 +22,7 @@ import { cliCommand, refreshFleetPlists, runSetup, setupState, shimsCurrent, typ
 import { inheritingFleets, integrationsFor, projectsFolder, requireInstalledApp, setupPlan, staleFleets, suggestProjects } from '@svall/svalld/setup-plan';
 import { writableStartupFile } from '@svall/svalld/setup-path';
 import { fleetHomes } from '@svall/svalld/uninstall';
+import { isWorker, readWorkerFile } from '@svall/svalld/worker/mode';
 import { DEFAULT_PREFIX, allowedSigners, installRelease, rollbackRelease } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
 import { grouped, renderGroups, useColor, type Check } from '../checks-view.js';
@@ -32,7 +33,7 @@ import type { Target } from '../target.js';
 
 const execFileP = promisify(execFile);
 
-type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean; mainAgent?: string; firstProject?: string; scribe?: string; newRobots?: string; svallPermissions?: string };
+type Flags = { launchctl: boolean; check?: boolean; plan?: boolean; agents?: string; found?: string; projects?: string; ifNeeded?: boolean; loginShell?: boolean; mainAgent?: string; firstProject?: string; scribe?: string; newRobots?: string; svallPermissions?: string; joining?: boolean };
 type Choices = Parameters<typeof saveConfig>[1];
 
 type Run = Omit<SetupOptions, 'agents' | 'integrations'> & { answered: boolean; json: boolean; paths: Paths; homes: string[] };
@@ -148,8 +149,18 @@ async function refreshAction(r: Run, stale: string[], system: boolean, unwritabl
   printResult({ done, warnings }, r.json, () => [...done, ...warnings].join('\n'));
 }
 
-async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; system: boolean; ifNeeded?: boolean }): Promise<void> {
-  const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {} })).filter((w) => !o.options.pathFile || !/not on PATH/.test(w));
+async function runAction(r: Run, o: Daemons & { choices?: Choices; options: SetupOptions; system: boolean; ifNeeded?: boolean; joining?: boolean }): Promise<void> {
+  const warnings = requireReady(await preflight({ ...realPreflightDeps(r.home), ...o.choices?.mainAgent ? { mainAgent: o.choices.mainAgent } : {}, ...o.joining && { joining: true } })).filter((w) => !o.options.pathFile || !/not on PATH/.test(w));
+  const here = !o.joining && !o.ifNeeded;
+  // a first run's join that did not land left this fleet a worker of the server, which a setup to run here would start
+  if (here && fs.existsSync(r.paths.joining) && isWorker(r.paths)) {
+    const { homeName } = readWorkerFile(r.paths);
+    throw new Error(`this Mac joined the fleet on ${homeName}, so it runs no fleet of its own: open Svall again and connect to ${homeName}`);
+  }
+  if (o.joining) {
+    fs.mkdirSync(r.home, { recursive: true });
+    fs.writeFileSync(r.paths.joining, '');
+  }
   if (o.choices) {
     fs.mkdirSync(r.home, { recursive: true });
     if (o.choices.defaultCwd) fs.mkdirSync(expandHome(o.choices.defaultCwd), { recursive: true });
@@ -165,6 +176,7 @@ async function runAction(r: Run, o: Daemons & { choices?: Choices; options: Setu
   // Codex's trust ask is the user's next step, so it goes with the warnings the setup screen shows
   const done = lines.filter((l) => l !== CODEX_TRUST);
   if (done.length < lines.length) warnings.push(CODEX_TRUST);
+  if (here) fs.rmSync(r.paths.joining, { force: true });
   printResult({ done, warnings }, r.json, () => [...done, ...warnings].join('\n'));
 }
 
@@ -338,6 +350,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
     .option('--svall-permissions <on|off>', 'allow robot svall commands')
     .option('--if-needed', 'set up only what is missing or out of date, and restart daemons of another version')
     .option('--login-shell', 'take PATH and where the agents keep their files from the login shell, as an app opened from Finder has none')
+    .option('--joining', 'for a Mac that joins a fleet on a server next: no agent CLI needed here, and the app starts no fleet until the join lands')
     .action(async (o: Flags) => {
       const answered = o.loginShell ? await takeLoginEnv() : true;
       // setup owns the per-user half — the Claude hooks and the shims — so it only ever means private
@@ -355,6 +368,7 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
         launchAgentsDir: launchAgents, shimDir, homes: fleetHomes(os.homedir()),
       };
       const choices = parseChoices(o, r);
+      if (o.joining && (o.plan || o.check || o.ifNeeded)) throw new Error('--joining is for a setup that writes everything');
       const integrations = choices?.integrations ?? peekConfig(r.paths).integrations;
       if (o.plan) return planAction(r, integrations);
       if (o.ifNeeded) {
@@ -387,6 +401,6 @@ export function setupCommand(target: () => Target, json: () => boolean, platform
         // stand-in folders must not replace what a setup with the real login environment wrote
         if (!answered || !state || (!state.hooksStale && !state.shimsStale && !state.plistStale && !fleetsStale)) return refreshAction(r, d.stale, system, unwritable);
       }
-      return runAction(r, { ...d, choices, options, system, ifNeeded: o.ifNeeded });
+      return runAction(r, { ...d, choices, options, system, ifNeeded: o.ifNeeded, joining: o.joining });
     });
 }

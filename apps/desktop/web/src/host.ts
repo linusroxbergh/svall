@@ -32,11 +32,15 @@ function withoutIds(text: string, names: MachineNames): string {
 
 export const plainStep = (text: string, names: MachineNames): string => withoutIds(withoutTokens(text), names);
 
+/** What the CLI says of this machine, as a window on it says it. */
+export const onThisMac = (text: string): string => text.replace(/\bthis machine\b/g, 'this Mac').replace(/\bThis machine\b/g, 'This Mac');
+
 const plainRow = (event: HostStep, names: MachineNames): HostStep => ({
   step: event.step, status: event.status,
   ...(event.detail ? { detail: plainStep(event.detail, names) } : {}),
   ...(event.action ? { action: plainStep(event.action, names) } : {}),
   ...(event.run ? { run: event.run } : {}),
+  ...(event.say ? { say: plainStep(event.say, names) } : {}),
   ...(event.forward ? { forward: event.forward } : {}),
   ...(event.tick ? { tick: event.tick } : {}),
   ...(event.gap ? { gap: event.gap } : {}),
@@ -113,11 +117,12 @@ export const runActions = (run: HostRun): string[] => run.steps.flatMap((s) => (
 const STEP_LABEL: Record<string, string> = {
   name: 'Name', machine: 'Machine', ssh: 'ssh login', master: 'Connection', os: 'System', home: 'Home folder', tools: 'Tools',
   space: 'Free space', linger: 'Runs after logout', release: 'Release', upload: 'Upload', install: 'Install', uninstall: 'Uninstall',
-  service: 'Services', identity: 'Installed release', enrol: 'Worker', claude: 'Claude Code',
+  service: 'Services', identity: 'Installed release', enrol: 'Worker', seed: 'Your agent setup', claude: 'Claude Code',
   codex: 'Codex', opencode: 'OpenCode', versions: 'Agent versions', probe: 'Final check', rollback: 'Rollback', registry: 'Machine list',
   systemd: 'Fleet service', worker: 'Worker', 'daemon env': 'Service environment', svalld: 'Fleet daemon', node: 'Node', path: 'PATH',
   gh: 'GitHub CLI', git: 'Git', hooks: 'Agent hooks', 'codex hooks': 'Codex hooks', 'codex sandbox': 'Codex sandbox', 'opencode plugin': 'OpenCode plugin',
   'hook receiver': 'Hook receiver', config: 'Fleet config', agents: 'Agents', doctor: "Machine's own checks", svall: 'Svall', keys: 'Copied keys',
+  mark: 'Mark the move', crew: 'Mission control',
 };
 
 const AGENT_LABEL: Record<string, string> = { claude: 'Claude', codex: 'Codex', opencode: 'OpenCode' };
@@ -154,7 +159,7 @@ export const stepSaid = (row: HostStep, machine: string): string | undefined =>
   (row.detail?.startsWith(`${machine} `) ? row.detail.slice(machine.length + 1) : row.detail);
 
 export const OP_TITLE: Record<HostOp, string> = {
-  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove',
+  add: 'Add machine', doctor: 'Check', upgrade: 'Upgrade', rollback: 'Roll back', remove: 'Remove', home: 'Move the home', 'home-retry': 'Finish the move', 'home-abort': 'Call off the move', 'home-crew': 'Bring mission control back', join: 'Join',
 };
 
 /** `note`: the agent setup, which never holds a robot back; `done`: nothing is left to fix; `next`: the one step the panel offers;

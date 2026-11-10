@@ -9,10 +9,15 @@ enum AppRuntime {
         return FileManager.default.isExecutableFile(atPath: node) && FileManager.default.fileExists(atPath: script) ? (node, script) : nil
     }
 
-    /// No launchd agent for the private fleet: this variant was never set up on this Mac, or was uninstalled.
+    /// No launchd agent for the private fleet: this variant was never set up on this Mac, or was uninstalled; or a first run
+    /// that chose a server has not joined it yet.
     static var needsSetup: Bool {
         guard cli != nil, let id = Bundle.main.bundleIdentifier else { return false }
-        return !FileManager.default.fileExists(atPath: FleetDaemon.plistPath(label: id + ".svalld"))
+        return setupWanted(plist: FleetDaemon.plistPath(label: id + ".svalld"), home: SvallHome.privatePath)
+    }
+
+    static func setupWanted(plist: String, home: String) -> Bool {
+        !FileManager.default.fileExists(atPath: plist) || FleetDaemon.joining(home)
     }
 
     /// Runs the bundled CLI off the main thread and hands back its exit and stdout (stderr when it failed, else why it failed) on the main thread.

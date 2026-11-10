@@ -358,7 +358,8 @@ describe('a key', () => {
 
 describe('what a push and a tick leave', () => {
   it('S1 a temp beside where a linked config file leads goes at the next apply', async () => {
-    const { mac, synced, push } = onMac();
+    const { home, mac, synced, push } = onMac();
+    put(path.join(home.claudeDir, 'rules/from-home.md'), 'the home\'s\n');
     const real = path.join(mac.homedir, 'dotfiles/claude.json');
     put(real, '{}');
     fs.rmSync(mac.claudeJson, { force: true });

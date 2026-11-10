@@ -20,6 +20,7 @@ const islandIn = (store: Store, id: string): Island => {
 // the cell before the islandId, or the robot's stale cell would count as occupied on the target island
 export function placeOn(d: FleetState, id: string, islandId: string, log: Logger): void {
   const cell = placeOnIsland(d, islandId, id, log);
+  delete d.robots[id].sentAhead;
   d.robots[id].islandId = islandId;
   d.robots[id].cell = cell;
 }
@@ -46,6 +47,7 @@ export function moveRobot({ store, log }: Deps, id: string, islandId: string, ce
     const c = d.robots[id];
     const other = occupant ? d.robots[occupant.id] : undefined;
     if (other) { other.islandId = c.islandId; other.cell = c.cell; }
+    delete c.sentAhead;
     c.islandId = islandId;
     c.cell = cell;
     if (d.islands[islandId].collapsed) unfold(d, islandId, log);

@@ -9,10 +9,10 @@ import { LOCAL } from '../controller/registry.js';
 import { contextOptions, editContext, type ContextFlags } from '../context.js';
 import { printResult, table } from '../format.js';
 import { contextOf, resumeFailures, stateOf } from '../render.js';
-import { withFleet } from './fleet.js';
 import { robotSetupText, type There } from './host.js';
 import { int, parseDuration, point } from './parse.js';
 import { robotId, islandId, machineId, NoMatch } from './resolve.js';
+import { withFleet } from '../client.js';
 
 const MODEL_ONLY = /^(claude|codex|opencode) (--model|-m) [\w.:/-]+$/;
 

@@ -82,6 +82,10 @@ class Box {
   lines: { paneId: string; text: string }[] = [];
   keys: { paneId: string; text: string }[] = [];
   screens = new Map<string, string[]>();
+  /** the trust dialog a Claude started here shows, if any */
+  trustAsks?: string[];
+  /** the SessionStart a pane's trust dialog holds back until trusted */
+  private asking = new Map<string, () => void>();
   /** what an agent started by a line does: by default it reports its SessionStart */
   started?: (robotId: string, sessionId: string) => void;
   /** whether each OpenCode TUI runs a private server that outlives its window until SIGKILL, as one stuck shutting down does */
@@ -121,9 +125,33 @@ class Box {
       const sid = (/^claude\b.*--resume (\S+)/.exec(job) ?? /^opencode\b.* -s (\S+)/.exec(job))?.[1] ?? (/^claude\b/.test(job) ? FRESH_SID : undefined);
       if (!w || !sid) return;
       w.job = job;
-      setImmediate(() => this.started?.(w.name, sid));
+      const start = () => this.started?.(w.name, sid);
+      if (this.trustAsks && /^claude\b/.test(job)) this.screens.set(paneId, [...this.trustAsks]);
+      // a Claude asking to trust its folder starts its session once trusted
+      if (this.screens.get(paneId)?.some((r) => r.includes('Quick safety check'))) this.asking.set(paneId, start);
+      else setImmediate(start);
     },
-    sendBytes: async (paneId: string, bytes: Buffer) => { this.keys.push({ paneId, text: bytes.toString('latin1') }); },
+    // a trust dialog's Enter takes the choice its pointer marks: the trusting one goes on, any other exits
+    sendBytes: async (paneId: string, bytes: Buffer) => {
+      const text = bytes.toString('latin1');
+      this.keys.push({ paneId, text });
+      const chosen = text === '\r' ? this.screens.get(paneId)?.find((r) => r.startsWith(' ❯ ')) : undefined;
+      if (chosen === undefined) return;
+      this.screens.set(paneId, chosen.endsWith('Yes, I trust this folder') ? [] : ['$ ']);
+      if (chosen.endsWith('Yes, I trust this folder')) this.asking.get(paneId)?.();
+    },
+    // an arrow tmux names moves a dialog's pointer along its choices, which are the rows under it marked or indented as it is
+    sendKey: async (paneId: string, key: 'Up' | 'Down') => {
+      this.keys.push({ paneId, text: key });
+      const rows = this.screens.get(paneId)?.slice();
+      const choices = rows?.flatMap((r, i) => (/^ [❯ ] \S/.test(r) ? [i] : [])) ?? [];
+      const at = choices.findIndex((i) => rows![i].startsWith(' ❯ '));
+      const to = choices[at + (key === 'Down' ? 1 : -1)];
+      if (!rows || at < 0 || to === undefined) return;
+      rows[choices[at]] = `   ${rows[choices[at]].slice(3)}`;
+      rows[to] = ` ❯ ${rows[to].slice(3)}`;
+      this.screens.set(paneId, rows);
+    },
     killWindow: async (windowId: string) => {
       const w = this.windows.get(windowId);
       if (w && this.lingers && runsOpencode(w)) this.left.push({ ...serverOf(w), ppid: 1 });
@@ -198,7 +226,7 @@ const put = (file: string, data: string): void => {
  * is this test's HOME, holding nothing yet; both daemons run here, linked over w1's real link.sock.
  */
 export function moveWorld(o: {
-  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean;
+  agent?: Partial<NonNullable<Robot['agent']>>; second?: boolean; notInRepo?: boolean; mirror?: Pick<Mirror, 'push' | 'settled'>; opencode?: boolean; agentRunsThere?: boolean; agentRunsHere?: boolean;
   busy?: boolean; pollMs?: number;
 } = {}) {
   const base = fs.realpathSync(makeHome());
@@ -286,6 +314,7 @@ export function moveWorld(o: {
   }
 
   const config = Config.parse({});
+  const agentRunsHere = !!o.agentRunsHere;
   const { mirror } = o;
   const homePaths = resolvePaths(makeHome());
   const workerPaths = resolvePaths(makeHome());
@@ -405,7 +434,7 @@ export function moveWorld(o: {
       store: mortal(store, life), fleet: mortal(fleet, life), links: mortal(links, life), me: H, paths: homePaths,
       git: mortalGit(hooklessGit, life), agents: async () => [macProbe], release: RELEASE, homedir: mac,
       tmux: mortal(mac1.tmux, life) as unknown as Tmux, viewers, processes: mac1.processes, kill: mortal(mac1, life).kill, clock, log: silentLogger,
-      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run,
+      moves: mortal(new MoveFiles(homePaths.moves), life), watchMs: 5000, cli: opencode.mac.run, agentRunning: async () => agentRunsHere,
     });
     await fleet.reconcileNow();
     links.start();

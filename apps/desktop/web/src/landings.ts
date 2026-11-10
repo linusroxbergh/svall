@@ -1,6 +1,7 @@
 import { aside, asideLine, wayOn, type SetupRow } from '@svall/protocol';
 import type { Api } from './api.js';
-import { machineName } from './placement.js';
+import type { Bridge } from './bridge.js';
+import { destinationName } from './placement.js';
 import type { AppStore } from './store/index.js';
 
 /** How much of a robot's agent setup will not work on the machine it moved to, or nothing when none of that has a way on. */
@@ -22,9 +23,16 @@ export function followLandings(o: { store: AppStore; api: () => Pick<Api, 'call'
       o.api()?.call('machines.setup', { machine: to, robot: id }).then(({ rows }) => {
         const note = setupNote(rows);
         if (!note || o.store.getState().moveSheet?.id === id) return;
-        o.store.getState().showToast(`${c.name} is on ${machineName(s.fleet, to)}. ${note}`, 'ok',
+        o.store.getState().showToast(`${c.name} is on ${destinationName(s.fleet, to, s.via)}. ${note}`, 'ok',
           { label: 'Show', run: () => o.store.getState().select(id, true) });
       }, () => {});
     }
+  });
+}
+
+/** Each toast's tone and words to the app's log. */
+export function logToasts(o: { store: AppStore; bridge: Pick<Bridge, 'send'> }): () => void {
+  return o.store.subscribe((s, prev) => {
+    if (s.toast && s.toast !== prev.toast) o.bridge.send({ type: 'log', text: `toast ${s.toast.tone}: ${s.toast.text}` });
   });
 }

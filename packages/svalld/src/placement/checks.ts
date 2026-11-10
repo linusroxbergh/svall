@@ -3,13 +3,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 import {
-  AgentKind, ApiError, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type Blocker, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo,
+  AgentKind, ApiError, INTERRUPT_ACTIONS, ObjectName, Repo, UPGRADE_ACTION, WORKTREE_ACTION, type AgentAdapter, type Blocker, type FleetState, type MachineId, type MoveSheet, type Refusal, type Robot, type SystemInfo,
 } from '@svall/protocol';
 import { AGENTS, compareVersions } from '../agents.js';
 import { NotFound } from '../errors.js';
 import { homeWord } from '../machine.js';
 import { clean, holds } from '../path-tools.js';
-import { relocate } from './relocate.js';
+import { expandHome } from '../paths.js';
+import { relocate, type Relocation } from './relocate.js';
 import type { Classified } from './rest.js';
 import { cliRunner, sessionAdapter, type AgentProber } from '../sessions/registry.js';
 import type { CliRun } from '../sessions/types.js';
@@ -39,6 +40,8 @@ export const MovePlan = z.object({
   // the credential files ticked to travel
   carry: z.array(z.string()),
   interruptAfterMs: z.number().int().nonnegative().optional(),
+  // the robot works in mission control's folder, which the worker makes before the commit and trusts at it
+  mission: z.literal(true).optional(),
 });
 export type MovePlan = z.infer<typeof MovePlan>;
 
@@ -61,6 +64,8 @@ export type CheckDeps = {
   agents: AgentProber;
   release: string;
   homedir: string;
+  /** This fleet's folder here. */
+  fleetHome: string;
   /** This Mac's terminals that still hold a process, as rest reads them. */
   terminals: () => Promise<Pick<Classified, 'robotId' | 'term' | 'class'>[]>;
   /** Runs an agent CLI that keeps its sessions in a database of its own. */
@@ -139,6 +144,17 @@ export async function probeRepo(p: z.infer<typeof RepoProbeParams>, git: GitRunn
   ]);
   const branchSha = branch?.stdout.trim();
   return { state: 'clone', ...(remote && { remote }), ...(rootCommit && { rootCommit }), refs: [...new Set(refs.stdout.split('\n').filter(Boolean))], ...(branchSha && { branchSha }) };
+}
+
+/**
+ * Where robot `c` of mission control works in the fleet's own folder, `<fleet home>/home`: from that folder here to the fleet's
+ * folder `there`, or back from it. Any other folder is the user's choice and moves by the user's home.
+ */
+export function missionHomes(c: Robot, s: Pick<FleetState, 'islands' | 'home'>, here: { homedir: string; fleetHome: string }, there: string | undefined, back = false): Relocation | undefined {
+  const own = path.posix.join(here.fleetHome, 'home');
+  if (!there || s.islands[c.islandId]?.kind !== 'home' || clean(expandHome(s.home.cwd, here.homedir)) !== clean(own)) return undefined;
+  const far = path.posix.join(there, 'home');
+  return back ? { from: far, to: own } : { from: own, to: far };
 }
 
 // each agent's home as both machines' CLIs name it, else the user's
@@ -250,7 +266,7 @@ export async function carriedFrom(c: Robot, have: string[], git: GitRunner, run:
  * Whether robot `robotId` can move from this Mac to `to`, with the sentence and action of the first check that fails
  * and the rest behind details; when all pass, the sheet of what travels and the plan the move follows.
  */
-export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number; ownWorktree?: boolean } = {}): Promise<CheckResult> {
+export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o: { carry?: string[]; interruptAfterMs?: number; ownWorktree?: boolean; homeMove?: string } = {}): Promise<CheckResult> {
   const s = d.store.state;
   if (!Object.hasOwn(s.robots, robotId)) throw new NotFound(`no robot ${robotId}`);
   const c = s.robots[robotId];
@@ -268,7 +284,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
     }
   };
 
-  if (s.islands[c.islandId]?.kind === 'home') fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
+  if (s.islands[c.islandId]?.kind === 'home' && !o.homeMove) fail({ reason: `mission control stays on ${homeWord()}`, action: 'move a robot from another island' });
   if (c.moving) fail({ reason: `moving to ${named(c.moving.to)}`, action: 'wait for the move to finish' });
 
   // 1: reachable, on this release
@@ -284,6 +300,8 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const agents = info?.agentAdapters ?? [];
   if (info) for (const f of agentFailures(c, { name: homeWord(), agents: local }, { name, agents })) fail(f);
   const homes = hello && info ? homesOf(d.homedir, hello.home, local, agents) : undefined;
+  const mission = homes && missionHomes(c, s, d, hello?.fleetHome);
+  if (mission) homes.mission = mission;
   let session = 0;
   try {
     session = await sessionBytes(c, d.cli ?? cliRunner());
@@ -427,6 +445,7 @@ export async function moveChecks(d: CheckDeps, robotId: string, to: MachineId, o
   const plan: MovePlan = {
     clone, paths: destinationPaths(repo && convert ? converted(c, repo, convert.slug) : c, clone, homes),
     ...(convert && { convert }), ...(mode === 'clone' && remote && { remote }), have, carry, ...(interruptAfterMs !== undefined && { interruptAfterMs }),
+    ...(!repo && s.islands[c.islandId]?.kind === 'home' && clean(expandHome(c.cwd, d.homedir)) === clean(expandHome(s.home.cwd, d.homedir)) && { mission: true as const }),
   };
   return { ok: true, sheet, plan };
 }

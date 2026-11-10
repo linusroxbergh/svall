@@ -95,11 +95,12 @@ export type WorkerSetup = {
   get(): Promise<{ rows: SetupRow[]; backup?: string; replaced?: string[]; pushFailed?: string }>;
   consent(item: string, fields: string[], on: boolean): void;
   push(): Promise<Pushed>;
+  holds(): boolean;
 };
 
 /** A worker's own agent setup, as its window sees it: the ticks it holds for its home, and the push of it the home asks for. */
 export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection, 'call' | 'sendBlob'>; home: MachineId; homeName: () => string; stateFile: string; pushFailed?: () => string | undefined }): WorkerSetup {
-  const link: MirrorLink = { machine: o.home, call: (method, params, c) => o.connection.call(method, params, c), sendBlob: (id, file) => o.connection.sendBlob(id, file) };
+  const link: MirrorLink = { machine: o.home, copy: true, call: (method, params, c) => o.connection.call(method, params, c), sendBlob: (id, file) => o.connection.sendBlob(id, file) };
   return {
     // what the rows ask is what leaves this machine, which the home has no say in
     get: async () => {
@@ -112,5 +113,6 @@ export function workerSetup(o: { mirror: Mirror; connection: Pick<HomeConnection
     },
     consent: (item, fields, on) => o.mirror.consent(o.home, item, fields, on, true),
     push: () => o.mirror.push(link),
+    holds: () => o.mirror.holdsSetup(),
   };
 }

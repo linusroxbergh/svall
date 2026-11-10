@@ -343,6 +343,11 @@ export class Tmux {
     await this.paste(paneId, bytes, false, signal);
   }
 
+  /** A key by tmux's name for it, as a press sends it: an arrow pasted as its bytes moves no TUI's pointer. */
+  async sendKey(paneId: string, key: 'Up' | 'Down'): Promise<void> {
+    await this.run('send-keys', '-t', paneId, key);
+  }
+
   async sendLine(paneId: string, text: string, enter: boolean): Promise<void> {
     // bracketed, an app that asked for it takes the text as one paste: a busy Claude Code cuts raw text into
     // pieces, and an Enter landing among them submits only some

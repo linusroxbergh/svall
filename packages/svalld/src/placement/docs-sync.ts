@@ -332,6 +332,7 @@ export class WorkerDocs {
   private untaken = new Map<string, string>();
   private queue: Promise<void> = Promise.resolve();
   private unwatch?: () => void;
+  private paused = false;
 
   constructor(private o: { dir: string; file: string; stage: string; connection: Pick<HomeConnection, 'journal' | 'receiveBlob'>; log: Logger; quietMs?: number }) {
     this.handlers = { 'docs.blob': (raw) => this.offer(raw) };
@@ -348,8 +349,15 @@ export class WorkerDocs {
     this.unwatch?.();
   }
 
+  /** While the fleet moves here, a doc changed stays as it is, for the move to carry or the next pass to send. */
+  setPaused(on: boolean): void {
+    if (this.paused && !on) this.catchUp();
+    this.paused = on;
+  }
+
   // a path gone stands for every doc under it
   private changed(rel: string, data?: Buffer): void {
+    if (this.paused) return;
     if (data) return this.journal(rel, data);
     for (const k of new Set([...Object.keys(this.synced), ...this.pending.keys()])) {
       if ((k === rel || k.startsWith(`${rel}/`)) && !fs.existsSync(path.join(this.o.dir, k))) this.journal(k);

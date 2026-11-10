@@ -35,17 +35,17 @@ export function IslandCard({ id }: { id: string }) {
       <div className="kicker">Island</div>
       <div className="side-island-head">
         <FollowLine className="h2" aria-label="Island name" key={`name-${id}`} value={i.name} data-testid="side-island-name"
-          onSave={(v) => { const name = v.trim(); if (!name || name === i.name) return false; save({ name }); }} />
+          onSave={(v) => { const name = v.trim(); if (!name || name === i.name) return false; return save({ name }); }} />
         <button className="btn pri sm" data-testid="side-island-new" onClick={() => newRobotOn(deps(), id)}><Plus size="xs" />New robot</button>
       </div>
       <div className="side-secs">
         <Section name="island.description" title="Description">
           <FollowTextarea className="fld desc" rows={6} placeholder="What this island is for" key={`description-${id}`} value={i.description} data-testid="side-island-description"
-            onSave={(v) => { if (v !== i.description) save({ description: v }); }} />
+            onSave={(v) => (v !== i.description ? save({ description: v }) : undefined)} />
         </Section>
         <Section name="island.instructions" title="Instructions">
           <FollowTextarea className="fld desc" rows={3} placeholder="How agents on this island should work" key={`instructions-${id}`} value={i.instructions} data-testid="side-island-instructions"
-            onSave={(v) => { if (v !== i.instructions) save({ instructions: v }); }} />
+            onSave={(v) => (v !== i.instructions ? save({ instructions: v }) : undefined)} />
         </Section>
         <Section name="island.context" title="Context">
           <ContextPills items={i.context} ids={{ list: 'side-island-context', remove: 'island-context-remove' }}

@@ -401,7 +401,7 @@ test('an empty Machines tab explains what a machine is; a machine has Check and 
   await page.getByTestId('settings-open').click();
   await page.getByTestId('settings-tab-machines').click();
   await receive(page, { type: 'host.machines', machines: [] });
-  await expect(page.getByTestId('machines-empty')).toHaveText("A machine is a Linux computer that runs this fleet's robots while this Mac sleeps.");
+  await expect(page.getByTestId('machines-empty')).toHaveText("A machine is a Linux computer that runs this fleet's robots while this Mac sleeps, or runs the whole fleet while this Mac is off.");
 
   await receive(page, { type: 'host.machines', machines: [{ name: 'linus-vault', id: VAULT, ssh: 'linus@vault', platform: 'linux-x64' }] });
   const row = page.getByTestId('machine-linus-vault');

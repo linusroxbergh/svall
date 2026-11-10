@@ -109,6 +109,7 @@ export class Fleet extends EventEmitter<Events> {
   // each revived terminal's resume, by window name, until its session starts
   private resuming = new Map<string, Resume>();
   private stopped = false;
+  private held = false;
   private activated?: Promise<void>;
   // the background writes in flight, which a settle waits for
   private background = new Set<Promise<unknown>>();
@@ -422,6 +423,12 @@ export class Fleet extends EventEmitter<Events> {
     return endIdleAgents(this.sleep, this.seen, () => this.stopped, (id) => this.prompts.holds(id));
   }
 
+  /** While the fleet moves to another home, its scribe holds still. */
+  holdForMove(on: boolean): void {
+    this.scribe.hold(on);
+    this.held = on;
+  }
+
   /** Ends every terminal as the app quits: each robot goes dormant with the revive that resumes it, then the
    * tmux server goes, and nothing runs again until the next start resumes what it may, or a robot is opened. */
   async stopAll(): Promise<void> {
@@ -681,9 +688,10 @@ export class Fleet extends EventEmitter<Events> {
     this.deps.store.update((d) => { for (const c of Object.values(d.robots)) if (c.agentProfile === from) c.agentProfile = to; });
   }
 
+  /** `settled`: the context as the robot's own machine settled it, when that is another one. */
   updateRobot(id: string, patch: {
     name?: string; note?: string; instructions?: string; agentProfile?: string; islandId?: string; context?: ContextItem[]; removed?: string[]; figure?: number;
-  }): Robot {
+  }, settled?: ContextItem[]): Robot {
     const current = this.robot(id);
     if (patch.islandId) this.island(patch.islandId);
     if (patch.agentProfile) this.checkAgentProfile(patch.agentProfile);
@@ -691,7 +699,7 @@ export class Fleet extends EventEmitter<Events> {
     const clash = patch.name !== undefined && Object.values(this.deps.store.state.robots)
       .find((c) => c.id !== id && c.name.toLowerCase() === patch.name!.toLowerCase());
     if (clash) throw new Invalid(`another robot is already called ${clash.name}`);
-    const context = patch.context && settleItems(patch.context, current.context);
+    const context = patch.context && (settled ?? settleItems(patch.context, current.context));
     this.deps.store.update((d) => {
       const c = d.robots[id];
       if (patch.name !== undefined) c.name = patch.name;
@@ -1177,6 +1185,8 @@ export class Fleet extends EventEmitter<Events> {
     if (held && (promptId === undefined || promptId === held)) {
       // the home holds them
       if (this.deps.remote?.onWorker) return Promise.reject(new ApiError('not_reachable', `robot messages wait on ${this.deps.remote.homeWord}; answer there`));
+      // past the archive's cut, an answer is undone on the new home, which asks again
+      if (this.held) return Promise.reject(new ApiError('frozen', 'the fleet is moving; answer once it has'));
       this.deps.store.update((d) => {
         const c = d.robots[id];
         if (answer === 'approve') { delete c.relayed; return; }

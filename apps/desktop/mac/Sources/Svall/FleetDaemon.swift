@@ -9,6 +9,9 @@ enum FleetDaemon {
 
     static func plistPath(label: String) -> String { NSHomeDirectory() + "/Library/LaunchAgents/\(label).plist" }
 
+    /// A first run that chose a server has not joined it yet: setup's `--joining` marks the fleet home, and the join's end clears it.
+    static func joining(_ home: String) -> Bool { FileManager.default.fileExists(atPath: home + "/joining") }
+
     private static var plist: String? {
         guard let label else { return nil }
         let file = plistPath(label: label)
@@ -26,7 +29,7 @@ enum FleetDaemon {
     /// Loads the job first when launchd has none, or has the label from another plist (a test fleet's, another Svall's).
     /// At most every 10 s, as launchd spaces restarts, so a daemon that keeps failing is not started on every page retry.
     static func start() {
-        guard let label, let plist, Date().timeIntervalSince(lastStart) > 10 else { return }
+        guard let label, let plist, !joining(SvallHome.path), Date().timeIntervalSince(lastStart) > 10 else { return }
         lastStart = Date()
         let domain = "gui/\(getuid())", job = "\(domain)/\(label)"
         let ours = realPath(plist)

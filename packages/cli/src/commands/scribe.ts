@@ -1,7 +1,7 @@
 import { Command } from 'commander';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { withClient } from './fleet.js';
+import { withClient } from '../client.js';
 
 export function scribeCommands(connect: () => Promise<Client>, json: () => boolean): Command {
   const cmd = new Command('scribe').description('write names, notes, island descriptions and links from what each agent is doing');

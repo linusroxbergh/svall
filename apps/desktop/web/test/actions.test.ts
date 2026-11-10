@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_CWD, emptyState, type MachineId } from '@svall/protocol';
-import { deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
+import { arrangeIslands, deleteIsland, moveRobotTo, setStar, starRobotAt, newRobotOn, newRobotTarget, newIsland, newIslandAround, newNamedRobot, openSecondTerminal, reviveRobot, saveRobot, saveIsland, serveFleet, skillPrompt, startHomeAction, startHomeRobot } from '../src/actions.js';
 import { ApiError, type Api } from '../src/api.js';
 import { createAppStore } from '../src/store/index.js';
 import { chr, fleet, isl } from './fixtures.js';
@@ -276,6 +276,31 @@ describe('a write the fleet refuses', () => {
   });
 });
 
+describe('an arrange the map makes on its own', () => {
+  const arrange = async (e: Error, automatic: boolean) => {
+    const store = createAppStore(undefined);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      arrangeIslands({ api: { call: () => Promise.reject(e) } as unknown as Api, store }, 1.5, undefined, automatic);
+      await new Promise((r) => setTimeout(r, 0));
+      return { toast: store.getState().toast?.text, logged: warn.mock.calls.map((c) => c[0] as string) };
+    } finally {
+      warn.mockRestore();
+    }
+  };
+
+  it('says nothing when the fleet refuses it or svalld\'s restart cuts it off', async () => {
+    expect(await arrange(new ApiError('frozen', 'the fleet is moving to studio; try again once it has'), true)).toEqual({ toast: undefined, logged: [] });
+    expect(await arrange(new Error('svalld connection closed'), true)).toEqual({ toast: undefined, logged: [] });
+  });
+
+  it('logs any other failure, and one a person asks for says why on a toast', async () => {
+    expect(await arrange(new ApiError('internal', 'arrange failed'), true)).toEqual({ toast: undefined, logged: ['island.arrange: arrange failed'] });
+    expect(await arrange(new ApiError('frozen', 'the fleet is moving to studio; try again once it has'), false))
+      .toEqual({ toast: 'the fleet is moving to studio; try again once it has', logged: [] });
+  });
+});
+
 describe('openSecondTerminal', () => {
   it('closes the pane that waited on a second terminal the fleet did not open', async () => {
     const store = createAppStore(undefined);
@@ -315,6 +340,20 @@ describe('an edit that never reached the fleet', () => {
     saveRobot({ api, store }, 'c0', { name: 'x' });
     await new Promise((r) => setTimeout(r, 0));
     expect(store.getState().toast).toEqual({ text: 'another robot is already called x', tone: 'error' });
+  });
+
+  it.each(['not_reachable', 'timeout', 'stopping', 'internal'])('stays to send again when it failed as %s, which the fleet never weighed', async (code) => {
+    const api = { call: () => Promise.reject(new ApiError(code, 'studio is not reachable')) } as unknown as Api;
+    const store = createAppStore(undefined);
+    expect(await saveRobot({ api, store }, 'c0', { note: 'half a thought' })).toBe(true);
+    expect(store.getState().toast).toMatchObject({ text: 'studio is not reachable', action: { label: 'Retry' } });
+  });
+
+  it.each(['frozen', 'invalid', 'invalid_params', 'not_found', 'moving'])('is put back when the fleet refused it as %s', async (code) => {
+    const api = { call: () => Promise.reject(new ApiError(code, 'refused')) } as unknown as Api;
+    const store = createAppStore(undefined);
+    expect(await saveIsland({ api, store }, 'i_a', { description: 'half a thought' })).toBe(false);
+    expect(store.getState().toast).toEqual({ text: 'refused', tone: 'error' });
   });
 });
 

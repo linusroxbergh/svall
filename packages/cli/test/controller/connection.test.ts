@@ -118,6 +118,13 @@ describe('remote connections', () => {
     }
   });
 
+  it('through --host, a fleet named apart there is upgraded by this fleet\'s own -p', async () => {
+    ssh.answer(description({ port: 4711, fleetId: FleetId.parse(crypto.randomUUID()) }));
+    fs.writeFileSync(path.join(home, 'workers.json'), JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'private' } }));
+    const err = await connectRemote({ registry, machine: 'trift', fleetHome: home, profile: 'work' }).catch((e: Error) => e);
+    expect((err as Error).message).toContain('`svall -p work host upgrade trift`');
+  });
+
   it('reads a companion whose daemon is down as daemon_down', async () => {
     const err = await remoteConnectionInfo(await master(), remote, { fleetId: FLEET }).catch((e: SshError) => e);
     expect((err as SshError).kind).toBe('daemon_down');
@@ -151,6 +158,19 @@ describe('remote connections', () => {
     expect(ssh.calls().flat().join(' ')).not.toContain(TOKEN);
     client.close();
     // the forward and master are let go after close() returns, and would otherwise reach the next test's ssh
+    await waitFor(() => control('exit').length === 1);
+    await new Promise((r) => wss.close(r));
+  });
+
+  it('asks the fleet there by the profile this fleet\'s link dials it by, which a move named apart', async () => {
+    const wss = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    await new Promise((r) => wss.once('listening', r));
+    wss.on('connection', (ws) => ws.on('message', () => ws.send(JSON.stringify({ id: 0, result: { ok: true, protocol: PROTOCOL_VERSION } }))));
+    ssh.answer(description({ port: (wss.address() as { port: number }).port }));
+    fs.writeFileSync(path.join(home, 'workers.json'), JSON.stringify({ [REMOTE]: { token: 'a'.repeat(48), addedAt: 1, profile: 'far' } }));
+    const client = await connectRemote({ registry, machine: 'trift', fleetHome: home, profile: 'mac2' });
+    expect(ssh.remoteCalls().find((w) => w.includes('connection-info'))?.slice(-2)).toEqual(['-p', 'far']);
+    client.close();
     await waitFor(() => control('exit').length === 1);
     await new Promise((r) => wss.close(r));
   });

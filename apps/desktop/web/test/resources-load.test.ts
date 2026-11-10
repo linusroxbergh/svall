@@ -3,6 +3,7 @@ import type { MachineId } from '@svall/protocol';
 import type { Api } from '../src/api.js';
 import type { Bridge, ToShell } from '../src/bridge.js';
 import { chooseResource } from '../src/resources/choose.js';
+import { openFleetConfig } from '../src/resources/docs.js';
 import { followResources, listingKey, loadResources, reloadResources } from '../src/resources/load.js';
 import { createAppStore } from '../src/store/index.js';
 import { theme } from '../src/theme.js';
@@ -139,5 +140,16 @@ describe('chooseResource', () => {
     await chooseResource({ api, store, bridge }, hook('PreToolUse'));
     expect(store.getState().resourcesChosen).toBe('hooks:PreToolUse');
     expect(store.getState().resourcesShown).toEqual({ rootId: 'r:/h/.claude', path: 'settings.json' });
+  });
+
+  it('Fleet config leaves no row marked, as the list has none for fleet.json', async () => {
+    const bridge = { present: true, send: () => {}, onMessage: () => () => {} } as unknown as Bridge;
+    const api = { call: (m: string) => Promise.resolve(m === 'fleet.config' ? { rootId: 'r:/home/ada/.svall', path: 'fleet.json' } : { text: '{}', mtimeMs: 1 }) } as unknown as Pick<Api, 'call'>;
+    const store = createAppStore();
+    await chooseResource({ api, store, bridge }, { id: 'docs:plan', name: 'plan', reveal: '/h/plan.md', target: 'file', open: { rootId: 'r:/h', path: 'plan.md' } });
+    expect(store.getState().resourcesChosen).toBe('docs:plan');
+    await openFleetConfig({ api, store });
+    expect(store.getState().resourcesShown).toEqual({ rootId: 'r:/home/ada/.svall', path: 'fleet.json' });
+    expect(store.getState().resourcesChosen).toBeUndefined();
   });
 });

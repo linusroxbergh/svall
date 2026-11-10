@@ -15,13 +15,18 @@ RUN systemctl mask getty@tty1.service console-getty.service systemd-udevd.servic
       systemd-networkd-wait-online.service apt-daily.timer apt-daily-upgrade.timer motd-news.timer \
  && systemctl enable ssh.service
 
-# the machines have no tailnet, so `host add`'s tailscale check meets a double that answers its version and nothing
+# the machines have no tailnet, so what asks tailscale meets a double
 # else, as the unit tests' does
-RUN printf '#!/bin/sh\n[ "$1" = version ] && { echo 0.0.0-integration; exit 0; }\necho "tailscale is a test double" >&2\nexit 1\n' \
-      > /usr/local/bin/tailscale \
- && chmod 755 /usr/local/bin/tailscale
+COPY tailscale.sh /usr/local/bin/tailscale
+RUN chmod 755 /usr/local/bin/tailscale
 
 RUN userdel -r ubuntu 2>/dev/null || true
+
+# a home move's fault points answer only to this: for a command here, one over ssh, and the daemon's user unit
+ENV SVALL_HOME_FAULTS=1
+RUN echo SVALL_HOME_FAULTS=1 >> /etc/environment \
+ && mkdir -p /etc/systemd/user.conf.d \
+ && printf '[Manager]\nDefaultEnvironment=SVALL_HOME_FAULTS=1\n' > /etc/systemd/user.conf.d/svall-faults.conf
 
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]

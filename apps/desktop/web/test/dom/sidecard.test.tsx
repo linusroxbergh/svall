@@ -13,10 +13,10 @@ window.matchMedia ??= ((q: string) => ({ matches: false, media: q, addEventListe
 Element.prototype.setPointerCapture ??= function () {};
 Element.prototype.hasPointerCapture ??= function () { return true; };
 
-let refuse: ((method: string, params: Record<string, unknown>) => string | undefined) | undefined;
+let refuse: ((method: string, params: Record<string, unknown>) => string | Error | undefined) | undefined;
 call.mockImplementation((method: string, params?: unknown) => {
   const why = refuse?.(method, params as Record<string, unknown>);
-  return why ? Promise.reject(new Error(why))
+  return why ? Promise.reject(typeof why === 'string' ? new Error(why) : why)
     : Promise.resolve(method === 'robot.prompts' ? { prompts: [] } : method === 'resources.get' ? { sources: [] }
       : method === 'machines.setup' ? { rows: [] } : {});
 });
@@ -345,6 +345,59 @@ test('a name cleared to nothing goes back to the fleet\'s name', () => {
   name.blur();
   expect(name.value).toBe('c0');
   expect(updates()).toEqual([]);
+});
+
+test('an edit the fleet refuses puts the field back to what the fleet holds, and the toast says why', async () => {
+  const { ApiError } = await import('../../src/api.js');
+  refuse = (m) => (m === 'robot.update' ? new ApiError('frozen', 'the fleet is moving to studio; try again once it has') : undefined);
+  render(<Side />);
+  const note = field('side-note');
+  const held = note.value;
+  type(note, 'a note the fleet will not take');
+  note.blur();
+  await act(async () => {});
+  expect(store.getState().toast?.text).toBe('the fleet is moving to studio; try again once it has');
+  expect(note.value).toBe(held);
+  const name = field('side-name');
+  const named = name.value;
+  type(name, 'renamed');
+  name.blur();
+  await act(async () => {});
+  expect(name.value).toBe(named);
+});
+
+test('an island edit the fleet refuses puts back what the fleet holds, and the name\'s box fits it again', async () => {
+  const { ApiError } = await import('../../src/api.js');
+  refuse = (m) => (m === 'island.update' ? new ApiError('frozen', 'the fleet is moving to studio; try again once it has') : undefined);
+  store.getState().selectIsland('i_a');
+  render(<IslandSide />);
+  const description = field('side-island-description');
+  type(description, 'a description the fleet will not take');
+  description.blur();
+  await act(async () => {});
+  expect(description.value).toBe('');
+  const name = field('side-island-name');
+  // jsdom lays nothing out, so the box's height goes by its text's length
+  Object.defineProperty(name, 'scrollHeight', { configurable: true, get: () => (name.value.length > 20 ? 48 : 24) });
+  type(name, 'a name far too long for one line');
+  name.blur();
+  expect(name.style.height).toBe('48px');
+  await act(async () => {});
+  expect(name.value).toBe('alpha');
+  expect(name.style.height).toBe('24px');
+});
+
+test('a field someone is back in keeps what they type when the fleet refuses the edit before', async () => {
+  const { ApiError } = await import('../../src/api.js');
+  refuse = (m) => (m === 'robot.update' ? new ApiError('frozen', 'the fleet is moving to studio; try again once it has') : undefined);
+  render(<Side />);
+  const note = field('side-note');
+  type(note, 'first');
+  note.blur();
+  note.focus();
+  fireEvent.change(note, { target: { value: 'first, then more' } });
+  await act(async () => {});
+  expect(note.value).toBe('first, then more');
 });
 
 test('a note written while svalld is away stays in the field, and the next blur sends it again', async () => {

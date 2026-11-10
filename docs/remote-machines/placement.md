@@ -12,7 +12,8 @@ its machine on its board card, token, sidebar row, side card and terminal card, 
 Changes and Resources read its files on the worker, read-only: it edits them in its terminal, and **Terminal there**, on
 its card, each pane's machine line and the shelf's foot, opens a terminal on the worker with a `cd` to its folder typed at
 the prompt: press Return to go there. Finder is not offered: a path there can name another file here, so the app's shell
-opens one only for this machine. A file or folder in the robot's context opens the same terminal. The Usage
+opens one only for this machine. A file or folder in the robot's context opens the same terminal; a path added to it,
+`~` included, is looked for on the worker, as its files are read there, so the worker must be reachable for that edit. The Usage
 panel counts the robots on each worker too, read on the worker where their
 transcripts are; a worker that does not answer within 5 seconds is left out, and the home's own limits still show. The
 scribe names, notes and links a robot on a worker, and places it on the board, as it does one here: the home asks, the
@@ -164,7 +165,10 @@ Mission control's robots stay on the home and have no move button.
   [Your agent setup on the machine](setup.md#your-agent-setup-on-the-machine).
 - **Trust of the folder.** The first move into a clone on the worker trusts its main checkout, and so every worktree in
   it, in the agent's own settings there (Claude's `~/.claude.json`, Codex's `config.toml`), while no agent of that kind
-  runs there; otherwise the agent's "Trust this folder?" question is answered for it as it opens. Bypass-mode consent
+  runs there; otherwise the agent's "Trust this folder?" question is answered for it as it opens, Enter only once the
+  trusting choice is marked. A question it cannot read so is yours: the robot's note says its terminal asks. Mission
+  control's folder is trusted so wherever its robots land, on the home coming back too, and on the home a robot coming
+  back has its question answered so. Bypass-mode consent
   and Codex's trust of Svall's hooks are yours to give, once per machine.
 
 ## What stays
@@ -294,8 +298,8 @@ Once the home answers, what the worker did lands here once each, in the order it
   here since". A change to an island deleted here is dropped, the log saying so.
 - An island deleted there goes here with its docs, after the closes the worker made before it. One a robot stands on
   here stays, and the log says why: "linus-vault: island.delete mu_3k9x0q2m7a not applied: island docs is not empty".
-- A file or folder added to a robot's context there that the home does not have is left out, and the note names it:
-  "linus-vault added /home/ada/notes.md to the context while this Mac slept; it is not on this Mac".
+- A file or folder added to a robot's context there is kept as the worker found it, `~` as the worker's home, whether or
+  not the home has it.
 - A doc changed both there and here, such as a robot's `notes.md`, keeps the home's text. The worker's lands beside
   it as `<name>.<machine>.<id>.conflict.md`, and the note of each robot on the worker it concerns names it:
   "robots/c_4f2k9a/notes.md changed on both linus-vault and this Mac; linus-vault's version is kept as

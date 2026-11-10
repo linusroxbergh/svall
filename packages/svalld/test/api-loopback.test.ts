@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 import { startApi } from '../src/api/server.js';
 import { silentLogger } from '../src/log.js';
@@ -33,14 +33,14 @@ describe('home.connection over a real socket', () => {
   const closes: (() => Promise<void>)[] = [];
   afterEach(async () => { for (const c of closes.splice(0)) await c(); cleanHomes(); });
 
-  async function api(host: string) {
+  async function api(host: string, freeze?: object) {
     const home = makeHome();
     const paths = resolvePaths(home);
     const store = Store.load(path.join(home, 'state.json'), () => {});
     const a = await startApi({
       host, port: 0, token: 'secret', pass: 'p4ss', store, fleet: {} as never, fleets: stubFleets, terminals: { closeAll() {}, viewerGone() {} } as never, workspace: { unwatchAll() {} } as never, usage: stubUsage, load: stubLoad, mobileControl: stubMobile, log: silentLogger,
       push: new PushStore(path.join(home, 'push.json'), () => {}), vapidPublicKey: 'k', phones: new Phones(), claude: { dir: path.join(home, '.claude'), json: path.join(home, '.claude.json') }, docs: paths.docs,
-      systemInfo: stubSystemInfo, key: () => KEY, logins: () => ['me@example.com'], homeApi: { answer: () => Promise.resolve(ANSWER as never) },
+      systemInfo: stubSystemInfo, key: () => KEY, logins: () => ['me@example.com'], homeApi: { answer: () => Promise.resolve(ANSWER as never) }, ...(freeze && { freeze: freeze as never }),
     });
     closes.push(() => a.close());
     return a.port;
@@ -56,6 +56,28 @@ describe('home.connection over a real socket', () => {
     const r = await ask(`ws://127.0.0.1:${port}/${KEY}/`, { headers: { 'tailscale-user-login': 'me@example.com', cookie: 'svall-pass=p4ss' } });
     expect(r.error?.code).toBe('forbidden');
     expect(JSON.stringify(r)).not.toContain('the-far-token');
+  });
+
+  it('a socket that closes ends the freeze its own call opened, as a driver that died can say nothing', async () => {
+    const opened: object[] = [];
+    const left: object[] = [];
+    const freeze = { refusal: () => undefined, admit: () => undefined, open: (_id: string, viewer: object) => { opened.push(viewer); }, status: () => ({}), left: (viewer: object) => { left.push(viewer); } };
+    const port = await api('127.0.0.1', freeze);
+    const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+    await new Promise<void>((resolve, reject) => {
+      ws.on('open', () => ws.send(JSON.stringify({ token: 'secret' })));
+      ws.on('message', (raw) => {
+        const m = JSON.parse(String(raw)) as { id?: number };
+        if (m.id === 0) ws.send(JSON.stringify({ id: 1, method: 'fleet.homeMove', params: { op: 'open', id: 'hm_abcdefghij' } }));
+        if (m.id === 1) resolve();
+      });
+      ws.on('error', reject);
+    });
+    expect(opened).toHaveLength(1);
+    expect(left).toEqual([]);
+    ws.close();
+    await vi.waitFor(() => expect(left).toHaveLength(1));
+    expect(left[0]).toBe(opened[0]);
   });
 
   it('refuses a socket from another address, whatever node.json binds and with the right token', async () => {

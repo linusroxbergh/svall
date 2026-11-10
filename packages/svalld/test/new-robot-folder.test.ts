@@ -29,7 +29,7 @@ const state = (root: string, robots: Robot[]): FleetState => ({
   ...emptyState(), defaultCwd: folder(root, 'code'), home: { ...emptyState().home, cwd: folder(root, 'mc') }, robots: Object.fromEntries(robots.map((c) => [c.id, c])),
 });
 
-afterEach(cleanHomes);
+afterEach(() => { vi.unstubAllEnvs(); cleanHomes(); });
 
 describe('where a new robot can start', () => {
   it('lists where each robot here starts from, the clones the default folder holds, then the fleet\'s two folders', () => {
@@ -139,6 +139,7 @@ describe('a typed path, which the home checks before the robot starts', () => {
     ['under a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); return path.join(r, 'f', 'x'); }],
     ['a link that leads nowhere', (r: string) => { fs.symlinkSync(path.join(r, 'gone'), path.join(r, 'l')); return path.join(r, 'l'); }],
     ['a link to a file', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); fs.symlinkSync(path.join(r, 'f'), path.join(r, 'l')); return path.join(r, 'l'); }],
+    ['a file named from ~, as the window sends it', (r: string) => { fs.writeFileSync(path.join(r, 'f'), ''); vi.stubEnv('HOME', r); return '~/f'; }],
     ['a relative path, even to a folder there is', () => '.'],
   ])('refuses %s, opening no window', async (_name, make) => {
     window.mockClear();

@@ -221,7 +221,7 @@ export class HomeConnection {
     if (older?.live) this.o.onLink?.(false);
     if (older && older.stream !== stream) older.stream.close();
     stream.send({
-      t: 'hello', workerMachineId: this.o.me, bootId: this.o.bootId, release: this.o.release, schema, protocol, home: os.homedir(),
+      t: 'hello', workerMachineId: this.o.me, bootId: this.o.bootId, release: this.o.release, schema, protocol, home: os.homedir(), fleetHome: this.o.paths.home,
       agentHomes: { claude: claudePaths().dir, codex: codexPaths().dir, opencode: opencodePaths().dir },
     });
     if (mismatch) {

@@ -186,6 +186,33 @@ describe('svall worker', () => {
     }, 90_000);
   });
 
+  it('a join goes by the home\'s fleet id only with its worker.json, and a refusal before that changes neither', async () => {
+    const t = { name: 'joined', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const own = crypto.randomUUID();
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: own }));
+    const me = crypto.randomUUID();
+    const fleetId = crypto.randomUUID();
+    const o = { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId, homeSsh: 'ada@studio', homeSocket: dialSocket({ dialSockets: '/home/ada/.svall/w' }, me), homeSvallBase: '/home/ada/.local/share/svall', homePlatform: 'linux', homeArch: 'x64', homePath: '/home/ada', takesFleetId: true as const };
+    const d = { platform: 'linux' as const, token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => me, load: async () => {} };
+    await expect(enrollHere(t, { ...o, homeSocket: dialSocket({ dialSockets: '/home/ada/.svall/w' }, crypto.randomUUID()) }, d)).rejects.toThrow(/not this machine's socket/);
+    expect(JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')).id).toBe(own);
+    expect(fs.existsSync(paths.workerFile)).toBe(false);
+    await enrollHere(t, o, d);
+    expect(JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')).id).toBe(fleetId);
+    expect(JSON.parse(fs.readFileSync(paths.workerFile, 'utf8')).fleetId).toBe(fleetId);
+  });
+
+  it('an ordinary enrol leaves the fleet\'s id as it is', async () => {
+    const t = { name: 'plain', home: makeHome(), managed: false };
+    const paths = resolvePaths(t.home);
+    const own = crypto.randomUUID();
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: own }));
+    const me = crypto.randomUUID();
+    await enrollHere(t, { homeMachine: crypto.randomUUID(), homeName: 'studio', fleetId: crypto.randomUUID() }, { platform: 'linux', token: async () => 'a'.repeat(48), daemonUp: async () => true, out: () => {}, me: () => me, load: async () => {} });
+    expect(JSON.parse(fs.readFileSync(paths.fleetConfig, 'utf8')).id).toBe(own);
+  });
+
   it('enroll on a Mac restarts the fleet\'s launchd agent and waits for its daemon, as systemd does on Linux', async () => {
     const bin = makeHome();
     const calls = path.join(bin, 'calls');
@@ -402,6 +429,13 @@ describe('svall worker', () => {
     const again = JSON.parse((await enroll()).stdout);
     expect(again.token).not.toBe(answer.token);
     expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+    // a join run again: the worker may hold the one this home holds, as the answer that carried a newer could be lost
+    const kept = JSON.parse((await svallIn(env, '--json', 'fleet', 'enroll-worker', id, '--keep-token', ...facts).done).stdout);
+    expect(kept.token).toBe(again.token);
+    expect(tokenFor(resolvePaths(home), id as never)).toBe(again.token);
+    const other = crypto.randomUUID();
+    const first2 = JSON.parse((await svallIn(env, '--json', 'fleet', 'enroll-worker', other, '--keep-token', '--name', 'ada-mac2', ...facts.slice(2)).done).stdout);
+    expect(tokenFor(resolvePaths(home), other as never)).toBe(first2.token);
     // a run that would show the token to a person issues none
     const plain = await svallIn(env, 'fleet', 'enroll-worker', id, ...facts).done;
     expect(plain).toMatchObject({ code: 1, stdout: '', stderr: expect.stringContaining('run it with --json') });

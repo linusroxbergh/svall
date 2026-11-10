@@ -221,8 +221,8 @@ final class ShellRouter {
             menu.show(chords: chords, state: state)
         case .menuFleets(let fleets, let note):
             menu.show(fleets: fleets, note: note)
-        case .quitAnswer(let unsaved, let working, let placed, let home):
-            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home)
+        case .quitAnswer(let unsaved, let working, let placed, let home, let frozenFor, let movingHere, let callsOff):
+            quitFlow.answered(unsaved: unsaved, working: working, placed: placed, home: home, frozenFor: frozenFor, movingHere: movingHere, callsOff: callsOff)
         case .quitStopped(let ok):
             quitFlow.stopped(ok: ok)
         case .openUrl(let url):
@@ -244,20 +244,14 @@ final class ShellRouter {
             var args = ["setup", "--json", "--login-shell", "--agents", agents.joined(separator: ","), "--found", found.joined(separator: ","), "--projects", projects,
                         "--main-agent", mainAgent, "--scribe", scribe ? "on" : "off", "--svall-permissions", svallPermissions ? "on" : "off", "--new-robots", newRobotStart]
             if let firstProject { args += ["--first-project", firstProject] }
-            AppRuntime.run(args) { [weak self] ok, text in
-                // the home setup made did not exist when launch claimed it and named its browser store
-                if ok {
-                    _ = SvallHome.claim()
-                    let file = SvallHome.path + "/browser-store"
-                    if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
-                        try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
-                    }
-                }
-                self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
-            }
+            runSetup(args)
+        case .setupJoin(let svallPermissions):
+            runSetup(["setup", "--json", "--login-shell", "--joining", "--svall-permissions", svallPermissions ? "on" : "off"])
         case .copy(let text):
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
+        case .log(let text):
+            NSLog("page: %@", text)
         case .openConfig(let which):
             guard let path = which == "ghostty" ? GhosttyRuntime.configPath() : SvallHome.configPath() else {
                 NSLog("svall: no %@ config to open", which)
@@ -321,6 +315,20 @@ final class ShellRouter {
         }
     }
 
+    private func runSetup(_ args: [String]) {
+        AppRuntime.run(args) { [weak self] ok, text in
+            // the home setup made did not exist when launch claimed it and named its browser store
+            if ok {
+                _ = SvallHome.claim()
+                let file = SvallHome.path + "/browser-store"
+                if let id = self?.browsers.store.identifier, !FileManager.default.fileExists(atPath: file) {
+                    try? id.uuidString.write(toFile: file, atomically: true, encoding: .utf8)
+                }
+            }
+            self?.bridge.send(.setupResult(step: "run", ok: ok, json: text))
+        }
+    }
+
     private func openFleet(_ home: String, quit: Bool) {
         // the picker gives way to the fleet it opened without asking
         let done = { [weak self] in if quit { self?.quit(quietly: true) } }
@@ -341,7 +349,12 @@ final class ShellRouter {
 
     /// The page names an operation and its arguments; the argv, and the binary, are the shell's own.
     private func startHost(op: HostOp, args: HostArgs) {
-        guard hostRun == nil else { return }
+        // one run at a time; a page that lost track of the one running, as after a reload, hears why this one did not start
+        guard hostRun == nil else {
+            bridge.send(.hostStep(op: op.rawValue, step: HostProcess.Step(step: "svall", status: "fail", detail: "another machine run is under way; try again once it ends", action: nil)))
+            bridge.send(.hostDone(op: op.rawValue, code: 1))
+            return
+        }
         let svall = BundledSvall.locate()
         guard let executable = svall, let argv = HostCommand.arguments(op: op, args: args) else {
             let detail = svall == nil ? "this build has no svall beside it to set a machine up with"

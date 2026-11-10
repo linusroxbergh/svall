@@ -96,12 +96,14 @@ describe('a window on a worker', () => {
     expect(readsOn(fleet, 'w')).toBe('w1');
   });
 
-  it('names a home by the fleet, then by what the window was told, and a destination the same', () => {
-    expect(homeName({ machines: { [HOME]: { name: 'renamed', reachable: true, since: 0 } } }, online)).toBe('renamed');
+  it('names a home as this machine\'s daemon does, whose registry name wins over the home\'s own, then by the fleet, and a destination the same', () => {
+    const own = { machines: { [HOME]: { name: 'linus-vault', reachable: true, since: 0 } } };
+    expect(homeName(own, online)).toBe('studio');
+    expect(homeName(own, { ...online, name: undefined })).toBe('linus-vault');
     expect(homeName({}, online)).toBe('studio');
-    expect(destinationName({}, HOME, online)).toBe('studio');
+    expect(destinationName(own, HOME, online)).toBe('studio');
     expect(machineOf({}, { machine: HOME }, online)).toBe('studio');
-    expect(machineOf({ machines: { [HOME]: { name: 'renamed', reachable: true, since: 0 } } }, { machine: undefined }, online)).toBe('renamed');
+    expect(machineOf(own, { machine: undefined }, online)).toBe('studio');
   });
 
   it('following the home, a robot on the home by its id is never out of reach, and a worker in mismatch names the upgrade', () => {

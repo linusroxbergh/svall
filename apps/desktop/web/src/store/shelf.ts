@@ -28,7 +28,7 @@ export type ShelfActions = {
   toggleResources(open?: boolean, opts?: { where?: string; what?: What; keepPageFocus?: boolean; naming?: boolean }): void;
   setResourcesFilter(f: { where?: string; what?: What }): void;
   toggleResourceGroup(tier: Tier): void;
-  chooseResourceRow(id: string): void;
+  chooseResourceRow(id: string | undefined): void;
   showResourceField(ref: FieldRef): void;
   setResourcesNaming(v: boolean): void;
   setResourceCols(cols: ResourceCols, persist?: boolean): void;

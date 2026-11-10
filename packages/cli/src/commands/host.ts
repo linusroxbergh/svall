@@ -7,11 +7,12 @@ import { z } from 'zod';
 import { ApiError, aside, asideLine, checksAgain, ellipsis, notNeeded, PROTOCOL_VERSION, toTick, wayOn, type MachineId, type SetupRow } from '@svall/protocol';
 import { writeDurable } from '@svall/svalld/durable';
 import { configDir, machineId } from '@svall/svalld/machine';
+import { realDeps as realMobileDeps, resolveTailscale, tailnetSelf } from '@svall/svalld/mobile';
 import { resolvePaths } from '@svall/svalld/paths';
 import { askpassPath, isRelease, releaseRoot, releaseSigned, releaseVersion } from '@svall/svalld/release';
 import { allowedSigners } from '../../../../scripts/install-release.mjs';
 import { sshVerify } from '../../../../scripts/release-manifest.mjs';
-import { Client } from '../client.js';
+import { Client, withClient } from '../client.js';
 import { printResult, table } from '../format.js';
 import { addHost, consentHost, dialingFleet, doctorHost, removeHost, rollbackHost, rowStep, sameRelease, upgradeHost, type HostDeps, type HostOutcome, type HostReport, type StepEvent } from '../controller/host.js';
 import { MachineRegistry } from '../controller/registry.js';
@@ -20,7 +21,6 @@ import { ask } from '../prompt.js';
 import { farProfile, type Target } from '../target.js';
 import { MARK, tickMark, type Check } from '../checks-view.js';
 import { checkLines } from './doctor.js';
-import { withClient } from './fleet.js';
 
 /**
  * Where the first ssh asks its questions: the terminal, or a dialog when there is none, as when the
@@ -59,6 +59,7 @@ function realDeps(emit: (e: StepEvent) => void, dir: string, fleet: Target): Hos
     controller: { release: releaseVersion(), protocol: PROTOCOL_VERSION, releaseRoot: releaseRoot(), signed: releaseSigned() },
     localAgents: () => withClient(() => Client.connect(), async (c) => (await c.call('system.info', {})).agentAdapters),
     machineId: () => machineId(dir),
+    tailnet: async () => { const m = realMobileDeps(); await tailnetSelf(m, await resolveTailscale(m)); },
     homedir: os.homedir(),
     verify: sshVerify({ allowedSigners: controllerSigners() }),
     fleet: { home: fleet.home, ...(farProfile(fleet) && { profile: farProfile(fleet) }) },
@@ -285,7 +286,8 @@ export function hostCommands(json: () => boolean, target: () => Target, dir: () 
     .requiredOption('--ssh <destination>', 'the ssh destination to reach it at')
     .option('--release <archive>', 'install this companion archive instead of the one this release publishes')
     .option('--allow-unsigned', 'install a --release archive that carries no signature')
-    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean }) => {
+    .option('--as-home', 'leave it a fleet\'s home, for svall fleet join to follow, not a worker of this fleet')
+    .action((name: string, o: { ssh: string; release?: string; allowUnsigned?: boolean; asHome?: boolean }) => {
       const there = { ...thereOf(name, dir(), target()), ssh: o.ssh };
       return runFlow(json(), (out) => outcomeText(out, 'add', name, { there }), (d) => addHost({ name, ...o }, d), dir(), target(), { name, there });
     });

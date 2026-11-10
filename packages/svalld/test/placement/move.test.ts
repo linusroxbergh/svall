@@ -1,12 +1,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { FleetState, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
+import { FleetState, HOME_ISLAND, INTERRUPT_ACTIONS, moveSummary } from '@svall/protocol';
 import { AGENTS } from '../../src/agents.js';
 import { RESUME_NOTE } from '../../src/dormancy.js';
 import { armFailpoints, type Edge, type Failpoint } from '../../src/failpoints.js';
 import { hooklessGit, type GitRunner } from '../../src/links/git.js';
 import { fingerprintOf } from '../../src/placement/bundle.js';
+import { trustRecordFile } from '../../src/placement/trust.js';
+import { MoveFiles, TRUST_ASKED } from '../../src/placement/move-steps.js';
 import type { AgentProbe, AgentProber } from '../../src/sessions/registry.js';
 import { hasGit } from '../git-fixture.js';
 import { cleanHomes, waitForPolls } from '../helpers.js';
@@ -24,7 +26,8 @@ afterEach(async () => {
 const open = (o: Parameters<typeof moveWorld>[0] = {}): MoveWorld => { const w = moveWorld(o); worlds.push(w); return w; };
 
 // Claude's question to trust its folder, as the robot's pane on the worker shows it
-const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ 1. No, exit', '   2. Yes, I trust this folder'];
+// as Claude Code 2.1.322 draws it: no numbers, the pointer on the choice that exits
+const TRUST_DIALOG = [' Quick safety check: Is this a project you created or one you trust?', '', ' ❯ No, exit', '   Yes, I trust this folder', '', ' Enter to confirm · Esc to cancel'];
 
 const SID3 = '2d3e4f50-6172-4384-95a6-c7d8e9f0a1b2';
 
@@ -74,6 +77,12 @@ function libThere(w: MoveWorld): { mac: string; farWt: string } {
   for (const s of [w.worker.store, w.home.store]) s.update((d) => { Object.assign(d.robots.c_1, { cwd: farWt, repo: { root: farWt, mainRoot: far, branch: 'tidy', isWorktree: true } }); });
   return { mac, farWt };
 }
+
+// c_1 a robot of mission control's, in `cwd`
+const crew = (w: MoveWorld, cwd: string): void => {
+  w.home.store.update((d) => { d.islands[HOME_ISLAND] = { ...d.islands.i_1, id: HOME_ISLAND, kind: 'home' }; });
+  for (const s of [w.worker.store, w.home.store]) s.update((d) => { if (d.robots.c_1) { d.robots.c_1.islandId = HOME_ISLAND; d.robots.c_1.cwd = cwd; } });
+};
 
 // fires `then` at a step's edge, once
 const at = (name: Failpoint, edge: Edge, then: () => void): void => {
@@ -413,8 +422,20 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     w.vault.screens.set('%1', TRUST_DIALOG);
     const home = await w.start();
     await home.placement.start('c_1', W);
-    await until(() => { expect(w.vault.keys).toEqual([{ paneId: '%1', text: '2' }, { paneId: '%1', text: '\r' }]); });
+    await until(() => { expect(w.vault.keys).toEqual([{ paneId: '%1', text: 'Down' }, { paneId: '%1', text: '\r' }]); });
+    await until(() => expect(w.worker.store.state.robots.c_1.agent?.status).not.toBe('dormant'));
+    expect(w.vault.screens.get('%1')).toEqual([]);
     expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects).toBeUndefined();
+  });
+
+  it('a trust question it cannot read is left to the person, and the robot\'s note says its terminal asks', async () => {
+    const w = open({ agentRunsThere: true });
+    w.vault.screens.set('%1', TRUST_DIALOG.map((r) => r.replace('Yes, I trust this folder', 'Yes, trust it')));
+    const home = await w.start();
+    const id = await home.placement.start('c_1', W);
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.note).toContain(TRUST_ASKED);
+    expect(w.vault.keys).toEqual([]);
   });
 
   it('a worker that seeded trust never looks for the trust question, nor types into the pane', async () => {
@@ -424,6 +445,116 @@ describe.skipIf(!hasGit)('the move transaction', () => {
     await home.placement.start('c_1', W);
     await new Promise((resolve) => setTimeout(resolve, 700));
     expect(w.vault.keys).toEqual([]);
+  });
+
+  it('mission control\'s robot in the fleet\'s own folder lands in the fleet\'s folder there, made before the commit, trusted and recorded as the fleet\'s, and comes back to this fleet\'s own', async () => {
+    const w = open({ notInRepo: true });
+    w.vault.screens.set('%1', TRUST_DIALOG);
+    const home = await w.start();
+    const [own, there] = [path.join(w.homePaths.home, 'home'), path.join(w.workerPaths.home, 'home')];
+    fs.mkdirSync(own, { recursive: true });
+    home.store.update((d) => { d.home.cwd = own; });
+    crew(w, own);
+    expect(fs.existsSync(there)).toBe(false);
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: there });
+    expect(fs.statSync(there).isDirectory()).toBe(true);
+    expect(JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects[fs.realpathSync(there)]).toEqual({ hasTrustDialogAccepted: true });
+    expect(JSON.parse(fs.readFileSync(trustRecordFile(w.workerPaths.home), 'utf8'))).toMatchObject([{ kind: 'claude', key: fs.realpathSync(there) }]);
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(w.vault.keys).toEqual([]);
+
+    await home.placement.start('c_1', H);
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: own });
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+  });
+
+  // mission control's robot gone to w1 in the fleet's own folder, whose folder here is then gone
+  const crewAway = async (o: Parameters<typeof open>[0] = {}) => {
+    const w = open({ notInRepo: true, ...o });
+    const home = await w.start();
+    const own = path.join(w.homePaths.home, 'home');
+    fs.mkdirSync(own, { recursive: true });
+    home.store.update((d) => { d.home.cwd = own; });
+    crew(w, own);
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    fs.rmSync(own, { recursive: true });
+    return { w, home, own };
+  };
+
+  it('mission control\'s robot coming back lands in the fleet\'s folder here, made before the commit, and its trust question answered where no seed could be', async () => {
+    const { w, home, own } = await crewAway({ agentRunsHere: true });
+    w.mac1.trustAsks = TRUST_DIALOG;
+    const id = await home.placement.start('c_1', H);
+    expect(new MoveFiles(w.homePaths.moves).read(id)?.plan.mission).toBe(true);
+    expect(fs.statSync(own).isDirectory()).toBe(true);
+    expect(home.store.state.robots.c_1).toMatchObject({ cwd: own });
+    await until(() => expect(w.mac1.keys.map((k) => k.text)).toEqual(['Down', '\r']));
+    expect(home.store.state.robots.c_1.note).not.toContain(TRUST_ASKED);
+  });
+
+  it('mission control\'s robot coming back has its trust seeded here while no agent runs, and recorded as the fleet\'s', async () => {
+    const { w, home, own } = await crewAway();
+    fs.writeFileSync(path.join(w.macClaude, '.claude.json'), JSON.stringify({ hasCompletedOnboarding: true }));
+    await home.placement.start('c_1', H);
+    expect(JSON.parse(fs.readFileSync(path.join(w.macClaude, '.claude.json'), 'utf8')).projects[fs.realpathSync(own)]).toEqual({ hasTrustDialogAccepted: true });
+    expect(JSON.parse(fs.readFileSync(trustRecordFile(w.homePaths.home), 'utf8'))).toMatchObject([{ kind: 'claude', key: fs.realpathSync(own) }]);
+    expect(w.mac1.keys).toEqual([]);
+  });
+
+  it('mission control\'s robot coming back to a trust question it cannot read leaves it to the person, and its note says so', async () => {
+    const { w, home } = await crewAway({ agentRunsHere: true });
+    w.mac1.trustAsks = TRUST_DIALOG.map((r) => r.replace('Yes, I trust this folder', 'Yes, trust it'));
+    const id = await home.placement.start('c_1', H);
+    expect(home.placement.status(id).phase).toBe('done');
+    expect(home.store.state.robots.c_1.note).toContain(TRUST_ASKED);
+    expect(w.mac1.keys).toEqual([]);
+  });
+
+  it('a way back called off before its commit takes back mission control\'s folder it made here', async () => {
+    const { home, own } = await crewAway();
+    at('move.journal.commit', 'before', () => { expect(fs.statSync(own).isDirectory()).toBe(true); throw new Error('the disk is full'); });
+    await expect(home.placement.start('c_1', H)).rejects.toThrow('the disk is full');
+    await until(() => expect(home.store.state.robots.c_1.moving).toBeUndefined());
+    expect(fs.existsSync(own)).toBe(false);
+  });
+
+  it('a robot of mission control\'s that works elsewhere, the user\'s home included, gets no folder made and no trust there', async () => {
+    const w = open({ notInRepo: true });
+    const home = await w.start();
+    home.store.update((d) => { d.home.cwd = '~'; });
+    crew(w, w.mac);
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: w.far });
+    home.store.update((d) => { d.home.cwd = '~/crew'; });
+    await home.placement.start('c_1', H);
+    for (const s of [w.worker.store, home.store]) s.update((d) => { if (d.robots.c_1) d.robots.c_1.cwd = w.notes; });
+    await home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' });
+    expect(w.worker.store.state.robots.c_1).toMatchObject({ machine: W, cwd: path.join(w.far, 'notes') });
+    expect(fs.existsSync(path.join(w.far, 'notes'))).toBe(false);
+    expect(fs.existsSync(path.join(w.far, '.claude.json')) && JSON.parse(fs.readFileSync(path.join(w.far, '.claude.json'), 'utf8')).projects).toBeFalsy();
+    expect(fs.existsSync(trustRecordFile(w.workerPaths.home))).toBe(false);
+  });
+
+  it('mission control\'s folder that cannot be made there refuses the move before the commit, and what the move made of it goes', async () => {
+    const w = open({ notInRepo: true });
+    const home = await w.start();
+    const blocked = path.join(w.far, 'blocked');
+    fs.writeFileSync(blocked, 'a file in the way');
+    const cwd = path.join(w.mac, 'blocked/notes');
+    home.store.update((d) => { d.home.cwd = '~/blocked/notes'; });
+    crew(w, cwd);
+    await expect(home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' })).rejects.toThrow(`${path.join(blocked, 'notes')} cannot be made on`);
+    await until(() => expect(home.store.state.robots.c_1.moving).toBeUndefined());
+    expect(home.store.state.robots.c_1.machine).toBeUndefined();
+    expect(w.worker.store.state.robots.c_1?.machine).toBeUndefined();
+    expect(fs.readFileSync(blocked, 'utf8')).toBe('a file in the way');
+
+    fs.rmSync(blocked);
+    at('worker.prepare.journal', 'before', () => { expect(fs.statSync(path.join(blocked, 'notes')).isDirectory()).toBe(true); throw new Error('the disk is full'); });
+    await expect(home.placement.start('c_1', W, { homeMove: 'hm_abcdefghij' })).rejects.toThrow('the disk is full');
+    await until(() => expect(home.store.state.robots.c_1.moving).toBeUndefined());
+    expect(fs.existsSync(blocked)).toBe(false);
   });
 
   it('a robot in no repository moves with its session only, and comes back the same way', async () => {

@@ -12,6 +12,7 @@ export * from './text.js';
 export * from './setup.js';
 export * from './machines.js';
 export * from './placement.js';
+export * from './home-move.js';
 export * from './link.js';
 export * from './journal.js';
 export * from './retro.js';

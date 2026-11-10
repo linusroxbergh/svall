@@ -216,6 +216,28 @@ test('the fleet arranges round an island back from hidden, whichever client show
   }
 });
 
+test('an arrange the map makes on its own says nothing when a home frozen for a move refuses it; one a person asks for says why', async () => {
+  Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => 1200 });
+  Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get: () => 800 });
+  const { ApiError } = await import('../../src/api.js');
+  call.mockImplementation((method: string) => (method === 'island.arrange' ? Promise.reject(new ApiError('frozen', 'the fleet is moving to studio; try again once it has')) : Promise.resolve({})));
+  store.getState().setStatus('online');
+  try {
+    render(<Map />);
+    await act(async () => {});
+    await act(async () => { store.getState().focus('c0'); });
+    await act(async () => { store.getState().closeCard(); });
+    expect(methods()).toContain('island.arrange');
+    expect(store.getState().toast).toBeUndefined();
+    await act(async () => { store.getState().askArrange(); });
+    expect(store.getState().toast?.text).toBe('the fleet is moving to studio; try again once it has');
+  } finally {
+    call.mockImplementation((method: string) => Promise.resolve(method === 'island.create' ? { id: 'i_new' } : {}));
+    delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  }
+});
+
 test('the fleet arranges each time the map gets room back from its card, and on a return from the board', async () => {
   let width = 1200;
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, get: () => width });

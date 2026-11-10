@@ -15,7 +15,7 @@ import { setAt } from '../../src/placement/mirror-config.js';
 import { refuseForeign } from '../../src/placement/mirror-copy.js';
 import { setConsent } from '../../src/placement/mirror-consent.js';
 import { carriable, mirrorPlan, packMirror } from '../../src/placement/mirror-plan.js';
-import { MANIFEST, readState } from '../../src/placement/mirror-state.js';
+import { keysOnly, MANIFEST, readState } from '../../src/placement/mirror-state.js';
 import { unpack } from '../../src/placement/move-steps.js';
 import { seedTrust } from '../../src/placement/trust.js';
 import { realPath } from '../../src/paths.js';
@@ -1067,7 +1067,8 @@ describe('the entry a target keeps', () => {
   });
 
   it('a push that fails here is told by home.setup, until one lands', async () => {
-    const { mac, w, synced, push } = target();
+    const { home, mac, w, synced, push } = target();
+    put(path.join(home.claudeDir, 'rules/from-home.md'), 'the home\'s\n');
     await synced();
     put(path.join(mac.claudeDir, 'settings.json'), 'not json');
     await push();
@@ -1079,7 +1080,8 @@ describe('the entry a target keeps', () => {
   });
 
   it('a temp a killed write left beside a config file goes at the next apply and at uninstall', async () => {
-    const { mac, w, synced, push } = target();
+    const { home, mac, w, synced, push } = target();
+    put(path.join(home.claudeDir, 'rules/from-home.md'), 'the home\'s\n');
     await synced();
     const temp = (n: number) => `${realPath(mac.claudeJson)}.durable-${n}-0000000${n}.tmp`;
     fs.writeFileSync(temp(1), KEY);
@@ -1424,6 +1426,67 @@ describe('a copy of a worker\'s agent setup onto its home', () => {
     // and it stays through the next, whose record kept them
     await ask();
     expect(read(path.join(home.claudeDir, 'rules/only-a.md'))).toBe('from A, edited on the home since\n');
+  });
+
+  describe('a key a push left on a machine before the fleet moved there', () => {
+    const ITEM = 'claude:mcp:linear';
+    const FIELD = 'env.LINEAR_API_KEY';
+    // the Mac its home, its ticked key pushed to the server; then the server the home, holding what an install leaves of that record.
+    // `whole`: a server of a shape Svall cannot read, ticked whole too
+    async function movedThere(whole?: object) {
+      const server = farHome();
+      const mac = macHome();
+      if (whole) editJson(mac.claudeJson, (j) => { j.mcpServers.odd = whole; });
+      const first = world({ mirror: { home: mac, worker: { ...server, overrides: server.overrides } } });
+      await first.link();
+      await until(() => expect(first.worker.connection.connected()).toBe(true));
+      await first.home.links.mirrorSettled(W);
+      await call(first.home.ctx, 'machines.consent', { machine: W, item: ITEM, fields: [FIELD], on: true });
+      if (whole) await call(first.home.ctx, 'machines.consent', { machine: W, item: 'claude:mcp:odd', fields: ['command', 'sandbox'], on: true });
+      await first.home.links.mirrorSettled(W);
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: KEY });
+      const record = keysOnly(readState(first.worker.paths.mirrorState));
+      await first.stop();
+      const w = world({ mirror: { home: server, worker: { ...mac, overrides: path.join(server.homedir, 'unused-overrides'), backups: path.join(mac.homedir, '.svall/mirror-backup') } } });
+      put(w.home.paths.mirrorState, JSON.stringify(record));
+      const ask = () => call<{ sent: number; left?: string[] }>(w.home.ctx, 'machines.copySetupFrom', { machine: W });
+      await w.link();
+      await until(() => expect(w.worker.connection.connected()).toBe(true));
+      await w.home.links.mirrorSettled(W);
+      return { server, w, ask };
+    }
+
+    it('goes back at the next Copy once unticked, as one a Copy sent does', async () => {
+      const { server, ask } = await movedThere();
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    });
+
+    it('stays while ticked, and goes back at the Copy after its untick', async () => {
+      const { server, w, ask } = await movedThere();
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: true });
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: KEY });
+      await call(w.worker.ctx, 'home.setupConsent', { item: ITEM, fields: [FIELD], on: false });
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+    });
+
+    it('a server ticked whole stays through the untick and the next Copy, its key with it, where a key goes back', async () => {
+      const odd = { command: 'odd', sandbox: { token: 'odd_key_secret_1234567890' } };
+      const { server, ask } = await movedThere(odd);
+      expect(json(server.claudeJson).mcpServers.odd).toEqual(odd);
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: '${LINEAR_API_KEY}' });
+      expect(json(server.claudeJson).mcpServers.odd).toEqual(odd);
+    });
+
+    it('a key the home holds that no push copied stays through the untick', async () => {
+      const { server, ask } = await movedThere();
+      editJson(server.claudeJson, (j) => { j.mcpServers.linear.env.LINEAR_API_KEY = 'own_key_1234567890'; });
+      await ask();
+      expect(json(server.claudeJson).mcpServers.linear.env).toEqual({ LINEAR_API_KEY: 'own_key_1234567890' });
+    });
   });
 
   it('an untick of a whole item takes it back at the next Copy while it is still the copy; a sender dropping it does not', async () => {

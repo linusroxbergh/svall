@@ -126,19 +126,22 @@ describe('the home replaying what a worker did while it slept', () => {
     expect(logged[0]).toMatch(/^w1: a mutation svalld cannot read is skipped/);
   });
 
-  it('a context path this Mac does not have is left out and named in the note; the rest of the update applies', async () => {
-    const { w, call, logged, replayed } = setup();
+  it('a context path a robot was given on its worker is stored as the worker settled it, ~ included, though this Mac lacks it', async () => {
+    const { w, call, logged, replayed, journaled } = setup();
     const notes = path.join(w.worker.paths.home, 'notes.md');
     fs.writeFileSync(notes, 'notes\n');
+    fs.writeFileSync(path.join(os.homedir(), 'plan.md'), 'plan\n');
+    const file = (ref: string) => ({ kind: 'file', ref, label: '', source: 'manual' });
     const url = { kind: 'other', ref: 'https://example.com/spec', label: 'spec', source: 'manual' };
-    await call('robot.update', { id: 'c_1', note: 'reviewing', context: [{ kind: 'file', ref: notes, label: 'notes', source: 'manual' }, url] });
-    // the file is on w1 alone
+    await call('robot.update', { id: 'c_1', note: 'reviewing', context: [file(notes), file('~/plan.md'), url] });
+    const plan = path.join(os.homedir(), 'plan.md');
+    expect(journaled()[0].params).toMatchObject({ context: [{ ref: notes }, { ref: plan }, { ref: url.ref }] });
+    // the files are on w1 alone
     fs.rmSync(notes);
+    fs.rmSync(plan);
     await w.link();
     await replayed();
-    expect(w.home.store.state.robots.c_1).toMatchObject({
-      note: `reviewing\nw1 added ${notes} to the context while this Mac slept; it is not on this Mac`, noteSource: 'manual', context: [url],
-    });
+    expect(w.home.store.state.robots.c_1).toMatchObject({ note: 'reviewing', context: [{ ref: notes, kind: 'file' }, { ref: plan, kind: 'file' }, url] });
     expect(logged).toEqual([]);
   });
 

@@ -6,7 +6,7 @@ import { expandHome, resolvePaths } from '@svall/svalld/paths';
 import { clean, fenced, flat, short, summary, tokens } from '@svall/svalld/retro/render';
 import type { Client } from '../client.js';
 import { printResult } from '../format.js';
-import { withClient } from './fleet.js';
+import { withClient } from '../client.js';
 
 const POLL_MS = 3_000;
 const ENDED = new Set<RetroStatus['stage']>(['done', 'failed', 'interrupted']);

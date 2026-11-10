@@ -18,10 +18,7 @@ function Field({ r }: { r: FieldRef }) {
   const e = useApp((s) => entityOf(s, r))!;
   const value = fieldValue(e, r.field);
   const refuse = useRefusal(r.tier === 'robot' ? r.id : undefined);
-  const save = (v: string) => {
-    if (v === value) return;
-    saveEntityField(deps(), r, v);
-  };
+  const save = (v: string) => (v !== value ? saveEntityField(deps(), r, v) : undefined);
   return (
     <FollowTextarea className="res-field" data-testid="resources-field" aria-label={fieldLabel(r)}
       placeholder={r.field === 'note' ? fieldLabel(r) : 'Instructions for the agent'} key={`${r.id}:${r.field}`} value={value} {...fieldTry(refuse)} onSave={save} />
