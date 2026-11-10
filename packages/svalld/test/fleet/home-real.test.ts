@@ -3,13 +3,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { emptyState, HOME_ISLAND, type HomeManifest, type MachineId, type Response } from '@svall/protocol';
+import { emptyState, HOME_ISLAND, MachineId, type HomeManifest, type Response } from '@svall/protocol';
 import { HomeCrash } from '../../src/failpoints.js';
 import { abortAdopt, adoptStatus, installAdopt, journalLines, markKey, packFleet, stageAdopt, type HomeDaemon } from '../../src/fleet/home-move.js';
 import { HomeDial } from '../../src/link/dialout.js';
 import { HomeLinks } from '../../src/link/home.js';
 import { silentLogger } from '../../src/log.js';
-import { machineId } from '../../src/machine.js';
+import { machineId, putRecord } from '../../src/machine.js';
 import { startDaemon, type Daemon } from '../../src/main.js';
 import { dialSocket, resolvePaths, type Paths } from '../../src/paths.js';
 import { issueToken } from '../../src/placement/workers.js';
@@ -105,7 +105,17 @@ runIf('a home move through real starts', () => {
       await d.start();
       const call = vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {}, paths: { [`~/${NONE}`]: false } });
       expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { sheet: { rewrites: [{ key: 'defaultCwd', to: `~/${NONE}`, lacks: true }] } } });
-      expect(call).toHaveBeenCalledWith(STUDIO, 'home.facts', { paths: [`~/${NONE}`] });
+      expect(call).toHaveBeenCalledWith(STUDIO, 'home.facts', { paths: [`~/${NONE}`, '~/.svall/home'] });
+    }, 60_000);
+
+    it('names another worker\'s way back by its platform, as the registry has it', async () => {
+      const paths = fleetHome();
+      const d = await firstStart(paths);
+      const vault = MachineId.parse('77777777-8888-9999-aaaa-bbbbbbbbbbbb');
+      putRecord(vault, { name: 'linus-vault', ssh: 'ada@vault', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/home/ada/.svall' } as never);
+      issueToken(paths, vault);
+      vi.spyOn(HomeLinks.prototype, 'call').mockResolvedValue({ machineId: STUDIO, release: 'r', protocol: 1, stateSchema: 1, clock: Date.now(), fleetHome: '/home/ada/.svall', tailscale: {} });
+      expect(await d.ask('fleet.homeCheck', { to: STUDIO })).toMatchObject({ result: { refusal: { more: expect.arrayContaining([{ reason: `${vault} is a worker of this fleet too`, action: `remove ${vault} first; after the move, add it again from ${STUDIO}` }]) } } });
     }, 60_000);
 
     it('coming back, the paths the home names by its own fleet.json, of this machine', async () => {
