@@ -637,7 +637,6 @@ function claimName(registry: MachineRegistry, o: AddOptions): Outcome<Registered
 }
 
 /** What a home with no one at its ssh says of a machine it cannot log in to; the fix is that home's own key, as no key leaves the Mac. */
-// a relayed run on a Mac home is read in another machine's window, where this Mac is that one
 function noLogin(ssh: string, said: string): StepError {
   const here = homeWord();
   if (!['auth', 'host_key'].includes(classifySsh(said))) return new StepError(`${here} cannot reach ${ssh}${said ? `: ${said}` : ''}`, `check Tailscale on both machines, then ssh ${ssh} from ${here}`);
