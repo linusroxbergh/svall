@@ -351,7 +351,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
     const prepare = new PrepareService({
       store, fleet, tmux, viewers: terminals, connection, me, homeName: worker.worker.homeName, homeWord: workerHomeWord, paths, git: hooklessGit, agents, homedir: os.homedir(), log,
     });
-    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
+    Object.assign(calls, workerCalls({ fleet, store, me, log, terminals, viewers: farViewers, refuses: (p) => workspace.refuses(p) }), prepare.handlers, workerMirror.calls, workerDocs.handlers, workerDrops.calls);
     if (ownSetup) calls['config.copyToHome'] = () => ownSetup.push();
   }
   const placement = links && new Placement({

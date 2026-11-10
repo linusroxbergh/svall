@@ -210,7 +210,7 @@ export function world(o: {
   const workerRoots = rootHere((c) => workerRouter.runsHere(c));
   const workerWorkspace = new Workspace(
     (id) => workspaceRoot(id, workerStore.state, workerClaude, undefined, workerPaths.docs, workerPaths.agentProfiles, (c) => workerRouter.runsHere(c), workerRoots, workerDocsRoot),
-    silentLogger, () => [], [workerPaths.docs, workerPaths.agentProfiles],
+    silentLogger, () => [workerClaude.json], [workerPaths.docs, workerPaths.agentProfiles],
   );
   const workerResources = () => repoSources(workerStore.state, workerClaude, workerPaths.docs, workerRoots);
   const workerDocs = o.docs && new WorkerDocs({
@@ -218,7 +218,7 @@ export function world(o: {
   });
   Object.assign(
     handlers, o.far ?? {
-      ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers }),
+      ...workerCalls({ fleet: workerFleet, store: workerStore, me: W, log: silentLogger, terminals, viewers: farViewers, refuses: (p) => workerWorkspace.refuses(p) }),
       ...fileCalls({ workspace: workerWorkspace, viewers: farViewers, terminals, resources: workerResources }), 'usage.get': () => workerUsage(),
       ...workerDropCalls.calls, 'screen.home': homeScreenCall(terminals, H),
     }, workerDocs?.handlers,

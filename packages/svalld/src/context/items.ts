@@ -6,18 +6,28 @@ import { expandHome } from '../paths.js';
 // every link refresh reads each ref over again
 export const MAX_REF = 4096;
 
+const normal = (raw: ContextItem): ContextItem => (isPathRef(raw.ref) ? raw : { ...raw, ref: itemUrl(raw.ref) });
+const named = (it: ContextItem): boolean => isPathRef(it.ref) || it.kind === 'file' || it.kind === 'folder';
+
+/** Whether settling `items` looks at the disk: a file or folder not already stored. */
+export const readsDisk = (items: ContextItem[], current: ContextItem[] = []): boolean => {
+  const stored = new Set(current.map((it) => it.ref));
+  return items.map(normal).some((it) => !stored.has(it.ref) && named(it));
+};
+
 // a link is stored at the level worth a chip, so a view inside a PR reads as the PR. an item already stored is kept
-// as is, so one dead path never blocks the rest
-export function settleItems(items: ContextItem[], current: ContextItem[] = []): ContextItem[] {
+// as is, so one dead path never blocks the rest. `refuses`: a path that is not the fleet's to open
+export function settleItems(items: ContextItem[], current: ContextItem[] = [], refuses?: (abs: string) => boolean): ContextItem[] {
   const stored = new Map(current.map((it) => [it.ref, it]));
   return items.map((raw) => {
     if (/[\n\r]/.test(raw.ref)) throw new Invalid(`context ref must not contain a newline: ${raw.ref}`);
-    const it = isPathRef(raw.ref) ? raw : { ...raw, ref: itemUrl(raw.ref) };
+    const it = normal(raw);
     const kept = stored.get(it.ref);
     if (kept) return { ...it, ref: kept.ref, kind: kept.kind };
     if (it.ref.length > MAX_REF) throw new Invalid(`a context ref may run to ${MAX_REF} characters: ${it.ref.slice(0, 80)}…`);
-    if (!isPathRef(it.ref) && it.kind !== 'file' && it.kind !== 'folder') return it;
+    if (!named(it)) return it;
     const ref = expandHome(it.ref.trim());
+    if (refuses?.(ref)) throw new Invalid(`${it.ref} is not the fleet's to open`);
     let dir: boolean;
     try { dir = fs.statSync(ref).isDirectory(); } catch { throw new Invalid(`no such file or folder: ${it.ref}`); }
     return { ...it, ref, kind: dir ? 'folder' : 'file' };

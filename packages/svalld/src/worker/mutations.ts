@@ -11,6 +11,7 @@ import { resolveRepo } from '../links/git.js';
 import type { Logger } from '../log.js';
 import { expandHome, type Paths } from '../paths.js';
 import { unreachableLine } from '../placement/router.js';
+import { settleItems } from '../context/items.js';
 import type { Store } from '../store.js';
 import type { Entry, Outbox } from './outbox.js';
 
@@ -165,10 +166,13 @@ export class WorkerMutations {
     if (named.some((k) => !(UPDATE_FIELDS as readonly string[]).includes(k))) throw new ApiError('not_reachable', unreachableLine(this.name, this.o.homeWord()));
     const held = this.o.fleet.robot(p.id);
     const base = Object.fromEntries(named.map((k) => [k, held[k as keyof Robot]]));
-    const mutation = this.stamp({ method: 'robot.update', params: p, base });
+    // a robot of this machine's has its context paths settled here, where its files are, and journaled so
+    const context = p.context && held.machine === this.o.me ? settleItems(p.context, held.context) : undefined;
+    const q = context ? { ...p, context } : p;
+    const mutation = this.stamp({ method: 'robot.update', params: q, base });
     // refused before the change is made here, as the home could never take it
     this.o.connection.fits('mutation', mutation);
-    const robot = this.o.fleet.updateRobot(p.id, p);
+    const robot = this.o.fleet.updateRobot(p.id, q, context);
     this.o.connection.journal('mutation', mutation);
     return robot;
   }

@@ -110,6 +110,11 @@ export class Workspace {
     return { refused, is };
   }
 
+  /** Whether no root reaches the absolute path `abs`. */
+  refuses(abs: string): boolean {
+    return this.refusal().is(path.resolve(abs));
+  }
+
   // with `absolute`, an absolute path may lead anywhere; the robot's root is still asked for, so one on another machine stays refused
   private at(id: string, rel: string, refusal = this.refusal(), absolute = false): string {
     const root = this.rootOf(id);

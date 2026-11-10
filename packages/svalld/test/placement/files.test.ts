@@ -82,6 +82,41 @@ describe('files of a robot on a worker', () => {
     w.home.links.stop();
     expect(await update(tree)).toMatchObject({ error: { code: 'not_reachable' } });
     expect(w.home.store.state.robots.c_1.context.map((c) => c.ref)).toEqual([path.join(tree, 'a.txt')]);
+    // what names no new path needs nothing of that machine: an item already stored, a link, none at all
+    const url = { kind: 'other' as const, ref: 'https://example.com/spec', label: 'spec', source: 'manual' as const };
+    const kept = w.home.store.state.robots.c_1.context;
+    expect(await dispatch({ id: 2, method: 'robot.update', params: { id: 'c_1', name: 'renamed', context: [...kept, url] } }, w.home.ctx))
+      .toMatchObject({ result: { name: 'renamed', context: [{ ref: path.join(tree, 'a.txt') }, { ref: url.ref }] } });
+    expect(await dispatch({ id: 3, method: 'robot.update', params: { id: 'c_1', context: [] } }, w.home.ctx)).toMatchObject({ result: { context: [] } });
+  });
+
+  it('a ~ path is settled in the home folder of the robot\'s machine, and a file Files refuses there is refused', async () => {
+    const { w } = await linked();
+    const far = makeHome();
+    fs.writeFileSync(path.join(far, 'plan.md'), 'plan\n');
+    const settle = w.worker.handlers['context.settle'];
+    w.worker.handlers['context.settle'] = async (p) => {
+      const home = process.env.HOME;
+      process.env.HOME = far;
+      try { return await settle(p); } finally { process.env.HOME = home; }
+    };
+    const update = (ref: string) => dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', context: [{ kind: 'file', ref, label: '', source: 'manual' }] } }, w.home.ctx);
+    expect(await update('~/plan.md')).toMatchObject({ result: { context: [{ ref: path.join(far, 'plan.md'), kind: 'file' }] } });
+    const login = path.join(w.worker.paths.home, 'claude.json');
+    fs.writeFileSync(login, '{}');
+    expect(await update(login)).toMatchObject({ error: { code: 'invalid', message: `${login} is not the fleet's to open` } });
+  });
+
+  it('a worker\'s settle svalld cannot read, or one its release lacks, stores nothing', async () => {
+    const { w, tree } = await linked();
+    const update = () => dispatch({ id: 1, method: 'robot.update', params: { id: 'c_1', context: [{ kind: 'file', ref: path.join(tree, 'a.txt'), label: '', source: 'manual' }] } }, w.home.ctx);
+    w.worker.handlers['context.settle'] = async () => [{ kind: 'file', ref: 'a.txt' }];
+    expect(await update()).toMatchObject({ error: { code: 'internal', message: 'w1 answered with a context svalld cannot read' } });
+    w.worker.handlers['context.settle'] = async () => [];
+    expect(await update()).toMatchObject({ error: { code: 'internal' } });
+    delete w.worker.handlers['context.settle'];
+    expect(await update()).toMatchObject({ error: { code: 'invalid', message: 'w1 runs a release that cannot look for its robots\' files; upgrade it under Machines' } });
+    expect(w.home.store.state.robots.c_1.context).toEqual([]);
   });
 
   it('a 1.5 MB file reads whole over the link', async () => {
