@@ -312,6 +312,9 @@ const refusalStep = (refusal: Refusal): StepError => new StepError([refusal.reas
 // a terminal's word for what the sheet says of a path the machine taking the fleet does not have yet
 const lacking = (sheet: HomeSheet, name: string): string => sheet.rewrites.filter((r) => r.lacks).map((r) => `; ${r.key} ${r.kept ? 'is' : 'becomes'} ${r.to}, which ${name} does not have yet`).join('');
 
+// the old home served the phone, as its freeze read its own records, so the new one turns the link on, which a window waits for
+const servesPhone = (run: Runner, name: string): Promise<void> => run.step('phone', async () => ({ value: undefined, detail: `${name} turns the phone link on once it holds the fleet` }));
+
 const CREW_BACK = 'svall fleet home crew-back';
 // what a window says where a terminal is given the commands that end a move: the sheet's, and the banner's, which holds both buttons
 const CLOSE_TO_END = 'Close to finish the move or call it off';
@@ -435,6 +438,7 @@ export function moveHomeOut(machine: string, d: MoveDeps, o: CrewChoice = {}): P
       await moveMission(run, client, paths, id, to, name, name, o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await client.call('fleet.freeze', { id, to }), detail: 'this home takes no more writes' }));
+      if (phone.serving) await servesPhone(run, name);
       homePoint('move.paused');
       const adoptKeySha256 = mintAdoptKey(paths, id);
       driverJournal(paths, id, 'copy');
@@ -562,6 +566,7 @@ export function moveHomeBack(d: MoveDeps, o: CrewChoice = {}): Promise<HostOutco
       await moveMission(run, home!, paths, id, d.me, 'this machine', 'local', o);
       driverJournal(paths, id, 'pause');
       const { phone } = await run.step('pause', async () => ({ value: await home!.call('fleet.freeze', { id, to: d.me }), detail: `${name} takes no more writes` }));
+      if (phone.serving) await servesPhone(run, 'this machine');
       // from here a kill leaves what this machine holds of the move for a person to finish or call off
       owe(paths, delivery);
       const adoptKeySha256 = mintAdoptKey(paths, id);

@@ -103,7 +103,7 @@ describe('the sheet of a home move', () => {
     vi.useFakeTimers();
     try {
       fireEvent.click(screen.getByTestId('home-go'));
-      for (const st of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
+      for (const st of ['check', 'pause', 'phone', 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
       await act(async () => { store.getState().hostDone('home', 0); await vi.advanceTimersByTimeAsync(0); });
       expect(screen.getByTestId('home-done').querySelector('img')).toBeNull();
       now = NEW;
@@ -113,18 +113,19 @@ describe('the sheet of a home move', () => {
     } finally { vi.useRealTimers(); }
   });
 
-  it('past half a minute with the new home\'s phone link still off, says what it waits on', async () => {
-    const OLD = { serving: true, url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
+  it.each([[true, 'off'], [false, 'on']])('past half a minute with the new home\'s phone link still off, says what it waits on only when the old home said it served (%s), whatever the window last read (%s)', async (served, read) => {
+    const OLD = { serving: read === 'on', url: 'https://the-mac.tailnet.ts.net:8443', qr: 'data:image/png;base64,OLD', logins: [], phones: [] };
     answer({ 'fleet.homeCheck': { ok: true, sheet: SHEET }, 'mobile.get': { ...OLD, serving: false, qr: undefined } });
     act(() => { store.getState().setMobile(OLD as never); store.getState().setVia({ machine: ME, home: STUDIO, name: 'studio', online: true }); });
     await open();
     vi.useFakeTimers();
     try {
       fireEvent.click(screen.getByTestId('home-go'));
-      for (const st of ['check', 'pause', 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
+      for (const st of ['check', 'pause', ...(served ? ['phone'] : []), 'copy', 'adopt', 'join', 'probe']) step(st, 'ok');
       await act(async () => { store.getState().hostDone('home', 0); await vi.advanceTimersByTimeAsync(0); });
       expect(screen.queryByTestId('home-phone-wait')).toBeNull();
       await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+      if (!served) { expect(screen.queryByTestId('home-phone-wait')).toBeNull(); return; }
       expect(screen.getByTestId('home-phone-wait').textContent).toBe('studio has not turned its phone link on yet; Settings → Phone shows its QR code once it does.');
       const asked = call.mock.calls.filter(([m]) => m === 'mobile.get').length;
       await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });

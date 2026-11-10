@@ -354,6 +354,8 @@ describe('fleet home set <machine>: its steps as NDJSON', () => {
     let staged: string | undefined;
     const { deps } = outDeps((line, input) => { if (line.includes('--stage')) staged = input; return happy(line); }, { phone: { serving: true, logins: ['ada@tailnet'] } });
     await moveHomeOut('studio', deps);
+    // the sheet waits on the new home's phone link by this step, which a freeze that found it off leaves out
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
     const dir = fs.mkdtempSync(path.join(home, 'tar-'));
     fs.writeFileSync(path.join(dir, 'in.tar'), Buffer.from(staged!, 'base64'));
     execFileSync('tar', ['-x', '-f', 'in.tar', 'home-move.json'], { cwd: dir });
@@ -643,6 +645,14 @@ describe('fleet home set local', () => {
     master.run = ((argv: string[], o?: never) => (argv.join(' ').includes("'export'") ? Promise.resolve({ code: 0, signal: null, stderr: '', stdout: '{"sha256":"ab","archive":"Zm9v' }) : run(argv, o))) as never;
     expect((await moveHomeBack(deps)).result).toBe('actions');
     expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('did not answer a whole archive') });
+  }, 30_000);
+
+  it('names the phone step when studio\'s freeze found its phone link served', async () => {
+    const { w, deps, master } = await workerHere(() => true, { phone: { serving: true, logins: [] } });
+    const stop = telling(w, master);
+    await moveHomeBack(deps);
+    stop();
+    expect(ran()).toEqual(['check:ok', 'mission:skip', 'pause:ok', 'phone:ok', 'copy:ok', 'mark:ok', 'adopt:ok', 'join:ok', 'probe:ok']);
   }, 30_000);
 
   it('runs its steps in order, the outcome owed before the old home is marked, and tells it', async () => {

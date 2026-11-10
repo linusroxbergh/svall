@@ -81,13 +81,10 @@ export function HomeSheet() {
   const done = ended && !failed && run.code === 0;
   // the phone's link is the old home's until the new home answers for its own
   useEffect(() => { if (done) app.store.getState().setMobile(undefined); }, [done]);
-  // whether the old home served the phone, so the new one turns its link on
-  const served = useRef(false);
   if (!ask) return null;
   const { name, back } = ask;
   const shutUnlessRunning = () => { if (!(started && host?.running)) close(); };
   const go = () => {
-    served.current = !!app.store.getState().mobile?.serving;
     if (startHost('home', { name: back ? 'local' : name, ...(interrupt && { interrupt: true }) })) setStarted(true);
   };
   const refused = check && 'ok' in check && !check.ok ? check.refusal : undefined;
@@ -161,7 +158,7 @@ export function HomeSheet() {
         {done && (
           <div data-testid="home-done">
             <div className="host-note">The fleet runs on {back ? 'this Mac' : name}. Open the phone from its new QR code once.</div>
-            {reached ? <><MobilePanel />{served.current && <PhoneWait name={back ? 'this Mac' : name} />}</> : <div className="host-note" data-testid="home-reaching">Reaching the fleet on {back ? 'this Mac' : name}…</div>}
+            {reached ? <><MobilePanel />{run?.steps.some((s) => s.step === 'phone') && <PhoneWait name={back ? 'this Mac' : name} />}</> : <div className="host-note" data-testid="home-reaching">Reaching the fleet on {back ? 'this Mac' : name}…</div>}
             <div className="acts"><button className="btn pri" data-testid="home-finish" autoFocus onClick={close}>Done</button></div>
           </div>
         )}
