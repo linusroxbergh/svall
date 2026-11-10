@@ -48,6 +48,21 @@ test('reports a runner that failed', async () => {
     .toEqual(["tools-off probe couldn't run: claude -p failed: not logged in"]);
 });
 
+test('asks again after a call that timed out', async () => {
+  let calls = 0;
+  const run: Runner = async (system, prompt, call) => {
+    if (++calls === 1) throw new Error('codex exec timed out after 180000ms');
+    return model({})(system, prompt, call);
+  };
+  expect(await toolsOff('codex', { run })).toEqual([]);
+  expect(calls).toBe(2);
+});
+
+test('reports a CLI that timed out twice', async () => {
+  expect(await toolsOff('codex', { run: async () => { throw new Error('codex exec timed out after 180000ms'); } }))
+    .toEqual(["tools-off probe couldn't run: codex exec timed out after 180000ms"]);
+});
+
 test("reports an account out of quota as couldn't check", async () => {
   const limit = 'codex exec failed: You’ve hit your usage limit. Upgrade to Pro (https://chatgpt.com/explore/pro) or try again at Nov 4th, 2026 9:00 AM.';
   expect(await toolsOff('codex', { run: async () => { throw new Error(limit); } })).toEqual([`couldn't check: tools-off probe: ${limit}`]);
