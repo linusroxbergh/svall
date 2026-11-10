@@ -166,11 +166,15 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   const config = loadConfig(paths, log.info);
   if (configRelinked(paths)) log.info(`${paths.legacyConfig} is not read: it links to the file ${paths.legacyConfig}.bak does, which ${paths.fleetConfig} and ${paths.nodeConfig} were split out of; link those instead`);
   const worker = opts.worker ? workerOptions(paths) : undefined;
+  // this machine's registry names the home wherever it holds a record, as every window and command here does; the home's own name only where it holds none
+  const registeredName = (id: string): string | undefined => { try { return readRegistry().find((m) => m.id === id)?.record.name; } catch { return undefined; } };
+  if (worker) worker.worker.homeName = registeredName(worker.worker.homeMachineId) ?? worker.worker.homeName;
   // a worker's docs are its home's, as the home last sent them
   if (worker) paths.docs = path.join(paths.cache, 'docs');
   const off = new Set<Off>(worker?.off ?? []);
   // a state.json this svalld refuses stops it before the hooks, tmux.conf and Codex's trust are touched
   const store = Store.load(paths.state, log.error);
+  const homeLabel = (): string => registeredName(worker!.worker.homeMachineId) ?? store.state.machines?.[worker!.worker.homeMachineId]?.name ?? worker!.worker.homeName;
   if (off.has('scribe')) store.update((d) => { d.scribeOff = true; });
   // a home holds its fleet as its own, so what said it was a worker's goes, and heldAsHome counts it again
   const wasWorker = !worker && Object.values(store.state.machines ?? {}).some((m) => m.snapshot);
@@ -309,10 +313,10 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   // this worker's own agent setup, which its home asks for once when a person copies it there; the keys it ticks stay on this machine
   const ownSetup = connection && worker && workerSetup({
     mirror: new Mirror({ ...agentHomes, consent: paths.mirrorConsent, log, envFile: paths.env }), connection, home: worker.worker.homeMachineId,
-    homeName: () => store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
+    homeName: () => homeLabel(), stateFile: paths.mirrorState, pushFailed: () => workerMirror?.failed(),
   });
   const workerDocs = connection ? new WorkerDocs({ dir: paths.docs, file: paths.docsSynced, stage: paths.cache, connection, log }) : undefined;
-  const workerHomeWord = () => (worker ? homeWordOnWorker(store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, !!worker.worker.homeSsh) : 'this Mac');
+  const workerHomeWord = () => (worker ? homeWordOnWorker(homeLabel(), !!worker.worker.homeSsh) : 'this Mac');
   const router = new Router({
     store, me, log, links, ...(replay && { replay, homedir: os.homedir() }), ...(worker && connection && { home: { id: worker.worker.homeMachineId, connection, word: workerHomeWord } }),
   });
@@ -422,7 +426,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
       const here = await homeFacts(paths, { paths: far?.rewrites?.map((r) => r.to) ?? [], me, role: 'worker', fleetId });
       const toName = ownName();
       const from = far ?? { ...here, machineId: worker_.homeMachineId, tailscale: {} };
-      const back = store.state.machines?.[worker_.homeMachineId]?.name ?? worker_.homeName;
+      const back = homeLabel();
       return homeCheck({ state: store.state, from, to: here, toName, back, linked: far !== undefined && router.homeConnected, synced: (connection?.connected() ?? false) && (mutations?.drained() ?? true), fromIsHome: to === me });
     }
     const here = await homeFacts(paths, { me, role: 'home', fleetId });
@@ -439,7 +443,7 @@ async function start(opts: Omit<Options, 'worker'> & { worker?: true }): Promise
   };
   const registered = () => { try { return readRegistry(); } catch { return []; } };
   const fleetHome = () => (worker
-    ? { machine: worker.worker.homeMachineId, name: store.state.machines?.[worker.worker.homeMachineId]?.name ?? worker.worker.homeName, mine: false, me, fleetId: worker.worker.fleetId }
+    ? { machine: worker.worker.homeMachineId, name: homeLabel(), mine: false, me, fleetId: worker.worker.fleetId }
     : { machine: me, name: ownName(), mine: true, me, fleetId: config.id });
 
   const load = new LoadSampler({

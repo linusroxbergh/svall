@@ -174,7 +174,9 @@ export function joinHome(o: JoinOptions, d: JoinDeps): Promise<HostOutcome> {
         let answer: z.infer<typeof Enrolled>;
         try { answer = Enrolled.parse(JSON.parse(r.stdout)); } catch { throw new StepError('svall fleet enroll-worker there did not answer what a worker enrols with', `upgrade Svall on ${o.ssh}`); }
         if (answer.fleetId !== home.fleetId || answer.homeMachineId !== home.id) throw new StepError(`${o.ssh} issued a token for another fleet or machine than it answered as`, `ssh ${o.ssh} and see which fleet runs there`);
-        return { value: answer, detail: `${answer.homeName} issued this machine a token` };
+        // this machine's registry names the home where it holds a record, as its window does; the home's own name only where it holds none
+        const named = { ...answer, homeName: d.registry.get(answer.homeMachineId)?.record.name ?? answer.homeName };
+        return { value: named, detail: `${named.homeName} issued this machine a token` };
       });
       // a join run again finds the last one's snapshot, which says nothing of this one
       const since = Date.now();

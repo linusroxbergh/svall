@@ -85,6 +85,20 @@ describe('svall fleet join', () => {
     expect(JSON.stringify(events)).not.toContain(TOKEN);
   });
 
+  it('names the home as this machine\'s registry does, whatever the home calls itself, and its own name where the registry has none', async () => {
+    const registry = MachineRegistry.load();
+    registry.put(HOME_ID as never, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/opt/svall' });
+    registry.save();
+    await joinHome({ ssh: 'ada@studio' }, deps({ enrolled: { ...ENROLLED, homeName: 'linus-vault' } }));
+    expect(enrolled).toEqual([expect.objectContaining({ homeName: 'studio' })]);
+    expect(events.filter((e) => e.status === 'ok').map((e) => e.detail).join('\n')).not.toContain('linus-vault');
+    registry.remove(HOME_ID);
+    registry.save();
+    [enrolled, events] = [[], []];
+    await joinHome({ ssh: 'ada@studio' }, deps({ enrolled: { ...ENROLLED, homeName: 'linus-vault' } }));
+    expect(enrolled).toEqual([expect.objectContaining({ homeName: 'linus-vault' })]);
+  });
+
   it('an enrolment that refuses leaves this fleet under its own id, and no folder it did not have', async () => {
     const refused = deps({}, { enrol: () => Promise.reject(new Error('worker.json not written: no private fleet yet; run svall setup first')) });
     const out = await joinHome({ ssh: 'ada@studio' }, refused);

@@ -4,13 +4,13 @@ import net from 'node:net';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
-import { emptyState, type LinkFrame, type Response } from '@svall/protocol';
+import { emptyState, type LinkFrame, type MachineId, type Response } from '@svall/protocol';
 import { installFakeSsh } from '../../../cli/test/controller/fake-ssh.js';
 import { InvalidConfig } from '../../src/config.js';
 import { LinkStream } from '../../src/link/stream.js';
 import { silentLogger } from '../../src/log.js';
 import { startDaemon } from '../../src/main.js';
-import { machineId } from '../../src/machine.js';
+import { machineId, putRecord } from '../../src/machine.js';
 import { dialSocket, resolvePaths } from '../../src/paths.js';
 import { Store } from '../../src/store.js';
 import { Tmux } from '../../src/tmux/tmux.js';
@@ -145,6 +145,25 @@ runIf('svalld --worker', () => {
       api.close();
       await d.stop();
     }
+  });
+
+  it('names its home as this machine\'s registry does, and by the home\'s own name only where the registry has none', async () => {
+    const home = makeHome();
+    homes.push(home);
+    const config = makeHome();
+    vi.stubEnv('SVALL_CONFIG_DIR', config);
+    const paths = resolvePaths(home);
+    fs.writeFileSync(paths.workerFile, JSON.stringify({ ...workerFile, homeName: 'linus-vault' }));
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ shell: '/bin/sh' }));
+    fs.writeFileSync(paths.state, JSON.stringify({ ...emptyState(), machines: { [workerFile.homeMachineId]: { name: 'linus-vault', reachable: false, since: 1 } } }));
+    const named = async (): Promise<string> => {
+      const d = await startDaemon({ home, port: 0, worker: true, log: silentLogger });
+      const api = await client(d.port, d.token);
+      try { return ((await api.call('fleet.home')) as unknown as { result: { name: string } }).result.name; } finally { api.close(); await d.stop(); }
+    };
+    expect(await named()).toBe('linus-vault');
+    putRecord(workerFile.homeMachineId as MachineId, { name: 'studio', ssh: 'ada@studio', platform: 'linux', arch: 'x64', home: '/home/ada', svallBase: '/opt/svall' }, config);
+    expect(await named()).toBe('studio');
   });
 
   it('greets its home with the release svall version names, the version in release.json', async () => {

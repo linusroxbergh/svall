@@ -1,6 +1,6 @@
 import { aside, asideLine, wayOn, type SetupRow } from '@svall/protocol';
 import type { Api } from './api.js';
-import { machineName } from './placement.js';
+import { destinationName } from './placement.js';
 import type { AppStore } from './store/index.js';
 
 /** How much of a robot's agent setup will not work on the machine it moved to, or nothing when none of that has a way on. */
@@ -22,7 +22,7 @@ export function followLandings(o: { store: AppStore; api: () => Pick<Api, 'call'
       o.api()?.call('machines.setup', { machine: to, robot: id }).then(({ rows }) => {
         const note = setupNote(rows);
         if (!note || o.store.getState().moveSheet?.id === id) return;
-        o.store.getState().showToast(`${c.name} is on ${machineName(s.fleet, to)}. ${note}`, 'ok',
+        o.store.getState().showToast(`${c.name} is on ${destinationName(s.fleet, to, s.via)}. ${note}`, 'ok',
           { label: 'Show', run: () => o.store.getState().select(id, true) });
       }, () => {});
     }
