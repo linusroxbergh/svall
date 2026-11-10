@@ -1311,6 +1311,27 @@ describe('the join', () => {
     expect(left).toEqual([`docs.home-${ID}`, `docs.home-${before}`, `notes.home-${other}`, `state.json.home-${ID}`, `state.json.home-${before}`, `workers.json.home-${ID}`, `workers.json.home-${before}`].sort());
   });
 
+  it('a join stands where an older move\'s copy cannot be taken out, and the rest of it goes', async () => {
+    const { w, marked } = await adopted();
+    await w.mac.daemon.stop();
+    const [older, before] = ['hm_0000000001', 'hm_0000000002'];
+    for (const [id, ago] of [[older, 2], [before, 1]] as const) {
+      fs.writeFileSync(`${w.mac.paths.state}.home-${id}`, '{}');
+      fs.mkdirSync(path.join(`${w.mac.paths.docs}.home-${id}`, 'fleet'), { recursive: true });
+      const t = new Date(Date.now() - ago * 86_400_000);
+      fs.utimesSync(`${w.mac.paths.state}.home-${id}`, t, t);
+    }
+    const locked = path.join(`${w.mac.paths.docs}.home-${older}`, 'fleet');
+    fs.writeFileSync(path.join(locked, 'note.md'), 'a note');
+    fs.chmodSync(locked, 0o500);
+    putMarker(w.mac.paths, marked);
+    try {
+      joinAsWorker(w.mac.paths, marked as HomeMoving & { enrol: NonNullable<HomeMoving['enrol']> }, w.mac.registryDir);
+    } finally { fs.chmodSync(locked, 0o700); }
+    expect(fs.existsSync(w.mac.paths.workerFile)).toBe(true);
+    expect(fs.existsSync(`${w.mac.paths.state}.home-${older}`)).toBe(false);
+  });
+
   it('run again on what it wrote, it derives the same state', async () => {
     const { w, marked } = await adopted();
     await w.mac.daemon.stop();

@@ -926,7 +926,10 @@ function dropOldCopies(p: Paths, id: string): void {
   }
   const at = (m: string): number => { try { return fs.statSync(`${p.state}.home-${m}`).mtimeMs; } catch { return 0; } };
   const older = [...byMove.keys()].filter((m) => m !== id).sort((a, b) => at(b) - at(a)).slice(1);
-  for (const m of older) for (const name of byMove.get(m)!) fs.rmSync(path.join(p.home, name), { recursive: true, force: true });
+  // best effort: a copy that cannot go stays for a person to remove, and the join stands
+  for (const m of older) for (const name of byMove.get(m)!) {
+    try { fs.rmSync(path.join(p.home, name), { recursive: true, force: true }); } catch { /* left as it is */ }
+  }
 }
 
 /**
