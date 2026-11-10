@@ -135,7 +135,8 @@ export async function asksOwnQuestion(tmux: Pick<Tmux, 'screen'>, paneId: string
   while (!signal.aborted) {
     const rows = await tmux.screen(paneId).then((s) => s.rows, () => [] as string[]);
     const trust = adapter.trustQuestion !== undefined && rows.some((r) => r.includes(adapter.trustQuestion!));
-    if (!trust && rows.some((r) => /^\s*[❯›>]\s*\d+\.\s+\S/.test(r))) return;
+    // the selection pointer alone, as a past prompt shows after `> `
+    if (!trust && rows.some((r) => /^\s*[❯›]\s*\d+\.\s+\S/.test(r))) return;
     await nap(POLL_MS, signal);
   }
 }

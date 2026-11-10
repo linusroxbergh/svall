@@ -259,6 +259,9 @@ describe('wake', () => {
     const trusting = claudeToWake([claudeAdapter.trustQuestion!, '', '❯ 1. Yes, proceed', '  2. No, exit']);
     const still = await Promise.race([trusting().then(() => 'ended'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 1500))]);
     expect(still).toBe('waiting');
+    // a past prompt of a resumed conversation is no question
+    const resumed = claudeToWake(['> 1. Fix the login bug', '', '⏺ Fixed it.']);
+    expect(await Promise.race([resumed().then(() => 'ended'), new Promise((resolve) => setTimeout(() => resolve('waiting'), 1500))])).toBe('waiting');
   });
 
   it('counts a Codex robot up once its window opens, which reports no session until its first turn, and answers its trust question after', async () => {
