@@ -431,6 +431,24 @@ describe('adopting', () => {
     expect((JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')) as { mobile: { logins: string[] } }).mobile.logins).toEqual(['ada@tailnet']);
   });
 
+  it('mission control\'s folder that is the fleet\'s own, as written or in ~/ form, becomes the new home\'s fleet\'s; any other is carried as written', async () => {
+    const carried = async (cwd: (home: string) => string): Promise<string> => {
+      const w = await world({ fleets: ['.svall-dev-fartest', '.svall-fartest'] });
+      await w.mac.daemon.stop();
+      const config = JSON.parse(fs.readFileSync(w.mac.paths.fleetConfig, 'utf8'));
+      fs.writeFileSync(w.mac.paths.fleetConfig, JSON.stringify({ ...config, home: { cwd: cwd(path.dirname(w.mac.paths.home)) } }));
+      const archive = await packFleet(w.mac.paths, w.manifest);
+      await stageAdopt(w.studio.deps, ID, archive.sha256, archive.bytes);
+      expect((await installAdopt(w.studio.deps, ID, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+      return JSON.parse(fs.readFileSync(w.studio.paths.fleetConfig, 'utf8')).home.cwd;
+    };
+    expect(await carried(() => '~/.svall-dev-fartest/home')).toBe('~/.svall-fartest/home');
+    expect(await carried((home) => `${home}/.svall-dev-fartest/home`)).toBe('~/.svall-fartest/home');
+    expect(await carried(() => '~/.svall-fartest/home')).toBe('~/.svall-fartest/home');
+    expect(await carried((home) => `${home}/crew`)).toBe('~/crew');
+    expect(await carried(() => '/opt/crew')).toBe('/opt/crew');
+  });
+
   it('a daemon that will not answer as home undoes the whole set, and starts as the worker it was', async () => {
     const w = await world();
     await stageAdopt(w.studio.deps, ID, w.archive.sha256, w.archive.bytes);

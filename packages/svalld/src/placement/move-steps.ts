@@ -59,6 +59,8 @@ export const MoveJournal = z.object({
     branch: ObjectName.nullable().optional(),
     // the session files that were not here
     files: z.array(z.string()).optional(),
+    // the first folder of mission control's that was not here
+    folder: z.string().optional(),
   }).optional(),
   // the fingerprint of the worktree an abort left again here, or that it kept it as it was, which an abort asked again answers
   fingerprint: z.string().optional(),

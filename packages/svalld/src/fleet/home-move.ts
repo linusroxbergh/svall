@@ -24,7 +24,8 @@ import { keysOnly, readState } from '../placement/mirror-state.js';
 import { homeRootOf } from '../placement/repo-key.js';
 import { relocate } from '../placement/relocate.js';
 import { tokenFor } from '../placement/workers.js';
-import { resolvePaths, type Paths } from '../paths.js';
+import { expandHome, resolvePaths, type Paths } from '../paths.js';
+import { clean } from '../path-tools.js';
 import { fleetHomes } from '../uninstall.js';
 import { withOwned } from '../worker/snapshot.js';
 
@@ -281,13 +282,16 @@ const read = (file: string): unknown => JSON.parse(fs.readFileSync(file, 'utf8')
 
 type CarriedConfig = { defaultCwd?: string; home?: { cwd?: string }; onboarding?: { firstProject?: string }; mobile?: { logins?: string[] } };
 
-// a path under the old home reads as the same place under the new one; the phone's authorization stays what it was, as empty logins mean a login only the old home had
-function carriedConfig(c: CarriedConfig, m: HomeManifest): CarriedConfig {
-  const local = (p: string | undefined): string | undefined => (p === undefined ? p : p === m.record.home ? '~' : p.startsWith(`${m.record.home}/`) ? `~${p.slice(m.record.home.length)}` : p);
+// a path under the old home reads as the same place under the new one, but mission control's folder that is the old fleet's own
+// becomes this fleet's own, in `fleetHome`; the phone's authorization stays what it was, as empty logins mean a login only the old home had
+function carriedConfig(c: CarriedConfig, m: HomeManifest, fleetHome: string): CarriedConfig {
+  const under = (p: string, home: string): string => (p === home ? '~' : p.startsWith(`${home}/`) ? `~${p.slice(home.length)}` : p);
+  const local = (p: string | undefined): string | undefined => (p === undefined ? p : under(p, m.record.home));
+  const own = (p: string): boolean => !!m.fromFleetHome && clean(expandHome(p, m.record.home)) === clean(path.posix.join(m.fromFleetHome, 'home'));
   return {
     ...c,
     ...(c.defaultCwd && { defaultCwd: local(c.defaultCwd) }),
-    ...(c.home?.cwd && { home: { ...c.home, cwd: local(c.home.cwd) } }),
+    ...(c.home?.cwd && { home: { ...c.home, cwd: own(c.home.cwd) ? under(path.posix.join(fleetHome, 'home'), m.toHome) : local(c.home.cwd) } }),
     ...(c.onboarding?.firstProject && { onboarding: { ...c.onboarding, firstProject: local(c.onboarding.firstProject) } }),
     ...(!c.mobile?.logins?.length && m.phone.logins.length && { mobile: { ...c.mobile, logins: m.phone.logins } }),
   };
@@ -316,7 +320,7 @@ function buildReady(d: AdoptDeps, id: HomeMoveId, m: HomeManifest, token: string
   writeDurable(path.join(ready, 'state.json'), state, { mode: 0o600 });
   carryOwnDocs(d, path.join(ready, 'docs'), state);
   renameRepoDocs(path.join(ready, 'docs'), repoRenames(relabelHome(state, { from: m.to, fromName: m.toName, fromHome: m.toHome, to: m.from, toName: m.record.name, at }), m.record.home, m.toHome));
-  writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m), { mode: 0o600 });
+  writeDurable(path.join(ready, 'fleet.json'), carriedConfig(read(path.join(ready, 'fleet.json')) as CarriedConfig, m, p.home), { mode: 0o600 });
   writeDurable(path.join(ready, 'workers.json'), { [m.from]: { token, addedAt: at, ...(m.fromProfile && { profile: m.fromProfile }) } }, { mode: 0o600 });
   carriedConsent(path.join(ready, 'mirror-consent.json'), p.mirrorConsent, d.me, m.from);
   return ready;
@@ -831,7 +835,7 @@ export async function packFleet(p: Paths, m: HomeManifest): Promise<{ sha256: st
       try { phase = (read(path.join(moves, name)) as { phase?: unknown }).phase; } catch { /* not a move's */ }
       if (phase !== 'done' && phase !== 'aborted') fs.rmSync(path.join(moves, name), { recursive: true, force: true });
     }
-    writeDurable(path.join(out, MANIFEST), m, { mode: 0o600 });
+    writeDurable(path.join(out, MANIFEST), { ...m, fromFleetHome: p.home }, { mode: 0o600 });
     const names = [...filesIn(out)];
     const long = names.find((n) => !ustarFits(Buffer.from(`./${n}`)));
     if (long) throw new Error(`${long} has a path too long for a move to carry; rename it first`);

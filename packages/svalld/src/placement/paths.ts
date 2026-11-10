@@ -6,8 +6,8 @@ import { sessionAdapter } from '../sessions/registry.js';
 import type { SessionFs } from '../sessions/types.js';
 import { relocate, type Relocation } from './relocate.js';
 
-/** The user home and each agent's home on the Mac (`from`) and on the worker (`to`). */
-export type Homes = { user: Relocation; agent: Record<AgentKind, Relocation> };
+/** The user home and each agent's home on the Mac (`from`) and on the worker (`to`); `mission`: mission control's folder, where it is the fleet's own. */
+export type Homes = { user: Relocation; agent: Record<AgentKind, Relocation>; mission?: Relocation };
 
 /** Where a robot's worktree, folders and transcripts lie on the worker: inside the worktree at the same place relative to the clone, anywhere else by home. */
 export function destinationPaths(c: Robot, clone: string, homes: Homes): {
@@ -20,7 +20,7 @@ export function destinationPaths(c: Robot, clone: string, homes: Homes): {
     ...(t2 && { secondTranscriptPath: t2 }),
   };
   if (!c.repo) {
-    const user = (p: string): string => relocate(p, homes.user);
+    const user = (p: string): string => relocate(p, homes.mission && holds(clean(homes.mission.from), clean(p)) ? homes.mission : homes.user);
     return { root: user(c.cwd), cwd: user(c.cwd), ...(c.second && { second: user(c.second.cwd) }), ...(c.panePath && { panePath: user(c.panePath) }), ...tail };
   }
   const [src, main, dest] = [clean(c.repo.root), clean(c.repo.mainRoot), clean(clone)];

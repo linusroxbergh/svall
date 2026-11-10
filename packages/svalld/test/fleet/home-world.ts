@@ -77,8 +77,8 @@ export class FakeDaemon implements HomeDaemon {
 
 export type Side = { paths: Paths; daemon: FakeDaemon; deps: AdoptDeps; registryDir: string };
 
-const side = (me: MachineId): Side => {
-  const home = path.join(makeHome(), 'fleet');
+const side = (me: MachineId, folder = 'fleet'): Side => {
+  const home = path.join(makeHome(), folder);
   fs.mkdirSync(home, { recursive: true, mode: 0o700 });
   const paths = resolvePaths(home);
   const registryDir = makeHome();
@@ -98,10 +98,11 @@ export const STUDIO_RECORD = { name: 'studio', ssh: 'ada@studio', platform: 'lin
 /**
  * A Mac home with robots, an island that holds something, the old workers.json and what no move carries, and studio its worker with a
  * robot of its own, a worker's copy and the phone's record. `sameId`: studio goes by the fleet's id, as a joined worker or a way back's destination does.
+ * `fleets`: the fleet's folder on each, in its user's home.
  */
-export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
-  const mac = side(MAC);
-  const studio = side(STUDIO);
+export async function world(o: { sameId?: boolean; fleets?: [string, string] } = {}): Promise<{ mac: Side; studio: Side; manifest: HomeManifest; archive: { bytes: Buffer; sha256: string }; enrolment: (t: string, m: HomeManifest) => Enrolment }> {
+  const mac = side(MAC, o.fleets?.[0]);
+  const studio = side(STUDIO, o.fleets?.[1]);
   const state: FleetState = {
     ...emptyState(),
     islands: { i_a: island() },
@@ -139,7 +140,8 @@ export async function world(o: { sameId?: boolean } = {}): Promise<{ mac: Side; 
   await mac.daemon.start();
   await studio.daemon.start();
   await mac.daemon.stop();
-  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: '/home/ada' as never, record: MAC_RECORD as never, phone: { serving: true, logins: ['ada@tailnet'] }, adoptKeySha256: ADOPT_SHA };
+  const [macHome, studioHome] = o.fleets ? [path.dirname(mac.paths.home), path.dirname(studio.paths.home)] : [MAC_RECORD.home, '/home/ada'];
+  const manifest: HomeManifest = { id: ID, fleetId: FLEET as never, from: MAC, to: STUDIO, toName: 'studio', toHome: studioHome as never, record: { ...MAC_RECORD, home: macHome } as never, phone: { serving: true, logins: ['ada@tailnet'] }, adoptKeySha256: ADOPT_SHA };
   const packed = await packFleet(mac.paths, manifest);
   await mac.daemon.start();
   const enrolment = (token: string, m: HomeManifest): Enrolment => ({

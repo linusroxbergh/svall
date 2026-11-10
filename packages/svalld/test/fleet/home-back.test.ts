@@ -143,6 +143,22 @@ describe('the way back: the outcome is owed before the old home is marked', () =
     expect(w.studio.daemon.role).toBe('frozen');
   });
 
+  it('mission control\'s folder that is the fleet\'s own on studio becomes this machine\'s fleet\'s; any other is carried as written', async () => {
+    const carried = async (cwd: (fleetHome: string) => string): Promise<{ cwd: string; fleetHome: string }> => {
+      const w = await markedBack(async (m) => {
+        await m.studio.daemon.stop();
+        const config = JSON.parse(fs.readFileSync(m.studio.paths.fleetConfig, 'utf8'));
+        fs.writeFileSync(m.studio.paths.fleetConfig, JSON.stringify({ ...config, home: { cwd: cwd(m.studio.paths.home) } }));
+        await m.studio.daemon.start();
+      });
+      expect((await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment)).status).toBe('adopted');
+      return { cwd: JSON.parse(fs.readFileSync(w.mac.paths.fleetConfig, 'utf8')).home.cwd, fleetHome: w.mac.paths.home };
+    };
+    const own = await carried((fleetHome) => `${fleetHome}/home`);
+    expect(own.cwd).toBe(path.join(own.fleetHome, 'home'));
+    expect((await carried(() => '/home/ada/crew')).cwd).toBe('~/crew');
+  });
+
   it('an old home that cannot be reached leaves the outcome owed, and a later try tells it', async () => {
     const w = await markedBack();
     await installAdopt(w.mac.deps, BACK, ADOPT_KEY, w.enrolment);

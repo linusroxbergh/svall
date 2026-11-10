@@ -161,7 +161,10 @@ A move refuses until it can go through: the other machine linked, on the same re
 minutes and room for three copies of the fleet's files; those files under about 180 MB, the most a move carries either way; no
 robot moving, and no other worker, which you remove and, after the move, add again from the new home, or join from it with
 `svall fleet join` if it is a Mac. A path in `fleet.json` under the old home's
-account goes in as `~/…`, and the sheet says which of those the new home does not have yet.
+account goes in as `~/…`, and the sheet says which of those the new home does not have yet. Mission control's folder is the
+exception when it is the fleet's own, `home` in the fleet's folder (`~/.svall/home`, `~/.svall-<fleet>/home` for a named fleet):
+it becomes the fleet's own folder on the new home, made there when mission control's robots go ahead, which work there from then
+on. A `home.cwd` you set anywhere else is yours, and goes in as written.
 
 ### When a move stops
 

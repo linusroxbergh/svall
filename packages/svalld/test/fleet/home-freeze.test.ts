@@ -1046,6 +1046,16 @@ it('rewrites what fleet.json names under the old home, and nothing else', () => 
   expect(configRewrites(paths, '/Users/ada')).toEqual([{ key: 'defaultCwd', to: '~/code' }, { key: 'onboarding.firstProject', to: '~' }]);
 });
 
+it('names no mission control folder that is the fleet\'s own, as written or in ~/ form, as the move makes it the fleet\'s own there', () => {
+  const user = makeHome();
+  const paths = resolvePaths(path.join(user, '.svall-dev-fartest'));
+  fs.mkdirSync(paths.home, { recursive: true });
+  for (const cwd of [path.join(paths.home, 'home'), '~/.svall-dev-fartest/home']) {
+    fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', defaultCwd: '~/code', home: { cwd } }));
+    expect(configRewrites(paths, user)).toEqual([{ key: 'defaultCwd', to: '~/code', kept: true }]);
+  }
+});
+
 it('asks the new home of a path fleet.json writes as ~/ already, and names it only while that machine lacks it', () => {
   const paths = resolvePaths(makeHome());
   fs.writeFileSync(paths.fleetConfig, JSON.stringify({ id: '11111111-2222-3333-4444-555555555555', defaultCwd: '~/code', home: { cwd: '~/.svall-dev-fartest/home' } }));

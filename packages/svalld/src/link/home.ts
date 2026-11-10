@@ -39,7 +39,7 @@ export type Transport = (entry: MachineEntry) => Promise<{ stream: Duplex; via?:
 /** What a worker says of itself once it has taken the home's token; one that names no schema or protocol reads as another build. */
 const WorkerHello = z.object({
   t: z.literal('hello'), workerMachineId: MachineId, bootId: z.string(), release: z.string(), schema: z.number().optional(), protocol: z.number().optional(),
-  agentHomes: Snapshot.shape.agentHomes, home: z.string(),
+  agentHomes: Snapshot.shape.agentHomes, home: z.string(), fleetHome: z.string().optional(),
 });
 export type WorkerHello = z.infer<typeof WorkerHello>;
 

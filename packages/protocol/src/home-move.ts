@@ -45,6 +45,8 @@ export const HomeManifest = z.object({
   phone: z.object({ serving: z.boolean(), logins: z.array(z.string()) }),
   // the fleet's profile on the old home, which the new one reaches it as once it is a worker
   fromProfile: z.string().optional(),
+  // the fleet's folder on the old home, whose mission control folder becomes the new home's fleet's
+  fromFleetHome: MachinePath.optional(),
   // of the key only the move's driver holds, sent once the old home is marked: without it this machine installs nothing
   adoptKeySha256: z.string().regex(/^[0-9a-f]{64}$/),
 });

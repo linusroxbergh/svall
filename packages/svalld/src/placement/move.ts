@@ -20,7 +20,7 @@ import { shq } from '../text.js';
 import type { Tmux } from '../tmux/tmux.js';
 import { applyBundle, fileSha, verifyBundle } from './bundle.js';
 import {
-  agentFailures, converted, homesOf, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
+  agentFailures, converted, homesOf, missionHomes, MovePlan, moveChecks, probeRepo, reach, refusalOf, remoteKey, restCheck, shallowFailure, unanswered, withoutToken, type CheckDeps, type CheckResult,
   type RepoProbe,
 } from './checks.js';
 import { convertMainCheckout, WORKTREES } from './convert.js';
@@ -78,7 +78,7 @@ export type PlacementDeps = {
   fleet: Pick<Fleet, 'reviveRobot' | 'openSecond' | 'onSessionStart'>;
   links: Pick<HomeLinks, 'for' | 'call' | 'pushSnapshot' | 'pushMirror' | 'mirrorSettled'>;
   me: MachineId;
-  paths: Pick<Paths, 'moves'>;
+  paths: Pick<Paths, 'moves' | 'home'>;
   git: GitRunner;
   agents: AgentProber;
   release: string;
@@ -257,7 +257,7 @@ export class Placement {
 
   private checkDeps(): CheckDeps {
     const { store, me, links, git, agents, release, homedir, cli } = this.d;
-    return { store, me, links, git, agents, release, homedir, terminals: () => this.terminals(), ...(cli && { cli }) };
+    return { store, me, links, git, agents, release, homedir, fleetHome: this.d.paths.home, terminals: () => this.terminals(), ...(cli && { cli }) };
   }
 
   private terminals(): Promise<Classified[]> {
@@ -556,6 +556,8 @@ export class Placement {
       .map(({ run, ...f }) => ({ ...f, action: `on ${homeWord()}, run ${run}` }));
     if (agents.length) return { failure: refusalOf(agents) };
     const homes = homesOf(hello.home, this.d.homedir, info.agentAdapters, local);
+    const mission = missionHomes(c, this.d.store.state, { homedir: this.d.homedir, fleetHome: this.d.paths.home }, hello.fleetHome, true);
+    if (mission) homes.mission = mission;
     const main = c.repo ? relocate(c.repo.mainRoot, homes.user) : '';
     const paths = destinationPaths(c, main, homes);
     const plan: MovePlan = { clone: main, paths, have: [], carry: [] };

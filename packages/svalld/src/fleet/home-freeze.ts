@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
 import { ApiError, HOME_ISLAND, PROTOCOL_VERSION, STATE_SCHEMA_VERSION, type AdoptAnswer, type Enrolment, type FleetState, type HomeFacts, type HomeMoveId, type HomeMoving, type HomeSheet, type MachineId, type MethodName, type Refusal, type Result } from '@svall/protocol';
 import { readFleetConfig } from '../config.js';
 import { writeDurable } from '../durable.js';
@@ -331,11 +332,15 @@ export async function homeFacts(p: Paths, o: { paths?: string[]; me: MachineId; 
   };
 }
 
-/** The paths in fleet.json named under the old home, which go in as `~/…` for the new one to read as its own, and those written as `~/…` already. */
-export function configRewrites(p: Pick<Paths, 'fleetConfig'>, fromHome: string): HomeSheet['rewrites'] {
+/**
+ * The paths in fleet.json named under the old home, which go in as `~/…` for the new one to read as its own, and those written as `~/…` already.
+ * Mission control's folder that is the fleet's own is none of them: it becomes the fleet's own there.
+ */
+export function configRewrites(p: Pick<Paths, 'fleetConfig' | 'home'>, fromHome: string): HomeSheet['rewrites'] {
   let c: ReturnType<typeof readFleetConfig>;
   try { c = readFleetConfig(p); } catch { return []; }
-  const named: [string, string | undefined][] = [['defaultCwd', c.defaultCwd], ['home.cwd', c.home.cwd], ['onboarding.firstProject', c.onboarding?.firstProject]];
+  const own = path.join(p.home, 'home') === expandHome(c.home.cwd, fromHome);
+  const named: [string, string | undefined][] = [['defaultCwd', c.defaultCwd], ['home.cwd', own ? undefined : c.home.cwd], ['onboarding.firstProject', c.onboarding?.firstProject]];
   return named.flatMap(([key, value]) => {
     if (value && (value === fromHome || value.startsWith(`${fromHome}/`))) return [{ key, to: `~${value.slice(fromHome.length)}` }];
     return value && (value === '~' || value.startsWith('~/')) ? [{ key, to: value, kept: true as const }] : [];

@@ -205,7 +205,7 @@ describe('the link', () => {
     ]);
     const link = links.for(W)!;
     expect(link.hello()).toEqual({
-      t: 'hello', workerMachineId: W, bootId: 'boot-1', release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION, home: '/home/ada lovelace/Åsa',
+      t: 'hello', workerMachineId: W, bootId: 'boot-1', release: '1.2.3', schema: STATE_SCHEMA_VERSION, protocol: PROTOCOL_VERSION, home: '/home/ada lovelace/Åsa', fleetHome: w.workerPaths.home,
       agentHomes: { claude: '/home/ada lovelace/Åsa/.claude', codex: '/home/ada lovelace/Åsa/.codex', opencode: '/home/ada lovelace/Åsa/.config/opencode' },
     });
     expect(link.via()).toEqual(via);
