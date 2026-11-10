@@ -201,6 +201,16 @@ describe('a marked home believes only the machine it marked for', () => {
     expect(far.lines).toEqual([expect.stringMatching(/ --json 'version'$/), expect.stringMatching(new RegExp(`'fleet' 'abort' '${ID}' '--asker' '${MAC}' '--fleet' '${FLEET}'$`))]);
   });
 
+  it('a far command ssh lost says so, and one that printed nothing ends on no empty tail', async () => {
+    const answering = (code: number, stderr: string) => (() => Promise.resolve({
+      run: (argv: string[]) => Promise.resolve(argv.join(' ').includes("'version'") ? { code: 0, signal: null, stderr: '', stdout: JSON.stringify(HOME) } : { code, signal: null, stderr, stdout: '' }),
+      close: () => Promise.resolve(),
+    })) as never;
+    await expect(askAcross(marker(), 'abort', answering(255, ''))).rejects.toThrow(/^ssh lost the connection before svall fleet abort answered$/);
+    await expect(askAcross(marker(), 'abort', answering(255, 'Connection to studio closed.'))).rejects.toThrow(/^ssh lost the connection before svall fleet abort answered: Connection to studio closed\.$/);
+    await expect(askAcross(marker(), 'abort', answering(3, ''))).rejects.toThrow(/^svall fleet abort exited 3$/);
+  });
+
   it.each([
     ['another machine', { ...HOME, machineId: MAC }],
     ['another fleet', { ...HOME, fleetId: ANOTHER_FLEET }],

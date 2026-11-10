@@ -15,9 +15,16 @@ const ASK_MS = 30_000;
 // the fleet there by its folder, as its profile there need not be the one it has here
 const farSvall = (svallBase: string, fleetHome: string, args: string[]): string[] => ['env', shq(`SVALL_HOME=${fleetHome}`), shq(svallExe(svallBase)), '--json', ...args.map(shq)];
 
+// ssh exits 255 on its own failure, which leaves the far command's end unknown
+const farFailed = (what: string, r: { code: number | null; signal: string | null; stderr: string }): Error => {
+  const said = r.stderr.trim().slice(0, 400);
+  const how = r.code === 255 ? `ssh lost the connection before ${what} answered` : `${what} exited ${r.code ?? r.signal}`;
+  return new Error(said ? `${how}: ${said}` : how);
+};
+
 async function farJson<T>(master: Pick<SshMaster, 'run'>, svallBase: string, fleetHome: string, args: string[], schema: z.ZodType<T>, what: string): Promise<T> {
   const r = await master.run(farSvall(svallBase, fleetHome, args), { timeoutMs: ASK_MS });
-  if (r.code !== 0) throw new Error(`${what} exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
+  if (r.code !== 0) throw farFailed(what, r);
   try { return schema.parse(JSON.parse(r.stdout)); } catch { throw new Error(`${what} did not answer what it should`); }
 }
 
@@ -87,7 +94,7 @@ export async function deliverOwed(paths: Paths, open: Open = openMaster): Promis
       // the key on stdin, as an argv is seen by every account there
       const input = JSON.stringify({ key, ...(said.status === 'adopted' && { enrol: said.enrol }) });
       const r = await master.run(farSvall(owed.svallBase, owed.fleetHome, ['fleet', 'settle', owed.id, '--outcome', said.status]), { timeoutMs: SETTLE_MS, input });
-      if (r.code !== 0) throw new Error(`svall fleet settle exited ${r.code ?? r.signal}: ${r.stderr.trim().slice(0, 400)}`);
+      if (r.code !== 0) throw farFailed('svall fleet settle', r);
       Settled.parse(JSON.parse(r.stdout));
     } finally { await master.close().catch(() => undefined); }
     homePoint('deliver.told');
