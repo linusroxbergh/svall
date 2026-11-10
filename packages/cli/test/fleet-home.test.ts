@@ -647,6 +647,20 @@ describe('fleet home set local', () => {
     expect(failed()).toMatchObject({ step: 'copy', detail: expect.stringContaining('did not answer a whole archive') });
   }, 30_000);
 
+  it('a named fleet\'s probe that never sees studio link names its doctor by -p', async () => {
+    const { w, deps, master } = await workerHere(() => true, {}, { state: { robots: {}, islands: {}, machines: { [STUDIO]: { name: 'studio', reachable: false, since: 1 } } } as never });
+    const stop = telling(w, master);
+    const clock = Date.now;
+    let now = clock();
+    try {
+      const out = moveHomeBack({ ...deps, target: { ...deps.target, name: 'work', managed: true } });
+      await vi.waitFor(() => expect(events.some((e) => e.step === 'probe')).toBe(true), { timeout: 20_000 });
+      Date.now = () => (now += 30_000);
+      await out;
+    } finally { Date.now = clock; stop(); }
+    expect(events.find((e) => e.step === 'probe' && e.status === 'warn')).toMatchObject({ action: 'svall -p work host doctor studio' });
+  }, 30_000);
+
   it('names the phone step when studio\'s freeze found its phone link served', async () => {
     const { w, deps, master } = await workerHere(() => true, { phone: { serving: true, logins: [] } });
     const stop = telling(w, master);
