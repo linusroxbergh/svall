@@ -44,6 +44,8 @@ describe('the setup rows of the mirror', () => {
         detail: 'copied without its keys (env.LINEAR_API_KEY lin…90); tick to copy them, set LINEAR_API_KEY on w1 (svall worker env LINEAR_API_KEY), or set them in ~/.svall/mirror-overrides there',
       });
     expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ status: 'ok', detail: 'w1 has its own keys' });
+    // a row with no gap still names its item, as a question about it does
+    expect(row('claude:mcp:linear', { ticked: false, secrets: { 'claude:mcp:linear#env.LINEAR_API_KEY': 'own' } })).toMatchObject({ tick: { name: 'linear' } });
   });
 
   it('an unticked server env key is the worker\'s own once its daemon has the variable, with no row of its own for the variable; a header key is not, and names the fleet\'s overrides folder', () => {
@@ -137,7 +139,7 @@ describe('the setup rows of the mirror', () => {
     const all = rows(report({ commands: { odd: false } }));
     expect(all.filter((r) => /(^|:)(odd|ODD_VAR)$/.test(r.key))).toEqual([{
       key: 'claude:mcp:odd', status: 'warn', action: 'copy odd to w1 as it is', detail: 'odd has settings Svall cannot copy one by one; tick to copy its file as it is, keys included',
-      tick: { item: 'claude:mcp:odd', fields: ['command', 'env', 'sandbox'], on: false, preview: ['command', 'env', 'sandbox'] },
+      tick: { item: 'claude:mcp:odd', name: 'odd', fields: ['command', 'env', 'sandbox'], on: false, preview: ['command', 'env', 'sandbox'] },
       gap: { name: 'odd', what: 'not copied; tick to copy it as it is' },
     }]);
     expect(row('claude:mcp:odd', { ticked: true, whole: { 'claude:mcp:odd': true } })).toMatchObject({ status: 'ok', detail: 'copied to w1 as it is', tick: { on: true } });
@@ -145,7 +147,7 @@ describe('the setup rows of the mirror', () => {
     expect(row('claude:mcp:odd', { ticked: true, unchecked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: SAVED });
     expect(all.find(byKey('claude:plugin:acme'))).toEqual({
       key: 'claude:plugin:acme', status: 'warn', action: "copy acme's config to w1 as it is", detail: "acme's config has settings Svall cannot copy one by one; tick to copy its file as it is, keys included",
-      tick: { item: 'claude:plugin:acme', fields: ['env'], on: false, preview: ['env'] }, gap: { name: "acme's config", what: 'not copied; tick to copy it as it is' },
+      tick: { item: 'claude:plugin:acme', name: 'acme\'s config', fields: ['env'], on: false, preview: ['env'] }, gap: { name: "acme's config", what: 'not copied; tick to copy it as it is' },
     });
     expect(row('claude:plugin:acme', { ticked: true, whole: { 'claude:plugin:acme': true } })).toMatchObject({ status: 'ok', detail: 'copied to w1 as it is' });
     expect(row('claude:plugin:acme', { ticked: true })).toMatchObject({ status: 'warn', action: 'check w1 again', detail: 'sent; not on w1 yet' });

@@ -95,7 +95,7 @@ export async function seedHome(o: { here: SeedClient; far: SeedClient; me: Machi
 
 // a key row ticks fields of an item; any other row's file goes whole
 const sendWords = (r: SetupRow, home: string): string => {
-  const name = r.gap?.name ?? r.key;
+  const name = r.gap?.name ?? r.tick?.name ?? r.key;
   return r.tick!.ticked ? `Send ${name}'s ${r.tick!.fields.map((f) => f.replace(/^env\./, '')).join(', ')} to ${home}` : `Send ${name} to ${home} as it is, keys included`;
 };
 

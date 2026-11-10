@@ -237,7 +237,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // an item's keys: ticked, once the worker holds each, as the copy or its own; unticked, once it holds each of its own,
   // a server's env key its own once the worker's daemon has the variables it reads, and while it still holds a copy, not yet
   const keyRow = (item: string, name: string, fields: string[], ticked: string[], preview: string[], server?: MirroredServer): SetupRow => {
-    const tick = { item, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
+    const tick = { item, name, fields, on: fields.every((f) => ticked.includes(f)), preview, ticked: fields.filter((f) => ticked.includes(f)) };
     if (report?.edited?.[item] === 'link') return staysEdited(tick, name);
     const held = (f: string) => report?.secrets[fieldKey(item, f)];
     const own = (f: string) => held(f) === 'own' || (server && f.startsWith('env.') && reads(server, f).every((v) => report?.vars[v] === true));
@@ -261,7 +261,7 @@ export function setupRows(plan: MirrorPlan, report: ConfigReport | undefined, o:
   // a server or plugin config with settings Svall cannot copy one by one, whose file travels as it is once ticked
   const whole = (item: string, name: string, fields: string[], on: boolean): SetupRow => inBackup(wholeRow(item, name, fields, on), [item]);
   const wholeRow = (item: string, name: string, fields: string[], on: boolean): SetupRow => {
-    const tick = { item, fields, on, preview: fields };
+    const tick = { item, name, fields, on, preview: fields };
     if (report?.edited?.[item] === 'link' || (!on && report?.edited?.[item] === 'copy')) return staysEdited(tick, name);
     if (!on && report?.whole[item]) return report.edited?.[item] ? { key: item, status: 'skip', detail: `${name} stays as you edited it`, tick } : stillOn(tick, name);
     if (!on) {

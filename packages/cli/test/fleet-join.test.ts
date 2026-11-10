@@ -302,6 +302,7 @@ describe('svall fleet join', () => {
         { key: 'claude:mcp:kept', status: 'ok', detail: 'kept', tick: { item: 'claude:mcp:kept', fields: ['env.K'], on: true, preview: ['env.K ****'], ticked: ['env.K'] }, gap: { name: 'kept', what: 'ticked' } },
         { key: 'claude:mcp:none', status: 'warn', detail: 'none', tick: { item: 'claude:mcp:none', fields: ['env.N'], on: false, preview: ['env.N ****'], ticked: [] }, gap: { name: 'none', what: 'keys not copied' } },
         { key: 'claude:mcp:odd', status: 'warn', action: 'check studio again', detail: 'odd', tick: { item: 'claude:mcp:odd', fields: ['url', 'headers'], on: false, preview: ['url', 'headers'] }, gap: { name: 'odd', what: 'not copied' } },
+        { key: 'claude:mcp:rb', status: 'ok', detail: 'studio has its own keys', tick: { item: 'claude:mcp:rb', name: 'rb', fields: ['env.RB_API_KEY'], on: false, preview: ['env.RB_API_KEY ****'], ticked: [] } },
       ] };
       const order: Asked[] = [];
       const asked: string[] = [];
@@ -311,7 +312,7 @@ describe('svall fleet join', () => {
         me: 'm' as never, name: 'studio', ask: { go: () => Promise.resolve(true), key: (said) => { asked.push(said); return Promise.resolve(said.startsWith("Send kept's")); } },
       });
       // a question says what goes where, never a row's action
-      expect(asked).toEqual(["Send whole's W to studio", "Send part's A, B to studio", "Send kept's K to studio", "Send none's N to studio", 'Send odd to studio as it is, keys included']);
+      expect(asked).toEqual(["Send whole's W to studio", "Send part's A, B to studio", "Send kept's K to studio", "Send none's N to studio", 'Send odd to studio as it is, keys included', "Send rb's RB_API_KEY to studio"]);
       expect(order.filter(([m]) => m === 'home.setupConsent' || m === 'machines.copySetupFrom')).toEqual([
         ['home.setupConsent', { item: 'claude:mcp:whole', fields: ['env.W'], on: false }],
         ['home.setupConsent', { item: 'claude:mcp:part', fields: ['env.A', 'env.B'], on: false }],
