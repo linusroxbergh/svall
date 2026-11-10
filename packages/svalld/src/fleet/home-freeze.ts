@@ -40,7 +40,13 @@ export type FreezeDeps = {
   ask(marker: HomeMoving, op: 'status' | 'abort'): Promise<AdoptAnswer>;
   /** ends this daemon, whose next start finishes the join */
   restart(): void;
+  /** what this machine's network addresses come to, which changes as a network comes back */
+  network?: () => string;
 };
+
+// a beat that finds the network changed, or that ran late as after a sleep, asks at once
+const BEAT_MS = 5_000;
+const addresses = (): string => JSON.stringify(Object.values(os.networkInterfaces()).flat().filter((i) => i && !i.internal).map((i) => i!.address).sort());
 
 /** A home that takes no writes while the fleet moves. Until its marker is written a thaw is free, and a driver that goes away is one; from then on only the machine holding the fleet can end it. */
 export class HomeFreeze {
@@ -55,6 +61,7 @@ export class HomeFreeze {
   private timer?: NodeJS.Timeout;
   private askMs = FIRST_ASK_MS;
   private stopped = false;
+  private beat?: NodeJS.Timeout;
 
   constructor(private d: FreezeDeps, frozen?: HomeMoving) {
     if (!frozen) return;
@@ -75,6 +82,7 @@ export class HomeFreeze {
   stop(): void {
     this.stopped = true;
     clearTimeout(this.timer);
+    clearInterval(this.beat);
   }
 
   get active(): boolean {
@@ -237,16 +245,39 @@ export class HomeFreeze {
   private schedule(): void {
     clearTimeout(this.timer);
     if (this.stopped || !this.marker?.ask || this.moving?.holder) return;
+    this.watchNetwork();
     this.timer = setTimeout(() => {
       this.askMs = Math.min(this.askMs * 2, LAST_ASK_MS);
-      // an outcome that could not be written, or that was refused, leaves the marker as it stands, so the asking goes on
-      void this.settle('status').catch((e: Error) => {
-        this.d.log.error(`how the move ended did not land here: ${e.message}`);
-        this.answer = e.message;
-        this.schedule();
-      });
+      this.ask();
     }, this.askMs);
     this.timer.unref?.();
+  }
+
+  private ask(): void {
+    // an outcome that could not be written, or that was refused, leaves the marker as it stands, so the asking goes on
+    void this.settle('status').catch((e: Error) => {
+      this.d.log.error(`how the move ended did not land here: ${e.message}`);
+      this.answer = e.message;
+      this.schedule();
+    });
+  }
+
+  // a network that comes back, or a wake, is asked at once rather than at the end of the wait its absence built up
+  private watchNetwork(): void {
+    if (this.beat) return;
+    const network = this.d.network ?? addresses;
+    let [last, seen] = [Date.now(), network()];
+    this.beat = setInterval(() => {
+      const [now, net] = [Date.now(), network()];
+      const back = now - last > 2 * BEAT_MS || net !== seen;
+      [last, seen] = [now, net];
+      if (this.stopped || !this.marker?.ask || this.moving?.holder) { clearInterval(this.beat); this.beat = undefined; return; }
+      if (!back || this.askMs === FIRST_ASK_MS) return;
+      clearTimeout(this.timer);
+      this.askMs = FIRST_ASK_MS;
+      this.ask();
+    }, BEAT_MS);
+    this.beat.unref?.();
   }
 
   private async servedAgain(): Promise<void> {

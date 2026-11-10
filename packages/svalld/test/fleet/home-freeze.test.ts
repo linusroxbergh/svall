@@ -411,6 +411,29 @@ describe('a frozen home', () => {
     });
   });
 
+  it('a marked home whose network comes back, or that wakes, asks at once, not at the end of the wait it built up', async () => {
+    vi.useFakeTimers();
+    try {
+      let net = 'wifi off';
+      let asks = 0;
+      const { d } = setup();
+      const freeze = new HomeFreeze({ ...d, network: () => net, ask: () => { asks++; return Promise.resolve({ status: 'pending', phase: 'unreachable', detail: 'studio does not answer' }); } }, marker());
+      freeze.start();
+      await vi.advanceTimersByTimeAsync(80_000);
+      const before = asks;
+      net = 'wifi on';
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(asks).toBe(before + 1);
+      // a sleep: the beat runs late, with the network as it was
+      await vi.advanceTimersByTimeAsync(80_000);
+      const slept = asks;
+      vi.setSystemTime(Date.now() + 600_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(asks).toBe(slept + 1);
+      freeze.stop();
+    } finally { vi.useRealTimers(); }
+  });
+
   it('a driver gone under a marker leaves it asking', async () => {
     vi.useFakeTimers();
     try {
